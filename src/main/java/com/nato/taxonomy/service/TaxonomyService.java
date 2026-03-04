@@ -44,10 +44,7 @@ public class TaxonomyService {
     @PostConstruct
     @Transactional
     public void loadTaxonomyFromExcel() {
-        if (repository.count() > 0) {
-            log.info("Taxonomy already loaded, skipping.");
-            return;
-        }
+        repository.deleteAll();
         try {
             ClassPathResource resource = new ClassPathResource(CATALOGUE_PATH);
             try (InputStream is = resource.getInputStream();
@@ -55,6 +52,9 @@ public class TaxonomyService {
 
                 // Global node map: code → entity (across all sheets)
                 Map<String, TaxonomyNode> nodeMap = new LinkedHashMap<>();
+
+                // UUID → code map used to resolve parent references that use UUIDs
+                Map<String, String> uuidToCode = new HashMap<>();
 
                 // 1. Create one virtual root per sheet (level 0)
                 List<TaxonomyNode> virtualRoots = new ArrayList<>();
@@ -80,7 +80,7 @@ public class TaxonomyService {
                         log.warn("Sheet '{}' not found in workbook.", sheetName);
                         continue;
                     }
-                    readSheet(sheet, prefix, nodeMap);
+                    readSheet(sheet, prefix, nodeMap, uuidToCode);
                 }
 
                 // 3. Wire parent-child relationships
@@ -88,8 +88,20 @@ public class TaxonomyService {
                     if (node.getLevel() == 0) continue; // virtual roots have no parent
                     String parentCode = node.getParentCode();
                     TaxonomyNode parent = (parentCode != null) ? nodeMap.get(parentCode) : null;
+
+                    // Fallback: parentCode might be a UUID — resolve it to the actual code
+                    if (parent == null && parentCode != null) {
+                        String resolvedCode = uuidToCode.get(parentCode);
+                        if (resolvedCode != null) {
+                            parent = nodeMap.get(resolvedCode);
+                            if (parent != null) {
+                                node.setParentCode(resolvedCode);
+                            }
+                        }
+                    }
+
+                    // Last resort: attach to the virtual sheet root
                     if (parent == null) {
-                        // Attach to the virtual sheet root and update the parentCode FK
                         parent = nodeMap.get(node.getTaxonomyRoot());
                         node.setParentCode(node.getTaxonomyRoot());
                     }
@@ -109,8 +121,9 @@ public class TaxonomyService {
         }
     }
 
-    /** Read one sheet and populate nodeMap. */
-    private void readSheet(Sheet sheet, String sheetPrefix, Map<String, TaxonomyNode> nodeMap) {
+    /** Read one sheet and populate nodeMap and uuidToCode. */
+    private void readSheet(Sheet sheet, String sheetPrefix, Map<String, TaxonomyNode> nodeMap,
+                           Map<String, String> uuidToCode) {
         // Expected columns: Page(0), UUID(1), Title(2), Description(3),
         //                   Parent(4), Dataset(5), ExternalID(6), Source(7),
         //                   Reference(8), Order(9), State(10), Level(11)
@@ -118,12 +131,18 @@ public class TaxonomyService {
         for (Row row : sheet) {
             if (first) { first = false; continue; } // skip header
             String code        = cellString(row, 0);
+            String uuid        = cellString(row, 1);
             String name        = cellString(row, 2);
             String description = cellString(row, 3);
             String parentCode  = cellString(row, 4);
             String levelStr    = cellString(row, 11);
 
             if (code == null || name == null) continue;
+
+            // Build UUID → code mapping for parent resolution fallback
+            if (uuid != null) {
+                uuidToCode.put(uuid, code);
+            }
 
             int level = 1;
             if (levelStr != null) {
