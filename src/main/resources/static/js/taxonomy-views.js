@@ -5,7 +5,6 @@
 
     // Sizing constants
     var MAX_SUNBURST_SIZE = 600; // max px for sunburst diameter
-    var TREE_HEIGHT = 600;       // fixed px height for the tree diagram
     var TREE_INITIAL_DEPTH = 2;  // collapse nodes at depth >= this on initial render
 
     // Root taxonomy colour palette (C1–C8)
@@ -247,10 +246,10 @@
         container._taxObserver = obs;
     }
 
-    // ── Bottom-up Tree Diagram ──────────────────────────────────────────────────
+    // ── Top-down Tree Diagram ──────────────────────────────────────────────────
     /**
-     * Render a collapsible bottom-up node-link tree diagram into `container`.
-     * Root nodes are at the bottom; leaves grow upward. Supports pan and zoom.
+     * Render a collapsible top-down node-link tree diagram into `container`.
+     * Root nodes are at the top; children grow downward. Supports pan and zoom.
      * @param {HTMLElement} container - The DOM element to render into (cleared first).
      * @param {Array}       data      - Array of root taxonomy nodes (each with `children`).
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
@@ -267,14 +266,10 @@
         container.innerHTML = '';
 
         var colorMap = buildColorMap(data);
-        var W = container.clientWidth || 800;
-        var H = TREE_HEIGHT;
-        var marginTop = 30;
-        var marginBottom = 10;
-        var marginLeft = 10;
-        var marginRight = 10;
-        var innerW = W - marginLeft - marginRight;
-        var innerH = H - marginTop - marginBottom;
+        var marginTop = 20;
+        var marginBottom = 30;
+        var marginLeft = 100;
+        var marginRight = 200;
 
         // Synthetic root
         var rootData = { code: '__root__', name: '', children: data };
@@ -288,25 +283,26 @@
             }
         });
 
+        // nodeSize([dx, dy]): dx = px per node (horizontal spread), dy = px between levels
+        var treeLayout = d3.tree().nodeSize([24, 100]);
+
+        var W = container.clientWidth || 800;
         var svg = d3.select(container)
             .append('svg')
             .attr('width', W)
-            .attr('height', H)
+            .attr('height', 300)
             .style('display', 'block');
 
         // Zoom/pan layer
         var zoomLayer = svg.append('g');
         svg.call(
             d3.zoom()
-                .scaleExtent([0.15, 4])
+                .scaleExtent([0.1, 20])
                 .on('zoom', function (event) { zoomLayer.attr('transform', event.transform); })
         );
 
-        // Content group – root sits at the bottom centre
-        var g = zoomLayer.append('g')
-            .attr('transform', 'translate(' + marginLeft + ',' + (marginTop + innerH) + ')');
-
-        var treeLayout = d3.tree().size([innerW, innerH]);
+        // Content group – repositioned inside update() to keep all nodes visible
+        var g = zoomLayer.append('g');
 
         var nodeSeq = 0;
 
@@ -315,23 +311,39 @@
             var nodes = root.descendants();
             var links = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
 
+            // Compute bounding box of all visible nodes
+            var xMin = Infinity, xMax = -Infinity, yMax = 0;
+            nodes.forEach(function (d) {
+                if (d.x < xMin) { xMin = d.x; }
+                if (d.x > xMax) { xMax = d.x; }
+                if (d.y > yMax) { yMax = d.y; }
+            });
+
+            // Resize SVG to fit content; height grows as nodes are expanded
+            var svgW = Math.max(container.clientWidth || 800, xMax - xMin + marginLeft + marginRight);
+            var svgH = Math.max(200, yMax + marginTop + marginBottom);
+            svg.attr('width', svgW).attr('height', svgH);
+
+            // Translate content so leftmost node is inset by marginLeft
+            g.attr('transform', 'translate(' + (marginLeft - xMin) + ',' + marginTop + ')');
+
+            var sx = source.x0 !== undefined ? source.x0 : (source.x != null ? source.x : 0);
+            var sy = source.y0 !== undefined ? source.y0 : (source.y != null ? source.y : 0);
+
             // ── Nodes ──────────────────────────────────
             var node = g.selectAll('g.tv-node')
                 .data(nodes, function (d) { return d.id || (d.id = ++nodeSeq); });
 
-            var sx = source.x0 !== undefined ? source.x0 : source.x;
-            var sy = source.y0 !== undefined ? source.y0 : source.y;
-
             var nodeEnter = node.enter().append('g')
                 .attr('class', 'tv-node')
-                .attr('transform', 'translate(' + sx + ',' + (-sy) + ')')
+                .attr('transform', 'translate(' + sx + ',' + sy + ')')
                 .style('opacity', 0);
 
             nodeEnter.append('circle').attr('r', 6).attr('stroke-width', 1.5);
 
             nodeEnter.append('text')
                 .attr('dy', '0.31em')
-                .style('font-size', '10px')
+                .style('font-size', '12px')
                 .style('user-select', 'none');
 
             // Interactivity for non-root nodes
@@ -355,7 +367,7 @@
             var nodeUpdate = nodeEnter.merge(node);
 
             nodeUpdate.transition().duration(300)
-                .attr('transform', function (d) { return 'translate(' + d.x + ',' + (-d.y) + ')'; })
+                .attr('transform', function (d) { return 'translate(' + d.x + ',' + d.y + ')'; })
                 .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; });
 
             nodeUpdate.select('circle')
@@ -366,20 +378,23 @@
                 .attr('stroke', function (d) { return d.data.code === '__root__' ? 'none' : '#555'; });
 
             nodeUpdate.select('text')
-                .text(function (d) { return d.data.code === '__root__' ? '' : d.data.code; })
-                .attr('x', function (d) { return (d._children) ? -9 : 9; })
-                .attr('text-anchor', function (d) { return (d._children) ? 'end' : 'start'; });
+                .text(function (d) {
+                    if (d.data.code === '__root__') { return ''; }
+                    return d.data.name ? d.data.code + ' \u2013 ' + d.data.name : d.data.code;
+                })
+                .attr('x', 9)
+                .attr('text-anchor', 'start');
 
             // Exit
             node.exit().transition().duration(300)
-                .attr('transform', 'translate(' + source.x + ',' + (-source.y) + ')')
+                .attr('transform', 'translate(' + source.x + ',' + source.y + ')')
                 .style('opacity', 0)
                 .remove();
 
             // ── Links ──────────────────────────────────
             var diag = d3.linkVertical()
                 .x(function (d) { return d.x; })
-                .y(function (d) { return -d.y; });
+                .y(function (d) { return d.y; });
 
             var link = g.selectAll('path.tv-link')
                 .data(links, function (d) { return d.target.id; });
@@ -407,15 +422,16 @@
             nodes.forEach(function (d) { d.x0 = d.x; d.y0 = d.y; });
         }
 
-        // Set initial positions on root
-        root.x0 = innerW / 2;
+        // Set initial positions on the synthetic root
+        root.x0 = 0;
         root.y0 = 0;
         update(root);
 
-        // Responsive resize
+        // Responsive resize – widen SVG if container grows, but never shrink below content width
         var obs = new ResizeObserver(function () {
             var newW = container.clientWidth || 800;
-            svg.attr('width', newW);
+            var curW = parseFloat(svg.attr('width')) || 0;
+            if (newW > curW) { svg.attr('width', newW); }
         });
         obs.observe(container);
         container._taxObserver = obs;
