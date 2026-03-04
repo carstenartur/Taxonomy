@@ -78,7 +78,20 @@ class TaxonomyApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.scores").exists())
                 .andExpect(jsonPath("$.tree").isArray())
-                .andExpect(jsonPath("$.tree.length()").value(8));
+                .andExpect(jsonPath("$.tree.length()").value(8))
+                .andExpect(jsonPath("$.status").exists());
+    }
+
+    @Test
+    void analyzeEndpointReturnsStatusWarningsAndErrorMessageFields() throws Exception {
+        mockMvc.perform(post("/api/analyze")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"businessText\":\"Provide secure voice communications\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").exists())
+                .andExpect(jsonPath("$.warnings").isArray())
+                .andExpect(jsonPath("$.scores").exists())
+                .andExpect(jsonPath("$.tree").isArray());
     }
 
     @Test
