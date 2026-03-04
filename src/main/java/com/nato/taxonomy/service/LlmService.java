@@ -162,6 +162,70 @@ public class LlmService {
         }
     }
 
+    /**
+     * Streaming version of {@link #analyzeRecursive}: processes root nodes one at a time,
+     * firing {@link AnalysisEventCallback} events so callers can forward results incrementally
+     * (e.g. via Server-Sent Events).
+     *
+     * @param businessText the text to analyse
+     * @param callback     receives phase, scores, expanding, complete and error events
+     */
+    public void analyzeStreaming(String businessText, AnalysisEventCallback callback) {
+        Map<String, Integer> allScores = new HashMap<>();
+        try {
+            List<TaxonomyNode> roots = taxonomyService.getRootNodes();
+
+            for (int i = 0; i < roots.size(); i++) {
+                TaxonomyNode root = roots.get(i);
+                int progress = (i * 100) / roots.size();
+                callback.onPhase(
+                        "Evaluating " + root.getName() + " (" + (i + 1) + "/" + roots.size() + ")…",
+                        progress);
+
+                Map<String, Integer> rootScore = callLlm(businessText, List.of(root));
+                allScores.putAll(rootScore);
+                callback.onScores(rootScore, root.getName() + " evaluated");
+
+                if (rootScore.getOrDefault(root.getCode(), 0) > 0) {
+                    List<TaxonomyNode> children = taxonomyService.getChildrenOf(root.getCode());
+                    if (!children.isEmpty()) {
+                        callback.onExpanding(root.getCode(),
+                                children.stream().map(TaxonomyNode::getCode).toList());
+                        analyzeStreamingNodes(businessText, children, allScores, callback);
+                    }
+                }
+            }
+
+            callback.onComplete("SUCCESS", allScores, List.of());
+        } catch (Exception e) {
+            log.error("Streaming analysis failed", e);
+            callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
+                    allScores, List.of());
+        }
+    }
+
+    private void analyzeStreamingNodes(String businessText,
+                                        List<TaxonomyNode> nodes,
+                                        Map<String, Integer> allScores,
+                                        AnalysisEventCallback callback) {
+        if (nodes == null || nodes.isEmpty()) return;
+
+        Map<String, Integer> scores = callLlm(businessText, nodes);
+        allScores.putAll(scores);
+        callback.onScores(scores, "Evaluated " + nodes.size() + " node(s)");
+
+        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+            if (entry.getValue() > 0) {
+                List<TaxonomyNode> children = taxonomyService.getChildrenOf(entry.getKey());
+                if (!children.isEmpty()) {
+                    callback.onExpanding(entry.getKey(),
+                            children.stream().map(TaxonomyNode::getCode).toList());
+                    analyzeStreamingNodes(businessText, children, allScores, callback);
+                }
+            }
+        }
+    }
+
     private Map<String, Integer> callLlm(String businessText, List<TaxonomyNode> nodes) {
         LlmProvider provider = getActiveProvider();
         String apiKey = getApiKey(provider);

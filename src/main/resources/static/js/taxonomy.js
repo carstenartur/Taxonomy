@@ -11,7 +11,13 @@
     document.addEventListener('DOMContentLoaded', function () {
         loadTaxonomy();
         checkAiStatus();
-        document.getElementById('analyzeBtn').addEventListener('click', runAnalysis);
+        document.getElementById('analyzeBtn').addEventListener('click', function () {
+            if (currentView === 'list' || currentView === 'tabs') {
+                runStreamingAnalysis();
+            } else {
+                runAnalysis();
+            }
+        });
         document.getElementById('expandAll').addEventListener('click', expandAll);
         document.getElementById('collapseAll').addEventListener('click', collapseAll);
 
@@ -344,6 +350,136 @@
                 setAnalyzing(false);
                 showStatus('danger', 'Analysis failed: ' + err.message);
             });
+    }
+
+    // ── Streaming analysis (list / tabs views) ────────────────────────────────
+    function runStreamingAnalysis() {
+        const text = document.getElementById('businessText').value.trim();
+        if (!text) {
+            showStatus('warning', 'Please enter a business requirement text before analyzing.');
+            return;
+        }
+
+        setAnalyzing(true);
+        clearStatus();
+        currentScores = {};
+
+        // Render a clean tree without scores first
+        renderView(taxonomyData, null);
+
+        const url = '/api/analyze-stream?businessText=' + encodeURIComponent(text);
+        const eventSource = new EventSource(url);
+
+        eventSource.addEventListener('phase', function (e) {
+            const data = JSON.parse(e.data);
+            showStatus('info', '🔄 ' + data.message);
+        });
+
+        eventSource.addEventListener('scores', function (e) {
+            const data = JSON.parse(e.data);
+            Object.assign(currentScores, data.scores);
+            Object.entries(data.scores).forEach(function ([code, pct]) {
+                applyScoreToNode(code, pct);
+            });
+        });
+
+        eventSource.addEventListener('expanding', function (e) {
+            const data = JSON.parse(e.data);
+            expandNodeByCode(data.parentCode);
+            data.childCodes.forEach(function (code) {
+                markNodeAsEvaluating(code);
+            });
+        });
+
+        eventSource.addEventListener('complete', function (e) {
+            const data = JSON.parse(e.data);
+            eventSource.close();
+            setAnalyzing(false);
+            currentScores = data.totalScores;
+            const matchedCount = Object.values(data.totalScores).filter(v => v > 0).length;
+            showStatus('success', '✅ Analysis complete. ' + matchedCount + ' node(s) matched.');
+        });
+
+        eventSource.addEventListener('error', function (e) {
+            if (e.data) {
+                try {
+                    const data = JSON.parse(e.data);
+                    eventSource.close();
+                    setAnalyzing(false);
+                    showStatus('warning', '⚠️ ' + data.errorMessage);
+                } catch (parseErr) {
+                    console.error('Failed to parse SSE error event:', parseErr);
+                }
+            }
+        });
+
+        eventSource.onerror = function () {
+            eventSource.close();
+            setAnalyzing(false);
+            showStatus('danger', 'Connection to server lost.');
+        };
+    }
+
+    // ── Incremental DOM update helpers ────────────────────────────────────────
+
+    /** Apply a score to a node already in the DOM without re-rendering the tree. */
+    function applyScoreToNode(code, pct) {
+        const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
+        if (!el) return;
+        const header = el.querySelector(':scope > .tax-node-header');
+        if (!header) return;
+
+        // Remove evaluating animation
+        el.classList.remove('tax-evaluating');
+
+        if (pct > 0) {
+            const alpha = Math.min(pct / 100, 1).toFixed(2);
+            header.style.backgroundColor = 'rgba(0,128,0,' + alpha + ')';
+            if (pct >= 60) { header.style.color = '#fff'; }
+
+            let badge = header.querySelector('.tax-pct');
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'tax-pct';
+                header.appendChild(badge);
+            }
+            badge.textContent = pct + '%';
+        } else {
+            // Explicitly scored zero – clear any previous highlight
+            header.style.backgroundColor = '';
+            header.style.color = '';
+        }
+    }
+
+    /** Expand a node in the DOM and all of its ancestors. */
+    function expandNodeByCode(code) {
+        const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
+        if (!el) return;
+        const children = el.querySelector(':scope > .tax-children');
+        if (children) {
+            children.style.display = '';
+            const toggle = el.querySelector(':scope > .tax-node-header > .tax-toggle');
+            if (toggle) toggle.textContent = '▼';
+        }
+        // Also make sure all ancestors are visible
+        let parent = el.parentElement;
+        while (parent) {
+            if (parent.classList.contains('tax-children')) {
+                parent.style.display = '';
+                const pNode = parent.parentElement;
+                if (pNode) {
+                    const t = pNode.querySelector(':scope > .tax-node-header > .tax-toggle');
+                    if (t) t.textContent = '▼';
+                }
+            }
+            parent = parent.parentElement;
+        }
+    }
+
+    /** Add a pulsing CSS class to indicate a node is currently being evaluated. */
+    function markNodeAsEvaluating(code) {
+        const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
+        if (el) el.classList.add('tax-evaluating');
     }
 
     /** Expand all nodes that have a match > 0 (and their ancestors). */

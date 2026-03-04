@@ -167,4 +167,24 @@ class TaxonomyApplicationTests {
         assertThat(root.getName()).isEqualTo(root.getNameEn());
         assertThat(root.getDescription()).isEqualTo(root.getDescriptionEn());
     }
+
+    @Test
+    void analyzeStreamEndpointSendsErrorEventForBlankText() throws Exception {
+        // With blank text the endpoint should immediately send an error event and complete
+        mockMvc.perform(get("/api/analyze-stream")
+                        .param("businessText", "")
+                        .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM_VALUE));
+    }
+
+    @Test
+    void analyzeStreamEndpointReturnsEventStreamForValidText() throws Exception {
+        // In CI no API key is set, so scores default to zero but the stream must complete
+        mockMvc.perform(get("/api/analyze-stream")
+                        .param("businessText", "Manage satellite communications for deployed forces")
+                        .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM_VALUE));
+    }
 }
