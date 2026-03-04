@@ -1,12 +1,9 @@
 package com.nato.taxonomy.service;
 
+import com.nato.taxonomy.config.TaxonomyAnalysisConfigurer;
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
 import com.nato.taxonomy.model.TaxonomyNode;
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.de.GermanAnalyzer;
-import org.apache.lucene.analysis.en.EnglishAnalyzer;
-import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.*;
 import org.apache.lucene.index.*;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
@@ -37,6 +34,11 @@ public class SearchService {
     private static final String FIELD_DESC_DE      = "descriptionDe";
     private static final String FIELD_NODE_ID      = "_nodeId";
 
+    private static final String[] EN_FIELDS = { FIELD_NAME_EN, FIELD_DESC_EN };
+    private static final String[] DE_FIELDS = { FIELD_NAME_DE, FIELD_DESC_DE };
+    private static final String[] FULL_TEXT_FIELDS =
+            { FIELD_NAME_EN, FIELD_NAME_DE, FIELD_DESC_EN, FIELD_DESC_DE };
+
     /** Per-field analyzer: English for EN fields, German for DE fields. */
     private final Analyzer analyzer;
 
@@ -47,12 +49,7 @@ public class SearchService {
     private final Map<String, TaxonomyNodeDto> nodeCache = new ConcurrentHashMap<>();
 
     public SearchService() {
-        Map<String, Analyzer> fieldAnalyzers = new LinkedHashMap<>();
-        fieldAnalyzers.put(FIELD_NAME_EN,  new EnglishAnalyzer());
-        fieldAnalyzers.put(FIELD_DESC_EN,  new EnglishAnalyzer());
-        fieldAnalyzers.put(FIELD_NAME_DE,  new GermanAnalyzer());
-        fieldAnalyzers.put(FIELD_DESC_DE,  new GermanAnalyzer());
-        this.analyzer = new PerFieldAnalyzerWrapper(new StandardAnalyzer(), fieldAnalyzers);
+        this.analyzer = TaxonomyAnalysisConfigurer.buildPerFieldAnalyzer(EN_FIELDS, DE_FIELDS);
     }
 
     /**
@@ -74,7 +71,6 @@ public class SearchService {
                 nodeCache.clear();
                 nodeCache.putAll(newCache);
             }
-            // Swap in the new directory
             this.directory = newDirectory;
             log.info("Lucene index built with {} documents.", nodes.size());
         } catch (IOException e) {
@@ -82,16 +78,20 @@ public class SearchService {
         }
     }
 
+    /**
+     * Keyword fields are stored in lowercase so that a single {@link TermQuery}
+     * (or {@link PrefixQuery}) per field is sufficient for case-insensitive matching.
+     */
     private Document buildDocument(TaxonomyNode node, String key) {
         Document doc = new Document();
-        doc.add(new StringField(FIELD_NODE_ID,    key,                                  Field.Store.YES));
-        doc.add(new StringField(FIELD_CODE,        nullToEmpty(node.getCode()),          Field.Store.NO));
-        doc.add(new StringField(FIELD_UUID,        nullToEmpty(node.getUuid()),          Field.Store.NO));
-        doc.add(new StringField(FIELD_EXTERNAL_ID, nullToEmpty(node.getExternalId()),   Field.Store.NO));
-        doc.add(new TextField(FIELD_NAME_EN,       nullToEmpty(node.getNameEn()),        Field.Store.NO));
-        doc.add(new TextField(FIELD_NAME_DE,       nullToEmpty(node.getNameDe()),        Field.Store.NO));
-        doc.add(new TextField(FIELD_DESC_EN,       nullToEmpty(node.getDescriptionEn()), Field.Store.NO));
-        doc.add(new TextField(FIELD_DESC_DE,       nullToEmpty(node.getDescriptionDe()), Field.Store.NO));
+        doc.add(new StringField(FIELD_NODE_ID,     key,                                          Field.Store.YES));
+        doc.add(new StringField(FIELD_CODE,         toLower(node.getCode()),                      Field.Store.NO));
+        doc.add(new StringField(FIELD_UUID,         toLower(node.getUuid()),                      Field.Store.NO));
+        doc.add(new StringField(FIELD_EXTERNAL_ID,  toLower(node.getExternalId()),                Field.Store.NO));
+        doc.add(new TextField(FIELD_NAME_EN,        nullToEmpty(node.getNameEn()),                Field.Store.NO));
+        doc.add(new TextField(FIELD_NAME_DE,        nullToEmpty(node.getNameDe()),                Field.Store.NO));
+        doc.add(new TextField(FIELD_DESC_EN,        nullToEmpty(node.getDescriptionEn()),         Field.Store.NO));
+        doc.add(new TextField(FIELD_DESC_DE,        nullToEmpty(node.getDescriptionDe()),         Field.Store.NO));
         return doc;
     }
 
@@ -127,36 +127,29 @@ public class SearchService {
     }
 
     private Query buildQuery(String queryString) throws ParseException {
-        String[] fullTextFields = { FIELD_NAME_EN, FIELD_NAME_DE, FIELD_DESC_EN, FIELD_DESC_DE };
-        String escaped = QueryParser.escape(queryString);
+        // Keyword fields are indexed in lowercase, so normalise the term before querying
+        String lowerQuery = queryString.toLowerCase(Locale.ROOT);
+        String escaped    = QueryParser.escape(queryString);
 
         BooleanQuery.Builder builder = new BooleanQuery.Builder();
 
         // Full-text query across EN/DE name and description fields (with stemming/stop-words)
-        MultiFieldQueryParser fullTextParser = new MultiFieldQueryParser(fullTextFields, analyzer);
+        MultiFieldQueryParser fullTextParser = new MultiFieldQueryParser(FULL_TEXT_FIELDS, analyzer);
         fullTextParser.setDefaultOperator(QueryParser.Operator.OR);
         try {
-            Query ftQuery = fullTextParser.parse(queryString);
-            builder.add(ftQuery, BooleanClause.Occur.SHOULD);
+            builder.add(fullTextParser.parse(queryString), BooleanClause.Occur.SHOULD);
         } catch (ParseException e) {
             log.debug("Full-text parse failed for '{}', falling back to escaped form", queryString);
+            builder.add(fullTextParser.parse(escaped), BooleanClause.Occur.SHOULD);
         }
 
-        // Exact / prefix match on keyword fields (code, uuid, externalId)
+        // Exact and prefix match on lowercase-normalised keyword fields
         for (String kf : new String[]{ FIELD_CODE, FIELD_UUID, FIELD_EXTERNAL_ID }) {
-            builder.add(new TermQuery(new Term(kf, queryString.toLowerCase(Locale.ROOT))),
-                    BooleanClause.Occur.SHOULD);
-            builder.add(new PrefixQuery(new Term(kf, queryString.toUpperCase(Locale.ROOT))),
-                    BooleanClause.Occur.SHOULD);
-            builder.add(new PrefixQuery(new Term(kf, queryString.toLowerCase(Locale.ROOT))),
-                    BooleanClause.Occur.SHOULD);
+            builder.add(new TermQuery(new Term(kf, lowerQuery)),        BooleanClause.Occur.SHOULD);
+            builder.add(new PrefixQuery(new Term(kf, lowerQuery)),      BooleanClause.Occur.SHOULD);
         }
 
-        BooleanQuery query = builder.build();
-        if (query.clauses().isEmpty()) {
-            return new MultiFieldQueryParser(fullTextFields, analyzer).parse(escaped);
-        }
-        return query;
+        return builder.build();
     }
 
     /** Convert a {@link TaxonomyNode} to a flat DTO (no children). */
@@ -183,5 +176,9 @@ public class SearchService {
 
     private static String nullToEmpty(String s) {
         return s == null ? "" : s;
+    }
+
+    private static String toLower(String s) {
+        return s == null ? "" : s.toLowerCase(Locale.ROOT);
     }
 }

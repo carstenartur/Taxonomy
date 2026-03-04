@@ -1,21 +1,43 @@
 package com.nato.taxonomy.config;
 
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.de.GermanAnalyzer;
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
+import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
- * Provides standard Lucene analyzers for English and German text.
+ * Provides Lucene analyzers for English and German full-text fields.
  * Used by {@link com.nato.taxonomy.service.SearchService} to configure per-field analysis.
  */
 public class TaxonomyAnalysisConfigurer {
 
-    /** Returns a Lucene {@link EnglishAnalyzer} for full-text indexing and searching of English content. */
-    public static EnglishAnalyzer englishAnalyzer() {
-        return new EnglishAnalyzer();
-    }
+    public static final String ANALYZER_ENGLISH = "english";
+    public static final String ANALYZER_GERMAN  = "german";
 
-    /** Returns a Lucene {@link GermanAnalyzer} for full-text indexing and searching of German content. */
-    public static GermanAnalyzer germanAnalyzer() {
-        return new GermanAnalyzer();
+    /**
+     * Build a per-field {@link Analyzer} that applies:
+     * <ul>
+     *   <li>{@link EnglishAnalyzer} for fields whose name ends with "En"</li>
+     *   <li>{@link GermanAnalyzer} for fields whose name ends with "De"</li>
+     *   <li>{@link StandardAnalyzer} for all other fields</li>
+     * </ul>
+     *
+     * @param enFields field names that should use the English analyzer
+     * @param deFields field names that should use the German analyzer
+     * @return configured {@link PerFieldAnalyzerWrapper}
+     */
+    public static Analyzer buildPerFieldAnalyzer(String[] enFields, String[] deFields) {
+        Map<String, Analyzer> fieldAnalyzers = new LinkedHashMap<>();
+        for (String f : enFields) {
+            fieldAnalyzers.put(f, new EnglishAnalyzer());
+        }
+        for (String f : deFields) {
+            fieldAnalyzers.put(f, new GermanAnalyzer());
+        }
+        return new PerFieldAnalyzerWrapper(new StandardAnalyzer(), fieldAnalyzers);
     }
 }
