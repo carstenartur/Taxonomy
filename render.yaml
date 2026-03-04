@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: nato-taxonomy
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false        # set manually in the Render dashboard
