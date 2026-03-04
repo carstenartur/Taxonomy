@@ -95,7 +95,7 @@ class TaxonomyApplicationTests {
         mockMvc.perform(get("/api/ai-status").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.available").value(false))
-                .andExpect(jsonPath("$.provider").isEmpty());
+                .andExpect(jsonPath("$.provider", org.hamcrest.Matchers.nullValue()));
     }
 
     @Test

@@ -34,7 +34,8 @@ public class LlmService {
     private static final String GEMINI_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
 
-    // OpenAI-compatible endpoints
+    private static final Pattern JSON_OBJECT_PATTERN =
+            Pattern.compile("\\{[^{}]*(?:\\{[^{}]*\\}[^{}]*)*\\}", Pattern.DOTALL);
     private static final String OPENAI_URL   = "https://api.openai.com/v1/chat/completions";
     private static final String DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
     private static final String QWEN_URL     = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
@@ -135,7 +136,7 @@ public class LlmService {
 
     /**
      * Recursively analyses business text against taxonomy nodes.
-     * Starts with root nodes (level 0), then drills into children of nodes with &gt;0% match.
+     * Starts with root nodes (level 0), then drills into children of nodes with >0% match.
      */
     public Map<String, Integer> analyzeRecursive(String businessText) {
         Map<String, Integer> allScores = new HashMap<>();
@@ -354,8 +355,7 @@ public class LlmService {
     /** Strip markdown code fences and locate the outermost JSON object. */
     private String extractJson(String text) {
         String stripped = text.replaceAll("```json", "").replaceAll("```", "").trim();
-        Pattern p = Pattern.compile("\\{[^{}]*(?:\\{[^{}]*\\}[^{}]*)*\\}", Pattern.DOTALL);
-        Matcher m = p.matcher(stripped);
+        Matcher m = JSON_OBJECT_PATTERN.matcher(stripped);
         if (m.find()) {
             return m.group();
         }
