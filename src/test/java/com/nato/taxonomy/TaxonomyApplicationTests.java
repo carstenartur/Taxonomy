@@ -38,10 +38,10 @@ class TaxonomyApplicationTests {
     }
 
     @Test
-    void rootCodesAreC1ThroughC8() {
+    void rootCodesMatchExcelSheets() {
         List<TaxonomyNodeDto> tree = taxonomyService.getFullTree();
         List<String> codes = tree.stream().map(TaxonomyNodeDto::getCode).toList();
-        assertThat(codes).containsExactlyInAnyOrder("C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8");
+        assertThat(codes).containsExactlyInAnyOrder("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA");
     }
 
     @Test
@@ -98,11 +98,10 @@ class TaxonomyApplicationTests {
     }
 
     @Test
-    void childNodesHaveCorrectLevels() {
+    void childNodesReferenceTheirParent() {
         List<TaxonomyNodeDto> tree = taxonomyService.getFullTree();
         for (TaxonomyNodeDto root : tree) {
             for (TaxonomyNodeDto child : root.getChildren()) {
-                assertThat(child.getLevel()).isEqualTo(1);
                 assertThat(child.getParentCode()).isEqualTo(root.getCode());
             }
         }

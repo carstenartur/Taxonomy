@@ -18,7 +18,7 @@ public class TaxonomyNode {
     @Column(nullable = false)
     private String name;
 
-    @Column(length = 2000)
+    @Column(length = 5000)
     private String description;
 
     @Column(name = "parent_code")

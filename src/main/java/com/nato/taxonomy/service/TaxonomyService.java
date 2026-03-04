@@ -1,11 +1,11 @@
 package com.nato.taxonomy.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
 import com.nato.taxonomy.model.TaxonomyNode;
 import com.nato.taxonomy.repository.TaxonomyNodeRepository;
 import jakarta.annotation.PostConstruct;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
@@ -13,74 +13,153 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 public class TaxonomyService {
 
     private static final Logger log = LoggerFactory.getLogger(TaxonomyService.class);
 
-    private final TaxonomyNodeRepository repository;
-    private final ObjectMapper objectMapper;
+    private static final String CATALOGUE_PATH = "data/C3_Taxonomy_Catalogue_25AUG2025.xlsx";
 
-    public TaxonomyService(TaxonomyNodeRepository repository, ObjectMapper objectMapper) {
+    /** Maps sheet name → two-letter prefix used as virtual root code. */
+    private static final Map<String, String> SHEET_PREFIXES = new LinkedHashMap<>();
+    static {
+        SHEET_PREFIXES.put("Business Processes",       "BP");
+        SHEET_PREFIXES.put("Business Roles",           "BR");
+        SHEET_PREFIXES.put("Capabilities",             "CP");
+        SHEET_PREFIXES.put("COI Services",             "CI");
+        SHEET_PREFIXES.put("Communications Services",  "CO");
+        SHEET_PREFIXES.put("Core Services",            "CR");
+        SHEET_PREFIXES.put("Information Products",     "IP");
+        SHEET_PREFIXES.put("User Applications",        "UA");
+    }
+
+    private final TaxonomyNodeRepository repository;
+
+    public TaxonomyService(TaxonomyNodeRepository repository) {
         this.repository = repository;
-        this.objectMapper = objectMapper;
     }
 
     @PostConstruct
     @Transactional
-    public void loadTaxonomyFromJson() {
+    public void loadTaxonomyFromExcel() {
         if (repository.count() > 0) {
             log.info("Taxonomy already loaded, skipping.");
             return;
         }
         try {
-            ClassPathResource resource = new ClassPathResource("data/nato-taxonomy.json");
-            try (InputStream is = resource.getInputStream()) {
-                List<Map<String, Object>> rawList = objectMapper.readValue(is,
-                        new TypeReference<>() {});
-                List<TaxonomyNode> rootNodes = new ArrayList<>();
-                for (Map<String, Object> raw : rawList) {
-                    TaxonomyNode node = buildNodeTree(raw, null, 0);
-                    rootNodes.add(node);
+            ClassPathResource resource = new ClassPathResource(CATALOGUE_PATH);
+            try (InputStream is = resource.getInputStream();
+                 Workbook workbook = new XSSFWorkbook(is)) {
+
+                // Global node map: code → entity (across all sheets)
+                Map<String, TaxonomyNode> nodeMap = new LinkedHashMap<>();
+
+                // 1. Create one virtual root per sheet (level 0)
+                List<TaxonomyNode> virtualRoots = new ArrayList<>();
+                for (Map.Entry<String, String> entry : SHEET_PREFIXES.entrySet()) {
+                    String sheetName = entry.getKey();
+                    String prefix    = entry.getValue();
+                    TaxonomyNode root = new TaxonomyNode();
+                    root.setCode(prefix);
+                    root.setName(sheetName);
+                    root.setDescription("NATO C3 Taxonomy – " + sheetName);
+                    root.setTaxonomyRoot(prefix);
+                    root.setLevel(0);
+                    nodeMap.put(prefix, root);
+                    virtualRoots.add(root);
                 }
-                repository.saveAll(rootNodes);
-                log.info("Loaded {} root taxonomy nodes.", rootNodes.size());
+
+                // 2. Read every sheet and collect raw rows
+                for (Map.Entry<String, String> entry : SHEET_PREFIXES.entrySet()) {
+                    String sheetName = entry.getKey();
+                    String prefix    = entry.getValue();
+                    Sheet sheet = workbook.getSheet(sheetName);
+                    if (sheet == null) {
+                        log.warn("Sheet '{}' not found in workbook.", sheetName);
+                        continue;
+                    }
+                    readSheet(sheet, prefix, nodeMap);
+                }
+
+                // 3. Wire parent-child relationships
+                for (TaxonomyNode node : nodeMap.values()) {
+                    if (node.getLevel() == 0) continue; // virtual roots have no parent
+                    String parentCode = node.getParentCode();
+                    TaxonomyNode parent = (parentCode != null) ? nodeMap.get(parentCode) : null;
+                    if (parent == null) {
+                        // Attach to the virtual sheet root and update the parentCode FK
+                        parent = nodeMap.get(node.getTaxonomyRoot());
+                        node.setParentCode(node.getTaxonomyRoot());
+                    }
+                    if (parent != null) {
+                        node.setParent(parent);
+                        parent.getChildren().add(node);
+                    }
+                }
+
+                // 4. Persist (save virtual roots first; cascade saves children)
+                repository.saveAll(virtualRoots);
+                log.info("Taxonomy loaded: {} nodes from {} sheets.",
+                        nodeMap.size(), SHEET_PREFIXES.size());
             }
         } catch (Exception e) {
-            log.error("Failed to load taxonomy from JSON", e);
+            log.error("Failed to load taxonomy from Excel", e);
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private TaxonomyNode buildNodeTree(Map<String, Object> raw, TaxonomyNode parent, int level) {
-        TaxonomyNode node = new TaxonomyNode();
-        node.setCode((String) raw.get("code"));
-        node.setName((String) raw.get("name"));
-        node.setDescription((String) raw.get("description"));
-        node.setParentCode((String) raw.get("parentCode"));
-        node.setLevel(level);
+    /** Read one sheet and populate nodeMap. */
+    private void readSheet(Sheet sheet, String sheetPrefix, Map<String, TaxonomyNode> nodeMap) {
+        // Expected columns: Page(0), UUID(1), Title(2), Description(3),
+        //                   Parent(4), Dataset(5), ExternalID(6), Source(7),
+        //                   Reference(8), Order(9), State(10), Level(11)
+        boolean first = true;
+        for (Row row : sheet) {
+            if (first) { first = false; continue; } // skip header
+            String code        = cellString(row, 0);
+            String name        = cellString(row, 2);
+            String description = cellString(row, 3);
+            String parentCode  = cellString(row, 4);
+            String levelStr    = cellString(row, 11);
 
-        // Determine taxonomy root (top-level code: C1..C8)
-        if (parent == null) {
-            node.setTaxonomyRoot(node.getCode());
-        } else {
-            node.setTaxonomyRoot(parent.getTaxonomyRoot());
-        }
-        node.setParent(parent);
+            if (code == null || name == null) continue;
 
-        List<Map<String, Object>> childrenRaw = (List<Map<String, Object>>) raw.get("children");
-        if (childrenRaw != null) {
-            for (Map<String, Object> childRaw : childrenRaw) {
-                TaxonomyNode child = buildNodeTree(childRaw, node, level + 1);
-                node.getChildren().add(child);
+            int level = 1;
+            if (levelStr != null) {
+                try { level = Integer.parseInt(levelStr.trim()); } catch (NumberFormatException ignored) { }
             }
+
+            TaxonomyNode node = new TaxonomyNode();
+            node.setCode(code);
+            node.setName(name);
+            node.setDescription(truncate(description, 5000));
+            node.setParentCode(parentCode);
+            node.setTaxonomyRoot(sheetPrefix);
+            node.setLevel(level);
+            nodeMap.put(code, node);
         }
-        return node;
     }
+
+    private String cellString(Row row, int col) {
+        Cell cell = row.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+        if (cell == null) return null;
+        String val = switch (cell.getCellType()) {
+            case STRING  -> cell.getStringCellValue();
+            case NUMERIC -> String.valueOf((long) cell.getNumericCellValue());
+            case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
+            case FORMULA -> cell.getCellFormula();
+            default      -> null;
+        };
+        return (val == null || val.isBlank()) ? null : val.trim();
+    }
+
+    private String truncate(String s, int maxLen) {
+        if (s == null) return null;
+        return s.length() <= maxLen ? s : s.substring(0, maxLen);
+    }
+
+    // ---- read-side methods ----
 
     @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> getFullTree() {
