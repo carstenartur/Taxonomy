@@ -82,6 +82,23 @@ class TaxonomyApplicationTests {
     }
 
     @Test
+    void aiStatusEndpointReturnsJson() throws Exception {
+        mockMvc.perform(get("/api/ai-status").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.available").isBoolean());
+    }
+
+    @Test
+    void aiStatusEndpointReturnsUnavailableWhenNoKeyConfigured() throws Exception {
+        // In CI / test environment no API key is set, so available should be false
+        mockMvc.perform(get("/api/ai-status").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(false))
+                .andExpect(jsonPath("$.provider").isEmpty());
+    }
+
+    @Test
     void homePageReturnsHtml() throws Exception {
         mockMvc.perform(get("/").accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk())

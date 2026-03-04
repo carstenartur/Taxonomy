@@ -2,8 +2,9 @@ package com.nato.taxonomy.controller;
 
 import com.nato.taxonomy.dto.AnalysisRequest;
 import com.nato.taxonomy.dto.AnalysisResult;
+import com.nato.taxonomy.dto.AiStatusResponse;
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
-import com.nato.taxonomy.service.GeminiService;
+import com.nato.taxonomy.service.LlmService;
 import com.nato.taxonomy.service.TaxonomyService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,16 +18,23 @@ import java.util.Map;
 public class ApiController {
 
     private final TaxonomyService taxonomyService;
-    private final GeminiService geminiService;
+    private final LlmService llmService;
 
-    public ApiController(TaxonomyService taxonomyService, GeminiService geminiService) {
+    public ApiController(TaxonomyService taxonomyService, LlmService llmService) {
         this.taxonomyService = taxonomyService;
-        this.geminiService = geminiService;
+        this.llmService = llmService;
     }
 
     @GetMapping("/taxonomy")
     public ResponseEntity<List<TaxonomyNodeDto>> getTaxonomy() {
         return ResponseEntity.ok(taxonomyService.getFullTree());
+    }
+
+    @GetMapping("/ai-status")
+    public ResponseEntity<AiStatusResponse> aiStatus() {
+        boolean available = llmService.isAvailable();
+        String provider = available ? llmService.getActiveProviderName() : null;
+        return ResponseEntity.ok(new AiStatusResponse(available, provider));
     }
 
     @PostMapping("/analyze")
@@ -35,7 +43,7 @@ public class ApiController {
             return ResponseEntity.badRequest().build();
         }
 
-        Map<String, Integer> scores = geminiService.analyzeRecursive(request.getBusinessText());
+        Map<String, Integer> scores = llmService.analyzeRecursive(request.getBusinessText());
 
         List<TaxonomyNodeDto> rawTree = taxonomyService.getFullTree();
         List<TaxonomyNodeDto> annotatedTree = new ArrayList<>();
