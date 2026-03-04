@@ -78,3 +78,51 @@
 #taxonomyTree {
     min-height: 200px;
 }
+
+/* ── View switcher ──────────────────────────────────────────── */
+.btn-group .btn {
+    font-size: 0.8rem;
+}
+
+/* Ensure d-none works even without Bootstrap CSS loaded */
+.d-none {
+    display: none !important;
+}
+
+/* ── Tabbed list view ───────────────────────────────────────── */
+.tax-tabs .nav-link {
+    font-size: 0.78rem;
+    padding: 4px 8px;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Tab pane visibility fallback (mirrors Bootstrap's .tab-content rules) ── */
+.tab-content > .tab-pane {
+    display: none;
+}
+.tab-content > .tab-pane.show.active {
+    display: block;
+}
+
+/* ── D3 tooltip ─────────────────────────────────────────────── */
+.tax-tooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.82);
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    max-width: 280px;
+    pointer-events: none;
+    z-index: 9999;
+    display: none;
+    line-height: 1.5;
+}
+
+.tax-tooltip-pct {
+    color: #90ee90;
+    font-weight: 700;
+}
