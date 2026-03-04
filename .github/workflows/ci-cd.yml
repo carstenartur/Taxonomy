@@ -25,7 +25,7 @@ jobs:
           cache: 'maven'
 
       - name: Build and run tests
-        run: mvn -q verify
+        run: mvn -q clean verify
 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
