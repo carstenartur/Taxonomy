@@ -10,6 +10,7 @@
     // ── Bootstrap ─────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function () {
         loadTaxonomy();
+        checkAiStatus();
         document.getElementById('analyzeBtn').addEventListener('click', runAnalysis);
         document.getElementById('expandAll').addEventListener('click', expandAll);
         document.getElementById('collapseAll').addEventListener('click', collapseAll);
@@ -24,6 +25,32 @@
             }
         });
     });
+
+    // ── Check AI availability ─────────────────────────────────────────────────
+    function checkAiStatus() {
+        fetch('/api/ai-status')
+            .then(r => r.json())
+            .then(status => {
+                const btn = document.getElementById('analyzeBtn');
+                const infoEl = document.getElementById('aiProviderInfo');
+                if (status.available) {
+                    btn.disabled = false;
+                    infoEl.textContent = 'Using: ' + status.provider;
+                    infoEl.classList.remove('d-none');
+                } else {
+                    btn.disabled = true;
+                    infoEl.classList.add('d-none');
+                    showStatus('warning',
+                        '⚠️ AI analysis is not available — no LLM API key is configured. ' +
+                        'Set one of the following environment variables: GEMINI_API_KEY, ' +
+                        'OPENAI_API_KEY, DEEPSEEK_API_KEY, DASHSCOPE_API_KEY, LLAMA_API_KEY, ' +
+                        'or MISTRAL_API_KEY.');
+                }
+            })
+            .catch(() => {
+                // If the status check fails, leave the button enabled and don't show a warning.
+            });
+    }
 
     // ── Load taxonomy tree from API ───────────────────────────────────────────
     function loadTaxonomy() {
@@ -238,6 +265,14 @@
 
         wrapper.appendChild(header);
 
+        // Visible description below the header row
+        if (node.description) {
+            const desc = document.createElement('div');
+            desc.className = 'tax-description';
+            desc.textContent = node.description;
+            wrapper.appendChild(desc);
+        }
+
         // Children container
         if (hasChildren) {
             const childContainer = document.createElement('div');
@@ -347,7 +382,7 @@
         const spinner = document.getElementById('analyzeSpinner');
         btn.disabled = on;
         spinner.classList.toggle('d-none', !on);
-        btn.textContent = on ? ' Analyzing…' : 'Analyze with Gemini';
+        btn.textContent = on ? ' Analyzing…' : 'Analyze with AI';
         if (on) btn.prepend(spinner);
     }
 
@@ -365,3 +400,4 @@
     }
 
 })();
+

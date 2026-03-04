@@ -79,6 +79,14 @@
     min-height: 200px;
 }
 
+/* ── Node description ──────────────────────────────────────── */
+.tax-description {
+    font-size: 0.82em;
+    color: #666;
+    display: block;
+    margin-left: 2.5em;
+    margin-bottom: 0.2em;
+    font-style: italic;
 /* ── View switcher ──────────────────────────────────────────── */
 .btn-group .btn {
     font-size: 0.8rem;

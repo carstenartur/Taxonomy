@@ -14,7 +14,10 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-@Service
+/**
+ * @deprecated Replaced by {@link LlmService}. This class is kept for reference only.
+ */
+@Deprecated(forRemoval = true)
 public class GeminiService {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiService.class);
