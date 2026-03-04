@@ -1,0 +1,1222 @@
+[
+  {
+    "code": "C1",
+    "name": "Political & Military Ambition",
+    "description": "Political and military goals, strategies, and ambitions that drive NATO operations and alliance activities.",
+    "parentCode": null,
+    "children": [
+      {
+        "code": "C1.1",
+        "name": "Political Objectives",
+        "description": "High-level political goals and objectives of the alliance and member nations.",
+        "parentCode": "C1",
+        "children": [
+          {
+            "code": "C1.1.1",
+            "name": "Alliance Cohesion",
+            "description": "Policies and measures to maintain unity and coherence among NATO member states.",
+            "parentCode": "C1.1",
+            "children": [
+              {
+                "code": "C1.1.1.1",
+                "name": "Consensus Building",
+                "description": "Processes and mechanisms for achieving political consensus among member nations.",
+                "parentCode": "C1.1.1",
+                "children": []
+              },
+              {
+                "code": "C1.1.1.2",
+                "name": "Partnership Engagement",
+                "description": "Engagement with partner nations and organizations to strengthen alliance relationships.",
+                "parentCode": "C1.1.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C1.1.2",
+            "name": "Crisis Management",
+            "description": "Political frameworks and decisions for managing international crises.",
+            "parentCode": "C1.1",
+            "children": [
+              {
+                "code": "C1.1.2.1",
+                "name": "Early Warning",
+                "description": "Mechanisms for early detection and political response to emerging crises.",
+                "parentCode": "C1.1.2",
+                "children": []
+              },
+              {
+                "code": "C1.1.2.2",
+                "name": "Conflict Prevention",
+                "description": "Diplomatic and political measures to prevent the outbreak of conflict.",
+                "parentCode": "C1.1.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C1.2",
+        "name": "Military Strategy",
+        "description": "Overarching military strategies and doctrines guiding NATO military activities.",
+        "parentCode": "C1",
+        "children": [
+          {
+            "code": "C1.2.1",
+            "name": "Deterrence Strategy",
+            "description": "Strategies and postures designed to deter potential adversaries.",
+            "parentCode": "C1.2",
+            "children": [
+              {
+                "code": "C1.2.1.1",
+                "name": "Nuclear Deterrence",
+                "description": "Nuclear posture and policies contributing to strategic deterrence.",
+                "parentCode": "C1.2.1",
+                "children": []
+              },
+              {
+                "code": "C1.2.1.2",
+                "name": "Conventional Deterrence",
+                "description": "Conventional military posture and readiness contributing to deterrence.",
+                "parentCode": "C1.2.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C1.2.2",
+            "name": "Collective Defence",
+            "description": "Military planning and posture for collective defence under Article 5.",
+            "parentCode": "C1.2",
+            "children": [
+              {
+                "code": "C1.2.2.1",
+                "name": "Forward Presence",
+                "description": "Enhanced forward military presence on NATO's eastern flank.",
+                "parentCode": "C1.2.2",
+                "children": []
+              },
+              {
+                "code": "C1.2.2.2",
+                "name": "Rapid Reinforcement",
+                "description": "Capabilities and plans for rapid military reinforcement of threatened members.",
+                "parentCode": "C1.2.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C1.3",
+        "name": "Arms Control & Disarmament",
+        "description": "NATO policies and positions on arms control, disarmament, and non-proliferation.",
+        "parentCode": "C1",
+        "children": [
+          {
+            "code": "C1.3.1",
+            "name": "Arms Control Treaties",
+            "description": "Participation in and compliance with international arms control agreements.",
+            "parentCode": "C1.3",
+            "children": []
+          },
+          {
+            "code": "C1.3.2",
+            "name": "Non-Proliferation",
+            "description": "Efforts to prevent the spread of weapons of mass destruction.",
+            "parentCode": "C1.3",
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "C2",
+    "name": "Mission-to-Task Decomposition",
+    "description": "Framework for breaking down missions into tasks, sub-tasks, and activities at various command levels.",
+    "parentCode": null,
+    "children": [
+      {
+        "code": "C2.1",
+        "name": "Strategic Level",
+        "description": "Mission decomposition at the strategic command level.",
+        "parentCode": "C2",
+        "children": [
+          {
+            "code": "C2.1.1",
+            "name": "Campaign Planning",
+            "description": "Strategic campaign plan development and management.",
+            "parentCode": "C2.1",
+            "children": [
+              {
+                "code": "C2.1.1.1",
+                "name": "Objective Setting",
+                "description": "Definition of strategic military objectives for campaigns.",
+                "parentCode": "C2.1.1",
+                "children": []
+              },
+              {
+                "code": "C2.1.1.2",
+                "name": "Phase Planning",
+                "description": "Planning distinct campaign phases and transitions.",
+                "parentCode": "C2.1.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C2.1.2",
+            "name": "Strategic Assessment",
+            "description": "Assessment of strategic situation and effectiveness of operations.",
+            "parentCode": "C2.1",
+            "children": [
+              {
+                "code": "C2.1.2.1",
+                "name": "Intelligence Assessment",
+                "description": "Analysis of intelligence to support strategic decision-making.",
+                "parentCode": "C2.1.2",
+                "children": []
+              },
+              {
+                "code": "C2.1.2.2",
+                "name": "Effects Assessment",
+                "description": "Measurement and assessment of operational effects.",
+                "parentCode": "C2.1.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C2.2",
+        "name": "Operational Level",
+        "description": "Mission decomposition at the operational command level.",
+        "parentCode": "C2",
+        "children": [
+          {
+            "code": "C2.2.1",
+            "name": "Joint Operation Planning",
+            "description": "Planning of joint operations across multiple domains.",
+            "parentCode": "C2.2",
+            "children": [
+              {
+                "code": "C2.2.1.1",
+                "name": "Land Operations Planning",
+                "description": "Planning for land-based operational activities.",
+                "parentCode": "C2.2.1",
+                "children": []
+              },
+              {
+                "code": "C2.2.1.2",
+                "name": "Maritime Operations Planning",
+                "description": "Planning for maritime operational activities.",
+                "parentCode": "C2.2.1",
+                "children": []
+              },
+              {
+                "code": "C2.2.1.3",
+                "name": "Air Operations Planning",
+                "description": "Planning for air operational activities.",
+                "parentCode": "C2.2.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C2.2.2",
+            "name": "Operational Logistics",
+            "description": "Logistic support planning at the operational level.",
+            "parentCode": "C2.2",
+            "children": [
+              {
+                "code": "C2.2.2.1",
+                "name": "Supply Chain Management",
+                "description": "Management of supply chains supporting operations.",
+                "parentCode": "C2.2.2",
+                "children": []
+              },
+              {
+                "code": "C2.2.2.2",
+                "name": "Medical Support Planning",
+                "description": "Planning of medical support for operational forces.",
+                "parentCode": "C2.2.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C2.3",
+        "name": "Tactical Level",
+        "description": "Mission decomposition at the tactical command level.",
+        "parentCode": "C2",
+        "children": [
+          {
+            "code": "C2.3.1",
+            "name": "Task Organisation",
+            "description": "Organisation of forces and tasks at the tactical level.",
+            "parentCode": "C2.3",
+            "children": [
+              {
+                "code": "C2.3.1.1",
+                "name": "Combat Power Allocation",
+                "description": "Allocation of combat power to tactical tasks.",
+                "parentCode": "C2.3.1",
+                "children": []
+              },
+              {
+                "code": "C2.3.1.2",
+                "name": "Support Element Assignment",
+                "description": "Assignment of support elements to tactical units.",
+                "parentCode": "C2.3.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C2.3.2",
+            "name": "Tactical Execution",
+            "description": "Execution of tactical tasks and activities.",
+            "parentCode": "C2.3",
+            "children": [
+              {
+                "code": "C2.3.2.1",
+                "name": "Direct Fire Control",
+                "description": "Control and management of direct fire at the tactical level.",
+                "parentCode": "C2.3.2",
+                "children": []
+              },
+              {
+                "code": "C2.3.2.2",
+                "name": "Manoeuvre Coordination",
+                "description": "Coordination of tactical manoeuvre activities.",
+                "parentCode": "C2.3.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "C3",
+    "name": "Capability Hierarchy",
+    "description": "Hierarchical representation of NATO military and organisational capabilities.",
+    "parentCode": null,
+    "children": [
+      {
+        "code": "C3.1",
+        "name": "Command & Control",
+        "description": "Capabilities related to command, control, and coordination of forces.",
+        "parentCode": "C3",
+        "children": [
+          {
+            "code": "C3.1.1",
+            "name": "Command Post Operations",
+            "description": "Capabilities for operating command posts at various echelons.",
+            "parentCode": "C3.1",
+            "children": [
+              {
+                "code": "C3.1.1.1",
+                "name": "Mobile Command Post",
+                "description": "Deployable and mobile command post capabilities.",
+                "parentCode": "C3.1.1",
+                "children": []
+              },
+              {
+                "code": "C3.1.1.2",
+                "name": "Static Command Facility",
+                "description": "Fixed command facility capabilities.",
+                "parentCode": "C3.1.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C3.1.2",
+            "name": "Communications",
+            "description": "Communication capabilities supporting command and control.",
+            "parentCode": "C3.1",
+            "children": [
+              {
+                "code": "C3.1.2.1",
+                "name": "Tactical Radio",
+                "description": "Tactical radio communication systems and capabilities.",
+                "parentCode": "C3.1.2",
+                "children": []
+              },
+              {
+                "code": "C3.1.2.2",
+                "name": "Satellite Communications",
+                "description": "Satellite-based communication capabilities.",
+                "parentCode": "C3.1.2",
+                "children": []
+              },
+              {
+                "code": "C3.1.2.3",
+                "name": "Strategic Communications",
+                "description": "Long-haul strategic communication capabilities.",
+                "parentCode": "C3.1.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C3.2",
+        "name": "Intelligence, Surveillance & Reconnaissance",
+        "description": "ISR capabilities for information collection and situational awareness.",
+        "parentCode": "C3",
+        "children": [
+          {
+            "code": "C3.2.1",
+            "name": "Sensors",
+            "description": "Sensor capabilities for detection and data collection.",
+            "parentCode": "C3.2",
+            "children": [
+              {
+                "code": "C3.2.1.1",
+                "name": "Ground-Based Sensors",
+                "description": "Ground-based sensing systems for surveillance and reconnaissance.",
+                "parentCode": "C3.2.1",
+                "children": []
+              },
+              {
+                "code": "C3.2.1.2",
+                "name": "Airborne Sensors",
+                "description": "Airborne sensing platforms and systems.",
+                "parentCode": "C3.2.1",
+                "children": []
+              },
+              {
+                "code": "C3.2.1.3",
+                "name": "Space-Based Sensors",
+                "description": "Space-based sensing and observation capabilities.",
+                "parentCode": "C3.2.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C3.2.2",
+            "name": "Intelligence Analysis",
+            "description": "Analytical capabilities for processing and exploiting intelligence.",
+            "parentCode": "C3.2",
+            "children": [
+              {
+                "code": "C3.2.2.1",
+                "name": "All-Source Analysis",
+                "description": "Integration and analysis of multiple intelligence sources.",
+                "parentCode": "C3.2.2",
+                "children": []
+              },
+              {
+                "code": "C3.2.2.2",
+                "name": "Imagery Analysis",
+                "description": "Analysis of imagery intelligence from various collection platforms.",
+                "parentCode": "C3.2.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C3.3",
+        "name": "Force Protection",
+        "description": "Capabilities to protect forces, assets, and infrastructure.",
+        "parentCode": "C3",
+        "children": [
+          {
+            "code": "C3.3.1",
+            "name": "Active Defence",
+            "description": "Active measures to defend against threats.",
+            "parentCode": "C3.3",
+            "children": [
+              {
+                "code": "C3.3.1.1",
+                "name": "Air Defence",
+                "description": "Capabilities for defending against airborne threats.",
+                "parentCode": "C3.3.1",
+                "children": []
+              },
+              {
+                "code": "C3.3.1.2",
+                "name": "Missile Defence",
+                "description": "Capabilities for defending against ballistic and cruise missiles.",
+                "parentCode": "C3.3.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C3.3.2",
+            "name": "Passive Defence",
+            "description": "Passive measures to reduce vulnerability and enhance protection.",
+            "parentCode": "C3.3",
+            "children": [
+              {
+                "code": "C3.3.2.1",
+                "name": "CBRN Defence",
+                "description": "Defence against chemical, biological, radiological and nuclear threats.",
+                "parentCode": "C3.3.2",
+                "children": []
+              },
+              {
+                "code": "C3.3.2.2",
+                "name": "Physical Security",
+                "description": "Physical security measures for installations and personnel.",
+                "parentCode": "C3.3.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "C4",
+    "name": "Statements & Codes",
+    "description": "Standardized statements, codes, and reference data used within NATO.",
+    "parentCode": null,
+    "children": [
+      {
+        "code": "C4.1",
+        "name": "NATO Standards",
+        "description": "NATO standardization agreements and publications.",
+        "parentCode": "C4",
+        "children": [
+          {
+            "code": "C4.1.1",
+            "name": "STANAGs",
+            "description": "Standardization Agreements covering procedures, systems, and equipment.",
+            "parentCode": "C4.1",
+            "children": [
+              {
+                "code": "C4.1.1.1",
+                "name": "Communications STANAGs",
+                "description": "Standardization agreements for communications interoperability.",
+                "parentCode": "C4.1.1",
+                "children": []
+              },
+              {
+                "code": "C4.1.1.2",
+                "name": "Tactical STANAGs",
+                "description": "Standardization agreements for tactical procedures.",
+                "parentCode": "C4.1.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C4.1.2",
+            "name": "Allied Publications",
+            "description": "Allied doctrinal publications and reference documents.",
+            "parentCode": "C4.1",
+            "children": [
+              {
+                "code": "C4.1.2.1",
+                "name": "AJP Series",
+                "description": "Allied Joint Publications providing joint doctrinal guidance.",
+                "parentCode": "C4.1.2",
+                "children": []
+              },
+              {
+                "code": "C4.1.2.2",
+                "name": "ATP Series",
+                "description": "Allied Tactical Publications for tactical guidance.",
+                "parentCode": "C4.1.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C4.2",
+        "name": "Code Sets",
+        "description": "Standardized code sets and reference vocabularies.",
+        "parentCode": "C4",
+        "children": [
+          {
+            "code": "C4.2.1",
+            "name": "Geospatial Codes",
+            "description": "Codes for geospatial data representation and exchange.",
+            "parentCode": "C4.2",
+            "children": [
+              {
+                "code": "C4.2.1.1",
+                "name": "Coordinate Systems",
+                "description": "Standard coordinate reference systems used in NATO.",
+                "parentCode": "C4.2.1",
+                "children": []
+              },
+              {
+                "code": "C4.2.1.2",
+                "name": "Feature Codes",
+                "description": "Geographic feature coding standards.",
+                "parentCode": "C4.2.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C4.2.2",
+            "name": "Unit & Equipment Codes",
+            "description": "Standard codes for military units and equipment identification.",
+            "parentCode": "C4.2",
+            "children": [
+              {
+                "code": "C4.2.2.1",
+                "name": "ORBAT Codes",
+                "description": "Order of battle and unit identification codes.",
+                "parentCode": "C4.2.2",
+                "children": []
+              },
+              {
+                "code": "C4.2.2.2",
+                "name": "Equipment NSNs",
+                "description": "NATO Stock Numbers for equipment identification.",
+                "parentCode": "C4.2.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C4.3",
+        "name": "Data Models",
+        "description": "Standardized data models for information exchange.",
+        "parentCode": "C4",
+        "children": [
+          {
+            "code": "C4.3.1",
+            "name": "JC3IEDM",
+            "description": "Joint Consultation, Command and Control Information Exchange Data Model.",
+            "parentCode": "C4.3",
+            "children": []
+          },
+          {
+            "code": "C4.3.2",
+            "name": "MIP Data Model",
+            "description": "Multilateral Interoperability Programme data model.",
+            "parentCode": "C4.3",
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "C5",
+    "name": "Business Processes",
+    "description": "NATO business processes and procedures for running the alliance.",
+    "parentCode": null,
+    "children": [
+      {
+        "code": "C5.1",
+        "name": "Defence Planning",
+        "description": "Processes for NATO defence planning and capability development.",
+        "parentCode": "C5",
+        "children": [
+          {
+            "code": "C5.1.1",
+            "name": "NATO Defence Planning Process",
+            "description": "The formal NDPP cycle for determining and delivering capabilities.",
+            "parentCode": "C5.1",
+            "children": [
+              {
+                "code": "C5.1.1.1",
+                "name": "Capability Requirements",
+                "description": "Process for identifying and documenting capability requirements.",
+                "parentCode": "C5.1.1",
+                "children": []
+              },
+              {
+                "code": "C5.1.1.2",
+                "name": "Capability Shortfall Analysis",
+                "description": "Analysis of gaps between required and available capabilities.",
+                "parentCode": "C5.1.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C5.1.2",
+            "name": "Force Generation",
+            "description": "Processes for generating forces for NATO operations and missions.",
+            "parentCode": "C5.1",
+            "children": [
+              {
+                "code": "C5.1.2.1",
+                "name": "Force Pledging",
+                "description": "Process for nations pledging forces to NATO commitments.",
+                "parentCode": "C5.1.2",
+                "children": []
+              },
+              {
+                "code": "C5.1.2.2",
+                "name": "Force Activation",
+                "description": "Processes for activating and deploying pledged forces.",
+                "parentCode": "C5.1.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C5.2",
+        "name": "Resource Management",
+        "description": "Processes for managing NATO resources including budget and personnel.",
+        "parentCode": "C5",
+        "children": [
+          {
+            "code": "C5.2.1",
+            "name": "Budget & Finance",
+            "description": "NATO budget formulation, management and financial control processes.",
+            "parentCode": "C5.2",
+            "children": [
+              {
+                "code": "C5.2.1.1",
+                "name": "Common Funding",
+                "description": "Management of NATO's common-funded budgets.",
+                "parentCode": "C5.2.1",
+                "children": []
+              },
+              {
+                "code": "C5.2.1.2",
+                "name": "Financial Reporting",
+                "description": "Financial reporting and audit processes.",
+                "parentCode": "C5.2.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C5.2.2",
+            "name": "Human Resources",
+            "description": "NATO personnel management and HR processes.",
+            "parentCode": "C5.2",
+            "children": [
+              {
+                "code": "C5.2.2.1",
+                "name": "Recruitment & Selection",
+                "description": "Processes for recruiting and selecting NATO personnel.",
+                "parentCode": "C5.2.2",
+                "children": []
+              },
+              {
+                "code": "C5.2.2.2",
+                "name": "Training & Development",
+                "description": "Processes for training and developing NATO staff.",
+                "parentCode": "C5.2.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C5.3",
+        "name": "Procurement & Acquisition",
+        "description": "Processes for acquiring goods and services for NATO.",
+        "parentCode": "C5",
+        "children": [
+          {
+            "code": "C5.3.1",
+            "name": "Contract Management",
+            "description": "Management of contracts for NATO acquisitions.",
+            "parentCode": "C5.3",
+            "children": []
+          },
+          {
+            "code": "C5.3.2",
+            "name": "Supplier Management",
+            "description": "Management of suppliers and vendor relationships.",
+            "parentCode": "C5.3",
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "C6",
+    "name": "Information Products",
+    "description": "Information products generated and consumed within the NATO environment.",
+    "parentCode": null,
+    "children": [
+      {
+        "code": "C6.1",
+        "name": "Intelligence Products",
+        "description": "Intelligence assessments, reports, and products.",
+        "parentCode": "C6",
+        "children": [
+          {
+            "code": "C6.1.1",
+            "name": "Strategic Intelligence",
+            "description": "Intelligence products supporting strategic decision-making.",
+            "parentCode": "C6.1",
+            "children": [
+              {
+                "code": "C6.1.1.1",
+                "name": "Strategic Assessment Reports",
+                "description": "Periodic strategic intelligence assessments.",
+                "parentCode": "C6.1.1",
+                "children": []
+              },
+              {
+                "code": "C6.1.1.2",
+                "name": "Threat Assessments",
+                "description": "Assessments of current and emerging threats.",
+                "parentCode": "C6.1.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C6.1.2",
+            "name": "Tactical Intelligence",
+            "description": "Intelligence products supporting tactical operations.",
+            "parentCode": "C6.1",
+            "children": [
+              {
+                "code": "C6.1.2.1",
+                "name": "HUMINT Reports",
+                "description": "Human intelligence reports and assessments.",
+                "parentCode": "C6.1.2",
+                "children": []
+              },
+              {
+                "code": "C6.1.2.2",
+                "name": "SIGINT Reports",
+                "description": "Signals intelligence reports and assessments.",
+                "parentCode": "C6.1.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C6.2",
+        "name": "Operational Reports",
+        "description": "Operational status and activity reports.",
+        "parentCode": "C6",
+        "children": [
+          {
+            "code": "C6.2.1",
+            "name": "Situation Reports",
+            "description": "Regular situation reports for commanders.",
+            "parentCode": "C6.2",
+            "children": [
+              {
+                "code": "C6.2.1.1",
+                "name": "SITREP",
+                "description": "Standard situation reports at operational and tactical levels.",
+                "parentCode": "C6.2.1",
+                "children": []
+              },
+              {
+                "code": "C6.2.1.2",
+                "name": "INTSUM",
+                "description": "Intelligence summaries for operational commanders.",
+                "parentCode": "C6.2.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C6.2.2",
+            "name": "Logistics Reports",
+            "description": "Logistics status and support reports.",
+            "parentCode": "C6.2",
+            "children": [
+              {
+                "code": "C6.2.2.1",
+                "name": "LOGREP",
+                "description": "Logistics reports detailing supply and support status.",
+                "parentCode": "C6.2.2",
+                "children": []
+              },
+              {
+                "code": "C6.2.2.2",
+                "name": "MEDSTAT",
+                "description": "Medical status reports for force health.",
+                "parentCode": "C6.2.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C6.3",
+        "name": "Geospatial Products",
+        "description": "Maps, charts, and geospatial data products.",
+        "parentCode": "C6",
+        "children": [
+          {
+            "code": "C6.3.1",
+            "name": "Digital Maps",
+            "description": "Digital map products for operational use.",
+            "parentCode": "C6.3",
+            "children": []
+          },
+          {
+            "code": "C6.3.2",
+            "name": "Terrain Analysis Products",
+            "description": "Products analysing terrain for operational planning.",
+            "parentCode": "C6.3",
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "C7",
+    "name": "User Applications",
+    "description": "Software applications used by NATO personnel and organisations.",
+    "parentCode": null,
+    "children": [
+      {
+        "code": "C7.1",
+        "name": "Command & Control Applications",
+        "description": "Applications supporting command and control functions.",
+        "parentCode": "C7",
+        "children": [
+          {
+            "code": "C7.1.1",
+            "name": "Battle Management Systems",
+            "description": "Systems for managing forces and activities on the battlefield.",
+            "parentCode": "C7.1",
+            "children": [
+              {
+                "code": "C7.1.1.1",
+                "name": "Land BMS",
+                "description": "Battle management systems for land forces.",
+                "parentCode": "C7.1.1",
+                "children": []
+              },
+              {
+                "code": "C7.1.1.2",
+                "name": "Maritime BMS",
+                "description": "Battle management systems for maritime forces.",
+                "parentCode": "C7.1.1",
+                "children": []
+              },
+              {
+                "code": "C7.1.1.3",
+                "name": "Air BMS",
+                "description": "Battle management systems for air forces.",
+                "parentCode": "C7.1.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C7.1.2",
+            "name": "Common Operational Picture",
+            "description": "Systems providing a shared operational picture.",
+            "parentCode": "C7.1",
+            "children": [
+              {
+                "code": "C7.1.2.1",
+                "name": "COP Display Systems",
+                "description": "Systems for displaying the common operational picture.",
+                "parentCode": "C7.1.2",
+                "children": []
+              },
+              {
+                "code": "C7.1.2.2",
+                "name": "Track Management Systems",
+                "description": "Systems for managing air, land, and maritime tracks.",
+                "parentCode": "C7.1.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C7.2",
+        "name": "Intelligence Applications",
+        "description": "Applications supporting intelligence functions.",
+        "parentCode": "C7",
+        "children": [
+          {
+            "code": "C7.2.1",
+            "name": "Intelligence Analysis Tools",
+            "description": "Software tools for intelligence analysis and exploitation.",
+            "parentCode": "C7.2",
+            "children": [
+              {
+                "code": "C7.2.1.1",
+                "name": "IMINT Analysis Tools",
+                "description": "Tools for imagery intelligence analysis.",
+                "parentCode": "C7.2.1",
+                "children": []
+              },
+              {
+                "code": "C7.2.1.2",
+                "name": "SIGINT Analysis Tools",
+                "description": "Tools for signals intelligence analysis.",
+                "parentCode": "C7.2.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C7.2.2",
+            "name": "Intelligence Sharing Platforms",
+            "description": "Platforms for sharing intelligence across NATO.",
+            "parentCode": "C7.2",
+            "children": [
+              {
+                "code": "C7.2.2.1",
+                "name": "National Intelligence Portals",
+                "description": "Portals for sharing national intelligence with NATO.",
+                "parentCode": "C7.2.2",
+                "children": []
+              },
+              {
+                "code": "C7.2.2.2",
+                "name": "BICES",
+                "description": "Battlefield Information Collection and Exploitation Systems.",
+                "parentCode": "C7.2.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C7.3",
+        "name": "Logistics Applications",
+        "description": "Applications supporting logistics and sustainment functions.",
+        "parentCode": "C7",
+        "children": [
+          {
+            "code": "C7.3.1",
+            "name": "Supply Chain Applications",
+            "description": "Applications for managing supply chains.",
+            "parentCode": "C7.3",
+            "children": [
+              {
+                "code": "C7.3.1.1",
+                "name": "LOGFAS",
+                "description": "Logistics Functional Area Services software suite.",
+                "parentCode": "C7.3.1",
+                "children": []
+              },
+              {
+                "code": "C7.3.1.2",
+                "name": "Inventory Management Systems",
+                "description": "Systems for managing inventories and stock levels.",
+                "parentCode": "C7.3.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C7.3.2",
+            "name": "Transport Management",
+            "description": "Applications for managing transport and movement.",
+            "parentCode": "C7.3",
+            "children": [
+              {
+                "code": "C7.3.2.1",
+                "name": "Movement Tracking",
+                "description": "Systems for tracking the movement of forces and equipment.",
+                "parentCode": "C7.3.2",
+                "children": []
+              },
+              {
+                "code": "C7.3.2.2",
+                "name": "Route Planning Tools",
+                "description": "Tools for planning movement routes.",
+                "parentCode": "C7.3.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "code": "C8",
+    "name": "Technical Services & Equipment",
+    "description": "Technical infrastructure, services, and equipment enabling NATO operations.",
+    "parentCode": null,
+    "children": [
+      {
+        "code": "C8.1",
+        "name": "Communications Infrastructure",
+        "description": "Physical and logical communications infrastructure.",
+        "parentCode": "C8",
+        "children": [
+          {
+            "code": "C8.1.1",
+            "name": "Fixed Communications",
+            "description": "Fixed communications networks and infrastructure.",
+            "parentCode": "C8.1",
+            "children": [
+              {
+                "code": "C8.1.1.1",
+                "name": "Fibre Optic Networks",
+                "description": "Fibre optic communication networks for high-bandwidth connectivity.",
+                "parentCode": "C8.1.1",
+                "children": []
+              },
+              {
+                "code": "C8.1.1.2",
+                "name": "NICS",
+                "description": "NATO Integrated Communications System.",
+                "parentCode": "C8.1.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C8.1.2",
+            "name": "Deployable Communications",
+            "description": "Deployable communications systems for forward operations.",
+            "parentCode": "C8.1",
+            "children": [
+              {
+                "code": "C8.1.2.1",
+                "name": "Tactical Comms Systems",
+                "description": "Tactical communication systems for field operations.",
+                "parentCode": "C8.1.2",
+                "children": []
+              },
+              {
+                "code": "C8.1.2.2",
+                "name": "SATCOM Terminals",
+                "description": "Satellite communication terminals for deployed forces.",
+                "parentCode": "C8.1.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C8.2",
+        "name": "IT Infrastructure",
+        "description": "Information technology infrastructure supporting NATO operations.",
+        "parentCode": "C8",
+        "children": [
+          {
+            "code": "C8.2.1",
+            "name": "Data Centres",
+            "description": "NATO data centres and computing facilities.",
+            "parentCode": "C8.2",
+            "children": [
+              {
+                "code": "C8.2.1.1",
+                "name": "Cloud Infrastructure",
+                "description": "Cloud computing infrastructure for NATO services.",
+                "parentCode": "C8.2.1",
+                "children": []
+              },
+              {
+                "code": "C8.2.1.2",
+                "name": "HPC Facilities",
+                "description": "High-performance computing facilities for modelling and simulation.",
+                "parentCode": "C8.2.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C8.2.2",
+            "name": "Cybersecurity",
+            "description": "Cybersecurity infrastructure and capabilities.",
+            "parentCode": "C8.2",
+            "children": [
+              {
+                "code": "C8.2.2.1",
+                "name": "Cyber Defence",
+                "description": "Active cyber defence capabilities and systems.",
+                "parentCode": "C8.2.2",
+                "children": []
+              },
+              {
+                "code": "C8.2.2.2",
+                "name": "NCIRC",
+                "description": "NATO Computer Incident Response Capability.",
+                "parentCode": "C8.2.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "code": "C8.3",
+        "name": "Sensors & Platforms",
+        "description": "Sensor systems and platforms providing data collection.",
+        "parentCode": "C8",
+        "children": [
+          {
+            "code": "C8.3.1",
+            "name": "UAV Systems",
+            "description": "Unmanned aerial vehicle systems for ISR and other missions.",
+            "parentCode": "C8.3",
+            "children": [
+              {
+                "code": "C8.3.1.1",
+                "name": "MALE UAV",
+                "description": "Medium Altitude Long Endurance unmanned aerial vehicles.",
+                "parentCode": "C8.3.1",
+                "children": []
+              },
+              {
+                "code": "C8.3.1.2",
+                "name": "Tactical UAV",
+                "description": "Tactical unmanned aerial vehicles for close support.",
+                "parentCode": "C8.3.1",
+                "children": []
+              }
+            ]
+          },
+          {
+            "code": "C8.3.2",
+            "name": "Radar Systems",
+            "description": "Radar systems for detection and tracking.",
+            "parentCode": "C8.3",
+            "children": [
+              {
+                "code": "C8.3.2.1",
+                "name": "Air Surveillance Radar",
+                "description": "Radar systems for air surveillance and tracking.",
+                "parentCode": "C8.3.2",
+                "children": []
+              },
+              {
+                "code": "C8.3.2.2",
+                "name": "Ground Surveillance Radar",
+                "description": "Radar systems for ground surveillance.",
+                "parentCode": "C8.3.2",
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,11 @@
+/home/runner/work/Taxonomy/Taxonomy/src/main/java/com/nato/taxonomy/controller/ApiController.java
+/home/runner/work/Taxonomy/Taxonomy/src/main/java/com/nato/taxonomy/TaxonomyApplication.java
+/home/runner/work/Taxonomy/Taxonomy/src/main/java/com/nato/taxonomy/controller/TaxonomyController.java
+/home/runner/work/Taxonomy/Taxonomy/src/main/java/com/nato/taxonomy/AppConfig.java
+/home/runner/work/Taxonomy/Taxonomy/src/main/java/com/nato/taxonomy/dto/AnalysisResult.java
+/home/runner/work/Taxonomy/Taxonomy/src/main/java/com/nato/taxonomy/model/TaxonomyNode.java
+/home/runner/work/Taxonomy/Taxonomy/src/main/java/com/nato/taxonomy/dto/AnalysisRequest.java
+/home/runner/work/Taxonomy/Taxonomy/src/main/java/com/nato/taxonomy/service/TaxonomyService.java
+/home/runner/work/Taxonomy/Taxonomy/src/main/java/com/nato/taxonomy/dto/TaxonomyNodeDto.java
+/home/runner/work/Taxonomy/Taxonomy/src/main/java/com/nato/taxonomy/service/GeminiService.java
+/home/runner/work/Taxonomy/Taxonomy/src/main/java/com/nato/taxonomy/repository/TaxonomyNodeRepository.java

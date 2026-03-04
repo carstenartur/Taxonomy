@@ -1,0 +1,14 @@
+com/nato/taxonomy/controller/TaxonomyController.class
+com/nato/taxonomy/dto/AnalysisResult.class
+com/nato/taxonomy/repository/TaxonomyNodeRepository.class
+com/nato/taxonomy/service/GeminiService$2.class
+com/nato/taxonomy/model/TaxonomyNode.class
+com/nato/taxonomy/service/TaxonomyService.class
+com/nato/taxonomy/AppConfig.class
+com/nato/taxonomy/TaxonomyApplication.class
+com/nato/taxonomy/dto/AnalysisRequest.class
+com/nato/taxonomy/service/TaxonomyService$1.class
+com/nato/taxonomy/dto/TaxonomyNodeDto.class
+com/nato/taxonomy/service/GeminiService$1.class
+com/nato/taxonomy/service/GeminiService.class
+com/nato/taxonomy/controller/ApiController.class
