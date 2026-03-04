@@ -14,7 +14,7 @@ public interface TaxonomyNodeRepository extends JpaRepository<TaxonomyNode, Long
 
     List<TaxonomyNode> findByParentIsNullOrderByCodeAsc();
 
-    List<TaxonomyNode> findByParentCodeOrderByNameAsc(String parentCode);
+    List<TaxonomyNode> findByParentCodeOrderByNameEnAsc(String parentCode);
 
     List<TaxonomyNode> findByTaxonomyRootOrderByLevelAscNameAsc(String taxonomyRoot);
 }
