@@ -134,3 +134,14 @@
     color: #90ee90;
     font-weight: 700;
 }
+
+/* ── Evaluating (streaming) animation ─────────────────────── */
+.tax-evaluating > .tax-node-header {
+    animation: tax-pulse 1.5s ease-in-out infinite;
+    border-left: 3px solid #007bff;
+}
+
+@keyframes tax-pulse {
+    0%, 100% { background-color: rgba(0, 123, 255, 0.05); }
+    50%       { background-color: rgba(0, 123, 255, 0.15); }
+}
