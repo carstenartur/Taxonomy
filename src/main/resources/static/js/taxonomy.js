@@ -4,6 +4,8 @@
     'use strict';
 
     let taxonomyData = [];
+    let currentScores = null;
+    let currentView = 'list'; // 'list' | 'tabs' | 'sunburst' | 'tree'
 
     // ── Bootstrap ─────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function () {
@@ -12,6 +14,16 @@
         document.getElementById('analyzeBtn').addEventListener('click', runAnalysis);
         document.getElementById('expandAll').addEventListener('click', expandAll);
         document.getElementById('collapseAll').addEventListener('click', collapseAll);
+
+        // View switcher buttons
+        ['viewList', 'viewTabs', 'viewSunburst', 'viewTree'].forEach(function (id) {
+            const btn = document.getElementById(id);
+            if (btn) {
+                btn.addEventListener('click', function () {
+                    switchView(btn.dataset.view);
+                });
+            }
+        });
     });
 
     // ── Check AI availability ─────────────────────────────────────────────────
@@ -46,7 +58,7 @@
             .then(r => r.json())
             .then(data => {
                 taxonomyData = data;
-                renderTree(data, null);
+                renderView(data, null);
             })
             .catch(err => {
                 document.getElementById('taxonomyTree').innerHTML =
@@ -54,11 +66,147 @@
             });
     }
 
-    // ── Render tree ───────────────────────────────────────────────────────────
+    // ── View switching ────────────────────────────────────────────────────────
+    function switchView(view) {
+        currentView = view;
+
+        // Update button active states
+        const viewIds = { list: 'viewList', tabs: 'viewTabs', sunburst: 'viewSunburst', tree: 'viewTree' };
+        Object.entries(viewIds).forEach(([v, id]) => {
+            const btn = document.getElementById(id);
+            if (!btn) { return; }
+            btn.classList.toggle('btn-primary', v === view);
+            btn.classList.toggle('btn-outline-secondary', v !== view);
+        });
+
+        // Show/hide Expand All / Collapse All only for list & tabs views
+        const ecGroup = document.getElementById('expandCollapseGroup');
+        if (ecGroup) {
+            ecGroup.style.display = (view === 'sunburst' || view === 'tree') ? 'none' : '';
+        }
+
+        renderView(taxonomyData, currentScores);
+    }
+
+    // ── Master render dispatcher ──────────────────────────────────────────────
+    function renderView(data, scores) {
+        if (!data || data.length === 0) { return; }
+        switch (currentView) {
+            case 'list':
+                renderTree(data, scores);
+                if (scores) { expandMatched(scores); }
+                break;
+            case 'tabs':
+                renderTabsView(data, scores);
+                if (scores) { expandMatched(scores); }
+                break;
+            case 'sunburst':
+                if (window.TaxonomyViews) {
+                    window.TaxonomyViews.renderSunburst(
+                        document.getElementById('taxonomyTree'), data, scores);
+                }
+                break;
+            case 'tree':
+                if (window.TaxonomyViews) {
+                    window.TaxonomyViews.renderTreeDiagram(
+                        document.getElementById('taxonomyTree'), data, scores);
+                }
+                break;
+        }
+    }
+
+    // ── Render tree (list view) ───────────────────────────────────────────────
     function renderTree(nodes, scores) {
         const container = document.getElementById('taxonomyTree');
+        cleanupD3(container);
         container.innerHTML = '';
         nodes.forEach(node => container.appendChild(buildNodeEl(node, scores)));
+    }
+
+    // ── Render tabbed list view ────────────────────────────────────────────────
+    function renderTabsView(data, scores) {
+        const container = document.getElementById('taxonomyTree');
+        cleanupD3(container);
+        container.innerHTML = '';
+
+        const navUl = document.createElement('ul');
+        navUl.className = 'nav nav-tabs tax-tabs mb-2';
+        navUl.id = 'taxonomyTabsNav';
+        navUl.setAttribute('role', 'tablist');
+
+        const tabContent = document.createElement('div');
+        tabContent.className = 'tab-content';
+
+        data.forEach((rootNode, i) => {
+            const paneId = 'tax-pane-' + rootNode.code;
+            const tabId  = 'tax-tab-'  + rootNode.code;
+            const isFirst = (i === 0);
+
+            // Tab button
+            const li = document.createElement('li');
+            li.className = 'nav-item';
+            li.setAttribute('role', 'presentation');
+
+            const btn = document.createElement('button');
+            btn.id = tabId;
+            btn.className = 'nav-link' + (isFirst ? ' active' : '');
+            btn.setAttribute('data-bs-toggle', 'tab');
+            btn.setAttribute('data-bs-target', '#' + paneId);
+            btn.setAttribute('type', 'button');
+            btn.setAttribute('role', 'tab');
+            btn.setAttribute('aria-controls', paneId);
+            btn.setAttribute('aria-selected', isFirst ? 'true' : 'false');
+            btn.textContent = rootNode.code + ' ' + rootNode.name;
+
+            // Green underline when scored
+            if (scores && scores[rootNode.code] > 0) {
+                const alpha = Math.min(scores[rootNode.code] / 100, 1).toFixed(2);
+                btn.style.borderBottom = '3px solid rgba(0,128,0,' + alpha + ')';
+            }
+
+            li.appendChild(btn);
+            navUl.appendChild(li);
+
+            // Tab pane – render the root's children (not the root row itself)
+            const pane = document.createElement('div');
+            pane.id = paneId;
+            pane.className = 'tab-pane fade' + (isFirst ? ' show active' : '');
+            pane.setAttribute('role', 'tabpanel');
+            pane.setAttribute('aria-labelledby', tabId);
+
+            // Render the root node's children in the pane; fall back to the root
+            // itself if it has no children (edge case: a root with no sub-nodes).
+            const children = rootNode.children && rootNode.children.length ? rootNode.children : [rootNode];
+            children.forEach(child => pane.appendChild(buildNodeEl(child, scores)));
+            tabContent.appendChild(pane);
+        });
+
+        container.appendChild(navUl);
+        container.appendChild(tabContent);
+
+        // Fallback tab switching – works even when Bootstrap JS is not available
+        navUl.addEventListener('click', function (e) {
+            const clickedBtn = e.target.closest('[data-bs-toggle="tab"]');
+            if (!clickedBtn) { return; }
+            e.preventDefault();
+            navUl.querySelectorAll('.nav-link').forEach(b => {
+                b.classList.remove('active');
+                b.setAttribute('aria-selected', 'false');
+            });
+            tabContent.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('show', 'active'));
+            clickedBtn.classList.add('active');
+            clickedBtn.setAttribute('aria-selected', 'true');
+            const targetPane = tabContent.querySelector(clickedBtn.getAttribute('data-bs-target'));
+            if (targetPane) { targetPane.classList.add('show', 'active'); }
+        });
+    }
+
+    // ── Cleanup D3 resize observers ───────────────────────────────────────────
+    function cleanupD3(container) {
+        if (container._taxObserver) {
+            container._taxObserver.disconnect();
+            container._taxObserver = null;
+        }
     }
 
     function buildNodeEl(node, scores) {
@@ -185,8 +333,9 @@
             })
             .then(result => {
                 setAnalyzing(false);
-                renderTree(result.tree, result.scores);
-                expandMatched(result.scores);
+                taxonomyData = result.tree;
+                currentScores = result.scores;
+                renderView(taxonomyData, currentScores);
                 const matchedCount = Object.values(result.scores).filter(v => v > 0).length;
                 showStatus('success',
                     'Analysis complete. ' + matchedCount + ' node(s) matched.');
