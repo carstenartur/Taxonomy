@@ -1,6 +1,7 @@
 package com.nato.taxonomy;
 
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
+import com.nato.taxonomy.service.SearchService;
 import com.nato.taxonomy.service.TaxonomyService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +26,9 @@ class TaxonomyApplicationTests {
 
     @Autowired
     private TaxonomyService taxonomyService;
+
+    @Autowired
+    private SearchService searchService;
 
     @Test
     void contextLoads() {
@@ -122,5 +126,45 @@ class TaxonomyApplicationTests {
                 assertThat(child.getParentCode()).isEqualTo(root.getCode());
             }
         }
+    }
+
+    @Test
+    void searchEndpointReturnsBadRequestForBlankQuery() throws Exception {
+        mockMvc.perform(get("/api/search").param("q", "").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void searchEndpointReturnsJsonForValidQuery() throws Exception {
+        mockMvc.perform(get("/api/search").param("q", "BP").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
+    void searchReturnsResultsForKnownTaxonomyCode() {
+        List<TaxonomyNodeDto> results = searchService.search("BP", 50);
+        assertThat(results).isNotEmpty();
+        assertThat(results).anyMatch(dto -> dto.getCode() != null && dto.getCode().startsWith("BP"));
+    }
+
+    @Test
+    void searchReturnsResultsForWordInDescription() {
+        // "Business Processes" virtual root has "Business" in its nameEn
+        List<TaxonomyNodeDto> results = searchService.search("Business", 50);
+        assertThat(results).isNotEmpty();
+    }
+
+    @Test
+    void nodeDtoContainsNewFields() {
+        List<TaxonomyNodeDto> tree = taxonomyService.getFullTree();
+        // Verify that the DTO has the new fields (nameEn/descriptionEn should not be null for roots)
+        TaxonomyNodeDto root = tree.get(0);
+        assertThat(root.getNameEn()).isNotNull();
+        assertThat(root.getDescriptionEn()).isNotNull();
+        // getName() backward-compat getter should return the English name
+        assertThat(root.getName()).isEqualTo(root.getNameEn());
+        assertThat(root.getDescription()).isEqualTo(root.getDescriptionEn());
     }
 }

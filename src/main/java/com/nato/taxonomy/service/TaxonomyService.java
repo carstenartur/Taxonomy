@@ -36,9 +36,11 @@ public class TaxonomyService {
     }
 
     private final TaxonomyNodeRepository repository;
+    private final SearchService searchService;
 
-    public TaxonomyService(TaxonomyNodeRepository repository) {
+    public TaxonomyService(TaxonomyNodeRepository repository, SearchService searchService) {
         this.repository = repository;
+        this.searchService = searchService;
     }
 
     @PostConstruct
@@ -63,8 +65,8 @@ public class TaxonomyService {
                     String prefix    = entry.getValue();
                     TaxonomyNode root = new TaxonomyNode();
                     root.setCode(prefix);
-                    root.setName(sheetName);
-                    root.setDescription("NATO C3 Taxonomy – " + sheetName);
+                    root.setNameEn(sheetName);
+                    root.setDescriptionEn("NATO C3 Taxonomy – " + sheetName);
                     root.setTaxonomyRoot(prefix);
                     root.setLevel(0);
                     nodeMap.put(prefix, root);
@@ -102,6 +104,8 @@ public class TaxonomyService {
 
                     // Last resort: attach to the virtual sheet root
                     if (parent == null) {
+                        log.debug("Last resort parent assignment for node '{}' (parentCode='{}', root='{}')",
+                                node.getCode(), node.getParentCode(), node.getTaxonomyRoot());
                         parent = nodeMap.get(node.getTaxonomyRoot());
                         node.setParentCode(node.getTaxonomyRoot());
                     }
@@ -115,6 +119,10 @@ public class TaxonomyService {
                 repository.saveAll(virtualRoots);
                 log.info("Taxonomy loaded: {} nodes from {} sheets.",
                         nodeMap.size(), SHEET_PREFIXES.size());
+
+                // 5. Build Lucene full-text search index
+                searchService.buildIndex(nodeMap.values());
+                log.info("Full-text search index built successfully.");
             }
         } catch (Exception e) {
             log.error("Failed to load taxonomy from Excel", e);
@@ -135,6 +143,12 @@ public class TaxonomyService {
             String name        = cellString(row, 2);
             String description = cellString(row, 3);
             String parentCode  = cellString(row, 4);
+            String dataset     = cellString(row, 5);
+            String externalId  = cellString(row, 6);
+            String source      = cellString(row, 7);
+            String reference   = cellString(row, 8);
+            String orderStr    = cellString(row, 9);
+            String state       = cellString(row, 10);
             String levelStr    = cellString(row, 11);
 
             if (code == null || name == null) continue;
@@ -149,13 +163,25 @@ public class TaxonomyService {
                 try { level = Integer.parseInt(levelStr.trim()); } catch (NumberFormatException ignored) { }
             }
 
+            Integer sortOrder = null;
+            if (orderStr != null) {
+                try { sortOrder = Integer.parseInt(orderStr.trim()); } catch (NumberFormatException ignored) { }
+            }
+
             TaxonomyNode node = new TaxonomyNode();
             node.setCode(code);
-            node.setName(name);
-            node.setDescription(truncate(description, 5000));
+            node.setUuid(uuid);
+            node.setNameEn(name);
+            node.setDescriptionEn(truncate(description, 5000));
             node.setParentCode(parentCode);
             node.setTaxonomyRoot(sheetPrefix);
             node.setLevel(level);
+            node.setDataset(dataset);
+            node.setExternalId(externalId);
+            node.setSource(source);
+            node.setReference(truncate(reference, 5000));
+            node.setSortOrder(sortOrder);
+            node.setState(state);
             nodeMap.put(code, node);
         }
     }
@@ -190,15 +216,24 @@ public class TaxonomyService {
         return dtos;
     }
 
-    private TaxonomyNodeDto toDto(TaxonomyNode node) {
+    public TaxonomyNodeDto toDto(TaxonomyNode node) {
         TaxonomyNodeDto dto = new TaxonomyNodeDto();
         dto.setId(node.getId());
         dto.setCode(node.getCode());
-        dto.setName(node.getName());
-        dto.setDescription(node.getDescription());
+        dto.setUuid(node.getUuid());
+        dto.setNameEn(node.getNameEn());
+        dto.setNameDe(node.getNameDe());
+        dto.setDescriptionEn(node.getDescriptionEn());
+        dto.setDescriptionDe(node.getDescriptionDe());
         dto.setParentCode(node.getParentCode());
         dto.setTaxonomyRoot(node.getTaxonomyRoot());
         dto.setLevel(node.getLevel());
+        dto.setDataset(node.getDataset());
+        dto.setExternalId(node.getExternalId());
+        dto.setSource(node.getSource());
+        dto.setReference(node.getReference());
+        dto.setSortOrder(node.getSortOrder());
+        dto.setState(node.getState());
         List<TaxonomyNodeDto> childDtos = new ArrayList<>();
         for (TaxonomyNode child : node.getChildren()) {
             childDtos.add(toDto(child));
@@ -214,7 +249,7 @@ public class TaxonomyService {
 
     @Transactional(readOnly = true)
     public List<TaxonomyNode> getChildrenOf(String parentCode) {
-        return repository.findByParentCodeOrderByNameAsc(parentCode);
+        return repository.findByParentCodeOrderByNameEnAsc(parentCode);
     }
 
     public TaxonomyNodeDto applyScores(TaxonomyNodeDto dto, Map<String, Integer> scores) {

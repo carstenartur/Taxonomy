@@ -7,11 +7,20 @@ public class TaxonomyNodeDto {
 
     private Long id;
     private String code;
-    private String name;
-    private String description;
+    private String uuid;
+    private String nameEn;
+    private String nameDe;
+    private String descriptionEn;
+    private String descriptionDe;
     private String parentCode;
     private String taxonomyRoot;
     private int level;
+    private String dataset;
+    private String externalId;
+    private String source;
+    private String reference;
+    private Integer sortOrder;
+    private String state;
     private List<TaxonomyNodeDto> children = new ArrayList<>();
     private Integer matchPercentage;
 
@@ -23,11 +32,26 @@ public class TaxonomyNodeDto {
     public String getCode() { return code; }
     public void setCode(String code) { this.code = code; }
 
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
+    public String getUuid() { return uuid; }
+    public void setUuid(String uuid) { this.uuid = uuid; }
 
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
+    public String getNameEn() { return nameEn; }
+    public void setNameEn(String nameEn) { this.nameEn = nameEn; }
+
+    public String getNameDe() { return nameDe; }
+    public void setNameDe(String nameDe) { this.nameDe = nameDe; }
+
+    /** Backward-compatible getter; returns the English name. */
+    public String getName() { return nameEn; }
+
+    public String getDescriptionEn() { return descriptionEn; }
+    public void setDescriptionEn(String descriptionEn) { this.descriptionEn = descriptionEn; }
+
+    public String getDescriptionDe() { return descriptionDe; }
+    public void setDescriptionDe(String descriptionDe) { this.descriptionDe = descriptionDe; }
+
+    /** Backward-compatible getter; returns the English description. */
+    public String getDescription() { return descriptionEn; }
 
     public String getParentCode() { return parentCode; }
     public void setParentCode(String parentCode) { this.parentCode = parentCode; }
@@ -37,6 +61,24 @@ public class TaxonomyNodeDto {
 
     public int getLevel() { return level; }
     public void setLevel(int level) { this.level = level; }
+
+    public String getDataset() { return dataset; }
+    public void setDataset(String dataset) { this.dataset = dataset; }
+
+    public String getExternalId() { return externalId; }
+    public void setExternalId(String externalId) { this.externalId = externalId; }
+
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
+
+    public String getReference() { return reference; }
+    public void setReference(String reference) { this.reference = reference; }
+
+    public Integer getSortOrder() { return sortOrder; }
+    public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
+
+    public String getState() { return state; }
+    public void setState(String state) { this.state = state; }
 
     public List<TaxonomyNodeDto> getChildren() { return children; }
     public void setChildren(List<TaxonomyNodeDto> children) { this.children = children; }
