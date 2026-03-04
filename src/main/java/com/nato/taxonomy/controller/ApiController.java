@@ -58,15 +58,8 @@ public class ApiController {
             return ResponseEntity.badRequest().build();
         }
 
-        Map<String, Integer> scores = llmService.analyzeRecursive(request.getBusinessText());
-
-        List<TaxonomyNodeDto> rawTree = taxonomyService.getFullTree();
-        List<TaxonomyNodeDto> annotatedTree = new ArrayList<>();
-        for (TaxonomyNodeDto root : rawTree) {
-            annotatedTree.add(taxonomyService.applyScores(root, scores));
-        }
-
-        return ResponseEntity.ok(new AnalysisResult(scores, annotatedTree));
+        AnalysisResult result = llmService.analyzeWithBudget(request.getBusinessText());
+        return ResponseEntity.ok(result);
     }
 
     /**

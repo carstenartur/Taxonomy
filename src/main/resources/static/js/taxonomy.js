@@ -342,9 +342,31 @@
                 taxonomyData = result.tree;
                 currentScores = result.scores;
                 renderView(taxonomyData, currentScores);
+
                 const matchedCount = Object.values(result.scores).filter(v => v > 0).length;
-                showStatus('success',
-                    'Analysis complete. ' + matchedCount + ' node(s) matched.');
+
+                if (result.status === 'SUCCESS') {
+                    showStatus('success',
+                        'Analysis complete. ' + matchedCount + ' node(s) matched.');
+                } else if (result.status === 'PARTIAL') {
+                    showStatus('warning',
+                        '⚠️ Partial results — ' + (result.errorMessage || 'Analysis incomplete.') +
+                        ' ' + matchedCount + ' node(s) matched so far.');
+                } else if (result.status === 'ERROR') {
+                    showStatus('danger',
+                        '❌ Analysis failed: ' + (result.errorMessage || 'Unknown error.'));
+                } else {
+                    showStatus('success',
+                        'Analysis complete. ' + matchedCount + ' node(s) matched.');
+                }
+
+                if (result.warnings && result.warnings.length > 0) {
+                    const warningList = result.warnings
+                        .map(w => '<li>' + escapeHtml(w) + '</li>')
+                        .join('');
+                    document.getElementById('statusArea').innerHTML +=
+                        '<ul class="mb-0 mt-1 ps-3" style="font-size:0.9em">' + warningList + '</ul>';
+                }
             })
             .catch(err => {
                 setAnalyzing(false);
