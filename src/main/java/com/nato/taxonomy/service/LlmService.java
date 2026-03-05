@@ -834,9 +834,8 @@ public class LlmService {
     public Map<String, Object> getDiagnostics() {
         LlmProvider provider = getActiveProvider();
         String apiKey = getApiKey(provider);
-        boolean apiKeyConfigured = (provider == LlmProvider.LOCAL_ONNX)
-                ? false  // local inference needs no key; keep false for UI consistency
-                : (apiKey != null && !apiKey.isBlank());
+        boolean apiKeyConfigured = provider != LlmProvider.LOCAL_ONNX
+                && (apiKey != null && !apiKey.isBlank());
         String apiKeyPrefix = apiKeyConfigured
                 ? (apiKey.length() > 4 ? apiKey.substring(0, 4) + "****" : "****")
                 : null;
