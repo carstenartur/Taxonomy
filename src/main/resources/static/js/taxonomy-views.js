@@ -5,7 +5,7 @@
 
     // Sizing constants
     var MAX_SUNBURST_SIZE = 600; // max px for sunburst diameter
-    var TREE_INITIAL_DEPTH = 2;  // collapse nodes at depth >= this on initial render
+    var TREE_INITIAL_DEPTH = 3;  // collapse nodes at depth >= this on initial render
 
     // Root taxonomy colour palette (C1–C8)
     var ROOT_COLORS = [
@@ -36,7 +36,9 @@
         var pct = scores ? scores[nodeData.code] : undefined;
         var html = '<strong>' + esc(nodeData.code) + '</strong>';
         if (nodeData.name) { html += ' &ndash; ' + esc(nodeData.name); }
-        if (nodeData.description) { html += '<br><small>' + esc(nodeData.description) + '</small>'; }
+        var showDescChk = document.getElementById('showDescriptions');
+        var showDesc = !showDescChk || showDescChk.checked;
+        if (showDesc && nodeData.description) { html += '<br><small>' + esc(nodeData.description) + '</small>'; }
         if (pct !== undefined && pct > 0) {
             html += '<br><span class="tax-tooltip-pct">Match: ' + pct + '%</span>';
         }
@@ -266,10 +268,10 @@
         container.innerHTML = '';
 
         var colorMap = buildColorMap(data);
+        var marginLeft = 40;
+        var marginRight = 300;
         var marginTop = 20;
-        var marginBottom = 30;
-        var marginLeft = 100;
-        var marginRight = 200;
+        var marginBottom = 20;
 
         // Synthetic root
         var rootData = { code: '__root__', name: '', children: data };
@@ -283,14 +285,14 @@
             }
         });
 
-        // nodeSize([dx, dy]): dx = px per node (horizontal spread), dy = px between levels
-        var treeLayout = d3.tree().nodeSize([24, 100]);
+        // nodeSize([dx, dy]): dx = px vertical between sibling nodes, dy = px horizontal between levels
+        var treeLayout = d3.tree().nodeSize([28, 220]);
 
-        var W = container.clientWidth || 800;
+        var containerWidth = container.clientWidth || 800;
         var svg = d3.select(container)
             .append('svg')
-            .attr('width', W)
-            .attr('height', 300)
+            .attr('width', containerWidth)
+            .attr('height', 400)
             .style('display', 'block');
 
         // Zoom/pan layer
@@ -311,7 +313,8 @@
             var nodes = root.descendants();
             var links = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
 
-            // Compute bounding box of all visible nodes
+            // Horizontal layout: d.y is the horizontal position (depth), d.x is vertical position
+            // Compute bounding box: xMin/xMax are vertical extents, yMax is maximum horizontal depth
             var xMin = Infinity, xMax = -Infinity, yMax = 0;
             nodes.forEach(function (d) {
                 if (d.x < xMin) { xMin = d.x; }
@@ -319,16 +322,16 @@
                 if (d.y > yMax) { yMax = d.y; }
             });
 
-            // Resize SVG to fit content; height grows as nodes are expanded
-            var svgW = Math.max(container.clientWidth || 800, xMax - xMin + marginLeft + marginRight);
-            var svgH = Math.max(200, yMax + marginTop + marginBottom);
+            // Resize SVG to fit horizontal layout
+            var svgW = Math.max(containerWidth, yMax + marginLeft + marginRight);
+            var svgH = Math.max(400, xMax - xMin + marginTop + marginBottom);
             svg.attr('width', svgW).attr('height', svgH);
 
-            // Translate content so leftmost node is inset by marginLeft
-            g.attr('transform', 'translate(' + (marginLeft - xMin) + ',' + marginTop + ')');
+            // Translate so the topmost node is at marginTop, root is inset by marginLeft
+            g.attr('transform', 'translate(' + marginLeft + ',' + (marginTop - xMin) + ')');
 
-            var sx = source.x0 !== undefined ? source.x0 : (source.x != null ? source.x : 0);
-            var sy = source.y0 !== undefined ? source.y0 : (source.y != null ? source.y : 0);
+            var sourceX = source.x0 !== undefined ? source.x0 : (source.x != null ? source.x : 0);
+            var sourceY = source.y0 !== undefined ? source.y0 : (source.y != null ? source.y : 0);
 
             // ── Nodes ──────────────────────────────────
             var node = g.selectAll('g.tv-node')
@@ -336,10 +339,10 @@
 
             var nodeEnter = node.enter().append('g')
                 .attr('class', 'tv-node')
-                .attr('transform', 'translate(' + sx + ',' + sy + ')')
+                .attr('transform', 'translate(' + sourceY + ',' + sourceX + ')')
                 .style('opacity', 0);
 
-            nodeEnter.append('circle').attr('r', 6).attr('stroke-width', 1.5);
+            nodeEnter.append('circle').attr('r', 7).attr('stroke-width', 1.5);
 
             nodeEnter.append('text')
                 .attr('dy', '0.31em')
@@ -366,8 +369,9 @@
             // Merge enter + update
             var nodeUpdate = nodeEnter.merge(node);
 
+            // Horizontal layout: translate(y, x) — y is horizontal position, x is vertical
             nodeUpdate.transition().duration(300)
-                .attr('transform', function (d) { return 'translate(' + d.x + ',' + d.y + ')'; })
+                .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })
                 .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; });
 
             nodeUpdate.select('circle')
@@ -382,19 +386,20 @@
                     if (d.data.code === '__root__') { return ''; }
                     return d.data.name ? d.data.code + ' \u2013 ' + d.data.name : d.data.code;
                 })
-                .attr('x', 9)
-                .attr('text-anchor', 'start');
+                .attr('x', function (d) { return d.children || d._children ? -10 : 10; })
+                .attr('text-anchor', function (d) { return d.children || d._children ? 'end' : 'start'; });
 
-            // Exit
+            // Exit: animate back to source position (using horizontal layout coordinates)
             node.exit().transition().duration(300)
-                .attr('transform', 'translate(' + source.x + ',' + source.y + ')')
+                .attr('transform', 'translate(' + source.y + ',' + source.x + ')')
                 .style('opacity', 0)
                 .remove();
 
             // ── Links ──────────────────────────────────
-            var diag = d3.linkVertical()
-                .x(function (d) { return d.x; })
-                .y(function (d) { return d.y; });
+            // Horizontal link: x accessor uses d.y (horizontal), y accessor uses d.x (vertical)
+            var diag = d3.linkHorizontal()
+                .x(function (d) { return d.y; })
+                .y(function (d) { return d.x; });
 
             var link = g.selectAll('path.tv-link')
                 .data(links, function (d) { return d.target.id; });
@@ -405,7 +410,7 @@
                 .attr('stroke', '#ccc')
                 .attr('stroke-width', 1.5)
                 .attr('d', function () {
-                    var o = { x: sx, y: sy };
+                    var o = { x: sourceX, y: sourceY };
                     return diag({ source: o, target: o });
                 });
 

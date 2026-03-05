@@ -370,12 +370,18 @@ public class LlmService {
         String apiKey = getApiKey(provider);
 
         if (apiKey == null || apiKey.isBlank()) {
-            log.warn("No API key configured for provider {}; returning zero scores.", provider);
+            log.warn("⚠️ LLM analysis skipped: No API key configured for provider {}. "
+                    + "Set environment variable {}_API_KEY to enable AI analysis.",
+                    provider, provider.name());
             return zeroScores(nodes);
         }
 
         String nodeList = buildNodeList(nodes);
         String prompt   = buildPrompt(businessText, nodeList);
+
+        log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
+                provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));
+        log.debug("Full LLM prompt:\n{}", prompt);
 
         if (provider == LlmProvider.GEMINI) {
             return callGemini(prompt, apiKey, nodes);
@@ -426,6 +432,8 @@ public class LlmService {
             }
 
             if (response.getStatusCode().is2xxSuccessful() && responseBody != null) {
+                log.info("LLM Response [GEMINI] — raw response (first 500 chars): {}",
+                        responseBody.substring(0, Math.min(responseBody.length(), 500)));
                 return parseGeminiResponse(responseBody, nodes);
             }
             log.error("Gemini API returned status {}", response.getStatusCode());
@@ -487,6 +495,8 @@ public class LlmService {
             }
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                log.info("LLM Response [{}] — raw response (first 500 chars): {}",
+                        provider, response.getBody().substring(0, Math.min(response.getBody().length(), 500)));
                 return parseOpenAiResponse(response.getBody(), nodes);
             }
             log.error("{} API returned status {}", provider, response.getStatusCode());
@@ -561,6 +571,7 @@ public class LlmService {
         for (TaxonomyNode n : nodes) {
             scores.putIfAbsent(n.getCode(), 0);
         }
+        log.info("LLM Scores parsed: {}", scores);
         return scores;
     }
 

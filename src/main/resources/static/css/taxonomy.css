@@ -89,6 +89,11 @@
     font-style: italic;
 }
 
+/* Hide descriptions when the toggle is off */
+#taxonomyTree.hide-descriptions .tax-description {
+    display: none;
+}
+
 /* ── View switcher ──────────────────────────────────────────── */
 .btn-group .btn {
     font-size: 0.8rem;

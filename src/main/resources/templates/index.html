@@ -37,6 +37,15 @@
                             <button id="expandAll"   class="btn btn-sm btn-outline-secondary me-1">Expand All</button>
                             <button id="collapseAll" class="btn btn-sm btn-outline-secondary">Collapse All</button>
                         </div>
+                        <!-- Taxonomy selector (tree view only) -->
+                        <div id="treeRootGroup" style="display:none;">
+                            <select id="treeRootSelect" class="form-select form-select-sm" aria-label="Select taxonomy to display"></select>
+                        </div>
+                        <!-- Show/hide descriptions -->
+                        <div class="form-check form-switch mb-0 ms-1 d-flex align-items-center gap-1">
+                            <input class="form-check-input" type="checkbox" id="showDescriptions" checked/>
+                            <label class="form-check-label small text-nowrap" for="showDescriptions">Descriptions</label>
+                        </div>
                     </div>
                 </div>
                 <div class="card-body overflow-auto" style="max-height:82vh;">
@@ -60,7 +69,7 @@
                     </label>
                     <textarea id="businessText" class="form-control mb-3" rows="7"
                               placeholder="e.g. We need a system to manage and display real-time air tracks, integrate radar data, and provide a common operational picture to commanders at brigade and above level..."></textarea>
-                    <button id="analyzeBtn" class="btn btn-primary">
+                    <button id="analyzeBtn" class="btn btn-primary w-100">
                         <span id="analyzeSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
                         Analyze with AI
                     </button>
@@ -90,6 +99,12 @@
 
             <!-- Status / error messages -->
             <div id="statusArea"></div>
+
+            <!-- Analysis log panel (collapsible) -->
+            <details id="analysisLog" class="mt-2" style="display:none;">
+                <summary class="text-muted small" style="cursor:pointer;">&#128203; Analysis Log</summary>
+                <div id="analysisLogContent" class="mt-1 p-2 border rounded small bg-light" style="font-size:0.85em;"></div>
+            </details>
         </div>
     </div>
 </div>
