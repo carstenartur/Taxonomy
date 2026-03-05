@@ -106,6 +106,18 @@
                 <div id="analysisLogContent" class="mt-1 p-2 border rounded small bg-light" style="font-size:0.85em;"></div>
             </details>
 
+            <!-- LLM Communication Log (collapsible) -->
+            <details id="llmCommLog" class="mt-2" open>
+                <summary class="fw-semibold" style="cursor:pointer;">&#128225; LLM Communication Log</summary>
+                <div id="llmCommLogContent" class="mt-1 border rounded bg-light"
+                     style="max-height:400px; overflow-y:auto; font-size:0.82em;">
+                    <div class="text-muted p-2">No LLM calls yet. Use Interactive Mode and expand nodes to see communication.</div>
+                </div>
+                <div class="mt-1">
+                    <button id="clearLlmLog" class="btn btn-sm btn-outline-secondary">&#128465;&#65039; Clear Log</button>
+                </div>
+            </details>
+
             <!-- Prompt Templates editor (collapsible) -->
             <details id="promptEditor" class="mt-3">
                 <summary class="fw-semibold" style="cursor:pointer;">&#128221; Prompt Templates</summary>

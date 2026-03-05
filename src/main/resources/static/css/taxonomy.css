@@ -158,3 +158,29 @@
     content: ' 🔍';
     font-size: 0.7em;
 }
+
+/* ── LLM Communication Log ───────────────────────────────── */
+#llmCommLogContent .llm-log-entry {
+    border-bottom: 1px solid #dee2e6;
+    padding: 0.5rem;
+}
+
+#llmCommLogContent .llm-log-entry:last-child {
+    border-bottom: none;
+}
+
+#llmCommLogContent .llm-log-prompt,
+#llmCommLogContent .llm-log-response {
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 0.4rem;
+    margin-top: 0.25rem;
+    font-family: monospace;
+    font-size: 0.85em;
+}

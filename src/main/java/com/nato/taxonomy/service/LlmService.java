@@ -350,10 +350,31 @@ public class LlmService {
     /**
      * Evaluates a single batch of nodes against the business text.
      * Makes exactly ONE LLM API call. Does NOT recurse into children.
-     * Used by interactive mode.
+     * Used by interactive mode. Delegates to {@link #analyzeSingleBatchDetailed}.
      */
     public Map<String, Integer> analyzeSingleBatch(String businessText, List<TaxonomyNode> nodes) {
         return callLlm(businessText, nodes);
+    }
+
+    /**
+     * Like {@link #analyzeSingleBatch} but also returns the prompt, raw LLM response,
+     * provider name, and call duration. Used by the interactive-mode API endpoint so
+     * the frontend can display the LLM communication log.
+     */
+    public com.nato.taxonomy.dto.LlmCallDetail analyzeSingleBatchDetailed(
+            String businessText, List<TaxonomyNode> nodes) {
+        try {
+            return callLlmPropagatingDetailed(businessText, nodes);
+        } catch (Exception e) {
+            log.error("Error in detailed LLM call", e);
+            com.nato.taxonomy.dto.LlmCallDetail detail = new com.nato.taxonomy.dto.LlmCallDetail();
+            detail.setScores(zeroScores(nodes));
+            detail.setProvider(getActiveProviderName());
+            detail.setPrompt("");
+            detail.setRawResponse("");
+            detail.setDurationMs(0);
+            return detail;
+        }
     }
 
     private Map<String, Integer> callLlm(String businessText, List<TaxonomyNode> nodes) {
@@ -394,8 +415,76 @@ public class LlmService {
         }
     }
 
-    private Map<String, Integer> callGemini(String prompt, String apiKey,
-                                             List<TaxonomyNode> nodes) {
+    /**
+     * Like {@link #callLlmPropagating} but also captures timing, the prompt, and the
+     * raw LLM text response, returning them in a {@link com.nato.taxonomy.dto.LlmCallDetail}.
+     */
+    private com.nato.taxonomy.dto.LlmCallDetail callLlmPropagatingDetailed(
+            String businessText, List<TaxonomyNode> nodes) {
+        LlmProvider provider = getActiveProvider();
+        String apiKey = getApiKey(provider);
+
+        com.nato.taxonomy.dto.LlmCallDetail detail = new com.nato.taxonomy.dto.LlmCallDetail();
+        detail.setProvider(getActiveProviderName());
+
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("⚠️ LLM analysis skipped: No API key configured for provider {}. "
+                    + "Set environment variable {}_API_KEY to enable AI analysis.",
+                    provider, provider.name());
+            detail.setScores(zeroScores(nodes));
+            detail.setPrompt("");
+            detail.setRawResponse("");
+            detail.setDurationMs(0);
+            return detail;
+        }
+
+        String nodeList = buildNodeList(nodes);
+        String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
+        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList);
+        detail.setPrompt(prompt);
+
+        log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
+                provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));
+        log.debug("Full LLM prompt:\n{}", prompt);
+
+        long start = System.currentTimeMillis();
+        String apiResponseBody;
+        if (provider == LlmProvider.GEMINI) {
+            apiResponseBody = callGeminiHttpBody(prompt, apiKey);
+        } else {
+            apiResponseBody = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
+        }
+        detail.setDurationMs(System.currentTimeMillis() - start);
+
+        if (apiResponseBody == null) {
+            detail.setScores(zeroScores(nodes));
+            detail.setRawResponse("");
+            return detail;
+        }
+
+        String rawText = (provider == LlmProvider.GEMINI)
+                ? extractGeminiText(apiResponseBody)
+                : extractOpenAiText(apiResponseBody);
+        detail.setRawResponse(rawText != null ? rawText : "");
+
+        if (rawText != null) {
+            try {
+                detail.setScores(parseScoresFromText(rawText, nodes));
+            } catch (Exception e) {
+                log.error("Failed to parse scores in detailed LLM call", e);
+                detail.setScores(zeroScores(nodes));
+            }
+        } else {
+            detail.setScores(zeroScores(nodes));
+        }
+        return detail;
+    }
+
+    /**
+     * Makes the Gemini HTTP call and returns the raw API response body, or {@code null}
+     * on error (including logging). Rate-limit exceptions are propagated.
+     */
+    private String callGeminiHttpBody(String prompt, String apiKey) {
         Map<String, Object> body    = new LinkedHashMap<>();
         Map<String, Object> content = new LinkedHashMap<>();
         Map<String, Object> part    = new LinkedHashMap<>();
@@ -426,33 +515,42 @@ public class LlmService {
 
             String responseBody = response.getBody();
 
-            // Check for quota exhaustion signalled in the response body
             if (responseBody != null && responseBody.contains("RESOURCE_EXHAUSTED")) {
                 throw new LlmRateLimitException("Gemini quota exhausted: " + responseBody);
             }
             if (responseBody != null && responseBody.contains("\"error\"")) {
                 log.error("Gemini API returned error in body: {}", responseBody);
-                return zeroScores(nodes);
+                return null;
             }
 
             if (response.getStatusCode().is2xxSuccessful() && responseBody != null) {
                 log.info("LLM Response [GEMINI] — raw response (first 500 chars): {}",
                         responseBody.substring(0, Math.min(responseBody.length(), 500)));
-                return parseGeminiResponse(responseBody, nodes);
+                return responseBody;
             }
             log.error("Gemini API returned status {}", response.getStatusCode());
-            return zeroScores(nodes);
+            return null;
         } catch (LlmRateLimitException e) {
             throw e;
         } catch (Exception e) {
             log.error("Error calling Gemini API", e);
-            return zeroScores(nodes);
+            return null;
         }
     }
 
-    private Map<String, Integer> callOpenAiCompatible(String prompt, String apiKey,
-                                                       LlmProvider provider,
-                                                       List<TaxonomyNode> nodes) {
+    private Map<String, Integer> callGemini(String prompt, String apiKey,
+                                             List<TaxonomyNode> nodes) {
+        String responseBody = callGeminiHttpBody(prompt, apiKey);
+        if (responseBody == null) return zeroScores(nodes);
+        return parseGeminiResponse(responseBody, nodes);
+    }
+
+    /**
+     * Makes an OpenAI-compatible HTTP call and returns the raw API response body, or
+     * {@code null} on error. Rate-limit exceptions are propagated.
+     */
+    private String callOpenAiCompatibleHttpBody(String prompt, String apiKey,
+                                                 LlmProvider provider) {
         String url = switch (provider) {
             case OPENAI   -> OPENAI_URL;
             case DEEPSEEK -> DEEPSEEK_URL;
@@ -501,69 +599,96 @@ public class LlmService {
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 log.info("LLM Response [{}] — raw response (first 500 chars): {}",
                         provider, response.getBody().substring(0, Math.min(response.getBody().length(), 500)));
-                return parseOpenAiResponse(response.getBody(), nodes);
+                return response.getBody();
             }
             log.error("{} API returned status {}", provider, response.getStatusCode());
-            return zeroScores(nodes);
+            return null;
         } catch (LlmRateLimitException e) {
             throw e;
         } catch (Exception e) {
             log.error("Error calling {} API", provider, e);
-            return zeroScores(nodes);
+            return null;
         }
+    }
+
+    private Map<String, Integer> callOpenAiCompatible(String prompt, String apiKey,
+                                                       LlmProvider provider,
+                                                       List<TaxonomyNode> nodes) {
+        String responseBody = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
+        if (responseBody == null) return zeroScores(nodes);
+        return parseOpenAiResponse(responseBody, nodes);
     }
 
     // ── Response parsers ──────────────────────────────────────────────────────
 
-    private Map<String, Integer> parseGeminiResponse(String responseBody,
-                                                      List<TaxonomyNode> nodes) {
+    /** Extracts the raw LLM text from a Gemini API JSON response body, or {@code null} on failure. */
+    private String extractGeminiText(String responseBody) {
         try {
             Map<String, Object> responseMap = objectMapper.readValue(responseBody,
                     new TypeReference<>() {});
-
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> candidates =
                     (List<Map<String, Object>>) responseMap.get("candidates");
-            if (candidates == null || candidates.isEmpty()) return zeroScores(nodes);
-
+            if (candidates == null || candidates.isEmpty()) return null;
             @SuppressWarnings("unchecked")
             Map<String, Object> content =
                     (Map<String, Object>) candidates.get(0).get("content");
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> parts =
                     (List<Map<String, Object>>) content.get("parts");
-            if (parts == null || parts.isEmpty()) return zeroScores(nodes);
+            if (parts == null || parts.isEmpty()) return null;
+            return (String) parts.get(0).get("text");
+        } catch (Exception e) {
+            log.debug("Failed to extract text from Gemini response", e);
+            return null;
+        }
+    }
 
-            String text = (String) parts.get(0).get("text");
-            if (text == null) return zeroScores(nodes);
+    /** Extracts the raw LLM text from an OpenAI-compatible API JSON response body, or {@code null}. */
+    private String extractOpenAiText(String responseBody) {
+        try {
+            Map<String, Object> responseMap = objectMapper.readValue(responseBody,
+                    new TypeReference<>() {});
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> choices =
+                    (List<Map<String, Object>>) responseMap.get("choices");
+            if (choices == null || choices.isEmpty()) return null;
+            @SuppressWarnings("unchecked")
+            Map<String, Object> message =
+                    (Map<String, Object>) choices.get(0).get("message");
+            return (String) message.get("content");
+        } catch (Exception e) {
+            log.debug("Failed to extract text from OpenAI-compatible response", e);
+            return null;
+        }
+    }
 
+    private Map<String, Integer> parseGeminiResponse(String responseBody,
+                                                      List<TaxonomyNode> nodes) {
+        String text = extractGeminiText(responseBody);
+        if (text == null) {
+            log.error("Failed to parse Gemini response: {}", responseBody);
+            return zeroScores(nodes);
+        }
+        try {
             return parseScoresFromText(text, nodes);
         } catch (Exception e) {
-            log.error("Failed to parse Gemini response: {}", responseBody, e);
+            log.error("Failed to parse scores from Gemini response: {}", responseBody, e);
             return zeroScores(nodes);
         }
     }
 
     private Map<String, Integer> parseOpenAiResponse(String responseBody,
                                                       List<TaxonomyNode> nodes) {
+        String text = extractOpenAiText(responseBody);
+        if (text == null) {
+            log.error("Failed to parse OpenAI-compatible response: {}", responseBody);
+            return zeroScores(nodes);
+        }
         try {
-            Map<String, Object> responseMap = objectMapper.readValue(responseBody,
-                    new TypeReference<>() {});
-
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> choices =
-                    (List<Map<String, Object>>) responseMap.get("choices");
-            if (choices == null || choices.isEmpty()) return zeroScores(nodes);
-
-            @SuppressWarnings("unchecked")
-            Map<String, Object> message =
-                    (Map<String, Object>) choices.get(0).get("message");
-            String text = (String) message.get("content");
-            if (text == null) return zeroScores(nodes);
-
             return parseScoresFromText(text, nodes);
         } catch (Exception e) {
-            log.error("Failed to parse OpenAI-compatible response: {}", responseBody, e);
+            log.error("Failed to parse scores from OpenAI-compatible response: {}", responseBody, e);
             return zeroScores(nodes);
         }
     }
