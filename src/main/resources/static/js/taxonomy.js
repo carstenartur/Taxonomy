@@ -874,7 +874,7 @@
             .then(function (data) {
                 document.getElementById('promptTextarea').value = data.template;
                 updateOverrideBadge(code, false);
-                setPromptStatus('success', '↩️ Reset to default.');
+                setPromptStatus('success', 'Reset to default.');
                 const entry = promptTemplates.find(t => t.code === code);
                 if (entry) { entry.template = data.template; entry.overridden = false; }
             })
