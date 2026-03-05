@@ -12,11 +12,14 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.InetAddress;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -26,6 +29,7 @@ import java.util.regex.Pattern;
  *
  * <p>Provider selection priority:
  * <ol>
+ *   <li>Runtime GUI override (set via {@link #setRuntimeProviderOverride})</li>
  *   <li>Explicit {@code llm.provider} config / {@code LLM_PROVIDER} env var</li>
  *   <li>Auto-detect from available API keys (Gemini → OpenAI → DeepSeek → Qwen → Llama → Mistral)</li>
  *   <li>Default: GEMINI (even if no key is configured)</li>
@@ -47,6 +51,14 @@ public class LlmService {
     private static final String QWEN_URL     = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
     private static final String LLAMA_URL    = "https://api.llama-api.com/chat/completions";
     private static final String MISTRAL_URL  = "https://api.mistral.ai/v1/chat/completions";
+
+    // Provider base URLs and hostnames used for connectivity diagnostics
+    private static final String GEMINI_MODELS_URL   = "https://generativelanguage.googleapis.com/v1beta/models?key=";
+    private static final String OPENAI_MODELS_URL   = "https://api.openai.com/v1/models";
+    private static final String DEEPSEEK_MODELS_URL = "https://api.deepseek.com/v1/models";
+    private static final String QWEN_BASE_URL        = "https://dashscope.aliyuncs.com/compatible-mode/v1/models";
+    private static final String LLAMA_MODELS_URL     = "https://api.llama-api.com/models";
+    private static final String MISTRAL_MODELS_URL   = "https://api.mistral.ai/v1/models";
 
     // Default model names per provider
     private static final String OPENAI_MODEL   = "gpt-4o-mini";
@@ -76,6 +88,9 @@ public class LlmService {
     @Value("${mistral.api.key:}")
     private String mistralApiKey;
 
+    /** Runtime override set via GUI dropdown (Priority 0 — overrides env var and auto-detect). */
+    private volatile LlmProvider runtimeProviderOverride = null;
+
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final TaxonomyService taxonomyService;
@@ -103,9 +118,29 @@ public class LlmService {
     }
 
     /**
+     * Sets a runtime provider override that takes precedence over env var and auto-detect.
+     * Pass {@code null} to clear the override and revert to the default priority chain.
+     */
+    public void setRuntimeProviderOverride(LlmProvider provider) {
+        this.runtimeProviderOverride = provider;
+        log.info("Runtime LLM provider override set to: {}", provider);
+    }
+
+    /** Returns the current runtime override, or {@code null} if none is set. */
+    public LlmProvider getRuntimeProviderOverride() {
+        return runtimeProviderOverride;
+    }
+
+
+    /**
      * Returns the active provider based on the priority chain.
      */
     public LlmProvider getActiveProvider() {
+        // Priority 0: runtime GUI override
+        if (runtimeProviderOverride != null) {
+            return runtimeProviderOverride;
+        }
+
         // Priority 1: explicit config / LLM_PROVIDER env var
         if (llmProviderConfig != null && !llmProviderConfig.isBlank()) {
             try {
@@ -854,5 +889,323 @@ public class LlmService {
         result.put("failedCalls",      failedCalls.get());
         result.put("serverTime",       Instant.now().toString());
         return result;
+    }
+
+    // ── Provider list ─────────────────────────────────────────────────────────
+
+    /**
+     * Returns the list of all supported providers with their API-key status and
+     * whether each is currently active.
+     */
+    public List<Map<String, Object>> getProviderList() {
+        LlmProvider active = getActiveProvider();
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (LlmProvider p : LlmProvider.values()) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("id",           p.name());
+            entry.put("name",         providerDisplayName(p));
+            entry.put("hasApiKey",    hasApiKey(p));
+            entry.put("requiresKey",  p != LlmProvider.LOCAL_ONNX);
+            entry.put("active",       p == active);
+            list.add(entry);
+        }
+        return list;
+    }
+
+    private String providerDisplayName(LlmProvider p) {
+        return switch (p) {
+            case GEMINI     -> "Gemini";
+            case OPENAI     -> "OpenAI";
+            case DEEPSEEK   -> "DeepSeek";
+            case QWEN       -> "Qwen";
+            case LLAMA      -> "Llama";
+            case MISTRAL    -> "Mistral";
+            case LOCAL_ONNX -> "Local (all-MiniLM-L6-v2)";
+        };
+    }
+
+    private boolean hasApiKey(LlmProvider p) {
+        if (p == LlmProvider.LOCAL_ONNX) return true;
+        String key = getApiKey(p);
+        return key != null && !key.isBlank();
+    }
+
+    // ── Multi-step diagnostics test ───────────────────────────────────────────
+
+    /**
+     * Runs a multi-step connectivity/authentication test for the active provider,
+     * streaming each step result to the supplied {@code stepConsumer}.
+     *
+     * <p>Steps:
+     * <ol>
+     *   <li>Configuration check (API key present)</li>
+     *   <li>DNS resolution</li>
+     *   <li>HTTPS connectivity (HTTP HEAD)</li>
+     *   <li>API authentication (lightweight models list or health endpoint)</li>
+     *   <li>Full round-trip taxonomy call</li>
+     * </ol>
+     */
+    public void runDiagnosticTest(Consumer<Map<String, Object>> stepConsumer) {
+        LlmProvider provider = getActiveProvider();
+        String providerName = providerDisplayName(provider);
+
+        if (provider == LlmProvider.LOCAL_ONNX) {
+            runLocalOnnxDiagnosticTest(stepConsumer);
+            return;
+        }
+
+        String hostname = getProviderHostname(provider);
+
+        // ── Step 1: Configuration check ──────────────────────────────────────
+        stepConsumer.accept(stepResult(1, "Configuration", "running", "Checking API key…", 0));
+        String apiKey = getApiKey(provider);
+        boolean keyPresent = apiKey != null && !apiKey.isBlank();
+        if (!keyPresent) {
+            stepConsumer.accept(stepResult(1, "Configuration", "fail",
+                    "No API key configured for " + providerName
+                    + ". Set " + provider.name() + "_API_KEY.", 0));
+            skipRemaining(stepConsumer, 2, 5);
+            return;
+        }
+        String maskedKey = apiKey.length() > 4 ? apiKey.substring(0, 4) + "****" : "****";
+        stepConsumer.accept(stepResult(1, "Configuration", "pass",
+                "API key configured (" + maskedKey + ")", 0));
+
+        // ── Step 2: DNS resolution ────────────────────────────────────────────
+        stepConsumer.accept(stepResult(2, "DNS Resolution", "running",
+                "Resolving " + hostname + "…", 0));
+        long dnsStart = System.currentTimeMillis();
+        String resolvedIp;
+        try {
+            InetAddress addr = InetAddress.getByName(hostname);
+            resolvedIp = addr.getHostAddress();
+            long dnsDuration = System.currentTimeMillis() - dnsStart;
+            stepConsumer.accept(stepResult(2, "DNS Resolution", "pass",
+                    hostname + " → " + resolvedIp, dnsDuration));
+        } catch (Exception e) {
+            long dnsDuration = System.currentTimeMillis() - dnsStart;
+            stepConsumer.accept(stepResult(2, "DNS Resolution", "fail",
+                    "DNS lookup failed: " + e.getMessage(), dnsDuration));
+            skipRemaining(stepConsumer, 3, 5);
+            return;
+        }
+
+        // ── Step 3: HTTPS connectivity ────────────────────────────────────────
+        String baseUrl = getProviderBaseUrl(provider);
+        stepConsumer.accept(stepResult(3, "HTTPS Connectivity", "running",
+                "Connecting to " + baseUrl + "…", 0));
+        long httpsStart = System.currentTimeMillis();
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            restTemplate.exchange(baseUrl, HttpMethod.HEAD, entity, String.class);
+            long httpsDuration = System.currentTimeMillis() - httpsStart;
+            stepConsumer.accept(stepResult(3, "HTTPS Connectivity", "pass",
+                    "TLS handshake OK", httpsDuration));
+        } catch (Exception e) {
+            long httpsDuration = System.currentTimeMillis() - httpsStart;
+            // HEAD may return 4xx which is fine — connection works
+            if (isConnectivityError(e)) {
+                stepConsumer.accept(stepResult(3, "HTTPS Connectivity", "fail",
+                        "Connection failed: " + e.getMessage(), httpsDuration));
+                skipRemaining(stepConsumer, 4, 5);
+                return;
+            }
+            stepConsumer.accept(stepResult(3, "HTTPS Connectivity", "pass",
+                    "TLS handshake OK (HTTP " + extractStatusCode(e) + ")", httpsDuration));
+        }
+
+        // ── Step 4: API Authentication ────────────────────────────────────────
+        stepConsumer.accept(stepResult(4, "API Authentication", "running",
+                "Verifying API key with " + providerName + "…", 0));
+        long authStart = System.currentTimeMillis();
+        try {
+            String authResult = testApiAuth(provider, apiKey);
+            long authDuration = System.currentTimeMillis() - authStart;
+            stepConsumer.accept(stepResult(4, "API Authentication", "pass",
+                    authResult, authDuration));
+        } catch (Exception e) {
+            long authDuration = System.currentTimeMillis() - authStart;
+            stepConsumer.accept(stepResult(4, "API Authentication", "fail",
+                    "Authentication failed: " + e.getMessage(), authDuration));
+            skipRemaining(stepConsumer, 5, 5);
+            return;
+        }
+
+        // ── Step 5: Full round-trip ───────────────────────────────────────────
+        stepConsumer.accept(stepResult(5, "Full Round-Trip", "running",
+                "Sending a minimal taxonomy scoring call…", 0));
+        long rtStart = System.currentTimeMillis();
+        try {
+            List<TaxonomyNode> bpChildren = taxonomyService.getChildrenOf("BP");
+            List<TaxonomyNode> sampleNodes = bpChildren.isEmpty() ? bpChildren
+                    : bpChildren.subList(0, Math.min(3, bpChildren.size()));
+            if (sampleNodes.isEmpty()) {
+                stepConsumer.accept(stepResult(5, "Full Round-Trip", "skip",
+                        "No BP children available for test", 0));
+                return;
+            }
+            Map<String, Integer> scores = callLlmPropagating(
+                    "Test connection: business process management", sampleNodes);
+            long rtDuration = System.currentTimeMillis() - rtStart;
+            long nonZero = scores.values().stream().filter(v -> v > 0).count();
+            stepConsumer.accept(stepResult(5, "Full Round-Trip", "pass",
+                    "Scored " + scores.size() + " nodes (" + nonZero + " non-zero) in "
+                    + rtDuration + "ms", rtDuration));
+        } catch (Exception e) {
+            long rtDuration = System.currentTimeMillis() - rtStart;
+            stepConsumer.accept(stepResult(5, "Full Round-Trip", "fail",
+                    "Round-trip failed: " + e.getMessage(), rtDuration));
+        }
+    }
+
+    private void runLocalOnnxDiagnosticTest(Consumer<Map<String, Object>> stepConsumer) {
+        // Step 1: Check model availability
+        stepConsumer.accept(stepResult(1, "Configuration", "running",
+                "Checking local embedding model…", 0));
+        long start = System.currentTimeMillis();
+        boolean modelAvailable = localEmbeddingService.isAvailable();
+        long duration = System.currentTimeMillis() - start;
+        if (!modelAvailable) {
+            stepConsumer.accept(stepResult(1, "Configuration", "fail",
+                    "Local model not available. Check model directory and ONNX runtime setup.", duration));
+            skipRemaining(stepConsumer, 2, 5);
+            return;
+        }
+        stepConsumer.accept(stepResult(1, "Configuration", "pass",
+                "Local model available: " + localEmbeddingService.effectiveModelUrl(), duration));
+
+        // Steps 2-3: not applicable
+        stepConsumer.accept(stepResult(2, "DNS Resolution", "skip",
+                "Not applicable for LOCAL_ONNX", 0));
+        stepConsumer.accept(stepResult(3, "HTTPS Connectivity", "skip",
+                "Not applicable for LOCAL_ONNX", 0));
+
+        // Step 4: Model index check
+        stepConsumer.accept(stepResult(4, "Index Check", "running",
+                "Checking vector index…", 0));
+        long indexStart = System.currentTimeMillis();
+        int indexedNodes = localEmbeddingService.indexedNodeCount();
+        long indexDuration = System.currentTimeMillis() - indexStart;
+        stepConsumer.accept(stepResult(4, "Index Check", "pass",
+                indexedNodes + " nodes indexed", indexDuration));
+
+        // Step 5: Full round-trip
+        stepConsumer.accept(stepResult(5, "Full Round-Trip", "running",
+                "Running local embedding scoring…", 0));
+        long rtStart = System.currentTimeMillis();
+        try {
+            List<TaxonomyNode> bpChildren = taxonomyService.getChildrenOf("BP");
+            List<TaxonomyNode> sampleNodes = bpChildren.isEmpty() ? bpChildren
+                    : bpChildren.subList(0, Math.min(3, bpChildren.size()));
+            if (sampleNodes.isEmpty()) {
+                stepConsumer.accept(stepResult(5, "Full Round-Trip", "skip",
+                        "No BP children available for test", 0));
+                return;
+            }
+            Map<String, Integer> scores = localEmbeddingService.scoreNodes(
+                    "Test connection: business process management", sampleNodes);
+            long rtDuration = System.currentTimeMillis() - rtStart;
+            stepConsumer.accept(stepResult(5, "Full Round-Trip", "pass",
+                    "Scored " + scores.size() + " nodes in " + rtDuration + "ms", rtDuration));
+        } catch (Exception e) {
+            long rtDuration = System.currentTimeMillis() - rtStart;
+            stepConsumer.accept(stepResult(5, "Full Round-Trip", "fail",
+                    "Round-trip failed: " + e.getMessage(), rtDuration));
+        }
+    }
+
+    private String testApiAuth(LlmProvider provider, String apiKey) {
+        if (provider == LlmProvider.GEMINI) {
+            String url = GEMINI_MODELS_URL + apiKey;
+            HttpHeaders headers = new HttpHeaders();
+            headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            ResponseEntity<String> resp = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+            if (resp.getStatusCode().is2xxSuccessful()) {
+                return "Gemini models listed OK";
+            }
+            throw new RuntimeException("Unexpected status: " + resp.getStatusCode());
+        } else {
+            String modelsUrl = switch (provider) {
+                case OPENAI   -> OPENAI_MODELS_URL;
+                case DEEPSEEK -> DEEPSEEK_MODELS_URL;
+                case QWEN     -> QWEN_BASE_URL;
+                case LLAMA    -> LLAMA_MODELS_URL;
+                case MISTRAL  -> MISTRAL_MODELS_URL;
+                default -> throw new IllegalArgumentException("Unexpected provider: " + provider);
+            };
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(apiKey);
+            headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            ResponseEntity<String> resp = restTemplate.exchange(modelsUrl, HttpMethod.GET, entity, String.class);
+            if (resp.getStatusCode().is2xxSuccessful()) {
+                return provider.name() + " models listed OK";
+            }
+            throw new RuntimeException("Unexpected status: " + resp.getStatusCode());
+        }
+    }
+
+    private String getProviderHostname(LlmProvider provider) {
+        return switch (provider) {
+            case GEMINI   -> "generativelanguage.googleapis.com";
+            case OPENAI   -> "api.openai.com";
+            case DEEPSEEK -> "api.deepseek.com";
+            case QWEN     -> "dashscope.aliyuncs.com";
+            case LLAMA    -> "api.llama-api.com";
+            case MISTRAL  -> "api.mistral.ai";
+            default       -> "localhost";
+        };
+    }
+
+    private String getProviderBaseUrl(LlmProvider provider) {
+        return switch (provider) {
+            case GEMINI   -> "https://generativelanguage.googleapis.com/";
+            case OPENAI   -> "https://api.openai.com/";
+            case DEEPSEEK -> "https://api.deepseek.com/";
+            case QWEN     -> "https://dashscope.aliyuncs.com/";
+            case LLAMA    -> "https://api.llama-api.com/";
+            case MISTRAL  -> "https://api.mistral.ai/";
+            default       -> "http://localhost/";
+        };
+    }
+
+    private boolean isConnectivityError(Exception e) {
+        // Network-level errors (not HTTP errors)
+        return !(e instanceof HttpStatusCodeException);
+    }
+
+    private String extractStatusCode(Exception e) {
+        if (e instanceof HttpStatusCodeException ex) return String.valueOf(ex.getStatusCode().value());
+        return "?";
+    }
+
+    private void skipRemaining(Consumer<Map<String, Object>> consumer, int from, int to) {
+        for (int i = from; i <= to; i++) {
+            consumer.accept(stepResult(i, stepName(i), "skip", "Skipped", 0));
+        }
+    }
+
+    private String stepName(int step) {
+        return switch (step) {
+            case 1 -> "Configuration";
+            case 2 -> "DNS Resolution";
+            case 3 -> "HTTPS Connectivity";
+            case 4 -> "API Authentication";
+            case 5 -> "Full Round-Trip";
+            default -> "Step " + step;
+        };
+    }
+
+    private Map<String, Object> stepResult(int step, String name, String status,
+                                            String message, long durationMs) {
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("step", step);
+        r.put("name", name);
+        r.put("status", status);
+        r.put("message", message);
+        r.put("durationMs", durationMs);
+        return r;
     }
 }
