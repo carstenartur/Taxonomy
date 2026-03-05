@@ -37,10 +37,13 @@ public class TaxonomyService {
 
     private final TaxonomyNodeRepository repository;
     private final SearchService searchService;
+    private final LocalEmbeddingService localEmbeddingService;
 
-    public TaxonomyService(TaxonomyNodeRepository repository, SearchService searchService) {
+    public TaxonomyService(TaxonomyNodeRepository repository, SearchService searchService,
+                           LocalEmbeddingService localEmbeddingService) {
         this.repository = repository;
         this.searchService = searchService;
+        this.localEmbeddingService = localEmbeddingService;
     }
 
     @PostConstruct
@@ -123,6 +126,10 @@ public class TaxonomyService {
                 // 5. Build Lucene full-text search index
                 searchService.buildIndex(nodeMap.values());
                 log.info("Full-text search index built successfully.");
+
+                // 6. Invalidate the KNN vector index so it is rebuilt lazily on first
+                //    LOCAL_ONNX use (safe no-op when LOCAL_ONNX is not configured)
+                localEmbeddingService.invalidateVectorIndex();
             }
         } catch (Exception e) {
             log.error("Failed to load taxonomy from Excel", e);

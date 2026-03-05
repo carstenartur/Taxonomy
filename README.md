@@ -10,7 +10,8 @@ using an AI language model.
 
 * Full taxonomy tree browser (Bootstrap 5, collapsible nodes)
 * Free-text business-requirement analyser powered by **multiple LLM providers**
-  (Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral)
+  (Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral) **and a local offline model**
+  (`all-MiniLM-L6-v2` via DJL / ONNX Runtime — no API key required)
 * Recursive match: root → matching children → their children … until leaf nodes
 * Results overlaid on the tree with **green shading** (intensity = match %)
 * All taxonomy data kept in an **in-process HSQLDB** (no external DB needed)
@@ -35,24 +36,48 @@ Then open <http://localhost:8080>.
 The app supports multiple AI providers.  Set **one** of the following
 environment variables to enable AI analysis:
 
-| Provider  | Environment Variable  | Notes                              |
-|-----------|-----------------------|------------------------------------|
-| Gemini    | `GEMINI_API_KEY`      | Free key at aistudio.google.com    |
-| OpenAI    | `OPENAI_API_KEY`      |                                    |
-| DeepSeek  | `DEEPSEEK_API_KEY`    |                                    |
-| Qwen      | `DASHSCOPE_API_KEY`   | Alibaba Cloud DashScope            |
-| Llama     | `LLAMA_API_KEY`       |                                    |
-| Mistral   | `MISTRAL_API_KEY`     |                                    |
+| Provider    | Environment Variable  | Notes                                         |
+|-------------|-----------------------|-----------------------------------------------|
+| Gemini      | `GEMINI_API_KEY`      | Free key at aistudio.google.com               |
+| OpenAI      | `OPENAI_API_KEY`      |                                               |
+| DeepSeek    | `DEEPSEEK_API_KEY`    |                                               |
+| Qwen        | `DASHSCOPE_API_KEY`   | Alibaba Cloud DashScope                       |
+| Llama       | `LLAMA_API_KEY`       |                                               |
+| Mistral     | `MISTRAL_API_KEY`     |                                               |
+| Local (ONNX)| *(none)*              | Set `LLM_PROVIDER=LOCAL_ONNX` — no key needed |
 
 **Provider selection priority:**
 
 1. `LLM_PROVIDER` environment variable (values: `GEMINI`, `OPENAI`, `DEEPSEEK`,
-   `QWEN`, `LLAMA`, `MISTRAL`)
+   `QWEN`, `LLAMA`, `MISTRAL`, `LOCAL_ONNX`)
 2. Auto-detected from whichever API key is set (order as in the table above)
 3. Default: Gemini (app still works as a browser if no key is set — all scores = 0)
 
 Without any API key the app still works as a pure taxonomy browser (all scores = 0)
 and the Analyze button is disabled with an explanatory warning.
+
+### Local offline analysis (LOCAL_ONNX)
+
+Setting `LLM_PROVIDER=LOCAL_ONNX` activates **offline semantic scoring** using the
+[`sentence-transformers/all-MiniLM-L6-v2`](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
+embedding model, loaded via [Deep Java Library (DJL)](https://djl.ai/) and
+[ONNX Runtime](https://onnxruntime.ai/).
+
+* **No API key or internet connection is needed at runtime** (after the first download).
+* On first use DJL downloads and caches the model under `~/.djl.ai/` (≈ 23 MB).
+  Subsequent restarts are instant.
+* Scoring is based on cosine similarity between the business text embedding and
+  each taxonomy node's name/description embedding, scaled to 0–100 %.
+* This is faster and cheaper than API providers, but the scores are purely
+  semantic (no reasoning or context window).
+
+```bash
+# Run locally without any API key
+LLM_PROVIDER=LOCAL_ONNX mvn spring-boot:run
+
+# or with Docker
+docker run -p 8080:8080 -e LLM_PROVIDER=LOCAL_ONNX ghcr.io/carstenartur/taxonomy:latest
+```
 
 ## CI / CD
 
@@ -63,6 +88,51 @@ Every push triggers the **CI / CD** GitHub Actions workflow:
 | **Build & Test** | `mvn verify` — compiles, runs integration tests |
 | **Publish Docker Image** | Pushes to GitHub Container Registry (`ghcr.io`) |
 | **Deploy to Render** | Triggers a Render deploy hook (if secret is set) |
+
+## REST API Reference
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `GET /api/taxonomy` | GET | Full taxonomy tree (JSON) |
+| `POST /api/analyze` | POST | Analyze business text (all providers) |
+| `GET /api/analyze-stream` | GET | SSE streaming analysis |
+| `GET /api/search?q=` | GET | Full-text Lucene search |
+| `GET /api/search/semantic?q=` | GET | Semantic KNN search (requires LOCAL_ONNX or embedding enabled) |
+| `GET /api/search/hybrid?q=` | GET | Hybrid: fulltext + semantic via Reciprocal Rank Fusion |
+| `GET /api/search/similar/{code}` | GET | Find semantically similar taxonomy nodes |
+| `GET /api/embedding/status` | GET | Embedding model status (enabled, available, indexedNodes) |
+| `GET /api/ai-status` | GET | LLM provider availability |
+| `GET /api/diagnostics` | GET | Provider diagnostics and call statistics |
+
+### Semantic and Hybrid Search
+
+The semantic and hybrid search endpoints use the pre-built Lucene HNSW vector index
+(384-dim, COSINE similarity) to find taxonomy nodes by meaning rather than keywords.
+
+```bash
+# Semantic search — ranked by cosine similarity
+curl "http://localhost:8080/api/search/semantic?q=satellite+communications&maxResults=10"
+
+# Hybrid search — fulltext + semantic fused via Reciprocal Rank Fusion (RRF)
+curl "http://localhost:8080/api/search/hybrid?q=voice+communications&maxResults=10"
+
+# Find similar nodes to BP (Business Processes root)
+curl "http://localhost:8080/api/search/similar/BP?topK=5"
+
+# Check embedding status
+curl "http://localhost:8080/api/embedding/status"
+```
+
+### Embedding Configuration
+
+| Environment Variable | Default | Description |
+|---|---|---|
+| `JGIT_EMBEDDING_ENABLED` | `true` | Enable/disable embedding globally |
+| `JGIT_EMBEDDING_MODEL_DIR` | *(empty — DJL auto-download)* | Path to pre-downloaded model directory |
+| `JGIT_EMBEDDING_MODEL_NAME` | `djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2` | DJL model URL |
+
+When `JGIT_EMBEDDING_ENABLED=false`, semantic and hybrid search return empty/fulltext-only
+results without error — the application continues to work as a pure taxonomy browser.
 
 ### One-click deployment on Render.com
 

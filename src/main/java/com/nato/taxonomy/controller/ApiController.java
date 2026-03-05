@@ -7,6 +7,8 @@ import com.nato.taxonomy.dto.AiStatusResponse;
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
 import com.nato.taxonomy.model.TaxonomyNode;
 import com.nato.taxonomy.service.AnalysisEventCallback;
+import com.nato.taxonomy.service.HybridSearchService;
+import com.nato.taxonomy.service.LocalEmbeddingService;
 import com.nato.taxonomy.service.LlmService;
 import com.nato.taxonomy.service.PromptTemplateService;
 import com.nato.taxonomy.service.SearchService;
@@ -31,16 +33,22 @@ public class ApiController {
     private final TaxonomyService taxonomyService;
     private final LlmService llmService;
     private final SearchService searchService;
+    private final HybridSearchService hybridSearchService;
+    private final LocalEmbeddingService embeddingService;
     private final ExecutorService analysisExecutor;
     private final ObjectMapper objectMapper;
     private final PromptTemplateService promptTemplateService;
 
     public ApiController(TaxonomyService taxonomyService, LlmService llmService,
-                         SearchService searchService, ExecutorService analysisExecutor,
+                         SearchService searchService, HybridSearchService hybridSearchService,
+                         LocalEmbeddingService embeddingService,
+                         ExecutorService analysisExecutor,
                          ObjectMapper objectMapper, PromptTemplateService promptTemplateService) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.searchService = searchService;
+        this.hybridSearchService = hybridSearchService;
+        this.embeddingService = embeddingService;
         this.analysisExecutor = analysisExecutor;
         this.objectMapper = objectMapper;
         this.promptTemplateService = promptTemplateService;
@@ -247,5 +255,73 @@ public class ApiController {
         result.put("code", code);
         result.put("overridden", false);
         return ResponseEntity.ok(result);
+    }
+
+    // ── Semantic / Hybrid / Similar search endpoints ───────────────────────────
+
+    /**
+     * Semantic search across the full taxonomy using embedding similarity.
+     * Returns nodes ranked by cosine similarity to {@code q}.
+     * Requires {@code LLM_PROVIDER=LOCAL_ONNX} or {@code JGIT_EMBEDDING_ENABLED=true}.
+     *
+     * @param q          natural-language query (e.g. "satellite communications")
+     * @param maxResults maximum number of results (default 20)
+     */
+    @GetMapping("/search/semantic")
+    public ResponseEntity<List<TaxonomyNodeDto>> semanticSearch(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "20") int maxResults) {
+        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
+        return ResponseEntity.ok(embeddingService.semanticSearch(q, maxResults));
+    }
+
+    /**
+     * Hybrid search: combines full-text Lucene and semantic KNN results via
+     * Reciprocal Rank Fusion.  Falls back to full-text only when embedding is unavailable.
+     *
+     * @param q          natural-language query
+     * @param maxResults maximum number of results (default 20)
+     */
+    @GetMapping("/search/hybrid")
+    public ResponseEntity<List<TaxonomyNodeDto>> hybridSearch(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "20") int maxResults) {
+        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
+        return ResponseEntity.ok(hybridSearchService.hybridSearch(q, maxResults));
+    }
+
+    /**
+     * Find taxonomy nodes semantically similar to the node identified by {@code code}.
+     *
+     * @param code   taxonomy node code (e.g. "BP.001")
+     * @param topK   maximum number of similar nodes (default 10)
+     */
+    @GetMapping("/search/similar/{code}")
+    public ResponseEntity<List<TaxonomyNodeDto>> findSimilar(
+            @PathVariable String code,
+            @RequestParam(defaultValue = "10") int topK) {
+        return ResponseEntity.ok(embeddingService.findSimilarNodes(code, topK));
+    }
+
+    /**
+     * Returns the current status of the local embedding model.
+     *
+     * <p>Response fields:
+     * <ul>
+     *   <li>{@code enabled} — whether embedding is globally enabled</li>
+     *   <li>{@code available} — whether the model loaded successfully</li>
+     *   <li>{@code modelUrl} — the DJL model URL in use</li>
+     *   <li>{@code indexedNodes} — number of nodes currently in the vector index
+     *       (0 = not yet built)</li>
+     * </ul>
+     */
+    @GetMapping("/embedding/status")
+    public ResponseEntity<Map<String, Object>> embeddingStatus() {
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("enabled",      embeddingService.isEnabled());
+        status.put("available",    embeddingService.isAvailable());
+        status.put("modelUrl",     embeddingService.effectiveModelUrl());
+        status.put("indexedNodes", embeddingService.indexedNodeCount());
+        return ResponseEntity.ok(status);
     }
 }

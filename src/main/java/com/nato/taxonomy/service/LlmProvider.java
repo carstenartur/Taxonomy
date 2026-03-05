@@ -9,5 +9,7 @@ public enum LlmProvider {
     DEEPSEEK,
     QWEN,
     LLAMA,
-    MISTRAL
+    MISTRAL,
+    /** Local embedding model (all-MiniLM-L6-v2) via DJL / ONNX Runtime. No API key required. */
+    LOCAL_ONNX
 }
