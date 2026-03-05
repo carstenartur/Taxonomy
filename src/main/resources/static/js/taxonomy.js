@@ -69,6 +69,9 @@
                 });
             }
         });
+
+        // Prompt template editor
+        initPromptEditor();
     });
 
     function applyDescriptionVisibility(show) {
@@ -799,6 +802,114 @@
 
     function escapeHtml(s) {
         return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // ── Prompt template editor ────────────────────────────────────────────────
+
+    let promptTemplates = [];
+
+    function initPromptEditor() {
+        const select   = document.getElementById('promptSelect');
+        const saveBtn  = document.getElementById('promptSaveBtn');
+        const resetBtn = document.getElementById('promptResetBtn');
+        if (!select || !saveBtn || !resetBtn) return;
+
+        fetch('/api/prompts')
+            .then(r => r.json())
+            .then(function (templates) {
+                promptTemplates = templates;
+                templates.forEach(function (t) {
+                    const opt = document.createElement('option');
+                    opt.value = t.code;
+                    opt.textContent = t.code + ' — ' + t.name;
+                    select.appendChild(opt);
+                });
+                if (templates.length > 0) {
+                    loadPromptIntoEditor(templates[0].code);
+                }
+            })
+            .catch(function () {
+                setPromptStatus('danger', 'Failed to load prompt templates.');
+            });
+
+        select.addEventListener('change', function () {
+            loadPromptIntoEditor(select.value);
+        });
+
+        saveBtn.addEventListener('click', function () {
+            const code     = select.value;
+            const template = document.getElementById('promptTextarea').value;
+            fetch('/api/prompts/' + encodeURIComponent(code), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ template: template })
+            })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function () {
+                setPromptStatus('success', '✅ Template saved.');
+                updateOverrideBadge(code, true);
+                // Update local cache
+                const entry = promptTemplates.find(t => t.code === code);
+                if (entry) { entry.template = template; entry.overridden = true; }
+            })
+            .catch(function (e) {
+                setPromptStatus('danger', '❌ Save failed: ' + e.message);
+            });
+        });
+
+        resetBtn.addEventListener('click', function () {
+            const code = select.value;
+            fetch('/api/prompts/' + encodeURIComponent(code), { method: 'DELETE' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function () {
+                // Reload to get the file-based default
+                return fetch('/api/prompts/' + encodeURIComponent(code)).then(r => r.json());
+            })
+            .then(function (data) {
+                document.getElementById('promptTextarea').value = data.template;
+                updateOverrideBadge(code, false);
+                setPromptStatus('success', '↩️ Reset to default.');
+                const entry = promptTemplates.find(t => t.code === code);
+                if (entry) { entry.template = data.template; entry.overridden = false; }
+            })
+            .catch(function (e) {
+                setPromptStatus('danger', '❌ Reset failed: ' + e.message);
+            });
+        });
+    }
+
+    function loadPromptIntoEditor(code) {
+        fetch('/api/prompts/' + encodeURIComponent(code))
+            .then(r => r.json())
+            .then(function (data) {
+                document.getElementById('promptTextarea').value = data.template;
+                updateOverrideBadge(code, data.overridden);
+                setPromptStatus('', '');
+            })
+            .catch(function () {
+                setPromptStatus('danger', 'Failed to load template for ' + code);
+            });
+    }
+
+    function updateOverrideBadge(code, overridden) {
+        const over = document.getElementById('promptOverrideBadge');
+        const def  = document.getElementById('promptDefaultBadge');
+        if (!over || !def) return;
+        over.classList.toggle('d-none', !overridden);
+        def.classList.toggle('d-none', overridden);
+    }
+
+    function setPromptStatus(type, msg) {
+        const el = document.getElementById('promptStatusMsg');
+        if (!el) return;
+        if (!type || !msg) { el.innerHTML = ''; return; }
+        el.innerHTML = '<span class="text-' + type + '">' + escapeHtml(msg) + '</span>';
     }
 
 })();
