@@ -87,6 +87,17 @@
                 }
             });
         }
+
+        // Diagnostics panel
+        loadDiagnostics();
+        const refreshDiagBtn = document.getElementById('refreshDiagnostics');
+        if (refreshDiagBtn) {
+            refreshDiagBtn.addEventListener('click', loadDiagnostics);
+        }
+        const testLlmBtn = document.getElementById('testLlmConnection');
+        if (testLlmBtn) {
+            testLlmBtn.addEventListener('click', testLlmConnection);
+        }
     });
 
     function applyDescriptionVisibility(show) {
@@ -118,6 +129,73 @@
             })
             .catch(() => {
                 // If the status check fails, leave the button enabled and don't show a warning.
+            });
+    }
+
+    // ── LLM Diagnostics ───────────────────────────────────────────────────────
+    function loadDiagnostics() {
+        const content = document.getElementById('diagnosticsContent');
+        if (!content) { return; }
+        content.innerHTML = '<div class="text-muted">Loading…</div>';
+        fetch('/api/diagnostics')
+            .then(r => r.json())
+            .then(d => {
+                console.log('[Taxonomy] Diagnostics:', d);
+                const keyStatus = d.apiKeyConfigured
+                    ? '<span class="diag-status-ok">&#9989; Configured</span>' +
+                      (d.apiKeyPrefix ? ' (<code>' + escapeHtml(d.apiKeyPrefix) + '</code>)' : '')
+                    : '<span class="diag-status-err">&#10060; Not configured</span>';
+                const lastCallHtml = d.lastCallTime
+                    ? escapeHtml(d.lastCallTime) + ' — ' +
+                      (d.lastCallSuccess
+                          ? '<span class="diag-status-ok">&#9989; Success</span>'
+                          : '<span class="diag-status-err">&#10060; Failed</span>')
+                    : '<span class="text-muted">No calls yet</span>';
+                const lastErrorHtml = d.lastError
+                    ? '<div class="mt-1 llm-log-error-detail"><strong>Last error:</strong> ' +
+                      escapeHtml(d.lastError) + '</div>'
+                    : '';
+                content.innerHTML =
+                    '<table class="table table-sm table-borderless mb-0" style="font-size:0.9em;">' +
+                    '<tr><td class="fw-semibold" style="width:140px">Provider</td><td>' + escapeHtml(d.provider || '—') + '</td></tr>' +
+                    '<tr><td class="fw-semibold">API Key</td><td>' + keyStatus + '</td></tr>' +
+                    '<tr><td class="fw-semibold">Last call</td><td>' + lastCallHtml + '</td></tr>' +
+                    '<tr><td class="fw-semibold">Stats</td><td>' +
+                        escapeHtml(String(d.totalCalls)) + ' total / ' +
+                        '<span class="diag-status-ok">' + escapeHtml(String(d.successfulCalls)) + ' ok</span> / ' +
+                        '<span class="diag-status-err">' + escapeHtml(String(d.failedCalls)) + ' failed</span>' +
+                    '</td></tr>' +
+                    '<tr><td class="fw-semibold">Server time</td><td>' + escapeHtml(d.serverTime || '—') + '</td></tr>' +
+                    '</table>' +
+                    lastErrorHtml;
+            })
+            .catch(err => {
+                console.error('[Taxonomy] Failed to load diagnostics', err);
+                if (content) { content.innerHTML = '<div class="text-danger">Failed to load diagnostics: ' + escapeHtml(err.message) + '</div>'; }
+            });
+    }
+
+    function testLlmConnection() {
+        const btn = document.getElementById('testLlmConnection');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Testing…'; }
+        const testText = 'Test connection: business process management';
+        fetch('/api/analyze-node?parentCode=BP&businessText=' + encodeURIComponent(testText))
+            .then(r => r.json())
+            .then(result => {
+                console.log('[Taxonomy] Test connection result:', result);
+                if (result.error) {
+                    showStatus('warning', '⚠️ Test connection error: ' + result.error);
+                } else {
+                    showStatus('success', '✅ Test connection successful via ' + (result.provider || 'unknown provider') + '.');
+                }
+                loadDiagnostics();
+            })
+            .catch(err => {
+                console.error('[Taxonomy] Test connection failed', err);
+                showStatus('danger', '❌ Test connection failed: ' + err.message);
+            })
+            .finally(() => {
+                if (btn) { btn.disabled = false; btn.textContent = '🧪 Test Connection'; }
             });
     }
 
@@ -401,6 +479,8 @@
 
     function evaluateNodeChildren(parentCode, wrapper, toggle) {
         wrapper.classList.add('tax-evaluating');
+        console.log('[Taxonomy] evaluateNodeChildren: parentCode=' + parentCode
+            + ', businessText=' + (storedBusinessText ? storedBusinessText.substring(0, 80) : ''));
 
         fetch('/api/analyze-node?parentCode=' + encodeURIComponent(parentCode)
               + '&businessText=' + encodeURIComponent(storedBusinessText))
@@ -409,10 +489,17 @@
                 return r.json();
             })
             .then(result => {
+                console.log('[Taxonomy] analyze-node response for', parentCode, result);
                 wrapper.classList.remove('tax-evaluating');
                 wrapper.classList.remove('tax-has-unevaluated');
 
                 const scores = result.scores || {};
+
+                // Show error in status area if present
+                if (result.error) {
+                    console.warn('[Taxonomy] LLM error for', parentCode, ':', result.error);
+                    showStatus('warning', '⚠️ LLM issue for ' + parentCode + ': ' + result.error);
+                }
 
                 // Append entry to LLM communication log
                 appendLlmLogEntry(parentCode, scores, result);
@@ -633,24 +720,33 @@
         const durationSec = (detail && detail.durationMs) ? (detail.durationMs / 1000).toFixed(1) : '?';
         const prompt = (detail && detail.prompt) ? detail.prompt : '';
         const rawResponse = (detail && detail.rawResponse) ? detail.rawResponse : '';
+        const errorMsg = (detail && detail.error) ? detail.error : null;
 
         const entry = document.createElement('details');
-        entry.className = 'llm-log-entry';
+        entry.className = 'llm-log-entry' + (errorMsg ? ' llm-log-error' : '');
 
         const summary = document.createElement('summary');
         summary.style.cursor = 'pointer';
+        const statusBadge = errorMsg
+            ? '<span class="llm-log-error-badge">&#10060; ERROR</span>'
+            : '<span class="text-success">&#10003; ' + matchCount + ' match' + (matchCount !== 1 ? 'es' : '') + '</span>';
         summary.innerHTML =
             '&#128100; <strong>' + escapeHtml(timeStr) + '</strong> — ' +
             '<code>' + escapeHtml(parentCode) + '</code> ' +
             '(' + nodeCount + ' nodes) via <strong>' + escapeHtml(provider) + '</strong> ' +
             '[' + durationSec + 's] ' +
-            '<span class="text-success">&#10003; ' + matchCount + ' match' + (matchCount !== 1 ? 'es' : '') + '</span>';
+            statusBadge;
         entry.appendChild(summary);
 
         const body = document.createElement('div');
         body.className = 'px-2 pb-2';
 
+        const errorHtml = errorMsg
+            ? '<div class="mt-1 llm-log-error-detail"><strong>&#9888; ERROR:</strong> ' + escapeHtml(errorMsg) + '</div>'
+            : '';
+
         body.innerHTML =
+            errorHtml +
             '<div class="mt-1"><strong>&#128228; PROMPT:</strong>' +
             '<div class="llm-log-prompt">' + escapeHtml(prompt) + '</div></div>' +
             '<div class="mt-1"><strong>&#128229; RESPONSE:</strong>' +

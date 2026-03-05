@@ -200,4 +200,37 @@ class TaxonomyApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM_VALUE));
     }
+
+    @Test
+    void diagnosticsEndpointReturnsJson() throws Exception {
+        mockMvc.perform(get("/api/diagnostics").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.provider").isString())
+                .andExpect(jsonPath("$.apiKeyConfigured").isBoolean())
+                .andExpect(jsonPath("$.totalCalls").isNumber())
+                .andExpect(jsonPath("$.successfulCalls").isNumber())
+                .andExpect(jsonPath("$.failedCalls").isNumber())
+                .andExpect(jsonPath("$.serverTime").isString());
+    }
+
+    @Test
+    void diagnosticsEndpointShowsNoKeyConfiguredInTestEnv() throws Exception {
+        // In CI / test environment no API key is set
+        mockMvc.perform(get("/api/diagnostics").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.apiKeyConfigured").value(false))
+                .andExpect(jsonPath("$.apiKeyPrefix", org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void analyzeNodeEndpointIncludesErrorFieldWhenNoKeyConfigured() throws Exception {
+        // In CI / test environment no API key is set — error field should be non-null
+        mockMvc.perform(get("/api/analyze-node")
+                        .param("parentCode", "BP")
+                        .param("businessText", "Test business requirement")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.error").isString());
+    }
 }

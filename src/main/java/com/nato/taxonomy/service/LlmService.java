@@ -14,7 +14,9 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -78,6 +80,14 @@ public class LlmService {
     private final ObjectMapper objectMapper;
     private final TaxonomyService taxonomyService;
     private final PromptTemplateService promptTemplateService;
+
+    // ── Diagnostics tracking ──────────────────────────────────────────────────
+    private final AtomicLong totalCalls       = new AtomicLong(0);
+    private final AtomicLong successfulCalls  = new AtomicLong(0);
+    private final AtomicLong failedCalls      = new AtomicLong(0);
+    private volatile Instant lastCallTime     = null;
+    private volatile boolean lastCallSuccess  = false;
+    private volatile String  lastError        = null;
 
     public LlmService(RestTemplate restTemplate,
                       ObjectMapper objectMapper,
@@ -373,6 +383,9 @@ public class LlmService {
             detail.setPrompt("");
             detail.setRawResponse("");
             detail.setDurationMs(0);
+            String errorMsg = "LLM call failed: " + e.getMessage();
+            detail.setError(errorMsg);
+            recordFailure(errorMsg);
             return detail;
         }
     }
@@ -428,13 +441,15 @@ public class LlmService {
         detail.setProvider(getActiveProviderName());
 
         if (apiKey == null || apiKey.isBlank()) {
-            log.warn("⚠️ LLM analysis skipped: No API key configured for provider {}. "
-                    + "Set environment variable {}_API_KEY to enable AI analysis.",
-                    provider, provider.name());
+            String errorMsg = "No API key configured for provider " + provider
+                    + ". Set environment variable " + provider.name() + "_API_KEY.";
+            log.warn("⚠️ LLM analysis skipped: {}", errorMsg);
             detail.setScores(zeroScores(nodes));
             detail.setPrompt("");
             detail.setRawResponse("");
             detail.setDurationMs(0);
+            detail.setError(errorMsg);
+            recordFailure(errorMsg);
             return detail;
         }
 
@@ -457,8 +472,11 @@ public class LlmService {
         detail.setDurationMs(System.currentTimeMillis() - start);
 
         if (apiResponseBody == null) {
+            String errorMsg = "LLM API call returned no response (possible network error or invalid key).";
             detail.setScores(zeroScores(nodes));
             detail.setRawResponse("");
+            detail.setError(errorMsg);
+            recordFailure(errorMsg);
             return detail;
         }
 
@@ -470,12 +488,19 @@ public class LlmService {
         if (rawText != null) {
             try {
                 detail.setScores(parseScoresFromText(rawText, nodes));
+                recordSuccess();
             } catch (Exception e) {
                 log.error("Failed to parse scores in detailed LLM call", e);
                 detail.setScores(zeroScores(nodes));
+                String errorMsg = "Failed to parse LLM response: " + e.getMessage();
+                detail.setError(errorMsg);
+                recordFailure(errorMsg);
             }
         } else {
             detail.setScores(zeroScores(nodes));
+            String errorMsg = "LLM response contained no usable text.";
+            detail.setError(errorMsg);
+            recordFailure(errorMsg);
         }
         return detail;
     }
@@ -754,5 +779,48 @@ public class LlmService {
         Map<String, Integer> zeros = new HashMap<>();
         for (TaxonomyNode n : nodes) zeros.put(n.getCode(), 0);
         return zeros;
+    }
+
+    // ── Diagnostics helpers ───────────────────────────────────────────────────
+
+    private synchronized void recordSuccess() {
+        totalCalls.incrementAndGet();
+        successfulCalls.incrementAndGet();
+        lastCallTime = Instant.now();
+        lastCallSuccess = true;
+        lastError = null;
+    }
+
+    private synchronized void recordFailure(String error) {
+        totalCalls.incrementAndGet();
+        failedCalls.incrementAndGet();
+        lastCallTime = Instant.now();
+        lastCallSuccess = false;
+        lastError = error;
+    }
+
+    /**
+     * Returns a snapshot of diagnostics information for the {@code /api/diagnostics} endpoint.
+     */
+    public Map<String, Object> getDiagnostics() {
+        LlmProvider provider = getActiveProvider();
+        String apiKey = getApiKey(provider);
+        boolean apiKeyConfigured = (apiKey != null && !apiKey.isBlank());
+        String apiKeyPrefix = apiKeyConfigured
+                ? (apiKey.length() > 4 ? apiKey.substring(0, 4) + "****" : "****")
+                : null;
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("provider",        getActiveProviderName());
+        result.put("apiKeyConfigured", apiKeyConfigured);
+        result.put("apiKeyPrefix",     apiKeyPrefix);
+        result.put("lastCallTime",     lastCallTime != null ? lastCallTime.toString() : null);
+        result.put("lastCallSuccess",  lastCallSuccess);
+        result.put("lastError",        lastError);
+        result.put("totalCalls",       totalCalls.get());
+        result.put("successfulCalls",  successfulCalls.get());
+        result.put("failedCalls",      failedCalls.get());
+        result.put("serverTime",       Instant.now().toString());
+        return result;
     }
 }
