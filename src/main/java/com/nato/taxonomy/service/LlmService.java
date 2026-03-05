@@ -77,13 +77,16 @@ public class LlmService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final TaxonomyService taxonomyService;
+    private final PromptTemplateService promptTemplateService;
 
     public LlmService(RestTemplate restTemplate,
                       ObjectMapper objectMapper,
-                      TaxonomyService taxonomyService) {
+                      TaxonomyService taxonomyService,
+                      PromptTemplateService promptTemplateService) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.taxonomyService = taxonomyService;
+        this.promptTemplateService = promptTemplateService;
     }
 
     /**
@@ -377,7 +380,8 @@ public class LlmService {
         }
 
         String nodeList = buildNodeList(nodes);
-        String prompt   = buildPrompt(businessText, nodeList);
+        String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
+        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList);
 
         log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
                 provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));

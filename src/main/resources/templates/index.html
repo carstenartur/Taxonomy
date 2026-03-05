@@ -105,6 +105,28 @@
                 <summary class="text-muted small" style="cursor:pointer;">&#128203; Analysis Log</summary>
                 <div id="analysisLogContent" class="mt-1 p-2 border rounded small bg-light" style="font-size:0.85em;"></div>
             </details>
+
+            <!-- Prompt Templates editor (collapsible) -->
+            <details id="promptEditor" class="mt-3">
+                <summary class="fw-semibold" style="cursor:pointer;">&#128221; Prompt Templates</summary>
+                <div class="mt-2">
+                    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                        <label for="promptSelect" class="form-label mb-0 text-nowrap">Taxonomy:</label>
+                        <select id="promptSelect" class="form-select form-select-sm" style="max-width:220px;"></select>
+                        <span id="promptOverrideBadge" class="badge bg-warning text-dark d-none">Overridden</span>
+                        <span id="promptDefaultBadge" class="badge bg-secondary d-none">Default</span>
+                    </div>
+                    <div class="mb-1 text-muted small">
+                        Placeholders: <code>{{BUSINESS_TEXT}}</code>, <code>{{NODE_LIST}}</code>, <code>{{TAXONOMY_NAME}}</code>
+                    </div>
+                    <textarea id="promptTextarea" class="form-control font-monospace mb-2" rows="10" style="font-size:0.82em;"></textarea>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button id="promptSaveBtn" class="btn btn-sm btn-primary">&#128190; Save</button>
+                        <button id="promptResetBtn" class="btn btn-sm btn-outline-secondary">&#8617;&#65039; Reset to Default</button>
+                    </div>
+                    <div id="promptStatusMsg" class="mt-2 small"></div>
+                </div>
+            </details>
         </div>
     </div>
 </div>

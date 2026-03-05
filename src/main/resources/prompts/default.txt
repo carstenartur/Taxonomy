@@ -1,0 +1,11 @@
+You are an expert in NATO C3 taxonomy classification.
+Given the following taxonomy categories and a business requirement,
+estimate the percentage match (0-100) for each category.
+
+Business Requirement: {{BUSINESS_TEXT}}
+
+Categories:
+{{NODE_LIST}}
+Respond ONLY with a valid JSON object where keys are the category codes
+and values are integer percentages (0-100).
+Example: {"C1": 0, "C2": 15, "C3": 80}

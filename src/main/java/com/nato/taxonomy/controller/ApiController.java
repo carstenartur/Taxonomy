@@ -7,6 +7,7 @@ import com.nato.taxonomy.dto.TaxonomyNodeDto;
 import com.nato.taxonomy.model.TaxonomyNode;
 import com.nato.taxonomy.service.AnalysisEventCallback;
 import com.nato.taxonomy.service.LlmService;
+import com.nato.taxonomy.service.PromptTemplateService;
 import com.nato.taxonomy.service.SearchService;
 import com.nato.taxonomy.service.TaxonomyService;
 import tools.jackson.databind.ObjectMapper;
@@ -17,6 +18,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -30,15 +32,17 @@ public class ApiController {
     private final SearchService searchService;
     private final ExecutorService analysisExecutor;
     private final ObjectMapper objectMapper;
+    private final PromptTemplateService promptTemplateService;
 
     public ApiController(TaxonomyService taxonomyService, LlmService llmService,
                          SearchService searchService, ExecutorService analysisExecutor,
-                         ObjectMapper objectMapper) {
+                         ObjectMapper objectMapper, PromptTemplateService promptTemplateService) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.searchService = searchService;
         this.analysisExecutor = analysisExecutor;
         this.objectMapper = objectMapper;
+        this.promptTemplateService = promptTemplateService;
     }
 
     @GetMapping("/taxonomy")
@@ -173,5 +177,56 @@ public class ApiController {
             @RequestParam(defaultValue = "50") int maxResults) {
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(searchService.search(q, maxResults));
+    }
+
+    // ── Prompt template endpoints ──────────────────────────────────────────────
+
+    @GetMapping("/prompts")
+    public ResponseEntity<List<Map<String, Object>>> getAllPrompts() {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (String code : promptTemplateService.getAllTemplateCodes()) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("code", code);
+            entry.put("name", promptTemplateService.getTaxonomyName(code));
+            entry.put("template", promptTemplateService.getTemplate(code));
+            entry.put("overridden", promptTemplateService.isOverridden(code));
+            result.add(entry);
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/prompts/{code}")
+    public ResponseEntity<Map<String, Object>> getPrompt(@PathVariable String code) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("code", code);
+        result.put("name", promptTemplateService.getTaxonomyName(code));
+        result.put("template", promptTemplateService.getTemplate(code));
+        result.put("defaultTemplate", promptTemplateService.getDefaultTemplate(code));
+        result.put("overridden", promptTemplateService.isOverridden(code));
+        return ResponseEntity.ok(result);
+    }
+
+    @PutMapping("/prompts/{code}")
+    public ResponseEntity<Map<String, Object>> savePrompt(
+            @PathVariable String code,
+            @RequestBody Map<String, String> body) {
+        String template = body.get("template");
+        if (template == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        promptTemplateService.setTemplate(code, template);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("code", code);
+        result.put("overridden", true);
+        return ResponseEntity.ok(result);
+    }
+
+    @DeleteMapping("/prompts/{code}")
+    public ResponseEntity<Map<String, Object>> resetPrompt(@PathVariable String code) {
+        promptTemplateService.resetTemplate(code);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("code", code);
+        result.put("overridden", false);
+        return ResponseEntity.ok(result);
     }
 }

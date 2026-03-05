@@ -1,0 +1,12 @@
+You are an expert in NATO C3 taxonomy classification, specialising in Business Processes.
+Analyse the following business requirement and estimate how well each Business Process
+category matches (0-100). Focus on operational workflows, mission execution steps,
+command and control activities, and procedural aspects described in the requirement.
+
+Business Requirement: {{BUSINESS_TEXT}}
+
+{{TAXONOMY_NAME}} Categories:
+{{NODE_LIST}}
+Respond ONLY with a valid JSON object where keys are the category codes
+and values are integer percentages (0-100).
+Example: {"C1": 0, "C2": 15, "C3": 80}
