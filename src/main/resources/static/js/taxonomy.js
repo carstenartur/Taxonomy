@@ -18,16 +18,20 @@
         loadTaxonomy();
         checkAiStatus();
         document.getElementById('analyzeBtn').addEventListener('click', function () {
-            if (currentView === 'list' || currentView === 'tabs') {
-                const interactiveCb = document.getElementById('interactiveMode');
-                interactiveMode = interactiveCb ? interactiveCb.checked : false;
-                if (interactiveMode) {
-                    runInteractiveAnalysis();
-                } else {
-                    runStreamingAnalysis();
+            const interactiveCb = document.getElementById('interactiveMode');
+            interactiveMode = interactiveCb ? interactiveCb.checked : false;
+            if (interactiveMode) {
+                // Switch to list view automatically so interactive expand/collapse works
+                if (currentView !== 'list' && currentView !== 'tabs') {
+                    switchView('list');
                 }
+                runInteractiveAnalysis();
             } else {
-                runAnalysis();
+                if (currentView === 'list' || currentView === 'tabs') {
+                    runStreamingAnalysis();
+                } else {
+                    runAnalysis();
+                }
             }
         });
 
@@ -72,6 +76,17 @@
 
         // Prompt template editor
         initPromptEditor();
+
+        // Clear LLM communication log
+        const clearLlmLogBtn = document.getElementById('clearLlmLog');
+        if (clearLlmLogBtn) {
+            clearLlmLogBtn.addEventListener('click', function () {
+                const content = document.getElementById('llmCommLogContent');
+                if (content) {
+                    content.innerHTML = '<div class="text-muted p-2">No LLM calls yet. Use Interactive Mode and expand nodes to see communication.</div>';
+                }
+            });
+        }
     });
 
     function applyDescriptionVisibility(show) {
@@ -393,9 +408,14 @@
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
-            .then(scores => {
+            .then(result => {
                 wrapper.classList.remove('tax-evaluating');
                 wrapper.classList.remove('tax-has-unevaluated');
+
+                const scores = result.scores || {};
+
+                // Append entry to LLM communication log
+                appendLlmLogEntry(parentCode, scores, result);
 
                 // Apply scores to children
                 Object.entries(scores).forEach(([code, pct]) => {
@@ -595,6 +615,51 @@
             '<div><strong>Matched codes (' + info.matchedEntries.length + '):</strong> ' + matchedList + '</div>' +
             warnHtml;
         logEl.style.display = '';
+    }
+
+    function appendLlmLogEntry(parentCode, scores, detail) {
+        const content = document.getElementById('llmCommLogContent');
+        if (!content) { return; }
+
+        // Remove the placeholder message on first entry
+        const placeholder = content.querySelector('.text-muted.p-2');
+        if (placeholder) { placeholder.remove(); }
+
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString();
+        const nodeCount = scores ? Object.keys(scores).length : 0;
+        const matchCount = scores ? Object.values(scores).filter(v => v > 0).length : 0;
+        const provider = (detail && detail.provider) ? detail.provider.toUpperCase() : 'UNKNOWN';
+        const durationSec = (detail && detail.durationMs) ? (detail.durationMs / 1000).toFixed(1) : '?';
+        const prompt = (detail && detail.prompt) ? detail.prompt : '';
+        const rawResponse = (detail && detail.rawResponse) ? detail.rawResponse : '';
+
+        const entry = document.createElement('details');
+        entry.className = 'llm-log-entry';
+
+        const summary = document.createElement('summary');
+        summary.style.cursor = 'pointer';
+        summary.innerHTML =
+            '&#128100; <strong>' + escapeHtml(timeStr) + '</strong> — ' +
+            '<code>' + escapeHtml(parentCode) + '</code> ' +
+            '(' + nodeCount + ' nodes) via <strong>' + escapeHtml(provider) + '</strong> ' +
+            '[' + durationSec + 's] ' +
+            '<span class="text-success">&#10003; ' + matchCount + ' match' + (matchCount !== 1 ? 'es' : '') + '</span>';
+        entry.appendChild(summary);
+
+        const body = document.createElement('div');
+        body.className = 'px-2 pb-2';
+
+        body.innerHTML =
+            '<div class="mt-1"><strong>&#128228; PROMPT:</strong>' +
+            '<div class="llm-log-prompt">' + escapeHtml(prompt) + '</div></div>' +
+            '<div class="mt-1"><strong>&#128229; RESPONSE:</strong>' +
+            '<div class="llm-log-response">' + escapeHtml(rawResponse) + '</div></div>';
+
+        entry.appendChild(body);
+
+        // Prepend so newest entries appear at top
+        content.insertBefore(entry, content.firstChild);
     }
 
     // ── Interactive analysis (stores text, renders tree without LLM calls) ─────

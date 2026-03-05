@@ -1,5 +1,6 @@
 package com.nato.taxonomy.controller;
 
+import com.nato.taxonomy.dto.LlmCallDetail;
 import com.nato.taxonomy.dto.AnalysisRequest;
 import com.nato.taxonomy.dto.AnalysisResult;
 import com.nato.taxonomy.dto.AiStatusResponse;
@@ -157,7 +158,7 @@ public class ApiController {
     }
 
     @GetMapping("/analyze-node")
-    public ResponseEntity<Map<String, Integer>> analyzeNode(
+    public ResponseEntity<Map<String, Object>> analyzeNode(
             @RequestParam String parentCode,
             @RequestParam String businessText) {
         if (businessText == null || businessText.isBlank()) {
@@ -165,10 +166,22 @@ public class ApiController {
         }
         List<TaxonomyNode> children = taxonomyService.getChildrenOf(parentCode);
         if (children.isEmpty()) {
-            return ResponseEntity.ok(Map.of());
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("scores", Map.of());
+            empty.put("prompt", "");
+            empty.put("rawResponse", "");
+            empty.put("provider", "");
+            empty.put("durationMs", 0);
+            return ResponseEntity.ok(empty);
         }
-        Map<String, Integer> scores = llmService.analyzeSingleBatch(businessText, children);
-        return ResponseEntity.ok(scores);
+        LlmCallDetail detail = llmService.analyzeSingleBatchDetailed(businessText, children);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("scores", detail.getScores());
+        result.put("prompt", detail.getPrompt());
+        result.put("rawResponse", detail.getRawResponse());
+        result.put("provider", detail.getProvider());
+        result.put("durationMs", detail.getDurationMs());
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/search")
