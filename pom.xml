@@ -15,6 +15,7 @@
     <name>NATO NC3T Taxonomy Browser</name>
     <properties>
         <java.version>17</java.version>
+        <djl.version>0.31.1</djl.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -65,6 +66,24 @@
             <artifactId>lucene-queryparser</artifactId>
             <version>9.11.1</version>
         </dependency>
+        <!-- DJL: Deep Java Library for local model inference (all-MiniLM-L6-v2 / ONNX) -->
+        <dependency>
+            <groupId>ai.djl</groupId>
+            <artifactId>api</artifactId>
+            <version>${djl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ai.djl.huggingface</groupId>
+            <artifactId>tokenizers</artifactId>
+            <version>${djl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ai.djl.onnxruntime</groupId>
+            <artifactId>onnxruntime-engine</artifactId>
+            <version>${djl.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

@@ -80,6 +80,7 @@ public class LlmService {
     private final ObjectMapper objectMapper;
     private final TaxonomyService taxonomyService;
     private final PromptTemplateService promptTemplateService;
+    private final LocalEmbeddingService localEmbeddingService;
 
     // ── Diagnostics tracking ──────────────────────────────────────────────────
     private final AtomicLong totalCalls       = new AtomicLong(0);
@@ -92,11 +93,13 @@ public class LlmService {
     public LlmService(RestTemplate restTemplate,
                       ObjectMapper objectMapper,
                       TaxonomyService taxonomyService,
-                      PromptTemplateService promptTemplateService) {
+                      PromptTemplateService promptTemplateService,
+                      LocalEmbeddingService localEmbeddingService) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.taxonomyService = taxonomyService;
         this.promptTemplateService = promptTemplateService;
+        this.localEmbeddingService = localEmbeddingService;
     }
 
     /**
@@ -126,9 +129,11 @@ public class LlmService {
     }
 
     /**
-     * Returns {@code true} if at least one provider has a configured API key.
+     * Returns {@code true} if at least one provider has a configured API key,
+     * or if the active provider is {@link LlmProvider#LOCAL_ONNX} (which requires no key).
      */
     public boolean isAvailable() {
+        if (getActiveProvider() == LlmProvider.LOCAL_ONNX) return true;
         return (geminiApiKey  != null && !geminiApiKey.isBlank())
             || (openaiApiKey  != null && !openaiApiKey.isBlank())
             || (deepseekApiKey != null && !deepseekApiKey.isBlank())
@@ -142,12 +147,13 @@ public class LlmService {
      */
     public String getActiveProviderName() {
         return switch (getActiveProvider()) {
-            case GEMINI   -> "Gemini";
-            case OPENAI   -> "OpenAI";
-            case DEEPSEEK -> "DeepSeek";
-            case QWEN     -> "Qwen";
-            case LLAMA    -> "Llama";
-            case MISTRAL  -> "Mistral";
+            case GEMINI      -> "Gemini";
+            case OPENAI      -> "OpenAI";
+            case DEEPSEEK    -> "DeepSeek";
+            case QWEN        -> "Qwen";
+            case LLAMA       -> "Llama";
+            case MISTRAL     -> "Mistral";
+            case LOCAL_ONNX  -> "Local (all-MiniLM-L6-v2)";
         };
     }
 
@@ -404,6 +410,14 @@ public class LlmService {
      */
     private Map<String, Integer> callLlmPropagating(String businessText, List<TaxonomyNode> nodes) {
         LlmProvider provider = getActiveProvider();
+
+        if (provider == LlmProvider.LOCAL_ONNX) {
+            log.info("LOCAL_ONNX — computing cosine-similarity scores for {} nodes", nodes.size());
+            Map<String, Integer> scores = localEmbeddingService.scoreNodes(businessText, nodes);
+            recordSuccess();
+            return scores;
+        }
+
         String apiKey = getApiKey(provider);
 
         if (apiKey == null || apiKey.isBlank()) {
@@ -435,10 +449,24 @@ public class LlmService {
     private com.nato.taxonomy.dto.LlmCallDetail callLlmPropagatingDetailed(
             String businessText, List<TaxonomyNode> nodes) {
         LlmProvider provider = getActiveProvider();
-        String apiKey = getApiKey(provider);
 
         com.nato.taxonomy.dto.LlmCallDetail detail = new com.nato.taxonomy.dto.LlmCallDetail();
         detail.setProvider(getActiveProviderName());
+
+        // ── Local embedding path ──────────────────────────────────────────────
+        if (provider == LlmProvider.LOCAL_ONNX) {
+            long start = System.currentTimeMillis();
+            Map<String, Integer> scores = localEmbeddingService.scoreNodes(businessText, nodes);
+            detail.setDurationMs(System.currentTimeMillis() - start);
+            detail.setScores(scores);
+            detail.setPrompt("(local embedding – no prompt sent)");
+            detail.setRawResponse("(cosine similarity scores computed via all-MiniLM-L6-v2)");
+            recordSuccess();
+            return detail;
+        }
+
+        // ── API-based path ────────────────────────────────────────────────────
+        String apiKey = getApiKey(provider);
 
         if (apiKey == null || apiKey.isBlank()) {
             String errorMsg = "No API key configured for provider " + provider
@@ -733,12 +761,13 @@ public class LlmService {
 
     private String getApiKey(LlmProvider provider) {
         return switch (provider) {
-            case GEMINI   -> geminiApiKey;
-            case OPENAI   -> openaiApiKey;
-            case DEEPSEEK -> deepseekApiKey;
-            case QWEN     -> qwenApiKey;
-            case LLAMA    -> llamaApiKey;
-            case MISTRAL  -> mistralApiKey;
+            case GEMINI      -> geminiApiKey;
+            case OPENAI      -> openaiApiKey;
+            case DEEPSEEK    -> deepseekApiKey;
+            case QWEN        -> qwenApiKey;
+            case LLAMA       -> llamaApiKey;
+            case MISTRAL     -> mistralApiKey;
+            case LOCAL_ONNX  -> null; // no API key required for local inference
         };
     }
 
@@ -805,7 +834,9 @@ public class LlmService {
     public Map<String, Object> getDiagnostics() {
         LlmProvider provider = getActiveProvider();
         String apiKey = getApiKey(provider);
-        boolean apiKeyConfigured = (apiKey != null && !apiKey.isBlank());
+        boolean apiKeyConfigured = (provider == LlmProvider.LOCAL_ONNX)
+                ? false  // local inference needs no key; keep false for UI consistency
+                : (apiKey != null && !apiKey.isBlank());
         String apiKeyPrefix = apiKeyConfigured
                 ? (apiKey.length() > 4 ? apiKey.substring(0, 4) + "****" : "****")
                 : null;
@@ -814,6 +845,8 @@ public class LlmService {
         result.put("provider",        getActiveProviderName());
         result.put("apiKeyConfigured", apiKeyConfigured);
         result.put("apiKeyPrefix",     apiKeyPrefix);
+        result.put("localModel",       provider == LlmProvider.LOCAL_ONNX
+                ? LocalEmbeddingService.MODEL_URL : null);
         result.put("lastCallTime",     lastCallTime != null ? lastCallTime.toString() : null);
         result.put("lastCallSuccess",  lastCallSuccess);
         result.put("lastError",        lastError);
