@@ -152,3 +152,9 @@
     0%, 100% { background-color: rgba(0, 123, 255, 0.05); }
     50%       { background-color: rgba(0, 123, 255, 0.15); }
 }
+
+/* ── Interactive mode: unevaluated expandable nodes ────────── */
+.tax-has-unevaluated > .tax-node-header > .tax-toggle::after {
+    content: ' 🔍';
+    font-size: 0.7em;
+}
