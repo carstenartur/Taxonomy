@@ -6,6 +6,7 @@
     let taxonomyData = [];
     let currentScores = null;
     let currentView = 'list'; // 'list' | 'tabs' | 'sunburst' | 'tree'
+    let currentTreeRoot = 'BP'; // code of the taxonomy shown in tree view
 
     // ── Bootstrap ─────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function () {
@@ -27,6 +28,15 @@
             applyDescriptionVisibility(showDescriptionsChk.checked);
             showDescriptionsChk.addEventListener('change', function () {
                 applyDescriptionVisibility(this.checked);
+            });
+        }
+
+        // Taxonomy root selector (tree view)
+        const treeRootSelect = document.getElementById('treeRootSelect');
+        if (treeRootSelect) {
+            treeRootSelect.addEventListener('change', function () {
+                currentTreeRoot = this.value;
+                renderView(taxonomyData, currentScores);
             });
         }
 
@@ -79,12 +89,32 @@
             .then(r => r.json())
             .then(data => {
                 taxonomyData = data;
+                populateTreeRootSelect(data);
                 renderView(data, null);
             })
             .catch(err => {
                 document.getElementById('taxonomyTree').innerHTML =
                     '<div class="alert alert-danger">Failed to load taxonomy: ' + err + '</div>';
             });
+    }
+
+    function populateTreeRootSelect(data) {
+        const sel = document.getElementById('treeRootSelect');
+        if (!sel || !data || data.length === 0) { return; }
+        sel.innerHTML = '';
+        data.forEach(function (root) {
+            const opt = document.createElement('option');
+            opt.value = root.code;
+            opt.textContent = root.name || root.code;
+            sel.appendChild(opt);
+        });
+        // Ensure currentTreeRoot is valid; if not, default to first root
+        if (data.some(r => r.code === currentTreeRoot)) {
+            sel.value = currentTreeRoot;
+        } else {
+            currentTreeRoot = data[0].code;
+            sel.value = currentTreeRoot;
+        }
     }
 
     // ── View switching ────────────────────────────────────────────────────────
@@ -104,6 +134,12 @@
         const ecGroup = document.getElementById('expandCollapseGroup');
         if (ecGroup) {
             ecGroup.style.display = (view === 'sunburst' || view === 'tree') ? 'none' : '';
+        }
+
+        // Show taxonomy root selector only in tree view
+        const treeRootGroup = document.getElementById('treeRootGroup');
+        if (treeRootGroup) {
+            treeRootGroup.style.display = (view === 'tree') ? '' : 'none';
         }
 
         renderView(taxonomyData, currentScores);
@@ -129,8 +165,9 @@
                 break;
             case 'tree':
                 if (window.TaxonomyViews) {
+                    const treeRoot = data.find(r => r.code === currentTreeRoot) || data[0];
                     window.TaxonomyViews.renderTreeDiagram(
-                        document.getElementById('taxonomyTree'), data, scores);
+                        document.getElementById('taxonomyTree'), [treeRoot], scores);
                 }
                 break;
         }
