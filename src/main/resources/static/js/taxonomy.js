@@ -7,17 +7,37 @@
     let currentScores = null;
     let currentView = 'list'; // 'list' | 'tabs' | 'sunburst' | 'tree'
 
+    // ── Interactive mode state ─────────────────────────────────────────────────
+    let interactiveMode = true;       // ON by default
+    let storedBusinessText = null;    // stored when user clicks Analyze in interactive mode
+    let evaluatedNodes = new Set();   // track which parent nodes have been evaluated
+
     // ── Bootstrap ─────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function () {
         loadTaxonomy();
         checkAiStatus();
         document.getElementById('analyzeBtn').addEventListener('click', function () {
             if (currentView === 'list' || currentView === 'tabs') {
-                runStreamingAnalysis();
+                const interactiveCb = document.getElementById('interactiveMode');
+                interactiveMode = interactiveCb ? interactiveCb.checked : false;
+                if (interactiveMode) {
+                    runInteractiveAnalysis();
+                } else {
+                    runStreamingAnalysis();
+                }
             } else {
                 runAnalysis();
             }
         });
+
+        // Sync interactive mode checkbox state
+        const interactiveCb = document.getElementById('interactiveMode');
+        if (interactiveCb) {
+            interactiveCb.addEventListener('change', function () {
+                interactiveMode = interactiveCb.checked;
+            });
+        }
+
         document.getElementById('expandAll').addEventListener('click', expandAll);
         document.getElementById('collapseAll').addEventListener('click', collapseAll);
 
@@ -295,8 +315,91 @@
         const children = wrapper.querySelector(':scope > .tax-children');
         if (!children) return;
         const isHidden = children.style.display === 'none';
+
+        if (isHidden && interactiveMode && storedBusinessText) {
+            const code = wrapper.dataset.code;
+            if (!evaluatedNodes.has(code)) {
+                evaluatedNodes.add(code);
+                evaluateNodeChildren(code, wrapper, toggleEl);
+                return; // don't toggle yet — wait for API response
+            }
+        }
+
         children.style.display = isHidden ? '' : 'none';
         toggleEl.textContent = isHidden ? '▼' : '▶';
+    }
+
+    function evaluateNodeChildren(parentCode, wrapper, toggle) {
+        wrapper.classList.add('tax-evaluating');
+
+        fetch('/api/analyze-node?parentCode=' + encodeURIComponent(parentCode)
+              + '&businessText=' + encodeURIComponent(storedBusinessText))
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(scores => {
+                wrapper.classList.remove('tax-evaluating');
+                wrapper.classList.remove('tax-has-unevaluated');
+
+                // Apply scores to children
+                Object.entries(scores).forEach(([code, pct]) => {
+                    const childEl = wrapper.querySelector('[data-code="' + CSS.escape(code) + '"]');
+                    if (childEl) {
+                        const childHeader = childEl.querySelector(':scope > .tax-node-header');
+                        if (pct > 0) {
+                            const alpha = Math.min(pct / 100, 1).toFixed(2);
+                            childHeader.style.backgroundColor = 'rgba(0,128,0,' + alpha + ')';
+                            if (pct >= 60) { childHeader.style.color = '#fff'; }
+                        } else {
+                            childHeader.style.backgroundColor = '';
+                            childHeader.style.color = '';
+                        }
+
+                        // Add/update percentage badge
+                        let badge = childHeader.querySelector('.tax-pct');
+                        if (!badge) {
+                            badge = document.createElement('span');
+                            badge.className = 'tax-pct';
+                            childHeader.appendChild(badge);
+                        }
+                        badge.textContent = pct + '%';
+
+                        // Mark children that have their own children as "expandable for evaluation"
+                        const grandchildren = childEl.querySelector(':scope > .tax-children');
+                        if (grandchildren && pct > 0) {
+                            childEl.classList.add('tax-has-unevaluated');
+                        }
+                    }
+                });
+
+                // Now expand the node
+                const children = wrapper.querySelector(':scope > .tax-children');
+                if (children) {
+                    children.style.display = '';
+                    toggle.textContent = '▼';
+                }
+
+                // Update currentScores
+                if (!currentScores) { currentScores = {}; }
+                Object.assign(currentScores, scores);
+
+                // Log to console
+                const matched = Object.entries(scores).filter(([k, v]) => v > 0);
+                console.log('[Taxonomy] Interactive eval of', parentCode, ':', matched.length, 'matches', scores);
+            })
+            .catch(err => {
+                wrapper.classList.remove('tax-evaluating');
+                evaluatedNodes.delete(parentCode); // allow retry
+                console.error('[Taxonomy] Failed to evaluate', parentCode, err);
+                showStatus('danger', 'Failed to evaluate ' + parentCode + ': ' + err.message);
+                // Still expand the node (without scores)
+                const children = wrapper.querySelector(':scope > .tax-children');
+                if (children) {
+                    children.style.display = '';
+                    toggle.textContent = '▼';
+                }
+            });
     }
 
     function expandAll() {
@@ -372,6 +475,30 @@
                 setAnalyzing(false);
                 showStatus('danger', 'Analysis failed: ' + err.message);
             });
+    }
+
+    // ── Interactive analysis (stores text, renders tree without LLM calls) ─────
+    function runInteractiveAnalysis() {
+        const text = document.getElementById('businessText').value.trim();
+        if (!text) {
+            showStatus('warning', 'Please enter a business requirement text before analyzing.');
+            return;
+        }
+
+        // Reset interactive state
+        storedBusinessText = text;
+        evaluatedNodes = new Set();
+        currentScores = {};
+
+        // Render the tree without scores; mark all expandable nodes as unevaluated
+        renderView(taxonomyData, null);
+        document.querySelectorAll('.tax-node').forEach(function (el) {
+            if (el.querySelector(':scope > .tax-children')) {
+                el.classList.add('tax-has-unevaluated');
+            }
+        });
+
+        showStatus('info', '🔍 Interactive Mode: expand nodes to evaluate them with AI.');
     }
 
     // ── Streaming analysis (list / tabs views) ────────────────────────────────

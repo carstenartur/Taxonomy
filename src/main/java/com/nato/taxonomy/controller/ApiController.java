@@ -4,6 +4,7 @@ import com.nato.taxonomy.dto.AnalysisRequest;
 import com.nato.taxonomy.dto.AnalysisResult;
 import com.nato.taxonomy.dto.AiStatusResponse;
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
+import com.nato.taxonomy.model.TaxonomyNode;
 import com.nato.taxonomy.service.AnalysisEventCallback;
 import com.nato.taxonomy.service.LlmService;
 import com.nato.taxonomy.service.SearchService;
@@ -149,6 +150,21 @@ public class ApiController {
         } catch (Exception e) {
             emitter.completeWithError(e);
         }
+    }
+
+    @GetMapping("/analyze-node")
+    public ResponseEntity<Map<String, Integer>> analyzeNode(
+            @RequestParam String parentCode,
+            @RequestParam String businessText) {
+        if (businessText == null || businessText.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        List<TaxonomyNode> children = taxonomyService.getChildrenOf(parentCode);
+        if (children.isEmpty()) {
+            return ResponseEntity.ok(Map.of());
+        }
+        Map<String, Integer> scores = llmService.analyzeSingleBatch(businessText, children);
+        return ResponseEntity.ok(scores);
     }
 
     @GetMapping("/search")
