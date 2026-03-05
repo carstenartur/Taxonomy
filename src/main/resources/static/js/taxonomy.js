@@ -90,6 +90,7 @@
 
         // Diagnostics panel
         loadDiagnostics();
+        loadProviderDropdown();
         const refreshDiagBtn = document.getElementById('refreshDiagnostics');
         if (refreshDiagBtn) {
             refreshDiagBtn.addEventListener('click', loadDiagnostics);
@@ -97,6 +98,10 @@
         const testLlmBtn = document.getElementById('testLlmConnection');
         if (testLlmBtn) {
             testLlmBtn.addEventListener('click', testLlmConnection);
+        }
+        const providerSelect = document.getElementById('llmProviderSelect');
+        if (providerSelect) {
+            providerSelect.addEventListener('change', onProviderSelectChange);
         }
     });
 
@@ -177,26 +182,132 @@
 
     function testLlmConnection() {
         const btn = document.getElementById('testLlmConnection');
+        const testPanel = document.getElementById('diagnosticsTestPanel');
+        const testTitle = document.getElementById('diagnosticsTestTitle');
+        const stepsList = document.getElementById('diagnosticsTestSteps');
+
         if (btn) { btn.disabled = true; btn.textContent = '⏳ Testing…'; }
-        const testText = 'Test connection: business process management';
-        fetch('/api/analyze-node?parentCode=BP&businessText=' + encodeURIComponent(testText))
+        if (testPanel) { testPanel.classList.remove('d-none'); }
+        if (stepsList) { stepsList.innerHTML = ''; }
+
+        // Pre-populate step placeholders
+        const stepNames = ['Configuration', 'DNS Resolution', 'HTTPS Connectivity', 'API Authentication', 'Full Round-Trip'];
+        if (stepsList) {
+            stepNames.forEach(function (name, idx) {
+                const li = document.createElement('li');
+                li.id = 'diag-step-' + (idx + 1);
+                li.className = 'mb-1';
+                li.innerHTML = '<span class="diag-step-icon">⏳</span> <strong>' + escapeHtml(name) + '</strong>: <span class="diag-step-msg text-muted">Waiting…</span>';
+                stepsList.appendChild(li);
+            });
+        }
+
+        const activeProviderName = (function () {
+            const sel = document.getElementById('llmProviderSelect');
+            return sel ? sel.options[sel.selectedIndex]?.text || 'provider' : 'provider';
+        })();
+        if (testTitle) { testTitle.textContent = '🔧 Testing ' + activeProviderName + ' connection…'; }
+
+        // Auto-close the EventSource after 35 seconds to prevent hanging
+        let autoAbortTimer = setTimeout(function () {
+            evtSource.close();
+            if (btn) { btn.disabled = false; btn.textContent = '🧪 Test Connection'; }
+        }, 35000);
+
+        const evtSource = new EventSource('/api/diagnostics/test');
+        evtSource.addEventListener('step', function (e) {
+            try {
+                const step = JSON.parse(e.data);
+                renderDiagnosticStep(step);
+            } catch (err) {
+                console.error('[Taxonomy] Failed to parse step event', err);
+            }
+        });
+        // The 'error' event fires both for actual errors and when the server closes the connection normally.
+        evtSource.addEventListener('error', function () {
+            evtSource.close();
+            clearTimeout(autoAbortTimer);
+            if (btn) { btn.disabled = false; btn.textContent = '🧪 Test Connection'; }
+            loadDiagnostics();
+        });
+    }
+
+    function renderDiagnosticStep(step) {
+        const li = document.getElementById('diag-step-' + step.step);
+        if (!li) { return; }
+        const iconMap = { running: '⏳', pass: '✅', fail: '❌', skip: '⏭️' };
+        const icon = iconMap[step.status] || '❓';
+        const msgClass = step.status === 'fail' ? 'text-danger' : step.status === 'pass' ? 'text-success' : 'text-muted';
+        const duration = step.durationMs > 0 ? ' <small class="text-muted">(' + step.durationMs + 'ms)</small>' : '';
+        li.innerHTML = '<span class="diag-step-icon">' + icon + '</span> <strong>' +
+            escapeHtml(step.name) + '</strong>: <span class="diag-step-msg ' + msgClass + '">' +
+            escapeHtml(step.message) + '</span>' + duration;
+    }
+
+    // ── Provider dropdown ─────────────────────────────────────────────────────
+
+    function loadProviderDropdown() {
+        fetch('/api/providers')
+            .then(r => r.json())
+            .then(providers => {
+                const sel = document.getElementById('llmProviderSelect');
+                const badge = document.getElementById('llmProviderOverrideBadge');
+                if (!sel) { return; }
+                sel.innerHTML = '';
+                // Add a "default" option at the top
+                const defaultOpt = document.createElement('option');
+                defaultOpt.value = '';
+                defaultOpt.textContent = '— Default (auto-detect) —';
+                sel.appendChild(defaultOpt);
+                providers.forEach(function (p) {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    let label = p.name;
+                    if (p.requiresKey && !p.hasApiKey) {
+                        label += ' (no key)';
+                    }
+                    opt.textContent = label;
+                    if (p.active) {
+                        opt.selected = true;
+                        if (badge) { badge.classList.remove('d-none'); }
+                    }
+                    sel.appendChild(opt);
+                });
+                // If none was explicitly set to active via override, select default
+                const hasOverride = providers.some(p => p.active);
+                if (!hasOverride) {
+                    sel.value = '';
+                    if (badge) { badge.classList.add('d-none'); }
+                }
+            })
+            .catch(err => console.error('[Taxonomy] Failed to load providers', err));
+    }
+
+    function onProviderSelectChange() {
+        const sel = document.getElementById('llmProviderSelect');
+        const badge = document.getElementById('llmProviderOverrideBadge');
+        if (!sel) { return; }
+        const value = sel.value;
+        fetch('/api/providers/active', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider: value || null })
+        })
             .then(r => r.json())
             .then(result => {
-                console.log('[Taxonomy] Test connection result:', result);
-                if (result.error) {
-                    showStatus('warning', '⚠️ Test connection error: ' + result.error);
-                } else {
-                    showStatus('success', '✅ Test connection successful via ' + (result.provider || 'unknown provider') + '.');
+                console.log('[Taxonomy] Provider changed to:', result.active);
+                if (badge) {
+                    if (value) {
+                        badge.classList.remove('d-none');
+                    } else {
+                        badge.classList.add('d-none');
+                    }
                 }
+                // Refresh diagnostics and AI status after provider change
                 loadDiagnostics();
+                checkAiStatus();
             })
-            .catch(err => {
-                console.error('[Taxonomy] Test connection failed', err);
-                showStatus('danger', '❌ Test connection failed: ' + err.message);
-            })
-            .finally(() => {
-                if (btn) { btn.disabled = false; btn.textContent = '🧪 Test Connection'; }
-            });
+            .catch(err => console.error('[Taxonomy] Failed to set provider', err));
     }
 
     // ── Load taxonomy tree from API ───────────────────────────────────────────

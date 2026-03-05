@@ -121,8 +121,17 @@
             <!-- LLM Diagnostics Panel (collapsible) -->
             <details id="diagnosticsPanel" class="mt-2 diagnostics-panel">
                 <summary class="fw-semibold" style="cursor:pointer;">&#128295; LLM Diagnostics</summary>
+                <div class="mt-1 d-flex align-items-center gap-2 flex-wrap">
+                    <label for="llmProviderSelect" class="form-label mb-0 text-nowrap small fw-semibold">Provider:</label>
+                    <select id="llmProviderSelect" class="form-select form-select-sm" style="max-width:220px;" aria-label="Select LLM provider"></select>
+                    <span id="llmProviderOverrideBadge" class="badge bg-warning text-dark d-none">Override</span>
+                </div>
                 <div id="diagnosticsContent" class="mt-1 border rounded bg-light p-2" style="font-size:0.85em;">
                     <div class="text-muted">Loading diagnostics…</div>
+                </div>
+                <div id="diagnosticsTestPanel" class="mt-1 border rounded bg-light p-2 d-none" style="font-size:0.85em;">
+                    <div id="diagnosticsTestTitle" class="fw-semibold mb-1">🔧 Testing connection…</div>
+                    <ol id="diagnosticsTestSteps" class="mb-0 ps-3"></ol>
                 </div>
                 <div class="mt-1 d-flex gap-2 flex-wrap">
                     <button id="refreshDiagnostics" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>

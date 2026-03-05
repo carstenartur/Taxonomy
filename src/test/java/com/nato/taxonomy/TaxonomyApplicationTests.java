@@ -233,4 +233,61 @@ class TaxonomyApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error").isString());
     }
+
+    @Test
+    void providersEndpointReturnsAllProviders() throws Exception {
+        mockMvc.perform(get("/api/providers").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(6)))
+                .andExpect(jsonPath("$[0].id").isString())
+                .andExpect(jsonPath("$[0].name").isString())
+                .andExpect(jsonPath("$[0].hasApiKey").isBoolean())
+                .andExpect(jsonPath("$[0].requiresKey").isBoolean())
+                .andExpect(jsonPath("$[0].active").isBoolean());
+    }
+
+    @Test
+    void providersEndpointListsKnownProviders() throws Exception {
+        mockMvc.perform(get("/api/providers").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == 'GEMINI')]").exists())
+                .andExpect(jsonPath("$[?(@.id == 'OPENAI')]").exists())
+                .andExpect(jsonPath("$[?(@.id == 'LOCAL_ONNX')]").exists());
+    }
+
+    @Test
+    void setActiveProviderEndpointSwitchesProvider() throws Exception {
+        // Switch to OPENAI
+        mockMvc.perform(post("/api/providers/active")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"provider\":\"OPENAI\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.active").value("OPENAI"))
+                .andExpect(jsonPath("$.override").value("OPENAI"));
+
+        // Clear override (restore default)
+        mockMvc.perform(post("/api/providers/active")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"provider\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.override", org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void setActiveProviderEndpointReturnsBadRequestForUnknownProvider() throws Exception {
+        mockMvc.perform(post("/api/providers/active")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"provider\":\"UNKNOWN_PROVIDER_XYZ\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void diagnosticsTestEndpointReturnsEventStream() throws Exception {
+        mockMvc.perform(get("/api/diagnostics/test")
+                        .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM_VALUE));
+    }
 }

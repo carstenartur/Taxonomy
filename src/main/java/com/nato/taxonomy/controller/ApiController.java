@@ -9,6 +9,7 @@ import com.nato.taxonomy.model.TaxonomyNode;
 import com.nato.taxonomy.service.AnalysisEventCallback;
 import com.nato.taxonomy.service.HybridSearchService;
 import com.nato.taxonomy.service.LocalEmbeddingService;
+import com.nato.taxonomy.service.LlmProvider;
 import com.nato.taxonomy.service.LlmService;
 import com.nato.taxonomy.service.PromptTemplateService;
 import com.nato.taxonomy.service.SearchService;
@@ -196,6 +197,74 @@ public class ApiController {
     @GetMapping("/diagnostics")
     public ResponseEntity<Map<String, Object>> diagnostics() {
         return ResponseEntity.ok(llmService.getDiagnostics());
+    }
+
+    // ── Provider management endpoints ─────────────────────────────────────────
+
+    /**
+     * Returns the list of all supported LLM providers with their API-key status
+     * and which one is currently active.
+     */
+    @GetMapping("/providers")
+    public ResponseEntity<List<Map<String, Object>>> getProviders() {
+        return ResponseEntity.ok(llmService.getProviderList());
+    }
+
+    /**
+     * Sets the active LLM provider at runtime (in-memory, no persistence).
+     * Pass {@code {"provider": "GEMINI"}} to switch to Gemini.
+     * Pass {@code {"provider": null}} or omit the field to clear the override.
+     */
+    @PostMapping("/providers/active")
+    public ResponseEntity<Map<String, Object>> setActiveProvider(
+            @RequestBody Map<String, String> body) {
+        String providerName = body.get("provider");
+        if (providerName == null || providerName.isBlank()) {
+            llmService.setRuntimeProviderOverride(null);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("active", llmService.getActiveProvider().name());
+            result.put("override", null);
+            return ResponseEntity.ok(result);
+        }
+        try {
+            LlmProvider provider = LlmProvider.valueOf(providerName.trim().toUpperCase());
+            llmService.setRuntimeProviderOverride(provider);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("active", provider.name());
+            result.put("override", provider.name());
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Multi-step diagnostics test endpoint (Server-Sent Events).
+     * Streams each test step result as a JSON event named {@code step}.
+     * Steps: Configuration → DNS → HTTPS → Auth → Full Round-Trip.
+     */
+    @GetMapping(value = "/diagnostics/test", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter testDiagnostics() {
+        SseEmitter emitter = new SseEmitter(60_000L);
+        analysisExecutor.execute(() -> {
+            try {
+                llmService.runDiagnosticTest(stepResult -> {
+                    try {
+                        emitter.send(SseEmitter.event()
+                                .name("step")
+                                .data(objectMapper.writeValueAsString(stepResult)));
+                    } catch (IOException e) {
+                        emitter.completeWithError(e);
+                    } catch (Exception e) {
+                        emitter.completeWithError(e);
+                    }
+                });
+                emitter.complete();
+            } catch (Exception e) {
+                emitter.completeWithError(e);
+            }
+        });
+        return emitter;
     }
 
     @GetMapping("/search")
