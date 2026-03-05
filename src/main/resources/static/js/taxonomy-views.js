@@ -36,7 +36,9 @@
         var pct = scores ? scores[nodeData.code] : undefined;
         var html = '<strong>' + esc(nodeData.code) + '</strong>';
         if (nodeData.name) { html += ' &ndash; ' + esc(nodeData.name); }
-        if (nodeData.description) { html += '<br><small>' + esc(nodeData.description) + '</small>'; }
+        var showDescChk = document.getElementById('showDescriptions');
+        var showDesc = !showDescChk || showDescChk.checked;
+        if (showDesc && nodeData.description) { html += '<br><small>' + esc(nodeData.description) + '</small>'; }
         if (pct !== undefined && pct > 0) {
             html += '<br><span class="tax-tooltip-pct">Match: ' + pct + '%</span>';
         }

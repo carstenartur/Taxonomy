@@ -21,6 +21,15 @@
         document.getElementById('expandAll').addEventListener('click', expandAll);
         document.getElementById('collapseAll').addEventListener('click', collapseAll);
 
+        // Description visibility toggle
+        const showDescriptionsChk = document.getElementById('showDescriptions');
+        if (showDescriptionsChk) {
+            applyDescriptionVisibility(showDescriptionsChk.checked);
+            showDescriptionsChk.addEventListener('change', function () {
+                applyDescriptionVisibility(this.checked);
+            });
+        }
+
         // View switcher buttons
         ['viewList', 'viewTabs', 'viewSunburst', 'viewTree'].forEach(function (id) {
             const btn = document.getElementById(id);
@@ -31,6 +40,12 @@
             }
         });
     });
+
+    function applyDescriptionVisibility(show) {
+        const tree = document.getElementById('taxonomyTree');
+        if (!tree) { return; }
+        tree.classList.toggle('hide-descriptions', !show);
+    }
 
     // ── Check AI availability ─────────────────────────────────────────────────
     function checkAiStatus() {
