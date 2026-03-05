@@ -181,7 +181,13 @@ public class ApiController {
         result.put("rawResponse", detail.getRawResponse());
         result.put("provider", detail.getProvider());
         result.put("durationMs", detail.getDurationMs());
+        result.put("error", detail.getError());
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/diagnostics")
+    public ResponseEntity<Map<String, Object>> diagnostics() {
+        return ResponseEntity.ok(llmService.getDiagnostics());
     }
 
     @GetMapping("/search")

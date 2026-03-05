@@ -118,6 +118,18 @@
                 </div>
             </details>
 
+            <!-- LLM Diagnostics Panel (collapsible) -->
+            <details id="diagnosticsPanel" class="mt-2 diagnostics-panel">
+                <summary class="fw-semibold" style="cursor:pointer;">&#128295; LLM Diagnostics</summary>
+                <div id="diagnosticsContent" class="mt-1 border rounded bg-light p-2" style="font-size:0.85em;">
+                    <div class="text-muted">Loading diagnostics…</div>
+                </div>
+                <div class="mt-1 d-flex gap-2 flex-wrap">
+                    <button id="refreshDiagnostics" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                    <button id="testLlmConnection" class="btn btn-sm btn-outline-primary">&#129514; Test Connection</button>
+                </div>
+            </details>
+
             <!-- Prompt Templates editor (collapsible) -->
             <details id="promptEditor" class="mt-3">
                 <summary class="fw-semibold" style="cursor:pointer;">&#128221; Prompt Templates</summary>

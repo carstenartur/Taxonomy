@@ -13,6 +13,7 @@ public class LlmCallDetail {
     private String rawResponse;
     private String provider;
     private long durationMs;
+    private String error;
 
     public LlmCallDetail() {}
 
@@ -30,4 +31,7 @@ public class LlmCallDetail {
 
     public long getDurationMs() { return durationMs; }
     public void setDurationMs(long durationMs) { this.durationMs = durationMs; }
+
+    public String getError() { return error; }
+    public void setError(String error) { this.error = error; }
 }
