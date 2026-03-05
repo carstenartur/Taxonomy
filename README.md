@@ -89,6 +89,51 @@ Every push triggers the **CI / CD** GitHub Actions workflow:
 | **Publish Docker Image** | Pushes to GitHub Container Registry (`ghcr.io`) |
 | **Deploy to Render** | Triggers a Render deploy hook (if secret is set) |
 
+## REST API Reference
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `GET /api/taxonomy` | GET | Full taxonomy tree (JSON) |
+| `POST /api/analyze` | POST | Analyze business text (all providers) |
+| `GET /api/analyze-stream` | GET | SSE streaming analysis |
+| `GET /api/search?q=` | GET | Full-text Lucene search |
+| `GET /api/search/semantic?q=` | GET | Semantic KNN search (requires LOCAL_ONNX or embedding enabled) |
+| `GET /api/search/hybrid?q=` | GET | Hybrid: fulltext + semantic via Reciprocal Rank Fusion |
+| `GET /api/search/similar/{code}` | GET | Find semantically similar taxonomy nodes |
+| `GET /api/embedding/status` | GET | Embedding model status (enabled, available, indexedNodes) |
+| `GET /api/ai-status` | GET | LLM provider availability |
+| `GET /api/diagnostics` | GET | Provider diagnostics and call statistics |
+
+### Semantic and Hybrid Search
+
+The semantic and hybrid search endpoints use the pre-built Lucene HNSW vector index
+(384-dim, COSINE similarity) to find taxonomy nodes by meaning rather than keywords.
+
+```bash
+# Semantic search — ranked by cosine similarity
+curl "http://localhost:8080/api/search/semantic?q=satellite+communications&maxResults=10"
+
+# Hybrid search — fulltext + semantic fused via Reciprocal Rank Fusion (RRF)
+curl "http://localhost:8080/api/search/hybrid?q=voice+communications&maxResults=10"
+
+# Find similar nodes to BP (Business Processes root)
+curl "http://localhost:8080/api/search/similar/BP?topK=5"
+
+# Check embedding status
+curl "http://localhost:8080/api/embedding/status"
+```
+
+### Embedding Configuration
+
+| Environment Variable | Default | Description |
+|---|---|---|
+| `JGIT_EMBEDDING_ENABLED` | `true` | Enable/disable embedding globally |
+| `JGIT_EMBEDDING_MODEL_DIR` | *(empty — DJL auto-download)* | Path to pre-downloaded model directory |
+| `JGIT_EMBEDDING_MODEL_NAME` | `djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2` | DJL model URL |
+
+When `JGIT_EMBEDDING_ENABLED=false`, semantic and hybrid search return empty/fulltext-only
+results without error — the application continues to work as a pure taxonomy browser.
+
 ### One-click deployment on Render.com
 
 1. Create a free account at <https://render.com> and connect your GitHub repo.

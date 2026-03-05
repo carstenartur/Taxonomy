@@ -845,7 +845,7 @@ public class LlmService {
         result.put("apiKeyConfigured", apiKeyConfigured);
         result.put("apiKeyPrefix",     apiKeyPrefix);
         result.put("localModel",       provider == LlmProvider.LOCAL_ONNX
-                ? LocalEmbeddingService.MODEL_URL : null);
+                ? LocalEmbeddingService.DEFAULT_MODEL_URL : null);
         result.put("lastCallTime",     lastCallTime != null ? lastCallTime.toString() : null);
         result.put("lastCallSuccess",  lastCallSuccess);
         result.put("lastError",        lastError);
