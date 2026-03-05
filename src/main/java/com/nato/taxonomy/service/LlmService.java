@@ -344,6 +344,15 @@ public class LlmService {
         }
     }
 
+    /**
+     * Evaluates a single batch of nodes against the business text.
+     * Makes exactly ONE LLM API call. Does NOT recurse into children.
+     * Used by interactive mode.
+     */
+    public Map<String, Integer> analyzeSingleBatch(String businessText, List<TaxonomyNode> nodes) {
+        return callLlm(businessText, nodes);
+    }
+
     private Map<String, Integer> callLlm(String businessText, List<TaxonomyNode> nodes) {
         try {
             return callLlmPropagating(businessText, nodes);
