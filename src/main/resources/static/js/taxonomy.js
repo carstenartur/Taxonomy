@@ -6,6 +6,7 @@
     let taxonomyData = [];
     let currentScores = null;
     let currentView = 'list'; // 'list' | 'tabs' | 'sunburst' | 'tree'
+    let currentTreeRoot = 'BP'; // code of the taxonomy shown in tree view
 
     // ── Bootstrap ─────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function () {
@@ -21,6 +22,24 @@
         document.getElementById('expandAll').addEventListener('click', expandAll);
         document.getElementById('collapseAll').addEventListener('click', collapseAll);
 
+        // Description visibility toggle
+        const showDescriptionsChk = document.getElementById('showDescriptions');
+        if (showDescriptionsChk) {
+            applyDescriptionVisibility(showDescriptionsChk.checked);
+            showDescriptionsChk.addEventListener('change', function () {
+                applyDescriptionVisibility(this.checked);
+            });
+        }
+
+        // Taxonomy root selector (tree view)
+        const treeRootSelect = document.getElementById('treeRootSelect');
+        if (treeRootSelect) {
+            treeRootSelect.addEventListener('change', function () {
+                currentTreeRoot = this.value;
+                renderView(taxonomyData, currentScores);
+            });
+        }
+
         // View switcher buttons
         ['viewList', 'viewTabs', 'viewSunburst', 'viewTree'].forEach(function (id) {
             const btn = document.getElementById(id);
@@ -31,6 +50,12 @@
             }
         });
     });
+
+    function applyDescriptionVisibility(show) {
+        const tree = document.getElementById('taxonomyTree');
+        if (!tree) { return; }
+        tree.classList.toggle('hide-descriptions', !show);
+    }
 
     // ── Check AI availability ─────────────────────────────────────────────────
     function checkAiStatus() {
@@ -64,12 +89,32 @@
             .then(r => r.json())
             .then(data => {
                 taxonomyData = data;
+                populateTreeRootSelect(data);
                 renderView(data, null);
             })
             .catch(err => {
                 document.getElementById('taxonomyTree').innerHTML =
                     '<div class="alert alert-danger">Failed to load taxonomy: ' + err + '</div>';
             });
+    }
+
+    function populateTreeRootSelect(data) {
+        const sel = document.getElementById('treeRootSelect');
+        if (!sel || !data || data.length === 0) { return; }
+        sel.innerHTML = '';
+        data.forEach(function (root) {
+            const opt = document.createElement('option');
+            opt.value = root.code;
+            opt.textContent = root.name || root.code;
+            sel.appendChild(opt);
+        });
+        // Ensure currentTreeRoot is valid; if not, default to first root
+        if (data.some(r => r.code === currentTreeRoot)) {
+            sel.value = currentTreeRoot;
+        } else {
+            currentTreeRoot = data[0].code;
+            sel.value = currentTreeRoot;
+        }
     }
 
     // ── View switching ────────────────────────────────────────────────────────
@@ -89,6 +134,12 @@
         const ecGroup = document.getElementById('expandCollapseGroup');
         if (ecGroup) {
             ecGroup.style.display = (view === 'sunburst' || view === 'tree') ? 'none' : '';
+        }
+
+        // Show taxonomy root selector only in tree view
+        const treeRootGroup = document.getElementById('treeRootGroup');
+        if (treeRootGroup) {
+            treeRootGroup.style.display = (view === 'tree') ? '' : 'none';
         }
 
         renderView(taxonomyData, currentScores);
@@ -114,8 +165,9 @@
                 break;
             case 'tree':
                 if (window.TaxonomyViews) {
+                    const treeRoot = data.find(r => r.code === currentTreeRoot) || data[0];
                     window.TaxonomyViews.renderTreeDiagram(
-                        document.getElementById('taxonomyTree'), data, scores);
+                        document.getElementById('taxonomyTree'), [treeRoot], scores);
                 }
                 break;
         }
@@ -325,8 +377,12 @@
             return;
         }
 
+        console.log('[Taxonomy] Starting analysis with text:', text.substring(0, 100) + '...');
+        const analysisStart = new Date();
+
         setAnalyzing(true);
         clearStatus();
+        clearAnalysisLog();
 
         fetch('/api/analyze', {
             method: 'POST',
@@ -343,11 +399,21 @@
                 currentScores = result.scores;
                 renderView(taxonomyData, currentScores);
 
+                console.log('[Taxonomy] Analysis result:', result);
+                console.log('[Taxonomy] Scores:', result.scores);
+                const matchedEntries = Object.entries(result.scores).filter(([k, v]) => v > 0);
+                console.log('[Taxonomy] Matched nodes:', matchedEntries);
+
                 const matchedCount = Object.values(result.scores).filter(v => v > 0).length;
 
                 if (result.status === 'SUCCESS') {
-                    showStatus('success',
-                        'Analysis complete. ' + matchedCount + ' node(s) matched.');
+                    if (matchedCount === 0) {
+                        showStatus('warning',
+                            '⚠️ Analysis returned 0 matches. This may indicate the LLM API key is not configured or the LLM returned empty results. Check the server logs for details.');
+                    } else {
+                        showStatus('success',
+                            '✅ Analysis complete. ' + matchedCount + ' node(s) matched.');
+                    }
                 } else if (result.status === 'PARTIAL') {
                     showStatus('warning',
                         '⚠️ Partial results — ' + (result.errorMessage || 'Analysis incomplete.') +
@@ -356,8 +422,13 @@
                     showStatus('danger',
                         '❌ Analysis failed: ' + (result.errorMessage || 'Unknown error.'));
                 } else {
-                    showStatus('success',
-                        'Analysis complete. ' + matchedCount + ' node(s) matched.');
+                    if (matchedCount === 0) {
+                        showStatus('warning',
+                            '⚠️ Analysis returned 0 matches. This may indicate the LLM API key is not configured or the LLM returned empty results. Check the server logs for details.');
+                    } else {
+                        showStatus('success',
+                            '✅ Analysis complete. ' + matchedCount + ' node(s) matched.');
+                    }
                 }
 
                 if (result.warnings && result.warnings.length > 0) {
@@ -367,11 +438,57 @@
                     document.getElementById('statusArea').innerHTML +=
                         '<ul class="mb-0 mt-1 ps-3" style="font-size:0.9em">' + warningList + '</ul>';
                 }
+
+                // Update analysis log panel
+                updateAnalysisLog({
+                    timestamp: analysisStart,
+                    totalNodes: Object.keys(result.scores).length,
+                    matchedEntries: matchedEntries,
+                    warnings: result.warnings || [],
+                    status: result.status
+                });
             })
             .catch(err => {
                 setAnalyzing(false);
                 showStatus('danger', 'Analysis failed: ' + err.message);
+                updateAnalysisLog({
+                    timestamp: analysisStart,
+                    totalNodes: 0,
+                    matchedEntries: [],
+                    warnings: ['Error: ' + err.message],
+                    status: 'ERROR'
+                });
             });
+    }
+
+    function clearAnalysisLog() {
+        const log = document.getElementById('analysisLog');
+        if (log) { log.style.display = 'none'; }
+        const logContent = document.getElementById('analysisLogContent');
+        if (logContent) { logContent.innerHTML = ''; }
+    }
+
+    function updateAnalysisLog(info) {
+        const logEl = document.getElementById('analysisLog');
+        const logContent = document.getElementById('analysisLogContent');
+        if (!logEl || !logContent) { return; }
+
+        const timeStr = info.timestamp.toLocaleTimeString();
+        const matchedList = info.matchedEntries.length > 0
+            ? info.matchedEntries.map(([k, v]) => escapeHtml(k) + ': ' + v + '%').join(', ')
+            : '(none)';
+        const warnHtml = info.warnings.length > 0
+            ? '<div class="text-warning mt-1"><strong>Warnings:</strong><ul class="mb-0 ps-3">' +
+              info.warnings.map(w => '<li>' + escapeHtml(w) + '</li>').join('') + '</ul></div>'
+            : '';
+
+        logContent.innerHTML =
+            '<div><strong>Time:</strong> ' + timeStr + '</div>' +
+            '<div><strong>Nodes evaluated:</strong> ' + info.totalNodes + '</div>' +
+            '<div><strong>Status:</strong> ' + escapeHtml(info.status || 'unknown') + '</div>' +
+            '<div><strong>Matched codes (' + info.matchedEntries.length + '):</strong> ' + matchedList + '</div>' +
+            warnHtml;
+        logEl.style.display = '';
     }
 
     // ── Streaming analysis (list / tabs views) ────────────────────────────────
