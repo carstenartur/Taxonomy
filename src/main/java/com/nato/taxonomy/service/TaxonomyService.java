@@ -43,16 +43,11 @@ public class TaxonomyService {
     }
 
     private final TaxonomyNodeRepository repository;
-    private final SearchService searchService;
-    private final LocalEmbeddingService localEmbeddingService;
     private final TaxonomyRelationRepository relationRepository;
 
-    public TaxonomyService(TaxonomyNodeRepository repository, SearchService searchService,
-                           LocalEmbeddingService localEmbeddingService,
+    public TaxonomyService(TaxonomyNodeRepository repository,
                            TaxonomyRelationRepository relationRepository) {
         this.repository = repository;
-        this.searchService = searchService;
-        this.localEmbeddingService = localEmbeddingService;
         this.relationRepository = relationRepository;
     }
 
@@ -143,13 +138,11 @@ public class TaxonomyService {
                     loadRelationsFromCsv(nodeMap);
                 }
 
-                // 5. Build Lucene full-text search index
-                searchService.buildIndex(nodeMap.values());
-                log.info("Full-text search index built successfully.");
+                // 5. Hibernate Search auto-indexes nodes on JPA persist; log the count.
+                log.info("Full-text and vector index will be populated automatically by Hibernate Search.");
 
-                // 6. Invalidate the KNN vector index so it is rebuilt lazily on first
-                //    LOCAL_ONNX use (safe no-op when LOCAL_ONNX is not configured)
-                localEmbeddingService.invalidateVectorIndex();
+                // 6. No explicit KNN index invalidation needed – Hibernate Search manages the index.
+                log.debug("Hibernate Search manages the vector index; no manual invalidation required.");
             }
         } catch (Exception e) {
             log.error("Failed to load taxonomy from Excel", e);
