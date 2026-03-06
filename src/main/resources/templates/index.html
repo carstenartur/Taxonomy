@@ -131,6 +131,27 @@
                 </div>
             </div>
 
+            <!-- Relation Proposals Panel -->
+            <div id="proposalsPanel" class="mt-3">
+                <div class="card shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold">🔍 Relation Proposals</span>
+                        <span id="proposalPendingBadge" class="badge bg-warning text-dark proposal-pending-badge">0 pending</span>
+                    </div>
+                    <div class="card-body p-2">
+                        <div class="btn-group btn-group-sm mb-2 proposal-filter-group" role="group" aria-label="Proposal status filter">
+                            <button id="filterPending"  class="btn btn-warning"          data-filter="PENDING"  aria-pressed="true">Pending</button>
+                            <button id="filterAll"      class="btn btn-outline-secondary" data-filter="ALL"      aria-pressed="false">All</button>
+                            <button id="filterAccepted" class="btn btn-outline-success"  data-filter="ACCEPTED" aria-pressed="false">Accepted</button>
+                            <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false">Rejected</button>
+                        </div>
+                        <div id="proposalsTableContainer" class="table-responsive">
+                            <div class="text-muted small p-2">Loading proposals&hellip;</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- LLM Communication Log (collapsible) -->
             <details id="llmCommLog" class="mt-2" open>
                 <summary class="fw-semibold" style="cursor:pointer;">&#128225; LLM Communication Log</summary>
@@ -185,6 +206,41 @@
 <script th:src="@{/js/taxonomy-views.js}"></script>
 <script th:src="@{/js/taxonomy-export.js}"></script>
 <script th:src="@{/js/taxonomy.js}"></script>
+
+<!-- Propose Relations Modal -->
+<div class="modal fade" id="proposeRelationsModal" tabindex="-1" aria-labelledby="proposeRelationsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="proposeRelationsModalLabel">🔗 Propose Relations</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2">Generate relation proposals for node <strong id="proposeNodeCode"></strong>:</p>
+                <label for="proposeRelationType" class="form-label">Relation Type</label>
+                <select id="proposeRelationType" class="form-select" aria-label="Select relation type">
+                    <option value="REALIZES">REALIZES</option>
+                    <option value="SUPPORTS">SUPPORTS</option>
+                    <option value="CONSUMES">CONSUMES</option>
+                    <option value="USES">USES</option>
+                    <option value="FULFILLS">FULFILLS</option>
+                    <option value="ASSIGNED_TO">ASSIGNED_TO</option>
+                    <option value="DEPENDS_ON">DEPENDS_ON</option>
+                    <option value="PRODUCES">PRODUCES</option>
+                    <option value="COMMUNICATES_WITH">COMMUNICATES_WITH</option>
+                    <option value="RELATED_TO">RELATED_TO</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="proposeRelationsSubmit" class="btn btn-primary">
+                    <span id="proposeSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status" aria-hidden="true"></span>
+                    Generate Proposals
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Leaf Justification Modal -->
 <div class="modal fade" id="leafJustificationModal" tabindex="-1" aria-labelledby="leafJustificationModalLabel" aria-hidden="true">
