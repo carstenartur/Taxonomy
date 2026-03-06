@@ -94,7 +94,7 @@ public class RelevancePropagationService {
                                 "propagated via " + rel.getRelationType() + " from " + nodeCode);
                         nextFrontier.add(targetCode);
 
-                        log.debug("Propagated {} → {} via {} = {:.4f} (hop {})",
+                        log.debug("Propagated {} → {} via {} = {} (hop {})",
                                 nodeCode, targetCode, rel.getRelationType(), propagated, hop);
                     }
 
