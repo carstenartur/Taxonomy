@@ -13,6 +13,7 @@
     let interactiveMode = true;       // ON by default
     let storedBusinessText = null;    // stored when user clicks Analyze in interactive mode
     let evaluatedNodes = new Set();   // track which parent nodes have been evaluated
+    let lastAnalyzedText = null;      // text that was most recently analyzed successfully
 
     // ── Bootstrap ─────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function () {
@@ -106,6 +107,42 @@
         const testLlmBtn = document.getElementById('testLlmConnection');
         if (testLlmBtn) {
             testLlmBtn.addEventListener('click', testLlmConnection);
+        }
+
+        // Warn when business text changes after analysis results are displayed
+        let staleDebounceTimer = null;
+        const businessTextEl = document.getElementById('businessText');
+        if (businessTextEl) {
+            businessTextEl.addEventListener('input', function () {
+                clearTimeout(staleDebounceTimer);
+                staleDebounceTimer = setTimeout(function () {
+                    const hasScores = currentScores !== null &&
+                        typeof currentScores === 'object' &&
+                        Object.keys(currentScores).length > 0;
+                    if (!hasScores) {
+                        businessTextEl.classList.remove('stale-results');
+                        return;
+                    }
+                    if (lastAnalyzedText !== null && businessTextEl.value !== lastAnalyzedText) {
+                        businessTextEl.classList.add('stale-results');
+                        showStatus('warning', '⚠️ Business text has changed — previous results are no longer valid.');
+                        const statusArea = document.getElementById('statusArea');
+                        if (statusArea) {
+                            const alertEl = statusArea.querySelector('.alert');
+                            if (alertEl && !alertEl.querySelector('.btn-warning')) {
+                                const resetBtn = document.createElement('button');
+                                resetBtn.className = 'btn btn-sm btn-warning ms-2';
+                                resetBtn.textContent = '🔄 Reset Results';
+                                resetBtn.addEventListener('click', resetStaleResults);
+                                alertEl.appendChild(resetBtn);
+                            }
+                        }
+                    } else {
+                        businessTextEl.classList.remove('stale-results');
+                        clearStatus();
+                    }
+                }, 300);
+            });
         }
     });
 
@@ -762,6 +799,7 @@
         setAnalyzing(true);
         clearStatus();
         clearAnalysisLog();
+        document.getElementById('businessText').classList.remove('stale-results');
 
         fetch('/api/analyze', {
             method: 'POST',
@@ -776,6 +814,7 @@
                 setAnalyzing(false);
                 taxonomyData = result.tree;
                 currentScores = result.scores;
+                lastAnalyzedText = text;
                 renderView(taxonomyData, currentScores);
 
                 console.log('[Taxonomy] Analysis result:', result);
@@ -949,9 +988,11 @@
 
         // Reset interactive state
         storedBusinessText = text;
+        lastAnalyzedText = text;
         evaluatedNodes = new Set();
         currentScores = {};
         currentReasons = {};
+        document.getElementById('businessText').classList.remove('stale-results');
 
         // Render the tree without scores; mark all expandable nodes as unevaluated
         renderView(taxonomyData, null);
@@ -976,6 +1017,7 @@
         clearStatus();
         currentScores = {};
         currentReasons = {};
+        document.getElementById('businessText').classList.remove('stale-results');
 
         // Render a clean tree without scores first
         renderView(taxonomyData, null);
@@ -1010,6 +1052,7 @@
             eventSource.close();
             setAnalyzing(false);
             currentScores = data.totalScores;
+            lastAnalyzedText = text;
             const matchedCount = Object.values(data.totalScores).filter(v => v > 0).length;
             showStatus('success', '✅ Analysis complete. ' + matchedCount + ' node(s) matched.');
             updateExportGroupVisibility();
@@ -1156,6 +1199,22 @@
 
     function clearStatus() {
         document.getElementById('statusArea').innerHTML = '';
+    }
+
+    function resetStaleResults() {
+        currentScores = null;
+        currentReasons = {};
+        storedBusinessText = null;
+        evaluatedNodes = new Set();
+        lastAnalyzedText = null;
+        renderView(taxonomyData, null);
+        clearStatus();
+        const businessTextEl = document.getElementById('businessText');
+        if (businessTextEl) { businessTextEl.classList.remove('stale-results'); }
+        const content = document.getElementById('llmCommLogContent');
+        if (content) {
+            content.innerHTML = '<div class="text-muted p-2">No LLM calls yet. Use Interactive Mode and expand nodes to see communication.</div>';
+        }
     }
 
     function escapeHtml(s) {
