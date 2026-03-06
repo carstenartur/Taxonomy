@@ -134,6 +134,35 @@
         downloadBlob(blob, 'taxonomy-scores.csv');
     }
 
+    /**
+     * Export the architecture view as a Visio .vsdx file via the backend.
+     * Calls POST /api/diagram/visio with the business text and triggers a download.
+     * @param {string} businessText - The business requirement text used for analysis.
+     */
+    function exportVisio(businessText) {
+        if (!businessText || !businessText.trim()) {
+            alert('Please enter a business requirement text before exporting to Visio.');
+            return;
+        }
+        fetch('/api/diagram/visio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ businessText: businessText })
+        })
+        .then(function (resp) {
+            if (!resp.ok) {
+                throw new Error('Export failed (HTTP ' + resp.status + ')');
+            }
+            return resp.blob();
+        })
+        .then(function (blob) {
+            downloadBlob(blob, 'requirement-architecture.vsdx');
+        })
+        .catch(function (err) {
+            alert('Visio export failed: ' + err.message);
+        });
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     function csvField(val) {
@@ -160,7 +189,8 @@
     window.TaxonomyExport = {
         exportSvg: exportSvg,
         exportPng: exportPng,
-        exportCsv: exportCsv
+        exportCsv: exportCsv,
+        exportVisio: exportVisio
     };
 
 })();
