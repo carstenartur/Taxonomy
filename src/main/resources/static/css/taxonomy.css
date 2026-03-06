@@ -273,3 +273,83 @@
     line-height: 1.6;
     white-space: pre-wrap;
 }
+
+/* ── Decision Map ─────────────────────────────────────────── */
+.decision-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+}
+
+.decision-stats-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.decision-tree-wrapper {
+    overflow: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: #fff;
+}
+
+.decision-table-wrapper {
+    overflow-x: auto;
+}
+
+.decision-table {
+    font-size: 0.85rem;
+}
+
+.decision-table thead th {
+    background: #f0f4fa;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.decision-score-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 0.8rem;
+}
+
+.decision-filter {
+    font-size: 0.9rem;
+}
+
+/* ── Print stylesheet (used by PDF export via window.print()) ── */
+@media print {
+    nav,
+    .col-lg-5,
+    #expandCollapseGroup,
+    #treeRootGroup,
+    .btn-group,
+    .decision-filter,
+    .decision-table-wrapper {
+        display: none !important;
+    }
+
+    .card-header .fw-semibold {
+        display: block;
+    }
+
+    .card-body {
+        overflow: visible !important;
+        max-height: none !important;
+    }
+
+    .decision-tree-wrapper,
+    #taxonomyTree {
+        border: none;
+        max-height: none;
+    }
+}

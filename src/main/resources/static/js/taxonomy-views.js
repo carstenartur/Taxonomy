@@ -442,10 +442,420 @@
         container._taxObserver = obs;
     }
 
+    // ── Decision Map ──────────────────────────────────────────────────────────
+    /**
+     * Render a Decision Map into `container`.
+     * Shows only the "hot" paths (nodes with score > 0 and their ancestors),
+     * with top-3 nodes highlighted with rank badges.
+     * Includes a stats summary and a sortable/filterable results table.
+     * @param {HTMLElement} container - The DOM element to render into (cleared first).
+     * @param {Array}       data      - Array of root taxonomy nodes (each with `children`).
+     * @param {Object|null} scores    - Map of node code → match percentage, or null.
+     */
+    function renderDecisionMap(container, data, scores) {
+        if (typeof d3 === 'undefined') {
+            container.innerHTML = '<div class="alert alert-warning mt-2">D3.js is required for this view. Please check your internet connection.</div>';
+            return;
+        }
+        if (container._taxObserver) {
+            container._taxObserver.disconnect();
+            container._taxObserver = null;
+        }
+        container.innerHTML = '';
+
+        scores = scores || {};
+
+        // ── Build helper maps ────────────────────────────────────────────────
+        var nameMap = {}, pathMap = {}, levelMap = {}, isLeafSet = new Set();
+
+        function walkNodes(node, ancestors, level) {
+            nameMap[node.code] = node.name || '';
+            levelMap[node.code] = level;
+            var displayName = node.name ? (node.code + ' ' + node.name) : node.code;
+            pathMap[node.code] = ancestors.concat(displayName);
+            if (!node.children || !node.children.length) {
+                isLeafSet.add(node.code);
+            } else {
+                node.children.forEach(function (child) {
+                    walkNodes(child, pathMap[node.code], level + 1);
+                });
+            }
+        }
+        data.forEach(function (root) { walkNodes(root, [], 0); });
+
+        // ── Compute hot set (ancestors of scored nodes) ──────────────────────
+        var hotSet = new Set();
+        function computeHot(node) {
+            var selfHot = (scores[node.code] > 0);
+            var childHot = false;
+            if (node.children) {
+                node.children.forEach(function (child) {
+                    if (computeHot(child)) { childHot = true; }
+                });
+            }
+            if (selfHot || childHot) { hotSet.add(node.code); return true; }
+            return false;
+        }
+        data.forEach(computeHot);
+
+        // ── Scored nodes sorted by score desc ────────────────────────────────
+        var allScored = Object.entries(scores)
+            .filter(function (e) { return e[1] > 0; })
+            .sort(function (a, b) { return b[1] - a[1]; });
+
+        var top3Codes = allScored.slice(0, 3).map(function (e) { return e[0]; });
+        var rankMap = {};
+        top3Codes.forEach(function (code, i) { rankMap[code] = i + 1; });
+
+        // ── Stats summary ────────────────────────────────────────────────────
+        var totalNodes = Object.keys(nameMap).length;
+        var scoredCount = allScored.length;
+        var affectedRootsSet = new Set(
+            allScored.map(function (e) { return pathMap[e[0]] && pathMap[e[0]][0]; }).filter(Boolean)
+        );
+        var statsDiv = document.createElement('div');
+        statsDiv.className = 'decision-stats';
+        if (scoredCount === 0) {
+            statsDiv.innerHTML = '<span class="decision-stats-item">No scored nodes yet. Run an analysis to see the Decision Map.</span>';
+        } else {
+            var best = allScored[0];
+            var bestName = nameMap[best[0]] || '';
+            var bestDisplay = bestName ? (esc(best[0]) + ' \u2013 ' + esc(bestName)) : esc(best[0]);
+            statsDiv.innerHTML =
+                '<span class="decision-stats-item">&#128202; <strong>' + scoredCount + '</strong> of <strong>' + totalNodes + '</strong> nodes scored</span>' +
+                '<span class="decision-stats-item">&#127942; Best: <strong>' + bestDisplay + '</strong> (' + best[1] + '%)</span>' +
+                '<span class="decision-stats-item">&#127968; ' + affectedRootsSet.size + ' root categor' + (affectedRootsSet.size === 1 ? 'y' : 'ies') + ' affected</span>';
+        }
+        container.appendChild(statsDiv);
+
+        // ── Filter data to hot paths only ────────────────────────────────────
+        function filterToHot(node) {
+            if (!hotSet.has(node.code)) { return null; }
+            var result = { code: node.code, name: node.name, description: node.description, level: node.level };
+            if (node.children) {
+                var fc = node.children.map(filterToHot).filter(Boolean);
+                if (fc.length) { result.children = fc; }
+            }
+            return result;
+        }
+        var filteredData = data.map(filterToHot).filter(Boolean);
+
+        if (filteredData.length === 0) {
+            var noDataMsg = document.createElement('div');
+            noDataMsg.className = 'alert alert-info mt-2';
+            noDataMsg.textContent = 'No scored nodes yet. Run an analysis to see the Decision Map.';
+            container.appendChild(noDataMsg);
+            renderDecisionTable(container, allScored, nameMap, pathMap, levelMap, isLeafSet, rankMap);
+            return;
+        }
+
+        // ── D3 Tree ──────────────────────────────────────────────────────────
+        var marginLeft = 40;
+        var marginRight = 300;
+        var marginTop = 20;
+        var marginBottom = 20;
+
+        // Synthetic root to hold all filtered roots
+        var rootData = { code: '__root__', name: '', children: filteredData };
+        var root = d3.hierarchy(rootData);
+
+        var treeLayout = d3.tree().nodeSize([28, 220]);
+        var containerWidth = container.clientWidth || 800;
+
+        var svgWrapper = document.createElement('div');
+        svgWrapper.className = 'decision-tree-wrapper';
+        container.appendChild(svgWrapper);
+
+        var svg = d3.select(svgWrapper)
+            .append('svg')
+            .attr('id', 'decision-map-svg')
+            .attr('width', containerWidth)
+            .attr('height', 400)
+            .style('display', 'block');
+
+        var zoomLayer = svg.append('g');
+        svg.call(
+            d3.zoom()
+                .scaleExtent([0.1, 20])
+                .on('zoom', function (event) { zoomLayer.attr('transform', event.transform); })
+        );
+
+        var g = zoomLayer.append('g');
+        var nodeSeq = 0;
+
+        var RANK_EMOJIS = ['', '\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49']; // 🥇🥈🥉
+
+        function dmNodeFill(d) {
+            var code = d.data.code;
+            if (code === '__root__') { return 'none'; }
+            var rank = rankMap[code];
+            if (rank === 1) { return '#FFD700'; }
+            if (rank === 2) { return '#C0C0C0'; }
+            if (rank === 3) { return '#CD7F32'; }
+            var pct = scores[code];
+            if (pct > 0) {
+                var alpha = Math.min(pct / 100, 1).toFixed(2);
+                return 'rgba(0,128,0,' + alpha + ')';
+            }
+            return '#ddd'; // hot-path ancestor with no score
+        }
+
+        function dmNodeStroke(d) {
+            var code = d.data.code;
+            if (code === '__root__') { return 'none'; }
+            if (rankMap[code]) { return '#888'; }
+            if (scores[code] > 0) { return '#555'; }
+            return '#bbb';
+        }
+
+        function dmLinkStrokeWidth(d) {
+            var code = d.target.data.code;
+            if (rankMap[code]) { return 4; }
+            var pct = scores[code] || 0;
+            if (pct > 0) { return Math.max(2, Math.min(4, 2 + pct / 50)); }
+            return 1;
+        }
+
+        function dmLinkStroke(d) {
+            var code = d.target.data.code;
+            if (rankMap[code] === 1) { return '#FFD700'; }
+            if (rankMap[code] === 2) { return '#C0C0C0'; }
+            if (rankMap[code] === 3) { return '#CD7F32'; }
+            var pct = scores[code] || 0;
+            if (pct > 0) { return 'rgba(0,128,0,0.6)'; }
+            return '#ccc';
+        }
+
+        function dmUpdate(source) {
+            treeLayout(root);
+            var nodes = root.descendants();
+            var links = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
+
+            var xMin = Infinity, xMax = -Infinity, yMax = 0;
+            nodes.forEach(function (d) {
+                if (d.x < xMin) { xMin = d.x; }
+                if (d.x > xMax) { xMax = d.x; }
+                if (d.y > yMax) { yMax = d.y; }
+            });
+
+            var svgW = Math.max(containerWidth, yMax + marginLeft + marginRight);
+            var svgH = Math.max(400, xMax - xMin + marginTop + marginBottom);
+            svg.attr('width', svgW).attr('height', svgH);
+            g.attr('transform', 'translate(' + marginLeft + ',' + (marginTop - xMin) + ')');
+
+            var sourceX = source.x0 !== undefined ? source.x0 : (source.x || 0);
+            var sourceY = source.y0 !== undefined ? source.y0 : (source.y || 0);
+
+            // ── Nodes ──────────────────────────────────
+            var node = g.selectAll('g.dm-node')
+                .data(nodes, function (d) { return d.id || (d.id = ++nodeSeq); });
+
+            var nodeEnter = node.enter().append('g')
+                .attr('class', 'dm-node')
+                .attr('transform', 'translate(' + sourceY + ',' + sourceX + ')')
+                .style('opacity', 0);
+
+            nodeEnter.append('circle').attr('r', 7).attr('stroke-width', 1.5);
+
+            nodeEnter.append('text')
+                .attr('class', 'dm-label')
+                .attr('dy', '0.31em')
+                .style('font-size', '12px')
+                .style('user-select', 'none');
+
+            nodeEnter.append('text')
+                .attr('class', 'dm-rank')
+                .attr('dy', '-0.7em')
+                .attr('text-anchor', 'middle')
+                .style('font-size', '13px')
+                .style('pointer-events', 'none');
+
+            nodeEnter.filter(function (d) { return d.data.code !== '__root__'; })
+                .style('cursor', 'pointer')
+                .on('click', function (event, d) {
+                    event.stopPropagation();
+                    if (d.children) { d._children = d.children; d.children = null; }
+                    else { d.children = d._children; d._children = null; }
+                    dmUpdate(d);
+                })
+                .on('mousemove', function (event, d) { showTooltip(event, d.data, scores); })
+                .on('mouseleave', hideTooltip);
+
+            var nodeUpdate = nodeEnter.merge(node);
+
+            nodeUpdate.transition().duration(300)
+                .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })
+                .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; });
+
+            nodeUpdate.select('circle')
+                .attr('fill', dmNodeFill)
+                .attr('stroke', dmNodeStroke);
+
+            nodeUpdate.select('.dm-label')
+                .text(function (d) {
+                    if (d.data.code === '__root__') { return ''; }
+                    var label = d.data.code;
+                    var pct = scores[d.data.code];
+                    if (pct > 0) { label += ' ' + pct + '%'; }
+                    return label;
+                })
+                .attr('x', function (d) { return (d.children || d._children) ? -10 : 10; })
+                .attr('text-anchor', function (d) { return (d.children || d._children) ? 'end' : 'start'; })
+                .style('fill', function (d) { return (scores[d.data.code] || 0) >= 60 ? '#fff' : '#333'; })
+                .style('font-weight', function (d) { return rankMap[d.data.code] ? '700' : '400'; });
+
+            nodeUpdate.select('.dm-rank')
+                .text(function (d) {
+                    var rank = rankMap[d.data.code];
+                    return rank ? RANK_EMOJIS[rank] : '';
+                });
+
+            node.exit().transition().duration(300)
+                .attr('transform', 'translate(' + source.y + ',' + source.x + ')')
+                .style('opacity', 0)
+                .remove();
+
+            // ── Links ──────────────────────────────────
+            var diag = d3.linkHorizontal()
+                .x(function (d) { return d.y; })
+                .y(function (d) { return d.x; });
+
+            var link = g.selectAll('path.dm-link')
+                .data(links, function (d) { return d.target.id; });
+
+            var linkEnter = link.enter().insert('path', 'g')
+                .attr('class', 'dm-link')
+                .attr('fill', 'none')
+                .attr('d', function () {
+                    var o = { x: sourceX, y: sourceY };
+                    return diag({ source: o, target: o });
+                });
+
+            var linkUpdate = linkEnter.merge(link);
+            linkUpdate.transition().duration(300).attr('d', diag);
+            linkUpdate
+                .attr('stroke', dmLinkStroke)
+                .attr('stroke-width', dmLinkStrokeWidth);
+
+            link.exit().transition().duration(300)
+                .attr('d', function () {
+                    var o = { x: source.x, y: source.y };
+                    return diag({ source: o, target: o });
+                })
+                .remove();
+
+            nodes.forEach(function (d) { d.x0 = d.x; d.y0 = d.y; });
+        }
+
+        root.x0 = 0;
+        root.y0 = 0;
+        dmUpdate(root);
+
+        var obs = new ResizeObserver(function () {
+            var newW = container.clientWidth || 800;
+            var curW = parseFloat(svg.attr('width')) || 0;
+            if (newW > curW) { svg.attr('width', newW); }
+        });
+        obs.observe(container);
+        container._taxObserver = obs;
+
+        // ── Results table ────────────────────────────────────────────────────
+        renderDecisionTable(container, allScored, nameMap, pathMap, levelMap, isLeafSet, rankMap);
+    }
+
+    /**
+     * Render the Decision Map results table (Top-N scored nodes with filters).
+     */
+    function renderDecisionTable(container, allScored, nameMap, pathMap, levelMap, isLeafSet, rankMap) {
+        if (!allScored || allScored.length === 0) { return; }
+
+        var RANK_EMOJIS = ['', '\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49'];
+
+        var tableWrapper = document.createElement('div');
+        tableWrapper.className = 'decision-table-wrapper mt-3';
+
+        var filterDiv = document.createElement('div');
+        filterDiv.className = 'decision-filter mb-2 d-flex align-items-center gap-2 flex-wrap';
+        filterDiv.innerHTML =
+            '<strong>Top Matches</strong>' +
+            '<div class="form-check form-check-inline ms-2 mb-0">' +
+                '<input class="form-check-input" type="checkbox" id="dmFilterLeaves">' +
+                '<label class="form-check-label small" for="dmFilterLeaves">Leaves only</label>' +
+            '</div>' +
+            '<label class="small ms-2 mb-0">Min score:&nbsp;' +
+                '<input id="dmMinScore" type="number" class="form-control form-control-sm d-inline-block" ' +
+                'style="width:70px" min="0" max="100" value="0">&nbsp;%' +
+            '</label>';
+        tableWrapper.appendChild(filterDiv);
+
+        var table = document.createElement('table');
+        table.className = 'table table-sm table-hover decision-table';
+        table.innerHTML =
+            '<thead><tr>' +
+            '<th>#</th><th>Code</th><th>Name</th><th>Score</th><th>Path</th><th>Level</th>' +
+            '</tr></thead>';
+        var tbody = document.createElement('tbody');
+        tbody.id = 'decision-table-body';
+        table.appendChild(tbody);
+        tableWrapper.appendChild(table);
+        container.appendChild(tableWrapper);
+
+        function renderRows(leavesOnly, minScore) {
+            tbody.innerHTML = '';
+            var displayRank = 0;
+            var rows = allScored.filter(function (e) {
+                if (e[1] < minScore) { return false; }
+                if (leavesOnly && !isLeafSet.has(e[0])) { return false; }
+                return true;
+            }).slice(0, 20);
+
+            rows.forEach(function (e, i) {
+                var code = e[0];
+                var pct = e[1];
+                displayRank = i + 1;
+                var rankEmoji = displayRank <= 3 ? RANK_EMOJIS[displayRank] : displayRank;
+                var nodeName = nameMap[code] || '';
+                var path = (pathMap[code] || []).join(' \u2192 ');
+                var level = levelMap[code] || 0;
+                var alpha = Math.min(pct / 100, 1).toFixed(2);
+                var textColor = pct >= 60 ? '#fff' : '#000';
+                var tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td>' + rankEmoji + '</td>' +
+                    '<td><strong>' + esc(code) + '</strong></td>' +
+                    '<td>' + esc(nodeName) + '</td>' +
+                    '<td><span class="decision-score-badge" style="background:rgba(0,128,0,' + alpha + ');color:' + textColor + '">' + pct + '%</span></td>' +
+                    '<td class="small text-muted">' + esc(path) + '</td>' +
+                    '<td class="text-center">' + level + '</td>';
+                tbody.appendChild(tr);
+            });
+
+            if (rows.length === 0) {
+                var tr = document.createElement('tr');
+                tr.innerHTML = '<td colspan="6" class="text-muted text-center">No nodes match the filter criteria.</td>';
+                tbody.appendChild(tr);
+            }
+        }
+
+        renderRows(false, 0);
+
+        var leavesChk = document.getElementById('dmFilterLeaves');
+        var minScoreInput = document.getElementById('dmMinScore');
+        function onFilterChange() {
+            renderRows(
+                leavesChk ? leavesChk.checked : false,
+                parseInt(minScoreInput ? minScoreInput.value : '0', 10) || 0
+            );
+        }
+        if (leavesChk) { leavesChk.addEventListener('change', onFilterChange); }
+        if (minScoreInput) { minScoreInput.addEventListener('input', onFilterChange); }
+    }
+
     // ── Export ─────────────────────────────────────────────────────────────────
     window.TaxonomyViews = {
         renderSunburst: renderSunburst,
-        renderTreeDiagram: renderTreeDiagram
+        renderTreeDiagram: renderTreeDiagram,
+        renderDecisionMap: renderDecisionMap
     };
 
 })();
