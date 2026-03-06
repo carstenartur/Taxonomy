@@ -132,6 +132,54 @@
                 </div>
             </div>
 
+            <!-- Graph Explorer Panel -->
+            <div id="graphExplorerPanel" class="mt-3">
+                <div class="card shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold">&#128300; Graph Explorer</span>
+                        <span class="badge bg-info text-dark" title="Explore upstream dependencies, downstream impacts, and failure analysis">Navigate</span>
+                    </div>
+                    <div class="card-body p-3">
+                        <p class="text-muted small mb-2">
+                            Explore architecture dependencies and change impact by selecting a node below or clicking
+                            the <strong>&#128300;</strong> button on any taxonomy node.
+                        </p>
+                        <div class="row g-2 mb-2">
+                            <div class="col-8">
+                                <label for="graphNodeInput" class="form-label small mb-0">Node code:</label>
+                                <input type="text" id="graphNodeInput" class="form-control form-control-sm"
+                                       placeholder="e.g. BP-1040" aria-label="Node code for graph query" list="graphNodeSuggestions"/>
+                                <datalist id="graphNodeSuggestions"></datalist>
+                            </div>
+                            <div class="col-4">
+                                <label for="graphMaxHops" class="form-label small mb-0">Max hops:</label>
+                                <select id="graphMaxHops" class="form-select form-select-sm" aria-label="Maximum traversal hops">
+                                    <option value="1">1</option>
+                                    <option value="2" selected>2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button id="graphUpstreamBtn" class="btn btn-sm btn-outline-primary" title="What supports this element?">
+                                &#11014;&#65039; Upstream
+                            </button>
+                            <button id="graphDownstreamBtn" class="btn btn-sm btn-outline-primary" title="What depends on this element?">
+                                &#11015;&#65039; Downstream
+                            </button>
+                            <button id="graphFailureBtn" class="btn btn-sm btn-outline-danger" title="What is affected if this element fails?">
+                                &#9888;&#65039; Failure Impact
+                            </button>
+                        </div>
+                        <div id="graphResultsArea" class="mt-2" style="display:none;">
+                            <div id="graphResultsContent"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Relation Proposals Panel -->
             <div id="proposalsPanel" class="mt-3">
                 <div class="card shadow-sm">
@@ -206,6 +254,7 @@
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script th:src="@{/js/taxonomy-views.js}"></script>
 <script th:src="@{/js/taxonomy-export.js}"></script>
+<script th:src="@{/js/taxonomy-graph.js}"></script>
 <script th:src="@{/js/taxonomy.js}"></script>
 
 <!-- Propose Relations Modal -->
@@ -253,6 +302,24 @@
             </div>
             <div class="modal-body">
                 <p id="leafJustificationModalBody" class="leaf-justification-text"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Graph Explorer Detail Modal -->
+<div class="modal fade" id="graphDetailModal" tabindex="-1" aria-labelledby="graphDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="graphDetailModalLabel">&#128300; Graph Query Results</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="graphDetailModalBody">
+                <p class="text-muted">Loading&hellip;</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>

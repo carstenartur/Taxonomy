@@ -506,6 +506,10 @@
                 taxonomyData = data;
                 populateTreeRootSelect(data);
                 renderView(data, null);
+                // Populate Graph Explorer node suggestions
+                if (window.TaxonomyGraph) {
+                    window.TaxonomyGraph.populateNodeSuggestions(data);
+                }
             })
             .catch(err => {
                 document.getElementById('taxonomyTree').innerHTML =
@@ -859,6 +863,21 @@
             }
         });
         wrapper.appendChild(proposeBtn);
+
+        // Graph Explorer button (always visible on every node)
+        const graphBtn = document.createElement('button');
+        graphBtn.className = 'btn btn-sm btn-outline-secondary tax-justify-btn graph-explore-btn';
+        graphBtn.textContent = '🔎 Graph';
+        graphBtn.title = 'Explore upstream/downstream dependencies and failure impact for ' + node.code;
+        graphBtn.setAttribute('aria-label', 'Open graph explorer for ' + node.code);
+        graphBtn.dataset.code = node.code;
+        graphBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (window.TaxonomyGraph) {
+                window.TaxonomyGraph.openGraphExplorer(node.code);
+            }
+        });
+        wrapper.appendChild(graphBtn);
 
         return wrapper;
     }
