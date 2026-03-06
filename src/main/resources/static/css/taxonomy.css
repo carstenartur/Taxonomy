@@ -450,3 +450,92 @@
     font-size: 0.72rem;
     padding: 1px 6px;
 }
+
+/* ── Graph Explorer ──────────────────────────────────────── */
+.graph-stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.graph-stat-card {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    flex: 0 1 auto;
+}
+
+.graph-stat-icon {
+    font-size: 1.1rem;
+}
+
+.graph-stat-value {
+    font-weight: 700;
+    font-size: 0.9rem;
+    line-height: 1.2;
+}
+
+.graph-stat-label {
+    font-size: 0.72rem;
+    color: #6c757d;
+    line-height: 1.1;
+}
+
+.graph-section-title {
+    font-size: 0.88rem;
+    margin-top: 8px;
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.graph-table {
+    font-size: 0.82rem;
+}
+
+.graph-table thead th {
+    background: #f0f4fa;
+    font-weight: 600;
+    white-space: nowrap;
+    font-size: 0.78rem;
+}
+
+.graph-table tbody tr:hover {
+    background-color: #f5f8ff;
+}
+
+.graph-relevance-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    min-width: 36px;
+    text-align: center;
+}
+
+.graph-node-link {
+    font-weight: 600;
+    text-decoration: none;
+    color: #003580;
+}
+
+.graph-node-link:hover {
+    text-decoration: underline;
+    color: #0056b3;
+}
+
+.graph-explore-btn {
+    font-size: 0.72rem;
+    padding: 1px 6px;
+    border-color: #6f42c1;
+    color: #6f42c1;
+}
+
+.graph-explore-btn:hover {
+    background-color: #6f42c1;
+    color: #fff;
+}
