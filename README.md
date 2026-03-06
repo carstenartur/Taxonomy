@@ -1,6 +1,6 @@
 # Taxonomy
 
-NATO NC3T Taxonomy Browser — a Spring Boot web application that loads the
+NC3T Taxonomy Browser — a Spring Boot web application that loads the
 C3 Taxonomy Catalogue (Baseline 7, 8 sheets, ~2,500 nodes) from the bundled
 Excel file into an in-process HSQLDB, visualises the hierarchy as a collapsible
 tree, and lets you match a plain-text business requirement against the taxonomy
