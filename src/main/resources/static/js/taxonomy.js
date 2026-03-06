@@ -1411,8 +1411,9 @@
     function loadProposals(statusFilter) {
         const container = document.getElementById('proposalsTableContainer');
         if (!container) return;
-        container.innerHTML = '<div class="text-muted small p-2">Loading proposals&hellip;</div>';
-        const url = statusFilter === 'ALL' ? '/api/proposals' : '/api/proposals/pending';
+        container.innerHTML = '<div class="text-muted small p-2" role="status" aria-live="polite">Loading proposals&hellip;</div>';
+        // PENDING has a dedicated endpoint; ACCEPTED/REJECTED/ALL need the full list
+        const url = statusFilter === 'PENDING' ? '/api/proposals/pending' : '/api/proposals';
         fetch(url)
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1543,7 +1544,7 @@
         fetch('/api/proposals/propose', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sourceCode: nodeCode, relationType: relationType, limit: '10' })
+            body: JSON.stringify({ sourceCode: nodeCode, relationType: relationType, limit: 10 })
         })
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
