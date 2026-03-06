@@ -88,7 +88,7 @@ public class RelationValidationService {
 
     /**
      * Computes confidence from the rank position.
-     * Rank 0 → highest confidence (~0.95), higher ranks → lower confidence.
+     * Rank 0 → highest confidence (0.95), higher ranks → lower confidence (min 0.3).
      */
     public double computeConfidence(int rank, int totalCandidates) {
         if (totalCandidates <= 1) return 0.9;

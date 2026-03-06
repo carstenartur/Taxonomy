@@ -54,8 +54,17 @@ public class RelationCompatibilityMatrix {
 
     /**
      * Returns the set of allowed target taxonomy roots for a given source root
-     * and relation type.  An empty set means "all roots are allowed" only if the
-     * relation type has no rules at all.
+     * and relation type.
+     *
+     * <p>An empty set is returned in two cases:
+     * <ol>
+     *   <li>The relation type has no rules at all — meaning all roots are allowed
+     *       (use {@link #isCompatible} for the definitive check).</li>
+     *   <li>The source root is not listed for a relation type that does have rules —
+     *       meaning no targets are allowed for that source root.</li>
+     * </ol>
+     *
+     * <p>Use {@link #isCompatible} for a clear yes/no answer that handles both cases.
      */
     public Set<String> allowedTargetRoots(String sourceRoot, RelationType relationType) {
         Map<String, Set<String>> bySource = matrix.get(relationType);
