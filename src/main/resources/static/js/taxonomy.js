@@ -6,7 +6,7 @@
     let taxonomyData = [];
     let currentScores = null;
     let currentReasons = {};   // code → reason string
-    let currentView = 'list'; // 'list' | 'tabs' | 'sunburst' | 'tree'
+    let currentView = 'list'; // 'list' | 'tabs' | 'sunburst' | 'tree' | 'decision'
     let currentTreeRoot = 'BP'; // code of the taxonomy shown in tree view
 
     // ── Interactive mode state ─────────────────────────────────────────────────
@@ -66,7 +66,7 @@
         }
 
         // View switcher buttons
-        ['viewList', 'viewTabs', 'viewSunburst', 'viewTree'].forEach(function (id) {
+        ['viewList', 'viewTabs', 'viewSunburst', 'viewTree', 'viewDecision'].forEach(function (id) {
             const btn = document.getElementById(id);
             if (btn) {
                 btn.addEventListener('click', function () {
@@ -88,6 +88,14 @@
                 }
             });
         }
+
+        // Export buttons
+        ['exportSvg', 'exportPng', 'exportPdf', 'exportCsv'].forEach(function (id) {
+            const btn = document.getElementById(id);
+            if (btn) {
+                btn.addEventListener('click', function () { handleExport(id); });
+            }
+        });
 
         // Diagnostics panel
         loadDiagnostics();
@@ -239,7 +247,7 @@
         currentView = view;
 
         // Update button active states
-        const viewIds = { list: 'viewList', tabs: 'viewTabs', sunburst: 'viewSunburst', tree: 'viewTree' };
+        const viewIds = { list: 'viewList', tabs: 'viewTabs', sunburst: 'viewSunburst', tree: 'viewTree', decision: 'viewDecision' };
         Object.entries(viewIds).forEach(([v, id]) => {
             const btn = document.getElementById(id);
             if (!btn) { return; }
@@ -250,7 +258,7 @@
         // Show/hide Expand All / Collapse All only for list & tabs views
         const ecGroup = document.getElementById('expandCollapseGroup');
         if (ecGroup) {
-            ecGroup.style.display = (view === 'sunburst' || view === 'tree') ? 'none' : '';
+            ecGroup.style.display = (view === 'sunburst' || view === 'tree' || view === 'decision') ? 'none' : '';
         }
 
         // Show taxonomy root selector only in tree view
@@ -258,6 +266,13 @@
         if (treeRootGroup) {
             treeRootGroup.style.display = (view === 'tree') ? '' : 'none';
         }
+
+        // Disable SVG/PNG export buttons for non-D3 views (list/tabs have no SVG)
+        const svgViewActive = (view === 'sunburst' || view === 'tree' || view === 'decision');
+        ['exportSvg', 'exportPng'].forEach(function (id) {
+            const btn = document.getElementById(id);
+            if (btn) { btn.disabled = !svgViewActive; }
+        });
 
         renderView(taxonomyData, currentScores);
     }
@@ -287,6 +302,47 @@
                         document.getElementById('taxonomyTree'), [treeRoot], scores);
                 }
                 break;
+            case 'decision':
+                if (window.TaxonomyViews) {
+                    window.TaxonomyViews.renderDecisionMap(
+                        document.getElementById('taxonomyTree'), data, scores);
+                }
+                break;
+        }
+        updateExportGroupVisibility();
+    }
+
+    // ── Export group visibility ───────────────────────────────────────────────
+    function updateExportGroupVisibility() {
+        const exportGroup = document.getElementById('exportGroup');
+        if (!exportGroup) { return; }
+        const hasScores = currentScores && Object.values(currentScores).some(v => v > 0);
+        exportGroup.style.display = hasScores ? '' : 'none';
+    }
+
+    // ── Export handler ────────────────────────────────────────────────────────
+    function handleExport(btnId) {
+        if (btnId === 'exportCsv') {
+            if (window.TaxonomyExport) {
+                window.TaxonomyExport.exportCsv(currentScores, taxonomyData);
+            }
+            return;
+        }
+        if (btnId === 'exportPdf') {
+            window.print();
+            return;
+        }
+        if (btnId === 'exportSvg') {
+            if (window.TaxonomyExport) {
+                window.TaxonomyExport.exportSvg('taxonomyTree');
+            }
+            return;
+        }
+        if (btnId === 'exportPng') {
+            if (window.TaxonomyExport) {
+                window.TaxonomyExport.exportPng('taxonomyTree');
+            }
+            return;
         }
     }
 
@@ -605,6 +661,7 @@
                 // Update currentScores
                 if (!currentScores) { currentScores = {}; }
                 Object.assign(currentScores, scores);
+                updateExportGroupVisibility();
 
                 // Log to console
                 const matched = Object.entries(scores).filter(([k, v]) => v > 0);
@@ -955,6 +1012,7 @@
             currentScores = data.totalScores;
             const matchedCount = Object.values(data.totalScores).filter(v => v > 0).length;
             showStatus('success', '✅ Analysis complete. ' + matchedCount + ' node(s) matched.');
+            updateExportGroupVisibility();
         });
 
         eventSource.addEventListener('error', function (e) {
