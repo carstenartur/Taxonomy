@@ -101,7 +101,8 @@
         });
 
         // Diagnostics panel
-        loadDiagnostics();
+        checkAdminStatus();
+        initAdminModal();
         const refreshDiagBtn = document.getElementById('refreshDiagnostics');
         if (refreshDiagBtn) {
             refreshDiagBtn.addEventListener('click', loadDiagnostics);
@@ -154,6 +155,173 @@
         tree.classList.toggle('hide-descriptions', !show);
     }
 
+    // ── Admin mode ───────────────────────────────────────────────────────────
+    let adminPasswordRequired = false;
+
+    function isAdminMode() {
+        return !!sessionStorage.getItem('adminToken');
+    }
+
+    function getAdminToken() {
+        return sessionStorage.getItem('adminToken') || '';
+    }
+
+    function unlockAdmin(password) {
+        return fetch('/api/admin/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: password })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.valid) {
+                sessionStorage.setItem('adminToken', password);
+                updateAdminVisibility();
+            }
+            return data.valid;
+        });
+    }
+
+    function lockAdmin() {
+        sessionStorage.removeItem('adminToken');
+        updateAdminVisibility();
+    }
+
+    function updateAdminVisibility() {
+        const body = document.body;
+        const lockBtn = document.getElementById('adminLockBtn');
+        if (!adminPasswordRequired) {
+            // No password configured — show everything, no lock button
+            body.classList.remove('admin-unlocked');
+            document.querySelectorAll('.admin-only').forEach(el => {
+                el.style.display = '';
+            });
+            if (lockBtn) { lockBtn.classList.add('d-none'); }
+            return;
+        }
+        if (isAdminMode()) {
+            body.classList.add('admin-unlocked');
+            if (lockBtn) {
+                lockBtn.textContent = '🔓';
+                lockBtn.title = 'Admin mode active — click to lock';
+                lockBtn.classList.remove('d-none');
+            }
+        } else {
+            body.classList.remove('admin-unlocked');
+            if (lockBtn) {
+                lockBtn.textContent = '🔐';
+                lockBtn.title = 'Click to unlock admin mode';
+                lockBtn.classList.remove('d-none');
+            }
+        }
+    }
+
+    function checkAdminStatus() {
+        fetch('/api/admin/status')
+            .then(r => r.json())
+            .then(data => {
+                adminPasswordRequired = data.passwordRequired === true;
+                if (adminPasswordRequired && isAdminMode()) {
+                    // Re-verify silently on page reload
+                    fetch('/api/admin/verify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: getAdminToken() })
+                    })
+                    .then(r => r.json())
+                    .then(result => {
+                        if (!result.valid) {
+                            // Token no longer valid — clear it
+                            sessionStorage.removeItem('adminToken');
+                        }
+                        updateAdminVisibility();
+                        if (isAdminMode()) { loadDiagnostics(); }
+                    })
+                    .catch(() => { updateAdminVisibility(); });
+                } else {
+                    updateAdminVisibility();
+                    if (!adminPasswordRequired) { loadDiagnostics(); }
+                }
+            })
+            .catch(() => {
+                // If status check fails, treat as no password required
+                adminPasswordRequired = false;
+                updateAdminVisibility();
+                loadDiagnostics();
+            });
+    }
+
+    function initAdminModal() {
+        const lockBtn = document.getElementById('adminLockBtn');
+        if (!lockBtn) { return; }
+        lockBtn.addEventListener('click', function () {
+            const modal = document.getElementById('adminModal');
+            if (!modal) { return; }
+            const unlockForm = document.getElementById('adminUnlockForm');
+            const lockedInfo = document.getElementById('adminLockedInfo');
+            const unlockBtn = document.getElementById('adminUnlockBtn');
+            const lockConfirmBtn = document.getElementById('adminLockConfirmBtn');
+            const passwordInput = document.getElementById('adminPasswordInput');
+            const errorMsg = document.getElementById('adminPasswordError');
+            if (isAdminMode()) {
+                // Show "lock" view
+                if (unlockForm) { unlockForm.classList.add('d-none'); }
+                if (lockedInfo) { lockedInfo.classList.remove('d-none'); }
+                if (unlockBtn) { unlockBtn.classList.add('d-none'); }
+                if (lockConfirmBtn) { lockConfirmBtn.classList.remove('d-none'); }
+            } else {
+                // Show "unlock" view
+                if (unlockForm) { unlockForm.classList.remove('d-none'); }
+                if (lockedInfo) { lockedInfo.classList.add('d-none'); }
+                if (unlockBtn) { unlockBtn.classList.remove('d-none'); }
+                if (lockConfirmBtn) { lockConfirmBtn.classList.add('d-none'); }
+                if (errorMsg) { errorMsg.classList.add('d-none'); }
+                if (passwordInput) { passwordInput.value = ''; }
+            }
+            const bsModal = new bootstrap.Modal(modal);
+            bsModal.show();
+        });
+
+        const unlockBtn = document.getElementById('adminUnlockBtn');
+        if (unlockBtn) {
+            unlockBtn.addEventListener('click', function () {
+                const passwordInput = document.getElementById('adminPasswordInput');
+                const errorMsg = document.getElementById('adminPasswordError');
+                const password = passwordInput ? passwordInput.value : '';
+                unlockAdmin(password).then(function (valid) {
+                    if (valid) {
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('adminModal'));
+                        if (modal) { modal.hide(); }
+                        loadDiagnostics();
+                    } else {
+                        if (errorMsg) { errorMsg.classList.remove('d-none'); }
+                        if (passwordInput) { passwordInput.focus(); }
+                    }
+                });
+            });
+        }
+
+        const lockConfirmBtn = document.getElementById('adminLockConfirmBtn');
+        if (lockConfirmBtn) {
+            lockConfirmBtn.addEventListener('click', function () {
+                lockAdmin();
+                const modal = bootstrap.Modal.getInstance(document.getElementById('adminModal'));
+                if (modal) { modal.hide(); }
+            });
+        }
+
+        // Allow Enter key to submit password
+        const passwordInput = document.getElementById('adminPasswordInput');
+        if (passwordInput) {
+            passwordInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    const unlockBtnEl = document.getElementById('adminUnlockBtn');
+                    if (unlockBtnEl) { unlockBtnEl.click(); }
+                }
+            });
+        }
+    }
+
     // ── Check AI availability ─────────────────────────────────────────────────
     function checkAiStatus() {
         fetch('/api/ai-status')
@@ -164,12 +332,21 @@
                 const badge = document.getElementById('aiStatusBadge');
                 if (status.available) {
                     btn.disabled = false;
-                    infoEl.textContent = 'Using: ' + status.provider;
-                    infoEl.classList.remove('d-none');
+                    if (!adminPasswordRequired || isAdminMode()) {
+                        infoEl.textContent = 'Using: ' + status.provider;
+                        infoEl.classList.remove('d-none');
+                    } else {
+                        infoEl.classList.add('d-none');
+                    }
                     if (badge) {
-                        badge.textContent = '🟢 AI: ' + status.provider;
+                        if (!adminPasswordRequired || isAdminMode()) {
+                            badge.textContent = '🟢 AI: ' + status.provider;
+                            badge.title = 'AI is available (' + status.provider + ')';
+                        } else {
+                            badge.textContent = '🟢 AI: Ready';
+                            badge.title = 'AI is available';
+                        }
                         badge.className = 'badge bg-success ms-auto me-2 fs-6';
-                        badge.title = 'AI is available (' + status.provider + ')';
                     }
                 } else {
                     btn.disabled = true;
@@ -199,12 +376,22 @@
 
     // ── LLM Diagnostics ───────────────────────────────────────────────────────
     function loadDiagnostics() {
+        if (adminPasswordRequired && !isAdminMode()) { return; }
         const content = document.getElementById('diagnosticsContent');
         if (!content) { return; }
         content.innerHTML = '<div class="text-muted">Loading…</div>';
-        fetch('/api/diagnostics')
-            .then(r => r.json())
+        const headers = { 'Accept': 'application/json' };
+        if (isAdminMode()) { headers['X-Admin-Token'] = getAdminToken(); }
+        fetch('/api/diagnostics', { headers: headers })
+            .then(r => {
+                if (r.status === 401) {
+                    if (content) { content.innerHTML = '<div class="text-muted">Admin authentication required.</div>'; }
+                    return null;
+                }
+                return r.json();
+            })
             .then(d => {
+                if (!d) { return; }
                 console.log('[Taxonomy] Diagnostics:', d);
                 const keyStatus = d.apiKeyConfigured
                     ? '<span class="diag-status-ok">&#9989; Configured</span>' +
@@ -1350,9 +1537,19 @@
         const resetBtn = document.getElementById('promptResetBtn');
         if (!select || !saveBtn || !resetBtn) return;
 
-        fetch('/api/prompts')
-            .then(r => r.json())
+        const adminHeaders = () => {
+            const h = {};
+            if (isAdminMode()) { h['X-Admin-Token'] = getAdminToken(); }
+            return h;
+        };
+
+        fetch('/api/prompts', { headers: adminHeaders() })
+            .then(r => {
+                if (r.status === 401) { return null; }
+                return r.json();
+            })
             .then(function (templates) {
+                if (!templates) { return; }
                 promptTemplates = templates;
                 templates.forEach(function (t) {
                     const opt = document.createElement('option');
@@ -1377,7 +1574,7 @@
             const template = document.getElementById('promptTextarea').value;
             fetch('/api/prompts/' + encodeURIComponent(code), {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...adminHeaders() },
                 body: JSON.stringify({ template: template })
             })
             .then(function (r) {
@@ -1398,14 +1595,19 @@
 
         resetBtn.addEventListener('click', function () {
             const code = select.value;
-            fetch('/api/prompts/' + encodeURIComponent(code), { method: 'DELETE' })
+            fetch('/api/prompts/' + encodeURIComponent(code), {
+                method: 'DELETE',
+                headers: adminHeaders()
+            })
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
             .then(function () {
                 // Reload to get the file-based default
-                return fetch('/api/prompts/' + encodeURIComponent(code)).then(r => r.json());
+                return fetch('/api/prompts/' + encodeURIComponent(code), {
+                    headers: adminHeaders()
+                }).then(r => r.json());
             })
             .then(function (data) {
                 document.getElementById('promptTextarea').value = data.template;
@@ -1421,9 +1623,15 @@
     }
 
     function loadPromptIntoEditor(code) {
-        fetch('/api/prompts/' + encodeURIComponent(code))
-            .then(r => r.json())
+        const adminHeaders = {};
+        if (isAdminMode()) { adminHeaders['X-Admin-Token'] = getAdminToken(); }
+        fetch('/api/prompts/' + encodeURIComponent(code), { headers: adminHeaders })
+            .then(r => {
+                if (r.status === 401) { return null; }
+                return r.json();
+            })
             .then(function (data) {
+                if (!data) { return; }
                 document.getElementById('promptTextarea').value = data.template;
                 updateOverrideBadge(code, data.overridden);
                 setPromptStatus('', '');

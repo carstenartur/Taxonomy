@@ -24,12 +24,15 @@ import com.nato.taxonomy.service.VisioDiagramService;
 import com.nato.taxonomy.service.VisioPackageBuilder;
 import com.nato.taxonomy.visio.VisioDocument;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -55,6 +58,9 @@ public class ApiController {
     private final VisioPackageBuilder visioPackageBuilder;
     private final ArchiMateDiagramService archiMateDiagramService;
     private final ArchiMateXmlExporter archiMateXmlExporter;
+
+    @Value("${admin.password:}")
+    private String adminPassword;
 
     public ApiController(TaxonomyService taxonomyService, LlmService llmService,
                          SearchService searchService, HybridSearchService hybridSearchService,
@@ -281,8 +287,27 @@ public class ApiController {
     }
 
     @GetMapping("/diagnostics")
-    public ResponseEntity<Map<String, Object>> diagnostics() {
+    public ResponseEntity<Map<String, Object>> diagnostics(HttpServletRequest request) {
+        if (!isAdminAuthorized(request)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         return ResponseEntity.ok(llmService.getDiagnostics());
+    }
+
+    // ── Admin endpoints ───────────────────────────────────────────────────────
+
+    @GetMapping("/admin/status")
+    public ResponseEntity<Map<String, Boolean>> adminStatus() {
+        boolean required = adminPassword != null && !adminPassword.isBlank();
+        return ResponseEntity.ok(Map.of("passwordRequired", required));
+    }
+
+    @PostMapping("/admin/verify")
+    public ResponseEntity<Map<String, Boolean>> verifyAdmin(@RequestBody Map<String, String> body) {
+        String password = body.get("password");
+        boolean valid = adminPassword != null && !adminPassword.isBlank()
+                && adminPassword.equals(password);
+        return ResponseEntity.ok(Map.of("valid", valid));
     }
 
     // ── Visio Diagram Export ──────────────────────────────────────────────────
@@ -382,7 +407,10 @@ public class ApiController {
     // ── Prompt template endpoints ──────────────────────────────────────────────
 
     @GetMapping("/prompts")
-    public ResponseEntity<List<Map<String, Object>>> getAllPrompts() {
+    public ResponseEntity<List<Map<String, Object>>> getAllPrompts(HttpServletRequest request) {
+        if (!isAdminAuthorized(request)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         List<Map<String, Object>> result = new ArrayList<>();
         for (String code : promptTemplateService.getAllTemplateCodes()) {
             Map<String, Object> entry = new LinkedHashMap<>();
@@ -396,7 +424,11 @@ public class ApiController {
     }
 
     @GetMapping("/prompts/{code}")
-    public ResponseEntity<Map<String, Object>> getPrompt(@PathVariable String code) {
+    public ResponseEntity<Map<String, Object>> getPrompt(@PathVariable String code,
+            HttpServletRequest request) {
+        if (!isAdminAuthorized(request)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("code", code);
         result.put("name", promptTemplateService.getTaxonomyName(code));
@@ -409,7 +441,11 @@ public class ApiController {
     @PutMapping("/prompts/{code}")
     public ResponseEntity<Map<String, Object>> savePrompt(
             @PathVariable String code,
-            @RequestBody Map<String, String> body) {
+            @RequestBody Map<String, String> body,
+            HttpServletRequest request) {
+        if (!isAdminAuthorized(request)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         String template = body.get("template");
         if (template == null) {
             return ResponseEntity.badRequest().build();
@@ -422,7 +458,11 @@ public class ApiController {
     }
 
     @DeleteMapping("/prompts/{code}")
-    public ResponseEntity<Map<String, Object>> resetPrompt(@PathVariable String code) {
+    public ResponseEntity<Map<String, Object>> resetPrompt(@PathVariable String code,
+            HttpServletRequest request) {
+        if (!isAdminAuthorized(request)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         promptTemplateService.resetTemplate(code);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("code", code);
@@ -496,5 +536,20 @@ public class ApiController {
         status.put("modelUrl",     embeddingService.effectiveModelUrl());
         status.put("indexedNodes", embeddingService.indexedNodeCount());
         return ResponseEntity.ok(status);
+    }
+
+    // ── Admin authorization helper ────────────────────────────────────────────
+
+    /**
+     * Returns {@code true} if the request is authorized to access admin-only endpoints.
+     * Authorization is granted when no admin password is configured (backward compatible),
+     * or when the {@code X-Admin-Token} header matches the configured password.
+     */
+    private boolean isAdminAuthorized(HttpServletRequest request) {
+        if (adminPassword == null || adminPassword.isBlank()) {
+            return true;
+        }
+        String token = request.getHeader("X-Admin-Token");
+        return adminPassword.equals(token);
     }
 }
