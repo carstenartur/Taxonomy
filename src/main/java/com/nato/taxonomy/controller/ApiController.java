@@ -23,6 +23,8 @@ import com.nato.taxonomy.service.ArchiMateXmlExporter;
 import com.nato.taxonomy.service.VisioDiagramService;
 import com.nato.taxonomy.service.VisioPackageBuilder;
 import com.nato.taxonomy.visio.VisioDocument;
+import com.nato.taxonomy.dto.GraphSearchResult;
+import com.nato.taxonomy.service.GraphSearchService;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -50,6 +52,7 @@ public class ApiController {
     private final SearchService searchService;
     private final HybridSearchService hybridSearchService;
     private final LocalEmbeddingService embeddingService;
+    private final GraphSearchService graphSearchService;
     private final ExecutorService analysisExecutor;
     private final ObjectMapper objectMapper;
     private final PromptTemplateService promptTemplateService;
@@ -66,6 +69,7 @@ public class ApiController {
     public ApiController(TaxonomyService taxonomyService, LlmService llmService,
                          SearchService searchService, HybridSearchService hybridSearchService,
                          LocalEmbeddingService embeddingService,
+                         GraphSearchService graphSearchService,
                          ExecutorService analysisExecutor,
                          ObjectMapper objectMapper, PromptTemplateService promptTemplateService,
                          RequirementArchitectureViewService architectureViewService,
@@ -79,6 +83,7 @@ public class ApiController {
         this.searchService = searchService;
         this.hybridSearchService = hybridSearchService;
         this.embeddingService = embeddingService;
+        this.graphSearchService = graphSearchService;
         this.analysisExecutor = analysisExecutor;
         this.objectMapper = objectMapper;
         this.promptTemplateService = promptTemplateService;
@@ -539,8 +544,30 @@ public class ApiController {
         return ResponseEntity.ok(status);
     }
 
-    // ── Admin authorization helper ────────────────────────────────────────────
+    /**
+     * Graph-semantic search: combines node and relation KNN queries to answer
+     * graph-structural questions.
+     *
+     * <p>Returns:
+     * <ul>
+     *   <li>Matched nodes ranked by semantic similarity.</li>
+     *   <li>Per-root relation counts (graph statistics).</li>
+     *   <li>Most common relation types.</li>
+     *   <li>A human-readable summary.</li>
+     * </ul>
+     *
+     * @param q          natural-language query (e.g. "which Business Processes are most supported?")
+     * @param maxResults maximum number of node results (default 20)
+     */
+    @GetMapping("/search/graph")
+    public ResponseEntity<GraphSearchResult> graphSearch(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "20") int maxResults) {
+        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
+        return ResponseEntity.ok(graphSearchService.graphSearch(q, maxResults));
+    }
 
+    // ── Admin authorization helper ────────────────────────────────────────────
     /**
      * Returns {@code true} if the request is authorized to access admin-only endpoints.
      * Authorization is granted when no admin password is configured (backward compatible),

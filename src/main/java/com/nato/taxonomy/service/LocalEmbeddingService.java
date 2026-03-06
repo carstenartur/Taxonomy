@@ -6,42 +6,31 @@ import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ZooModel;
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
 import com.nato.taxonomy.model.TaxonomyNode;
-import com.nato.taxonomy.repository.TaxonomyNodeRepository;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
-import org.apache.lucene.document.KnnFloatVectorField;
-import org.apache.lucene.document.StringField;
-import org.apache.lucene.index.*;
-import org.apache.lucene.search.*;
-import org.apache.lucene.store.ByteBuffersDirectory;
-import org.apache.lucene.store.Directory;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.hibernate.search.mapper.orm.Search;
+import org.hibernate.search.mapper.orm.session.SearchSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Local embedding service that scores taxonomy nodes against a business requirement using
  * the {@code sentence-transformers/all-MiniLM-L6-v2} ONNX model loaded via DJL.
  *
  * <h2>Architecture</h2>
- * <p>Follows the same pattern as {@link SearchService}:
- * <ul>
- *   <li>A {@link ByteBuffersDirectory} in-memory Lucene index stores one
- *       {@link KnnFloatVectorField} (dimension 384, cosine similarity) per taxonomy node.
- *       This mirrors how Hibernate Search uses {@code @VectorField} + {@code f.knn()} in the
- *       sandbox project (sandbox-jgit-storage-hibernate).</li>
- *   <li>The vector index and the DJL model are both <em>lazily initialised</em> on first use —
- *       application startup is not slowed down and no model is downloaded unless actually needed.</li>
- *   <li>On each scoring call only the <em>query</em> text is embedded; the node vectors are
- *       already in the index. A {@link KnnFloatVectorQuery} with a {@link BooleanQuery}
- *       pre-filter restricts the ANN search to the specific batch of nodes, matching
- *       Hibernate Search's {@code knn()} predicate filtering approach.</li>
- * </ul>
+ * <p>The DJL model is <em>lazily initialised</em> on first use — application startup is not
+ * slowed down and no model is downloaded unless actually needed.
+ *
+ * <p>Vector storage and KNN retrieval are handled by Hibernate Search (Lucene backend).
+ * The {@code @VectorField(name = "embedding")} on {@link TaxonomyNode} (via
+ * {@link com.nato.taxonomy.search.NodeEmbeddingBinder}) stores the pre-computed embedding.
+ * Queries use {@code f.knn(k).field("embedding").matching(queryVector)}.
  *
  * <h2>Configuration</h2>
  * <ul>
@@ -59,7 +48,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code false}.
  *
  * <h2>Scoring</h2>
- * <p>Lucene's COSINE similarity function returns {@code (1 + cosineSim) / 2 ∈ [0, 1]}.
+ * <p>Hibernate Search's KNN query returns cosine similarity scores in [0, 1].
  * Raw cosine similarity is recovered as {@code 2 * luceneScore - 1} and mapped to 0–100.
  *
  * <p>Enable as the LLM provider with {@code LLM_PROVIDER=LOCAL_ONNX}.  No API key required.
@@ -72,13 +61,6 @@ public class LocalEmbeddingService {
     /** Default DJL model-zoo URL for the ONNX export of all-MiniLM-L6-v2. */
     static final String DEFAULT_MODEL_URL =
             "djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2";
-
-    /** Embedding dimension produced by all-MiniLM-L6-v2. */
-    private static final int EMBEDDING_DIM = 384;
-
-    /** Lucene document field names. */
-    private static final String FIELD_CODE      = "code";
-    private static final String FIELD_EMBEDDING = "embedding";
 
     /**
      * Raw cosine-similarity threshold below which a node receives score 0.
@@ -103,21 +85,10 @@ public class LocalEmbeddingService {
     private volatile boolean modelLoadFailed = false;
     private final Object modelLock = new Object();
 
-    // ── Lucene KNN vector index (lazy, built once from all taxonomy nodes) ────
-
-    private volatile Directory vectorDirectory;
-    private final Object indexLock = new Object();
-
-    /** Flat node DTO cache for returning semantic search results without re-querying JPA. */
-    private final Map<String, TaxonomyNodeDto> nodeCache = new ConcurrentHashMap<>();
-
     // ── Dependencies ──────────────────────────────────────────────────────────
 
-    private final TaxonomyNodeRepository nodeRepository;
-
-    public LocalEmbeddingService(TaxonomyNodeRepository nodeRepository) {
-        this.nodeRepository = nodeRepository;
-    }
+    @PersistenceContext
+    private EntityManager entityManager;
 
     // ── Model lifecycle ───────────────────────────────────────────────────────
 
@@ -178,85 +149,20 @@ public class LocalEmbeddingService {
         return model;
     }
 
-    // ── Vector index lifecycle ────────────────────────────────────────────────
+    // ── Index status ──────────────────────────────────────────────────────────
 
     /**
-     * Returns the lazily built Lucene {@link ByteBuffersDirectory} that holds one
-     * {@link KnnFloatVectorField} per taxonomy node.
-     *
-     * <p>On first call this method loads all nodes from the database, embeds every
-     * node's text with DJL, and writes the vectors into the in-memory index.
-     * Subsequent calls return the cached directory instantly.
-     */
-    Directory getVectorDirectory() throws Exception {
-        if (vectorDirectory == null) {
-            synchronized (indexLock) {
-                if (vectorDirectory == null) {
-                    List<TaxonomyNode> all = nodeRepository.findAll();
-                    log.info("Building KNN vector index for {} taxonomy nodes …", all.size());
-                    vectorDirectory = buildVectorIndex(all);
-                    log.info("KNN vector index built ({} documents).", all.size());
-                }
-            }
-        }
-        return vectorDirectory;
-    }
-
-    /**
-     * Builds a {@link ByteBuffersDirectory} following the same pattern as
-     * {@link SearchService#buildIndex}: one document per node, one
-     * {@link KnnFloatVectorField} (COSINE, dim 384) storing the node's text embedding.
-     * Also populates the flat DTO cache for result retrieval.
-     */
-    private Directory buildVectorIndex(List<TaxonomyNode> nodes) throws Exception {
-        Directory dir = new ByteBuffersDirectory();
-        IndexWriterConfig config = new IndexWriterConfig();
-        try (IndexWriter writer = new IndexWriter(dir, config)) {
-            for (TaxonomyNode node : nodes) {
-                float[] embedding = embed(buildNodeText(node));
-                Document doc = new Document();
-                doc.add(new StringField(FIELD_CODE, node.getCode(), Field.Store.YES));
-                doc.add(new KnnFloatVectorField(FIELD_EMBEDDING, embedding,
-                        VectorSimilarityFunction.COSINE));
-                writer.addDocument(doc);
-                nodeCache.put(node.getCode(), toFlatDto(node));
-            }
-        }
-        return dir;
-    }
-
-    /**
-     * Invalidates the cached vector index so it will be rebuilt on the next scoring call.
-     * Called by {@link TaxonomyService} after taxonomy data is reloaded.
-     */
-    public void invalidateVectorIndex() {
-        synchronized (indexLock) {
-            if (vectorDirectory != null) {
-                try {
-                    vectorDirectory.close();
-                } catch (IOException e) {
-                    log.warn("Failed to close KNN vector directory during invalidation", e);
-                }
-                vectorDirectory = null;
-                nodeCache.clear();
-                log.info("KNN vector index invalidated; will be rebuilt on next use.");
-            }
-        }
-    }
-
-    /**
-     * Returns the number of nodes currently in the vector index, or 0 if not yet built.
+     * Returns the number of nodes currently in the Hibernate Search index.
      * Used by the embedding-status endpoint.
      */
+    @Transactional(readOnly = true)
     public int indexedNodeCount() {
-        Directory dir;
-        synchronized (indexLock) {
-            dir = vectorDirectory;
-        }
-        if (dir == null) return 0;
-        try (DirectoryReader reader = DirectoryReader.open(dir)) {
-            return reader.numDocs();
-        } catch (IOException e) {
+        try {
+            SearchSession session = Search.session(entityManager);
+            return (int) session.search(TaxonomyNode.class)
+                    .where(f -> f.matchAll())
+                    .fetchTotalHitCount();
+        } catch (Exception e) {
             return 0;
         }
     }
@@ -275,12 +181,16 @@ public class LocalEmbeddingService {
     }
 
     /**
-     * Scores each taxonomy node against {@code businessText} using Lucene
-     * {@link KnnFloatVectorQuery}.  Used by {@link LlmService} when
-     * {@code LLM_PROVIDER=LOCAL_ONNX}.
+     * Scores each taxonomy node against {@code businessText} using Hibernate Search
+     * KNN vector query.  Used by {@link LlmService} when {@code LLM_PROVIDER=LOCAL_ONNX}.
+     *
+     * <p>Scores are derived from the Hibernate Search / Lucene KNN score (which uses
+     * {@code (1 + cosineSimilarity) / 2}) and scaled to the 0–100 % range:
+     * {@code percentage = clamp(round((2 * luceneScore - 1) * 100), 0, 100)}.
      *
      * <p>On any error all nodes receive score 0 and the exception is logged.
      */
+    @Transactional(readOnly = true)
     public Map<String, Integer> scoreNodes(String businessText, List<TaxonomyNode> nodes) {
         Map<String, Integer> scores = new HashMap<>();
         for (TaxonomyNode node : nodes) {
@@ -291,32 +201,27 @@ public class LocalEmbeddingService {
 
         try {
             float[] queryVector = embed(businessText);
+            List<String> nodeCodes = nodes.stream()
+                    .map(TaxonomyNode::getCode).collect(Collectors.toList());
 
-            BooleanQuery.Builder filterBuilder = new BooleanQuery.Builder();
-            for (TaxonomyNode node : nodes) {
-                filterBuilder.add(
-                        new TermQuery(new Term(FIELD_CODE, node.getCode())),
-                        BooleanClause.Occur.SHOULD);
-            }
-            Query nodeFilter = filterBuilder.build();
+            SearchSession session = Search.session(entityManager);
+            // Use score projection so we can map Lucene scores to percentages
+            List<List<?>> hits = session.search(TaxonomyNode.class)
+                    .select(f -> f.composite(f.entity(TaxonomyNode.class), f.score()))
+                    .where(f -> f.knn(nodes.size())
+                            .field("embedding")
+                            .matching(queryVector)
+                            .filter(f.terms().field("code").matchingAny(nodeCodes)))
+                    .fetchHits(nodes.size());
 
-            KnnFloatVectorQuery knnQuery = new KnnFloatVectorQuery(
-                    FIELD_EMBEDDING, queryVector, nodes.size(), nodeFilter);
-
-            try (DirectoryReader reader = DirectoryReader.open(getVectorDirectory())) {
-                IndexSearcher searcher = new IndexSearcher(reader);
-                TopDocs topDocs = searcher.search(knnQuery, nodes.size());
-
-                for (ScoreDoc sd : topDocs.scoreDocs) {
-                    Document doc = searcher.storedFields().document(sd.doc);
-                    String code = doc.get(FIELD_CODE);
-                    double cosineSim = 2.0 * sd.score - 1.0;
-                    int score = cosineSim <= THRESHOLD
-                            ? 0
-                            : (int) Math.min(100,
-                                    Math.round((cosineSim - THRESHOLD) / (1.0 - THRESHOLD) * 100));
-                    scores.put(code, score);
-                }
+            for (List<?> hit : hits) {
+                TaxonomyNode node = (TaxonomyNode) hit.get(0);
+                float luceneScore = (Float) hit.get(1);
+                // Lucene COSINE KNN score = (1 + cosineSim) / 2 → cosineSim in [-1, 1]
+                // Map cosineSim to percentage: cosineSim = 2 * luceneScore - 1
+                int percentage = (int) Math.round((2.0 * luceneScore - 1.0) * 100.0);
+                percentage = Math.max(0, Math.min(100, percentage));
+                scores.put(node.getCode(), percentage);
             }
 
             log.info("LOCAL_ONNX scores: {}", scores);
@@ -333,32 +238,20 @@ public class LocalEmbeddingService {
      * Returns up to {@code topK} taxonomy node DTOs ranked by cosine similarity to
      * {@code queryText}.  Returns an empty list when embedding is not available.
      *
-     * <p>Analogous to {@code GitDatabaseQueryService.semanticSearch()} in the sandbox project.
-     *
      * @param queryText natural-language description (e.g. "secure voice communications")
      * @param topK      maximum number of results
      * @return ranked list of matching taxonomy nodes (flat DTOs, no children)
      */
+    @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> semanticSearch(String queryText, int topK) {
         if (!isAvailable()) return Collections.emptyList();
         try {
             float[] queryVector = embed(queryText);
-            KnnFloatVectorQuery knnQuery = new KnnFloatVectorQuery(
-                    FIELD_EMBEDDING, queryVector, topK);
-
-            try (DirectoryReader reader = DirectoryReader.open(getVectorDirectory())) {
-                IndexSearcher searcher = new IndexSearcher(reader);
-                TopDocs topDocs = searcher.search(knnQuery, topK);
-
-                List<TaxonomyNodeDto> results = new ArrayList<>();
-                for (ScoreDoc sd : topDocs.scoreDocs) {
-                    Document doc = searcher.storedFields().document(sd.doc);
-                    String code = doc.get(FIELD_CODE);
-                    TaxonomyNodeDto dto = nodeCache.get(code);
-                    if (dto != null) results.add(dto);
-                }
-                return results;
-            }
+            SearchSession session = Search.session(entityManager);
+            List<TaxonomyNode> hits = session.search(TaxonomyNode.class)
+                    .where(f -> f.knn(topK).field("embedding").matching(queryVector))
+                    .fetchHits(topK);
+            return hits.stream().map(this::toFlatDto).collect(Collectors.toList());
         } catch (Exception e) {
             log.error("Semantic search failed for query '{}': {}", queryText, e.getMessage());
             return Collections.emptyList();
@@ -367,55 +260,40 @@ public class LocalEmbeddingService {
 
     /**
      * Find taxonomy nodes semantically similar to a given node, identified by its code.
-     * Uses the pre-built vector of the source node as the query vector.
+     * Uses the node's enriched text as the query.
      * Excludes the source node itself from the results.
-     *
-     * <p>Analogous to {@code GitDatabaseQueryService.findSimilarCode()} in the sandbox project.
      *
      * @param nodeCode code of the reference node (e.g. "BP.001")
      * @param topK     maximum number of similar nodes to return
      * @return ranked list of similar taxonomy node DTOs
      */
+    @Transactional(readOnly = true)
     public List<TaxonomyNodeDto> findSimilarNodes(String nodeCode, int topK) {
         if (!isAvailable()) return Collections.emptyList();
         try {
-            // Embed the reference node's text (rather than fetching from the index)
-            // to keep the implementation simple and avoid Lucene stored-vector API differences
-            TaxonomyNodeDto dto = nodeCache.get(nodeCode);
-            if (dto == null) {
-                // Build index if not yet done
-                getVectorDirectory();
-                dto = nodeCache.get(nodeCode);
-            }
-            if (dto == null) {
-                log.warn("Node '{}' not found in embedding cache", nodeCode);
+            TaxonomyNode node = entityManager.createQuery(
+                            "SELECT n FROM TaxonomyNode n WHERE n.code = :code", TaxonomyNode.class)
+                    .setParameter("code", nodeCode)
+                    .getResultStream().findFirst().orElse(null);
+            if (node == null) {
+                log.warn("Node '{}' not found in database", nodeCode);
                 return Collections.emptyList();
             }
 
-            String nodeText = buildNodeText(dto);
+            String nodeText = buildNodeText(node);
             float[] queryVector = embed(nodeText);
 
-            // Retrieve topK+1 so we can exclude the source node itself
-            KnnFloatVectorQuery knnQuery = new KnnFloatVectorQuery(
-                    FIELD_EMBEDDING, queryVector, topK + 1);
+            SearchSession session = Search.session(entityManager);
+            // Retrieve topK+1 so we can exclude the source node
+            List<TaxonomyNode> hits = session.search(TaxonomyNode.class)
+                    .where(f -> f.knn(topK + 1).field("embedding").matching(queryVector))
+                    .fetchHits(topK + 1);
 
-            try (DirectoryReader reader = DirectoryReader.open(getVectorDirectory())) {
-                IndexSearcher searcher = new IndexSearcher(reader);
-                TopDocs topDocs = searcher.search(knnQuery, topK + 1);
-
-                List<TaxonomyNodeDto> results = new ArrayList<>();
-                for (ScoreDoc sd : topDocs.scoreDocs) {
-                    Document doc = searcher.storedFields().document(sd.doc);
-                    String code = doc.get(FIELD_CODE);
-                    if (code.equals(nodeCode)) continue; // exclude self
-                    TaxonomyNodeDto result = nodeCache.get(code);
-                    if (result != null) {
-                        results.add(result);
-                        if (results.size() >= topK) break;
-                    }
-                }
-                return results;
-            }
+            return hits.stream()
+                    .filter(n -> !nodeCode.equals(n.getCode()))
+                    .limit(topK)
+                    .map(this::toFlatDto)
+                    .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("findSimilarNodes failed for node '{}': {}", nodeCode, e.getMessage());
             return Collections.emptyList();
@@ -425,17 +303,9 @@ public class LocalEmbeddingService {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private String buildNodeText(TaxonomyNode node) {
-        StringBuilder sb = new StringBuilder(node.getName());
-        if (node.getDescription() != null && !node.getDescription().isBlank()) {
-            sb.append(". ").append(node.getDescription());
-        }
-        return sb.toString();
-    }
-
-    private String buildNodeText(TaxonomyNodeDto dto) {
-        StringBuilder sb = new StringBuilder(dto.getName());
-        if (dto.getDescriptionEn() != null && !dto.getDescriptionEn().isBlank()) {
-            sb.append(". ").append(dto.getDescriptionEn());
+        StringBuilder sb = new StringBuilder(node.getNameEn() != null ? node.getNameEn() : "");
+        if (node.getDescriptionEn() != null && !node.getDescriptionEn().isBlank()) {
+            sb.append(". ").append(node.getDescriptionEn());
         }
         return sb.toString();
     }

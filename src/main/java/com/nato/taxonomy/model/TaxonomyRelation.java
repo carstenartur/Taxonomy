@@ -1,11 +1,16 @@
 package com.nato.taxonomy.model;
 
+import com.nato.taxonomy.search.RelationEmbeddingBinder;
 import jakarta.persistence.*;
+import org.hibernate.search.mapper.pojo.bridge.mapping.annotation.TypeBinderRef;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.*;
 
 @Entity
 @Table(name = "taxonomy_relation",
         uniqueConstraints = @UniqueConstraint(
                 columnNames = {"source_node_id", "target_node_id", "relation_type"}))
+@Indexed
+@TypeBinding(binder = @TypeBinderRef(type = RelationEmbeddingBinder.class))
 public class TaxonomyRelation {
 
     @Id
@@ -14,17 +19,21 @@ public class TaxonomyRelation {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_node_id", nullable = false)
+    @IndexedEmbedded(includePaths = {"code", "nameEn"})
     private TaxonomyNode sourceNode;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "target_node_id", nullable = false)
+    @IndexedEmbedded(includePaths = {"code", "nameEn"})
     private TaxonomyNode targetNode;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "relation_type", nullable = false)
+    @KeywordField
     private RelationType relationType;
 
     @Column(length = 2000)
+    @FullTextField(analyzer = "english")
     private String description;
 
     private String provenance;

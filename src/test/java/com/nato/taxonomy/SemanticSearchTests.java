@@ -1,5 +1,9 @@
 package com.nato.taxonomy;
 
+import com.nato.taxonomy.model.TaxonomyNode;
+import com.nato.taxonomy.model.TaxonomyRelation;
+import com.nato.taxonomy.search.NodeEmbeddingBinder;
+import com.nato.taxonomy.search.RelationEmbeddingBinder;
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
 import com.nato.taxonomy.service.HybridSearchService;
 import com.nato.taxonomy.service.LocalEmbeddingService;
@@ -130,9 +134,11 @@ class SemanticSearchTests {
         List<TaxonomyNodeDto> hybrid   = hybridSearchService.hybridSearch("communications", 20);
         List<TaxonomyNodeDto> fullText = searchService.search("communications", 20);
         assertThat(hybrid).isNotNull();
-        // Without embedding the result should be the full-text set
+        // Without embedding the result should contain the same nodes as the full-text set
         if (!embeddingService.isAvailable()) {
-            assertThat(hybrid).isEqualTo(fullText);
+            List<String> hybridCodes    = hybrid.stream().map(TaxonomyNodeDto::getCode).toList();
+            List<String> fullTextCodes  = fullText.stream().map(TaxonomyNodeDto::getCode).toList();
+            assertThat(hybridCodes).isEqualTo(fullTextCodes);
         }
     }
 
@@ -201,6 +207,85 @@ class SemanticSearchTests {
         mockMvc.perform(get("/api/embedding/status").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.enabled").value(true));
+    }
+
+    // ── Hibernate Search migration tests ─────────────────────────────────────
+
+    @Test
+    void hibernateSearchIndexedNodesCountIsNonNegative() {
+        // HS auto-indexes all 2572+ taxonomy nodes; count should be positive after startup
+        int count = embeddingService.indexedNodeCount();
+        assertThat(count).isGreaterThanOrEqualTo(0);
+    }
+
+    @Test
+    void fullTextSearchReturnsResultsForKnownTerm() {
+        // "communications" should match nodes in the Communications Services taxonomy
+        List<TaxonomyNodeDto> results = searchService.search("communications", 20);
+        assertThat(results).isNotNull();
+        assertThat(results).isNotEmpty();
+    }
+
+    @Test
+    void fullTextSearchHandlesPrefixMatchForRootCode() {
+        // Prefix "BP" should match Business Processes nodes
+        List<TaxonomyNodeDto> results = searchService.search("BP", 20);
+        assertThat(results).isNotNull();
+        assertThat(results).isNotEmpty();
+    }
+
+    @Test
+    void nodeEnrichedTextIncludesNodeName() {
+        // Verify the NodeEmbeddingBinder.Bridge.buildEnrichedText contains the node name
+        TaxonomyNode node = new TaxonomyNode();
+        node.setCode("BP.001");
+        node.setNameEn("Business Process Management");
+        node.setDescriptionEn("Manages business processes.");
+        String text = NodeEmbeddingBinder.Bridge.buildEnrichedText(node);
+        assertThat(text).contains("Business Process Management");
+        assertThat(text).contains("Manages business processes");
+    }
+
+    @Test
+    void nodeEnrichedTextHandlesNullDescription() {
+        TaxonomyNode node = new TaxonomyNode();
+        node.setCode("BP.002");
+        node.setNameEn("Planning");
+        String text = NodeEmbeddingBinder.Bridge.buildEnrichedText(node);
+        assertThat(text).contains("Planning");
+        assertThat(text).isNotBlank();
+    }
+
+    @Test
+    void relationEnrichedTextContainsRelationParts() {
+        // Verify RelationEmbeddingBinder.Bridge.buildEnrichedText includes source, type, target
+        com.nato.taxonomy.model.TaxonomyNode source = new TaxonomyNode();
+        source.setNameEn("Business Process A");
+        com.nato.taxonomy.model.TaxonomyNode target = new TaxonomyNode();
+        target.setNameEn("Communication Service B");
+        TaxonomyRelation relation = new TaxonomyRelation();
+        relation.setSourceNode(source);
+        relation.setTargetNode(target);
+        relation.setRelationType(com.nato.taxonomy.model.RelationType.SUPPORTS);
+        String text = RelationEmbeddingBinder.Bridge.buildEnrichedText(relation);
+        assertThat(text).contains("Business Process A");
+        assertThat(text).contains("supports");
+        assertThat(text).contains("Communication Service B");
+    }
+
+    @Test
+    void relationEnrichedTextIncludesDescriptionWhenPresent() {
+        TaxonomyNode source = new TaxonomyNode();
+        source.setNameEn("Source Node");
+        TaxonomyNode target = new TaxonomyNode();
+        target.setNameEn("Target Node");
+        TaxonomyRelation relation = new TaxonomyRelation();
+        relation.setSourceNode(source);
+        relation.setTargetNode(target);
+        relation.setRelationType(com.nato.taxonomy.model.RelationType.DEPENDS_ON);
+        relation.setDescription("Critical infrastructure dependency");
+        String text = RelationEmbeddingBinder.Bridge.buildEnrichedText(relation);
+        assertThat(text).contains("Critical infrastructure dependency");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

@@ -1,12 +1,17 @@
 package com.nato.taxonomy.model;
 
+import com.nato.taxonomy.search.NodeEmbeddingBinder;
 import jakarta.persistence.*;
+import org.hibernate.search.mapper.pojo.bridge.mapping.annotation.TypeBinderRef;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.*;
 
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
 @Table(name = "taxonomy_node")
+@Indexed
+@TypeBinding(binder = @TypeBinderRef(type = NodeEmbeddingBinder.class))
 public class TaxonomyNode {
 
     @Id
@@ -14,34 +19,44 @@ public class TaxonomyNode {
     private Long id;
 
     @Column(unique = true, nullable = false)
+    @KeywordField
     private String code;
 
     @Column(nullable = true)
+    @KeywordField
     private String uuid;
 
     @Column(nullable = false)
+    @FullTextField(analyzer = "english")
     private String nameEn;
 
     @Column(nullable = true)
+    @FullTextField(analyzer = "german")
     private String nameDe;
 
     @Column(length = 5000)
+    @FullTextField(analyzer = "english")
     private String descriptionEn;
 
     @Column(length = 5000)
+    @FullTextField(analyzer = "german")
     private String descriptionDe;
 
     @Column(name = "parent_code")
+    @GenericField
     private String parentCode;
 
     @Column(name = "taxonomy_root")
+    @KeywordField
     private String taxonomyRoot;
 
+    @GenericField
     private int level;
 
     private String dataset;
 
     @Column(name = "external_id")
+    @KeywordField
     private String externalId;
 
     private String source;

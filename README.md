@@ -96,18 +96,38 @@ Every push triggers the **CI / CD** GitHub Actions workflow:
 | `GET /api/taxonomy` | GET | Full taxonomy tree (JSON) |
 | `POST /api/analyze` | POST | Analyze business text (all providers) |
 | `GET /api/analyze-stream` | GET | SSE streaming analysis |
-| `GET /api/search?q=` | GET | Full-text Lucene search |
+| `GET /api/search?q=` | GET | Full-text search (Hibernate Search / Lucene) |
 | `GET /api/search/semantic?q=` | GET | Semantic KNN search (requires LOCAL_ONNX or embedding enabled) |
 | `GET /api/search/hybrid?q=` | GET | Hybrid: fulltext + semantic via Reciprocal Rank Fusion |
 | `GET /api/search/similar/{code}` | GET | Find semantically similar taxonomy nodes |
+| `GET /api/search/graph?q=` | GET | Graph-semantic search (node + relation KNN, graph statistics) |
 | `GET /api/embedding/status` | GET | Embedding model status (enabled, available, indexedNodes) |
 | `GET /api/ai-status` | GET | LLM provider availability |
 | `GET /api/diagnostics` | GET | Provider diagnostics and call statistics |
 
-### Semantic and Hybrid Search
+### Search Architecture: Hibernate Search (Lucene backend)
 
-The semantic and hybrid search endpoints use the pre-built Lucene HNSW vector index
-(384-dim, COSINE similarity) to find taxonomy nodes by meaning rather than keywords.
+Full-text search and KNN vector search are both backed by
+[Hibernate Search 8.x](https://hibernate.org/search/) with the Lucene backend.
+Hibernate Search auto-indexes all `TaxonomyNode` and `TaxonomyRelation` entities on
+JPA persist, so no manual index builds are required.
+
+**Full-text search** uses:
+- `@FullTextField(analyzer = "english")` on `nameEn`, `descriptionEn`
+- `@FullTextField(analyzer = "german")` on `nameDe`, `descriptionDe`
+- `@KeywordField` on `code`, `uuid`, `externalId`
+
+**Semantic / KNN search** uses:
+- `@VectorField(dimension = 384, vectorSimilarity = VectorSimilarity.COSINE)` (via TypeBinder)
+- Embedding computed at index time by the `NodeEmbeddingBinder` / `RelationEmbeddingBinder`
+  using DJL / ONNX Runtime (`all-MiniLM-L6-v2`)
+- Enriched text for nodes includes outgoing/incoming relation summaries
+- Enriched text for relations: `"{sourceName} {relationType} {targetName}. {description}"`
+
+**Previous raw Lucene approach** (pre-migration):
+The project previously used manual `ByteBuffersDirectory` + `IndexWriter` + `IndexSearcher`
+for full-text search, and a separate `ByteBuffersDirectory` with `KnnFloatVectorField` for
+KNN vector search. These have been replaced by Hibernate Search's ORM integration.
 
 ```bash
 # Semantic search — ranked by cosine similarity
@@ -118,6 +138,10 @@ curl "http://localhost:8080/api/search/hybrid?q=voice+communications&maxResults=
 
 # Find similar nodes to BP (Business Processes root)
 curl "http://localhost:8080/api/search/similar/BP?topK=5"
+
+# Graph-semantic search: combines node + relation KNN, returns graph statistics
+# Response: { matchedNodes, relationCountByRoot, topRelationTypes, summary }
+curl "http://localhost:8080/api/search/graph?q=which+Business+Processes+are+most+supported&maxResults=20"
 
 # Check embedding status
 curl "http://localhost:8080/api/embedding/status"
