@@ -126,8 +126,10 @@ public class GraphSearchService {
                     .max(Map.Entry.comparingByValue());
             topType.ifPresent(e -> {
                 if (sb.length() > 0) sb.append(". ");
+                String typeName = e.getKey() != null
+                        ? e.getKey().toLowerCase().replace('_', ' ') : "unknown";
                 sb.append("Most common relation type: ")
-                        .append(e.getKey().toLowerCase().replace('_', ' '))
+                        .append(typeName)
                         .append(" (").append(e.getValue()).append(")");
             });
         }

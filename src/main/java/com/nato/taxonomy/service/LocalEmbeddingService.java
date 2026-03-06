@@ -184,6 +184,10 @@ public class LocalEmbeddingService {
      * Scores each taxonomy node against {@code businessText} using Hibernate Search
      * KNN vector query.  Used by {@link LlmService} when {@code LLM_PROVIDER=LOCAL_ONNX}.
      *
+     * <p>Scores are derived from the Hibernate Search / Lucene KNN score (which uses
+     * {@code (1 + cosineSimilarity) / 2}) and scaled to the 0–100 % range:
+     * {@code percentage = clamp(round((2 * luceneScore - 1) * 100), 0, 100)}.
+     *
      * <p>On any error all nodes receive score 0 and the exception is logged.
      */
     @Transactional(readOnly = true)
@@ -201,19 +205,23 @@ public class LocalEmbeddingService {
                     .map(TaxonomyNode::getCode).collect(Collectors.toList());
 
             SearchSession session = Search.session(entityManager);
-            List<TaxonomyNode> hits = session.search(TaxonomyNode.class)
+            // Use score projection so we can map Lucene scores to percentages
+            List<List<?>> hits = session.search(TaxonomyNode.class)
+                    .select(f -> f.composite(f.entity(TaxonomyNode.class), f.score()))
                     .where(f -> f.knn(nodes.size())
                             .field("embedding")
                             .matching(queryVector)
                             .filter(f.terms().field("code").matchingAny(nodeCodes)))
                     .fetchHits(nodes.size());
 
-            // Compute cosine scores from the KNN hits
-            // Hibernate Search Lucene KNN score = (1 + cosineSim) / 2 → cosineSim = 2*score - 1
-            // We need to re-embed each hit to get the actual similarity score.
-            // As an approximation, assign equal score to all KNN hits above threshold.
-            for (TaxonomyNode hit : hits) {
-                scores.put(hit.getCode(), 75); // default score for KNN hit
+            for (List<?> hit : hits) {
+                TaxonomyNode node = (TaxonomyNode) hit.get(0);
+                float luceneScore = (Float) hit.get(1);
+                // Lucene COSINE KNN score = (1 + cosineSim) / 2 → cosineSim in [-1, 1]
+                // Map cosineSim to percentage: cosineSim = 2 * luceneScore - 1
+                int percentage = (int) Math.round((2.0 * luceneScore - 1.0) * 100.0);
+                percentage = Math.max(0, Math.min(100, percentage));
+                scores.put(node.getCode(), percentage);
             }
 
             log.info("LOCAL_ONNX scores: {}", scores);

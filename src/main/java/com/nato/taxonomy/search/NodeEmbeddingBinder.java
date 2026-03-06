@@ -77,19 +77,29 @@ public class NodeEmbeddingBinder implements TypeBinder {
             if (!node.getOutgoingRelations().isEmpty()) {
                 sb.append("Outgoing: ");
                 for (TaxonomyRelation r : node.getOutgoingRelations()) {
+                    if (r.getRelationType() == null) continue;
                     sb.append(r.getRelationType().name().toLowerCase().replace('_', ' '));
-                    sb.append(" ").append(r.getTargetNode().getNameEn()).append(", ");
+                    String targetName = (r.getTargetNode() != null && r.getTargetNode().getNameEn() != null)
+                            ? r.getTargetNode().getNameEn() : "";
+                    sb.append(" ").append(targetName).append(", ");
                 }
-                sb.setLength(sb.length() - 2); // remove trailing ", "
+                if (sb.toString().endsWith(", ")) {
+                    sb.setLength(sb.length() - 2); // remove trailing ", "
+                }
                 sb.append(".\n");
             }
             if (!node.getIncomingRelations().isEmpty()) {
                 sb.append("Incoming: ");
                 for (TaxonomyRelation r : node.getIncomingRelations()) {
+                    if (r.getRelationType() == null) continue;
                     sb.append(r.getRelationType().name().toLowerCase().replace('_', ' '));
-                    sb.append(" ").append(r.getSourceNode().getNameEn()).append(", ");
+                    String sourceName = (r.getSourceNode() != null && r.getSourceNode().getNameEn() != null)
+                            ? r.getSourceNode().getNameEn() : "";
+                    sb.append(" ").append(sourceName).append(", ");
                 }
-                sb.setLength(sb.length() - 2);
+                if (sb.toString().endsWith(", ")) {
+                    sb.setLength(sb.length() - 2);
+                }
                 sb.append(".\n");
             }
             return sb.toString().trim();

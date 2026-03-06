@@ -61,9 +61,11 @@ public class RelationEmbeddingBinder implements TypeBinder {
         }
 
         public static String buildEnrichedText(TaxonomyRelation relation) {
-            String sourceName = relation.getSourceNode() != null
+            String sourceName = (relation.getSourceNode() != null
+                    && relation.getSourceNode().getNameEn() != null)
                     ? relation.getSourceNode().getNameEn() : "";
-            String targetName = relation.getTargetNode() != null
+            String targetName = (relation.getTargetNode() != null
+                    && relation.getTargetNode().getNameEn() != null)
                     ? relation.getTargetNode().getNameEn() : "";
             String relType = relation.getRelationType() != null
                     ? relation.getRelationType().name().toLowerCase().replace('_', ' ') : "";
