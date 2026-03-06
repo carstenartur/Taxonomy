@@ -400,7 +400,8 @@ public class LlmService {
 
             if (provider == LlmProvider.LOCAL_ONNX) {
                 log.info("LOCAL_ONNX — computing cosine-similarity scores for {} nodes", nodes.size());
-                Map<String, Integer> scores = localEmbeddingService.scoreNodes(businessText, nodes);
+                Map<String, Integer> scores = normalizeToHundred(
+                        localEmbeddingService.scoreNodes(businessText, nodes));
                 recordSuccess();
                 return new ScoreParseResult(scores, Map.of());
             }
@@ -456,7 +457,8 @@ public class LlmService {
 
         if (provider == LlmProvider.LOCAL_ONNX) {
             log.info("LOCAL_ONNX — computing cosine-similarity scores for {} nodes", nodes.size());
-            Map<String, Integer> scores = localEmbeddingService.scoreNodes(businessText, nodes);
+            Map<String, Integer> scores = normalizeToHundred(
+                    localEmbeddingService.scoreNodes(businessText, nodes));
             recordSuccess();
             return scores;
         }
@@ -499,7 +501,8 @@ public class LlmService {
         // ── Local embedding path ──────────────────────────────────────────────
         if (provider == LlmProvider.LOCAL_ONNX) {
             long start = System.currentTimeMillis();
-            Map<String, Integer> scores = localEmbeddingService.scoreNodes(businessText, nodes);
+            Map<String, Integer> scores = normalizeToHundred(
+                    localEmbeddingService.scoreNodes(businessText, nodes));
             detail.setDurationMs(System.currentTimeMillis() - start);
             detail.setScores(scores);
             detail.setPrompt("(local embedding – no prompt sent)");
@@ -828,8 +831,40 @@ public class LlmService {
         for (TaxonomyNode n : nodes) {
             scores.putIfAbsent(n.getCode(), 0);
         }
-        log.info("LLM Scores parsed: {}", scores);
-        return new ScoreParseResult(scores, reasons);
+        Map<String, Integer> normalizedScores = normalizeToHundred(scores);
+        log.info("LLM Scores parsed (normalized): {}", normalizedScores);
+        return new ScoreParseResult(normalizedScores, reasons);
+    }
+
+    /**
+     * Normalizes a set of scores proportionally so that their sum equals 100.
+     * Preserves the ratio between scores. If all scores are zero, they are returned unchanged.
+     * Rounding is adjusted using the largest-remainder method to ensure the exact sum is 100.
+     */
+    public Map<String, Integer> normalizeToHundred(Map<String, Integer> scores) {
+        int total = scores.values().stream().mapToInt(Integer::intValue).sum();
+        if (total == 0) return scores;
+
+        Map<String, Integer> normalized = new LinkedHashMap<>();
+        List<Map.Entry<String, Double>> fractionals = new ArrayList<>();
+        int runningSum = 0;
+
+        for (Map.Entry<String, Integer> e : scores.entrySet()) {
+            double scaled = (double) e.getValue() * 100.0 / total;
+            int floor = (int) scaled;
+            normalized.put(e.getKey(), floor);
+            fractionals.add(Map.entry(e.getKey(), scaled - floor));
+            runningSum += floor;
+        }
+
+        // Distribute the remaining points to entries with the largest fractional parts
+        int remaining = 100 - runningSum;
+        fractionals.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
+        for (int i = 0; i < remaining && i < fractionals.size(); i++) {
+            normalized.merge(fractionals.get(i).getKey(), 1, Integer::sum);
+        }
+
+        return normalized;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

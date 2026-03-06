@@ -19,6 +19,8 @@
     document.addEventListener('DOMContentLoaded', function () {
         loadTaxonomy();
         checkAiStatus();
+        // Poll AI status every 30 seconds to keep the indicator current
+        setInterval(checkAiStatus, 30000);
         document.getElementById('analyzeBtn').addEventListener('click', function () {
             const interactiveCb = document.getElementById('interactiveMode');
             interactiveMode = interactiveCb ? interactiveCb.checked : false;
@@ -159,13 +161,24 @@
             .then(status => {
                 const btn = document.getElementById('analyzeBtn');
                 const infoEl = document.getElementById('aiProviderInfo');
+                const badge = document.getElementById('aiStatusBadge');
                 if (status.available) {
                     btn.disabled = false;
                     infoEl.textContent = 'Using: ' + status.provider;
                     infoEl.classList.remove('d-none');
+                    if (badge) {
+                        badge.textContent = '🟢 AI: ' + status.provider;
+                        badge.className = 'badge bg-success ms-auto me-2 fs-6';
+                        badge.title = 'AI is available (' + status.provider + ')';
+                    }
                 } else {
                     btn.disabled = true;
                     infoEl.classList.add('d-none');
+                    if (badge) {
+                        badge.textContent = '🔴 AI: Unavailable';
+                        badge.className = 'badge bg-danger ms-auto me-2 fs-6';
+                        badge.title = 'AI is not available — no LLM API key configured';
+                    }
                     showStatus('warning',
                         '⚠️ AI analysis is not available — no LLM API key is configured. ' +
                         'Set one of the following environment variables: GEMINI_API_KEY, ' +
@@ -175,6 +188,12 @@
             })
             .catch(() => {
                 // If the status check fails, leave the button enabled and don't show a warning.
+                const badge = document.getElementById('aiStatusBadge');
+                if (badge) {
+                    badge.textContent = '⚠️ AI: Unknown';
+                    badge.className = 'badge bg-warning text-dark ms-auto me-2 fs-6';
+                    badge.title = 'AI status could not be determined';
+                }
             });
     }
 
