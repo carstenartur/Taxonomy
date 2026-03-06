@@ -1,9 +1,12 @@
 package com.nato.taxonomy.service;
 
-import com.nato.taxonomy.visio.VisioConnect;
 import com.nato.taxonomy.visio.VisioDocument;
 import com.nato.taxonomy.visio.VisioPage;
-import com.nato.taxonomy.visio.VisioShape;
+import com.nato.taxonomy.visio.converter.VisioDocumentConverter;
+import com.nato.taxonomy.visio.converter.VisioPageContentsConverter;
+import com.nato.taxonomy.visio.converter.VisioPagesConverter;
+import com.thoughtworks.xstream.XStream;
+import com.thoughtworks.xstream.io.xml.XppDriver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -24,6 +27,7 @@ import java.util.zip.ZipOutputStream;
 public class VisioPackageBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(VisioPackageBuilder.class);
+    private static final String XML_DECLARATION = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
 
     /**
      * Builds a .vsdx byte array from a VisioDocument.
@@ -96,19 +100,11 @@ public class VisioPackageBuilder {
     }
 
     private String buildDocumentXml(VisioDocument doc) {
-        return """
-                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-                <VisioDocument xmlns="http://schemas.microsoft.com/office/visio/2012/main"
-                               xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-                               xml:space="preserve">
-                  <DocumentProperties>
-                    <Creator>NATO NC3T Taxonomy Browser</Creator>
-                    <Description>Architecture diagram generated from requirement analysis</Description>
-                  </DocumentProperties>
-                  <DocumentSettings/>
-                  <FaceNames/>
-                  <StyleSheets/>
-                </VisioDocument>""";
+        XStream xstream = new XStream(new XppDriver());
+        xstream.setMode(XStream.NO_REFERENCES);
+        xstream.alias("VisioDocument", VisioDocument.class);
+        xstream.registerConverter(new VisioDocumentConverter());
+        return XML_DECLARATION + xstream.toXML(doc);
     }
 
     private String buildDocumentRels(VisioDocument doc) {
@@ -120,18 +116,11 @@ public class VisioPackageBuilder {
     }
 
     private String buildPagesXml(VisioDocument doc) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
-        sb.append("<Pages xmlns=\"http://schemas.microsoft.com/office/visio/2012/main\"\n");
-        sb.append("       xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n");
-        for (int i = 0; i < doc.getPages().size(); i++) {
-            VisioPage page = doc.getPages().get(i);
-            sb.append("  <Page ID=\"").append(i).append("\" Name=\"").append(escapeXml(page.getName())).append("\">\n");
-            sb.append("    <Rel r:id=\"rId").append(i + 1).append("\"/>\n");
-            sb.append("  </Page>\n");
-        }
-        sb.append("</Pages>");
-        return sb.toString();
+        XStream xstream = new XStream(new XppDriver());
+        xstream.setMode(XStream.NO_REFERENCES);
+        xstream.alias("Pages", VisioDocument.class);
+        xstream.registerConverter(new VisioPagesConverter());
+        return XML_DECLARATION + xstream.toXML(doc);
     }
 
     private String buildPagesRels(VisioDocument doc) {
@@ -148,66 +137,10 @@ public class VisioPackageBuilder {
     }
 
     private String buildPageXml(VisioPage page) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n");
-        sb.append("<PageContents xmlns=\"http://schemas.microsoft.com/office/visio/2012/main\"\n");
-        sb.append("              xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n");
-
-        // Shapes
-        for (VisioShape shape : page.getShapes()) {
-            sb.append("  <Shape ID=\"").append(escapeXml(shape.getId())).append("\" NameU=\"")
-              .append(escapeXml(shape.getText())).append("\" Type=\"Shape\">\n");
-            sb.append("    <Cell N=\"PinX\" V=\"").append(shape.getX()).append("\"/>\n");
-            sb.append("    <Cell N=\"PinY\" V=\"").append(shape.getY()).append("\"/>\n");
-            sb.append("    <Cell N=\"Width\" V=\"").append(shape.getWidth()).append("\"/>\n");
-            sb.append("    <Cell N=\"Height\" V=\"").append(shape.getHeight()).append("\"/>\n");
-
-            // Fill color: green-tinted for anchors, blue for regular
-            if (shape.isAnchor()) {
-                sb.append("    <Cell N=\"FillForegnd\" V=\"#4CAF50\"/>\n");
-            } else {
-                sb.append("    <Cell N=\"FillForegnd\" V=\"#2196F3\"/>\n");
-            }
-
-            sb.append("    <Text>").append(escapeXml(shape.getText())).append("</Text>\n");
-            sb.append("  </Shape>\n");
-        }
-
-        // Connectors
-        int connectorId = page.getShapes().size();
-        for (VisioConnect connect : page.getConnects()) {
-            connectorId++;
-            sb.append("  <Shape ID=\"").append(connectorId).append("\" Type=\"Shape\" Master=\"Dynamic connector\">\n");
-            sb.append("    <Cell N=\"BeginX\" V=\"0\"/>\n");
-            sb.append("    <Cell N=\"BeginY\" V=\"0\"/>\n");
-            sb.append("    <Cell N=\"EndX\" V=\"1\"/>\n");
-            sb.append("    <Cell N=\"EndY\" V=\"1\"/>\n");
-            sb.append("    <Text>").append(escapeXml(connect.getRelationType())).append("</Text>\n");
-            sb.append("  </Shape>\n");
-        }
-
-        // Connect elements
-        connectorId = page.getShapes().size();
-        for (VisioConnect connect : page.getConnects()) {
-            connectorId++;
-            sb.append("  <Connect FromSheet=\"").append(connectorId)
-              .append("\" FromCell=\"BeginX\" ToSheet=\"").append(escapeXml(connect.getFromShape()))
-              .append("\" ToCell=\"PinX\"/>\n");
-            sb.append("  <Connect FromSheet=\"").append(connectorId)
-              .append("\" FromCell=\"EndX\" ToSheet=\"").append(escapeXml(connect.getToShape()))
-              .append("\" ToCell=\"PinX\"/>\n");
-        }
-
-        sb.append("</PageContents>");
-        return sb.toString();
-    }
-
-    static String escapeXml(String s) {
-        if (s == null) return "";
-        return s.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&apos;");
+        XStream xstream = new XStream(new XppDriver());
+        xstream.setMode(XStream.NO_REFERENCES);
+        xstream.alias("PageContents", VisioPage.class);
+        xstream.registerConverter(new VisioPageContentsConverter());
+        return XML_DECLARATION + xstream.toXML(page);
     }
 }
