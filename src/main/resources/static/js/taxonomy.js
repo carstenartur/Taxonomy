@@ -93,7 +93,7 @@
         }
 
         // Export buttons
-        ['exportSvg', 'exportPng', 'exportPdf', 'exportCsv'].forEach(function (id) {
+        ['exportSvg', 'exportPng', 'exportPdf', 'exportCsv', 'exportVisio'].forEach(function (id) {
             const btn = document.getElementById(id);
             if (btn) {
                 btn.addEventListener('click', function () { handleExport(id); });
@@ -397,6 +397,13 @@
         if (btnId === 'exportPng') {
             if (window.TaxonomyExport) {
                 window.TaxonomyExport.exportPng('taxonomyTree');
+            }
+            return;
+        }
+        if (btnId === 'exportVisio') {
+            if (window.TaxonomyExport) {
+                var bt = document.getElementById('businessText');
+                window.TaxonomyExport.exportVisio(bt ? bt.value : '');
             }
             return;
         }

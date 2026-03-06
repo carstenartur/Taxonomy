@@ -1,12 +1,15 @@
 package com.nato.taxonomy.controller;
 
+import com.nato.taxonomy.diagram.DiagramModel;
 import com.nato.taxonomy.dto.LlmCallDetail;
 import com.nato.taxonomy.dto.AnalysisRequest;
 import com.nato.taxonomy.dto.AnalysisResult;
 import com.nato.taxonomy.dto.AiStatusResponse;
+import com.nato.taxonomy.dto.RequirementArchitectureView;
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
 import com.nato.taxonomy.model.TaxonomyNode;
 import com.nato.taxonomy.service.AnalysisEventCallback;
+import com.nato.taxonomy.service.DiagramProjectionService;
 import com.nato.taxonomy.service.HybridSearchService;
 import com.nato.taxonomy.service.LocalEmbeddingService;
 import com.nato.taxonomy.service.LlmService;
@@ -14,7 +17,11 @@ import com.nato.taxonomy.service.PromptTemplateService;
 import com.nato.taxonomy.service.RequirementArchitectureViewService;
 import com.nato.taxonomy.service.SearchService;
 import com.nato.taxonomy.service.TaxonomyService;
+import com.nato.taxonomy.service.VisioDiagramService;
+import com.nato.taxonomy.service.VisioPackageBuilder;
+import com.nato.taxonomy.visio.VisioDocument;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -40,13 +47,19 @@ public class ApiController {
     private final ObjectMapper objectMapper;
     private final PromptTemplateService promptTemplateService;
     private final RequirementArchitectureViewService architectureViewService;
+    private final DiagramProjectionService diagramProjectionService;
+    private final VisioDiagramService visioDiagramService;
+    private final VisioPackageBuilder visioPackageBuilder;
 
     public ApiController(TaxonomyService taxonomyService, LlmService llmService,
                          SearchService searchService, HybridSearchService hybridSearchService,
                          LocalEmbeddingService embeddingService,
                          ExecutorService analysisExecutor,
                          ObjectMapper objectMapper, PromptTemplateService promptTemplateService,
-                         RequirementArchitectureViewService architectureViewService) {
+                         RequirementArchitectureViewService architectureViewService,
+                         DiagramProjectionService diagramProjectionService,
+                         VisioDiagramService visioDiagramService,
+                         VisioPackageBuilder visioPackageBuilder) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.searchService = searchService;
@@ -56,6 +69,9 @@ public class ApiController {
         this.objectMapper = objectMapper;
         this.promptTemplateService = promptTemplateService;
         this.architectureViewService = architectureViewService;
+        this.diagramProjectionService = diagramProjectionService;
+        this.visioDiagramService = visioDiagramService;
+        this.visioPackageBuilder = visioPackageBuilder;
     }
 
     @GetMapping("/taxonomy")
@@ -258,6 +274,51 @@ public class ApiController {
     @GetMapping("/diagnostics")
     public ResponseEntity<Map<String, Object>> diagnostics() {
         return ResponseEntity.ok(llmService.getDiagnostics());
+    }
+
+    // ── Visio Diagram Export ──────────────────────────────────────────────────
+
+    /**
+     * Generates a Visio .vsdx architecture diagram from a business text requirement.
+     * The requirement is first analyzed, then an architecture view is built, projected
+     * into a diagram model, and exported as a .vsdx file.
+     */
+    @PostMapping("/diagram/visio")
+    public ResponseEntity<byte[]> exportVisio(@RequestBody Map<String, Object> body) {
+        String businessText = (String) body.get("businessText");
+        if (businessText == null || businessText.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        try {
+            // 1. Analyze
+            AnalysisResult result = llmService.analyzeWithBudget(businessText);
+
+            // 2. Build architecture view
+            RequirementArchitectureView view = architectureViewService.build(
+                    result.getScores(), businessText, 20);
+
+            // 3. Project to neutral diagram model
+            String title = businessText.length() > 60
+                    ? businessText.substring(0, 57) + "..."
+                    : businessText;
+            DiagramModel diagram = diagramProjectionService.project(view, title);
+
+            // 4. Convert to Visio document model
+            VisioDocument visioDoc = visioDiagramService.convert(diagram);
+
+            // 5. Package as .vsdx
+            byte[] vsdx = visioPackageBuilder.build(visioDoc);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.CONTENT_DISPOSITION,
+                    "attachment; filename=\"requirement-architecture.vsdx\"");
+            headers.set(HttpHeaders.CONTENT_TYPE, "application/vnd.ms-visio.drawing.main+xml");
+
+            return ResponseEntity.ok().headers(headers).body(vsdx);
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     @GetMapping("/search")
