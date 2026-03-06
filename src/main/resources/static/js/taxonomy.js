@@ -823,7 +823,10 @@
         fetch('/api/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ businessText: text })
+            body: JSON.stringify({
+                businessText: text,
+                includeArchitectureView: document.getElementById('includeArchitectureView').checked
+            })
         })
             .then(r => {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -884,6 +887,9 @@
                     warnings: result.warnings || [],
                     status: result.status
                 });
+
+                // Render architecture view if present
+                renderArchitectureView(result.architectureView);
             })
             .catch(err => {
                 setAnalyzing(false);
@@ -903,6 +909,86 @@
         if (log) { log.style.display = 'none'; }
         const logContent = document.getElementById('analysisLogContent');
         if (logContent) { logContent.innerHTML = ''; }
+        // Also hide architecture view
+        const archPanel = document.getElementById('architectureViewPanel');
+        if (archPanel) { archPanel.style.display = 'none'; }
+    }
+
+    function renderArchitectureView(view) {
+        const panel = document.getElementById('architectureViewPanel');
+        const content = document.getElementById('architectureViewContent');
+        if (!panel || !content) return;
+
+        if (!view) {
+            panel.style.display = 'none';
+            return;
+        }
+
+        let html = '';
+
+        // Notes
+        if (view.notes && view.notes.length > 0) {
+            html += '<div class="alert alert-info py-1 px-2 small mb-2">' +
+                view.notes.map(n => escapeHtml(n)).join('<br>') + '</div>';
+        }
+
+        // Anchors summary
+        if (view.anchors && view.anchors.length > 0) {
+            html += '<h6 class="mb-1">Anchors</h6>';
+            html += '<div class="mb-2 small">';
+            view.anchors.forEach(a => {
+                html += '<span class="badge bg-success me-1">' +
+                    escapeHtml(a.nodeCode) + ' (' + a.directScore + '%) — ' +
+                    escapeHtml(a.reason) + '</span>';
+            });
+            html += '</div>';
+        }
+
+        // Elements table
+        if (view.includedElements && view.includedElements.length > 0) {
+            html += '<h6 class="mb-1">Included Elements</h6>';
+            html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
+            html += '<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead><tbody>';
+            view.includedElements.forEach(e => {
+                const rowClass = e.anchor ? 'table-success' : '';
+                html += '<tr class="' + rowClass + '">' +
+                    '<td>' + escapeHtml(e.nodeCode) + '</td>' +
+                    '<td>' + escapeHtml(e.title || '') + '</td>' +
+                    '<td>' + escapeHtml(e.taxonomySheet || '') + '</td>' +
+                    '<td>' + (e.relevance * 100).toFixed(1) + '%</td>' +
+                    '<td>' + e.hopDistance + '</td>' +
+                    '<td>' + (e.anchor ? '✓' : '') + '</td>' +
+                    '<td>' + escapeHtml(e.includedBecause || '') + '</td>' +
+                    '</tr>';
+            });
+            html += '</tbody></table></div>';
+        }
+
+        // Relationships table
+        if (view.includedRelationships && view.includedRelationships.length > 0) {
+            html += '<h6 class="mb-1">Included Relationships</h6>';
+            html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
+            html += '<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Relevance</th><th>Hops</th><th>Reason</th></tr></thead><tbody>';
+            view.includedRelationships.forEach(r => {
+                html += '<tr>' +
+                    '<td>' + escapeHtml(r.sourceCode) + '</td>' +
+                    '<td>→</td>' +
+                    '<td>' + escapeHtml(r.targetCode) + '</td>' +
+                    '<td>' + escapeHtml(r.relationType) + '</td>' +
+                    '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
+                    '<td>' + r.hopDistance + '</td>' +
+                    '<td>' + escapeHtml(r.includedBecause || '') + '</td>' +
+                    '</tr>';
+            });
+            html += '</tbody></table></div>';
+        }
+
+        if (!html) {
+            html = '<p class="text-muted small mb-0">Architecture view is empty.</p>';
+        }
+
+        content.innerHTML = html;
+        panel.style.display = '';
     }
 
     function updateAnalysisLog(info) {

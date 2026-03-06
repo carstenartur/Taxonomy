@@ -18,6 +18,9 @@ public class AnalysisResult {
     /** Human-readable error/partial message; set when status is PARTIAL or ERROR. */
     private String errorMessage;
 
+    /** Optional architecture view built from relation-aware propagation. */
+    private RequirementArchitectureView architectureView;
+
     public AnalysisResult() {}
 
     public AnalysisResult(Map<String, Integer> scores, List<TaxonomyNodeDto> tree) {
@@ -39,4 +42,7 @@ public class AnalysisResult {
 
     public String getErrorMessage() { return errorMessage; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
+
+    public RequirementArchitectureView getArchitectureView() { return architectureView; }
+    public void setArchitectureView(RequirementArchitectureView architectureView) { this.architectureView = architectureView; }
 }

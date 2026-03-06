@@ -11,6 +11,7 @@ import com.nato.taxonomy.service.HybridSearchService;
 import com.nato.taxonomy.service.LocalEmbeddingService;
 import com.nato.taxonomy.service.LlmService;
 import com.nato.taxonomy.service.PromptTemplateService;
+import com.nato.taxonomy.service.RequirementArchitectureViewService;
 import com.nato.taxonomy.service.SearchService;
 import com.nato.taxonomy.service.TaxonomyService;
 import tools.jackson.databind.ObjectMapper;
@@ -38,12 +39,14 @@ public class ApiController {
     private final ExecutorService analysisExecutor;
     private final ObjectMapper objectMapper;
     private final PromptTemplateService promptTemplateService;
+    private final RequirementArchitectureViewService architectureViewService;
 
     public ApiController(TaxonomyService taxonomyService, LlmService llmService,
                          SearchService searchService, HybridSearchService hybridSearchService,
                          LocalEmbeddingService embeddingService,
                          ExecutorService analysisExecutor,
-                         ObjectMapper objectMapper, PromptTemplateService promptTemplateService) {
+                         ObjectMapper objectMapper, PromptTemplateService promptTemplateService,
+                         RequirementArchitectureViewService architectureViewService) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.searchService = searchService;
@@ -52,6 +55,7 @@ public class ApiController {
         this.analysisExecutor = analysisExecutor;
         this.objectMapper = objectMapper;
         this.promptTemplateService = promptTemplateService;
+        this.architectureViewService = architectureViewService;
     }
 
     @GetMapping("/taxonomy")
@@ -73,6 +77,12 @@ public class ApiController {
         }
 
         AnalysisResult result = llmService.analyzeWithBudget(request.getBusinessText());
+
+        if (request.isIncludeArchitectureView() && result.getScores() != null) {
+            result.setArchitectureView(
+                    architectureViewService.build(result.getScores(), request.getBusinessText()));
+        }
+
         return ResponseEntity.ok(result);
     }
 
