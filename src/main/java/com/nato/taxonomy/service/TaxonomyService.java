@@ -1,8 +1,12 @@
 package com.nato.taxonomy.service;
 
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
+import com.nato.taxonomy.dto.TaxonomyRelationDto;
+import com.nato.taxonomy.model.RelationType;
 import com.nato.taxonomy.model.TaxonomyNode;
+import com.nato.taxonomy.model.TaxonomyRelation;
 import com.nato.taxonomy.repository.TaxonomyNodeRepository;
+import com.nato.taxonomy.repository.TaxonomyRelationRepository;
 import jakarta.annotation.PostConstruct;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -38,17 +42,21 @@ public class TaxonomyService {
     private final TaxonomyNodeRepository repository;
     private final SearchService searchService;
     private final LocalEmbeddingService localEmbeddingService;
+    private final TaxonomyRelationRepository relationRepository;
 
     public TaxonomyService(TaxonomyNodeRepository repository, SearchService searchService,
-                           LocalEmbeddingService localEmbeddingService) {
+                           LocalEmbeddingService localEmbeddingService,
+                           TaxonomyRelationRepository relationRepository) {
         this.repository = repository;
         this.searchService = searchService;
         this.localEmbeddingService = localEmbeddingService;
+        this.relationRepository = relationRepository;
     }
 
     @PostConstruct
     @Transactional
     public void loadTaxonomyFromExcel() {
+        relationRepository.deleteAll();
         repository.deleteAll();
         try {
             ClassPathResource resource = new ClassPathResource(CATALOGUE_PATH);
@@ -123,6 +131,14 @@ public class TaxonomyService {
                 log.info("Taxonomy loaded: {} nodes from {} sheets.",
                         nodeMap.size(), SHEET_PREFIXES.size());
 
+                // 4b. Load relations from the optional "Relations" sheet
+                Sheet relationsSheet = workbook.getSheet("Relations");
+                if (relationsSheet != null) {
+                    loadRelationsSheet(relationsSheet, nodeMap);
+                } else {
+                    log.info("No 'Relations' sheet found in workbook — skipping relation loading.");
+                }
+
                 // 5. Build Lucene full-text search index
                 searchService.buildIndex(nodeMap.values());
                 log.info("Full-text search index built successfully.");
@@ -134,6 +150,51 @@ public class TaxonomyService {
         } catch (Exception e) {
             log.error("Failed to load taxonomy from Excel", e);
         }
+    }
+
+    /** Read the "Relations" sheet and persist TaxonomyRelation entities. */
+    private void loadRelationsSheet(Sheet sheet, Map<String, TaxonomyNode> nodeMap) {
+        // Expected columns: SourceCode(0), TargetCode(1), RelationType(2), Description(3)
+        boolean first = true;
+        List<TaxonomyRelation> relations = new ArrayList<>();
+        for (Row row : sheet) {
+            if (first) { first = false; continue; } // skip header
+            String sourceCode   = cellString(row, 0);
+            String targetCode   = cellString(row, 1);
+            String typeStr      = cellString(row, 2);
+            String description  = cellString(row, 3);
+
+            if (sourceCode == null || targetCode == null || typeStr == null) continue;
+
+            TaxonomyNode source = nodeMap.get(sourceCode);
+            TaxonomyNode target = nodeMap.get(targetCode);
+            if (source == null) {
+                log.warn("Relations sheet: source node '{}' not found — skipping row.", sourceCode);
+                continue;
+            }
+            if (target == null) {
+                log.warn("Relations sheet: target node '{}' not found — skipping row.", targetCode);
+                continue;
+            }
+
+            RelationType relationType;
+            try {
+                relationType = RelationType.valueOf(typeStr.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                log.warn("Relations sheet: unknown relation type '{}' — skipping row.", typeStr);
+                continue;
+            }
+
+            TaxonomyRelation relation = new TaxonomyRelation();
+            relation.setSourceNode(source);
+            relation.setTargetNode(target);
+            relation.setRelationType(relationType);
+            relation.setDescription(truncate(description, 2000));
+            relation.setProvenance("excel");
+            relations.add(relation);
+        }
+        relationRepository.saveAll(relations);
+        log.info("Relations sheet loaded: {} relations.", relations.size());
     }
 
     /** Read one sheet and populate nodeMap and uuidToCode. */
@@ -246,6 +307,31 @@ public class TaxonomyService {
             childDtos.add(toDto(child));
         }
         dto.setChildren(childDtos);
+        List<TaxonomyRelationDto> outgoing = new ArrayList<>();
+        for (TaxonomyRelation rel : node.getOutgoingRelations()) {
+            outgoing.add(relationToDto(rel));
+        }
+        dto.setOutgoingRelations(outgoing);
+        List<TaxonomyRelationDto> incoming = new ArrayList<>();
+        for (TaxonomyRelation rel : node.getIncomingRelations()) {
+            incoming.add(relationToDto(rel));
+        }
+        dto.setIncomingRelations(incoming);
+        return dto;
+    }
+
+    private TaxonomyRelationDto relationToDto(TaxonomyRelation relation) {
+        TaxonomyRelationDto dto = new TaxonomyRelationDto();
+        dto.setId(relation.getId());
+        dto.setSourceCode(relation.getSourceNode().getCode());
+        dto.setSourceName(relation.getSourceNode().getNameEn());
+        dto.setTargetCode(relation.getTargetNode().getCode());
+        dto.setTargetName(relation.getTargetNode().getNameEn());
+        dto.setRelationType(relation.getRelationType().name());
+        dto.setDescription(relation.getDescription());
+        dto.setProvenance(relation.getProvenance());
+        dto.setWeight(relation.getWeight());
+        dto.setBidirectional(relation.isBidirectional());
         return dto;
     }
 
