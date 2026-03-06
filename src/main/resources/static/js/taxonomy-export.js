@@ -163,6 +163,35 @@
         });
     }
 
+    /**
+     * Export the architecture view as an ArchiMate XML file via the backend.
+     * Calls POST /api/diagram/archimate with the business text and triggers a download.
+     * @param {string} businessText - The business requirement text used for analysis.
+     */
+    function exportArchiMate(businessText) {
+        if (!businessText || !businessText.trim()) {
+            alert('Please enter a business requirement text before exporting to ArchiMate.');
+            return;
+        }
+        fetch('/api/diagram/archimate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ businessText: businessText })
+        })
+        .then(function (resp) {
+            if (!resp.ok) {
+                throw new Error('Export failed (HTTP ' + resp.status + ')');
+            }
+            return resp.blob();
+        })
+        .then(function (blob) {
+            downloadBlob(blob, 'requirement-architecture.xml');
+        })
+        .catch(function (err) {
+            alert('ArchiMate export failed: ' + err.message);
+        });
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     function csvField(val) {
@@ -190,7 +219,8 @@
         exportSvg: exportSvg,
         exportPng: exportPng,
         exportCsv: exportCsv,
-        exportVisio: exportVisio
+        exportVisio: exportVisio,
+        exportArchiMate: exportArchiMate
     };
 
 })();
