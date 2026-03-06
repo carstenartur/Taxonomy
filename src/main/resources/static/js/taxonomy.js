@@ -5,6 +5,7 @@
 
     let taxonomyData = [];
     let currentScores = null;
+    let currentReasons = {};   // code → reason string
     let currentView = 'list'; // 'list' | 'tabs' | 'sunburst' | 'tree'
     let currentTreeRoot = 'BP'; // code of the taxonomy shown in tree view
 
@@ -386,6 +387,7 @@
     function buildNodeEl(node, scores) {
         const hasChildren = node.children && node.children.length > 0;
         const pct = scores ? (scores[node.code] !== undefined ? scores[node.code] : null) : null;
+        const reason = currentReasons ? (currentReasons[node.code] || null) : null;
 
         const wrapper = document.createElement('div');
         wrapper.className = 'tax-node tax-level-' + node.level;
@@ -437,6 +439,16 @@
             header.appendChild(badge);
         }
 
+        // Reason icon (if score > 0 and reason available)
+        if (pct !== null && pct > 0 && reason) {
+            const reasonIcon = document.createElement('span');
+            reasonIcon.className = 'tax-reason-icon';
+            reasonIcon.textContent = '💬';
+            reasonIcon.title = reason;
+            reasonIcon.setAttribute('aria-label', 'Reason: ' + reason);
+            header.appendChild(reasonIcon);
+        }
+
         wrapper.appendChild(header);
 
         // Visible description below the header row
@@ -454,6 +466,19 @@
             childContainer.style.display = 'none'; // collapsed by default
             node.children.forEach(child => childContainer.appendChild(buildNodeEl(child, scores)));
             wrapper.appendChild(childContainer);
+        }
+
+        // Leaf justification button (leaf node with score > 0)
+        if (!hasChildren && pct !== null && pct > 0 && storedBusinessText) {
+            const justifyBtn = document.createElement('button');
+            justifyBtn.className = 'btn btn-sm btn-outline-info tax-justify-btn';
+            justifyBtn.textContent = '📋 Request Justification';
+            justifyBtn.dataset.code = node.code;
+            justifyBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                requestLeafJustification(node.code, justifyBtn);
+            });
+            wrapper.appendChild(justifyBtn);
         }
 
         return wrapper;
@@ -494,12 +519,16 @@
                 wrapper.classList.remove('tax-has-unevaluated');
 
                 const scores = result.scores || {};
+                const reasons = result.reasons || {};
 
                 // Show error in status area if present
                 if (result.error) {
                     console.warn('[Taxonomy] LLM error for', parentCode, ':', result.error);
                     showStatus('warning', '⚠️ LLM issue for ' + parentCode + ': ' + result.error);
                 }
+
+                // Update global reasons
+                Object.assign(currentReasons, reasons);
 
                 // Append entry to LLM communication log
                 appendLlmLogEntry(parentCode, scores, result);
@@ -527,10 +556,41 @@
                         }
                         badge.textContent = pct + '%';
 
+                        // Add/update reason icon
+                        const reason = reasons[code];
+                        let reasonIcon = childHeader.querySelector('.tax-reason-icon');
+                        if (pct > 0 && reason) {
+                            if (!reasonIcon) {
+                                reasonIcon = document.createElement('span');
+                                reasonIcon.className = 'tax-reason-icon';
+                                childHeader.appendChild(reasonIcon);
+                            }
+                            reasonIcon.textContent = '💬';
+                            reasonIcon.title = reason;
+                        } else if (reasonIcon) {
+                            reasonIcon.remove();
+                        }
+
                         // Mark children that have their own children as "expandable for evaluation"
                         const grandchildren = childEl.querySelector(':scope > .tax-children');
                         if (grandchildren && pct > 0) {
                             childEl.classList.add('tax-has-unevaluated');
+                        }
+
+                        // Add justify button for leaf nodes with score > 0
+                        if (!grandchildren && pct > 0 && storedBusinessText) {
+                            let justifyBtn = childEl.querySelector('.tax-justify-btn');
+                            if (!justifyBtn) {
+                                justifyBtn = document.createElement('button');
+                                justifyBtn.className = 'btn btn-sm btn-outline-info tax-justify-btn';
+                                justifyBtn.textContent = '📋 Request Justification';
+                                justifyBtn.dataset.code = code;
+                                justifyBtn.addEventListener('click', function (e) {
+                                    e.stopPropagation();
+                                    requestLeafJustification(code, justifyBtn);
+                                });
+                                childEl.appendChild(justifyBtn);
+                            }
                         }
                     }
                 });
@@ -562,6 +622,55 @@
                     toggle.textContent = '▼';
                 }
             });
+    }
+
+    /** Requests a leaf-node justification from the server and shows it in the UI. */
+    function requestLeafJustification(nodeCode, btnEl) {
+        if (!storedBusinessText) {
+            showStatus('warning', 'No business text stored. Please run an analysis first.');
+            return;
+        }
+        const originalText = btnEl.textContent;
+        btnEl.disabled = true;
+        btnEl.textContent = '⏳ Generating…';
+
+        fetch('/api/justify-leaf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nodeCode: nodeCode,
+                businessText: storedBusinessText,
+                scores: currentScores || {},
+                reasons: currentReasons || {}
+            })
+        })
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(data => {
+                btnEl.disabled = false;
+                btnEl.textContent = originalText;
+                showLeafJustificationModal(nodeCode, data.justification || '(no justification returned)');
+            })
+            .catch(err => {
+                btnEl.disabled = false;
+                btnEl.textContent = originalText;
+                console.error('[Taxonomy] Failed to get leaf justification for', nodeCode, err);
+                showStatus('danger', 'Failed to get justification for ' + nodeCode + ': ' + err.message);
+            });
+    }
+
+    /** Displays the leaf justification in the modal. */
+    function showLeafJustificationModal(nodeCode, justification) {
+        const modal = document.getElementById('leafJustificationModal');
+        const titleEl = document.getElementById('leafJustificationModalTitle');
+        const bodyEl = document.getElementById('leafJustificationModalBody');
+        if (!modal || !titleEl || !bodyEl) return;
+        titleEl.textContent = '📋 Justification for ' + nodeCode;
+        bodyEl.textContent = justification;
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
     }
 
     function expandAll() {
@@ -721,6 +830,7 @@
         const prompt = (detail && detail.prompt) ? detail.prompt : '';
         const rawResponse = (detail && detail.rawResponse) ? detail.rawResponse : '';
         const errorMsg = (detail && detail.error) ? detail.error : null;
+        const reasons = (detail && detail.reasons) ? detail.reasons : {};
 
         const entry = document.createElement('details');
         entry.className = 'llm-log-entry' + (errorMsg ? ' llm-log-error' : '');
@@ -745,12 +855,26 @@
             ? '<div class="mt-1 llm-log-error-detail"><strong>&#9888; ERROR:</strong> ' + escapeHtml(errorMsg) + '</div>'
             : '';
 
+        // Build reasons HTML if any reasons were returned
+        const reasonEntries = Object.entries(reasons).filter(([, r]) => r);
+        let reasonsHtml = '';
+        if (reasonEntries.length > 0) {
+            const reasonLines = reasonEntries.map(([code, reason]) => {
+                const pct = scores && scores[code] !== undefined ? scores[code] : '?';
+                return '<div class="llm-log-reason-entry"><code>' + escapeHtml(code) + '</code> '
+                    + '(' + pct + '%): ' + escapeHtml(reason) + '</div>';
+            }).join('');
+            reasonsHtml = '<div class="mt-1"><strong>&#128172; REASONS:</strong>'
+                + '<div class="llm-log-reasons">' + reasonLines + '</div></div>';
+        }
+
         body.innerHTML =
             errorHtml +
             '<div class="mt-1"><strong>&#128228; PROMPT:</strong>' +
             '<div class="llm-log-prompt">' + escapeHtml(prompt) + '</div></div>' +
             '<div class="mt-1"><strong>&#128229; RESPONSE:</strong>' +
-            '<div class="llm-log-response">' + escapeHtml(rawResponse) + '</div></div>';
+            '<div class="llm-log-response">' + escapeHtml(rawResponse) + '</div></div>' +
+            reasonsHtml;
 
         entry.appendChild(body);
 
@@ -770,6 +894,7 @@
         storedBusinessText = text;
         evaluatedNodes = new Set();
         currentScores = {};
+        currentReasons = {};
 
         // Render the tree without scores; mark all expandable nodes as unevaluated
         renderView(taxonomyData, null);
@@ -793,6 +918,7 @@
         setAnalyzing(true);
         clearStatus();
         currentScores = {};
+        currentReasons = {};
 
         // Render a clean tree without scores first
         renderView(taxonomyData, null);
@@ -808,8 +934,9 @@
         eventSource.addEventListener('scores', function (e) {
             const data = JSON.parse(e.data);
             Object.assign(currentScores, data.scores);
+            if (data.reasons) { Object.assign(currentReasons, data.reasons); }
             Object.entries(data.scores).forEach(function ([code, pct]) {
-                applyScoreToNode(code, pct);
+                applyScoreToNode(code, pct, data.reasons ? data.reasons[code] : null);
             });
         });
 
@@ -852,8 +979,8 @@
 
     // ── Incremental DOM update helpers ────────────────────────────────────────
 
-    /** Apply a score to a node already in the DOM without re-rendering the tree. */
-    function applyScoreToNode(code, pct) {
+    /** Apply a score (and optional reason) to a node already in the DOM without re-rendering. */
+    function applyScoreToNode(code, pct, reason) {
         const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
         if (!el) return;
         const header = el.querySelector(':scope > .tax-node-header');
@@ -874,6 +1001,18 @@
                 header.appendChild(badge);
             }
             badge.textContent = pct + '%';
+
+            // Add/update reason icon
+            if (reason) {
+                let reasonIcon = header.querySelector('.tax-reason-icon');
+                if (!reasonIcon) {
+                    reasonIcon = document.createElement('span');
+                    reasonIcon.className = 'tax-reason-icon';
+                    header.appendChild(reasonIcon);
+                }
+                reasonIcon.textContent = '💬';
+                reasonIcon.title = reason;
+            }
         } else {
             // Explicitly scored zero – clear any previous highlight
             header.style.backgroundColor = '';

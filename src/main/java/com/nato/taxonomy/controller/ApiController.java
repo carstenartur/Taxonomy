@@ -108,9 +108,13 @@ public class ApiController {
                     }
 
                     @Override
-                    public void onScores(Map<String, Integer> newScores, String description) {
-                        sendEvent(emitter, "scores",
-                                Map.of("scores", newScores, "description", description));
+                    public void onScores(Map<String, Integer> newScores, Map<String, String> reasons,
+                                         String description) {
+                        Map<String, Object> payload = new LinkedHashMap<>();
+                        payload.put("scores", newScores);
+                        payload.put("reasons", reasons != null ? reasons : Map.of());
+                        payload.put("description", description);
+                        sendEvent(emitter, "scores", payload);
                     }
 
                     @Override
@@ -185,12 +189,59 @@ public class ApiController {
         LlmCallDetail detail = llmService.analyzeSingleBatchDetailed(businessText, children);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("scores", detail.getScores());
+        result.put("reasons", detail.getReasons() != null ? detail.getReasons() : Map.of());
         result.put("prompt", detail.getPrompt());
         result.put("rawResponse", detail.getRawResponse());
         result.put("provider", detail.getProvider());
         result.put("durationMs", detail.getDurationMs());
         result.put("error", detail.getError());
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Generates a leaf-node justification on demand.
+     * Collects the path from root to the leaf node and cross-references to other
+     * high-scoring nodes, then calls the LLM for a coherent summary.
+     */
+    @PostMapping("/justify-leaf")
+    public ResponseEntity<Map<String, Object>> justifyLeaf(
+            @RequestBody Map<String, Object> body) {
+        String nodeCode = (String) body.get("nodeCode");
+        String businessText = (String) body.get("businessText");
+        if (nodeCode == null || nodeCode.isBlank() || businessText == null || businessText.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> rawScores = body.get("scores") instanceof Map<?, ?>
+                    ? (Map<String, Object>) body.get("scores") : Map.of();
+            @SuppressWarnings("unchecked")
+            Map<String, String> allReasons = body.get("reasons") instanceof Map<?, ?>
+                    ? (Map<String, String>) body.get("reasons") : Map.of();
+
+            Map<String, Integer> allScores = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> e : rawScores.entrySet()) {
+                if (e.getValue() instanceof Number n) {
+                    allScores.put(e.getKey(), n.intValue());
+                }
+            }
+
+            List<com.nato.taxonomy.model.TaxonomyNode> pathNodes =
+                    taxonomyService.getPathToRoot(nodeCode);
+
+            String justification = llmService.generateLeafJustification(
+                    businessText, nodeCode, pathNodes, allScores, allReasons);
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("nodeCode", nodeCode);
+            result.put("justification", justification);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("nodeCode", nodeCode);
+            result.put("justification", "Error: " + e.getMessage());
+            return ResponseEntity.ok(result);
+        }
     }
 
     @GetMapping("/diagnostics")

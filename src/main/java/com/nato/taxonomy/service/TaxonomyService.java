@@ -259,6 +259,33 @@ public class TaxonomyService {
         return repository.findByParentCodeOrderByNameEnAsc(parentCode);
     }
 
+    /**
+     * Returns the node identified by {@code code}, or {@code null} if not found.
+     */
+    @Transactional(readOnly = true)
+    public TaxonomyNode getNodeByCode(String code) {
+        return repository.findByCode(code).orElse(null);
+    }
+
+    /**
+     * Returns the path from the root to the node identified by {@code code} (inclusive),
+     * ordered from root to leaf. Returns an empty list if the node is not found.
+     */
+    @Transactional(readOnly = true)
+    public List<TaxonomyNode> getPathToRoot(String code) {
+        TaxonomyNode node = repository.findByCode(code).orElse(null);
+        if (node == null) return List.of();
+        LinkedList<TaxonomyNode> path = new LinkedList<>();
+        TaxonomyNode current = node;
+        while (current != null) {
+            path.addFirst(current);
+            String parentCode = current.getParentCode();
+            if (parentCode == null || parentCode.isBlank()) break;
+            current = repository.findByCode(parentCode).orElse(null);
+        }
+        return List.copyOf(path);
+    }
+
     public TaxonomyNodeDto applyScores(TaxonomyNodeDto dto, Map<String, Integer> scores) {
         if (scores.containsKey(dto.getCode())) {
             dto.setMatchPercentage(scores.get(dto.getCode()));

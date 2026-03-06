@@ -7,6 +7,6 @@ Business Requirement: {{BUSINESS_TEXT}}
 
 {{TAXONOMY_NAME}} Categories:
 {{NODE_LIST}}
-Respond ONLY with a valid JSON object where keys are the category codes
-and values are integer percentages (0-100).
-Example: {"C1": 0, "C2": 15, "C3": 80}
+Respond ONLY with a valid JSON object where keys are the category codes and values are
+objects with "score" (integer 0-100) and "reason" (1-2 sentence explanation).
+Example: {"C1": {"score": 0, "reason": "No relevance to this category."}, "C2": {"score": 80, "reason": "Strong match because the requirement describes command and control workflows."}}
