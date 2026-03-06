@@ -23,6 +23,8 @@ public class TaxonomyNodeDto {
     private String state;
     private List<TaxonomyNodeDto> children = new ArrayList<>();
     private Integer matchPercentage;
+    private List<TaxonomyRelationDto> outgoingRelations = new ArrayList<>();
+    private List<TaxonomyRelationDto> incomingRelations = new ArrayList<>();
 
     public TaxonomyNodeDto() {}
 
@@ -85,4 +87,10 @@ public class TaxonomyNodeDto {
 
     public Integer getMatchPercentage() { return matchPercentage; }
     public void setMatchPercentage(Integer matchPercentage) { this.matchPercentage = matchPercentage; }
+
+    public List<TaxonomyRelationDto> getOutgoingRelations() { return outgoingRelations; }
+    public void setOutgoingRelations(List<TaxonomyRelationDto> outgoingRelations) { this.outgoingRelations = outgoingRelations; }
+
+    public List<TaxonomyRelationDto> getIncomingRelations() { return incomingRelations; }
+    public void setIncomingRelations(List<TaxonomyRelationDto> incomingRelations) { this.incomingRelations = incomingRelations; }
 }

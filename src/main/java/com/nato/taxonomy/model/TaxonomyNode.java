@@ -62,6 +62,12 @@ public class TaxonomyNode {
     @OrderBy("nameEn ASC")
     private List<TaxonomyNode> children = new ArrayList<>();
 
+    @OneToMany(mappedBy = "sourceNode", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<TaxonomyRelation> outgoingRelations = new ArrayList<>();
+
+    @OneToMany(mappedBy = "targetNode", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<TaxonomyRelation> incomingRelations = new ArrayList<>();
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -121,4 +127,10 @@ public class TaxonomyNode {
 
     public List<TaxonomyNode> getChildren() { return children; }
     public void setChildren(List<TaxonomyNode> children) { this.children = children; }
+
+    public List<TaxonomyRelation> getOutgoingRelations() { return outgoingRelations; }
+    public void setOutgoingRelations(List<TaxonomyRelation> outgoingRelations) { this.outgoingRelations = outgoingRelations; }
+
+    public List<TaxonomyRelation> getIncomingRelations() { return incomingRelations; }
+    public void setIncomingRelations(List<TaxonomyRelation> incomingRelations) { this.incomingRelations = incomingRelations; }
 }
