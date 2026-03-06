@@ -17,6 +17,9 @@ import com.nato.taxonomy.service.PromptTemplateService;
 import com.nato.taxonomy.service.RequirementArchitectureViewService;
 import com.nato.taxonomy.service.SearchService;
 import com.nato.taxonomy.service.TaxonomyService;
+import com.nato.taxonomy.archimate.ArchiMateModel;
+import com.nato.taxonomy.service.ArchiMateDiagramService;
+import com.nato.taxonomy.service.ArchiMateXmlExporter;
 import com.nato.taxonomy.service.VisioDiagramService;
 import com.nato.taxonomy.service.VisioPackageBuilder;
 import com.nato.taxonomy.visio.VisioDocument;
@@ -50,6 +53,8 @@ public class ApiController {
     private final DiagramProjectionService diagramProjectionService;
     private final VisioDiagramService visioDiagramService;
     private final VisioPackageBuilder visioPackageBuilder;
+    private final ArchiMateDiagramService archiMateDiagramService;
+    private final ArchiMateXmlExporter archiMateXmlExporter;
 
     public ApiController(TaxonomyService taxonomyService, LlmService llmService,
                          SearchService searchService, HybridSearchService hybridSearchService,
@@ -59,7 +64,9 @@ public class ApiController {
                          RequirementArchitectureViewService architectureViewService,
                          DiagramProjectionService diagramProjectionService,
                          VisioDiagramService visioDiagramService,
-                         VisioPackageBuilder visioPackageBuilder) {
+                         VisioPackageBuilder visioPackageBuilder,
+                         ArchiMateDiagramService archiMateDiagramService,
+                         ArchiMateXmlExporter archiMateXmlExporter) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.searchService = searchService;
@@ -72,6 +79,8 @@ public class ApiController {
         this.diagramProjectionService = diagramProjectionService;
         this.visioDiagramService = visioDiagramService;
         this.visioPackageBuilder = visioPackageBuilder;
+        this.archiMateDiagramService = archiMateDiagramService;
+        this.archiMateXmlExporter = archiMateXmlExporter;
     }
 
     @GetMapping("/taxonomy")
@@ -319,6 +328,47 @@ public class ApiController {
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
+    }
+
+    // ── ArchiMate Diagram Export ──────────────────────────────────────────────
+
+    /**
+     * Generates an ArchiMate Model Exchange File Format XML from a business text requirement.
+     * The requirement is first analyzed, then an architecture view is built, projected
+     * into a diagram model, and exported as an ArchiMate 3.x XML file.
+     */
+    @PostMapping("/diagram/archimate")
+    public ResponseEntity<byte[]> exportArchiMate(@RequestBody Map<String, Object> body) {
+        String businessText = (String) body.get("businessText");
+        if (businessText == null || businessText.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        // 1. Analyze
+        AnalysisResult result = llmService.analyzeWithBudget(businessText);
+
+        // 2. Build architecture view
+        RequirementArchitectureView view = architectureViewService.build(
+                result.getScores(), businessText, 20);
+
+        // 3. Project to neutral diagram model
+        String title = businessText.length() > 60
+                ? businessText.substring(0, 57) + "..."
+                : businessText;
+        DiagramModel diagram = diagramProjectionService.project(view, title);
+
+        // 4. Convert to ArchiMate model
+        ArchiMateModel archiMateModel = archiMateDiagramService.convert(diagram);
+
+        // 5. Export as XML
+        byte[] xml = archiMateXmlExporter.export(archiMateModel);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"requirement-architecture.xml\"");
+        headers.set(HttpHeaders.CONTENT_TYPE, "application/xml");
+
+        return ResponseEntity.ok().headers(headers).body(xml);
     }
 
     @GetMapping("/search")
