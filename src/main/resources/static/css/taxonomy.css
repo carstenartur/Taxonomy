@@ -225,6 +225,10 @@
     font-weight: 500;
 }
 
+/* ── Admin-only visibility ───────────────────────────────── */
+.admin-only { display: none; }
+.admin-unlocked .admin-only { display: block; }
+
 /* ── Reason icon ──────────────────────────────────────────── */
 .tax-reason-icon {
     cursor: help;

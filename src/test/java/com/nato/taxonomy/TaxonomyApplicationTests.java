@@ -224,6 +224,25 @@ class TaxonomyApplicationTests {
     }
 
     @Test
+    void adminStatusReturnsFalseWhenNoPasswordConfigured() throws Exception {
+        // No ADMIN_PASSWORD set in test environment — passwordRequired should be false
+        mockMvc.perform(get("/api/admin/status").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passwordRequired").value(false));
+    }
+
+    @Test
+    void adminVerifyReturnsFalseWhenNoPasswordConfigured() throws Exception {
+        // When no password is configured, no password is valid
+        mockMvc.perform(post("/api/admin/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"anything\"}")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(false));
+    }
+
+    @Test
     void analyzeNodeEndpointIncludesErrorFieldWhenNoKeyConfigured() throws Exception {
         // In CI / test environment no API key is set — error field should be non-null
         mockMvc.perform(get("/api/analyze-node")
