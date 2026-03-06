@@ -17,4 +17,10 @@ public interface TaxonomyRelationRepository extends JpaRepository<TaxonomyRelati
     List<TaxonomyRelation> findByRelationType(RelationType relationType);
 
     List<TaxonomyRelation> findBySourceNodeCodeOrTargetNodeCode(String sourceCode, String targetCode);
+
+    List<TaxonomyRelation> findByRelationTypeIn(List<RelationType> relationTypes);
+
+    List<TaxonomyRelation> findBySourceNodeCodeAndRelationTypeIn(String sourceCode, List<RelationType> types);
+
+    List<TaxonomyRelation> findByTargetNodeCodeAndRelationTypeIn(String targetCode, List<RelationType> types);
 }
