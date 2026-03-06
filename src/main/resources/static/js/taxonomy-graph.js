@@ -5,9 +5,15 @@
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
+    var MAX_AUTOCOMPLETE_SUGGESTIONS = 200;
+
     function escapeHtml(s) {
         if (!s) return '';
         return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function safeLen(arr) {
+        return Array.isArray(arr) ? arr.length : 0;
     }
 
     function getNodeCode() {
@@ -140,8 +146,8 @@
         // Summary stats
         html += '<div class="graph-stats-row">';
         html += summaryCard('&#9888;&#65039;', 'Failed Node', data.failedNodeCode, 'danger');
-        html += summaryCard('&#128308;', 'Direct Impact', data.directlyAffected ? data.directlyAffected.length : 0, 'danger');
-        html += summaryCard('&#128992;', 'Indirect Impact', data.indirectlyAffected ? data.indirectlyAffected.length : 0, 'warning');
+        html += summaryCard('&#128308;', 'Direct Impact', safeLen(data.directlyAffected), 'danger');
+        html += summaryCard('&#128992;', 'Indirect Impact', safeLen(data.indirectlyAffected), 'warning');
         html += summaryCard('&#128101;', 'Total Affected', data.totalAffected, 'dark');
         html += summaryCard('&#128218;', 'Max Hops', data.maxHops, 'secondary');
         html += '</div>';
@@ -161,34 +167,29 @@
 
     // ── API calls ─────────────────────────────────────────────────────────────
 
-    function fetchUpstream(nodeCode, maxHops, callback) {
-        fetch('/api/graph/node/' + encodeURIComponent(nodeCode) + '/upstream?maxHops=' + maxHops)
+    function fetchGraphData(endpoint, label, callback) {
+        fetch(endpoint)
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
             .then(callback)
-            .catch(function (err) { showGraphError('Upstream query failed: ' + err.message); });
+            .catch(function (err) { showGraphError(label + ' query failed: ' + err.message); });
+    }
+
+    function fetchUpstream(nodeCode, maxHops, callback) {
+        fetchGraphData('/api/graph/node/' + encodeURIComponent(nodeCode) + '/upstream?maxHops=' + maxHops,
+            'Upstream', callback);
     }
 
     function fetchDownstream(nodeCode, maxHops, callback) {
-        fetch('/api/graph/node/' + encodeURIComponent(nodeCode) + '/downstream?maxHops=' + maxHops)
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(callback)
-            .catch(function (err) { showGraphError('Downstream query failed: ' + err.message); });
+        fetchGraphData('/api/graph/node/' + encodeURIComponent(nodeCode) + '/downstream?maxHops=' + maxHops,
+            'Downstream', callback);
     }
 
     function fetchFailureImpact(nodeCode, maxHops, callback) {
-        fetch('/api/graph/node/' + encodeURIComponent(nodeCode) + '/failure-impact?maxHops=' + maxHops)
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(callback)
-            .catch(function (err) { showGraphError('Failure impact query failed: ' + err.message); });
+        fetchGraphData('/api/graph/node/' + encodeURIComponent(nodeCode) + '/failure-impact?maxHops=' + maxHops,
+            'Failure impact', callback);
     }
 
     // ── Event handlers ────────────────────────────────────────────────────────
@@ -292,8 +293,7 @@
             }
         }
         taxonomyData.forEach(walk);
-        // Limit to first 200 for performance
-        codes.slice(0, 200).forEach(function (item) {
+        codes.slice(0, MAX_AUTOCOMPLETE_SUGGESTIONS).forEach(function (item) {
             var option = document.createElement('option');
             option.value = item.code;
             option.textContent = item.code + ' — ' + item.name;
