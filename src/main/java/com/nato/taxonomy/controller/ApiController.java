@@ -34,6 +34,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -306,7 +307,7 @@ public class ApiController {
     public ResponseEntity<Map<String, Boolean>> verifyAdmin(@RequestBody Map<String, String> body) {
         String password = body.get("password");
         boolean valid = adminPassword != null && !adminPassword.isBlank()
-                && adminPassword.equals(password);
+                && constantTimeEquals(adminPassword, password);
         return ResponseEntity.ok(Map.of("valid", valid));
     }
 
@@ -550,6 +551,17 @@ public class ApiController {
             return true;
         }
         String token = request.getHeader("X-Admin-Token");
-        return adminPassword.equals(token);
+        return constantTimeEquals(adminPassword, token);
+    }
+
+    /**
+     * Compares two strings using a constant-time algorithm to mitigate timing attacks.
+     */
+    private static boolean constantTimeEquals(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(a.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                b.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }

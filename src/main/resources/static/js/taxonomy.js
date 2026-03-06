@@ -1531,19 +1531,20 @@
 
     let promptTemplates = [];
 
+    /** Returns headers object including X-Admin-Token when admin mode is active. */
+    function getAdminHeaders() {
+        const h = {};
+        if (isAdminMode()) { h['X-Admin-Token'] = getAdminToken(); }
+        return h;
+    }
+
     function initPromptEditor() {
         const select   = document.getElementById('promptSelect');
         const saveBtn  = document.getElementById('promptSaveBtn');
         const resetBtn = document.getElementById('promptResetBtn');
         if (!select || !saveBtn || !resetBtn) return;
 
-        const adminHeaders = () => {
-            const h = {};
-            if (isAdminMode()) { h['X-Admin-Token'] = getAdminToken(); }
-            return h;
-        };
-
-        fetch('/api/prompts', { headers: adminHeaders() })
+        fetch('/api/prompts', { headers: getAdminHeaders() })
             .then(r => {
                 if (r.status === 401) { return null; }
                 return r.json();
@@ -1574,7 +1575,7 @@
             const template = document.getElementById('promptTextarea').value;
             fetch('/api/prompts/' + encodeURIComponent(code), {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json', ...adminHeaders() },
+                headers: { 'Content-Type': 'application/json', ...getAdminHeaders() },
                 body: JSON.stringify({ template: template })
             })
             .then(function (r) {
@@ -1597,7 +1598,7 @@
             const code = select.value;
             fetch('/api/prompts/' + encodeURIComponent(code), {
                 method: 'DELETE',
-                headers: adminHeaders()
+                headers: getAdminHeaders()
             })
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1606,7 +1607,7 @@
             .then(function () {
                 // Reload to get the file-based default
                 return fetch('/api/prompts/' + encodeURIComponent(code), {
-                    headers: adminHeaders()
+                    headers: getAdminHeaders()
                 }).then(r => r.json());
             })
             .then(function (data) {
@@ -1623,9 +1624,7 @@
     }
 
     function loadPromptIntoEditor(code) {
-        const adminHeaders = {};
-        if (isAdminMode()) { adminHeaders['X-Admin-Token'] = getAdminToken(); }
-        fetch('/api/prompts/' + encodeURIComponent(code), { headers: adminHeaders })
+        fetch('/api/prompts/' + encodeURIComponent(code), { headers: getAdminHeaders() })
             .then(r => {
                 if (r.status === 401) { return null; }
                 return r.json();
