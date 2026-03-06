@@ -165,20 +165,6 @@ public class LlmService {
             List.of("BP", "CP", "CR", "CO", "CI", "UA", "BR", "IP");
 
     /**
-     * Recursively analyses business text against taxonomy nodes.
-     * Starts with root nodes (level 0), then drills into children of nodes with >0% match.
-     *
-     * @deprecated Use {@link #analyzeWithBudget(String)} instead.
-     */
-    @Deprecated
-    public Map<String, Integer> analyzeRecursive(String businessText) {
-        Map<String, Integer> allScores = new HashMap<>();
-        List<TaxonomyNode> roots = taxonomyService.getRootNodes();
-        analyzeNodes(businessText, roots, allScores);
-        return allScores;
-    }
-
-    /**
      * Analyses business text using a sequential, prioritized traversal of taxonomy roots.
      * Handles rate-limit errors gracefully by returning partial results.
      *
@@ -281,28 +267,9 @@ public class LlmService {
         }
     }
 
-    /** Used by the deprecated {@link #analyzeRecursive(String)} path. */
-    private void analyzeNodes(String businessText,
-                               List<TaxonomyNode> nodes,
-                               Map<String, Integer> allScores) {
-        if (nodes == null || nodes.isEmpty()) return;
-
-        Map<String, Integer> scores = callLlm(businessText, nodes);
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
-            allScores.put(entry.getKey(), entry.getValue());
-            if (entry.getValue() > 0) {
-                List<TaxonomyNode> children = taxonomyService.getChildrenOf(entry.getKey());
-                if (!children.isEmpty()) {
-                    analyzeNodes(businessText, children, allScores);
-                }
-            }
-        }
-    }
-
     /**
-     * Streaming version of {@link #analyzeRecursive}: processes root nodes one at a time,
-     * firing {@link AnalysisEventCallback} events so callers can forward results incrementally
-     * (e.g. via Server-Sent Events).
+     * Processes root nodes one at a time, firing {@link AnalysisEventCallback} events so callers
+     * can forward results incrementally (e.g. via Server-Sent Events).
      *
      * @param businessText the text to analyse
      * @param callback     receives phase, scores, expanding, complete and error events
