@@ -1,17 +1,20 @@
 You are an expert in NATO C3 taxonomy classification.
 A business requirement has been evaluated against the NATO NC3T taxonomy and the following
-classification path has been selected. Provide a coherent justification of 3-5 sentences that:
-1. Explains why this specific path through the taxonomy hierarchy was chosen
-2. Describes how the leaf node best matches the business requirement
-3. Notes any relevant connections to the cross-referenced high-scoring nodes
+classification path with match percentages has been computed. Explain in 3-5 sentences:
+1. At each step from root to leaf, why the node received its specific match percentage —
+   which aspects of the business requirement were addressed and which were not
+2. How the decision at each node along the path (from root to leaf) was influenced
+   by the business requirement
+3. Why the leaf node received its particular percentage (explain the score, not justify
+   the selection of this leaf over others)
 
 Business Requirement:
 {{BUSINESS_TEXT}}
 
-Selected classification path (root → leaf) with match scores and inline reasoning:
+Classification path (root → leaf) with match percentages and inline reasoning:
 {{PATH_DESCRIPTION}}
 Other high-scoring taxonomy nodes (cross-references):
 {{CROSS_REFERENCES}}
-Leaf node to justify: {{LEAF_CODE}}
+Node to explain: {{LEAF_CODE}}
 
-Respond ONLY with the justification text (no JSON, no headers, no bullet points).
+Respond ONLY with the explanation text (no JSON, no headers, no bullet points).
