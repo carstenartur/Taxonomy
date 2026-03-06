@@ -16,7 +16,10 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @Service
@@ -136,7 +139,8 @@ public class TaxonomyService {
                 if (relationsSheet != null) {
                     loadRelationsSheet(relationsSheet, nodeMap);
                 } else {
-                    log.info("No 'Relations' sheet found in workbook — skipping relation loading.");
+                    log.info("No 'Relations' sheet found in workbook — trying CSV fallback.");
+                    loadRelationsFromCsv(nodeMap);
                 }
 
                 // 5. Build Lucene full-text search index
@@ -195,6 +199,63 @@ public class TaxonomyService {
         }
         relationRepository.saveAll(relations);
         log.info("Relations sheet loaded: {} relations.", relations.size());
+    }
+
+    /** Load relations from the CSV fallback file when no Relations sheet is present in the workbook. */
+    private void loadRelationsFromCsv(Map<String, TaxonomyNode> nodeMap) {
+        ClassPathResource csvResource = new ClassPathResource("data/relations.csv");
+        if (!csvResource.exists()) {
+            log.warn("CSV fallback 'data/relations.csv' not found — no relations loaded.");
+            return;
+        }
+        List<TaxonomyRelation> relations = new ArrayList<>();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(csvResource.getInputStream(), StandardCharsets.UTF_8))) {
+            reader.readLine(); // skip header row
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.isBlank()) continue;
+                // Split on comma with limit 4; descriptions in the CSV must not contain commas
+                String[] parts = line.split(",", 4);
+                if (parts.length < 3) continue;
+                String sourceCode  = parts[0].trim();
+                String targetCode  = parts[1].trim();
+                String typeStr     = parts[2].trim();
+                String description = parts.length >= 4 ? parts[3].trim() : null;
+
+                TaxonomyNode source = nodeMap.get(sourceCode);
+                TaxonomyNode target = nodeMap.get(targetCode);
+                if (source == null) {
+                    log.warn("CSV relations: source node '{}' not found — skipping row.", sourceCode);
+                    continue;
+                }
+                if (target == null) {
+                    log.warn("CSV relations: target node '{}' not found — skipping row.", targetCode);
+                    continue;
+                }
+
+                RelationType relationType;
+                try {
+                    relationType = RelationType.valueOf(typeStr.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    log.warn("CSV relations: unknown relation type '{}' — skipping row.", typeStr);
+                    continue;
+                }
+
+                TaxonomyRelation relation = new TaxonomyRelation();
+                relation.setSourceNode(source);
+                relation.setTargetNode(target);
+                relation.setRelationType(relationType);
+                relation.setDescription(truncate(description, 2000));
+                relation.setProvenance("csv-default");
+                relations.add(relation);
+            }
+        } catch (Exception e) {
+            log.error("Failed to load relations from CSV fallback", e);
+            return;
+        }
+        relationRepository.saveAll(relations);
+        log.info("CSV relations loaded: {} relations.", relations.size());
     }
 
     /** Read one sheet and populate nodeMap and uuidToCode. */
