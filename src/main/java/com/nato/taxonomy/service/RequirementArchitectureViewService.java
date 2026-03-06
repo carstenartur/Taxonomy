@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Builds a {@link RequirementArchitectureView} from analysis scores and
@@ -40,12 +41,14 @@ public class RequirementArchitectureViewService {
     /**
      * Builds the architecture view from analysis scores.
      *
-     * @param scores       map of nodeCode → integer score (0–100) from the LLM analysis
-     * @param businessText the original business requirement text (for notes)
+     * @param scores               map of nodeCode → integer score (0–100) from the LLM analysis
+     * @param businessText         the original business requirement text (for notes)
+     * @param maxArchitectureNodes maximum number of elements to include (0 = no limit)
      * @return the architecture view, or an empty view with a note if no anchors are found
      */
     @Transactional(readOnly = true)
-    public RequirementArchitectureView build(Map<String, Integer> scores, String businessText) {
+    public RequirementArchitectureView build(Map<String, Integer> scores, String businessText,
+                                             int maxArchitectureNodes) {
         RequirementArchitectureView view = new RequirementArchitectureView();
 
         if (scores == null || scores.isEmpty()) {
@@ -73,20 +76,56 @@ public class RequirementArchitectureViewService {
 
         // 4. Build included elements
         List<RequirementElementView> elements = buildElements(propagation);
-        view.setIncludedElements(elements);
 
         // 5. Build included relationships
         List<RequirementRelationshipView> relationships = buildRelationships(propagation);
+
+        // 6. Truncate to maxArchitectureNodes if requested
+        if (maxArchitectureNodes > 0 && elements.size() > maxArchitectureNodes) {
+            Set<String> keptCodes = elements.subList(0, maxArchitectureNodes).stream()
+                    .map(RequirementElementView::getNodeCode).collect(Collectors.toSet());
+            elements = new ArrayList<>(elements.subList(0, maxArchitectureNodes));
+            relationships = relationships.stream()
+                    .filter(r -> keptCodes.contains(r.getSourceCode()) && keptCodes.contains(r.getTargetCode()))
+                    .collect(Collectors.toList());
+            view.getNotes().add("Architecture view limited to " + maxArchitectureNodes + " elements.");
+        }
+
+        view.setIncludedElements(elements);
         view.setIncludedRelationships(relationships);
 
-        // 6. Add notes
+        // 7. Add notes
         if (relationships.isEmpty() && elements.size() == anchors.size()) {
             view.getNotes().add("No traversable relations found for anchor nodes; " +
                     "only direct matches are included.");
         }
 
-        log.info("Architecture view built: {} anchors, {} elements, {} relationships",
-                anchors.size(), elements.size(), relationships.size());
+        // 8. Populate summary statistics
+        int maxHop = elements.stream().mapToInt(RequirementElementView::getHopDistance).max().orElse(0);
+        view.setTotalAnchors(anchors.size());
+        view.setTotalElements(elements.size());
+        view.setTotalRelationships(relationships.size());
+        view.setMaxHopDistance(maxHop);
+
+        // 9. Structured logging
+        log.info("RequirementArchitectureView summary: anchors={}, elements={}, relationships={}, maxHopDistance={}",
+                anchors.size(), elements.size(), relationships.size(), maxHop);
+
+        for (RequirementAnchor anchor : anchors) {
+            List<RequirementElementView> propagated = elements.stream()
+                    .filter(e -> !e.isAnchor() && e.getIncludedBecause() != null
+                            && e.getIncludedBecause().contains(anchor.getNodeCode()))
+                    .toList();
+            if (!propagated.isEmpty()) {
+                StringBuilder sb = new StringBuilder();
+                sb.append("anchor ").append(anchor.getNodeCode());
+                for (RequirementElementView e : propagated) {
+                    sb.append("\n  → ").append(e.getNodeCode())
+                      .append(" (").append(String.format("%.2f", e.getRelevance())).append(")");
+                }
+                log.debug(sb.toString());
+            }
+        }
 
         return view;
     }

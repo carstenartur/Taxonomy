@@ -109,6 +109,10 @@ public class RelevancePropagationService {
             if (currentFrontier.isEmpty()) break;
         }
 
+        log.info("Propagation complete: {} anchor(s), {} relation(s) traversed, {} element(s) included, maxHop={}",
+                anchorRelevances.size(), traversedRelations.size(), relevanceMap.size(),
+                hopDistanceMap.values().stream().mapToInt(Integer::intValue).max().orElse(0));
+
         return new PropagationResult(relevanceMap, hopDistanceMap, reasonMap, traversedRelations);
     }
 

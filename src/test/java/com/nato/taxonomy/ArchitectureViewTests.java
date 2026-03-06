@@ -62,7 +62,7 @@ class ArchitectureViewTests {
         scores.put("CR", 75);
         scores.put("CI", 40);
 
-        RequirementArchitectureView view = architectureViewService.build(scores, "test");
+        RequirementArchitectureView view = architectureViewService.build(scores, "test", 0);
 
         assertThat(view.getAnchors()).hasSize(3);
         assertThat(view.getAnchors()).allMatch(a -> a.getDirectScore() >= 70);
@@ -76,7 +76,7 @@ class ArchitectureViewTests {
         scores.put("CR", 52);
         scores.put("CI", 30);
 
-        RequirementArchitectureView view = architectureViewService.build(scores, "test");
+        RequirementArchitectureView view = architectureViewService.build(scores, "test", 0);
 
         // BP is above 70, but only 1 anchor → fallback to top-3 above 50
         assertThat(view.getAnchors()).hasSize(3);
@@ -90,7 +90,7 @@ class ArchitectureViewTests {
         scores.put("BP", 30);
         scores.put("CP", 20);
 
-        RequirementArchitectureView view = architectureViewService.build(scores, "test");
+        RequirementArchitectureView view = architectureViewService.build(scores, "test", 0);
 
         assertThat(view.getAnchors()).isEmpty();
         assertThat(view.getNotes()).isNotEmpty();
@@ -98,7 +98,7 @@ class ArchitectureViewTests {
 
     @Test
     void buildReturnsEmptyViewForNullScores() {
-        RequirementArchitectureView view = architectureViewService.build(null, "test");
+        RequirementArchitectureView view = architectureViewService.build(null, "test", 0);
 
         assertThat(view.getAnchors()).isEmpty();
         assertThat(view.getIncludedElements()).isEmpty();
@@ -107,7 +107,7 @@ class ArchitectureViewTests {
 
     @Test
     void buildReturnsEmptyViewForEmptyScores() {
-        RequirementArchitectureView view = architectureViewService.build(Map.of(), "test");
+        RequirementArchitectureView view = architectureViewService.build(Map.of(), "test", 0);
 
         assertThat(view.getAnchors()).isEmpty();
         assertThat(view.getNotes()).isNotEmpty();
@@ -257,7 +257,7 @@ class ArchitectureViewTests {
     void buildIncludesAnchorAsElement() {
         Map<String, Integer> scores = Map.of("BP", 91);
 
-        RequirementArchitectureView view = architectureViewService.build(scores, "test");
+        RequirementArchitectureView view = architectureViewService.build(scores, "test", 0);
 
         assertThat(view.getIncludedElements()).isNotEmpty();
         assertThat(view.getIncludedElements().get(0).getNodeCode()).isEqualTo("BP");
@@ -273,7 +273,7 @@ class ArchitectureViewTests {
         Map<String, Integer> scores = new LinkedHashMap<>();
         scores.put("BP", 91);
 
-        RequirementArchitectureView view = architectureViewService.build(scores, "test");
+        RequirementArchitectureView view = architectureViewService.build(scores, "test", 0);
 
         assertThat(view.getIncludedElements()).hasSizeGreaterThanOrEqualTo(2);
         assertThat(view.getIncludedElements().stream()
@@ -287,7 +287,7 @@ class ArchitectureViewTests {
     void buildAddsNoteWhenNoRelationsExist() {
         Map<String, Integer> scores = Map.of("BP", 91);
 
-        RequirementArchitectureView view = architectureViewService.build(scores, "test");
+        RequirementArchitectureView view = architectureViewService.build(scores, "test", 0);
 
         assertThat(view.getNotes()).anyMatch(n -> n.contains("No traversable relations"));
     }
