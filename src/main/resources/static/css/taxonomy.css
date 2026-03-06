@@ -359,3 +359,90 @@
         max-height: none;
     }
 }
+
+/* ── Relation Proposals Panel ─────────────────────────────── */
+.proposal-pending-badge {
+    font-size: 0.8rem;
+}
+
+.proposal-filter-group .btn {
+    font-size: 0.78rem;
+}
+
+.proposal-table {
+    font-size: 0.82rem;
+}
+
+.proposal-table thead th {
+    background: #f0f4fa;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.proposal-table tbody tr:hover {
+    background-color: #f5f8ff;
+}
+
+.proposal-conf {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 0.78rem;
+}
+
+.proposal-conf-high {
+    background-color: #d1f3d1;
+    color: #155724;
+}
+
+.proposal-conf-mid {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.proposal-conf-low {
+    background-color: #f8d7da;
+    color: #842029;
+}
+
+.proposal-rationale {
+    max-width: 200px;
+    display: inline-block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+    cursor: help;
+}
+
+.btn-accept {
+    background-color: #d1f3d1;
+    border-color: #198754;
+    color: #155724;
+    font-size: 0.75rem;
+    padding: 2px 7px;
+}
+
+.btn-accept:hover {
+    background-color: #198754;
+    color: #fff;
+}
+
+.btn-reject {
+    background-color: #f8d7da;
+    border-color: #dc3545;
+    color: #842029;
+    font-size: 0.75rem;
+    padding: 2px 7px;
+}
+
+.btn-reject:hover {
+    background-color: #dc3545;
+    color: #fff;
+}
+
+.proposal-btn {
+    font-size: 0.72rem;
+    padding: 1px 6px;
+}

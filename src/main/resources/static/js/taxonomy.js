@@ -15,6 +15,10 @@
     let evaluatedNodes = new Set();   // track which parent nodes have been evaluated
     let lastAnalyzedText = null;      // text that was most recently analyzed successfully
 
+    // ── Proposal state ────────────────────────────────────────────────────────
+    let currentProposalFilter = 'PENDING';
+    let pendingProposalNodeCode = null; // node code for propose modal
+
     // ── Bootstrap ─────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function () {
         loadTaxonomy();
@@ -109,6 +113,49 @@
         const testLlmBtn = document.getElementById('testLlmConnection');
         if (testLlmBtn) {
             testLlmBtn.addEventListener('click', testLlmConnection);
+        }
+
+        // Proposal review panel — load on page start
+        loadProposals('PENDING');
+        ['filterPending', 'filterAll', 'filterAccepted', 'filterRejected'].forEach(function (id) {
+            const btn = document.getElementById(id);
+            if (btn) {
+                btn.addEventListener('click', function () {
+                    const filter = btn.dataset.filter;
+                    currentProposalFilter = filter;
+                    // Update active button styling
+                    ['filterPending', 'filterAll', 'filterAccepted', 'filterRejected'].forEach(function (bid) {
+                        const b = document.getElementById(bid);
+                        if (!b) return;
+                        const isPending   = bid === 'filterPending';
+                        const isAccepted  = bid === 'filterAccepted';
+                        const isRejected  = bid === 'filterRejected';
+                        const isActive    = bid === id;
+                        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+                        if (isPending) {
+                            b.className = isActive ? 'btn btn-warning' : 'btn btn-outline-warning';
+                        } else if (isAccepted) {
+                            b.className = isActive ? 'btn btn-success' : 'btn btn-outline-success';
+                        } else if (isRejected) {
+                            b.className = isActive ? 'btn btn-danger' : 'btn btn-outline-danger';
+                        } else {
+                            b.className = isActive ? 'btn btn-secondary' : 'btn btn-outline-secondary';
+                        }
+                    });
+                    loadProposals(filter);
+                });
+            }
+        });
+
+        // Propose Relations modal submit
+        const proposeSubmitBtn = document.getElementById('proposeRelationsSubmit');
+        if (proposeSubmitBtn) {
+            proposeSubmitBtn.addEventListener('click', function () {
+                const relationType = document.getElementById('proposeRelationType').value;
+                if (pendingProposalNodeCode && relationType) {
+                    proposeRelationsForNode(pendingProposalNodeCode, relationType);
+                }
+            });
         }
 
         // Warn when business text changes after analysis results are displayed
@@ -606,6 +653,25 @@
             });
             wrapper.appendChild(justifyBtn);
         }
+
+        // Propose Relations button (always visible on every node)
+        const proposeBtn = document.createElement('button');
+        proposeBtn.className = 'btn btn-sm btn-outline-secondary tax-justify-btn proposal-btn';
+        proposeBtn.textContent = '🔗 Propose Relations';
+        proposeBtn.title = 'Generate relation proposals for ' + node.code;
+        proposeBtn.setAttribute('aria-label', 'Propose relations for ' + node.code);
+        proposeBtn.dataset.code = node.code;
+        proposeBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            pendingProposalNodeCode = node.code;
+            const codeEl = document.getElementById('proposeNodeCode');
+            if (codeEl) { codeEl.textContent = node.code + ' — ' + node.name; }
+            const modal = document.getElementById('proposeRelationsModal');
+            if (modal && window.bootstrap) {
+                new window.bootstrap.Modal(modal).show();
+            }
+        });
+        wrapper.appendChild(proposeBtn);
 
         return wrapper;
     }
@@ -1339,6 +1405,195 @@
     function escapeHtml(s) {
         return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
+
+    // ── Relation Proposal Review ──────────────────────────────────────────────
+
+    function loadProposals(statusFilter) {
+        const container = document.getElementById('proposalsTableContainer');
+        if (!container) return;
+        container.innerHTML = '<div class="text-muted small p-2">Loading proposals&hellip;</div>';
+        const url = statusFilter === 'ALL' ? '/api/proposals' : '/api/proposals/pending';
+        fetch(url)
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function (proposals) {
+                let filtered = proposals;
+                if (statusFilter !== 'ALL' && statusFilter !== 'PENDING') {
+                    filtered = proposals.filter(function (p) { return p.status === statusFilter; });
+                }
+                renderProposalTable(filtered);
+                updateProposalBadge();
+            })
+            .catch(function (err) {
+                console.error('[Taxonomy] Failed to load proposals', err);
+                if (container) {
+                    container.innerHTML = '<div class="text-danger small p-2">Failed to load proposals: ' + escapeHtml(err.message) + '</div>';
+                }
+            });
+    }
+
+    function renderProposalTable(proposals) {
+        const container = document.getElementById('proposalsTableContainer');
+        if (!container) return;
+
+        if (!proposals || proposals.length === 0) {
+            container.innerHTML = '<div class="text-muted small p-2">No proposals found.</div>';
+            return;
+        }
+
+        let html = '<table class="table table-sm table-hover proposal-table mb-0">' +
+            '<thead><tr>' +
+            '<th scope="col">Source</th>' +
+            '<th scope="col" aria-label="arrow">→</th>' +
+            '<th scope="col">Target</th>' +
+            '<th scope="col">Type</th>' +
+            '<th scope="col">Confidence</th>' +
+            '<th scope="col">Rationale</th>' +
+            '<th scope="col">Actions</th>' +
+            '</tr></thead><tbody>';
+
+        proposals.forEach(function (p) {
+            const confPct = p.confidence !== null && p.confidence !== undefined
+                ? Math.round(p.confidence * 100) : null;
+            let confClass = '';
+            let confLabel = '—';
+            if (confPct !== null) {
+                confLabel = confPct + '%';
+                if (confPct >= 80) confClass = 'proposal-conf-high';
+                else if (confPct >= 50) confClass = 'proposal-conf-mid';
+                else confClass = 'proposal-conf-low';
+            }
+
+            const sourceLabel = escapeHtml(p.sourceCode || '') +
+                (p.sourceName ? ' <span class="text-muted">' + escapeHtml(p.sourceName) + '</span>' : '');
+            const targetLabel = escapeHtml(p.targetCode || '') +
+                (p.targetName ? ' <span class="text-muted">' + escapeHtml(p.targetName) + '</span>' : '');
+
+            const rationale = p.rationale ? escapeHtml(p.rationale) : '—';
+            const rationaleTrunc = p.rationale && p.rationale.length > 60
+                ? escapeHtml(p.rationale.substring(0, 60)) + '…'
+                : rationale;
+
+            const isPending = p.status === 'PENDING';
+            const actionHtml = isPending
+                ? '<button class="btn btn-accept btn-sm me-1" ' +
+                    'aria-label="Accept proposal ' + p.id + '" ' +
+                    'onclick="window._proposalAccept(' + p.id + ')">&#9989; Accept</button>' +
+                  '<button class="btn btn-reject btn-sm" ' +
+                    'aria-label="Reject proposal ' + p.id + '" ' +
+                    'onclick="window._proposalReject(' + p.id + ')">&#10060; Reject</button>'
+                : '<span class="badge ' + (p.status === 'ACCEPTED' ? 'bg-success' : 'bg-secondary') + '">' +
+                    escapeHtml(p.status) + '</span>';
+
+            html += '<tr>' +
+                '<td>' + sourceLabel + '</td>' +
+                '<td>→</td>' +
+                '<td>' + targetLabel + '</td>' +
+                '<td><span class="badge bg-light text-dark border">' + escapeHtml(p.relationType || '') + '</span></td>' +
+                '<td><span class="proposal-conf ' + confClass + '" aria-label="Confidence ' + confLabel + '">' + confLabel + '</span></td>' +
+                '<td><span class="proposal-rationale" title="' + rationale + '">' + rationaleTrunc + '</span></td>' +
+                '<td class="text-nowrap">' + actionHtml + '</td>' +
+                '</tr>';
+        });
+
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    function acceptProposal(id) {
+        fetch('/api/proposals/' + id + '/accept', { method: 'POST' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function () {
+                showStatus('success', '✅ Proposal accepted and relation created.');
+                loadProposals(currentProposalFilter);
+            })
+            .catch(function (err) {
+                console.error('[Taxonomy] Accept proposal failed', err);
+                showStatus('danger', '❌ Failed to accept proposal: ' + err.message);
+            });
+    }
+
+    function rejectProposal(id) {
+        fetch('/api/proposals/' + id + '/reject', { method: 'POST' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function () {
+                showStatus('success', '🗑️ Proposal rejected.');
+                loadProposals(currentProposalFilter);
+            })
+            .catch(function (err) {
+                console.error('[Taxonomy] Reject proposal failed', err);
+                showStatus('danger', '❌ Failed to reject proposal: ' + err.message);
+            });
+    }
+
+    function proposeRelationsForNode(nodeCode, relationType) {
+        const spinner = document.getElementById('proposeSpinner');
+        const submitBtn = document.getElementById('proposeRelationsSubmit');
+        if (spinner) spinner.classList.remove('d-none');
+        if (submitBtn) submitBtn.disabled = true;
+
+        fetch('/api/proposals/propose', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourceCode: nodeCode, relationType: relationType, limit: '10' })
+        })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function (proposals) {
+                // Close modal
+                const modalEl = document.getElementById('proposeRelationsModal');
+                if (modalEl && window.bootstrap) {
+                    const modal = window.bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+                }
+                const count = Array.isArray(proposals) ? proposals.length : 0;
+                showStatus('success', '✅ Generated ' + count + ' proposal(s) for ' + nodeCode + ' (' + relationType + ').');
+                loadProposals(currentProposalFilter);
+            })
+            .catch(function (err) {
+                console.error('[Taxonomy] Propose relations failed', err);
+                showStatus('danger', '❌ Failed to generate proposals: ' + err.message);
+            })
+            .finally(function () {
+                if (spinner) spinner.classList.add('d-none');
+                if (submitBtn) submitBtn.disabled = false;
+            });
+    }
+
+    function updateProposalBadge() {
+        fetch('/api/proposals/pending')
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function (pending) {
+                const badge = document.getElementById('proposalPendingBadge');
+                if (badge) {
+                    const count = Array.isArray(pending) ? pending.length : 0;
+                    badge.textContent = count + ' pending';
+                    badge.className = count > 0
+                        ? 'badge bg-warning text-dark proposal-pending-badge'
+                        : 'badge bg-secondary proposal-pending-badge';
+                }
+            })
+            .catch(function (err) {
+                console.error('[Taxonomy] Failed to update proposal badge', err);
+            });
+    }
+
+    // Expose accept/reject as global helpers for onclick handlers in rendered table
+    window._proposalAccept = acceptProposal;
+    window._proposalReject = rejectProposal;
 
     // ── Prompt template editor ────────────────────────────────────────────────
 
