@@ -224,3 +224,52 @@
     color: #dc3545;
     font-weight: 500;
 }
+
+/* ── Reason icon ──────────────────────────────────────────── */
+.tax-reason-icon {
+    cursor: help;
+    margin-left: 4px;
+    font-size: 0.85rem;
+    opacity: 0.85;
+    vertical-align: middle;
+}
+
+.tax-reason-icon:hover {
+    opacity: 1;
+}
+
+/* ── Leaf justification button ─────────────────────────────── */
+.tax-justify-btn {
+    display: inline-block;
+    margin: 4px 0 4px 2.5em;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+}
+
+/* ── LLM log: reasons section ─────────────────────────────── */
+.llm-log-reasons {
+    max-height: 200px;
+    overflow-y: auto;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 0.4rem;
+    margin-top: 0.25rem;
+    font-size: 0.85em;
+}
+
+.llm-log-reason-entry {
+    padding: 2px 0;
+    border-bottom: 1px dotted #dee2e6;
+}
+
+.llm-log-reason-entry:last-child {
+    border-bottom: none;
+}
+
+/* ── Leaf justification modal ─────────────────────────────── */
+.leaf-justification-text {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}

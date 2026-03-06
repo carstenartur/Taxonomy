@@ -4,11 +4,12 @@ import java.util.Map;
 
 /**
  * Captures details of a single LLM API call: the prompt sent, the raw text response,
- * parsed scores, provider name, and call duration.
+ * parsed scores, reasons per node, provider name, and call duration.
  */
 public class LlmCallDetail {
 
     private Map<String, Integer> scores;
+    private Map<String, String> reasons;
     private String prompt;
     private String rawResponse;
     private String provider;
@@ -19,6 +20,9 @@ public class LlmCallDetail {
 
     public Map<String, Integer> getScores() { return scores; }
     public void setScores(Map<String, Integer> scores) { this.scores = scores; }
+
+    public Map<String, String> getReasons() { return reasons; }
+    public void setReasons(Map<String, String> reasons) { this.reasons = reasons; }
 
     public String getPrompt() { return prompt; }
     public void setPrompt(String prompt) { this.prompt = prompt; }

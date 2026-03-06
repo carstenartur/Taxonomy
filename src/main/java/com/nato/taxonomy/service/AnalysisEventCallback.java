@@ -13,7 +13,7 @@ public interface AnalysisEventCallback {
     void onPhase(String message, int progressPercent);
 
     /** Partial scores have arrived; merge these into the UI immediately. */
-    void onScores(Map<String, Integer> newScores, String description);
+    void onScores(Map<String, Integer> newScores, Map<String, String> reasons, String description);
 
     /** A parent node is about to be expanded; its children are next to be evaluated. */
     void onExpanding(String parentCode, List<String> childCodes);

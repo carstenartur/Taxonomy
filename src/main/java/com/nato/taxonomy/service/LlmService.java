@@ -36,9 +36,27 @@ public class LlmService {
 
     private static final Logger log = LoggerFactory.getLogger(LlmService.class);
 
+    /**
+     * Holds the parsed scores and optional reasons from an LLM response.
+     * Backward-compatible: if the LLM returns the old integer-only format, reasons will be empty.
+     */
+    record ScoreParseResult(Map<String, Integer> scores, Map<String, String> reasons) {
+        static ScoreParseResult empty(List<TaxonomyNode> nodes) {
+            Map<String, Integer> zeros = new HashMap<>();
+            for (TaxonomyNode n : nodes) zeros.put(n.getCode(), 0);
+            return new ScoreParseResult(zeros, Map.of());
+        }
+    }
+
     // Gemini endpoint
     private static final String GEMINI_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=";
+
+    /** Minimum score (inclusive) for a node to appear as a cross-reference in leaf justification. */
+    private static final int MIN_CROSS_REFERENCE_SCORE = 50;
+
+    /** Maximum number of cross-reference nodes included in a leaf justification prompt. */
+    private static final int MAX_CROSS_REFERENCES = 5;
 
     private static final Pattern JSON_OBJECT_PATTERN =
             Pattern.compile("\\{[^{}]*(?:\\{[^{}]*\\}[^{}]*)*\\}", Pattern.DOTALL);
@@ -286,11 +304,11 @@ public class LlmService {
                         "Evaluating " + root.getName() + " (" + (i + 1) + "/" + roots.size() + ")…",
                         progress);
 
-                Map<String, Integer> rootScore = callLlm(businessText, List.of(root));
-                allScores.putAll(rootScore);
-                callback.onScores(rootScore, root.getName() + " evaluated");
+                ScoreParseResult result = callLlmResult(businessText, List.of(root));
+                allScores.putAll(result.scores());
+                callback.onScores(result.scores(), result.reasons(), root.getName() + " evaluated");
 
-                if (rootScore.getOrDefault(root.getCode(), 0) > 0) {
+                if (result.scores().getOrDefault(root.getCode(), 0) > 0) {
                     List<TaxonomyNode> children = taxonomyService.getChildrenOf(root.getCode());
                     if (!children.isEmpty()) {
                         callback.onExpanding(root.getCode(),
@@ -314,11 +332,11 @@ public class LlmService {
                                         AnalysisEventCallback callback) {
         if (nodes == null || nodes.isEmpty()) return;
 
-        Map<String, Integer> scores = callLlm(businessText, nodes);
-        allScores.putAll(scores);
-        callback.onScores(scores, "Evaluated " + nodes.size() + " node(s)");
+        ScoreParseResult result = callLlmResult(businessText, nodes);
+        allScores.putAll(result.scores());
+        callback.onScores(result.scores(), result.reasons(), "Evaluated " + nodes.size() + " node(s)");
 
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+        for (Map.Entry<String, Integer> entry : result.scores().entrySet()) {
             if (entry.getValue() > 0) {
                 List<TaxonomyNode> children = taxonomyService.getChildrenOf(entry.getKey());
                 if (!children.isEmpty()) {
@@ -369,6 +387,64 @@ public class LlmService {
         } catch (Exception e) {
             log.error("Error calling LLM API", e);
             return zeroScores(nodes);
+        }
+    }
+
+    /**
+     * Like {@link #callLlm} but returns both scores and reasons (backward-compatible).
+     * Reasons will be empty when using LOCAL_ONNX or when the LLM returns the old integer-only format.
+     */
+    private ScoreParseResult callLlmResult(String businessText, List<TaxonomyNode> nodes) {
+        try {
+            LlmProvider provider = getActiveProvider();
+
+            if (provider == LlmProvider.LOCAL_ONNX) {
+                log.info("LOCAL_ONNX — computing cosine-similarity scores for {} nodes", nodes.size());
+                Map<String, Integer> scores = localEmbeddingService.scoreNodes(businessText, nodes);
+                recordSuccess();
+                return new ScoreParseResult(scores, Map.of());
+            }
+
+            String apiKey = getApiKey(provider);
+            if (apiKey == null || apiKey.isBlank()) {
+                log.warn("⚠️ LLM analysis skipped: No API key configured for provider {}. "
+                        + "Set environment variable {}_API_KEY to enable AI analysis.",
+                        provider, provider.name());
+                return ScoreParseResult.empty(nodes);
+            }
+
+            String nodeList = buildNodeList(nodes);
+            String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
+            String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList);
+
+            log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
+                    provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));
+            log.debug("Full LLM prompt:\n{}", prompt);
+
+            String rawText;
+            if (provider == LlmProvider.GEMINI) {
+                String body = callGeminiHttpBody(prompt, apiKey);
+                rawText = body != null ? extractGeminiText(body) : null;
+            } else {
+                String body = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
+                rawText = body != null ? extractOpenAiText(body) : null;
+            }
+
+            if (rawText == null) {
+                return ScoreParseResult.empty(nodes);
+            }
+            try {
+                ScoreParseResult result = parseScoreParseResult(rawText, nodes);
+                recordSuccess();
+                return result;
+            } catch (Exception e) {
+                log.error("Failed to parse LLM response in callLlmResult", e);
+                recordFailure(e.getMessage());
+                return ScoreParseResult.empty(nodes);
+            }
+        } catch (Exception e) {
+            log.error("Error calling LLM API", e);
+            return ScoreParseResult.empty(nodes);
         }
     }
 
@@ -482,7 +558,9 @@ public class LlmService {
 
         if (rawText != null) {
             try {
-                detail.setScores(parseScoresFromText(rawText, nodes));
+                ScoreParseResult parsed = parseScoreParseResult(rawText, nodes);
+                detail.setScores(parsed.scores());
+                detail.setReasons(parsed.reasons());
                 recordSuccess();
             } catch (Exception e) {
                 log.error("Failed to parse scores in detailed LLM call", e);
@@ -691,7 +769,7 @@ public class LlmService {
             return zeroScores(nodes);
         }
         try {
-            return parseScoresFromText(text, nodes);
+            return parseScoreParseResult(text, nodes).scores();
         } catch (Exception e) {
             log.error("Failed to parse scores from Gemini response: {}", responseBody, e);
             return zeroScores(nodes);
@@ -706,22 +784,52 @@ public class LlmService {
             return zeroScores(nodes);
         }
         try {
-            return parseScoresFromText(text, nodes);
+            return parseScoreParseResult(text, nodes).scores();
         } catch (Exception e) {
             log.error("Failed to parse scores from OpenAI-compatible response: {}", responseBody, e);
             return zeroScores(nodes);
         }
     }
 
-    private Map<String, Integer> parseScoresFromText(String text,
-                                                      List<TaxonomyNode> nodes) throws Exception {
+    /**
+     * Parses both scores and reasons from LLM response text.
+     * Supports two formats (backward-compatible):
+     * <ul>
+     *   <li>Old format: {@code {"C1": 80, "C2": 0}} — integer values, no reasons</li>
+     *   <li>New format: {@code {"C1": {"score": 80, "reason": "..."}, "C2": {"score": 0, "reason": "..."}}}
+     * </ul>
+     */
+    private ScoreParseResult parseScoreParseResult(String text,
+                                                    List<TaxonomyNode> nodes) throws Exception {
         String jsonText = extractJson(text);
-        Map<String, Integer> scores = objectMapper.readValue(jsonText, new TypeReference<>() {});
+        Map<String, Object> raw = objectMapper.readValue(jsonText, new TypeReference<>() {});
+
+        Map<String, Integer> scores = new HashMap<>();
+        Map<String, String> reasons = new HashMap<>();
+
+        for (Map.Entry<String, Object> entry : raw.entrySet()) {
+            String code = entry.getKey();
+            Object value = entry.getValue();
+            if (value instanceof Number num) {
+                // Old format: integer value
+                scores.put(code, num.intValue());
+            } else if (value instanceof Map<?, ?> obj) {
+                // New format: object with "score" and "reason"
+                Object scoreVal = obj.get("score");
+                int score = scoreVal instanceof Number n ? n.intValue() : 0;
+                scores.put(code, score);
+                Object reasonVal = obj.get("reason");
+                if (reasonVal instanceof String reasonStr && !reasonStr.isBlank()) {
+                    reasons.put(code, reasonStr);
+                }
+            }
+        }
+
         for (TaxonomyNode n : nodes) {
             scores.putIfAbsent(n.getCode(), 0);
         }
         log.info("LLM Scores parsed: {}", scores);
-        return scores;
+        return new ScoreParseResult(scores, reasons);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -821,5 +929,93 @@ public class LlmService {
         result.put("failedCalls",      failedCalls.get());
         result.put("serverTime",       Instant.now().toString());
         return result;
+    }
+
+    /**
+     * Generates a leaf-node justification by sending a dedicated prompt to the LLM.
+     * Describes why the given leaf node was chosen, referencing the full path and cross-references
+     * to other high-scoring nodes.
+     *
+     * @param businessText  the original business requirement text
+     * @param leafCode      the code of the leaf taxonomy node
+     * @param pathNodes     the nodes from root to leaf (in order)
+     * @param allScores     all accumulated scores from the analysis session
+     * @param allReasons    all accumulated inline reasons from the analysis session
+     * @return a multi-sentence justification string, or an error message
+     */
+    public String generateLeafJustification(String businessText,
+                                             String leafCode,
+                                             List<TaxonomyNode> pathNodes,
+                                             Map<String, Integer> allScores,
+                                             Map<String, String> allReasons) {
+        LlmProvider provider = getActiveProvider();
+
+        if (provider == LlmProvider.LOCAL_ONNX) {
+            return "Leaf justification is not available for the LOCAL_ONNX provider "
+                    + "(cosine-similarity scores do not produce textual reasons).";
+        }
+
+        String apiKey = getApiKey(provider);
+        if (apiKey == null || apiKey.isBlank()) {
+            return "Leaf justification unavailable: no API key configured for provider " + provider + ".";
+        }
+
+        // Build the path description
+        StringBuilder pathDesc = new StringBuilder();
+        for (TaxonomyNode n : pathNodes) {
+            pathDesc.append("  ").append(n.getCode()).append(": ").append(n.getName());
+            int score = allScores.getOrDefault(n.getCode(), 0);
+            pathDesc.append(" [").append(score).append("%]");
+            String reason = allReasons.get(n.getCode());
+            if (reason != null && !reason.isBlank()) {
+                pathDesc.append(" — ").append(reason);
+            }
+            pathDesc.append("\n");
+        }
+
+        // Collect cross-references: other nodes with high scores (>= 50) not on the current path
+        Set<String> pathCodes = new HashSet<>();
+        for (TaxonomyNode n : pathNodes) pathCodes.add(n.getCode());
+
+        StringBuilder crossRefs = new StringBuilder();
+        allScores.entrySet().stream()
+                .filter(e -> e.getValue() >= MIN_CROSS_REFERENCE_SCORE && !pathCodes.contains(e.getKey()))
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .limit(MAX_CROSS_REFERENCES)
+                .forEach(e -> {
+                    crossRefs.append("  ").append(e.getKey()).append(": ").append(e.getValue()).append("%");
+                    String reason = allReasons.get(e.getKey());
+                    if (reason != null && !reason.isBlank()) {
+                        crossRefs.append(" — ").append(reason);
+                    }
+                    crossRefs.append("\n");
+                });
+
+        String prompt = promptTemplateService.renderLeafJustificationPrompt(
+                businessText, leafCode, pathDesc.toString(),
+                crossRefs.length() > 0 ? crossRefs.toString() : "  (none)");
+
+        log.info("Generating leaf justification for node {} via {}", leafCode, provider);
+        log.debug("Leaf justification prompt:\n{}", prompt);
+
+        try {
+            String rawText;
+            if (provider == LlmProvider.GEMINI) {
+                String body = callGeminiHttpBody(prompt, apiKey);
+                rawText = body != null ? extractGeminiText(body) : null;
+            } else {
+                String body = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
+                rawText = body != null ? extractOpenAiText(body) : null;
+            }
+            if (rawText == null || rawText.isBlank()) {
+                return "The LLM did not return a justification. Please try again.";
+            }
+            recordSuccess();
+            return rawText.trim();
+        } catch (Exception e) {
+            log.error("Failed to generate leaf justification for {}", leafCode, e);
+            recordFailure(e.getMessage());
+            return "Error generating justification: " + e.getMessage();
+        }
     }
 }

@@ -128,6 +128,37 @@ public class PromptTemplateService {
     }
 
     /**
+     * Renders the leaf-justification prompt by substituting all placeholders.
+     *
+     * @param businessText   the original business requirement text
+     * @param leafCode       the code of the leaf node to justify
+     * @param pathDescription formatted path from root to leaf with scores and inline reasons
+     * @param crossRefs       formatted list of other high-scoring nodes for cross-references
+     * @return the rendered prompt string ready to send to the LLM
+     */
+    public String renderLeafJustificationPrompt(String businessText, String leafCode,
+                                                String pathDescription, String crossRefs) {
+        String template = defaults.getOrDefault("justify-leaf", "");
+        if (template.isBlank()) {
+            // Fallback inline template if the file is missing
+            template = "You are an expert in NATO C3 taxonomy classification.\n"
+                    + "Explain in 3-5 sentences why the taxonomy path ending at {{LEAF_CODE}} "
+                    + "best matches the following business requirement.\n\n"
+                    + "Business Requirement: {{BUSINESS_TEXT}}\n\n"
+                    + "Selected path (root → leaf) with scores:\n{{PATH_DESCRIPTION}}\n"
+                    + "Other high-scoring nodes for cross-reference:\n{{CROSS_REFERENCES}}\n\n"
+                    + "Provide a coherent justification that explains why this path was chosen, "
+                    + "how the leaf node relates to the requirement, and note any relevant "
+                    + "connections to the cross-referenced nodes.";
+        }
+        return template
+                .replace("{{BUSINESS_TEXT}}", businessText)
+                .replace("{{LEAF_CODE}}", leafCode)
+                .replace("{{PATH_DESCRIPTION}}", pathDescription)
+                .replace("{{CROSS_REFERENCES}}", crossRefs);
+    }
+
+    /**
      * Returns a list of all known template codes (both defaults and any that only have overrides).
      */
     public List<String> getAllTemplateCodes() {

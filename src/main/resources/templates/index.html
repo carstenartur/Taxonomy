@@ -159,5 +159,23 @@
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script th:src="@{/js/taxonomy-views.js}"></script>
 <script th:src="@{/js/taxonomy.js}"></script>
+
+<!-- Leaf Justification Modal -->
+<div class="modal fade" id="leafJustificationModal" tabindex="-1" aria-labelledby="leafJustificationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="leafJustificationModalTitle">📋 Leaf Justification</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="leafJustificationModalBody" class="leaf-justification-text"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 </body>
 </html>
