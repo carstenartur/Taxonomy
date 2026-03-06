@@ -10,6 +10,11 @@ public class RequirementArchitectureView {
     private List<RequirementRelationshipView> includedRelationships = new ArrayList<>();
     private List<String> notes = new ArrayList<>();
 
+    private int totalAnchors;
+    private int totalElements;
+    private int totalRelationships;
+    private int maxHopDistance;
+
     public RequirementArchitectureView() {}
 
     public List<RequirementAnchor> getAnchors() { return anchors; }
@@ -23,4 +28,16 @@ public class RequirementArchitectureView {
 
     public List<String> getNotes() { return notes; }
     public void setNotes(List<String> notes) { this.notes = notes; }
+
+    public int getTotalAnchors() { return totalAnchors; }
+    public void setTotalAnchors(int totalAnchors) { this.totalAnchors = totalAnchors; }
+
+    public int getTotalElements() { return totalElements; }
+    public void setTotalElements(int totalElements) { this.totalElements = totalElements; }
+
+    public int getTotalRelationships() { return totalRelationships; }
+    public void setTotalRelationships(int totalRelationships) { this.totalRelationships = totalRelationships; }
+
+    public int getMaxHopDistance() { return maxHopDistance; }
+    public void setMaxHopDistance(int maxHopDistance) { this.maxHopDistance = maxHopDistance; }
 }

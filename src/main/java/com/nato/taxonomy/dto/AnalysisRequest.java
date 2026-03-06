@@ -4,6 +4,7 @@ public class AnalysisRequest {
 
     private String businessText;
     private boolean includeArchitectureView;
+    private int maxArchitectureNodes = 20;
 
     public AnalysisRequest() {}
 
@@ -16,4 +17,7 @@ public class AnalysisRequest {
 
     public boolean isIncludeArchitectureView() { return includeArchitectureView; }
     public void setIncludeArchitectureView(boolean includeArchitectureView) { this.includeArchitectureView = includeArchitectureView; }
+
+    public int getMaxArchitectureNodes() { return maxArchitectureNodes; }
+    public void setMaxArchitectureNodes(int maxArchitectureNodes) { this.maxArchitectureNodes = maxArchitectureNodes; }
 }

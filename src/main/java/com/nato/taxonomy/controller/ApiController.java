@@ -80,7 +80,8 @@ public class ApiController {
 
         if (request.isIncludeArchitectureView() && result.getScores() != null) {
             result.setArchitectureView(
-                    architectureViewService.build(result.getScores(), request.getBusinessText()));
+                    architectureViewService.build(result.getScores(), request.getBusinessText(),
+                            request.getMaxArchitectureNodes()));
         }
 
         return ResponseEntity.ok(result);
