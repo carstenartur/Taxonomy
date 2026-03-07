@@ -61,11 +61,13 @@
         if (!badge) return;
         badge.classList.remove('d-none');
         if (data.available) {
-            badge.className = 'badge bg-info text-dark ms-2';
+            badge.classList.remove('bg-secondary');
+            badge.classList.add('bg-info', 'text-dark');
             badge.textContent = '\uD83E\uDDE0 Embeddings: ' + data.indexedNodes + ' nodes';
             badge.title = 'Semantic embeddings available — model: ' + (data.modelUrl || 'unknown');
         } else {
-            badge.className = 'badge bg-secondary ms-2';
+            badge.classList.remove('bg-info', 'text-dark');
+            badge.classList.add('bg-secondary');
             badge.textContent = '\uD83E\uDDE0 Embeddings: unavailable';
             badge.title = 'Embeddings not loaded — semantic/hybrid/graph search disabled';
         }

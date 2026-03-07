@@ -14,7 +14,7 @@
             &#127756; NATO NC3T Taxonomy Browser &mdash; Baseline 7
         </span>
         <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" title="Shows the current AI/LLM provider status: green = available, yellow = unknown (status check failed), red = no API key configured"></span>
-        <span id="embeddingStatusBadge" class="badge bg-secondary ms-1 me-2 d-none" title="Embedding model status for semantic search"></span>
+        <span id="embeddingStatusBadge" class="badge bg-secondary ms-2 d-none" title="Embedding model status for semantic search"></span>
         <button id="darkModeToggle" class="btn btn-sm btn-outline-light me-2" title="Toggle dark/light theme" aria-label="Toggle theme">&#127769;</button>
         <button id="adminLockBtn" class="btn btn-sm btn-outline-light d-none" title="Open admin mode to access diagnostic panels and prompt templates" style="font-size:1.1rem;">&#128274;</button>
     </div>
@@ -477,6 +477,7 @@
                     <label for="newRelDescription" class="form-label small">Description (optional)</label>
                     <textarea id="newRelDescription" class="form-control form-control-sm" rows="2"></textarea>
                 </div>
+                <div id="createRelationError" class="text-danger small d-none"></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>

@@ -101,9 +101,12 @@
         var targetCode = document.getElementById('newRelTarget').value.trim();
         var relationType = document.getElementById('newRelType').value;
         var description = document.getElementById('newRelDescription').value.trim();
+        var errorEl = document.getElementById('createRelationError');
+
+        if (errorEl) { errorEl.classList.add('d-none'); errorEl.textContent = ''; }
 
         if (!sourceCode || !targetCode) {
-            alert('Source and Target codes are required.');
+            if (errorEl) { errorEl.textContent = 'Source and Target codes are required.'; errorEl.classList.remove('d-none'); }
             return;
         }
 
@@ -134,7 +137,7 @@
         })
         .catch(function (err) {
             if (spinner) spinner.classList.add('d-none');
-            alert('Error creating relation: ' + err.message);
+            if (errorEl) { errorEl.textContent = 'Error creating relation: ' + err.message; errorEl.classList.remove('d-none'); }
         });
     }
 
@@ -149,7 +152,16 @@
                 loadRelations();
                 if (window.TaxonomyQuality) window.TaxonomyQuality.loadQualityDashboard();
             })
-            .catch(function () { alert('Failed to delete relation.'); });
+            .catch(function () {
+                var content = document.getElementById('relationsTableContainer');
+                if (content) {
+                    var errDiv = document.createElement('div');
+                    errDiv.className = 'text-danger small p-1';
+                    errDiv.textContent = '\u26A0\uFE0F Failed to delete relation.';
+                    content.prepend(errDiv);
+                    setTimeout(function () { errDiv.remove(); }, 5000);
+                }
+            });
     }
 
     /* ------------------------------------------------------------------ */
