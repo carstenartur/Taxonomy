@@ -141,7 +141,8 @@ Tips for good requirements:
 4. A progress indicator appears in the Status Area. The taxonomy tree in the left panel will start showing colour-coded score bars as results arrive.
 5. When analysis is complete, the Status Area shows a summary message and the export buttons become available.
 
-![Scored taxonomy tree](images/15-scored-taxonomy-tree.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Scored taxonomy tree with green colour-coded match percentages after analysis*
 
 ### Interactive Mode
 
@@ -155,7 +156,8 @@ In Interactive Mode:
 
 This mode is useful for very large taxonomies or when you want to focus on one branch.
 
-![Interactive Mode](images/16-interactive-mode.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Interactive Mode with level-by-level expansion and 🔍 drill-down buttons*
 
 ### Architecture View Checkbox
 
@@ -178,7 +180,8 @@ The colour is computed as `rgba(0, 128, 0, score/100)` — a pure green whose **
 
 Nodes with a score of 0 % have no highlight at all. Hover over any legend box to see a tooltip describing its match level.
 
-![Match Legend](images/17-match-legend-with-scores.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Match Legend card showing colour-coded score ranges from 0% to 100%*
 
 ### The Analysis Log
 
@@ -293,7 +296,8 @@ For any leaf node (a node with no children) that has a non-zero score, you can a
 3. A **Leaf Justification Modal** opens, displaying the LLM-generated explanation.
 4. Read the explanation and close the modal when done.
 
-![Leaf Justification modal](images/18-leaf-justification-modal.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Leaf Justification modal showing the AI-generated explanation for a node's score*
 
 ### Stale Results Warning
 
@@ -309,7 +313,8 @@ The warning triggers after a 300 ms debounce when you type in the business text 
 - Click **Reset Results** to clear the old scores, then re-run the analysis, or
 - Click **Analyze with AI** again to replace the stale scores with fresh results.
 
-![Stale results warning](images/19-stale-results-warning.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Stale results warning with yellow border on the business requirement textarea*
 
 ---
 
@@ -337,7 +342,8 @@ The panel shows three sections:
 - **Elements** extend the picture: if an anchor node *realizes* a capability, that capability also appears as an element.
 - **Relationships** show the direction and type of the link (e.g., REALIZES, SUPPORTS, DEPENDS_ON).
 
-![Architecture View](images/20-architecture-view.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Architecture View panel showing anchors, elements, and relationship diagram*
 
 ---
 
@@ -378,9 +384,11 @@ The results table shows:
 | Hops | Distance from the starting node |
 | Relevance | Impact score or similarity indicator |
 
-![Graph Explorer upstream](images/21-graph-explorer-upstream.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Graph Explorer upstream query results showing supporting nodes and relation types*
 
-![Graph Explorer failure impact](images/22-graph-explorer-failure.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Graph Explorer failure impact results showing affected downstream nodes*
 
 ---
 
@@ -388,7 +396,7 @@ The results table shows:
 
 The system can automatically propose new relations between taxonomy nodes using AI. These proposals are stored in a review queue where you can accept or reject them.
 
-### Triggering Proposals (�� button on a Node)
+### Triggering Proposals (🔗 button on a Node)
 
 1. Find a taxonomy node in the left panel that you believe should be related to other nodes.
 2. Click the **🔗** (Propose Relations) button on that node's row.
@@ -441,7 +449,8 @@ The **Confidence** column shows how strongly the AI believes the proposed relati
 
 After a successful analysis, export buttons appear at the top of the left panel. These buttons are only visible when analysis scores are present.
 
-![Export buttons](images/23-export-buttons.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Export button group showing SVG, PNG, PDF, CSV, Visio, and ArchiMate buttons*
 
 ### SVG Export
 
@@ -519,7 +528,8 @@ When AI is unavailable, an **inline warning message** appears below the Analyze 
 
 To lock admin mode again, click the lock button and choose **Lock**.
 
-![Admin Mode modal](images/24-admin-modal.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Admin Mode modal with password input field and Unlock/Lock buttons*
 
 ### LLM Communication Log
 
@@ -536,7 +546,8 @@ The **LLM Diagnostics Panel** (admin only, collapsible) shows statistics about L
 
 Click **Refresh** to update the statistics. Click **Test Connection** to send a test request to the LLM provider and confirm it is responding correctly.
 
-![LLM Diagnostics](images/25-llm-diagnostics.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: LLM Diagnostics panel showing provider, model, and connection statistics*
 
 ### Prompt Template Editor
 
@@ -547,7 +558,8 @@ The **Prompt Templates Editor** (admin only, collapsible) allows you to customis
 3. Edit the text as needed.
 4. Click **Save** to save your changes, or **Reset** to restore the built-in default.
 
-![Prompt Template Editor](images/26-prompt-template-editor.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Prompt Template Editor with taxonomy selector, template textarea, and Save/Reset buttons*
 
 ---
 
