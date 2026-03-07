@@ -21,8 +21,10 @@
 13. [Administration](#13-administration)
 14. [Embedding Configuration](#14-embedding-configuration)
 15. [API Reference](#15-api-reference)
-16. [Best Practices](#16-best-practices)
-17. [Glossary](#17-glossary)
+16. [Error Response Schema](#16-error-response-schema)
+17. [OpenAPI / Swagger UI](#17-openapi--swagger-ui)
+18. [Best Practices](#18-best-practices)
+19. [Glossary](#19-glossary)
 
 ---
 
@@ -643,7 +645,78 @@ Complete list of all REST endpoints.
 
 ---
 
-## 16. Best Practices
+## 16. Error Response Schema
+
+The API uses standard HTTP status codes and returns structured error information.
+
+### HTTP Status Codes
+
+| Code | Meaning | When It Occurs |
+|---|---|---|
+| `200 OK` | Success | Normal successful response |
+| `400 Bad Request` | Invalid input | Missing required parameters, invalid enum values, blank text fields |
+| `401 Unauthorized` | Authentication required | Admin-only endpoints when `ADMIN_PASSWORD` is set and `X-Admin-Token` header is missing/invalid |
+| `404 Not Found` | Resource not found | Invalid endpoint path |
+| `500 Internal Server Error` | Server error | Unexpected exceptions (LLM timeout, I/O errors during export) |
+
+### Error Response Formats
+
+**400 Bad Request:** Returns an empty body with HTTP 400 status (no JSON body).
+
+**401 Unauthorized:** Returns an empty body with HTTP 401 status.
+
+**Analysis errors** (returned in the response body with HTTP 200):
+
+```json
+{
+  "status": "ERROR",
+  "errorMessage": "LLM provider returned an error: Connection timed out",
+  "scores": {},
+  "warnings": ["Root BP was skipped due to timeout"]
+}
+```
+
+**Streaming analysis errors** (SSE `error` event):
+
+```json
+{
+  "status": "ERROR",
+  "errorMessage": "Rate limit exceeded (HTTP 429). Try again in 60 seconds.",
+  "partialScores": { "BP": 75, "CS": 60 },
+  "warnings": ["Some roots may be incomplete"]
+}
+```
+
+### LLM Error Handling
+
+When the LLM provider experiences an error, the application handles it gracefully:
+
+| Error Type | HTTP Code | User Message | Recommended Action |
+|---|---|---|---|
+| Connection timeout | 200 (partial) | "LLM connection timed out" | Retry the analysis |
+| Rate limit (429) | 200 (partial) | "Rate limit exceeded" | Wait and retry |
+| Invalid API key | 200 (error) | "Authentication failed" | Check API key configuration |
+| Provider unavailable | 200 (error) | "LLM provider is not available" | Check `GET /api/ai-status` |
+
+---
+
+## 17. OpenAPI / Swagger UI
+
+The application includes auto-generated interactive API documentation via
+[springdoc-openapi](https://springdoc.org/).
+
+| URL | Description |
+|---|---|
+| [`/swagger-ui.html`](/swagger-ui.html) | Interactive Swagger UI — browse and test all API endpoints |
+| [`/v3/api-docs`](/v3/api-docs) | OpenAPI 3.0 specification in JSON format |
+| [`/v3/api-docs.yaml`](/v3/api-docs.yaml) | OpenAPI 3.0 specification in YAML format |
+
+All endpoints are tagged by functional area (Taxonomy, Analysis, Search, Relations,
+Proposals, Graph Queries, Quality Metrics, Export, Administration, Embedding).
+
+---
+
+## 18. Best Practices
 
 ### Requirement Text Quality
 
@@ -675,7 +748,7 @@ Complete list of all REST endpoints.
 
 ---
 
-## 17. Glossary
+## 19. Glossary
 
 | Term | Definition |
 |---|---|

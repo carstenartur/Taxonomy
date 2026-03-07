@@ -177,15 +177,18 @@ Tick the **Architecture View** checkbox before running analysis to also build an
 
 The **Match Legend** (below the analysis card) shows the colour scale:
 
-| Colour | Score range | Meaning |
-|---|---|---|
-| Light green (faint) | 0 % – 24 % | Very low match |
-| Green | 25 % – 49 % | Low match |
-| Medium green | 50 % – 74 % | Moderate match |
-| Dark green | 75 % – 99 % | Good match |
-| Bright green / highlighted | 100 % | Perfect match |
+| Colour | Score range | Meaning | Text Colour |
+|---|---|---|---|
+| Transparent | 0 % | No match | Dark (default) |
+| Very light green | 1 % – 24 % | Very low match | Dark (default) |
+| Light green | 25 % – 49 % | Low match | Dark (default) |
+| Medium green | 50 % – 59 % | Moderate match | Dark (default) |
+| Dark green | 60 % – 99 % | Good match | **White** (for readability) |
+| Solid green | 100 % | Perfect match | **White** |
 
-Nodes with a score of 0 % are not highlighted. The higher the score, the darker and more prominent the green highlight on the node row.
+The colour is computed as `rgba(0, 128, 0, score/100)` — a pure green whose **opacity** (alpha channel) increases linearly with the score percentage. At 60 % and above, the text colour switches to white for readability against the darker background.
+
+Nodes with a score of 0 % have no highlight at all. Hover over any legend box to see a tooltip describing its match level.
 
 > 📸 **Screenshot:** [Match Legend component showing the green gradient from 0% to 100%]
 >
@@ -194,6 +197,37 @@ Nodes with a score of 0 % are not highlighted. The higher the score, the darker 
 ### The Analysis Log
 
 Below the Status Area, a collapsible **Analysis Log** section records each step of the scoring process: which LLM phases ran, how many nodes were scored, and any warnings. Click the log header to expand or collapse it.
+
+### Streaming Progress Indicator
+
+During analysis (especially in Interactive Mode), the status area shows real-time progress messages. Each message corresponds to a phase in the LLM processing pipeline:
+
+| Phase Message | Meaning |
+|---|---|
+| *"Analyzing root taxonomies…"* | The LLM is scoring the top-level taxonomy categories |
+| *"Expanding [Name]…"* | The LLM is drilling into the children of a matched node |
+| *"Scoring level N…"* | The LLM is processing taxonomy nodes at depth N |
+| *"Building architecture view…"* | The relation-aware architecture view is being assembled |
+| *"Analysis complete"* | All levels have been processed successfully |
+
+A progress percentage bar may also appear, indicating approximately how far through the taxonomy levels the analysis has progressed.
+
+### Error Handling During Analysis
+
+If the LLM encounters an error during analysis, the application handles it gracefully:
+
+| Error | What You See | What to Do |
+|---|---|---|
+| **Connection timeout** | Status shows "LLM connection timed out" with partial scores | Retry — the LLM server may be temporarily overloaded |
+| **Rate limit (HTTP 429)** | Status shows "Rate limit exceeded" | Wait 60 seconds and retry |
+| **Invalid API key** | Status shows "Authentication failed" | Check your API key in environment variables |
+| **Partial failure** | Some roots scored, others show warnings | Review the warnings in the Analysis Log; scores for completed roots are still valid |
+
+Partial results are preserved when possible — if 7 of 10 roots were scored before a timeout, those scores are displayed and only the failed roots are flagged with warnings.
+
+### Export Button Visibility
+
+The export buttons (SVG, PNG, PDF, CSV, Visio, ArchiMate) only appear when there are analysis scores greater than 0. If no analysis has been run, or if all scores are 0, the export buttons are hidden and a hint text **"📋 Analyze first to enable exports"** is shown instead. If you navigate away and return, scores may be lost — re-run the analysis to restore the export buttons.
 
 ---
 
@@ -289,7 +323,17 @@ For any leaf node (a node with no children) that has a non-zero score, you can a
 
 ### Stale Results Warning
 
-If you edit your requirement text after a completed analysis without re-running the analysis, the taxonomy tree may display a **yellow border** or warning message indicating that the displayed scores no longer match the current requirement text. Re-run the analysis to refresh the scores.
+If you edit your requirement text after a completed analysis, the application detects that the displayed scores no longer match the current text and shows a **stale-results warning**:
+
+1. The **textarea** gets a **yellow border** with a soft yellow glow.
+2. A **warning message** appears in the status area: *"⚠️ Business text has changed — previous results are no longer valid."*
+3. A **Reset Results** button appears, allowing you to clear the stale scores.
+
+The warning triggers after a 300 ms debounce when you type in the business text area — it does not trigger immediately to avoid flickering.
+
+**To resolve the warning:**
+- Click **Reset Results** to clear the old scores, then re-run the analysis, or
+- Click **Analyze with AI** again to replace the stale scores with fresh results.
 
 > 📸 **Screenshot:** [Stale results warning — yellow border or warning banner visible]
 >
@@ -471,7 +515,11 @@ Click **📥 ArchiMate** to download an ArchiMate 3.x XML file suitable for impo
 
 ### When Export Buttons Appear
 
-The export buttons only appear after analysis has been run and scores are present. If you navigate away or refresh the page, scores may be lost and the buttons will disappear. Re-run the analysis to restore them.
+The export buttons only appear after analysis has been run and at least one taxonomy node has a score greater than 0. If you navigate away or refresh the page, scores are lost and the buttons disappear. A hint message **"📋 Analyze first to enable exports"** is shown when exports are unavailable. Re-run the analysis to restore the export buttons.
+
+### Dark Mode
+
+Click the **🌙** (moon) button in the navigation bar to switch to dark mode. Click **☀️** (sun) to switch back to light mode. Your preference is saved in your browser and persists across sessions.
 
 ---
 
@@ -491,10 +539,17 @@ Administration features are hidden behind a password-protected admin mode. A sta
 
 The badge in the navigation bar shows whether an LLM provider is connected:
 
-- 🟢 **Green** — AI is available; analysis and justification features are active.
-- 🔴 **Red** — AI is unavailable; the **Analyze with AI** button will be disabled.
+| Badge | State | Meaning |
+|---|---|---|
+| 🟢 **AI: [Provider Name]** | Available (green) | AI analysis and justification features are active. The badge shows the active provider (e.g. "Google Gemini"). |
+| 🔴 **AI: Unavailable** | Unavailable (red) | No LLM API key is configured. The **Analyze with AI** button is disabled. An inline warning below the button explains which environment variables to set. |
+| ⚠️ **AI: Unknown** | Error (yellow) | The status check failed (network error or server starting up). The badge refreshes automatically every 30 seconds. |
 
-If you see a red badge, contact your administrator to check the LLM provider configuration.
+If you see a red badge, either:
+- Set one of the LLM API keys (`GEMINI_API_KEY`, `OPENAI_API_KEY`, etc.) and restart the application, or
+- Set `LLM_PROVIDER=LOCAL_ONNX` for offline analysis without any API key.
+
+When AI is unavailable, an **inline warning message** appears below the Analyze button listing the required environment variables.
 
 ### Unlocking Admin Mode (🔒 button → Password Modal)
 
