@@ -1,6 +1,8 @@
 package com.nato.taxonomy;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -32,6 +34,11 @@ import java.time.Duration;
 /**
  * Generates browser screenshots of the Taxonomy web UI for use in the user
  * guide documentation. Screenshots are saved to {@code docs/images/}.
+ *
+ * <p>This test is opt-in: it only runs when the system property
+ * {@code generateScreenshots} is set (e.g. {@code -DgenerateScreenshots}).
+ * This avoids failures in CI environments without outbound internet access
+ * (Bootstrap and D3 are loaded from CDN at runtime).
  *
  * <p>Requires Docker and the application JAR at
  * {@code target/taxonomy-1.0.0-SNAPSHOT.jar} to be present (i.e. run after
@@ -74,12 +81,24 @@ class ScreenshotGeneratorIT {
             .withNetwork(network);
 
     @BeforeAll
-    static void createOutputDir() throws IOException {
+    static void setUp() throws IOException {
+        // Skip the entire test class unless explicitly opted in. This avoids
+        // failures in environments without outbound internet access (Bootstrap
+        // and D3 are served from CDN and must be reachable from the Chrome
+        // container for the page to render correctly).
+        Assumptions.assumeTrue(
+                System.getProperty("generateScreenshots") != null,
+                "Screenshot generation skipped (pass -DgenerateScreenshots to enable)");
         Files.createDirectories(SCREENSHOT_DIR);
     }
 
-    private String appUrl() {
-        return "http://taxonomy-app:8080";
+    /** Navigate to the home page and wait for the taxonomy tree to render. */
+    @BeforeEach
+    void navigateToHome() {
+        WebDriver driver = chrome.getWebDriver();
+        driver.get("http://taxonomy-app:8080");
+        wait(driver, 30).until(ExpectedConditions.presenceOfElementLocated(
+                By.cssSelector("#taxonomyTree .tax-node")));
     }
 
     private void saveScreenshot(WebDriver driver, String filename) throws IOException {
@@ -96,14 +115,8 @@ class ScreenshotGeneratorIT {
     @Order(1)
     void captureFullLayout() throws Exception {
         WebDriver driver = chrome.getWebDriver();
-        driver.get(appUrl());
-
-        // Wait for taxonomy tree to load then let rendering settle
-        wait(driver, 30).until(ExpectedConditions.presenceOfElementLocated(
-                By.cssSelector("#taxonomyTree .tax-node, #taxonomyTree ul")));
         wait(driver, 5).until(ExpectedConditions.visibilityOfElementLocated(
                 By.cssSelector("#taxonomyTree")));
-
         saveScreenshot(driver, "01-full-layout.png");
     }
 
@@ -123,9 +136,13 @@ class ScreenshotGeneratorIT {
         WebDriver driver = chrome.getWebDriver();
         ((JavascriptExecutor) driver).executeScript("window.scrollTo(0, 0);");
         wait(driver, 10).until(ExpectedConditions.elementToBeClickable(By.id("expandAll"))).click();
-        // Wait for expand animation to settle
-        wait(driver, 10).until(ExpectedConditions.presenceOfElementLocated(
-                By.cssSelector("#taxonomyTree li.expanded, #taxonomyTree li[aria-expanded='true']")));
+        // expandAll sets display:'' on every .tax-children div; wait until at least one is visible
+        wait(driver, 10).until(d -> {
+            Object result = ((JavascriptExecutor) d).executeScript(
+                    "return Array.from(document.querySelectorAll('#taxonomyTree .tax-children'))" +
+                    ".some(e => window.getComputedStyle(e).display !== 'none');");
+            return result instanceof Boolean && (Boolean) result;
+        });
         saveScreenshot(driver, "03-taxonomy-list-view.png");
     }
 
@@ -135,7 +152,7 @@ class ScreenshotGeneratorIT {
         WebDriver driver = chrome.getWebDriver();
         wait(driver, 10).until(ExpectedConditions.elementToBeClickable(By.id("viewTabs"))).click();
         wait(driver, 10).until(ExpectedConditions.presenceOfElementLocated(
-                By.cssSelector("#taxonomyTabs, .nav-tabs, [role='tablist']")));
+                By.cssSelector(".nav-tabs, [role='tablist']")));
         saveScreenshot(driver, "04-taxonomy-tabs-view.png");
     }
 
@@ -144,9 +161,9 @@ class ScreenshotGeneratorIT {
     void captureSunburstView() throws Exception {
         WebDriver driver = chrome.getWebDriver();
         wait(driver, 10).until(ExpectedConditions.elementToBeClickable(By.id("viewSunburst"))).click();
-        // Wait for D3 SVG to appear, then allow animation to complete
+        // Wait for D3 SVG to appear in #taxonomyTree, then allow animation to complete
         wait(driver, 15).until(ExpectedConditions.presenceOfElementLocated(
-                By.cssSelector("#sunburstContainer svg, #taxonomyTree svg")));
+                By.cssSelector("#taxonomyTree svg")));
         Thread.sleep(2000); // D3 animation settle time
         saveScreenshot(driver, "05-taxonomy-sunburst-view.png");
     }
@@ -156,9 +173,9 @@ class ScreenshotGeneratorIT {
     void captureTreeView() throws Exception {
         WebDriver driver = chrome.getWebDriver();
         wait(driver, 10).until(ExpectedConditions.elementToBeClickable(By.id("viewTree"))).click();
-        // Wait for D3 SVG to appear, then allow animation to complete
+        // Wait for D3 SVG to appear in #taxonomyTree, then allow animation to complete
         wait(driver, 15).until(ExpectedConditions.presenceOfElementLocated(
-                By.cssSelector("#treeContainer svg, #taxonomyTree svg")));
+                By.cssSelector("#taxonomyTree svg")));
         Thread.sleep(2000); // D3 animation settle time
         saveScreenshot(driver, "06-taxonomy-tree-view.png");
     }
@@ -168,15 +185,31 @@ class ScreenshotGeneratorIT {
     void captureDecisionView() throws Exception {
         WebDriver driver = chrome.getWebDriver();
         wait(driver, 10).until(ExpectedConditions.elementToBeClickable(By.id("viewDecision"))).click();
-        // Wait for D3 SVG to appear, then allow animation to complete
+        // Wait for D3 SVG to appear in #taxonomyTree, then allow animation to complete
         wait(driver, 15).until(ExpectedConditions.presenceOfElementLocated(
-                By.cssSelector("#decisionContainer svg, #taxonomyTree svg")));
+                By.cssSelector("#taxonomyTree svg")));
         Thread.sleep(2000); // D3 animation settle time
         saveScreenshot(driver, "07-taxonomy-decision-view.png");
     }
 
     @Test
     @Order(8)
+    void captureMatchLegend() throws Exception {
+        WebDriver driver = chrome.getWebDriver();
+        // The legend card is the closest .card ancestor of the first .legend-box element
+        WebElement legendBox = wait(driver, 10).until(
+                ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".legend-box")));
+        WebElement card = (WebElement) ((JavascriptExecutor) driver).executeScript(
+                "return arguments[0].closest('.card');", legendBox);
+        ((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView(true);", card);
+        wait(driver, 5).until(ExpectedConditions.visibilityOf(card));
+        File src = card.getScreenshotAs(OutputType.FILE);
+        Files.copy(src.toPath(), SCREENSHOT_DIR.resolve("08-match-legend.png"),
+                StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    @Test
+    @Order(9)
     void captureGraphExplorer() throws Exception {
         WebDriver driver = chrome.getWebDriver();
         WebElement panel = wait(driver, 10).until(
@@ -187,7 +220,7 @@ class ScreenshotGeneratorIT {
     }
 
     @Test
-    @Order(9)
+    @Order(10)
     void captureProposalsPanel() throws Exception {
         WebDriver driver = chrome.getWebDriver();
         WebElement panel = wait(driver, 10).until(
@@ -198,26 +231,33 @@ class ScreenshotGeneratorIT {
     }
 
     @Test
-    @Order(10)
+    @Order(11)
     void captureProposeModal() throws Exception {
         WebDriver driver = chrome.getWebDriver();
         ((JavascriptExecutor) driver).executeScript(
-                "document.getElementById('proposeNodeCode').textContent = 'BP-1040';" +
-                "new bootstrap.Modal(document.getElementById('proposeRelationsModal')).show();"
+                "if (window.bootstrap && window.bootstrap.Modal) {" +
+                "  document.getElementById('proposeNodeCode').textContent = 'BP-1040';" +
+                "  new window.bootstrap.Modal(" +
+                "    document.getElementById('proposeRelationsModal')).show();" +
+                "}"
         );
         wait(driver, 10).until(ExpectedConditions.visibilityOfElementLocated(
                 By.id("proposeRelationsModal")));
         saveScreenshot(driver, "11-propose-modal.png");
         // Close modal and wait for it to be hidden
         ((JavascriptExecutor) driver).executeScript(
-                "bootstrap.Modal.getInstance(document.getElementById('proposeRelationsModal')).hide();"
+                "if (window.bootstrap && window.bootstrap.Modal) {" +
+                "  var el = document.getElementById('proposeRelationsModal');" +
+                "  var modal = window.bootstrap.Modal.getInstance(el);" +
+                "  if (modal) { modal.hide(); }" +
+                "}"
         );
         wait(driver, 5).until(ExpectedConditions.invisibilityOfElementLocated(
                 By.cssSelector("#proposeRelationsModal.show")));
     }
 
     @Test
-    @Order(11)
+    @Order(12)
     void captureNavbar() throws Exception {
         WebDriver driver = chrome.getWebDriver();
         ((JavascriptExecutor) driver).executeScript("window.scrollTo(0, 0);");
