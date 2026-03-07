@@ -1,7 +1,6 @@
 package com.nato.taxonomy;
 
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -39,11 +38,8 @@ import java.util.List;
  * Run with: {@code mvn verify -DgenerateScreenshots -Dtest=ScreenshotGeneratorIT}
  * <p>
  * Screenshots 1–14 do not require an LLM provider.
- * Screenshots 15–26 require {@code GEMINI_API_KEY} in the environment; they are
- * skipped gracefully when the key is absent.
- * <p>
- * Tests 15–22 call {@link #rateLimitDelay()} to stay within the Gemini free-tier
- * rate limit (~15 requests/minute).
+ * Screenshots 15–26 use mock LLM mode ({@code LLM_MOCK=true}) to produce
+ * realistic scores without calling any real LLM API.
  */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -55,9 +51,6 @@ class ScreenshotGeneratorIT {
 
     private static final Path OUTPUT_DIR = Path.of("docs/images");
 
-    /** Delay in ms between LLM-dependent tests to stay within Gemini free-tier rate limits. */
-    private static final long RATE_LIMIT_DELAY_MS = 10_000;
-
     private static Network network;
     private static GenericContainer<?> app;
     private static BrowserWebDriverContainer<?> chrome;
@@ -68,8 +61,6 @@ class ScreenshotGeneratorIT {
         Files.createDirectories(OUTPUT_DIR);
 
         network = Network.newNetwork();
-
-        String geminiKey = System.getenv("GEMINI_API_KEY");
 
         GenericContainer<?> appContainer = new GenericContainer<>(
                 new ImageFromDockerfile()
@@ -85,14 +76,11 @@ class ScreenshotGeneratorIT {
                 .withNetworkAliases("app")
                 .withExposedPorts(8080)
                 .withEnv("ADMIN_PASSWORD", "testpassword123")
+                .withEnv("LLM_MOCK", "true")
                 .withStartupTimeout(Duration.ofSeconds(120))
                 // Use /api/ai-status (public) instead of /api/diagnostics (returns 401 when
                 // ADMIN_PASSWORD is configured) as the container readiness check.
                 .waitingFor(Wait.forHttp("/api/ai-status").forStatusCode(200).forPort(8080));
-
-        if (geminiKey != null && !geminiKey.isBlank()) {
-            appContainer = appContainer.withEnv("GEMINI_API_KEY", geminiKey);
-        }
 
         app = appContainer;
         app.start();
@@ -137,9 +125,13 @@ class ScreenshotGeneratorIT {
     /** Runs a standard (non-interactive) analysis and waits up to 120 s for completion. */
     private void runAnalysis() {
         WebElement textarea = driver.findElement(By.id("businessText"));
-        textarea.clear();
-        textarea.sendKeys(REQUIREMENT_TEXT);
-        driver.findElement(By.id("analyzeBtn")).click();
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", textarea);
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
+        js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
+                textarea, REQUIREMENT_TEXT);
+        WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
+        js("arguments[0].click();", analyzeBtn);
         wait(120).until(ExpectedConditions.textMatches(
                 By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error")));
     }
@@ -198,15 +190,6 @@ class ScreenshotGeneratorIT {
     private void openDetails(WebElement details) {
         js("arguments[0].setAttribute('open', '');", details);
         wait(5).until(ExpectedConditions.attributeContains(details, "open", ""));
-    }
-
-    /** Pause between LLM-dependent tests to avoid Gemini rate limits (free tier: ~15 req/min). */
-    private void rateLimitDelay() {
-        try {
-            Thread.sleep(RATE_LIMIT_DELAY_MS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     // ── Screenshots 1–14: no LLM required ─────────────────────────────────────
@@ -344,15 +327,11 @@ class ScreenshotGeneratorIT {
         saveScreenshot("14-navbar-admin-lock.png");
     }
 
-    // ── Screenshots 15–26: require GEMINI_API_KEY ─────────────────────────────
+    // ── Screenshots 15–26: LLM-dependent (use mock LLM — no real API key needed) ──
 
     @Test
     @Order(15)
     void captureScoredTaxonomyTree() throws IOException {
-        Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
-                "Skipping: GEMINI_API_KEY not set");
-        rateLimitDelay();
-
         WebElement interactiveCb = driver.findElement(By.id("interactiveMode"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", interactiveCb);
         if (interactiveCb.isSelected()) {
@@ -367,10 +346,6 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(16)
     void captureInteractiveMode() throws IOException {
-        Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
-                "Skipping: GEMINI_API_KEY not set");
-        rateLimitDelay();
-
         WebElement interactiveCb = driver.findElement(By.id("interactiveMode"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", interactiveCb);
         if (!interactiveCb.isSelected()) {
@@ -382,9 +357,9 @@ class ScreenshotGeneratorIT {
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
         js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
                 textarea, REQUIREMENT_TEXT);
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});",
-                driver.findElement(By.id("analyzeBtn")));
-        driver.findElement(By.id("analyzeBtn")).click();
+        WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
+        js("arguments[0].click();", analyzeBtn);
 
         // Wait for at least one toggle to indicate top-level nodes are scored
         wait(60).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-toggle")));
@@ -399,9 +374,6 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(17)
     void captureMatchLegendWithScores() throws IOException {
-        Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
-                "Skipping: GEMINI_API_KEY not set");
-
         WebElement legendCard = driver.findElement(
                 By.xpath("//div[contains(@class,'card')]//small[contains(text(),'Match legend')]/ancestor::div[contains(@class,'card')]"));
         saveElementScreenshot(legendCard, "17-match-legend-with-scores.png");
@@ -410,14 +382,11 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(18)
     void captureLeafJustificationModal() throws IOException {
-        Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
-                "Skipping: GEMINI_API_KEY not set");
-        rateLimitDelay();
-
         // Ensure scores are present — expand the first node to reveal justify buttons
         List<WebElement> toggles = driver.findElements(By.cssSelector(".tax-toggle"));
         if (!toggles.isEmpty()) {
-            toggles.get(0).click();
+            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", toggles.get(0));
+            js("arguments[0].click();", toggles.get(0));
             wait(5).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-justify-btn")));
         }
 
@@ -435,10 +404,6 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(19)
     void captureStaleResultsWarning() throws IOException {
-        Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
-                "Skipping: GEMINI_API_KEY not set");
-        rateLimitDelay();
-
         // Ensure a completed analysis exists
         String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
         if (!statusText.contains("complete")) {
@@ -464,10 +429,6 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(20)
     void captureArchitectureView() throws IOException {
-        Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
-                "Skipping: GEMINI_API_KEY not set");
-        rateLimitDelay();
-
         WebElement archCb = driver.findElement(By.id("includeArchitectureView"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", archCb);
         if (!archCb.isSelected()) {
@@ -485,9 +446,9 @@ class ScreenshotGeneratorIT {
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
         js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
                 textarea, REQUIREMENT_TEXT);
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});",
-                driver.findElement(By.id("analyzeBtn")));
-        driver.findElement(By.id("analyzeBtn")).click();
+        WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
+        js("arguments[0].click();", analyzeBtn);
 
         wait(120).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")), "20-architecture-view.png");
@@ -500,17 +461,13 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(21)
     void captureGraphExplorerUpstream() throws IOException {
-        Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
-                "Skipping: GEMINI_API_KEY not set");
-        rateLimitDelay();
-
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
         js("arguments[0].value = 'BP-1'; arguments[0].dispatchEvent(new Event('input'));", input);
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});",
-                driver.findElement(By.id("graphUpstreamBtn")));
-        driver.findElement(By.id("graphUpstreamBtn")).click();
+        WebElement upstreamBtn = driver.findElement(By.id("graphUpstreamBtn"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", upstreamBtn);
+        js("arguments[0].click();", upstreamBtn);
 
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("graphResultsArea")));
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "21-graph-explorer-upstream.png");
@@ -519,17 +476,13 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(22)
     void captureGraphExplorerFailure() throws IOException {
-        Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
-                "Skipping: GEMINI_API_KEY not set");
-        rateLimitDelay();
-
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
         js("arguments[0].value = 'BP-1'; arguments[0].dispatchEvent(new Event('input'));", input);
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});",
-                driver.findElement(By.id("graphFailureBtn")));
-        driver.findElement(By.id("graphFailureBtn")).click();
+        WebElement failureBtn = driver.findElement(By.id("graphFailureBtn"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", failureBtn);
+        js("arguments[0].click();", failureBtn);
 
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("graphResultsArea")));
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "22-graph-explorer-failure.png");
@@ -538,9 +491,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(23)
     void captureExportButtons() throws IOException {
-        Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
-                "Skipping: GEMINI_API_KEY not set");
-
+        js("window.scrollTo(0, 0);");
         wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
         saveElementScreenshot(driver.findElement(By.id("exportGroup")), "23-export-buttons.png");
     }
@@ -548,9 +499,6 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(24)
     void captureAdminModal() throws IOException {
-        Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
-                "Skipping: GEMINI_API_KEY not set");
-
         showAdminLockButton();
         js("new bootstrap.Modal(document.getElementById('adminModal')).show();");
         wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("adminModal")));
@@ -562,9 +510,6 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(25)
     void captureLlmDiagnostics() throws IOException {
-        Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
-                "Skipping: GEMINI_API_KEY not set");
-
         unlockAdmin();
 
         WebElement diagPanel = driver.findElement(By.id("diagnosticsPanel"));
@@ -577,9 +522,6 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(26)
     void capturePromptTemplateEditor() throws IOException {
-        Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
-                "Skipping: GEMINI_API_KEY not set");
-
         WebElement promptEditor = driver.findElement(By.id("promptEditor"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", promptEditor);
         openDetails(promptEditor);

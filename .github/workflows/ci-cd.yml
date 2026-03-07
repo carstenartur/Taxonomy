@@ -28,7 +28,9 @@ jobs:
           cache: 'maven'
 
       - name: Build and run tests
-        run: mvn -q verify
+        env:
+          GEMINI_API_KEY: ""
+        run: mvn -q verify -DexcludedGroups=real-llm
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

@@ -76,6 +76,14 @@ public class LlmService {
     @Value("${llm.provider:}")
     private String llmProviderConfig;
 
+    /**
+     * When {@code true} (set via {@code llm.mock=true} property or {@code LLM_MOCK=true} env var),
+     * the service returns hardcoded realistic scores instead of calling any real LLM API.
+     * Useful for screenshot generation and CI environments where no API key is available.
+     */
+    @Value("${llm.mock:false}")
+    private boolean llmMock;
+
     @Value("${gemini.api.key:}")
     private String geminiApiKey;
 
@@ -100,6 +108,29 @@ public class LlmService {
     private final PromptTemplateService promptTemplateService;
     private final LocalEmbeddingService localEmbeddingService;
 
+    // ── Mock-mode scores for "Provide secure voice communications between HQ and deployed forces" ──
+    private static final Map<String, Integer> MOCK_ROOT_SCORES = Map.of(
+            "CO", 90,
+            "CR", 75,
+            "CP", 65,
+            "IP", 45,
+            "BP", 40,
+            "CI", 25,
+            "UA", 15,
+            "BR", 15
+    );
+
+    private static final Map<String, String> MOCK_ROOT_REASONS = Map.of(
+            "CO", "Directly related to providing secure voice communication channels between headquarters and deployed forces.",
+            "CR", "Communications resources are needed to establish the secure voice links.",
+            "CP", "Capability packages enable the implementation of secure voice communications.",
+            "IP", "Infrastructure products form the physical foundation for voice communications.",
+            "BP", "Business processes govern the use of secure voice communications.",
+            "CI", "COI services may leverage secure voice communication channels.",
+            "UA", "User applications provide interfaces for voice communication.",
+            "BR", "Business rules define policies for secure voice communication usage."
+    );
+
     // ── Diagnostics tracking ──────────────────────────────────────────────────
     private final AtomicLong totalCalls       = new AtomicLong(0);
     private final AtomicLong successfulCalls  = new AtomicLong(0);
@@ -118,6 +149,31 @@ public class LlmService {
         this.taxonomyService = taxonomyService;
         this.promptTemplateService = promptTemplateService;
         this.localEmbeddingService = localEmbeddingService;
+    }
+
+    // ── Mock-mode helpers ─────────────────────────────────────────────────────
+
+    /**
+     * Builds mock {@link ScoreParseResult} for the given nodes using hardcoded scores based on the
+     * taxonomy root. The scores are varied per node using a deterministic hash of the node code so
+     * the resulting tree looks realistically populated.
+     */
+    private ScoreParseResult buildMockScores(List<TaxonomyNode> nodes) {
+        Map<String, Integer> scores = new HashMap<>();
+        Map<String, String> reasons = new HashMap<>();
+        for (TaxonomyNode node : nodes) {
+            String root = node.getTaxonomyRoot() != null ? node.getTaxonomyRoot() : node.getCode();
+            int baseScore = MOCK_ROOT_SCORES.getOrDefault(root, 30);
+            // Add deterministic variation ±15 based on the node code
+            int variation = (Math.abs(node.getCode().hashCode()) % 31) - 15;
+            int score = Math.max(5, Math.min(100, baseScore + variation));
+            scores.put(node.getCode(), score);
+            String reason = MOCK_ROOT_REASONS.getOrDefault(root,
+                    "Relevant to the secure voice communications requirement.");
+            reasons.put(node.getCode(), reason);
+        }
+        recordSuccess();
+        return new ScoreParseResult(scores, reasons);
     }
 
     /**
@@ -148,9 +204,11 @@ public class LlmService {
 
     /**
      * Returns {@code true} if at least one provider has a configured API key,
-     * or if the active provider is {@link LlmProvider#LOCAL_ONNX} (which requires no key).
+     * or if the active provider is {@link LlmProvider#LOCAL_ONNX} (which requires no key),
+     * or if mock mode is active.
      */
     public boolean isAvailable() {
+        if (llmMock) return true;
         if (getActiveProvider() == LlmProvider.LOCAL_ONNX) return true;
         return (geminiApiKey  != null && !geminiApiKey.isBlank())
             || (openaiApiKey  != null && !openaiApiKey.isBlank())
@@ -164,6 +222,7 @@ public class LlmService {
      * Returns a human-readable name for the active provider (e.g. "Gemini", "OpenAI").
      */
     public String getActiveProviderName() {
+        if (llmMock) return "Mock";
         return switch (getActiveProvider()) {
             case GEMINI      -> "Gemini";
             case OPENAI      -> "OpenAI";
@@ -396,6 +455,11 @@ public class LlmService {
      */
     private ScoreParseResult callLlmResult(String businessText, List<TaxonomyNode> nodes) {
         try {
+            if (llmMock) {
+                log.info("MOCK — returning hardcoded scores for {} nodes", nodes.size());
+                return buildMockScores(nodes);
+            }
+
             LlmProvider provider = getActiveProvider();
 
             if (provider == LlmProvider.LOCAL_ONNX) {
@@ -453,6 +517,11 @@ public class LlmService {
      * Like {@link #callLlm} but propagates {@link LlmRateLimitException} instead of swallowing it.
      */
     private Map<String, Integer> callLlmPropagating(String businessText, List<TaxonomyNode> nodes) {
+        if (llmMock) {
+            log.info("MOCK — returning hardcoded scores for {} nodes", nodes.size());
+            return buildMockScores(nodes).scores();
+        }
+
         LlmProvider provider = getActiveProvider();
 
         if (provider == LlmProvider.LOCAL_ONNX) {
@@ -493,10 +562,22 @@ public class LlmService {
      */
     private com.nato.taxonomy.dto.LlmCallDetail callLlmPropagatingDetailed(
             String businessText, List<TaxonomyNode> nodes) {
-        LlmProvider provider = getActiveProvider();
-
         com.nato.taxonomy.dto.LlmCallDetail detail = new com.nato.taxonomy.dto.LlmCallDetail();
         detail.setProvider(getActiveProviderName());
+
+        // ── Mock path ─────────────────────────────────────────────────────────
+        if (llmMock) {
+            log.info("MOCK — returning hardcoded scores for {} nodes", nodes.size());
+            ScoreParseResult mock = buildMockScores(nodes);
+            detail.setScores(mock.scores());
+            detail.setReasons(mock.reasons());
+            detail.setPrompt("(mock mode – no prompt sent)");
+            detail.setRawResponse("(hardcoded mock scores)");
+            detail.setDurationMs(0);
+            return detail;
+        }
+
+        LlmProvider provider = getActiveProvider();
 
         // ── Local embedding path ──────────────────────────────────────────────
         if (provider == LlmProvider.LOCAL_ONNX) {
@@ -944,14 +1025,15 @@ public class LlmService {
     public Map<String, Object> getDiagnostics() {
         LlmProvider provider = getActiveProvider();
         String apiKey = getApiKey(provider);
-        boolean apiKeyConfigured = provider != LlmProvider.LOCAL_ONNX
-                && (apiKey != null && !apiKey.isBlank());
-        String apiKeyPrefix = apiKeyConfigured
+        boolean hasRealKey = provider != LlmProvider.LOCAL_ONNX
+                && apiKey != null && !apiKey.isBlank();
+        boolean apiKeyConfigured = llmMock || hasRealKey;
+        String apiKeyPrefix = hasRealKey
                 ? (apiKey.length() > 4 ? apiKey.substring(0, 4) + "****" : "****")
                 : null;
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("provider",        getActiveProviderName());
+        result.put("provider",        llmMock ? "Mock" : getActiveProviderName());
         result.put("apiKeyConfigured", apiKeyConfigured);
         result.put("apiKeyPrefix",     apiKeyPrefix);
         result.put("localModel",       provider == LlmProvider.LOCAL_ONNX
@@ -983,6 +1065,14 @@ public class LlmService {
                                              List<TaxonomyNode> pathNodes,
                                              Map<String, Integer> allScores,
                                              Map<String, String> allReasons) {
+        if (llmMock) {
+            recordSuccess();
+            return "Node " + leafCode + " is relevant because it supports the requirement to "
+                    + businessText.toLowerCase()
+                    + ". The node's position within the taxonomy hierarchy indicates a direct "
+                    + "contribution to the required capability.";
+        }
+
         LlmProvider provider = getActiveProvider();
 
         if (provider == LlmProvider.LOCAL_ONNX) {
