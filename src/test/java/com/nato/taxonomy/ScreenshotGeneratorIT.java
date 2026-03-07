@@ -357,9 +357,9 @@ class ScreenshotGeneratorIT {
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
         js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
                 textarea, REQUIREMENT_TEXT);
-        WebElement analyzeBtn16 = driver.findElement(By.id("analyzeBtn"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn16);
-        js("arguments[0].click();", analyzeBtn16);
+        WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
+        js("arguments[0].click();", analyzeBtn);
 
         // Wait for at least one toggle to indicate top-level nodes are scored
         wait(60).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-toggle")));
@@ -446,9 +446,9 @@ class ScreenshotGeneratorIT {
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
         js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
                 textarea, REQUIREMENT_TEXT);
-        WebElement analyzeBtn20 = driver.findElement(By.id("analyzeBtn"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn20);
-        js("arguments[0].click();", analyzeBtn20);
+        WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
+        js("arguments[0].click();", analyzeBtn);
 
         wait(120).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")), "20-architecture-view.png");
