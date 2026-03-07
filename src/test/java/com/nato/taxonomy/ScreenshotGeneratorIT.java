@@ -41,6 +41,9 @@ import java.util.List;
  * Screenshots 1–14 do not require an LLM provider.
  * Screenshots 15–26 require {@code GEMINI_API_KEY} in the environment; they are
  * skipped gracefully when the key is absent.
+ * <p>
+ * Tests 15–22 call {@link #rateLimitDelay()} to stay within the Gemini free-tier
+ * rate limit (~15 requests/minute).
  */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -51,6 +54,9 @@ class ScreenshotGeneratorIT {
             "Provide secure voice communications between HQ and deployed forces";
 
     private static final Path OUTPUT_DIR = Path.of("docs/images");
+
+    /** Delay in ms between LLM-dependent tests to stay within Gemini free-tier rate limits. */
+    private static final long RATE_LIMIT_DELAY_MS = 10_000;
 
     private static Network network;
     private static GenericContainer<?> app;
@@ -194,6 +200,15 @@ class ScreenshotGeneratorIT {
         wait(5).until(ExpectedConditions.attributeContains(details, "open", ""));
     }
 
+    /** Pause between LLM-dependent tests to avoid Gemini rate limits (free tier: ~15 req/min). */
+    private void rateLimitDelay() {
+        try {
+            Thread.sleep(RATE_LIMIT_DELAY_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     // ── Screenshots 1–14: no LLM required ─────────────────────────────────────
 
     @Test
@@ -219,10 +234,12 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(3)
     void captureRightPanelDefault() throws IOException {
-        // Take element screenshot of the right panel column
-        saveElementScreenshot(
-                driver.findElement(By.cssSelector(".col-lg-5")),
-                "03-right-panel-default.png");
+        // Scroll back to top so both panels are in view, then take a full-viewport screenshot.
+        // Element screenshot of .col-lg-5 is unreliable because the flex column collapses after
+        // the tree expansion in test 2.
+        js("window.scrollTo(0, 0);");
+        wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("businessText")));
+        saveScreenshot("03-right-panel-default.png");
     }
 
     @Test
@@ -334,6 +351,7 @@ class ScreenshotGeneratorIT {
     void captureScoredTaxonomyTree() throws IOException {
         Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
                 "Skipping: GEMINI_API_KEY not set");
+        rateLimitDelay();
 
         WebElement interactiveCb = driver.findElement(By.id("interactiveMode"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", interactiveCb);
@@ -351,6 +369,7 @@ class ScreenshotGeneratorIT {
     void captureInteractiveMode() throws IOException {
         Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
                 "Skipping: GEMINI_API_KEY not set");
+        rateLimitDelay();
 
         WebElement interactiveCb = driver.findElement(By.id("interactiveMode"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", interactiveCb);
@@ -393,6 +412,7 @@ class ScreenshotGeneratorIT {
     void captureLeafJustificationModal() throws IOException {
         Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
                 "Skipping: GEMINI_API_KEY not set");
+        rateLimitDelay();
 
         // Ensure scores are present — expand the first node to reveal justify buttons
         List<WebElement> toggles = driver.findElements(By.cssSelector(".tax-toggle"));
@@ -417,6 +437,7 @@ class ScreenshotGeneratorIT {
     void captureStaleResultsWarning() throws IOException {
         Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
                 "Skipping: GEMINI_API_KEY not set");
+        rateLimitDelay();
 
         // Ensure a completed analysis exists
         String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
@@ -445,6 +466,7 @@ class ScreenshotGeneratorIT {
     void captureArchitectureView() throws IOException {
         Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
                 "Skipping: GEMINI_API_KEY not set");
+        rateLimitDelay();
 
         WebElement archCb = driver.findElement(By.id("includeArchitectureView"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", archCb);
@@ -480,6 +502,7 @@ class ScreenshotGeneratorIT {
     void captureGraphExplorerUpstream() throws IOException {
         Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
                 "Skipping: GEMINI_API_KEY not set");
+        rateLimitDelay();
 
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
@@ -498,6 +521,7 @@ class ScreenshotGeneratorIT {
     void captureGraphExplorerFailure() throws IOException {
         Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null,
                 "Skipping: GEMINI_API_KEY not set");
+        rateLimitDelay();
 
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);

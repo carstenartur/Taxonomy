@@ -3,10 +3,11 @@ name: Generate Documentation Screenshots
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, 'copilot/**']
     paths:
       - 'src/main/resources/templates/**'
       - 'src/main/resources/static/**'
+      - 'src/test/java/**/ScreenshotGeneratorIT.java'
 
 jobs:
   screenshots:
