@@ -267,4 +267,47 @@ class ScreenshotGeneratorIT {
         Files.copy(src.toPath(), SCREENSHOT_DIR.resolve("12-navbar.png"),
                 StandardCopyOption.REPLACE_EXISTING);
     }
+
+    @Test
+    @Order(13)
+    void captureAdminModal() throws Exception {
+        WebDriver driver = chrome.getWebDriver();
+        ((JavascriptExecutor) driver).executeScript("window.scrollTo(0, 0);");
+        wait(driver, 5).until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("nav.navbar")));
+        // Open admin modal via JS
+        ((JavascriptExecutor) driver).executeScript(
+                "if (window.bootstrap && window.bootstrap.Modal) {" +
+                "  var modal = document.getElementById('adminModal') || document.getElementById('adminModeModal');" +
+                "  if (modal) { new window.bootstrap.Modal(modal).show(); }" +
+                "}"
+        );
+        wait(driver, 10).until(ExpectedConditions.visibilityOfElementLocated(
+                By.cssSelector("#adminModal.show, #adminModeModal.show")));
+        saveScreenshot(driver, "13-admin-modal.png");
+        // Close modal
+        ((JavascriptExecutor) driver).executeScript(
+                "if (window.bootstrap && window.bootstrap.Modal) {" +
+                "  var modal = document.getElementById('adminModal') || document.getElementById('adminModeModal');" +
+                "  if (modal) { var inst = window.bootstrap.Modal.getInstance(modal); if (inst) inst.hide(); }" +
+                "}"
+        );
+        wait(driver, 5).until(ExpectedConditions.invisibilityOfElementLocated(
+                By.cssSelector("#adminModal.show, #adminModeModal.show")));
+    }
+
+    @Test
+    @Order(14)
+    void captureAnalysisPanelWithText() throws Exception {
+        WebDriver driver = chrome.getWebDriver();
+        WebElement textarea = wait(driver, 10).until(
+                ExpectedConditions.elementToBeClickable(
+                        By.cssSelector("#businessText, textarea[name='businessText'], #requirementText")));
+        ((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView(true);", textarea);
+        wait(driver, 5).until(ExpectedConditions.visibilityOf(textarea));
+        textarea.clear();
+        textarea.sendKeys("Provide secure voice communications between HQ and deployed joint forces");
+        wait(driver, 5).until(ExpectedConditions.attributeContains(textarea, "value",
+                "Provide secure voice communications"));
+        saveScreenshot(driver, "14-analysis-with-text.png");
+    }
 }
