@@ -175,3 +175,17 @@ docker pull ghcr.io/carstenartur/taxonomy:latest
 docker run -p 8080:8080 -e GEMINI_API_KEY=<your-key> ghcr.io/carstenartur/taxonomy:latest
 ```
 
+## MSSQL Compatibility
+
+All entity classes are annotated for correct behaviour on Microsoft SQL Server:
+
+- **`@Nationalized`** on every `String` field → produces `nvarchar` instead of `varchar`,
+  preventing corruption of non-ASCII characters (e.g. German umlauts ä, ö, ü, ß).
+- **`@Lob`** on text fields that may exceed 4000 characters (`descriptionEn`,
+  `descriptionDe`, `reference`) → produces `nvarchar(max)` / `ntext` on MSSQL.
+- **`@Lob` + `FloatArrayConverter`** on `semanticEmbedding` fields in `TaxonomyNode`
+  and `TaxonomyRelation` → stores embedding vectors as streamable BLOBs using
+  little-endian IEEE 754 serialisation.
+
+The application continues to use HSQLDB by default (no MSSQL setup required).
+

@@ -2,6 +2,7 @@ package com.nato.taxonomy.model;
 
 import com.nato.taxonomy.search.RelationEmbeddingBinder;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Nationalized;
 import org.hibernate.search.mapper.pojo.bridge.mapping.annotation.TypeBinderRef;
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.*;
 
@@ -32,15 +33,26 @@ public class TaxonomyRelation {
     @KeywordField
     private RelationType relationType;
 
+    @Nationalized
     @Column(length = 2000)
     @FullTextField(analyzer = "english")
     private String description;
 
+    @Nationalized
     private String provenance;
 
     private Integer weight;
 
     private boolean bidirectional = false;
+
+    @Lob
+    @Convert(converter = FloatArrayConverter.class)
+    @Column(name = "semantic_embedding")
+    private float[] semanticEmbedding;
+
+    @GenericField
+    @Column(name = "has_embedding")
+    private boolean hasEmbedding;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -65,4 +77,13 @@ public class TaxonomyRelation {
 
     public boolean isBidirectional() { return bidirectional; }
     public void setBidirectional(boolean bidirectional) { this.bidirectional = bidirectional; }
+
+    public float[] getSemanticEmbedding() { return semanticEmbedding; }
+    public void setSemanticEmbedding(float[] semanticEmbedding) {
+        this.semanticEmbedding = semanticEmbedding;
+        this.hasEmbedding = (semanticEmbedding != null);
+    }
+
+    public boolean isHasEmbedding() { return hasEmbedding; }
+    private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }
 }
