@@ -55,9 +55,7 @@ Open your web browser and navigate to the application URL (for example `http://l
 
 The application loads as a single page. No login is required for standard use; administrator features require unlocking admin mode (see [Section 12](#12-administration)).
 
-> 📸 **Screenshot:** [Full page on first load — taxonomy tree on the left, analysis panel on the right]
->
-> *TODO: Add screenshot of the application on first load*
+![Full page on first load — taxonomy tree on the left, analysis panel on the right](images/01-full-layout.png)
 
 ### Checking AI Availability
 
@@ -89,9 +87,7 @@ Each taxonomy node row shows:
 - A **score bar** and percentage (visible after analysis).
 - **Per-node action buttons:** 🔗 (Propose Relations) | 📋 (Request Justification) | 🔎 (Graph Explorer)
 
-> 📸 **Screenshot:** [Left panel showing taxonomy tree with nodes, score bars, and action buttons]
->
-> *TODO: Add screenshot of the left panel in List view*
+![Left panel showing taxonomy tree with nodes, score bars, and action buttons](images/03-taxonomy-list-view.png)
 
 ### Right Panel — Analysis and Tools
 
@@ -108,9 +104,7 @@ The right panel (narrower column) contains all interactive tools:
 - **LLM Diagnostics Panel** (admin only, collapsible) — connection test and statistics.
 - **Prompt Templates Editor** (admin only, collapsible) — view and edit the LLM prompt templates.
 
-> 📸 **Screenshot:** [Right panel with Business Requirement Analysis card, Match Legend, and Status Area visible]
->
-> *TODO: Add screenshot of the right panel in its default (empty) state*
+![Right panel with Business Requirement Analysis card, Match Legend, and Status Area visible](images/02-analysis-panel.png)
 
 ### Navigation Bar
 
@@ -137,9 +131,7 @@ Tips for good requirements:
 - Be specific about the function or outcome you need.
 - Keep the text under 500 words; longer text does not improve accuracy.
 
-> 📸 **Screenshot:** [Business Requirement Analysis card with a requirement typed in the textarea]
->
-> *TODO: Add screenshot of the analysis panel with example requirement text*
+> 📸 **Screenshot placeholder:** This screenshot requires example text to be typed into the textarea. It will be added after running the application locally.
 
 ### Standard Analysis
 
@@ -149,9 +141,7 @@ Tips for good requirements:
 4. A progress indicator appears in the Status Area. The taxonomy tree in the left panel will start showing colour-coded score bars as results arrive.
 5. When analysis is complete, the Status Area shows a summary message and the export buttons become available.
 
-> 📸 **Screenshot:** [Taxonomy tree showing green score bars during or after analysis]
->
-> *TODO: Add screenshot of the scored taxonomy tree in List view*
+> 📸 **Screenshot placeholder:** This screenshot requires a running LLM provider and will be added after running the application with an API key configured.
 
 ### Interactive Mode
 
@@ -165,9 +155,7 @@ In Interactive Mode:
 
 This mode is useful for very large taxonomies or when you want to focus on one branch.
 
-> 📸 **Screenshot:** [Interactive Mode in progress — some nodes scored, Analyze Node buttons visible]
->
-> *TODO: Add screenshot of interactive mode with partially expanded tree*
+> 📸 **Screenshot placeholder:** This screenshot requires a running LLM provider and will be added after running the application with an API key configured.
 
 ### Architecture View Checkbox
 
@@ -187,9 +175,7 @@ The **Match Legend** (below the analysis card) shows the colour scale:
 
 Nodes with a score of 0 % are not highlighted. The higher the score, the darker and more prominent the green highlight on the node row.
 
-> 📸 **Screenshot:** [Match Legend component showing the green gradient from 0% to 100%]
->
-> *TODO: Add screenshot of the Match Legend close-up*
+![Match Legend component showing the green gradient from 0% to 100%](images/08-match-legend.png)
 
 ### The Analysis Log
 
@@ -209,17 +195,13 @@ The default view shows all taxonomy nodes as a flat, indented list. Each row con
 - Use **Expand All** to open the entire tree, or **Collapse All** to close it.
 - Toggle the **Descriptions** switch to show or hide the description text beneath each node name.
 
-> 📸 **Screenshot:** [List view with several nodes expanded and descriptions visible]
->
-> *TODO: Add screenshot of the List view with descriptions toggled on*
+![List view with several nodes expanded and descriptions visible](images/03-taxonomy-list-view.png)
 
 ### Tabs View
 
 The Tabs view groups taxonomy nodes under tab headers for each top-level category. Click a tab to display only the nodes in that branch.
 
-> 📸 **Screenshot:** [Tabs view with one tab selected and its nodes displayed below]
->
-> *TODO: Add screenshot of the Tabs view*
+![Tabs view with one tab selected and its nodes displayed below](images/04-taxonomy-tabs-view.png)
 
 ### Sunburst View
 
@@ -228,25 +210,19 @@ The Sunburst view renders the taxonomy as a radial sunburst chart where the cent
 - Hover over a segment to see the node name and score.
 - Click a segment to zoom into that subtree.
 
-> 📸 **Screenshot:** [Sunburst visualisation with colour-coded segments]
->
-> *TODO: Add screenshot of the Sunburst view after analysis*
+![Sunburst visualisation with colour-coded segments](images/05-taxonomy-sunburst-view.png)
 
 ### Tree View
 
 The Tree view renders the taxonomy as an interactive node-link diagram. Use the **Taxonomy root selector** dropdown to choose which root to display when there are multiple taxonomy roots.
 
-> 📸 **Screenshot:** [Tree visualisation showing hierarchy as a node-link diagram]
->
-> *TODO: Add screenshot of the Tree view*
+![Tree visualisation showing hierarchy as a node-link diagram](images/06-taxonomy-tree-view.png)
 
 ### Decision Map View
 
 The Decision Map view shows the taxonomy as a decision-tree style layout optimised for selecting relevant nodes based on the analysis scores.
 
-> 📸 **Screenshot:** [Decision Map visualisation]
->
-> *TODO: Add screenshot of the Decision Map view*
+![Decision Map visualisation](images/07-taxonomy-decision-view.png)
 
 ### Switching Between Views
 
@@ -283,17 +259,13 @@ For any leaf node (a node with no children) that has a non-zero score, you can a
 3. A **Leaf Justification Modal** opens, displaying the LLM-generated explanation.
 4. Read the explanation and close the modal when done.
 
-> 📸 **Screenshot:** [Leaf Justification modal showing LLM explanation text]
->
-> *TODO: Add screenshot of the Leaf Justification modal*
+> 📸 **Screenshot placeholder:** This screenshot requires a running LLM provider and will be added after running the application with an API key configured.
 
 ### Stale Results Warning
 
 If you edit your requirement text after a completed analysis without re-running the analysis, the taxonomy tree may display a **yellow border** or warning message indicating that the displayed scores no longer match the current requirement text. Re-run the analysis to refresh the scores.
 
-> 📸 **Screenshot:** [Stale results warning — yellow border or warning banner visible]
->
-> *TODO: Add screenshot of the stale results warning state*
+> 📸 **Screenshot placeholder:** This screenshot requires a specific UI state (requirement edited after analysis) and will be added after running the application locally.
 
 ---
 
@@ -321,9 +293,7 @@ The panel shows three sections:
 - **Elements** extend the picture: if an anchor node *realizes* a capability, that capability also appears as an element.
 - **Relationships** show the direction and type of the link (e.g., REALIZES, SUPPORTS, DEPENDS_ON).
 
-> 📸 **Screenshot:** [Architecture View panel populated with anchors, elements, and relationships]
->
-> *TODO: Add screenshot of the Architecture View panel after analysis*
+> 📸 **Screenshot placeholder:** This screenshot requires a running LLM provider and will be added after running the application with an API key configured.
 
 ---
 
@@ -338,9 +308,7 @@ In the **Graph Explorer Panel** (right panel, below the Architecture View Panel)
 1. Type a node code in the **Node Code** field, or click the **🔎 Graph** button on any taxonomy node in the left panel to pre-fill the field.
 2. Set the **Max Hops** value to control how many relationship steps to traverse (default: 2).
 
-> 📸 **Screenshot:** [Graph Explorer panel with a node code entered and Max Hops set]
->
-> *TODO: Add screenshot of the Graph Explorer panel before running a query*
+![Graph Explorer panel with a node code entered and Max Hops set](images/09-graph-explorer.png)
 
 ### Upstream Query — "What feeds into this?"
 
@@ -366,13 +334,9 @@ The results table shows:
 | Hops | Distance from the starting node |
 | Relevance | Impact score or similarity indicator |
 
-> 📸 **Screenshot:** [Graph Explorer with upstream results table populated]
->
-> *TODO: Add screenshot of the Graph Explorer showing upstream query results*
+> 📸 **Screenshot placeholder:** This screenshot requires graph query results and will be added after running the application with sample data loaded.
 
-> 📸 **Screenshot:** [Graph Explorer with failure impact results table populated]
->
-> *TODO: Add screenshot of the Graph Explorer showing failure impact results*
+> 📸 **Screenshot placeholder:** This screenshot requires graph query results and will be added after running the application with sample data loaded.
 
 ---
 
@@ -386,9 +350,7 @@ The system can automatically propose new relations between taxonomy nodes using 
 2. Click the **🔗** (Propose Relations) button on that node's row.
 3. The **Propose Relations Modal** opens.
 
-> 📸 **Screenshot:** [Propose Relations modal with node code and relation type dropdown visible]
->
-> *TODO: Add screenshot of the Propose Relations modal*
+![Propose Relations modal with node code and relation type dropdown visible](images/11-propose-modal.png)
 
 ### Choosing a Relation Type
 
@@ -414,9 +376,7 @@ The proposals table shows:
 - Confidence score (0–100 %) — how confident the AI is in the proposal
 - AI-generated rationale explaining why this relation was suggested
 
-> 📸 **Screenshot:** [Relation Proposals panel with the Pending filter active and a list of proposals]
->
-> *TODO: Add screenshot of the Relation Proposals panel showing pending proposals*
+![Relation Proposals panel with the Pending filter active and a list of proposals](images/10-relation-proposals.png)
 
 ### Accepting or Rejecting a Proposal
 
@@ -437,9 +397,7 @@ The **Confidence** column shows how strongly the AI believes the proposed relati
 
 After a successful analysis, export buttons appear at the top of the left panel. These buttons are only visible when analysis scores are present.
 
-> 📸 **Screenshot:** [Export button group visible at the top of the left panel after analysis]
->
-> *TODO: Add screenshot of the export button group in its visible (post-analysis) state*
+> 📸 **Screenshot placeholder:** This screenshot requires a completed analysis and will be added after running the application with an API key configured.
 
 ### SVG Export
 
@@ -506,9 +464,7 @@ If you see a red badge, contact your administrator to check the LLM provider con
 
 To lock admin mode again, click the lock button and choose **Lock**.
 
-> 📸 **Screenshot:** [Admin Mode modal showing the password input and Unlock button]
->
-> *TODO: Add screenshot of the Admin Mode modal*
+![Admin Mode modal showing the password input and Unlock button](images/13-admin-modal.png)
 
 ### LLM Communication Log
 
@@ -525,9 +481,7 @@ The **LLM Diagnostics Panel** (admin only, collapsible) shows statistics about L
 
 Click **Refresh** to update the statistics. Click **Test Connection** to send a test request to the LLM provider and confirm it is responding correctly.
 
-> 📸 **Screenshot:** [LLM Diagnostics panel showing provider info and stats]
->
-> *TODO: Add screenshot of the LLM Diagnostics panel*
+> 📸 **Screenshot placeholder:** This screenshot requires admin mode to be unlocked and will be added after running the application with the admin password configured.
 
 ### Prompt Template Editor
 
@@ -538,9 +492,7 @@ The **Prompt Templates Editor** (admin only, collapsible) allows you to customis
 3. Edit the text as needed.
 4. Click **Save** to save your changes, or **Reset** to restore the built-in default.
 
-> 📸 **Screenshot:** [Prompt Template Editor panel with a template loaded and the Save/Reset buttons visible]
->
-> *TODO: Add screenshot of the Prompt Template Editor panel*
+> 📸 **Screenshot placeholder:** This screenshot requires admin mode to be unlocked and will be added after running the application with the admin password configured.
 
 ---
 
