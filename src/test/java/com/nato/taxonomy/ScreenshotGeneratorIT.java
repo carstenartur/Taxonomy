@@ -147,10 +147,11 @@ class ScreenshotGeneratorIT {
      * This avoids timing issues when waiting for the Bootstrap animation to complete.
      */
     private void closeModalViaDOM(String modalId) {
-        js("var el = document.getElementById('" + modalId + "'); " +
+        js("var el = document.getElementById(arguments[0]); " +
                 "el.classList.remove('show'); el.style.display='none'; " +
                 "document.querySelectorAll('.modal-backdrop').forEach(b => b.remove()); " +
-                "document.body.classList.remove('modal-open'); document.body.style.overflow='';");
+                "document.body.classList.remove('modal-open'); document.body.style.overflow='';",
+                modalId);
         wait(5).until(ExpectedConditions.invisibilityOfElementLocated(By.id(modalId)));
     }
 
