@@ -80,7 +80,9 @@ class ScreenshotGeneratorIT {
                 .withExposedPorts(8080)
                 .withEnv("ADMIN_PASSWORD", "testpassword123")
                 .withStartupTimeout(Duration.ofSeconds(120))
-                .waitingFor(Wait.forHttp("/api/diagnostics").forStatusCode(200).forPort(8080));
+                // Use /api/ai-status (public) instead of /api/diagnostics (returns 401 when
+                // ADMIN_PASSWORD is configured) as the container readiness check.
+                .waitingFor(Wait.forHttp("/api/ai-status").forStatusCode(200).forPort(8080));
 
         if (geminiKey != null && !geminiKey.isBlank()) {
             appContainer = appContainer.withEnv("GEMINI_API_KEY", geminiKey);
@@ -140,6 +142,18 @@ class ScreenshotGeneratorIT {
         ((JavascriptExecutor) driver).executeScript(script, args);
     }
 
+    /**
+     * Closes a Bootstrap modal directly via DOM manipulation, bypassing the fade animation.
+     * This avoids timing issues when waiting for the Bootstrap animation to complete.
+     */
+    private void closeModalViaDOM(String modalId) {
+        js("var el = document.getElementById('" + modalId + "'); " +
+                "el.classList.remove('show'); el.style.display='none'; " +
+                "document.querySelectorAll('.modal-backdrop').forEach(b => b.remove()); " +
+                "document.body.classList.remove('modal-open'); document.body.style.overflow='';");
+        wait(5).until(ExpectedConditions.invisibilityOfElementLocated(By.id(modalId)));
+    }
+
     /** Makes the admin lock button visible (it is hidden until the AI status check resolves). */
     private void showAdminLockButton() {
         js("document.getElementById('adminLockBtn').classList.remove('d-none');");
@@ -178,19 +192,22 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(2)
     void captureLeftPanelListView() throws IOException {
-        List<WebElement> toggles = driver.findElements(By.cssSelector(".tax-toggle"));
-        if (!toggles.isEmpty()) {
-            toggles.get(0).click();
-            wait(5).until(ExpectedConditions.visibilityOfNestedElementsLocatedBy(
-                    toggles.get(0).findElement(By.xpath("..")), By.cssSelector(".tax-children")));
-        }
-        saveScreenshot("02-left-panel-list-view.png");
+        // Use Expand All to make the tree show nodes with their action buttons
+        driver.findElement(By.id("expandAll")).click();
+        wait(5).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-toggle")));
+        // Take element screenshot of just the left panel card
+        saveElementScreenshot(
+                driver.findElement(By.cssSelector(".col-lg-7 .card")),
+                "02-left-panel-list-view.png");
     }
 
     @Test
     @Order(3)
     void captureRightPanelDefault() throws IOException {
-        saveScreenshot("03-right-panel-default.png");
+        // Take element screenshot of the right panel column
+        saveElementScreenshot(
+                driver.findElement(By.cssSelector(".col-lg-5")),
+                "03-right-panel-default.png");
     }
 
     @Test
@@ -273,13 +290,18 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(13)
     void captureProposeRelationsModal() throws IOException {
-        WebElement proposeBtn = wait(10).until(
-                ExpectedConditions.elementToBeClickable(By.cssSelector(".proposal-btn")));
-        proposeBtn.click();
+        // Scroll to the taxonomy tree so the proposal buttons become visible
+        WebElement taxonomyTree = driver.findElement(By.id("taxonomyTree"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'start'});", taxonomyTree);
+        // Wait for at least one proposal button to be present in the DOM
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".proposal-btn")));
+        // Use JS click to work around any overlay or scroll positioning issues
+        WebElement proposeBtn = driver.findElement(By.cssSelector(".proposal-btn"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", proposeBtn);
+        js("arguments[0].click();", proposeBtn);
         wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("proposeRelationsModal")));
         saveScreenshot("13-propose-relations-modal.png");
-        driver.findElement(By.cssSelector("#proposeRelationsModal .btn-close")).click();
-        wait(5).until(ExpectedConditions.invisibilityOfElementLocated(By.id("proposeRelationsModal")));
+        closeModalViaDOM("proposeRelationsModal");
     }
 
     @Test
@@ -363,8 +385,7 @@ class ScreenshotGeneratorIT {
             justifyBtns.get(0).click();
             wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("leafJustificationModal")));
             saveScreenshot("18-leaf-justification-modal.png");
-            driver.findElement(By.cssSelector("#leafJustificationModal .btn-close")).click();
-            wait(5).until(ExpectedConditions.invisibilityOfElementLocated(By.id("leafJustificationModal")));
+            closeModalViaDOM("leafJustificationModal");
         }
     }
 
@@ -472,8 +493,7 @@ class ScreenshotGeneratorIT {
         js("new bootstrap.Modal(document.getElementById('adminModal')).show();");
         wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("adminModal")));
         saveScreenshot("24-admin-modal.png");
-        driver.findElement(By.cssSelector("#adminModal .btn-close")).click();
-        wait(5).until(ExpectedConditions.invisibilityOfElementLocated(By.id("adminModal")));
+        closeModalViaDOM("adminModal");
     }
 
     @Test

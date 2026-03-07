@@ -55,9 +55,7 @@ Open your web browser and navigate to the application URL (for example `http://l
 
 The application loads as a single page. No login is required for standard use; administrator features require unlocking admin mode (see [Section 12](#12-administration)).
 
-> 📸 **Screenshot:** [Full page on first load — taxonomy tree on the left, analysis panel on the right]
->
-> *TODO: Add screenshot of the application on first load*
+![Full page layout](images/01-full-page-layout.png)
 
 ### Checking AI Availability
 
@@ -89,9 +87,7 @@ Each taxonomy node row shows:
 - A **score bar** and percentage (visible after analysis).
 - **Per-node action buttons:** 🔗 (Propose Relations) | 📋 (Request Justification) | 🔎 (Graph Explorer)
 
-> 📸 **Screenshot:** [Left panel showing taxonomy tree with nodes, score bars, and action buttons]
->
-> *TODO: Add screenshot of the left panel in List view*
+![Left panel — taxonomy tree in List view](images/02-left-panel-list-view.png)
 
 ### Right Panel — Analysis and Tools
 
@@ -108,9 +104,7 @@ The right panel (narrower column) contains all interactive tools:
 - **LLM Diagnostics Panel** (admin only, collapsible) — connection test and statistics.
 - **Prompt Templates Editor** (admin only, collapsible) — view and edit the LLM prompt templates.
 
-> 📸 **Screenshot:** [Right panel with Business Requirement Analysis card, Match Legend, and Status Area visible]
->
-> *TODO: Add screenshot of the right panel in its default (empty) state*
+![Right panel — default state](images/03-right-panel-default.png)
 
 ### Navigation Bar
 
@@ -137,9 +131,7 @@ Tips for good requirements:
 - Be specific about the function or outcome you need.
 - Keep the text under 500 words; longer text does not improve accuracy.
 
-> 📸 **Screenshot:** [Business Requirement Analysis card with a requirement typed in the textarea]
->
-> *TODO: Add screenshot of the analysis panel with example requirement text*
+![Business Requirement Analysis card](images/04-analysis-panel-empty.png)
 
 ### Standard Analysis
 
@@ -237,17 +229,13 @@ The default view shows all taxonomy nodes as a flat, indented list. Each row con
 - Use **Expand All** to open the entire tree, or **Collapse All** to close it.
 - Toggle the **Descriptions** switch to show or hide the description text beneath each node name.
 
-> 📸 **Screenshot:** [List view with several nodes expanded and descriptions visible]
->
-> *TODO: Add screenshot of the List view with descriptions toggled on*
+![List view with descriptions visible](images/09-list-view-descriptions.png)
 
 ### Tabs View
 
 The Tabs view groups taxonomy nodes under tab headers for each top-level category. Click a tab to display only the nodes in that branch.
 
-> 📸 **Screenshot:** [Tabs view with one tab selected and its nodes displayed below]
->
-> *TODO: Add screenshot of the Tabs view*
+![Tabs view](images/05-tabs-view.png)
 
 ### Sunburst View
 
@@ -256,25 +244,19 @@ The Sunburst view renders the taxonomy as a radial sunburst chart where the cent
 - Hover over a segment to see the node name and score.
 - Click a segment to zoom into that subtree.
 
-> 📸 **Screenshot:** [Sunburst visualisation with colour-coded segments]
->
-> *TODO: Add screenshot of the Sunburst view after analysis*
+![Sunburst view](images/06-sunburst-view.png)
 
 ### Tree View
 
 The Tree view renders the taxonomy as an interactive node-link diagram. Use the **Taxonomy root selector** dropdown to choose which root to display when there are multiple taxonomy roots.
 
-> 📸 **Screenshot:** [Tree visualisation showing hierarchy as a node-link diagram]
->
-> *TODO: Add screenshot of the Tree view*
+![Tree view](images/07-tree-view.png)
 
 ### Decision Map View
 
 The Decision Map view shows the taxonomy as a decision-tree style layout optimised for selecting relevant nodes based on the analysis scores.
 
-> 📸 **Screenshot:** [Decision Map visualisation]
->
-> *TODO: Add screenshot of the Decision Map view*
+![Decision Map view](images/08-decision-map-view.png)
 
 ### Switching Between Views
 
@@ -370,9 +352,7 @@ In the **Graph Explorer Panel** (right panel, below the Architecture View Panel)
 1. Type a node code in the **Node Code** field, or click the **🔎 Graph** button on any taxonomy node in the left panel to pre-fill the field.
 2. Set the **Max Hops** value to control how many relationship steps to traverse (default: 2).
 
-> 📸 **Screenshot:** [Graph Explorer panel with a node code entered and Max Hops set]
->
-> *TODO: Add screenshot of the Graph Explorer panel before running a query*
+![Graph Explorer panel](images/11-graph-explorer-panel.png)
 
 ### Upstream Query — "What feeds into this?"
 
@@ -414,9 +394,7 @@ The system can automatically propose new relations between taxonomy nodes using 
 2. Click the **🔗** (Propose Relations) button on that node's row.
 3. The **Propose Relations Modal** opens.
 
-> 📸 **Screenshot:** [Propose Relations modal with node code and relation type dropdown visible]
->
-> *TODO: Add screenshot of the Propose Relations modal*
+![Propose Relations modal](images/13-propose-relations-modal.png)
 
 ### Choosing a Relation Type
 
@@ -442,9 +420,7 @@ The proposals table shows:
 - Confidence score (0–100 %) — how confident the AI is in the proposal
 - AI-generated rationale explaining why this relation was suggested
 
-> 📸 **Screenshot:** [Relation Proposals panel with the Pending filter active and a list of proposals]
->
-> *TODO: Add screenshot of the Relation Proposals panel showing pending proposals*
+![Relation Proposals panel](images/12-relation-proposals-panel.png)
 
 ### Accepting or Rejecting a Proposal
 
