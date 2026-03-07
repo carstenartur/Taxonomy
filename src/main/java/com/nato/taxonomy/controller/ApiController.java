@@ -34,6 +34,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.security.MessageDigest;
@@ -45,6 +49,7 @@ import java.util.concurrent.ExecutorService;
 
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Taxonomy")
 public class ApiController {
 
     private final TaxonomyService taxonomyService;
@@ -95,11 +100,14 @@ public class ApiController {
         this.archiMateXmlExporter = archiMateXmlExporter;
     }
 
+    @Operation(summary = "Get full taxonomy tree", description = "Returns the complete taxonomy hierarchy as a nested tree of nodes", tags = {"Taxonomy"})
+    @ApiResponse(responseCode = "200", description = "Taxonomy tree returned successfully")
     @GetMapping("/taxonomy")
     public ResponseEntity<List<TaxonomyNodeDto>> getTaxonomy() {
         return ResponseEntity.ok(taxonomyService.getFullTree());
     }
 
+    @Operation(summary = "Check AI availability", description = "Returns whether an LLM provider is available and which one is active", tags = {"Administration"})
     @GetMapping("/ai-status")
     public ResponseEntity<AiStatusResponse> aiStatus() {
         boolean available = llmService.isAvailable();
@@ -107,6 +115,9 @@ public class ApiController {
         return ResponseEntity.ok(new AiStatusResponse(available, provider));
     }
 
+    @Operation(summary = "Analyze business requirement", description = "Analyzes a business requirement against the taxonomy using the configured LLM provider. Optionally includes an architecture view.", tags = {"Analysis"})
+    @ApiResponse(responseCode = "200", description = "Analysis completed")
+    @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
     @PostMapping("/analyze")
     public ResponseEntity<AnalysisResult> analyze(@RequestBody AnalysisRequest request) {
         if (request.getBusinessText() == null || request.getBusinessText().isBlank()) {
@@ -129,8 +140,9 @@ public class ApiController {
      * Emits {@code phase}, {@code scores}, {@code expanding}, {@code complete} and
      * {@code error} events as the LLM processes the taxonomy level by level.
      */
+    @Operation(summary = "Streaming analysis (SSE)", description = "Server-Sent Events streaming analysis. Emits phase, scores, expanding, complete, and error events as the LLM processes the taxonomy level by level.", tags = {"Analysis"})
     @GetMapping(value = "/analyze-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter analyzeStream(@RequestParam String businessText) {
+    public SseEmitter analyzeStream(@Parameter(description = "Business requirement text to analyze") @RequestParam String businessText) {
         SseEmitter emitter = new SseEmitter(120_000L);
 
         if (businessText == null || businessText.isBlank()) {
@@ -217,10 +229,11 @@ public class ApiController {
         }
     }
 
+    @Operation(summary = "Analyze single node children", description = "Analyzes the children of a specific taxonomy node against a business requirement", tags = {"Analysis"})
     @GetMapping("/analyze-node")
     public ResponseEntity<Map<String, Object>> analyzeNode(
-            @RequestParam String parentCode,
-            @RequestParam String businessText) {
+            @Parameter(description = "Parent taxonomy node code") @RequestParam String parentCode,
+            @Parameter(description = "Business requirement text") @RequestParam String businessText) {
         if (businessText == null || businessText.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
@@ -251,6 +264,7 @@ public class ApiController {
      * Collects the path from root to the leaf node and cross-references to other
      * high-scoring nodes, then calls the LLM for a coherent summary.
      */
+    @Operation(summary = "Generate leaf justification", description = "Generates an explanatory justification for a leaf node match using the LLM", tags = {"Analysis"})
     @PostMapping("/justify-leaf")
     public ResponseEntity<Map<String, Object>> justifyLeaf(
             @RequestBody Map<String, Object> body) {
@@ -292,6 +306,8 @@ public class ApiController {
         }
     }
 
+    @Operation(summary = "Get LLM diagnostics", description = "Returns diagnostic information about the LLM provider (admin-only)", tags = {"Administration"})
+    @ApiResponse(responseCode = "401", description = "Not authorized — admin password required")
     @GetMapping("/diagnostics")
     public ResponseEntity<Map<String, Object>> diagnostics(HttpServletRequest request) {
         if (!isAdminAuthorized(request)) {
@@ -302,12 +318,14 @@ public class ApiController {
 
     // ── Admin endpoints ───────────────────────────────────────────────────────
 
+    @Operation(summary = "Check admin status", description = "Returns whether the admin password is required", tags = {"Administration"})
     @GetMapping("/admin/status")
     public ResponseEntity<Map<String, Boolean>> adminStatus() {
         boolean required = adminPassword != null && !adminPassword.isBlank();
         return ResponseEntity.ok(Map.of("passwordRequired", required));
     }
 
+    @Operation(summary = "Verify admin password", description = "Validates the admin password", tags = {"Administration"})
     @PostMapping("/admin/verify")
     public ResponseEntity<Map<String, Boolean>> verifyAdmin(@RequestBody Map<String, String> body) {
         String password = body.get("password");
@@ -323,6 +341,9 @@ public class ApiController {
      * The requirement is first analyzed, then an architecture view is built, projected
      * into a diagram model, and exported as a .vsdx file.
      */
+    @Operation(summary = "Export Visio diagram", description = "Generates a Visio .vsdx architecture diagram from a business requirement", tags = {"Export"})
+    @ApiResponse(responseCode = "200", description = "Visio file returned as binary attachment")
+    @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
     @PostMapping("/diagram/visio")
     public ResponseEntity<byte[]> exportVisio(@RequestBody Map<String, Object> body) {
         String businessText = (String) body.get("businessText");
@@ -368,6 +389,9 @@ public class ApiController {
      * The requirement is first analyzed, then an architecture view is built, projected
      * into a diagram model, and exported as an ArchiMate 3.x XML file.
      */
+    @Operation(summary = "Export ArchiMate XML", description = "Generates an ArchiMate Model Exchange File Format XML from a business requirement", tags = {"Export"})
+    @ApiResponse(responseCode = "200", description = "ArchiMate XML returned as attachment")
+    @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
     @PostMapping("/diagram/archimate")
     public ResponseEntity<byte[]> exportArchiMate(@RequestBody Map<String, Object> body) {
         String businessText = (String) body.get("businessText");
@@ -402,16 +426,18 @@ public class ApiController {
         return ResponseEntity.ok().headers(headers).body(xml);
     }
 
+    @Operation(summary = "Full-text search", description = "Search taxonomy nodes using full-text Lucene search", tags = {"Search"})
     @GetMapping("/search")
     public ResponseEntity<List<TaxonomyNodeDto>> search(
-            @RequestParam String q,
-            @RequestParam(defaultValue = "50") int maxResults) {
+            @Parameter(description = "Search query") @RequestParam String q,
+            @Parameter(description = "Maximum number of results") @RequestParam(defaultValue = "50") int maxResults) {
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(searchService.search(q, maxResults));
     }
 
     // ── Prompt template endpoints ──────────────────────────────────────────────
 
+    @Operation(summary = "List all prompt templates", description = "Returns all prompt templates (admin-only)", tags = {"Administration"})
     @GetMapping("/prompts")
     public ResponseEntity<List<Map<String, Object>>> getAllPrompts(HttpServletRequest request) {
         if (!isAdminAuthorized(request)) {
@@ -429,8 +455,9 @@ public class ApiController {
         return ResponseEntity.ok(result);
     }
 
+    @Operation(summary = "Get prompt template", description = "Returns a specific prompt template by code (admin-only)", tags = {"Administration"})
     @GetMapping("/prompts/{code}")
-    public ResponseEntity<Map<String, Object>> getPrompt(@PathVariable String code,
+    public ResponseEntity<Map<String, Object>> getPrompt(@Parameter(description = "Template code") @PathVariable String code,
             HttpServletRequest request) {
         if (!isAdminAuthorized(request)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -444,6 +471,7 @@ public class ApiController {
         return ResponseEntity.ok(result);
     }
 
+    @Operation(summary = "Update prompt template", description = "Overrides a prompt template (admin-only)", tags = {"Administration"})
     @PutMapping("/prompts/{code}")
     public ResponseEntity<Map<String, Object>> savePrompt(
             @PathVariable String code,
@@ -463,6 +491,7 @@ public class ApiController {
         return ResponseEntity.ok(result);
     }
 
+    @Operation(summary = "Reset prompt template", description = "Resets a prompt template to its default (admin-only)", tags = {"Administration"})
     @DeleteMapping("/prompts/{code}")
     public ResponseEntity<Map<String, Object>> resetPrompt(@PathVariable String code,
             HttpServletRequest request) {
@@ -486,10 +515,11 @@ public class ApiController {
      * @param q          natural-language query (e.g. "satellite communications")
      * @param maxResults maximum number of results (default 20)
      */
+    @Operation(summary = "Semantic search", description = "Search taxonomy nodes using embedding similarity (KNN). Requires LOCAL_ONNX or embedding enabled.", tags = {"Search"})
     @GetMapping("/search/semantic")
     public ResponseEntity<List<TaxonomyNodeDto>> semanticSearch(
-            @RequestParam String q,
-            @RequestParam(defaultValue = "20") int maxResults) {
+            @Parameter(description = "Natural-language query") @RequestParam String q,
+            @Parameter(description = "Maximum number of results") @RequestParam(defaultValue = "20") int maxResults) {
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(embeddingService.semanticSearch(q, maxResults));
     }
@@ -501,10 +531,11 @@ public class ApiController {
      * @param q          natural-language query
      * @param maxResults maximum number of results (default 20)
      */
+    @Operation(summary = "Hybrid search", description = "Combines full-text Lucene and semantic KNN results via Reciprocal Rank Fusion. Falls back to full-text only when embedding is unavailable.", tags = {"Search"})
     @GetMapping("/search/hybrid")
     public ResponseEntity<List<TaxonomyNodeDto>> hybridSearch(
-            @RequestParam String q,
-            @RequestParam(defaultValue = "20") int maxResults) {
+            @Parameter(description = "Natural-language query") @RequestParam String q,
+            @Parameter(description = "Maximum number of results") @RequestParam(defaultValue = "20") int maxResults) {
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(hybridSearchService.hybridSearch(q, maxResults));
     }
@@ -515,10 +546,11 @@ public class ApiController {
      * @param code   taxonomy node code (e.g. "BP.001")
      * @param topK   maximum number of similar nodes (default 10)
      */
+    @Operation(summary = "Find similar nodes", description = "Find taxonomy nodes semantically similar to a given node", tags = {"Search"})
     @GetMapping("/search/similar/{code}")
     public ResponseEntity<List<TaxonomyNodeDto>> findSimilar(
-            @PathVariable String code,
-            @RequestParam(defaultValue = "10") int topK) {
+            @Parameter(description = "Taxonomy node code") @PathVariable String code,
+            @Parameter(description = "Maximum number of similar nodes") @RequestParam(defaultValue = "10") int topK) {
         return ResponseEntity.ok(embeddingService.findSimilarNodes(code, topK));
     }
 
@@ -534,6 +566,7 @@ public class ApiController {
      *       (0 = not yet built)</li>
      * </ul>
      */
+    @Operation(summary = "Embedding model status", description = "Returns the current status of the local embedding model", tags = {"Embedding"})
     @GetMapping("/embedding/status")
     public ResponseEntity<Map<String, Object>> embeddingStatus() {
         Map<String, Object> status = new LinkedHashMap<>();
@@ -559,10 +592,11 @@ public class ApiController {
      * @param q          natural-language query (e.g. "which Business Processes are most supported?")
      * @param maxResults maximum number of node results (default 20)
      */
+    @Operation(summary = "Graph-semantic search", description = "Combines node and relation KNN queries to answer graph-structural questions. Returns matched nodes, per-root relation counts, top relation types, and a summary.", tags = {"Search"})
     @GetMapping("/search/graph")
     public ResponseEntity<GraphSearchResult> graphSearch(
-            @RequestParam String q,
-            @RequestParam(defaultValue = "20") int maxResults) {
+            @Parameter(description = "Natural-language query") @RequestParam String q,
+            @Parameter(description = "Maximum number of node results") @RequestParam(defaultValue = "20") int maxResults) {
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(graphSearchService.graphSearch(q, maxResults));
     }
