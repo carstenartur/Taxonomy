@@ -2,6 +2,7 @@ package com.nato.taxonomy.model;
 
 import com.nato.taxonomy.search.NodeEmbeddingBinder;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Nationalized;
 import org.hibernate.search.mapper.pojo.bridge.mapping.annotation.TypeBinderRef;
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.*;
 
@@ -18,34 +19,44 @@ public class TaxonomyNode {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Nationalized
     @Column(unique = true, nullable = false)
     @KeywordField
     private String code;
 
+    @Nationalized
     @Column(nullable = true)
     @KeywordField
     private String uuid;
 
+    @Nationalized
     @Column(nullable = false)
     @FullTextField(analyzer = "english")
     private String nameEn;
 
+    @Nationalized
     @Column(nullable = true)
     @FullTextField(analyzer = "german")
     private String nameDe;
 
+    @Nationalized
+    @Lob
     @Column(length = 5000)
     @FullTextField(analyzer = "english")
     private String descriptionEn;
 
+    @Nationalized
+    @Lob
     @Column(length = 5000)
     @FullTextField(analyzer = "german")
     private String descriptionDe;
 
+    @Nationalized
     @Column(name = "parent_code")
     @GenericField
     private String parentCode;
 
+    @Nationalized
     @Column(name = "taxonomy_root")
     @KeywordField
     private String taxonomyRoot;
@@ -53,21 +64,36 @@ public class TaxonomyNode {
     @GenericField
     private int level;
 
+    @Nationalized
     private String dataset;
 
+    @Nationalized
     @Column(name = "external_id")
     @KeywordField
     private String externalId;
 
+    @Nationalized
     private String source;
 
+    @Nationalized
+    @Lob
     @Column(length = 5000)
     private String reference;
 
     @Column(name = "sort_order")
     private Integer sortOrder;
 
+    @Nationalized
     private String state;
+
+    @Lob
+    @Convert(converter = FloatArrayConverter.class)
+    @Column(name = "semantic_embedding")
+    private float[] semanticEmbedding;
+
+    @GenericField
+    @Column(name = "has_embedding")
+    private boolean hasEmbedding;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
@@ -136,6 +162,15 @@ public class TaxonomyNode {
 
     public String getState() { return state; }
     public void setState(String state) { this.state = state; }
+
+    public float[] getSemanticEmbedding() { return semanticEmbedding; }
+    public void setSemanticEmbedding(float[] semanticEmbedding) {
+        this.semanticEmbedding = semanticEmbedding;
+        this.hasEmbedding = (semanticEmbedding != null);
+    }
+
+    public boolean isHasEmbedding() { return hasEmbedding; }
+    private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }
 
     public TaxonomyNode getParent() { return parent; }
     public void setParent(TaxonomyNode parent) { this.parent = parent; }

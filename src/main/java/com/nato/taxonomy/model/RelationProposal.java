@@ -1,6 +1,7 @@
 package com.nato.taxonomy.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.Nationalized;
 import java.time.Instant;
 
 /**
@@ -38,10 +39,12 @@ public class RelationProposal {
     private double confidence;
 
     /** Human-readable explanation of why this relation was proposed. */
+    @Nationalized
     @Column(length = 2000)
     private String rationale;
 
     /** How this proposal was generated (e.g. "hybrid-search", "embedding-similarity"). */
+    @Nationalized
     private String provenance;
 
     @Column(name = "created_at", nullable = false, updatable = false)
