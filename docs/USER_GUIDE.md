@@ -13,6 +13,8 @@
 9. [Working with Relation Proposals](#9-working-with-relation-proposals)
 10. [Exporting Results](#10-exporting-results)
 11. [Search](#11-search)
+    - [Quality Dashboard](#11a-quality-dashboard)
+    - [Relations Browser](#11b-relations-browser)
 12. [Administration](#12-administration)
 13. [Relation Types Reference](#13-relation-types-reference)
 14. [Tips and Best Practices](#14-tips-and-best-practices)
@@ -38,8 +40,13 @@ The **NATO NC3T Taxonomy Browser** is a web application that helps Architects, A
 | Analyze a requirement and see matching taxonomy nodes | Right panel → Business Requirement Analysis card |
 | Browse the taxonomy in different visual layouts | Left panel → view switcher buttons |
 | Drill into why a node scored highly | Click 📋 on any scored node |
+| Search for taxonomy nodes (full-text, semantic, hybrid, graph) | Right panel → 🔍 Search Taxonomy panel |
+| Find semantically similar nodes | Click 🔍 Similar on any taxonomy node |
 | Trace upstream/downstream dependencies | Right panel → Graph Explorer |
+| Run requirement impact analysis | Graph Explorer → 🎯 Req. Impact button |
 | Review and accept or reject AI-generated relation proposals | Right panel → Relation Proposals panel |
+| View quality metrics for relation proposals | Right panel → 📊 Quality Dashboard panel |
+| Browse, create, or delete taxonomy relations | Right panel → 🔗 Relations Browser panel |
 | Export a diagram or scoresheet | Left panel → export buttons (appear after analysis) |
 | Manage LLM settings and prompt templates | Unlock admin mode via 🔒 in the navigation bar |
 
@@ -492,9 +499,95 @@ Click the **🌙** (moon) button in the navigation bar to switch to dark mode. C
 
 ## 11. Search
 
-> **Note:** Advanced search (semantic, hybrid, graph) is currently available via the REST API. See [API Reference](API_REFERENCE.md) for endpoint details. A search UI panel may be added in a future release.
+The **Search Taxonomy** panel (right column, collapsible) provides four search modes to find taxonomy nodes. Open it by clicking the **🔍 Search Taxonomy** summary.
 
-Basic taxonomy browsing and filtering is available directly in the taxonomy tree view using the view switcher and the expand/collapse controls described in [Section 5](#5-exploring-the-taxonomy).
+### Search Modes
+
+| Mode | Description | Requires Embeddings? |
+|---|---|---|
+| **Full-text** | Lucene-based keyword search across node names and descriptions | No |
+| **Semantic** | KNN vector similarity using sentence embeddings | Yes |
+| **Hybrid** | Reciprocal Rank Fusion combining full-text and semantic results | Yes |
+| **Graph** | Graph-semantic search including relation-aware results | Yes |
+
+### Using the Search Panel
+
+1. Type your query into the **search input** field.
+2. Select a **search mode** from the dropdown.
+3. Choose the **max results** count (10, 20, or 50).
+4. Click **🔍 Search** or press Enter.
+5. Results appear as a clickable list. Click any result to highlight the node in the taxonomy tree.
+
+### Embedding Status
+
+The **🧠 Embeddings** badge in the navigation bar shows whether semantic embeddings are available:
+
+- **🧠 Embeddings: N nodes** (blue) — embeddings are loaded; Semantic, Hybrid, and Graph modes are enabled.
+- **🧠 Embeddings: unavailable** (grey) — embeddings not loaded; only Full-text search is available.
+
+When embeddings are unavailable, the Semantic, Hybrid, and Graph options are greyed out in the mode selector.
+
+### Find Similar Nodes
+
+Each taxonomy node row includes a **🔍 Similar** button. Clicking it opens the Search Panel and lists the 10 most semantically similar nodes (requires embeddings).
+
+---
+
+## 11a. Quality Dashboard
+
+The **📊 Quality Dashboard** panel (right column, collapsible) displays metrics about relation proposal quality. Open it by clicking the summary; metrics are loaded automatically.
+
+### Summary Metrics
+
+| Metric | Description |
+|---|---|
+| **Total** | Total number of proposals generated |
+| **Accepted** | Proposals accepted and converted to relations |
+| **Rejected** | Proposals rejected by a reviewer |
+| **Pending** | Proposals awaiting review |
+| **Rate** | Acceptance rate (accepted ÷ total, as a percentage) |
+
+### By Relation Type
+
+A breakdown table shows how many proposals of each relation type were proposed, accepted, rejected, and the acceptance rate for that type.
+
+### Top Rejected
+
+The table lists the most-confident proposals that were rejected (highest confidence false positives). Hover over a row to see the rejection rationale.
+
+Click **🔄 Refresh** to reload the dashboard at any time.
+
+---
+
+## 11b. Relations Browser
+
+The **🔗 Relations Browser** panel (right column, collapsible) lets you browse, create, and delete confirmed taxonomy relations.
+
+### Browsing Relations
+
+1. Open the **🔗 Relations Browser** panel.
+2. Optionally filter by relation type using the dropdown.
+3. A table lists all matching relations showing source, target, type, and provenance.
+
+### Creating a Relation
+
+1. Click **➕ New Relation** to open the Create Relation modal.
+2. Enter the **Source Node Code** and **Target Node Code**.
+3. Select the **Relation Type**.
+4. Optionally add a **Description**.
+5. Click **Create**.
+
+### Deleting a Relation
+
+Click the **✖** button on any relation row and confirm the deletion.
+
+### Requirement Impact Analysis
+
+The **🎯 Req. Impact** button in the Graph Explorer panel runs a transitive impact analysis based on the current analysis scores. It shows which taxonomy elements are indirectly affected through the relation graph.
+
+1. First, run an analysis (see [Section 4](#4-analyzing-a-business-requirement)).
+2. Click **🎯 Req. Impact** in the Graph Explorer.
+3. The results show impacted elements and the relationships traversed.
 
 ---
 
