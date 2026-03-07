@@ -28,7 +28,7 @@ jobs:
       - name: Generate screenshots
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: mvn verify -DgenerateScreenshots -Dtest=ScreenshotGeneratorIT -Dfailsafe.rerunFailingTestsCount=1
+        run: mvn verify -DgenerateScreenshots -Dit.test=ScreenshotGeneratorIT -Dfailsafe.rerunFailingTestsCount=1
 
       - name: Commit screenshots
         run: |

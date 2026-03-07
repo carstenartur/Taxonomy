@@ -145,14 +145,28 @@ class ScreenshotGeneratorIT {
     /**
      * Closes a Bootstrap modal directly via DOM manipulation, bypassing the fade animation.
      * This avoids timing issues when waiting for the Bootstrap animation to complete.
+     * Also disposes Bootstrap's internal modal instance to fully reset its state.
      */
     private void closeModalViaDOM(String modalId) {
         js("var el = document.getElementById(arguments[0]); " +
-                "el.classList.remove('show'); el.style.display='none'; " +
+                "if (el) { " +
+                "  try { var inst = bootstrap.Modal.getInstance(el); if (inst) { inst.dispose(); } } catch(e) {} " +
+                "  el.classList.remove('show'); el.style.display='none'; " +
+                "  el.removeAttribute('aria-modal'); el.setAttribute('aria-hidden','true'); " +
+                "} " +
                 "document.querySelectorAll('.modal-backdrop').forEach(b => b.remove()); " +
-                "document.body.classList.remove('modal-open'); document.body.style.overflow='';",
+                "document.querySelectorAll('.modal.show').forEach(m => { m.classList.remove('show'); m.style.display='none'; }); " +
+                "document.body.classList.remove('modal-open'); " +
+                "document.body.style.overflow=''; " +
+                "document.body.style.paddingRight='';",
                 modalId);
         wait(5).until(ExpectedConditions.invisibilityOfElementLocated(By.id(modalId)));
+        // Brief pause to let the browser settle after DOM manipulation
+        try {
+            Thread.sleep(300);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /** Makes the admin lock button visible (it is hidden until the AI status check resolves). */
@@ -303,6 +317,7 @@ class ScreenshotGeneratorIT {
         wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("proposeRelationsModal")));
         saveScreenshot("13-propose-relations-modal.png");
         closeModalViaDOM("proposeRelationsModal");
+        js("window.scrollTo(0, 0);");
     }
 
     @Test
@@ -321,8 +336,9 @@ class ScreenshotGeneratorIT {
                 "Skipping: GEMINI_API_KEY not set");
 
         WebElement interactiveCb = driver.findElement(By.id("interactiveMode"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", interactiveCb);
         if (interactiveCb.isSelected()) {
-            interactiveCb.click();
+            js("arguments[0].click();", interactiveCb);
             wait(3).until(ExpectedConditions.elementSelectionStateToBe(interactiveCb, false));
         }
 
@@ -337,14 +353,18 @@ class ScreenshotGeneratorIT {
                 "Skipping: GEMINI_API_KEY not set");
 
         WebElement interactiveCb = driver.findElement(By.id("interactiveMode"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", interactiveCb);
         if (!interactiveCb.isSelected()) {
-            interactiveCb.click();
+            js("arguments[0].click();", interactiveCb);
             wait(3).until(ExpectedConditions.elementSelectionStateToBe(interactiveCb, true));
         }
 
         WebElement textarea = driver.findElement(By.id("businessText"));
-        textarea.clear();
-        textarea.sendKeys(REQUIREMENT_TEXT);
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
+        js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
+                textarea, REQUIREMENT_TEXT);
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});",
+                driver.findElement(By.id("analyzeBtn")));
         driver.findElement(By.id("analyzeBtn")).click();
 
         // Wait for at least one toggle to indicate top-level nodes are scored
@@ -353,7 +373,7 @@ class ScreenshotGeneratorIT {
 
         // Reset to non-interactive
         if (interactiveCb.isSelected()) {
-            interactiveCb.click();
+            js("arguments[0].click();", interactiveCb);
         }
     }
 
@@ -383,10 +403,12 @@ class ScreenshotGeneratorIT {
 
         List<WebElement> justifyBtns = driver.findElements(By.cssSelector(".tax-justify-btn"));
         if (!justifyBtns.isEmpty()) {
-            justifyBtns.get(0).click();
+            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", justifyBtns.get(0));
+            js("arguments[0].click();", justifyBtns.get(0));
             wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("leafJustificationModal")));
             saveScreenshot("18-leaf-justification-modal.png");
             closeModalViaDOM("leafJustificationModal");
+            js("window.scrollTo(0, 0);");
         }
     }
 
@@ -400,15 +422,19 @@ class ScreenshotGeneratorIT {
         String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
         if (!statusText.contains("complete")) {
             WebElement interactiveCb = driver.findElement(By.id("interactiveMode"));
+            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", interactiveCb);
             if (interactiveCb.isSelected()) {
-                interactiveCb.click();
+                js("arguments[0].click();", interactiveCb);
                 wait(3).until(ExpectedConditions.elementSelectionStateToBe(interactiveCb, false));
             }
             runAnalysis();
         }
 
-        // Modify textarea to trigger the stale-results warning (300 ms debounce)
-        driver.findElement(By.id("businessText")).sendKeys(" modified");
+        // Modify textarea via JS to trigger the stale-results warning (300 ms debounce)
+        WebElement textarea = driver.findElement(By.id("businessText"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", textarea);
+        js("arguments[0].value = arguments[0].value + ' modified'; arguments[0].dispatchEvent(new Event('input'));",
+                textarea);
         wait(5).until(ExpectedConditions.attributeContains(
                 By.id("businessText"), "class", "stale-results"));
         saveScreenshot("19-stale-results-warning.png");
@@ -421,26 +447,31 @@ class ScreenshotGeneratorIT {
                 "Skipping: GEMINI_API_KEY not set");
 
         WebElement archCb = driver.findElement(By.id("includeArchitectureView"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", archCb);
         if (!archCb.isSelected()) {
-            archCb.click();
+            js("arguments[0].click();", archCb);
             wait(3).until(ExpectedConditions.elementSelectionStateToBe(archCb, true));
         }
         WebElement interactiveCb = driver.findElement(By.id("interactiveMode"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", interactiveCb);
         if (interactiveCb.isSelected()) {
-            interactiveCb.click();
+            js("arguments[0].click();", interactiveCb);
             wait(3).until(ExpectedConditions.elementSelectionStateToBe(interactiveCb, false));
         }
 
         WebElement textarea = driver.findElement(By.id("businessText"));
-        textarea.clear();
-        textarea.sendKeys(REQUIREMENT_TEXT);
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
+        js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
+                textarea, REQUIREMENT_TEXT);
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});",
+                driver.findElement(By.id("analyzeBtn")));
         driver.findElement(By.id("analyzeBtn")).click();
 
         wait(120).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")), "20-architecture-view.png");
 
         if (archCb.isSelected()) {
-            archCb.click();
+            js("arguments[0].click();", archCb);
         }
     }
 
@@ -451,8 +482,11 @@ class ScreenshotGeneratorIT {
                 "Skipping: GEMINI_API_KEY not set");
 
         WebElement input = driver.findElement(By.id("graphNodeInput"));
-        input.clear();
-        input.sendKeys("BP-1");
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
+        js("arguments[0].value = 'BP-1'; arguments[0].dispatchEvent(new Event('input'));", input);
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});",
+                driver.findElement(By.id("graphUpstreamBtn")));
         driver.findElement(By.id("graphUpstreamBtn")).click();
 
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("graphResultsArea")));
@@ -466,8 +500,11 @@ class ScreenshotGeneratorIT {
                 "Skipping: GEMINI_API_KEY not set");
 
         WebElement input = driver.findElement(By.id("graphNodeInput"));
-        input.clear();
-        input.sendKeys("BP-1");
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
+        js("arguments[0].value = 'BP-1'; arguments[0].dispatchEvent(new Event('input'));", input);
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});",
+                driver.findElement(By.id("graphFailureBtn")));
         driver.findElement(By.id("graphFailureBtn")).click();
 
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("graphResultsArea")));
@@ -495,6 +532,7 @@ class ScreenshotGeneratorIT {
         wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("adminModal")));
         saveScreenshot("24-admin-modal.png");
         closeModalViaDOM("adminModal");
+        js("window.scrollTo(0, 0);");
     }
 
     @Test
