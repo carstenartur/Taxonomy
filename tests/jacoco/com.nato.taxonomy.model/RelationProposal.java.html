@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationProposal.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.model</a> &gt; <span class="el_source">RelationProposal.java</span></div><h1>RelationProposal.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.model;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.Nationalized;
+import java.time.Instant;
+
+/**
+ * A proposed relation between two taxonomy nodes, awaiting human review.
+ * Created by the Relation Proposal Pipeline.
+ */
+@Entity
+@Table(name = &quot;relation_proposal&quot;,
+        uniqueConstraints = @UniqueConstraint(
+                columnNames = {&quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relation_type&quot;}))
+<span class="fc" id="L15">public class RelationProposal {</span>
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;source_node_id&quot;, nullable = false)
+    private TaxonomyNode sourceNode;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;target_node_id&quot;, nullable = false)
+    private TaxonomyNode targetNode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;relation_type&quot;, nullable = false)
+    private RelationType relationType;
+
+<span class="fc" id="L33">    @Enumerated(EnumType.STRING)</span>
+    @Column(nullable = false)
+    private ProposalStatus status = ProposalStatus.PENDING;
+
+    /** Confidence score between 0.0 and 1.0. */
+    @Column(nullable = false)
+    private double confidence;
+
+    /** Human-readable explanation of why this relation was proposed. */
+    @Nationalized
+    @Column(length = 2000)
+    private String rationale;
+
+    /** How this proposal was generated (e.g. &quot;hybrid-search&quot;, &quot;embedding-similarity&quot;). */
+    @Nationalized
+    private String provenance;
+
+    @Column(name = &quot;created_at&quot;, nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;reviewed_at&quot;)
+    private Instant reviewedAt;
+
+    @PrePersist
+    void onCreate() {
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        if (createdAt == null) {</span>
+<span class="fc" id="L59">            createdAt = Instant.now();</span>
+        }
+<span class="fc" id="L61">    }</span>
+
+    // ── Getters / Setters ─────────────────────────────────────────────────────
+
+<span class="fc" id="L65">    public Long getId() { return id; }</span>
+<span class="nc" id="L66">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L68">    public TaxonomyNode getSourceNode() { return sourceNode; }</span>
+<span class="fc" id="L69">    public void setSourceNode(TaxonomyNode sourceNode) { this.sourceNode = sourceNode; }</span>
+
+<span class="fc" id="L71">    public TaxonomyNode getTargetNode() { return targetNode; }</span>
+<span class="fc" id="L72">    public void setTargetNode(TaxonomyNode targetNode) { this.targetNode = targetNode; }</span>
+
+<span class="fc" id="L74">    public RelationType getRelationType() { return relationType; }</span>
+<span class="fc" id="L75">    public void setRelationType(RelationType relationType) { this.relationType = relationType; }</span>
+
+<span class="fc" id="L77">    public ProposalStatus getStatus() { return status; }</span>
+<span class="fc" id="L78">    public void setStatus(ProposalStatus status) { this.status = status; }</span>
+
+<span class="fc" id="L80">    public double getConfidence() { return confidence; }</span>
+<span class="fc" id="L81">    public void setConfidence(double confidence) { this.confidence = confidence; }</span>
+
+<span class="fc" id="L83">    public String getRationale() { return rationale; }</span>
+<span class="fc" id="L84">    public void setRationale(String rationale) { this.rationale = rationale; }</span>
+
+<span class="fc" id="L86">    public String getProvenance() { return provenance; }</span>
+<span class="fc" id="L87">    public void setProvenance(String provenance) { this.provenance = provenance; }</span>
+
+<span class="fc" id="L89">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="nc" id="L90">    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }</span>
+
+<span class="fc" id="L92">    public Instant getReviewedAt() { return reviewedAt; }</span>
+<span class="fc" id="L93">    public void setReviewedAt(Instant reviewedAt) { this.reviewedAt = reviewedAt; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

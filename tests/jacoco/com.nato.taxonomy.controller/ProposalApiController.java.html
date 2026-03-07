@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProposalApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.controller</a> &gt; <span class="el_source">ProposalApiController.java</span></div><h1>ProposalApiController.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.controller;
+
+import com.nato.taxonomy.dto.RelationProposalDto;
+import com.nato.taxonomy.dto.TaxonomyRelationDto;
+import com.nato.taxonomy.model.RelationType;
+import com.nato.taxonomy.service.RelationProposalService;
+import com.nato.taxonomy.service.RelationReviewService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * REST API for the Relation Proposal Pipeline.
+ *
+ * &lt;p&gt;Endpoints:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code POST /api/proposals/propose} — trigger proposal generation&lt;/li&gt;
+ *   &lt;li&gt;{@code GET  /api/proposals} — list all proposals (optionally filter by status)&lt;/li&gt;
+ *   &lt;li&gt;{@code GET  /api/proposals/pending} — list pending proposals&lt;/li&gt;
+ *   &lt;li&gt;{@code GET  /api/node/{code}/proposals} — proposals for a specific node&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/proposals/{id}/accept} — accept a proposal&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/proposals/{id}/reject} — reject a proposal&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Proposals&quot;)
+public class ProposalApiController {
+
+    private final RelationProposalService proposalService;
+    private final RelationReviewService reviewService;
+
+    public ProposalApiController(RelationProposalService proposalService,
+<span class="fc" id="L38">                                  RelationReviewService reviewService) {</span>
+<span class="fc" id="L39">        this.proposalService = proposalService;</span>
+<span class="fc" id="L40">        this.reviewService = reviewService;</span>
+<span class="fc" id="L41">    }</span>
+
+    /**
+     * Trigger the proposal pipeline for a source node and relation type.
+     */
+    @Operation(summary = &quot;Propose relations&quot;, description = &quot;Trigger the proposal pipeline for a source node and relation type&quot;)
+    @PostMapping(&quot;/proposals/propose&quot;)
+    public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; proposeRelations(
+            @RequestBody Map&lt;String, String&gt; body) {
+<span class="fc" id="L50">        String sourceCode = body.get(&quot;sourceCode&quot;);</span>
+<span class="fc" id="L51">        String relationTypeStr = body.get(&quot;relationType&quot;);</span>
+<span class="fc" id="L52">        String limitStr = body.getOrDefault(&quot;limit&quot;, &quot;10&quot;);</span>
+
+<span class="pc bpc" id="L54" title="2 of 6 branches missed.">        if (sourceCode == null || sourceCode.isBlank() ||</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">                relationTypeStr == null || relationTypeStr.isBlank()) {</span>
+<span class="fc" id="L56">            return ResponseEntity.badRequest().build();</span>
+        }
+
+        RelationType relationType;
+        try {
+<span class="fc" id="L61">            relationType = RelationType.valueOf(relationTypeStr.toUpperCase());</span>
+<span class="fc" id="L62">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L63">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L64">        }</span>
+
+        int limit;
+        try {
+<span class="fc" id="L68">            limit = Integer.parseInt(limitStr);</span>
+<span class="pc bpc" id="L69" title="2 of 4 branches missed.">            if (limit &lt; 1 || limit &gt; 100) limit = 10;</span>
+<span class="nc" id="L70">        } catch (NumberFormatException e) {</span>
+<span class="nc" id="L71">            limit = 10;</span>
+<span class="fc" id="L72">        }</span>
+
+        try {
+<span class="fc" id="L75">            List&lt;RelationProposalDto&gt; proposals =</span>
+<span class="fc" id="L76">                    proposalService.proposeRelations(sourceCode, relationType, limit);</span>
+<span class="fc" id="L77">            return ResponseEntity.ok(proposals);</span>
+<span class="fc" id="L78">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L79">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+    /**
+     * List all proposals.
+     */
+    @Operation(summary = &quot;List all proposals&quot;, description = &quot;Returns all relation proposals&quot;)
+    @GetMapping(&quot;/proposals&quot;)
+    public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; getAllProposals() {
+<span class="fc" id="L89">        return ResponseEntity.ok(proposalService.getAllProposals());</span>
+    }
+
+    /**
+     * List pending proposals (review queue).
+     */
+    @Operation(summary = &quot;List pending proposals&quot;, description = &quot;Returns all proposals with PENDING status (review queue)&quot;)
+    @GetMapping(&quot;/proposals/pending&quot;)
+    public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; getPendingProposals() {
+<span class="fc" id="L98">        return ResponseEntity.ok(proposalService.getPendingProposals());</span>
+    }
+
+    /**
+     * List proposals for a specific source node.
+     */
+    @Operation(summary = &quot;List node proposals&quot;, description = &quot;Returns all proposals for a specific source node&quot;)
+    @GetMapping(&quot;/node/{code}/proposals&quot;)
+    public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; getProposalsForNode(
+            @PathVariable String code) {
+<span class="fc" id="L108">        return ResponseEntity.ok(proposalService.getProposalsForNode(code));</span>
+    }
+
+    /**
+     * Accept a pending proposal — creates the actual TaxonomyRelation.
+     */
+    @Operation(summary = &quot;Accept proposal&quot;, description = &quot;Accepts a pending proposal and creates the actual taxonomy relation&quot;)
+    @PostMapping(&quot;/proposals/{id}/accept&quot;)
+    public ResponseEntity&lt;TaxonomyRelationDto&gt; acceptProposal(@PathVariable Long id) {
+        try {
+<span class="nc" id="L118">            TaxonomyRelationDto relation = reviewService.acceptProposal(id);</span>
+<span class="nc" id="L119">            return ResponseEntity.ok(relation);</span>
+<span class="fc" id="L120">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="fc" id="L121">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+    /**
+     * Reject a pending proposal.
+     */
+    @Operation(summary = &quot;Reject proposal&quot;, description = &quot;Rejects a pending proposal&quot;)
+    @PostMapping(&quot;/proposals/{id}/reject&quot;)
+    public ResponseEntity&lt;RelationProposalDto&gt; rejectProposal(@PathVariable Long id) {
+        try {
+<span class="nc" id="L132">            RelationProposalDto dto = reviewService.rejectProposal(id);</span>
+<span class="nc" id="L133">            return ResponseEntity.ok(dto);</span>
+<span class="fc" id="L134">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="fc" id="L135">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

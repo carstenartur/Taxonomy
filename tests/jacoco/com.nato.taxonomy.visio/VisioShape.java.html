@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VisioShape.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.visio</a> &gt; <span class="el_source">VisioShape.java</span></div><h1>VisioShape.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.visio;
+
+public class VisioShape {
+    private final String id;
+    private final String text;
+    private final double x;
+    private final double y;
+    private final double width;
+    private final double height;
+    private final String type;
+    private final boolean anchor;
+
+    public VisioShape(String id, String text, double x, double y, double width, double height,
+<span class="fc" id="L14">                      String type, boolean anchor) {</span>
+<span class="fc" id="L15">        this.id = id;</span>
+<span class="fc" id="L16">        this.text = text;</span>
+<span class="fc" id="L17">        this.x = x;</span>
+<span class="fc" id="L18">        this.y = y;</span>
+<span class="fc" id="L19">        this.width = width;</span>
+<span class="fc" id="L20">        this.height = height;</span>
+<span class="fc" id="L21">        this.type = type;</span>
+<span class="fc" id="L22">        this.anchor = anchor;</span>
+<span class="fc" id="L23">    }</span>
+
+<span class="fc" id="L25">    public String getId() { return id; }</span>
+<span class="fc" id="L26">    public String getText() { return text; }</span>
+<span class="fc" id="L27">    public double getX() { return x; }</span>
+<span class="fc" id="L28">    public double getY() { return y; }</span>
+<span class="fc" id="L29">    public double getWidth() { return width; }</span>
+<span class="fc" id="L30">    public double getHeight() { return height; }</span>
+<span class="nc" id="L31">    public String getType() { return type; }</span>
+<span class="fc" id="L32">    public boolean isAnchor() { return anchor; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

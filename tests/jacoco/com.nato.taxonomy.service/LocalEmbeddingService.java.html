@@ -1,0 +1,334 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LocalEmbeddingService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.service</a> &gt; <span class="el_source">LocalEmbeddingService.java</span></div><h1>LocalEmbeddingService.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.service;
+
+import ai.djl.Application;
+import ai.djl.inference.Predictor;
+import ai.djl.repository.zoo.Criteria;
+import ai.djl.repository.zoo.ZooModel;
+import com.nato.taxonomy.dto.TaxonomyNodeDto;
+import com.nato.taxonomy.model.TaxonomyNode;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.hibernate.search.mapper.orm.Search;
+import org.hibernate.search.mapper.orm.session.SearchSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Local embedding service that scores taxonomy nodes against a business requirement using
+ * the {@code sentence-transformers/all-MiniLM-L6-v2} ONNX model loaded via DJL.
+ *
+ * &lt;h2&gt;Architecture&lt;/h2&gt;
+ * &lt;p&gt;The DJL model is &lt;em&gt;lazily initialised&lt;/em&gt; on first use — application startup is not
+ * slowed down and no model is downloaded unless actually needed.
+ *
+ * &lt;p&gt;Vector storage and KNN retrieval are handled by Hibernate Search (Lucene backend).
+ * The {@code @VectorField(name = &quot;embedding&quot;)} on {@link TaxonomyNode} (via
+ * {@link com.nato.taxonomy.search.NodeEmbeddingBinder}) stores the pre-computed embedding.
+ * Queries use {@code f.knn(k).field(&quot;embedding&quot;).matching(queryVector)}.
+ *
+ * &lt;h2&gt;Configuration&lt;/h2&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code JGIT_EMBEDDING_ENABLED} (default {@code true}) — set to {@code false} to
+ *       disable all embedding and semantic search globally.&lt;/li&gt;
+ *   &lt;li&gt;{@code JGIT_EMBEDDING_MODEL_DIR} — path to a pre-downloaded model directory;
+ *       empty = DJL auto-download to {@code ~/.djl.ai/}.&lt;/li&gt;
+ *   &lt;li&gt;{@code JGIT_EMBEDDING_MODEL_NAME} — DJL model URL;
+ *       default {@code djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2}.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;h2&gt;Graceful degradation&lt;/h2&gt;
+ * &lt;p&gt;When {@code JGIT_EMBEDDING_ENABLED=false} or the model fails to load, all semantic
+ * search methods return empty results without throwing, and {@link #isAvailable()} returns
+ * {@code false}.
+ *
+ * &lt;h2&gt;Scoring&lt;/h2&gt;
+ * &lt;p&gt;Hibernate Search's KNN query returns cosine similarity scores in [0, 1].
+ * Raw cosine similarity is recovered as {@code 2 * luceneScore - 1} and mapped to 0–100.
+ *
+ * &lt;p&gt;Enable as the LLM provider with {@code LLM_PROVIDER=LOCAL_ONNX}.  No API key required.
+ */
+@Service
+<span class="fc" id="L57">public class LocalEmbeddingService {</span>
+
+<span class="fc" id="L59">    private static final Logger log = LoggerFactory.getLogger(LocalEmbeddingService.class);</span>
+
+    /** Default DJL model-zoo URL for the ONNX export of all-MiniLM-L6-v2. */
+    static final String DEFAULT_MODEL_URL =
+            &quot;djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2&quot;;
+
+    /**
+     * Raw cosine-similarity threshold below which a node receives score 0.
+     * Value in (-1, 1); 0.25 means &quot;weak or no semantic overlap&quot;.
+     */
+    static final double THRESHOLD = 0.25;
+
+    // ── Configuration (from application.properties / env vars) ───────────────
+
+    @Value(&quot;${embedding.enabled:true}&quot;)
+    private boolean embeddingEnabled;
+
+    @Value(&quot;${embedding.model.dir:}&quot;)
+    private String modelDir;
+
+    @Value(&quot;${embedding.model.name:djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2}&quot;)
+    private String modelName;
+
+    // ── DJL model (lazy) ──────────────────────────────────────────────────────
+
+    private volatile ZooModel&lt;String, float[]&gt; model;
+<span class="fc" id="L85">    private volatile boolean modelLoadFailed = false;</span>
+<span class="fc" id="L86">    private final Object modelLock = new Object();</span>
+
+    // ── Dependencies ──────────────────────────────────────────────────────────
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    // ── Model lifecycle ───────────────────────────────────────────────────────
+
+    /**
+     * Returns {@code true} if embedding is configured as enabled
+     * ({@code JGIT_EMBEDDING_ENABLED=true}, which is the default).
+     */
+    public boolean isEnabled() {
+<span class="fc" id="L100">        return embeddingEnabled;</span>
+    }
+
+    /**
+     * Returns {@code true} if embedding is globally enabled AND the DJL model loaded
+     * successfully (or has not been tried yet).
+     */
+    public boolean isAvailable() {
+<span class="pc bpc" id="L108" title="1 of 4 branches missed.">        return embeddingEnabled &amp;&amp; !modelLoadFailed;</span>
+    }
+
+    /**
+     * Returns the effective DJL model URL: {@link #modelDir} if set (offline cache),
+     * otherwise {@link #modelName}.
+     */
+    public String effectiveModelUrl() {
+<span class="pc bpc" id="L116" title="2 of 4 branches missed.">        return (modelDir != null &amp;&amp; !modelDir.isBlank()) ? modelDir : modelName;</span>
+    }
+
+    /** Returns the lazily loaded DJL model, downloading it on first call. */
+    ZooModel&lt;String, float[]&gt; getModel() throws Exception {
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (!embeddingEnabled) {</span>
+<span class="nc" id="L122">            throw new IllegalStateException(&quot;Embedding is disabled (JGIT_EMBEDDING_ENABLED=false)&quot;);</span>
+        }
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        if (modelLoadFailed) {</span>
+<span class="nc" id="L125">            throw new IllegalStateException(&quot;DJL model failed to load previously; embedding unavailable&quot;);</span>
+        }
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">        if (model == null) {</span>
+<span class="fc" id="L128">            synchronized (modelLock) {</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                if (model == null) {</span>
+<span class="fc" id="L130">                    String url = effectiveModelUrl();</span>
+<span class="fc" id="L131">                    log.info(&quot;Loading all-MiniLM-L6-v2 via DJL / ONNX Runtime from {} …&quot;, url);</span>
+                    try {
+<span class="fc" id="L133">                        Criteria.Builder&lt;String, float[]&gt; builder = Criteria.builder()</span>
+<span class="fc" id="L134">                                .optApplication(Application.NLP.TEXT_EMBEDDING)</span>
+<span class="fc" id="L135">                                .setTypes(String.class, float[].class)</span>
+<span class="nc" id="L136">                                .optModelUrls(url)</span>
+<span class="nc" id="L137">                                .optEngine(&quot;OnnxRuntime&quot;);</span>
+<span class="nc" id="L138">                        model = builder.build().loadModel();</span>
+<span class="nc" id="L139">                        log.info(&quot;all-MiniLM-L6-v2 loaded successfully.&quot;);</span>
+<span class="fc" id="L140">                    } catch (Exception e) {</span>
+<span class="fc" id="L141">                        modelLoadFailed = true;</span>
+<span class="fc" id="L142">                        log.error(&quot;Failed to load DJL model from '{}'; semantic search disabled. Error: {}&quot;,</span>
+<span class="fc" id="L143">                                url, e.getMessage());</span>
+<span class="fc" id="L144">                        throw e;</span>
+<span class="nc" id="L145">                    }</span>
+                }
+<span class="nc" id="L147">            }</span>
+        }
+<span class="nc" id="L149">        return model;</span>
+    }
+
+    // ── Index status ──────────────────────────────────────────────────────────
+
+    /**
+     * Returns the number of nodes currently in the Hibernate Search index.
+     * Used by the embedding-status endpoint.
+     */
+    @Transactional(readOnly = true)
+    public int indexedNodeCount() {
+        try {
+<span class="fc" id="L161">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L162">            return (int) session.search(TaxonomyNode.class)</span>
+<span class="fc" id="L163">                    .where(f -&gt; f.matchAll())</span>
+<span class="fc" id="L164">                    .fetchTotalHitCount();</span>
+<span class="nc" id="L165">        } catch (Exception e) {</span>
+<span class="nc" id="L166">            return 0;</span>
+        }
+    }
+
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /**
+     * Returns the DJL embedding vector for {@code text}.
+     *
+     * @throws Exception if the model cannot be loaded or inference fails
+     */
+    public float[] embed(String text) throws Exception {
+<span class="nc" id="L178">        try (Predictor&lt;String, float[]&gt; predictor = getModel().newPredictor()) {</span>
+<span class="nc" id="L179">            return predictor.predict(text);</span>
+        }
+    }
+
+    /**
+     * Scores each taxonomy node against {@code businessText} using Hibernate Search
+     * KNN vector query.  Used by {@link LlmService} when {@code LLM_PROVIDER=LOCAL_ONNX}.
+     *
+     * &lt;p&gt;Scores are derived from the Hibernate Search / Lucene KNN score (which uses
+     * {@code (1 + cosineSimilarity) / 2}) and scaled to the 0–100 % range:
+     * {@code percentage = clamp(round((2 * luceneScore - 1) * 100), 0, 100)}.
+     *
+     * &lt;p&gt;On any error all nodes receive score 0 and the exception is logged.
+     */
+    @Transactional(readOnly = true)
+    public Map&lt;String, Integer&gt; scoreNodes(String businessText, List&lt;TaxonomyNode&gt; nodes) {
+<span class="nc" id="L195">        Map&lt;String, Integer&gt; scores = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        for (TaxonomyNode node : nodes) {</span>
+<span class="nc" id="L197">            scores.put(node.getCode(), 0);</span>
+<span class="nc" id="L198">        }</span>
+
+<span class="nc bnc" id="L200" title="All 2 branches missed.">        if (!isAvailable()) return scores;</span>
+
+        try {
+<span class="nc" id="L203">            float[] queryVector = embed(businessText);</span>
+<span class="nc" id="L204">            List&lt;String&gt; nodeCodes = nodes.stream()</span>
+<span class="nc" id="L205">                    .map(TaxonomyNode::getCode).collect(Collectors.toList());</span>
+
+<span class="nc" id="L207">            SearchSession session = Search.session(entityManager);</span>
+            // Use score projection so we can map Lucene scores to percentages
+<span class="nc" id="L209">            List&lt;List&lt;?&gt;&gt; hits = session.search(TaxonomyNode.class)</span>
+<span class="nc" id="L210">                    .select(f -&gt; f.composite(f.entity(TaxonomyNode.class), f.score()))</span>
+<span class="nc" id="L211">                    .where(f -&gt; f.knn(nodes.size())</span>
+<span class="nc" id="L212">                            .field(&quot;embedding&quot;)</span>
+<span class="nc" id="L213">                            .matching(queryVector)</span>
+<span class="nc" id="L214">                            .filter(f.terms().field(&quot;code&quot;).matchingAny(nodeCodes)))</span>
+<span class="nc" id="L215">                    .fetchHits(nodes.size());</span>
+
+<span class="nc bnc" id="L217" title="All 2 branches missed.">            for (List&lt;?&gt; hit : hits) {</span>
+<span class="nc" id="L218">                TaxonomyNode node = (TaxonomyNode) hit.get(0);</span>
+<span class="nc" id="L219">                float luceneScore = (Float) hit.get(1);</span>
+                // Lucene COSINE KNN score = (1 + cosineSim) / 2 → cosineSim in [-1, 1]
+                // Map cosineSim to percentage: cosineSim = 2 * luceneScore - 1
+<span class="nc" id="L222">                int percentage = (int) Math.round((2.0 * luceneScore - 1.0) * 100.0);</span>
+<span class="nc" id="L223">                percentage = Math.max(0, Math.min(100, percentage));</span>
+<span class="nc" id="L224">                scores.put(node.getCode(), percentage);</span>
+<span class="nc" id="L225">            }</span>
+
+<span class="nc" id="L227">            log.info(&quot;LOCAL_ONNX scores: {}&quot;, scores);</span>
+
+<span class="nc" id="L229">        } catch (Exception e) {</span>
+<span class="nc" id="L230">            log.error(&quot;Error in KNN vector scoring; returning zero scores&quot;, e);</span>
+<span class="nc" id="L231">        }</span>
+
+<span class="nc" id="L233">        return scores;</span>
+    }
+
+    /**
+     * Semantic search across the full taxonomy index.
+     * Returns up to {@code topK} taxonomy node DTOs ranked by cosine similarity to
+     * {@code queryText}.  Returns an empty list when embedding is not available.
+     *
+     * @param queryText natural-language description (e.g. &quot;secure voice communications&quot;)
+     * @param topK      maximum number of results
+     * @return ranked list of matching taxonomy nodes (flat DTOs, no children)
+     */
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyNodeDto&gt; semanticSearch(String queryText, int topK) {
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">        if (!isAvailable()) return Collections.emptyList();</span>
+        try {
+<span class="nc" id="L249">            float[] queryVector = embed(queryText);</span>
+<span class="nc" id="L250">            SearchSession session = Search.session(entityManager);</span>
+<span class="nc" id="L251">            List&lt;TaxonomyNode&gt; hits = session.search(TaxonomyNode.class)</span>
+<span class="nc" id="L252">                    .where(f -&gt; f.knn(topK).field(&quot;embedding&quot;).matching(queryVector))</span>
+<span class="nc" id="L253">                    .fetchHits(topK);</span>
+<span class="nc" id="L254">            return hits.stream().map(this::toFlatDto).collect(Collectors.toList());</span>
+<span class="nc" id="L255">        } catch (Exception e) {</span>
+<span class="nc" id="L256">            log.error(&quot;Semantic search failed for query '{}': {}&quot;, queryText, e.getMessage());</span>
+<span class="nc" id="L257">            return Collections.emptyList();</span>
+        }
+    }
+
+    /**
+     * Find taxonomy nodes semantically similar to a given node, identified by its code.
+     * Uses the node's enriched text as the query.
+     * Excludes the source node itself from the results.
+     *
+     * @param nodeCode code of the reference node (e.g. &quot;BP.001&quot;)
+     * @param topK     maximum number of similar nodes to return
+     * @return ranked list of similar taxonomy node DTOs
+     */
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyNodeDto&gt; findSimilarNodes(String nodeCode, int topK) {
+<span class="pc bpc" id="L272" title="1 of 2 branches missed.">        if (!isAvailable()) return Collections.emptyList();</span>
+        try {
+<span class="nc" id="L274">            TaxonomyNode node = entityManager.createQuery(</span>
+                            &quot;SELECT n FROM TaxonomyNode n WHERE n.code = :code&quot;, TaxonomyNode.class)
+<span class="nc" id="L276">                    .setParameter(&quot;code&quot;, nodeCode)</span>
+<span class="nc" id="L277">                    .getResultStream().findFirst().orElse(null);</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">            if (node == null) {</span>
+<span class="nc" id="L279">                log.warn(&quot;Node '{}' not found in database&quot;, nodeCode);</span>
+<span class="nc" id="L280">                return Collections.emptyList();</span>
+            }
+
+<span class="nc" id="L283">            String nodeText = buildNodeText(node);</span>
+<span class="nc" id="L284">            float[] queryVector = embed(nodeText);</span>
+
+<span class="nc" id="L286">            SearchSession session = Search.session(entityManager);</span>
+            // Retrieve topK+1 so we can exclude the source node
+<span class="nc" id="L288">            List&lt;TaxonomyNode&gt; hits = session.search(TaxonomyNode.class)</span>
+<span class="nc" id="L289">                    .where(f -&gt; f.knn(topK + 1).field(&quot;embedding&quot;).matching(queryVector))</span>
+<span class="nc" id="L290">                    .fetchHits(topK + 1);</span>
+
+<span class="nc" id="L292">            return hits.stream()</span>
+<span class="nc bnc" id="L293" title="All 2 branches missed.">                    .filter(n -&gt; !nodeCode.equals(n.getCode()))</span>
+<span class="nc" id="L294">                    .limit(topK)</span>
+<span class="nc" id="L295">                    .map(this::toFlatDto)</span>
+<span class="nc" id="L296">                    .collect(Collectors.toList());</span>
+<span class="nc" id="L297">        } catch (Exception e) {</span>
+<span class="nc" id="L298">            log.error(&quot;findSimilarNodes failed for node '{}': {}&quot;, nodeCode, e.getMessage());</span>
+<span class="nc" id="L299">            return Collections.emptyList();</span>
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private String buildNodeText(TaxonomyNode node) {
+<span class="nc bnc" id="L306" title="All 2 branches missed.">        StringBuilder sb = new StringBuilder(node.getNameEn() != null ? node.getNameEn() : &quot;&quot;);</span>
+<span class="nc bnc" id="L307" title="All 4 branches missed.">        if (node.getDescriptionEn() != null &amp;&amp; !node.getDescriptionEn().isBlank()) {</span>
+<span class="nc" id="L308">            sb.append(&quot;. &quot;).append(node.getDescriptionEn());</span>
+        }
+<span class="nc" id="L310">        return sb.toString();</span>
+    }
+
+    private TaxonomyNodeDto toFlatDto(TaxonomyNode node) {
+<span class="nc" id="L314">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
+<span class="nc" id="L315">        dto.setId(node.getId());</span>
+<span class="nc" id="L316">        dto.setCode(node.getCode());</span>
+<span class="nc" id="L317">        dto.setUuid(node.getUuid());</span>
+<span class="nc" id="L318">        dto.setNameEn(node.getNameEn());</span>
+<span class="nc" id="L319">        dto.setNameDe(node.getNameDe());</span>
+<span class="nc" id="L320">        dto.setDescriptionEn(node.getDescriptionEn());</span>
+<span class="nc" id="L321">        dto.setDescriptionDe(node.getDescriptionDe());</span>
+<span class="nc" id="L322">        dto.setParentCode(node.getParentCode());</span>
+<span class="nc" id="L323">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
+<span class="nc" id="L324">        dto.setLevel(node.getLevel());</span>
+<span class="nc" id="L325">        dto.setDataset(node.getDataset());</span>
+<span class="nc" id="L326">        dto.setExternalId(node.getExternalId());</span>
+<span class="nc" id="L327">        dto.setSource(node.getSource());</span>
+<span class="nc" id="L328">        dto.setReference(node.getReference());</span>
+<span class="nc" id="L329">        dto.setSortOrder(node.getSortOrder());</span>
+<span class="nc" id="L330">        dto.setState(node.getState());</span>
+<span class="nc" id="L331">        return dto;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

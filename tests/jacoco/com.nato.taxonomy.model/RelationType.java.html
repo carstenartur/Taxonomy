@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationType.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.model</a> &gt; <span class="el_source">RelationType.java</span></div><h1>RelationType.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.model;
+
+<span class="fc" id="L3">public enum RelationType {</span>
+<span class="fc" id="L4">    REALIZES,           // Capability → Service (NAF NCV-2, TOGAF SBB)</span>
+<span class="fc" id="L5">    SUPPORTS,           // Service → Business Process (TOGAF Business Architecture)</span>
+<span class="fc" id="L6">    CONSUMES,           // Business Process → Information Product (TOGAF Data Architecture)</span>
+<span class="fc" id="L7">    USES,               // User Application → Core Service (NAF NSV-1)</span>
+<span class="fc" id="L8">    FULFILLS,           // COI Service → Capability (NAF NCV-5)</span>
+<span class="fc" id="L9">    ASSIGNED_TO,        // Business Role → Business Process (TOGAF Org mapping)</span>
+<span class="fc" id="L10">    DEPENDS_ON,         // Service → Service (Technical dependency)</span>
+<span class="fc" id="L11">    PRODUCES,           // Business Process → Information Product (Data flow)</span>
+<span class="fc" id="L12">    COMMUNICATES_WITH,  // Communications Service → Core Service (NAF NSOV)</span>
+<span class="fc" id="L13">    RELATED_TO          // Generic fallback relation</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

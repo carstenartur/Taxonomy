@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VisioPageContentsConverter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.visio.converter</a> &gt; <span class="el_source">VisioPageContentsConverter.java</span></div><h1>VisioPageContentsConverter.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.visio.converter;
+
+import com.nato.taxonomy.visio.VisioConnect;
+import com.nato.taxonomy.visio.VisioPage;
+import com.nato.taxonomy.visio.VisioShape;
+import com.thoughtworks.xstream.converters.Converter;
+import com.thoughtworks.xstream.converters.MarshallingContext;
+import com.thoughtworks.xstream.converters.UnmarshallingContext;
+import com.thoughtworks.xstream.io.HierarchicalStreamReader;
+import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
+
+/**
+ * XStream {@link Converter} that marshals a {@link VisioPage} into the
+ * {@code PageContents} XML structure used for individual page files inside a
+ * Visio {@code .vsdx} package.
+ * &lt;p&gt;
+ * Anchor shapes receive the fill colour {@code #4CAF50} (green); all other shapes
+ * receive {@code #2196F3} (blue). Connector shape IDs are allocated sequentially
+ * starting after the last regular shape ID.
+ */
+<span class="fc" id="L21">public class VisioPageContentsConverter implements Converter {</span>
+
+    private static final String VISIO_NS     = &quot;http://schemas.microsoft.com/office/visio/2012/main&quot;;
+    private static final String REL_NS       = &quot;http://schemas.openxmlformats.org/officeDocument/2006/relationships&quot;;
+    private static final String ANCHOR_FILL  = &quot;#4CAF50&quot;;
+    private static final String DEFAULT_FILL = &quot;#2196F3&quot;;
+
+    @Override
+    public boolean canConvert(Class type) {
+<span class="fc" id="L30">        return VisioPage.class.equals(type);</span>
+    }
+
+    @Override
+    public void marshal(Object source, HierarchicalStreamWriter writer, MarshallingContext context) {
+<span class="fc" id="L35">        VisioPage page = (VisioPage) source;</span>
+
+<span class="fc" id="L37">        writer.addAttribute(&quot;xmlns&quot;, VISIO_NS);</span>
+<span class="fc" id="L38">        writer.addAttribute(&quot;xmlns:r&quot;, REL_NS);</span>
+
+        // Regular shapes
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        for (VisioShape shape : page.getShapes()) {</span>
+<span class="fc" id="L42">            writer.startNode(&quot;Shape&quot;);</span>
+<span class="fc" id="L43">            writer.addAttribute(&quot;ID&quot;, shape.getId());</span>
+<span class="fc" id="L44">            writer.addAttribute(&quot;NameU&quot;, shape.getText());</span>
+<span class="fc" id="L45">            writer.addAttribute(&quot;Type&quot;, &quot;Shape&quot;);</span>
+<span class="fc" id="L46">            writeCell(writer, &quot;PinX&quot;, String.valueOf(shape.getX()));</span>
+<span class="fc" id="L47">            writeCell(writer, &quot;PinY&quot;, String.valueOf(shape.getY()));</span>
+<span class="fc" id="L48">            writeCell(writer, &quot;Width&quot;, String.valueOf(shape.getWidth()));</span>
+<span class="fc" id="L49">            writeCell(writer, &quot;Height&quot;, String.valueOf(shape.getHeight()));</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            writeCell(writer, &quot;FillForegnd&quot;, shape.isAnchor() ? ANCHOR_FILL : DEFAULT_FILL);</span>
+<span class="fc" id="L51">            writer.startNode(&quot;Text&quot;);</span>
+<span class="fc" id="L52">            writer.setValue(shape.getText());</span>
+<span class="fc" id="L53">            writer.endNode();</span>
+<span class="fc" id="L54">            writer.endNode();</span>
+<span class="fc" id="L55">        }</span>
+
+        // Connector shapes
+<span class="fc" id="L58">        int connectorId = page.getShapes().size();</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        for (VisioConnect connect : page.getConnects()) {</span>
+<span class="fc" id="L60">            connectorId++;</span>
+<span class="fc" id="L61">            writer.startNode(&quot;Shape&quot;);</span>
+<span class="fc" id="L62">            writer.addAttribute(&quot;ID&quot;, String.valueOf(connectorId));</span>
+<span class="fc" id="L63">            writer.addAttribute(&quot;Type&quot;, &quot;Shape&quot;);</span>
+<span class="fc" id="L64">            writer.addAttribute(&quot;Master&quot;, &quot;Dynamic connector&quot;);</span>
+<span class="fc" id="L65">            writeCell(writer, &quot;BeginX&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L66">            writeCell(writer, &quot;BeginY&quot;, &quot;0&quot;);</span>
+<span class="fc" id="L67">            writeCell(writer, &quot;EndX&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L68">            writeCell(writer, &quot;EndY&quot;, &quot;1&quot;);</span>
+<span class="fc" id="L69">            writer.startNode(&quot;Text&quot;);</span>
+<span class="fc" id="L70">            writer.setValue(connect.getRelationType());</span>
+<span class="fc" id="L71">            writer.endNode();</span>
+<span class="fc" id="L72">            writer.endNode();</span>
+<span class="fc" id="L73">        }</span>
+
+        // Connect elements
+<span class="fc" id="L76">        connectorId = page.getShapes().size();</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        for (VisioConnect connect : page.getConnects()) {</span>
+<span class="fc" id="L78">            connectorId++;</span>
+<span class="fc" id="L79">            writer.startNode(&quot;Connect&quot;);</span>
+<span class="fc" id="L80">            writer.addAttribute(&quot;FromSheet&quot;, String.valueOf(connectorId));</span>
+<span class="fc" id="L81">            writer.addAttribute(&quot;FromCell&quot;, &quot;BeginX&quot;);</span>
+<span class="fc" id="L82">            writer.addAttribute(&quot;ToSheet&quot;, connect.getFromShape());</span>
+<span class="fc" id="L83">            writer.addAttribute(&quot;ToCell&quot;, &quot;PinX&quot;);</span>
+<span class="fc" id="L84">            writer.endNode();</span>
+
+<span class="fc" id="L86">            writer.startNode(&quot;Connect&quot;);</span>
+<span class="fc" id="L87">            writer.addAttribute(&quot;FromSheet&quot;, String.valueOf(connectorId));</span>
+<span class="fc" id="L88">            writer.addAttribute(&quot;FromCell&quot;, &quot;EndX&quot;);</span>
+<span class="fc" id="L89">            writer.addAttribute(&quot;ToSheet&quot;, connect.getToShape());</span>
+<span class="fc" id="L90">            writer.addAttribute(&quot;ToCell&quot;, &quot;PinX&quot;);</span>
+<span class="fc" id="L91">            writer.endNode();</span>
+<span class="fc" id="L92">        }</span>
+<span class="fc" id="L93">    }</span>
+
+    @Override
+    public Object unmarshal(HierarchicalStreamReader reader, UnmarshallingContext context) {
+<span class="fc" id="L97">        throw new UnsupportedOperationException(&quot;VisioPageContentsConverter does not support unmarshaling&quot;);</span>
+    }
+
+    private void writeCell(HierarchicalStreamWriter writer, String name, String value) {
+<span class="fc" id="L101">        writer.startNode(&quot;Cell&quot;);</span>
+<span class="fc" id="L102">        writer.addAttribute(&quot;N&quot;, name);</span>
+<span class="fc" id="L103">        writer.addAttribute(&quot;V&quot;, value);</span>
+<span class="fc" id="L104">        writer.endNode();</span>
+<span class="fc" id="L105">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyRelationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.service</a> &gt; <span class="el_source">TaxonomyRelationService.java</span></div><h1>TaxonomyRelationService.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.service;
+
+import com.nato.taxonomy.dto.TaxonomyRelationDto;
+import com.nato.taxonomy.model.RelationType;
+import com.nato.taxonomy.model.TaxonomyNode;
+import com.nato.taxonomy.model.TaxonomyRelation;
+import com.nato.taxonomy.repository.TaxonomyNodeRepository;
+import com.nato.taxonomy.repository.TaxonomyRelationRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Service
+public class TaxonomyRelationService {
+
+<span class="fc" id="L20">    private static final Logger log = LoggerFactory.getLogger(TaxonomyRelationService.class);</span>
+
+    private final TaxonomyRelationRepository relationRepository;
+    private final TaxonomyNodeRepository nodeRepository;
+
+    public TaxonomyRelationService(TaxonomyRelationRepository relationRepository,
+<span class="fc" id="L26">                                   TaxonomyNodeRepository nodeRepository) {</span>
+<span class="fc" id="L27">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L28">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L29">    }</span>
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getRelationsForNode(String code) {
+<span class="fc" id="L33">        List&lt;TaxonomyRelation&gt; relations =</span>
+<span class="fc" id="L34">                relationRepository.findBySourceNodeCodeOrTargetNodeCode(code, code);</span>
+<span class="fc" id="L35">        List&lt;TaxonomyRelationDto&gt; dtos = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        for (TaxonomyRelation relation : relations) {</span>
+<span class="fc" id="L37">            dtos.add(toDto(relation));</span>
+<span class="fc" id="L38">        }</span>
+<span class="fc" id="L39">        return dtos;</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getRelationsByType(RelationType type) {
+<span class="fc" id="L44">        List&lt;TaxonomyRelation&gt; relations = relationRepository.findByRelationType(type);</span>
+<span class="fc" id="L45">        List&lt;TaxonomyRelationDto&gt; dtos = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        for (TaxonomyRelation relation : relations) {</span>
+<span class="fc" id="L47">            dtos.add(toDto(relation));</span>
+<span class="fc" id="L48">        }</span>
+<span class="fc" id="L49">        return dtos;</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getAllRelations() {
+<span class="fc" id="L54">        List&lt;TaxonomyRelation&gt; relations = relationRepository.findAll();</span>
+<span class="fc" id="L55">        List&lt;TaxonomyRelationDto&gt; dtos = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        for (TaxonomyRelation relation : relations) {</span>
+<span class="fc" id="L57">            dtos.add(toDto(relation));</span>
+<span class="fc" id="L58">        }</span>
+<span class="fc" id="L59">        return dtos;</span>
+    }
+
+    @Transactional
+    public TaxonomyRelationDto createRelation(String sourceCode, String targetCode,
+                                              RelationType type, String description,
+                                              String provenance) {
+<span class="fc" id="L66">        TaxonomyNode source = nodeRepository.findByCode(sourceCode)</span>
+<span class="fc" id="L67">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Source node not found: &quot; + sourceCode));</span>
+<span class="fc" id="L68">        TaxonomyNode target = nodeRepository.findByCode(targetCode)</span>
+<span class="pc" id="L69">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Target node not found: &quot; + targetCode));</span>
+
+<span class="fc" id="L71">        TaxonomyRelation relation = new TaxonomyRelation();</span>
+<span class="fc" id="L72">        relation.setSourceNode(source);</span>
+<span class="fc" id="L73">        relation.setTargetNode(target);</span>
+<span class="fc" id="L74">        relation.setRelationType(type);</span>
+<span class="fc" id="L75">        relation.setDescription(description);</span>
+<span class="fc" id="L76">        relation.setProvenance(provenance);</span>
+
+<span class="fc" id="L78">        TaxonomyRelation saved = relationRepository.save(relation);</span>
+<span class="fc" id="L79">        log.info(&quot;Created relation: {} --[{}]--&gt; {}&quot;, sourceCode, type, targetCode);</span>
+<span class="fc" id="L80">        return toDto(saved);</span>
+    }
+
+    @Transactional
+    public void deleteRelation(Long id) {
+<span class="fc" id="L85">        relationRepository.deleteById(id);</span>
+<span class="fc" id="L86">        log.info(&quot;Deleted relation with id: {}&quot;, id);</span>
+<span class="fc" id="L87">    }</span>
+
+    public TaxonomyRelationDto toDto(TaxonomyRelation relation) {
+<span class="fc" id="L90">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
+<span class="fc" id="L91">        dto.setId(relation.getId());</span>
+<span class="fc" id="L92">        dto.setSourceCode(relation.getSourceNode().getCode());</span>
+<span class="fc" id="L93">        dto.setSourceName(relation.getSourceNode().getNameEn());</span>
+<span class="fc" id="L94">        dto.setTargetCode(relation.getTargetNode().getCode());</span>
+<span class="fc" id="L95">        dto.setTargetName(relation.getTargetNode().getNameEn());</span>
+<span class="fc" id="L96">        dto.setRelationType(relation.getRelationType().name());</span>
+<span class="fc" id="L97">        dto.setDescription(relation.getDescription());</span>
+<span class="fc" id="L98">        dto.setProvenance(relation.getProvenance());</span>
+<span class="fc" id="L99">        dto.setWeight(relation.getWeight());</span>
+<span class="fc" id="L100">        dto.setBidirectional(relation.isBidirectional());</span>
+<span class="fc" id="L101">        return dto;</span>
+    }
+
+    @Transactional(readOnly = true)
+    public long countRelations() {
+<span class="fc" id="L106">        return relationRepository.count();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

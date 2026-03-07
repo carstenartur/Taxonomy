@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationProposalService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.service</a> &gt; <span class="el_source">RelationProposalService.java</span></div><h1>RelationProposalService.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.service;
+
+import com.nato.taxonomy.dto.RelationProposalDto;
+import com.nato.taxonomy.dto.TaxonomyNodeDto;
+import com.nato.taxonomy.model.*;
+import com.nato.taxonomy.repository.RelationProposalRepository;
+import com.nato.taxonomy.repository.TaxonomyNodeRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Orchestrator for the Relation Proposal Pipeline.
+ *
+ * &lt;p&gt;Pipeline stages:
+ * &lt;ol&gt;
+ *   &lt;li&gt;Candidate Search (via {@link RelationCandidateService})&lt;/li&gt;
+ *   &lt;li&gt;RelationType Compatibility filtering&lt;/li&gt;
+ *   &lt;li&gt;Validation (via {@link RelationValidationService})&lt;/li&gt;
+ *   &lt;li&gt;Confidence scoring&lt;/li&gt;
+ *   &lt;li&gt;Proposal creation &amp;amp; persistence&lt;/li&gt;
+ * &lt;/ol&gt;
+ */
+@Service
+public class RelationProposalService {
+
+<span class="fc" id="L31">    private static final Logger log = LoggerFactory.getLogger(RelationProposalService.class);</span>
+
+    private final TaxonomyNodeRepository nodeRepository;
+    private final RelationProposalRepository proposalRepository;
+    private final RelationCandidateService candidateService;
+    private final RelationValidationService validationService;
+
+    public RelationProposalService(TaxonomyNodeRepository nodeRepository,
+                                   RelationProposalRepository proposalRepository,
+                                   RelationCandidateService candidateService,
+<span class="fc" id="L41">                                   RelationValidationService validationService) {</span>
+<span class="fc" id="L42">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L43">        this.proposalRepository = proposalRepository;</span>
+<span class="fc" id="L44">        this.candidateService = candidateService;</span>
+<span class="fc" id="L45">        this.validationService = validationService;</span>
+<span class="fc" id="L46">    }</span>
+
+    /**
+     * Runs the full proposal pipeline for a source node and relation type.
+     *
+     * @param sourceNodeCode code of the source taxonomy node (e.g. &quot;BP.001&quot;)
+     * @param relationType   the type of relation to propose
+     * @param limit          maximum number of candidates to evaluate
+     * @return list of created proposals (only those that passed validation)
+     */
+    @Transactional
+    public List&lt;RelationProposalDto&gt; proposeRelations(String sourceNodeCode,
+                                                       RelationType relationType,
+                                                       int limit) {
+<span class="fc" id="L60">        TaxonomyNode source = nodeRepository.findByCode(sourceNodeCode)</span>
+<span class="fc" id="L61">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Source node not found: &quot; + sourceNodeCode));
+
+<span class="fc" id="L64">        log.info(&quot;Proposing {} relations for node '{}'&quot;, relationType, sourceNodeCode);</span>
+
+        // 1. Candidate search
+<span class="fc" id="L67">        List&lt;TaxonomyNodeDto&gt; candidates = candidateService.findCandidates(</span>
+                source, relationType, limit);
+
+<span class="fc" id="L70">        List&lt;RelationProposalDto&gt; proposals = new ArrayList&lt;&gt;();</span>
+
+        // 2–4. Validate each candidate and create proposals
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (int i = 0; i &lt; candidates.size(); i++) {</span>
+<span class="fc" id="L74">            TaxonomyNodeDto candidate = candidates.get(i);</span>
+
+            // Skip if a proposal already exists for this triple
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">            if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationType(</span>
+<span class="fc" id="L78">                    sourceNodeCode, candidate.getCode(), relationType)) {</span>
+<span class="nc" id="L79">                log.debug(&quot;Proposal already exists: {} → {} [{}]&quot;,</span>
+<span class="nc" id="L80">                        sourceNodeCode, candidate.getCode(), relationType);</span>
+<span class="nc" id="L81">                continue;</span>
+            }
+
+<span class="fc" id="L84">            RelationValidationService.ValidationResult result =</span>
+<span class="fc" id="L85">                    validationService.validate(source, candidate, relationType,</span>
+<span class="fc" id="L86">                            i, candidates.size());</span>
+
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">            if (result.isValid()) {</span>
+<span class="fc" id="L89">                TaxonomyNode target = nodeRepository.findByCode(candidate.getCode())</span>
+<span class="fc" id="L90">                        .orElse(null);</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">                if (target == null) continue;</span>
+
+<span class="fc" id="L93">                RelationProposal proposal = new RelationProposal();</span>
+<span class="fc" id="L94">                proposal.setSourceNode(source);</span>
+<span class="fc" id="L95">                proposal.setTargetNode(target);</span>
+<span class="fc" id="L96">                proposal.setRelationType(relationType);</span>
+<span class="fc" id="L97">                proposal.setConfidence(result.getConfidence());</span>
+<span class="fc" id="L98">                proposal.setRationale(result.getRationale());</span>
+<span class="fc" id="L99">                proposal.setProvenance(&quot;hybrid-search&quot;);</span>
+<span class="fc" id="L100">                proposal.setStatus(ProposalStatus.PENDING);</span>
+
+<span class="fc" id="L102">                RelationProposal saved = proposalRepository.save(proposal);</span>
+<span class="fc" id="L103">                proposals.add(toDto(saved));</span>
+<span class="fc" id="L104">                log.debug(&quot;Created proposal: {} → {} [{}] confidence={}&quot;,</span>
+<span class="fc" id="L105">                        sourceNodeCode, candidate.getCode(), relationType,</span>
+<span class="fc" id="L106">                        result.getConfidence());</span>
+            }
+        }
+
+<span class="fc" id="L110">        log.info(&quot;Proposed {} relations for node '{}' [{}]&quot;,</span>
+<span class="fc" id="L111">                proposals.size(), sourceNodeCode, relationType);</span>
+<span class="fc" id="L112">        return proposals;</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RelationProposalDto&gt; getPendingProposals() {
+<span class="fc" id="L117">        return proposalRepository.findByStatus(ProposalStatus.PENDING)</span>
+<span class="fc" id="L118">                .stream().map(this::toDto).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RelationProposalDto&gt; getAllProposals() {
+<span class="fc" id="L123">        return proposalRepository.findAll()</span>
+<span class="fc" id="L124">                .stream().map(this::toDto).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RelationProposalDto&gt; getProposalsForNode(String sourceCode) {
+<span class="fc" id="L129">        return proposalRepository.findBySourceNodeCode(sourceCode)</span>
+<span class="fc" id="L130">                .stream().map(this::toDto).toList();</span>
+    }
+
+    public RelationProposalDto toDto(RelationProposal proposal) {
+<span class="fc" id="L134">        RelationProposalDto dto = new RelationProposalDto();</span>
+<span class="fc" id="L135">        dto.setId(proposal.getId());</span>
+<span class="fc" id="L136">        dto.setSourceCode(proposal.getSourceNode().getCode());</span>
+<span class="fc" id="L137">        dto.setSourceName(proposal.getSourceNode().getNameEn());</span>
+<span class="fc" id="L138">        dto.setTargetCode(proposal.getTargetNode().getCode());</span>
+<span class="fc" id="L139">        dto.setTargetName(proposal.getTargetNode().getNameEn());</span>
+<span class="fc" id="L140">        dto.setRelationType(proposal.getRelationType().name());</span>
+<span class="fc" id="L141">        dto.setStatus(proposal.getStatus().name());</span>
+<span class="fc" id="L142">        dto.setConfidence(proposal.getConfidence());</span>
+<span class="fc" id="L143">        dto.setRationale(proposal.getRationale());</span>
+<span class="fc" id="L144">        dto.setProvenance(proposal.getProvenance());</span>
+<span class="fc" id="L145">        dto.setCreatedAt(proposal.getCreatedAt());</span>
+<span class="fc" id="L146">        dto.setReviewedAt(proposal.getReviewedAt());</span>
+<span class="fc" id="L147">        return dto;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
