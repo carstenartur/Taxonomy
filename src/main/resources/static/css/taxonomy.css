@@ -671,3 +671,74 @@
 [data-bs-theme="dark"] #exportHint {
     color: #9ca3af;
 }
+
+/* ── Search Panel ──────────────────────────────────────────────────────── */
+.search-results-list {
+    font-size: 0.85em;
+}
+.search-results-list .search-result-code {
+    color: #003580;
+    font-size: 0.82em;
+    min-width: 70px;
+}
+.search-result-item:hover {
+    background: rgba(0, 53, 128, 0.06);
+}
+.search-highlight {
+    outline: 2px solid #0d6efd;
+    outline-offset: 1px;
+    border-radius: 4px;
+    animation: searchPulse 1.5s ease-in-out;
+}
+@keyframes searchPulse {
+    0%, 100% { outline-color: #0d6efd; }
+    50%      { outline-color: #fd7e14; }
+}
+.search-similar-btn {
+    border-color: #0dcaf0;
+    color: #0dcaf0;
+    font-size: 0.7rem !important;
+}
+.search-similar-btn:hover {
+    background: #0dcaf0;
+    color: #000;
+}
+
+/* ── Quality Dashboard ─────────────────────────────────────────────────── */
+.quality-table th {
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.04);
+}
+
+/* ── Relations Browser ─────────────────────────────────────────────────── */
+.relations-table th {
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.04);
+}
+.relation-delete-btn {
+    font-size: 0.7rem;
+    line-height: 1;
+}
+
+/* ── Dark mode overrides for new panels ────────────────────────────────── */
+[data-bs-theme="dark"] .search-results-list .search-result-code {
+    color: #6ea8fe;
+}
+[data-bs-theme="dark"] .search-result-item:hover {
+    background: rgba(110, 168, 254, 0.1);
+}
+[data-bs-theme="dark"] .search-highlight {
+    outline-color: #6ea8fe;
+}
+[data-bs-theme="dark"] .quality-table th,
+[data-bs-theme="dark"] .relations-table th {
+    background: rgba(255, 255, 255, 0.06);
+}
+[data-bs-theme="dark"] .search-similar-btn {
+    border-color: #6edff6;
+    color: #6edff6;
+}
+[data-bs-theme="dark"] .search-similar-btn:hover {
+    background: #6edff6;
+    color: #000;
+}

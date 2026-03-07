@@ -13,6 +13,8 @@
 9. [Working with Relation Proposals](#9-working-with-relation-proposals)
 10. [Exporting Results](#10-exporting-results)
 11. [Search](#11-search)
+    - [Quality Dashboard](#11a-quality-dashboard)
+    - [Relations Browser](#11b-relations-browser)
 12. [Administration](#12-administration)
 13. [Relation Types Reference](#13-relation-types-reference)
 14. [Tips and Best Practices](#14-tips-and-best-practices)
@@ -38,8 +40,13 @@ The **NATO NC3T Taxonomy Browser** is a web application that helps Architects, A
 | Analyze a requirement and see matching taxonomy nodes | Right panel → Business Requirement Analysis card |
 | Browse the taxonomy in different visual layouts | Left panel → view switcher buttons |
 | Drill into why a node scored highly | Click 📋 on any scored node |
+| Search for taxonomy nodes (full-text, semantic, hybrid, graph) | Right panel → 🔍 Search Taxonomy panel |
+| Find semantically similar nodes | Click 🔍 Similar on any taxonomy node |
 | Trace upstream/downstream dependencies | Right panel → Graph Explorer |
+| Run requirement impact analysis | Graph Explorer → 🎯 Req. Impact button |
 | Review and accept or reject AI-generated relation proposals | Right panel → Relation Proposals panel |
+| View quality metrics for relation proposals | Right panel → 📊 Quality Dashboard panel |
+| Browse, create, or delete taxonomy relations | Right panel → 🔗 Relations Browser panel |
 | Export a diagram or scoresheet | Left panel → export buttons (appear after analysis) |
 | Manage LLM settings and prompt templates | Unlock admin mode via 🔒 in the navigation bar |
 
@@ -141,7 +148,8 @@ Tips for good requirements:
 4. A progress indicator appears in the Status Area. The taxonomy tree in the left panel will start showing colour-coded score bars as results arrive.
 5. When analysis is complete, the Status Area shows a summary message and the export buttons become available.
 
-![Scored taxonomy tree](images/15-scored-taxonomy-tree.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Scored taxonomy tree with green colour-coded match percentages after analysis*
 
 ### Interactive Mode
 
@@ -155,7 +163,8 @@ In Interactive Mode:
 
 This mode is useful for very large taxonomies or when you want to focus on one branch.
 
-![Interactive Mode](images/16-interactive-mode.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Interactive Mode with level-by-level expansion and 🔍 drill-down buttons*
 
 ### Architecture View Checkbox
 
@@ -178,7 +187,8 @@ The colour is computed as `rgba(0, 128, 0, score/100)` — a pure green whose **
 
 Nodes with a score of 0 % have no highlight at all. Hover over any legend box to see a tooltip describing its match level.
 
-![Match Legend](images/17-match-legend-with-scores.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Match Legend card showing colour-coded score ranges from 0% to 100%*
 
 ### The Analysis Log
 
@@ -293,7 +303,8 @@ For any leaf node (a node with no children) that has a non-zero score, you can a
 3. A **Leaf Justification Modal** opens, displaying the LLM-generated explanation.
 4. Read the explanation and close the modal when done.
 
-![Leaf Justification modal](images/18-leaf-justification-modal.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Leaf Justification modal showing the AI-generated explanation for a node's score*
 
 ### Stale Results Warning
 
@@ -309,7 +320,8 @@ The warning triggers after a 300 ms debounce when you type in the business text 
 - Click **Reset Results** to clear the old scores, then re-run the analysis, or
 - Click **Analyze with AI** again to replace the stale scores with fresh results.
 
-![Stale results warning](images/19-stale-results-warning.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Stale results warning with yellow border on the business requirement textarea*
 
 ---
 
@@ -337,7 +349,8 @@ The panel shows three sections:
 - **Elements** extend the picture: if an anchor node *realizes* a capability, that capability also appears as an element.
 - **Relationships** show the direction and type of the link (e.g., REALIZES, SUPPORTS, DEPENDS_ON).
 
-![Architecture View](images/20-architecture-view.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Architecture View panel showing anchors, elements, and relationship diagram*
 
 ---
 
@@ -378,9 +391,11 @@ The results table shows:
 | Hops | Distance from the starting node |
 | Relevance | Impact score or similarity indicator |
 
-![Graph Explorer upstream](images/21-graph-explorer-upstream.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Graph Explorer upstream query results showing supporting nodes and relation types*
 
-![Graph Explorer failure impact](images/22-graph-explorer-failure.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Graph Explorer failure impact results showing affected downstream nodes*
 
 ---
 
@@ -388,7 +403,7 @@ The results table shows:
 
 The system can automatically propose new relations between taxonomy nodes using AI. These proposals are stored in a review queue where you can accept or reject them.
 
-### Triggering Proposals (�� button on a Node)
+### Triggering Proposals (🔗 button on a Node)
 
 1. Find a taxonomy node in the left panel that you believe should be related to other nodes.
 2. Click the **🔗** (Propose Relations) button on that node's row.
@@ -441,7 +456,8 @@ The **Confidence** column shows how strongly the AI believes the proposed relati
 
 After a successful analysis, export buttons appear at the top of the left panel. These buttons are only visible when analysis scores are present.
 
-![Export buttons](images/23-export-buttons.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Export button group showing SVG, PNG, PDF, CSV, Visio, and ArchiMate buttons*
 
 ### SVG Export
 
@@ -483,9 +499,95 @@ Click the **🌙** (moon) button in the navigation bar to switch to dark mode. C
 
 ## 11. Search
 
-> **Note:** Advanced search (semantic, hybrid, graph) is currently available via the REST API. See [API Reference](API_REFERENCE.md) for endpoint details. A search UI panel may be added in a future release.
+The **Search Taxonomy** panel (right column, collapsible) provides four search modes to find taxonomy nodes. Open it by clicking the **🔍 Search Taxonomy** summary.
 
-Basic taxonomy browsing and filtering is available directly in the taxonomy tree view using the view switcher and the expand/collapse controls described in [Section 5](#5-exploring-the-taxonomy).
+### Search Modes
+
+| Mode | Description | Requires Embeddings? |
+|---|---|---|
+| **Full-text** | Lucene-based keyword search across node names and descriptions | No |
+| **Semantic** | KNN vector similarity using sentence embeddings | Yes |
+| **Hybrid** | Reciprocal Rank Fusion combining full-text and semantic results | Yes |
+| **Graph** | Graph-semantic search including relation-aware results | Yes |
+
+### Using the Search Panel
+
+1. Type your query into the **search input** field.
+2. Select a **search mode** from the dropdown.
+3. Choose the **max results** count (10, 20, or 50).
+4. Click **🔍 Search** or press Enter.
+5. Results appear as a clickable list. Click any result to highlight the node in the taxonomy tree.
+
+### Embedding Status
+
+The **🧠 Embeddings** badge in the navigation bar shows whether semantic embeddings are available:
+
+- **🧠 Embeddings: N nodes** (blue) — embeddings are loaded; Semantic, Hybrid, and Graph modes are enabled.
+- **🧠 Embeddings: unavailable** (grey) — embeddings not loaded; only Full-text search is available.
+
+When embeddings are unavailable, the Semantic, Hybrid, and Graph options are greyed out in the mode selector.
+
+### Find Similar Nodes
+
+Each taxonomy node row includes a **🔍 Similar** button. Clicking it opens the Search Panel and lists the 10 most semantically similar nodes (requires embeddings).
+
+---
+
+## 11a. Quality Dashboard
+
+The **📊 Quality Dashboard** panel (right column, collapsible) displays metrics about relation proposal quality. Open it by clicking the summary; metrics are loaded automatically.
+
+### Summary Metrics
+
+| Metric | Description |
+|---|---|
+| **Total** | Total number of proposals generated |
+| **Accepted** | Proposals accepted and converted to relations |
+| **Rejected** | Proposals rejected by a reviewer |
+| **Pending** | Proposals awaiting review |
+| **Rate** | Acceptance rate (accepted ÷ total, as a percentage) |
+
+### By Relation Type
+
+A breakdown table shows how many proposals of each relation type were proposed, accepted, rejected, and the acceptance rate for that type.
+
+### Top Rejected
+
+The table lists the most-confident proposals that were rejected (highest confidence false positives). Hover over a row to see the rejection rationale.
+
+Click **🔄 Refresh** to reload the dashboard at any time.
+
+---
+
+## 11b. Relations Browser
+
+The **🔗 Relations Browser** panel (right column, collapsible) lets you browse, create, and delete confirmed taxonomy relations.
+
+### Browsing Relations
+
+1. Open the **🔗 Relations Browser** panel.
+2. Optionally filter by relation type using the dropdown.
+3. A table lists all matching relations showing source, target, type, and provenance.
+
+### Creating a Relation
+
+1. Click **➕ New Relation** to open the Create Relation modal.
+2. Enter the **Source Node Code** and **Target Node Code**.
+3. Select the **Relation Type**.
+4. Optionally add a **Description**.
+5. Click **Create**.
+
+### Deleting a Relation
+
+Click the **✖** button on any relation row and confirm the deletion.
+
+### Requirement Impact Analysis
+
+The **🎯 Req. Impact** button in the Graph Explorer panel runs a transitive impact analysis based on the current analysis scores. It shows which taxonomy elements are indirectly affected through the relation graph.
+
+1. First, run an analysis (see [Section 4](#4-analyzing-a-business-requirement)).
+2. Click **🎯 Req. Impact** in the Graph Explorer.
+3. The results show impacted elements and the relationships traversed.
 
 ---
 
@@ -519,7 +621,8 @@ When AI is unavailable, an **inline warning message** appears below the Analyze 
 
 To lock admin mode again, click the lock button and choose **Lock**.
 
-![Admin Mode modal](images/24-admin-modal.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Admin Mode modal with password input field and Unlock/Lock buttons*
 
 ### LLM Communication Log
 
@@ -536,7 +639,8 @@ The **LLM Diagnostics Panel** (admin only, collapsible) shows statistics about L
 
 Click **Refresh** to update the statistics. Click **Test Connection** to send a test request to the LLM provider and confirm it is responding correctly.
 
-![LLM Diagnostics](images/25-llm-diagnostics.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: LLM Diagnostics panel showing provider, model, and connection statistics*
 
 ### Prompt Template Editor
 
@@ -547,7 +651,8 @@ The **Prompt Templates Editor** (admin only, collapsible) allows you to customis
 3. Edit the text as needed.
 4. Click **Save** to save your changes, or **Reset** to restore the built-in default.
 
-![Prompt Template Editor](images/26-prompt-template-editor.png)
+<!-- Screenshot pending: captured by ScreenshotGeneratorIT when GEMINI_API_KEY is available -->
+> 📸 *Screenshot: Prompt Template Editor with taxonomy selector, template textarea, and Save/Reset buttons*
 
 ---
 
