@@ -149,9 +149,7 @@ Tips for good requirements:
 4. A progress indicator appears in the Status Area. The taxonomy tree in the left panel will start showing colour-coded score bars as results arrive.
 5. When analysis is complete, the Status Area shows a summary message and the export buttons become available.
 
-> 📸 **Screenshot:** [Taxonomy tree showing green score bars during or after analysis]
->
-> *TODO: Add screenshot of the scored taxonomy tree in List view*
+![Scored taxonomy tree](images/15-scored-taxonomy-tree.png)
 
 ### Interactive Mode
 
@@ -165,9 +163,7 @@ In Interactive Mode:
 
 This mode is useful for very large taxonomies or when you want to focus on one branch.
 
-> 📸 **Screenshot:** [Interactive Mode in progress — some nodes scored, Analyze Node buttons visible]
->
-> *TODO: Add screenshot of interactive mode with partially expanded tree*
+![Interactive Mode](images/16-interactive-mode.png)
 
 ### Architecture View Checkbox
 
@@ -190,9 +186,7 @@ The colour is computed as `rgba(0, 128, 0, score/100)` — a pure green whose **
 
 Nodes with a score of 0 % have no highlight at all. Hover over any legend box to see a tooltip describing its match level.
 
-> 📸 **Screenshot:** [Match Legend component showing the green gradient from 0% to 100%]
->
-> *TODO: Add screenshot of the Match Legend close-up*
+![Match Legend](images/17-match-legend-with-scores.png)
 
 ### The Analysis Log
 
@@ -317,9 +311,7 @@ For any leaf node (a node with no children) that has a non-zero score, you can a
 3. A **Leaf Justification Modal** opens, displaying the LLM-generated explanation.
 4. Read the explanation and close the modal when done.
 
-> 📸 **Screenshot:** [Leaf Justification modal showing LLM explanation text]
->
-> *TODO: Add screenshot of the Leaf Justification modal*
+![Leaf Justification modal](images/18-leaf-justification-modal.png)
 
 ### Stale Results Warning
 
@@ -335,9 +327,7 @@ The warning triggers after a 300 ms debounce when you type in the business text 
 - Click **Reset Results** to clear the old scores, then re-run the analysis, or
 - Click **Analyze with AI** again to replace the stale scores with fresh results.
 
-> 📸 **Screenshot:** [Stale results warning — yellow border or warning banner visible]
->
-> *TODO: Add screenshot of the stale results warning state*
+![Stale results warning](images/19-stale-results-warning.png)
 
 ---
 
@@ -365,9 +355,7 @@ The panel shows three sections:
 - **Elements** extend the picture: if an anchor node *realizes* a capability, that capability also appears as an element.
 - **Relationships** show the direction and type of the link (e.g., REALIZES, SUPPORTS, DEPENDS_ON).
 
-> 📸 **Screenshot:** [Architecture View panel populated with anchors, elements, and relationships]
->
-> *TODO: Add screenshot of the Architecture View panel after analysis*
+![Architecture View](images/20-architecture-view.png)
 
 ---
 
@@ -410,13 +398,9 @@ The results table shows:
 | Hops | Distance from the starting node |
 | Relevance | Impact score or similarity indicator |
 
-> 📸 **Screenshot:** [Graph Explorer with upstream results table populated]
->
-> *TODO: Add screenshot of the Graph Explorer showing upstream query results*
+![Graph Explorer upstream](images/21-graph-explorer-upstream.png)
 
-> 📸 **Screenshot:** [Graph Explorer with failure impact results table populated]
->
-> *TODO: Add screenshot of the Graph Explorer showing failure impact results*
+![Graph Explorer failure impact](images/22-graph-explorer-failure.png)
 
 ---
 
@@ -481,9 +465,7 @@ The **Confidence** column shows how strongly the AI believes the proposed relati
 
 After a successful analysis, export buttons appear at the top of the left panel. These buttons are only visible when analysis scores are present.
 
-> 📸 **Screenshot:** [Export button group visible at the top of the left panel after analysis]
->
-> *TODO: Add screenshot of the export button group in its visible (post-analysis) state*
+![Export buttons](images/23-export-buttons.png)
 
 ### SVG Export
 
@@ -561,9 +543,7 @@ When AI is unavailable, an **inline warning message** appears below the Analyze 
 
 To lock admin mode again, click the lock button and choose **Lock**.
 
-> 📸 **Screenshot:** [Admin Mode modal showing the password input and Unlock button]
->
-> *TODO: Add screenshot of the Admin Mode modal*
+![Admin Mode modal](images/24-admin-modal.png)
 
 ### LLM Communication Log
 
@@ -580,9 +560,7 @@ The **LLM Diagnostics Panel** (admin only, collapsible) shows statistics about L
 
 Click **Refresh** to update the statistics. Click **Test Connection** to send a test request to the LLM provider and confirm it is responding correctly.
 
-> 📸 **Screenshot:** [LLM Diagnostics panel showing provider info and stats]
->
-> *TODO: Add screenshot of the LLM Diagnostics panel*
+![LLM Diagnostics](images/25-llm-diagnostics.png)
 
 ### Prompt Template Editor
 
@@ -593,9 +571,7 @@ The **Prompt Templates Editor** (admin only, collapsible) allows you to customis
 3. Edit the text as needed.
 4. Click **Save** to save your changes, or **Reset** to restore the built-in default.
 
-> 📸 **Screenshot:** [Prompt Template Editor panel with a template loaded and the Save/Reset buttons visible]
->
-> *TODO: Add screenshot of the Prompt Template Editor panel*
+![Prompt Template Editor](images/26-prompt-template-editor.png)
 
 ---
 
