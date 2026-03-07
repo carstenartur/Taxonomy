@@ -1,5 +1,8 @@
 # Taxonomy
 
+[![CI/CD](https://github.com/carstenartur/Taxonomy/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/carstenartur/Taxonomy/actions/workflows/ci-cd.yml)
+[![Coverage](https://img.shields.io/badge/coverage-report-brightgreen)](https://carstenartur.github.io/Taxonomy/coverage/)
+
 NC3T Taxonomy Browser — a Spring Boot web application that loads the
 C3 Taxonomy Catalogue (Baseline 7, 8 sheets, ~2,500 nodes) from the bundled
 Excel file into an in-process HSQLDB, visualises the hierarchy as a collapsible
@@ -49,6 +52,8 @@ Every push triggers the **CI / CD** GitHub Actions workflow:
 | **Build & Test** | `mvn verify` — compiles, runs integration tests |
 | **Publish Docker Image** | Pushes to GitHub Container Registry (`ghcr.io`) |
 | **Deploy to Render** | Triggers a Render deploy hook (if secret is set) |
+
+📈 **[Code Coverage Report](https://carstenartur.github.io/Taxonomy/coverage/)**
 
 ## MSSQL Compatibility
 
