@@ -1,699 +1,673 @@
-# NATO Taxonomy Analyser — User Guide
+# NATO NC3T Taxonomy Browser — User Guide
 
 ## Table of Contents
 
 1. [Overview](#1-overview)
-2. [System Architecture](#2-system-architecture)
-3. [Getting Started](#3-getting-started)
-4. [Requirement Analysis](#4-requirement-analysis)
-5. [Leaf Justification](#5-leaf-justification)
-6. [Architecture View](#6-architecture-view)
-7. [Search](#7-search)
-8. [Graph Explorer](#8-graph-explorer)
-9. [Relation Proposals](#9-relation-proposals)
-10. [Architecture Knowledge Base](#10-architecture-knowledge-base)
-11. [Relation Quality Dashboard](#11-relation-quality-dashboard)
-12. [Diagram Export](#12-diagram-export)
-13. [Administration](#13-administration)
-14. [Embedding Configuration](#14-embedding-configuration)
-15. [API Reference](#15-api-reference)
-16. [Best Practices](#16-best-practices)
-17. [Glossary](#17-glossary)
+2. [Getting Started](#2-getting-started)
+3. [Understanding the Interface](#3-understanding-the-interface)
+4. [Analyzing a Business Requirement](#4-analyzing-a-business-requirement)
+5. [Exploring the Taxonomy](#5-exploring-the-taxonomy)
+6. [Working with Analysis Results](#6-working-with-analysis-results)
+7. [Architecture View](#7-architecture-view)
+8. [Using the Graph Explorer](#8-using-the-graph-explorer)
+9. [Working with Relation Proposals](#9-working-with-relation-proposals)
+10. [Exporting Results](#10-exporting-results)
+11. [Search](#11-search)
+12. [Administration](#12-administration)
+13. [Relation Types Reference](#13-relation-types-reference)
+14. [Tips and Best Practices](#14-tips-and-best-practices)
+15. [Glossary](#15-glossary)
+16. [Troubleshooting](#16-troubleshooting)
 
 ---
 
 ## 1. Overview
 
-The **NATO Taxonomy Analyser** is a Spring Boot web application that maps free-text business or mission requirements to a structured C3 Taxonomy catalogue.  It is aimed at:
+The **NATO NC3T Taxonomy Browser** is a web application that helps Architects, Analysts, and Requirements Engineers map free-text mission and business requirements to the NATO C3 Taxonomy catalogue. You describe what you need in plain English, and the application finds the most relevant taxonomy nodes, shows you how they relate to each other, and lets you export structured diagrams.
 
-- **Architects and capability planners** who need to align requirements to NATO/TOGAF reference architecture elements.
-- **System engineers** looking for existing services, capabilities, or information products that satisfy a requirement.
-- **Documentation teams** maintaining an architecture knowledge base of confirmed element relationships.
+**Who is this guide for?**
 
-Key capabilities:
+- **Requirements Engineers** who need to classify and map requirements to architecture elements.
+- **Architects and Capability Planners** who use the taxonomy to design or assess C3 systems.
+- **Analysts** exploring the taxonomy structure and reviewing AI-generated relation proposals.
 
-| Capability | Summary |
+**What you can do with the application:**
+
+| Task | Where to find it |
 |---|---|
-| Requirement analysis | Score every taxonomy node against free-text using an LLM |
-| Streaming analysis | Real-time Server-Sent Event (SSE) feed of scoring progress |
-| Interactive / node-level analysis | Expand the taxonomy level by level |
-| Leaf justification | Obtain a natural-language explanation for a high-scoring leaf node |
-| Full-text search | Lucene-powered keyword search across the taxonomy |
-| Semantic search | Embedding (KNN) similarity search |
-| Hybrid search | Reciprocal Rank Fusion of full-text + semantic results |
-| Graph search | Graph-semantic traversal combining embeddings with relation edges |
-| Graph Explorer | Upstream / downstream / failure-impact neighbourhood queries |
-| Relation Proposals | AI-assisted proposal pipeline with human review |
-| Quality Dashboard | Acceptance-rate metrics by relation type and provenance |
-| Diagram Export | Visio (.vsdx) and ArchiMate 3.x XML |
-| Admin Panel | Password protection, LLM diagnostics, prompt template editor |
+| Analyze a requirement and see matching taxonomy nodes | Right panel → Business Requirement Analysis card |
+| Browse the taxonomy in different visual layouts | Left panel → view switcher buttons |
+| Drill into why a node scored highly | Click 📋 on any scored node |
+| Trace upstream/downstream dependencies | Right panel → Graph Explorer |
+| Review and accept or reject AI-generated relation proposals | Right panel → Relation Proposals panel |
+| Export a diagram or scoresheet | Left panel → export buttons (appear after analysis) |
+| Manage LLM settings and prompt templates | Unlock admin mode via 🔒 in the navigation bar |
+
+> For the REST API reference used by developers and integrators, see [API Reference](API_REFERENCE.md).
 
 ---
 
-## 2. System Architecture
+## 2. Getting Started
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                     Browser / REST client                    │
-└─────────────────────────────┬────────────────────────────────┘
-                              │ HTTP / SSE
-                              ▼
-┌──────────────────────────────────────────────────────────────┐
-│              Spring Boot Application (port 8080)             │
-│                                                              │
-│  ┌─────────────┐  ┌──────────────────┐  ┌────────────────┐  │
-│  │ ApiController│  │GraphQueryApi     │  │ProposalApi     │  │
-│  │             │  │Controller        │  │Controller      │  │
-│  └──────┬──────┘  └───────┬──────────┘  └───────┬────────┘  │
-│         │                 │                      │           │
-│  ┌──────▼─────────────────▼──────────────────────▼────────┐  │
-│  │            Service Layer (32 services)                  │  │
-│  │  AnalysisService · RequirementArchitectureViewService   │  │
-│  │  HybridSearchService · GraphSearchService               │  │
-│  │  ArchitectureGraphQueryService                          │  │
-│  │  RelationProposalService · RelationQualityService       │  │
-│  │  VisioDiagramService · ArchiMateExportService           │  │
-│  └──────────────┬──────────────────────────────────────────┘  │
-│                 │                                              │
-│  ┌──────────────▼──────────────────────────────────────────┐  │
-│  │         Persistence (H2/Postgres, Hibernate Search)     │  │
-│  │  TaxonomyNode · TaxonomyRelation · RelationProposal     │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────┘
-         │                          │
-         ▼                          ▼
-  LLM Provider              Local ONNX embedding
-  (Gemini / OpenAI /        (DJL all-MiniLM-L6-v2)
-   DeepSeek / Qwen /
-   Llama / Mistral)
-```
+### Opening the Application
+
+Open your web browser and navigate to the application URL (for example `http://localhost:8080` when running locally, or the deployed URL provided by your administrator).
+
+The application loads as a single page. No login is required for standard use; administrator features require unlocking admin mode (see [Section 12](#12-administration)).
+
+> 📸 **Screenshot:** [Full page on first load — taxonomy tree on the left, analysis panel on the right]
+>
+> *TODO: Add screenshot of the application on first load*
+
+### Checking AI Availability
+
+Look at the navigation bar at the top of the page. There is an **AI Status** indicator:
+
+- 🟢 **Green badge** — an LLM provider is connected and analysis is available.
+- 🔴 **Red badge** — no LLM provider is configured; analysis is unavailable. Contact your administrator.
 
 ---
 
-## 3. Getting Started
+## 3. Understanding the Interface
 
-### Prerequisites
+The application is divided into two main panels side by side.
 
-| Requirement | Notes |
+### Left Panel — Taxonomy Tree
+
+The left panel (wider column) displays the **Taxonomy Tree**. This is the full catalogue of NATO C3 capabilities, services, roles, and information products.
+
+At the top of the left panel you will find:
+
+- **View switcher buttons:** 📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision — switch between different visualisations of the taxonomy.
+- **Export buttons** (appear only after a successful analysis): 📥 SVG | 📥 PNG | 📥 PDF | 📥 CSV | 📥 Visio | 📥 ArchiMate
+- **Expand All / Collapse All** — expand or collapse all nodes in the current view.
+- **Taxonomy root selector** (Tree view only) — choose which taxonomy root to display.
+- **Descriptions toggle switch** — show or hide the description text for each node.
+
+Each taxonomy node row shows:
+- The **node name** and its hierarchical code.
+- A **score bar** and percentage (visible after analysis).
+- **Per-node action buttons:** 🔗 (Propose Relations) | 📋 (Request Justification) | 🔎 (Graph Explorer)
+
+> 📸 **Screenshot:** [Left panel showing taxonomy tree with nodes, score bars, and action buttons]
+>
+> *TODO: Add screenshot of the left panel in List view*
+
+### Right Panel — Analysis and Tools
+
+The right panel (narrower column) contains all interactive tools:
+
+- **Business Requirement Analysis card** — the main textarea where you type a requirement and run the analysis.
+- **Match Legend** — colour scale from 0 % to 100 % showing what each green shade means.
+- **Status Area** — messages and warnings about the current operation.
+- **Analysis Log** (collapsible) — step-by-step log of the scoring process.
+- **Architecture View Panel** — appears after analysis when the Architecture View checkbox is enabled.
+- **Graph Explorer Panel** — enter a node code and run upstream, downstream, or failure-impact queries.
+- **Relation Proposals Panel** — review, accept, or reject AI-generated relation proposals.
+- **LLM Communication Log** (admin only, collapsible) — raw prompt and response log.
+- **LLM Diagnostics Panel** (admin only, collapsible) — connection test and statistics.
+- **Prompt Templates Editor** (admin only, collapsible) — view and edit the LLM prompt templates.
+
+> 📸 **Screenshot:** [Right panel with Business Requirement Analysis card, Match Legend, and Status Area visible]
+>
+> *TODO: Add screenshot of the right panel in its default (empty) state*
+
+### Navigation Bar
+
+The navigation bar at the top of the page contains:
+
+- **Application title / logo**
+- **AI Status badge** (🟢 green or 🔴 red)
+- **🔒 Admin mode button** — click to open the Admin Mode password modal
+
+---
+
+## 4. Analyzing a Business Requirement
+
+### Writing a Good Requirement
+
+In the **Business Requirement Analysis** card on the right panel, you will see a large textarea labelled something like *"Enter your business requirement…"*.
+
+Type your requirement as a clear, imperative sentence. For example:
+
+> *"Provide secure voice communications between HQ and deployed forces."*
+
+Tips for good requirements:
+- Use domain vocabulary: capability, service, information product, communications, command, control.
+- Be specific about the function or outcome you need.
+- Keep the text under 500 words; longer text does not improve accuracy.
+
+> 📸 **Screenshot:** [Business Requirement Analysis card with a requirement typed in the textarea]
+>
+> *TODO: Add screenshot of the analysis panel with example requirement text*
+
+### Standard Analysis
+
+1. Type your requirement in the textarea.
+2. Make sure the **Interactive Mode** checkbox is **unchecked** for a standard (full-tree) analysis.
+3. Click the **Analyze with AI** button.
+4. A progress indicator appears in the Status Area. The taxonomy tree in the left panel will start showing colour-coded score bars as results arrive.
+5. When analysis is complete, the Status Area shows a summary message and the export buttons become available.
+
+> 📸 **Screenshot:** [Taxonomy tree showing green score bars during or after analysis]
+>
+> *TODO: Add screenshot of the scored taxonomy tree in List view*
+
+### Interactive Mode
+
+Tick the **Interactive Mode** checkbox before clicking **Analyze with AI** to use level-by-level exploration instead of scoring the whole tree at once.
+
+In Interactive Mode:
+- Only the top-level nodes are scored first.
+- A **▶ Analyze Node** button appears next to each top-level node.
+- Click **▶ Analyze Node** on a node to score its children.
+- Continue expanding the tree level by level.
+
+This mode is useful for very large taxonomies or when you want to focus on one branch.
+
+> 📸 **Screenshot:** [Interactive Mode in progress — some nodes scored, Analyze Node buttons visible]
+>
+> *TODO: Add screenshot of interactive mode with partially expanded tree*
+
+### Architecture View Checkbox
+
+Tick the **Architecture View** checkbox before running analysis to also build an architecture view after the scores are computed. The Architecture View traces how the highest-scoring nodes relate to each other through confirmed architecture relationships. See [Section 7](#7-architecture-view) for details.
+
+### Understanding Scores and the Colour Legend
+
+The **Match Legend** (below the analysis card) shows the colour scale:
+
+| Colour | Score range | Meaning |
+|---|---|---|
+| Light green (faint) | 0 % – 24 % | Very low match |
+| Green | 25 % – 49 % | Low match |
+| Medium green | 50 % – 74 % | Moderate match |
+| Dark green | 75 % – 99 % | Good match |
+| Bright green / highlighted | 100 % | Perfect match |
+
+Nodes with a score of 0 % are not highlighted. The higher the score, the darker and more prominent the green highlight on the node row.
+
+> 📸 **Screenshot:** [Match Legend component showing the green gradient from 0% to 100%]
+>
+> *TODO: Add screenshot of the Match Legend close-up*
+
+### The Analysis Log
+
+Below the Status Area, a collapsible **Analysis Log** section records each step of the scoring process: which LLM phases ran, how many nodes were scored, and any warnings. Click the log header to expand or collapse it.
+
+---
+
+## 5. Exploring the Taxonomy
+
+The left panel displays the taxonomy in five different views. Switch between them using the buttons at the top: **📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision**.
+
+### List View (Default)
+
+The default view shows all taxonomy nodes as a flat, indented list. Each row contains the node name, its code, and — after analysis — a score bar and percentage.
+
+- Click any node name to expand or collapse its children.
+- Use **Expand All** to open the entire tree, or **Collapse All** to close it.
+- Toggle the **Descriptions** switch to show or hide the description text beneath each node name.
+
+> 📸 **Screenshot:** [List view with several nodes expanded and descriptions visible]
+>
+> *TODO: Add screenshot of the List view with descriptions toggled on*
+
+### Tabs View
+
+The Tabs view groups taxonomy nodes under tab headers for each top-level category. Click a tab to display only the nodes in that branch.
+
+> 📸 **Screenshot:** [Tabs view with one tab selected and its nodes displayed below]
+>
+> *TODO: Add screenshot of the Tabs view*
+
+### Sunburst View
+
+The Sunburst view renders the taxonomy as a radial sunburst chart where the centre is the root and each ring is a deeper level. After analysis, segments are coloured by their score.
+
+- Hover over a segment to see the node name and score.
+- Click a segment to zoom into that subtree.
+
+> 📸 **Screenshot:** [Sunburst visualisation with colour-coded segments]
+>
+> *TODO: Add screenshot of the Sunburst view after analysis*
+
+### Tree View
+
+The Tree view renders the taxonomy as an interactive node-link diagram. Use the **Taxonomy root selector** dropdown to choose which root to display when there are multiple taxonomy roots.
+
+> 📸 **Screenshot:** [Tree visualisation showing hierarchy as a node-link diagram]
+>
+> *TODO: Add screenshot of the Tree view*
+
+### Decision Map View
+
+The Decision Map view shows the taxonomy as a decision-tree style layout optimised for selecting relevant nodes based on the analysis scores.
+
+> 📸 **Screenshot:** [Decision Map visualisation]
+>
+> *TODO: Add screenshot of the Decision Map view*
+
+### Switching Between Views
+
+Click any of the view switcher buttons (📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision) at any time. Your analysis scores are preserved across view switches.
+
+### Using Expand All / Collapse All
+
+The **Expand All** and **Collapse All** buttons are only active in views that support hierarchical expansion (List and Tabs). They open or close all nodes simultaneously.
+
+### Showing/Hiding Descriptions
+
+The **Descriptions** toggle switch (above the tree, below the view buttons) controls whether the description text is shown beneath each node name. Turn it on to read what each taxonomy element covers; turn it off for a more compact view.
+
+---
+
+## 6. Working with Analysis Results
+
+### Reading the Score Colours
+
+After analysis completes, every taxonomy node shows a coloured score bar. Refer to the **Match Legend** on the right panel:
+
+- **No colour** — score is 0 %, not relevant.
+- **Light green → dark green** — increasing relevance.
+- **Bright/full green** — maximum relevance.
+
+Focus your attention on nodes with dark green highlights; these are the best matches for your requirement.
+
+### Requesting a Leaf Justification (📋 button)
+
+For any leaf node (a node with no children) that has a non-zero score, you can ask the AI to explain in plain English **why** that node matched your requirement.
+
+1. Find the node in the taxonomy tree.
+2. Click the **📋** button on that node's row.
+3. A **Leaf Justification Modal** opens, displaying the LLM-generated explanation.
+4. Read the explanation and close the modal when done.
+
+> 📸 **Screenshot:** [Leaf Justification modal showing LLM explanation text]
+>
+> *TODO: Add screenshot of the Leaf Justification modal*
+
+### Stale Results Warning
+
+If you edit your requirement text after a completed analysis without re-running the analysis, the taxonomy tree may display a **yellow border** or warning message indicating that the displayed scores no longer match the current requirement text. Re-run the analysis to refresh the scores.
+
+> 📸 **Screenshot:** [Stale results warning — yellow border or warning banner visible]
+>
+> *TODO: Add screenshot of the stale results warning state*
+
+---
+
+## 7. Architecture View
+
+The Architecture View shows how the highest-scoring taxonomy nodes relate to each other through confirmed architecture relationships (stored in the knowledge base). It gives you a structured view of the architecture elements that are relevant to your requirement.
+
+### Enabling the Architecture View Checkbox
+
+Before running analysis, tick the **Architecture View** checkbox in the Business Requirement Analysis card. After analysis completes, the **Architecture View Panel** will appear in the right panel.
+
+### What Appears in the Architecture View Panel
+
+The panel shows three sections:
+
+| Section | Contents |
 |---|---|
-| Java 21+ | Runtime |
-| Maven 3.9+ | Build only |
-| LLM API key **or** `LLM_PROVIDER=LOCAL_ONNX` | Required for analysis; optional for browse/search |
-| Embedding enabled (optional) | Enables semantic and hybrid search |
+| **Anchors** | The highest-scoring leaf nodes — the primary matches for your requirement |
+| **Elements** | All taxonomy nodes reachable from the anchors via confirmed relations |
+| **Relationships** | The directed edges connecting elements |
 
-### Running Locally
+### Understanding Anchors, Elements, and Relationships
 
-```bash
-# With Gemini (default)
-GEMINI_API_KEY=your_key mvn spring-boot:run
+- **Anchors** are your direct hits — the nodes the AI considers the best answer to your requirement.
+- **Elements** extend the picture: if an anchor node *realizes* a capability, that capability also appears as an element.
+- **Relationships** show the direction and type of the link (e.g., REALIZES, SUPPORTS, DEPENDS_ON).
 
-# With OpenAI
-LLM_PROVIDER=OPENAI OPENAI_API_KEY=your_key mvn spring-boot:run
-
-# Fully local (no API key)
-LLM_PROVIDER=LOCAL_ONNX mvn spring-boot:run
-```
-
-The application starts on `http://localhost:8080`.
-
-### Docker
-
-```bash
-docker build -t taxonomy-analyser .
-docker run -p 8080:8080 -e GEMINI_API_KEY=your_key taxonomy-analyser
-```
-
-### Render.com
-
-A `render.yaml` is included in the repository root for one-click deployment on Render.com.
+> 📸 **Screenshot:** [Architecture View panel populated with anchors, elements, and relationships]
+>
+> *TODO: Add screenshot of the Architecture View panel after analysis*
 
 ---
 
-## 4. Requirement Analysis
+## 8. Using the Graph Explorer
 
-### 4.1 Standard Analysis
+The Graph Explorer lets you trace the network of confirmed architecture relationships around any taxonomy node, regardless of whether you have run an analysis.
 
-**Endpoint:** `POST /api/analyze`
+### Selecting a Node
 
-Scores every taxonomy node against the submitted business text and optionally builds an architecture view.
+In the **Graph Explorer Panel** (right panel, below the Architecture View Panel):
 
-**Request parameters (form or JSON):**
+1. Type a node code in the **Node Code** field, or click the **🔎 Graph** button on any taxonomy node in the left panel to pre-fill the field.
+2. Set the **Max Hops** value to control how many relationship steps to traverse (default: 2).
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `businessText` | string | Yes | Free-text requirement |
-| `includeArchitectureView` | boolean | No | When `true`, also returns an architecture view (see §6) |
+> 📸 **Screenshot:** [Graph Explorer panel with a node code entered and Max Hops set]
+>
+> *TODO: Add screenshot of the Graph Explorer panel before running a query*
 
-**Response:** JSON object containing a `scores` map (`nodeCode → score 0–100`) and an optional `architectureView`.
+### Upstream Query — "What feeds into this?"
 
-**Example:**
+Click **⬆️ Upstream** to find all nodes that feed into the selected node: the nodes it depends on or that realise it. The results appear as a table listing each related node, its relation type, and a relevance indicator.
 
-```http
-POST /api/analyze
-Content-Type: application/x-www-form-urlencoded
+### Downstream Query — "What depends on this?"
 
-businessText=Provide+secure+voice+communications+between+HQ+and+deployed+forces&includeArchitectureView=true
-```
+Click **⬇️ Downstream** to find all nodes that depend on the selected node.
 
-### 4.2 Streaming Analysis (SSE)
+### Failure Impact Query — "What breaks if this fails?"
 
-**Endpoint:** `GET /api/analyze-stream?businessText=...`
+Click **⚠️ Failure Impact** to find all nodes that would be disrupted if the selected node failed or was removed. This is useful for change-impact analysis and risk assessment.
 
-Returns a stream of Server-Sent Events so the UI can show live progress.
+### Understanding the Results Table
 
-**SSE event types:**
+The results table shows:
 
-| Event | Payload | Description |
-|---|---|---|
-| `phase` | `{ phase: "..." }` | Current scoring phase name |
-| `scores` | `{ nodeCode: score, ... }` | Partial or final score batch |
-| `expanding` | `{ nodeCode: "..." }` | Node being expanded |
-| `complete` | `{ summary: "..." }` | Analysis finished |
-| `error` | `{ message: "..." }` | LLM or system error |
-
-**Example (curl):**
-
-```bash
-curl -N "http://localhost:8080/api/analyze-stream?businessText=voice+comms+for+deployed+forces"
-```
-
-### 4.3 Interactive Mode / Analyze Node
-
-**Endpoint:** `GET /api/analyze-node?parentCode=...&businessText=...`
-
-Scores the immediate children of `parentCode` against `businessText`.  Allows progressive, level-by-level taxonomy exploration without scoring the whole tree at once.
-
-| Parameter | Description |
+| Column | Meaning |
 |---|---|
-| `parentCode` | Code of the parent taxonomy node to expand |
-| `businessText` | Requirement text |
+| Node code | The unique identifier of the related node |
+| Node name | Human-readable label |
+| Relation type | The type of relationship (e.g., REALIZES, DEPENDS_ON) |
+| Hops | Distance from the starting node |
+| Relevance | Impact score or similarity indicator |
 
-**Example:**
+> 📸 **Screenshot:** [Graph Explorer with upstream results table populated]
+>
+> *TODO: Add screenshot of the Graph Explorer showing upstream query results*
 
-```bash
-curl "http://localhost:8080/api/analyze-node?parentCode=C3_ROOT&businessText=voice+comms"
-```
-
----
-
-## 5. Leaf Justification
-
-**Endpoint:** `POST /api/justify-leaf`
-
-After analysis, request a natural-language explanation for why a specific leaf node scored highly.
-
-**Request body (JSON):**
-
-```json
-{
-  "nodeCode":    "SVC_VOICE_001",
-  "businessText": "Secure voice communications between HQ and deployed forces",
-  "scores":      { "SVC_VOICE_001": 87 },
-  "reasons":     { "SVC_VOICE_001": "Matched on voice, communications, deployed" }
-}
-```
-
-**Response:** Plain text or JSON string containing the LLM-generated justification.
+> 📸 **Screenshot:** [Graph Explorer with failure impact results table populated]
+>
+> *TODO: Add screenshot of the Graph Explorer showing failure impact results*
 
 ---
 
-## 6. Architecture View
+## 9. Working with Relation Proposals
 
-When `POST /api/analyze` is called with `includeArchitectureView=true`, the response includes an `architectureView` object built by `RequirementArchitectureViewService`.
+The system can automatically propose new relations between taxonomy nodes using AI. These proposals are stored in a review queue where you can accept or reject them.
 
-### Contents
+### Triggering Proposals (�� button on a Node)
 
-| Field | Description |
-|---|---|
-| `anchors` | High-scoring leaf nodes that directly satisfy the requirement |
-| `elements` | All taxonomy nodes reachable from anchors via confirmed relations |
-| `relationships` | Directed edges (TaxonomyRelation) connecting elements |
+1. Find a taxonomy node in the left panel that you believe should be related to other nodes.
+2. Click the **🔗** (Propose Relations) button on that node's row.
+3. The **Propose Relations Modal** opens.
 
-### How It Is Built
+> 📸 **Screenshot:** [Propose Relations modal with node code and relation type dropdown visible]
+>
+> *TODO: Add screenshot of the Propose Relations modal*
 
-1. **Anchor selection** — nodes whose score exceeds the configured threshold become anchors.
-2. **Relevance propagation** — `RelevancePropagationService` propagates scores upward through `TaxonomyRelation` edges.
-3. **Relation traversal** — `RelationTraversalService` collects all reachable nodes within a configurable hop limit.
+### Choosing a Relation Type
 
-The architecture view is the input for diagram export (§12).
+In the Propose Relations Modal:
 
----
+1. Confirm or note the **Node Code** displayed at the top.
+2. Use the **Relation Type** dropdown to select the type of relation you want the AI to propose (e.g., REALIZES, SUPPORTS, DEPENDS_ON).
+3. Click **Generate Proposals**.
+4. The system will search for candidate nodes and create PENDING proposals. Close the modal when the operation completes.
 
-## 7. Search
+### Reviewing Proposals (Pending / All / Accepted / Rejected Filters)
 
-All search endpoints accept a `maxResults` (or `topK`) query parameter.
+Open the **Relation Proposals Panel** in the right panel. Use the filter buttons to view proposals by status:
 
-### 7.1 Full-Text Search (Lucene)
+- **Pending** — proposals awaiting your decision.
+- **All** — all proposals regardless of status.
+- **Accepted** — proposals you have already approved.
+- **Rejected** — proposals you have declined.
 
-```
-GET /api/search?q=voice+communications&maxResults=50
-```
+The proposals table shows:
+- Source node and target node (with names and codes)
+- Proposed relation type
+- Confidence score (0–100 %) — how confident the AI is in the proposal
+- AI-generated rationale explaining why this relation was suggested
 
-Uses Hibernate Search / Lucene to match against node names, codes, and descriptions.
+> 📸 **Screenshot:** [Relation Proposals panel with the Pending filter active and a list of proposals]
+>
+> *TODO: Add screenshot of the Relation Proposals panel showing pending proposals*
 
-### 7.2 Semantic Search (Embeddings)
+### Accepting or Rejecting a Proposal
 
-```
-GET /api/search/semantic?q=voice+communications&maxResults=20
-```
+For each row in the proposals table:
 
-Converts the query to a vector embedding and performs a KNN similarity search across indexed nodes.  Requires embedding to be enabled (§14).
+- Click **Accept** to approve the relation. A confirmed `TaxonomyRelation` is created in the knowledge base and the proposal status changes to ACCEPTED.
+- Click **Reject** to decline the relation. The proposal status changes to REJECTED.
 
-### 7.3 Hybrid Search (RRF)
+> **Note:** There is currently no undo for accept or reject decisions in the UI.
 
-```
-GET /api/search/hybrid?q=voice+communications&maxResults=20
-```
+### Understanding Confidence Scores and Rationale
 
-Combines full-text and semantic result lists using **Reciprocal Rank Fusion (RRF)**, which balances keyword precision with semantic recall.
-
-### 7.4 Find Similar Nodes
-
-```
-GET /api/search/similar/{code}?topK=10
-```
-
-Returns the `topK` taxonomy nodes most similar to the node identified by `{code}`, based on embedding cosine similarity.
-
-**Example:**
-
-```
-GET /api/search/similar/SVC_VOICE_001?topK=5
-```
-
-### 7.5 Graph-Semantic Search
-
-```
-GET /api/search/graph?q=voice+communications&maxResults=20
-```
-
-Searches both `TaxonomyNode` and `TaxonomyRelation` Hibernate Search indexes via KNN, then aggregates results by taxonomy root and relation type.
-
-**Response fields:**
-
-| Field | Description |
-|---|---|
-| `matchedNodes` | List of matching nodes with scores |
-| `relationCountByRoot` | Count of matched relations per taxonomy root |
-| `topRelationTypes` | Most common relation types in the result set |
-| `summary` | Human-readable summary string |
+The **Confidence** column shows how strongly the AI believes the proposed relation is correct. A higher score means a more confident proposal. The **Rationale** column shows the AI's reasoning in plain text. Use both together to decide whether to accept or reject.
 
 ---
 
-## 8. Graph Explorer
+## 10. Exporting Results
 
-The Graph Explorer exposes neighbourhood queries on the confirmed `TaxonomyRelation` graph.  All endpoints are under `/api/graph`.
+After a successful analysis, export buttons appear at the top of the left panel. These buttons are only visible when analysis scores are present.
 
-### 8.1 Requirement Impact Analysis
+> 📸 **Screenshot:** [Export button group visible at the top of the left panel after analysis]
+>
+> *TODO: Add screenshot of the export button group in its visible (post-analysis) state*
 
-```
-POST /api/graph/impact
-Content-Type: application/json
+### SVG Export
 
-{
-  "scores":       { "SVC_VOICE_001": 87, "CAP_C2_003": 72 },
-  "businessText": "Secure voice communications between HQ and deployed forces",
-  "maxHops":      2
-}
-```
+Click **📥 SVG** to download the current taxonomy view as a scalable vector graphics (SVG) file. Suitable for embedding in documents or further editing in vector graphics software.
 
-Returns which architecture elements are transitively affected by the requirement, ranked by impact score.
+### PNG Export
 
-### 8.2 Upstream Neighbourhood
+Click **📥 PNG** to download a rasterised screenshot of the current taxonomy view as a PNG image.
 
-```
-GET /api/graph/node/{code}/upstream?maxHops=2
-```
+### PDF (Print)
 
-Returns the nodes that **feed into** the given element (i.e., the nodes that the element depends on or is realised by).
+Click **📥 PDF** to trigger the browser's print dialogue, pre-configured to print the current view as a PDF.
 
-**Example:**
+### CSV (Scores)
 
-```
-GET /api/graph/node/SVC_VOICE_001/upstream?maxHops=2
-```
+Click **📥 CSV** to download a comma-separated file containing all node codes, names, and their analysis scores. Open in a spreadsheet application for further analysis or reporting.
 
-### 8.3 Downstream Neighbourhood
+### Visio (.vsdx) Architecture Diagram
 
-```
-GET /api/graph/node/{code}/downstream?maxHops=2
-```
+Click **📥 Visio** to download a structured Microsoft Visio file (`.vsdx`) representing the Architecture View. The diagram includes the anchor nodes, related elements, and labelled relationships.
 
-Returns the nodes that **depend on** the given element.
+> **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
 
-### 8.4 Failure Impact
+### ArchiMate XML Architecture Diagram
 
-```
-GET /api/graph/node/{code}/failure-impact?maxHops=3
-```
+Click **📥 ArchiMate** to download an ArchiMate 3.x XML file suitable for import into tools such as Archi or Sparx EA.
 
-Returns the nodes that would be disrupted if the given element failed or was changed.  Useful for change-impact and risk analysis.
+> **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
+
+### When Export Buttons Appear
+
+The export buttons only appear after analysis has been run and scores are present. If you navigate away or refresh the page, scores may be lost and the buttons will disappear. Re-run the analysis to restore them.
 
 ---
 
-## 9. Relation Proposals
+## 11. Search
 
-The Relation Proposal pipeline suggests new edges to add to the architecture knowledge base and routes them through human review.
+> **Note:** Advanced search (semantic, hybrid, graph) is currently available via the REST API. See [API Reference](API_REFERENCE.md) for endpoint details. A search UI panel may be added in a future release.
 
-### 9.1 Triggering a Proposal
+Basic taxonomy browsing and filtering is available directly in the taxonomy tree view using the view switcher and the expand/collapse controls described in [Section 5](#5-exploring-the-taxonomy).
 
-```
-POST /api/proposals/propose
-Content-Type: application/x-www-form-urlencoded
+---
 
-sourceCode=CAP_C2_003&relationType=REALIZES
-```
+## 12. Administration
 
-The pipeline executes:
-1. **`RelationCandidateService`** — finds candidate target nodes.
-2. **`RelationValidationService`** — checks structural and semantic validity.
-3. **`RelationCompatibilityMatrix`** — verifies the relation type is architecturally valid between the source and candidate categories.
-4. **`RelationProposalService`** — persists `RelationProposal` records with status `PENDING`.
+Administration features are hidden behind a password-protected admin mode. A standard user does not need to access these features.
 
-### 9.2 Proposal Status
+### AI Status Indicator (🟢 / 🔴 in Navbar)
 
-| Status | Meaning |
-|---|---|
-| `PENDING` | Awaiting human review |
-| `ACCEPTED` | Approved; a `TaxonomyRelation` has been created |
-| `REJECTED` | Declined by the reviewer |
+The badge in the navigation bar shows whether an LLM provider is connected:
 
-> **Note:** The valid status values are `PENDING`, `ACCEPTED`, and `REJECTED`.
+- 🟢 **Green** — AI is available; analysis and justification features are active.
+- 🔴 **Red** — AI is unavailable; the **Analyze with AI** button will be disabled.
 
-### 9.3 Listing and Reviewing Proposals
+If you see a red badge, contact your administrator to check the LLM provider configuration.
 
-| Method | Endpoint | Description |
+### Unlocking Admin Mode (🔒 button → Password Modal)
+
+1. Click the **🔒** button in the navigation bar.
+2. The **Admin Mode Modal** opens with a password input field.
+3. Enter the administrator password.
+4. Click **Unlock**.
+5. The padlock icon changes to indicate admin mode is active, and the admin-only panels become visible in the right panel.
+
+To lock admin mode again, click the lock button and choose **Lock**.
+
+> 📸 **Screenshot:** [Admin Mode modal showing the password input and Unlock button]
+>
+> *TODO: Add screenshot of the Admin Mode modal*
+
+### LLM Communication Log
+
+Once admin mode is unlocked, the **LLM Communication Log** panel is visible in the right panel. It records the full prompt sent to the LLM and the raw response received for each analysis operation. Expand the panel to view the log entries. This is useful for debugging unexpected scoring results.
+
+### LLM Diagnostics Panel
+
+The **LLM Diagnostics Panel** (admin only, collapsible) shows statistics about LLM usage:
+
+- Provider name and model version
+- Total number of API calls
+- Error count and error rate
+- Average response latency
+
+Click **Refresh** to update the statistics. Click **Test Connection** to send a test request to the LLM provider and confirm it is responding correctly.
+
+> 📸 **Screenshot:** [LLM Diagnostics panel showing provider info and stats]
+>
+> *TODO: Add screenshot of the LLM Diagnostics panel*
+
+### Prompt Template Editor
+
+The **Prompt Templates Editor** (admin only, collapsible) allows you to customise the instructions sent to the LLM without redeploying the application.
+
+1. Use the **taxonomy selector** dropdown to choose the prompt template you want to edit.
+2. The current template text appears in the **template textarea**.
+3. Edit the text as needed.
+4. Click **Save** to save your changes, or **Reset** to restore the built-in default.
+
+> 📸 **Screenshot:** [Prompt Template Editor panel with a template loaded and the Save/Reset buttons visible]
+>
+> *TODO: Add screenshot of the Prompt Template Editor panel*
+
+---
+
+## 13. Relation Types Reference
+
+The system uses 10 relation types, each corresponding to a specific relationship in the NATO Architecture Framework (NAF) or The Open Group Architecture Framework (TOGAF).
+
+| Relation Type | Plain-Language Meaning | Standard |
 |---|---|---|
-| `GET` | `/api/proposals` | All proposals |
-| `GET` | `/api/proposals/pending` | Pending proposals (review queue) |
-| `GET` | `/api/node/{code}/proposals` | Proposals for a specific node |
-| `POST` | `/api/proposals/{id}/accept` | Accept a proposal |
-| `POST` | `/api/proposals/{id}/reject` | Reject a proposal |
-
-### 9.4 Relation Types
-
-The system defines **10 relation types**, each tied to a specific NAF or TOGAF architectural viewpoint:
-
-| Relation Type | Direction | Standard |
-|---|---|---|
-| `REALIZES` | Capability → Service | NAF NCV-2, TOGAF SBB |
-| `SUPPORTS` | Service → Business Process | TOGAF Business Architecture |
-| `CONSUMES` | Business Process → Information Product | TOGAF Data Architecture |
-| `USES` | User Application → Core Service | NAF NSV-1 |
-| `FULFILLS` | COI Service → Capability | NAF NCV-5 |
-| `ASSIGNED_TO` | Business Role → Business Process | TOGAF Org mapping |
-| `DEPENDS_ON` | Service → Service | Technical dependency |
-| `PRODUCES` | Business Process → Information Product | Data flow |
-| `COMMUNICATES_WITH` | Communications Service → Core Service | NAF NSOV |
-| `RELATED_TO` | Any → Any | Generic fallback |
+| **REALIZES** | A capability is made real by a service | NAF NCV-2, TOGAF SBB |
+| **SUPPORTS** | A service supports a business process | TOGAF Business Architecture |
+| **CONSUMES** | A business process consumes an information product | TOGAF Data Architecture |
+| **USES** | A user application uses a core service | NAF NSV-1 |
+| **FULFILLS** | A COI service fulfills a capability | NAF NCV-5 |
+| **ASSIGNED_TO** | A business role is assigned to a business process | TOGAF Org mapping |
+| **DEPENDS_ON** | One service depends on another service to function | Technical dependency |
+| **PRODUCES** | A business process produces an information product | Data flow |
+| **COMMUNICATES_WITH** | A communications service communicates with a core service | NAF NSOV |
+| **RELATED_TO** | A general relationship when no specific type applies | Generic fallback |
 
 ---
 
-## 10. Architecture Knowledge Base
+## 14. Tips and Best Practices
 
-Confirmed architecture relationships are stored as `TaxonomyRelation` entities.
+### Writing Effective Requirements
 
-### TaxonomyRelation Fields
+- **Be specific:** Instead of *"communications"*, write *"secure voice communications between HQ and deployed forces"*.
+- **Use domain vocabulary:** Terms like *capability*, *service*, *information product*, *command*, *control* help the AI find better matches.
+- **One requirement at a time:** Analyze one requirement per session for cleaner, more focused results.
+- **Keep it concise:** Aim for 1–3 sentences. Very long paragraphs do not improve accuracy.
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | Long | Primary key |
-| `sourceCode` | String | Code of the source taxonomy node |
-| `targetCode` | String | Code of the target taxonomy node |
-| `relationType` | RelationType | One of the 10 types listed in §9.4 |
-| `provenance` | String | Origin: `MANUAL`, `ACCEPTED_PROPOSAL`, etc. |
-| `confidence` | Double | Confidence score 0.0–1.0 (from proposal pipeline) |
+### Interpreting Results
 
-### REST Endpoints
+- Focus on nodes with scores above 50 % as your primary matches.
+- Nodes scoring 25–50 % are secondary matches — they may be relevant but less directly.
+- Nodes below 25 % can usually be ignored unless you have domain knowledge suggesting otherwise.
+- Use **Leaf Justification** (📋) to understand *why* a specific node scored highly before including it in your architecture.
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/relations` | All relations (optional `?type=REALIZES` filter) |
-| `GET` | `/api/node/{code}/relations` | Relations for a specific node |
-| `POST` | `/api/relations` | Create a relation manually |
-| `DELETE` | `/api/relations/{id}` | Delete a relation |
-| `GET` | `/api/relations/count` | Total relation count |
+### Working with Proposals
 
----
+- Run proposals soon after analysis while the context is fresh.
+- Review the AI rationale before accepting; high confidence does not always mean correct.
+- Reject proposals where the rationale does not make architectural sense, even if the confidence score is high.
+- Accepted proposals become confirmed relations in the knowledge base and affect future Graph Explorer results.
 
-## 11. Relation Quality Dashboard
+### Exporting
 
-`RelationQualityService` exposes metrics about the health of the proposal pipeline.  Accessed via `QualityApiController`.
-
-### Endpoints
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/relations/metrics` | Full quality dashboard |
-| `GET` | `/api/relations/metrics/by-type` | Breakdown by relation type |
-| `GET` | `/api/relations/metrics/by-provenance` | Breakdown by provenance |
-| `GET` | `/api/relations/metrics/top-rejected?limit=10` | Top rejected proposals |
-
-### Overall Metrics (`GET /api/relations/metrics`)
-
-| Field | Description |
-|---|---|
-| `total` | Total proposals created |
-| `accepted` | Number accepted |
-| `rejected` | Number rejected |
-| `pending` | Number awaiting review |
-| `acceptanceRate` | `accepted / total` as a fraction |
-| `avgConfidence` | Average confidence score of all proposals |
-
-### By-Type Metrics
-
-Returns a list where each entry contains:
-- `relationType` — e.g., `REALIZES`
-- `proposed`, `accepted`, `rejected` counts
-- `acceptanceRate`
-
-### Top Rejected
-
-Returns the top `limit` rejected proposals ordered by confidence descending — these are the most confident predictions that were still rejected, useful for tuning the pipeline.
-
-| Field | Description |
-|---|---|
-| `sourceCode` / `sourceName` | Source node |
-| `targetCode` / `targetName` | Target node |
-| `relationType` | Proposed relation type |
-| `confidence` | Confidence score |
-| `rationale` | LLM-generated rationale |
+- Use **CSV** to share scores with colleagues who do not have access to the application.
+- Use **Visio** or **ArchiMate** export to integrate results into your enterprise architecture tooling.
+- Always enable the **Architecture View** checkbox before analysis if you intend to export Visio or ArchiMate files.
 
 ---
 
-## 12. Diagram Export
-
-The system supports two export formats.  Both endpoints expect the `architectureView` JSON produced by `POST /api/analyze` (with `includeArchitectureView=true`).
-
-### 12.1 Visio Export
-
-**Endpoint:** `POST /api/diagram/visio`
-
-Generates a `.vsdx` file (Office Open XML package) containing a structured architecture diagram.
-
-**Pipeline:** `RequirementArchitectureView` → `DiagramProjectionService` → `VisioDiagramService` → `VisioPackageBuilder` → `.vsdx`
-
-**Response:** Binary `.vsdx` file download.
-
-### 12.2 ArchiMate 3.x XML Export
-
-**Endpoint:** `POST /api/diagram/archimate`
-
-Generates an ArchiMate 3.x compliant XML file suitable for import into tools such as Archi or Sparx EA.
-
-**Response:** XML file download.
-
-### UI Usage
-
-Export buttons appear in the results panel only when analysis scores are present.  Click **Export Visio** or **Export ArchiMate** to download the corresponding file.
-
----
-
-## 13. Administration
-
-### 13.1 Admin Authentication
-
-If `ADMIN_PASSWORD` is set, the admin panel is protected.
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/admin/status` | Returns `{ passwordRequired: true/false }` |
-| `POST` | `/api/admin/verify` | Verifies the password; returns a token on success |
-
-Once authenticated, pass the token in the `X-Admin-Token` header for protected endpoints.
-
-### 13.2 LLM Diagnostics
-
-```
-GET /api/diagnostics
-X-Admin-Token: <token>
-```
-
-Returns statistics about LLM calls: total calls, error counts, average latency, provider name, model version.
-
-### 13.3 AI Status
-
-```
-GET /api/ai-status
-```
-
-Returns `{ available: true/false, provider: "GEMINI" }` (no authentication required).
-
-### 13.4 Prompt Template Editor
-
-Prompt templates control what instructions are sent to the LLM.  Administrators can override individual templates without redeploying.
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/prompts` | List all templates (requires admin) |
-| `GET` | `/api/prompts/{code}` | Get a single template |
-| `PUT` | `/api/prompts/{code}` | Override a template |
-| `DELETE` | `/api/prompts/{code}` | Reset to built-in default |
-
----
-
-## 14. Embedding Configuration
-
-Semantic, hybrid, and graph searches require the embedding subsystem to be enabled.
-
-### Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `JGIT_EMBEDDING_ENABLED` | `true` | Master switch for all embedding features |
-| `JGIT_EMBEDDING_MODEL_DIR` | *(empty)* | Path to a locally cached model directory.  If empty, DJL auto-downloads. |
-| `JGIT_EMBEDDING_MODEL_NAME` | `djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2` | DJL model URI or HuggingFace model name |
-
-### How It Works
-
-- The system uses **DJL 0.31.1** with the ONNX Runtime engine.
-- On first startup, the `all-MiniLM-L6-v2` model (~23 MB) is downloaded and cached in `~/.djl.ai/`.
-- Embeddings are stored in a **Lucene `KnnFloatVectorField`** alongside each `TaxonomyNode`.
-- Set `LLM_PROVIDER=LOCAL_ONNX` to use embedding-based scoring without an external API key.
-
-### Embedding Status Endpoint
-
-```
-GET /api/embedding/status
-```
-
-**Response:**
-
-```json
-{
-  "enabled":      true,
-  "available":    true,
-  "modelUrl":     "djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2",
-  "indexedNodes": 1247
-}
-```
-
----
-
-## 15. API Reference
-
-Complete list of all REST endpoints.
-
-| Method | Path | Description | Auth Required |
-|---|---|---|---|
-| `GET` | `/api/taxonomy` | Full taxonomy tree | No |
-| `GET` | `/api/ai-status` | LLM provider availability | No |
-| `POST` | `/api/analyze` | Analyze requirement text | No |
-| `GET` | `/api/analyze-stream` | SSE streaming analysis | No |
-| `GET` | `/api/analyze-node` | Analyze single node | No |
-| `POST` | `/api/justify-leaf` | Leaf node justification | No |
-| `GET` | `/api/diagnostics` | LLM diagnostics | Yes (`X-Admin-Token`) |
-| `GET` | `/api/admin/status` | Admin auth status | No |
-| `POST` | `/api/admin/verify` | Verify admin password | No |
-| `POST` | `/api/diagram/visio` | Export Visio .vsdx | No |
-| `POST` | `/api/diagram/archimate` | Export ArchiMate XML | No |
-| `GET` | `/api/search` | Full-text search | No |
-| `GET` | `/api/search/semantic` | Semantic KNN search | No |
-| `GET` | `/api/search/hybrid` | Hybrid RRF search | No |
-| `GET` | `/api/search/similar/{code}` | Find similar nodes | No |
-| `GET` | `/api/search/graph` | Graph-semantic search | No |
-| `GET` | `/api/embedding/status` | Embedding status | No |
-| `GET` | `/api/prompts` | List prompt templates | Yes |
-| `GET` | `/api/prompts/{code}` | Get prompt template | Yes |
-| `PUT` | `/api/prompts/{code}` | Override prompt template | Yes |
-| `DELETE` | `/api/prompts/{code}` | Reset prompt template | Yes |
-| `GET` | `/api/relations` | List relations | No |
-| `GET` | `/api/node/{code}/relations` | Relations for a node | No |
-| `POST` | `/api/relations` | Create relation | No |
-| `DELETE` | `/api/relations/{id}` | Delete relation | No |
-| `GET` | `/api/relations/count` | Relation count | No |
-| `GET` | `/api/relations/metrics` | Quality metrics overview | No |
-| `GET` | `/api/relations/metrics/by-type` | Metrics by relation type | No |
-| `GET` | `/api/relations/metrics/by-provenance` | Metrics by provenance | No |
-| `GET` | `/api/relations/metrics/top-rejected` | Top rejected proposals | No |
-| `POST` | `/api/proposals/propose` | Trigger proposal generation | No |
-| `GET` | `/api/proposals` | All proposals | No |
-| `GET` | `/api/proposals/pending` | Pending proposals | No |
-| `GET` | `/api/node/{code}/proposals` | Proposals for a node | No |
-| `POST` | `/api/proposals/{id}/accept` | Accept proposal | No |
-| `POST` | `/api/proposals/{id}/reject` | Reject proposal | No |
-| `POST` | `/api/graph/impact` | Requirement impact analysis | No |
-| `GET` | `/api/graph/node/{code}/upstream` | Upstream neighbourhood | No |
-| `GET` | `/api/graph/node/{code}/downstream` | Downstream neighbourhood | No |
-| `GET` | `/api/graph/node/{code}/failure-impact` | Failure impact | No |
-
----
-
-## 16. Best Practices
-
-### Requirement Text Quality
-
-- Write requirements as **imperative sentences**: *"Provide secure voice communications between HQ and deployed forces."*
-- Include domain-specific terminology from the NATO/TOGAF vocabulary (capability, service, information product, etc.) to maximise scoring precision.
-- Keep text under 500 words; longer texts do not improve accuracy and increase LLM latency.
-
-### Search Strategy
-
-- Start with **hybrid search** (`/api/search/hybrid`) for general exploration — it combines keyword recall with semantic precision.
-- Use **full-text search** (`/api/search`) when you know exact taxonomy codes or names.
-- Use **Find Similar** (`/api/search/similar/{code}`) when you have a good anchor node and want to discover related nodes.
-
-### Proposal Pipeline
-
-- Review proposals soon after they are generated; confidence scores decay in relevance if the taxonomy is updated.
-- Use the **Quality Dashboard** (`/api/relations/metrics`) to monitor acceptance rates.  An acceptance rate below 30 % suggests the candidate search or compatibility matrix needs tuning.
-- **Top Rejected** proposals are the most actionable: high-confidence predictions that were declined indicate systematic errors in the pipeline.
-
-### Embedding
-
-- Enable embedding for all production deployments to unlock semantic and hybrid search.
-- If bandwidth or storage is limited, pre-download the model and set `JGIT_EMBEDDING_MODEL_DIR` to the local path.
-
-### Security
-
-- Always set `ADMIN_PASSWORD` in production deployments to protect diagnostics and prompt-template endpoints.
-- Rotate the admin password regularly; it is passed as a plain environment variable.
-
----
-
-## 17. Glossary
+## 15. Glossary
 
 | Term | Definition |
 |---|---|
-| **Anchor node** | A high-scoring leaf node that directly satisfies a business requirement; the starting point for architecture-view construction |
-| **Architecture view** | A filtered subgraph of the taxonomy containing only the elements relevant to a given requirement |
+| **Anchor node** | A high-scoring leaf node that directly satisfies a business requirement; the starting point for the Architecture View |
+| **Architecture View** | A filtered subgraph of the taxonomy showing only the elements and relationships relevant to a given requirement |
 | **ArchiMate** | An open standard modelling language for enterprise architecture, maintained by The Open Group |
 | **C3** | Command, Control and Communications — the NATO functional area covered by this taxonomy |
 | **Capability** | A bounded, outcome-oriented ability of an organisation or system (NAF, TOGAF) |
 | **COI** | Community of Interest — a group that shares information under a common governance framework |
-| **DJL** | Deep Java Library — an open-source deep-learning framework used to run ONNX embedding models |
-| **Embedding** | A dense numeric vector that encodes the semantic meaning of text or a taxonomy node |
-| **Hybrid search** | A retrieval strategy that merges full-text and semantic search rankings via Reciprocal Rank Fusion |
+| **Confidence score** | A 0–100 % value indicating how strongly the AI believes a proposed relation is correct |
+| **Graph Explorer** | The right-panel tool for running upstream, downstream, and failure-impact queries on the relation graph |
+| **Hybrid search** | A retrieval strategy combining full-text and semantic search rankings (available via API) |
 | **Information Product** | A specific, structured output of a business process (TOGAF Data Architecture) |
-| **KNN** | K-Nearest Neighbours — a vector search algorithm that finds the closest embeddings |
-| **LLM** | Large Language Model — the AI component used for scoring and justification |
+| **Interactive Mode** | An analysis mode that scores one tree level at a time instead of the whole tree at once |
+| **Leaf node** | A taxonomy node with no children; the most specific level of the taxonomy |
+| **LLM** | Large Language Model — the AI component used for scoring, justification, and proposal generation |
+| **Match Legend** | The colour scale on the right panel showing what each shade of green corresponds to in terms of score |
 | **NAF** | NATO Architecture Framework — the standard for describing NATO architectures |
-| **ONNX** | Open Neural Network Exchange — an interoperable format for ML models |
-| **Provenance** | The origin of a taxonomy relation: `MANUAL`, `ACCEPTED_PROPOSAL`, etc. |
-| **Proposal** | An AI-generated candidate relation awaiting human review |
-| **RRF** | Reciprocal Rank Fusion — an algorithm for combining ranked lists from multiple retrieval methods |
-| **SSE** | Server-Sent Events — a web standard for streaming one-way events from server to browser |
-| **Taxonomy node** | A single element in the C3 Taxonomy Catalogue (capability, service, role, etc.) |
-| **TaxonomyRelation** | A confirmed, directed edge between two taxonomy nodes stored in the knowledge base |
+| **Proposal** | An AI-generated candidate relation awaiting human review in the Relation Proposals panel |
+| **Relation** | A confirmed, directed link between two taxonomy nodes stored in the knowledge base |
+| **Stale results** | Analysis scores that no longer correspond to the current requirement text (shown with a yellow warning) |
+| **Taxonomy node** | A single element in the C3 Taxonomy Catalogue (capability, service, role, information product, etc.) |
 | **TOGAF** | The Open Group Architecture Framework — a widely used enterprise-architecture methodology |
-| **Visio** | Microsoft Visio — a diagramming application; exported as `.vsdx` (Office Open XML) |
+
+---
+
+## 16. Troubleshooting
+
+### The "Analyze with AI" button is disabled or greyed out
+
+**Cause:** No LLM provider is configured or available. The AI Status badge in the navigation bar will be 🔴 red.
+
+**Action:** Contact your administrator to verify the LLM provider configuration (`GEMINI_API_KEY`, `OPENAI_API_KEY`, or `LLM_PROVIDER=LOCAL_ONNX`).
+
+### Analysis runs but all scores are 0 %
+
+**Cause:** The requirement text may not match any taxonomy nodes, or there may be a problem with the LLM response.
+
+**Action:**
+1. Check the **Analysis Log** (right panel, collapsible) for error messages.
+2. Try rephrasing the requirement using more specific NATO/C3 domain terminology.
+3. If admin mode is available, check the **LLM Communication Log** to see what the LLM returned.
+
+### Export buttons are not visible
+
+**Cause:** Export buttons only appear after a completed analysis with non-zero scores.
+
+**Action:** Run an analysis first. If scores are present but buttons are still missing, try refreshing the page and re-running the analysis.
+
+### The Visio or ArchiMate export file is empty or has no elements
+
+**Cause:** The **Architecture View** checkbox was not enabled before running the analysis.
+
+**Action:** Re-run the analysis with the **Architecture View** checkbox ticked.
+
+### The taxonomy tree is not loading
+
+**Cause:** The application server may be unavailable, or a network error occurred.
+
+**Action:**
+1. Refresh the browser page.
+2. Check the browser console (F12) for error messages.
+3. Verify the application URL is correct.
+4. Contact your administrator if the problem persists.
+
+### Scores from a previous analysis are still showing after I changed my requirement
+
+**Cause:** Scores are not automatically cleared when you edit the requirement text.
+
+**Action:** Click **Analyze with AI** again after editing your requirement to get fresh scores. The stale-results warning (yellow border) reminds you when displayed scores may be out of date.
+
+### I cannot see the admin panels (LLM Diagnostics, Prompt Editor, etc.)
+
+**Cause:** Admin mode is not unlocked.
+
+**Action:** Click the **🔒** button in the navigation bar and enter the administrator password. If you do not know the password, contact your administrator.

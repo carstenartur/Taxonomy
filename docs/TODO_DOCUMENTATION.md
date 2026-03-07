@@ -4,6 +4,44 @@ This file tracks known gaps, weaknesses, and usability issues identified through
 
 ---
 
+## Screenshots Required
+
+The User Guide contains placeholder markers (`📸 Screenshot`) that need to be replaced with actual screenshots.
+To generate screenshots:
+1. Run the application locally with sample data
+2. Perform each action described in the guide
+3. Take browser screenshots (recommended: 1200px wide)
+4. Save as PNG in `docs/images/` directory
+5. Replace placeholder markers with `![description](images/filename.png)`
+
+### Screenshots needed:
+- [ ] Full page layout (taxonomy tree + analysis panel)
+- [ ] Left panel in List view (nodes, score bars, action buttons)
+- [ ] Right panel default state (analysis card, match legend, status area)
+- [ ] Business Requirement Analysis panel (empty state)
+- [ ] Scored taxonomy tree (List view with green highlights)
+- [ ] Interactive Mode expand in progress
+- [ ] Tabs view with scores
+- [ ] Sunburst visualization
+- [ ] Tree visualization
+- [ ] Decision Map visualization
+- [ ] Match legend close-up
+- [ ] Export button group (visible state)
+- [ ] Architecture View panel populated
+- [ ] Graph Explorer panel (node code entered, before running a query)
+- [ ] Graph Explorer with upstream results
+- [ ] Graph Explorer with failure impact results
+- [ ] Relation Proposals panel (pending filter)
+- [ ] Propose Relations modal
+- [ ] Leaf Justification modal
+- [ ] AI Status badge (green/red states)
+- [ ] Admin Mode modal (password entry)
+- [ ] LLM Diagnostics panel
+- [ ] Prompt Template Editor
+- [ ] Stale results warning (yellow border)
+
+---
+
 ## Missing Screenshots / Visuals
 
 - [ ] Screenshot of the main UI (taxonomy tree, analysis results panel, score bars)
