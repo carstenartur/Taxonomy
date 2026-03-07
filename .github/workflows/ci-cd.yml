@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      checks: write
     steps:
       - uses: actions/checkout@v4
 
@@ -29,8 +30,36 @@ jobs:
       - name: Build and run tests
         run: mvn -q verify
 
+      - name: Publish test results
+        uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          name: Maven Tests
+          path: |
+            target/surefire-reports/*.xml
+            target/failsafe-reports/*.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Generate Surefire HTML report
+        if: always()
+        run: mvn surefire-report:report-only --no-transfer-progress -DskipTests
+
+      - name: Deploy test report to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        if: always()
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: target/site
+          destination_dir: tests
+          keep_files: true
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: 'Deploy Surefire test report'
+
       - name: Deploy coverage report to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
+        if: always()
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: target/site/jacoco
@@ -40,10 +69,12 @@ jobs:
           user_email: 'github-actions[bot]@users.noreply.github.com'
           commit_message: 'Deploy JaCoCo coverage report'
 
-      - name: Report coverage URL
+      - name: Report URLs
+        if: always()
         run: |
-          echo "### 📊 Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Reports" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📋 [View Test Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/tests/surefire-report.html)" >> $GITHUB_STEP_SUMMARY
           echo "📈 [View Coverage Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/coverage/)" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload JAR artifact
