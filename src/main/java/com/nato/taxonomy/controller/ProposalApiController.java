@@ -5,6 +5,8 @@ import com.nato.taxonomy.dto.TaxonomyRelationDto;
 import com.nato.taxonomy.model.RelationType;
 import com.nato.taxonomy.service.RelationProposalService;
 import com.nato.taxonomy.service.RelationReviewService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,6 +28,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Proposals")
 public class ProposalApiController {
 
     private final RelationProposalService proposalService;
@@ -40,6 +43,7 @@ public class ProposalApiController {
     /**
      * Trigger the proposal pipeline for a source node and relation type.
      */
+    @Operation(summary = "Propose relations", description = "Trigger the proposal pipeline for a source node and relation type")
     @PostMapping("/proposals/propose")
     public ResponseEntity<List<RelationProposalDto>> proposeRelations(
             @RequestBody Map<String, String> body) {
@@ -79,6 +83,7 @@ public class ProposalApiController {
     /**
      * List all proposals.
      */
+    @Operation(summary = "List all proposals", description = "Returns all relation proposals")
     @GetMapping("/proposals")
     public ResponseEntity<List<RelationProposalDto>> getAllProposals() {
         return ResponseEntity.ok(proposalService.getAllProposals());
@@ -87,6 +92,7 @@ public class ProposalApiController {
     /**
      * List pending proposals (review queue).
      */
+    @Operation(summary = "List pending proposals", description = "Returns all proposals with PENDING status (review queue)")
     @GetMapping("/proposals/pending")
     public ResponseEntity<List<RelationProposalDto>> getPendingProposals() {
         return ResponseEntity.ok(proposalService.getPendingProposals());
@@ -95,6 +101,7 @@ public class ProposalApiController {
     /**
      * List proposals for a specific source node.
      */
+    @Operation(summary = "List node proposals", description = "Returns all proposals for a specific source node")
     @GetMapping("/node/{code}/proposals")
     public ResponseEntity<List<RelationProposalDto>> getProposalsForNode(
             @PathVariable String code) {
@@ -104,6 +111,7 @@ public class ProposalApiController {
     /**
      * Accept a pending proposal — creates the actual TaxonomyRelation.
      */
+    @Operation(summary = "Accept proposal", description = "Accepts a pending proposal and creates the actual taxonomy relation")
     @PostMapping("/proposals/{id}/accept")
     public ResponseEntity<TaxonomyRelationDto> acceptProposal(@PathVariable Long id) {
         try {
@@ -117,6 +125,7 @@ public class ProposalApiController {
     /**
      * Reject a pending proposal.
      */
+    @Operation(summary = "Reject proposal", description = "Rejects a pending proposal")
     @PostMapping("/proposals/{id}/reject")
     public ResponseEntity<RelationProposalDto> rejectProposal(@PathVariable Long id) {
         try {

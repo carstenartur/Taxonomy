@@ -4,6 +4,9 @@ import com.nato.taxonomy.dto.ChangeImpactView;
 import com.nato.taxonomy.dto.GraphNeighborhoodView;
 import com.nato.taxonomy.dto.RequirementImpactView;
 import com.nato.taxonomy.service.ArchitectureGraphQueryService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +25,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/graph")
+@Tag(name = "Graph Queries")
 public class GraphQueryApiController {
 
     private final ArchitectureGraphQueryService graphQueryService;
@@ -36,6 +40,7 @@ public class GraphQueryApiController {
      * <p>Request body must contain {@code scores} (map of nodeCode → score 0–100),
      * {@code businessText}, and optionally {@code maxHops} (default 2).
      */
+    @Operation(summary = "Requirement impact analysis", description = "Determines which elements are affected by a business requirement")
     @PostMapping("/impact")
     public ResponseEntity<RequirementImpactView> findImpact(@RequestBody Map<String, Object> body) {
         @SuppressWarnings("unchecked")
@@ -64,10 +69,11 @@ public class GraphQueryApiController {
     /**
      * Upstream neighborhood: what feeds into this element?
      */
+    @Operation(summary = "Upstream neighbourhood", description = "Returns nodes that feed into this element")
     @GetMapping("/node/{code}/upstream")
     public ResponseEntity<GraphNeighborhoodView> findUpstream(
-            @PathVariable String code,
-            @RequestParam(defaultValue = "2") int maxHops) {
+            @Parameter(description = "Taxonomy node code") @PathVariable String code,
+            @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "2") int maxHops) {
         GraphNeighborhoodView view = graphQueryService.findUpstream(code, maxHops);
         return ResponseEntity.ok(view);
     }
@@ -75,10 +81,11 @@ public class GraphQueryApiController {
     /**
      * Downstream neighborhood: what depends on this element?
      */
+    @Operation(summary = "Downstream neighbourhood", description = "Returns nodes that depend on this element")
     @GetMapping("/node/{code}/downstream")
     public ResponseEntity<GraphNeighborhoodView> findDownstream(
-            @PathVariable String code,
-            @RequestParam(defaultValue = "2") int maxHops) {
+            @Parameter(description = "Taxonomy node code") @PathVariable String code,
+            @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "2") int maxHops) {
         GraphNeighborhoodView view = graphQueryService.findDownstream(code, maxHops);
         return ResponseEntity.ok(view);
     }
@@ -86,10 +93,11 @@ public class GraphQueryApiController {
     /**
      * Failure/change impact: what is affected if this element fails or changes?
      */
+    @Operation(summary = "Failure/change impact", description = "Returns what is affected if this element fails or changes")
     @GetMapping("/node/{code}/failure-impact")
     public ResponseEntity<ChangeImpactView> findFailureImpact(
-            @PathVariable String code,
-            @RequestParam(defaultValue = "3") int maxHops) {
+            @Parameter(description = "Taxonomy node code") @PathVariable String code,
+            @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "3") int maxHops) {
         ChangeImpactView view = graphQueryService.findFailureImpact(code, maxHops);
         return ResponseEntity.ok(view);
     }

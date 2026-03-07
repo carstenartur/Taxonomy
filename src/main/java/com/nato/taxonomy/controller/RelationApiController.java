@@ -3,6 +3,9 @@ package com.nato.taxonomy.controller;
 import com.nato.taxonomy.dto.TaxonomyRelationDto;
 import com.nato.taxonomy.model.RelationType;
 import com.nato.taxonomy.service.TaxonomyRelationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,6 +14,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Relations")
 public class RelationApiController {
 
     private final TaxonomyRelationService relationService;
@@ -19,9 +23,10 @@ public class RelationApiController {
         this.relationService = relationService;
     }
 
+    @Operation(summary = "List relations", description = "Returns all taxonomy relations, optionally filtered by type")
     @GetMapping("/relations")
     public ResponseEntity<List<TaxonomyRelationDto>> getRelations(
-            @RequestParam(required = false) String type) {
+            @Parameter(description = "Filter by relation type") @RequestParam(required = false) String type) {
         if (type != null && !type.isBlank()) {
             RelationType relationType;
             try {
@@ -34,12 +39,14 @@ public class RelationApiController {
         return ResponseEntity.ok(relationService.getAllRelations());
     }
 
+    @Operation(summary = "Get node relations", description = "Returns all relations for a specific taxonomy node")
     @GetMapping("/node/{code}/relations")
     public ResponseEntity<List<TaxonomyRelationDto>> getRelationsForNode(
             @PathVariable String code) {
         return ResponseEntity.ok(relationService.getRelationsForNode(code));
     }
 
+    @Operation(summary = "Create relation", description = "Creates a new taxonomy relation between two nodes")
     @PostMapping("/relations")
     public ResponseEntity<TaxonomyRelationDto> createRelation(
             @RequestBody Map<String, String> body) {
@@ -71,12 +78,14 @@ public class RelationApiController {
         }
     }
 
+    @Operation(summary = "Delete relation", description = "Deletes a taxonomy relation by ID")
     @DeleteMapping("/relations/{id}")
     public ResponseEntity<Void> deleteRelation(@PathVariable Long id) {
         relationService.deleteRelation(id);
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "Count relations", description = "Returns the total number of taxonomy relations")
     @GetMapping("/relations/count")
     public ResponseEntity<Map<String, Long>> countRelations() {
         return ResponseEntity.ok(Map.of("count", relationService.countRelations()));
