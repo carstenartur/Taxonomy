@@ -28,11 +28,14 @@ public class RelationValidationService {
 
     private final RelationCompatibilityMatrix compatibilityMatrix;
     private final TaxonomyRelationRepository relationRepository;
+    private final RelationQualityService qualityService;
 
     public RelationValidationService(RelationCompatibilityMatrix compatibilityMatrix,
-                                     TaxonomyRelationRepository relationRepository) {
+                                     TaxonomyRelationRepository relationRepository,
+                                     RelationQualityService qualityService) {
         this.compatibilityMatrix = compatibilityMatrix;
         this.relationRepository = relationRepository;
+        this.qualityService = qualityService;
     }
 
     /**
@@ -74,8 +77,13 @@ public class RelationValidationService {
             return ValidationResult.fail("Relation already exists");
         }
 
-        // Confidence: based on rank position (rank 0 is best)
-        double confidence = computeConfidence(rank, totalCandidates);
+        // Confidence: 80% rank-based + 20% acceptance history feedback
+        double rankConfidence = computeConfidence(rank, totalCandidates);
+        double historyWeight = qualityService.acceptanceHistoryWeight(
+                source.getTaxonomyRoot(),
+                candidateTarget.getTaxonomyRoot(),
+                relationType);
+        double confidence = 0.80 * rankConfidence + 0.20 * historyWeight;
 
         String rationale = String.format(
                 "%s [%s] → %s [%s] (%s), rank %d/%d",
