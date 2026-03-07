@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VisioPagesConverter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.visio.converter</a> &gt; <span class="el_source">VisioPagesConverter.java</span></div><h1>VisioPagesConverter.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.visio.converter;
+
+import com.nato.taxonomy.visio.VisioDocument;
+import com.nato.taxonomy.visio.VisioPage;
+import com.thoughtworks.xstream.converters.Converter;
+import com.thoughtworks.xstream.converters.MarshallingContext;
+import com.thoughtworks.xstream.converters.UnmarshallingContext;
+import com.thoughtworks.xstream.io.HierarchicalStreamReader;
+import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
+
+/**
+ * XStream {@link Converter} that marshals a {@link VisioDocument} into the
+ * {@code pages.xml} XML structure used inside a Visio {@code .vsdx} package.
+ */
+<span class="fc" id="L15">public class VisioPagesConverter implements Converter {</span>
+
+    private static final String VISIO_NS = &quot;http://schemas.microsoft.com/office/visio/2012/main&quot;;
+    private static final String REL_NS   = &quot;http://schemas.openxmlformats.org/officeDocument/2006/relationships&quot;;
+
+    @Override
+    public boolean canConvert(Class type) {
+<span class="fc" id="L22">        return VisioDocument.class.equals(type);</span>
+    }
+
+    @Override
+    public void marshal(Object source, HierarchicalStreamWriter writer, MarshallingContext context) {
+<span class="fc" id="L27">        VisioDocument doc = (VisioDocument) source;</span>
+<span class="fc" id="L28">        writer.addAttribute(&quot;xmlns&quot;, VISIO_NS);</span>
+<span class="fc" id="L29">        writer.addAttribute(&quot;xmlns:r&quot;, REL_NS);</span>
+
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        for (int i = 0; i &lt; doc.getPages().size(); i++) {</span>
+<span class="fc" id="L32">            VisioPage page = doc.getPages().get(i);</span>
+<span class="fc" id="L33">            writer.startNode(&quot;Page&quot;);</span>
+<span class="fc" id="L34">            writer.addAttribute(&quot;ID&quot;, String.valueOf(i));</span>
+<span class="fc" id="L35">            writer.addAttribute(&quot;Name&quot;, page.getName());</span>
+<span class="fc" id="L36">            writer.startNode(&quot;Rel&quot;);</span>
+<span class="fc" id="L37">            writer.addAttribute(&quot;r:id&quot;, &quot;rId&quot; + (i + 1));</span>
+<span class="fc" id="L38">            writer.endNode();</span>
+<span class="fc" id="L39">            writer.endNode();</span>
+        }
+<span class="fc" id="L41">    }</span>
+
+    @Override
+    public Object unmarshal(HierarchicalStreamReader reader, UnmarshallingContext context) {
+<span class="fc" id="L45">        throw new UnsupportedOperationException(&quot;VisioPagesConverter does not support unmarshaling&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

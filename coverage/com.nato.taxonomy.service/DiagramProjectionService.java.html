@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DiagramProjectionService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.service</a> &gt; <span class="el_source">DiagramProjectionService.java</span></div><h1>DiagramProjectionService.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.service;
+
+import com.nato.taxonomy.diagram.DiagramEdge;
+import com.nato.taxonomy.diagram.DiagramLayout;
+import com.nato.taxonomy.diagram.DiagramModel;
+import com.nato.taxonomy.diagram.DiagramNode;
+import com.nato.taxonomy.dto.RequirementArchitectureView;
+import com.nato.taxonomy.dto.RequirementElementView;
+import com.nato.taxonomy.dto.RequirementRelationshipView;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Projects a {@link RequirementArchitectureView} into a neutral {@link DiagramModel}
+ * suitable for rendering to various diagram formats (Visio, Mermaid, GraphViz, etc.).
+ */
+@Service
+<span class="fc" id="L24">public class DiagramProjectionService {</span>
+
+<span class="fc" id="L26">    private static final Logger log = LoggerFactory.getLogger(DiagramProjectionService.class);</span>
+
+    static final int MAX_NODES = 25;
+    static final int MAX_EDGES = 40;
+    static final double MIN_RELEVANCE = 0.35;
+
+<span class="fc" id="L32">    private static final Map&lt;String, Integer&gt; LAYER_MAP = Map.of(</span>
+<span class="fc" id="L33">            &quot;Capabilities&quot;, 1,</span>
+<span class="fc" id="L34">            &quot;Business Processes&quot;, 2,</span>
+<span class="fc" id="L35">            &quot;Services&quot;, 3,</span>
+<span class="fc" id="L36">            &quot;Applications&quot;, 4,</span>
+<span class="fc" id="L37">            &quot;Information Products&quot;, 5</span>
+    );
+
+    /**
+     * Converts a {@link RequirementArchitectureView} to a {@link DiagramModel}.
+     *
+     * @param view  the architecture view produced by analysis
+     * @param title diagram title (typically the business text summary)
+     * @return a neutral diagram model
+     */
+    public DiagramModel project(RequirementArchitectureView view, String title) {
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (view == null) {</span>
+<span class="fc" id="L49">            return new DiagramModel(title, List.of(), List.of(),</span>
+                    new DiagramLayout(&quot;LR&quot;, true));
+        }
+
+<span class="fc" id="L53">        List&lt;DiagramNode&gt; nodes = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for (RequirementElementView el : view.getIncludedElements()) {</span>
+<span class="pc bpc" id="L55" title="1 of 4 branches missed.">            if (el.getRelevance() &lt; MIN_RELEVANCE &amp;&amp; !el.isAnchor()) {</span>
+<span class="fc" id="L56">                continue;</span>
+            }
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            int layer = el.getTaxonomySheet() != null</span>
+<span class="fc" id="L59">                    ? LAYER_MAP.getOrDefault(el.getTaxonomySheet(), 0) : 0;</span>
+<span class="fc" id="L60">            nodes.add(new DiagramNode(</span>
+<span class="fc" id="L61">                    el.getNodeCode(),</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                    el.getTitle() != null ? el.getTitle() : el.getNodeCode(),</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                    el.getTaxonomySheet() != null ? el.getTaxonomySheet() : &quot;Unknown&quot;,</span>
+<span class="fc" id="L64">                    el.getRelevance(),</span>
+<span class="fc" id="L65">                    el.isAnchor(),</span>
+                    layer));
+<span class="fc" id="L67">        }</span>
+
+        // Sort by relevance descending, then limit
+<span class="fc" id="L70">        nodes.sort(Comparator.comparingDouble(DiagramNode::relevance).reversed());</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (nodes.size() &gt; MAX_NODES) {</span>
+<span class="fc" id="L72">            nodes = new ArrayList&lt;&gt;(nodes.subList(0, MAX_NODES));</span>
+        }
+
+        // Build a set of included node IDs for filtering edges
+<span class="fc" id="L76">        var nodeIds = nodes.stream().map(DiagramNode::id).collect(java.util.stream.Collectors.toSet());</span>
+
+<span class="fc" id="L78">        List&lt;DiagramEdge&gt; edges = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L79">        int edgeIdx = 0;</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        for (RequirementRelationshipView rel : view.getIncludedRelationships()) {</span>
+<span class="pc bpc" id="L81" title="1 of 4 branches missed.">            if (!nodeIds.contains(rel.getSourceCode()) || !nodeIds.contains(rel.getTargetCode())) {</span>
+<span class="fc" id="L82">                continue;</span>
+            }
+<span class="fc" id="L84">            edges.add(new DiagramEdge(</span>
+                    &quot;e&quot; + (++edgeIdx),
+<span class="fc" id="L86">                    rel.getSourceCode(),</span>
+<span class="fc" id="L87">                    rel.getTargetCode(),</span>
+<span class="fc" id="L88">                    rel.getRelationType(),</span>
+<span class="fc" id="L89">                    rel.getPropagatedRelevance()));</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">            if (edges.size() &gt;= MAX_EDGES) {</span>
+<span class="nc" id="L91">                break;</span>
+            }
+<span class="fc" id="L93">        }</span>
+
+<span class="fc" id="L95">        log.info(&quot;DiagramProjection: {} nodes, {} edges from architecture view&quot;, nodes.size(), edges.size());</span>
+
+<span class="fc" id="L97">        return new DiagramModel(</span>
+                title,
+                nodes,
+                edges,
+                new DiagramLayout(&quot;LR&quot;, true));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

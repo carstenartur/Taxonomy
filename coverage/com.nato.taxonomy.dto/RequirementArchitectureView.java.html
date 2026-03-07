@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RequirementArchitectureView.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dto</a> &gt; <span class="el_source">RequirementArchitectureView.java</span></div><h1>RequirementArchitectureView.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dto;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class RequirementArchitectureView {
+
+<span class="fc" id="L8">    private List&lt;RequirementAnchor&gt; anchors = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L9">    private List&lt;RequirementElementView&gt; includedElements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L10">    private List&lt;RequirementRelationshipView&gt; includedRelationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L11">    private List&lt;String&gt; notes = new ArrayList&lt;&gt;();</span>
+
+    private int totalAnchors;
+    private int totalElements;
+    private int totalRelationships;
+    private int maxHopDistance;
+
+<span class="fc" id="L18">    public RequirementArchitectureView() {}</span>
+
+<span class="fc" id="L20">    public List&lt;RequirementAnchor&gt; getAnchors() { return anchors; }</span>
+<span class="fc" id="L21">    public void setAnchors(List&lt;RequirementAnchor&gt; anchors) { this.anchors = anchors; }</span>
+
+<span class="fc" id="L23">    public List&lt;RequirementElementView&gt; getIncludedElements() { return includedElements; }</span>
+<span class="fc" id="L24">    public void setIncludedElements(List&lt;RequirementElementView&gt; includedElements) { this.includedElements = includedElements; }</span>
+
+<span class="fc" id="L26">    public List&lt;RequirementRelationshipView&gt; getIncludedRelationships() { return includedRelationships; }</span>
+<span class="fc" id="L27">    public void setIncludedRelationships(List&lt;RequirementRelationshipView&gt; includedRelationships) { this.includedRelationships = includedRelationships; }</span>
+
+<span class="fc" id="L29">    public List&lt;String&gt; getNotes() { return notes; }</span>
+<span class="nc" id="L30">    public void setNotes(List&lt;String&gt; notes) { this.notes = notes; }</span>
+
+<span class="fc" id="L32">    public int getTotalAnchors() { return totalAnchors; }</span>
+<span class="fc" id="L33">    public void setTotalAnchors(int totalAnchors) { this.totalAnchors = totalAnchors; }</span>
+
+<span class="fc" id="L35">    public int getTotalElements() { return totalElements; }</span>
+<span class="fc" id="L36">    public void setTotalElements(int totalElements) { this.totalElements = totalElements; }</span>
+
+<span class="fc" id="L38">    public int getTotalRelationships() { return totalRelationships; }</span>
+<span class="fc" id="L39">    public void setTotalRelationships(int totalRelationships) { this.totalRelationships = totalRelationships; }</span>
+
+<span class="fc" id="L41">    public int getMaxHopDistance() { return maxHopDistance; }</span>
+<span class="fc" id="L42">    public void setMaxHopDistance(int maxHopDistance) { this.maxHopDistance = maxHopDistance; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

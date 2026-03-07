@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationCompatibilityMatrix.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.service</a> &gt; <span class="el_source">RelationCompatibilityMatrix.java</span></div><h1>RelationCompatibilityMatrix.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.service;
+
+import com.nato.taxonomy.model.RelationType;
+import org.springframework.stereotype.Component;
+
+import java.util.*;
+
+/**
+ * Defines which {@link RelationType} is valid between which taxonomy root pairs.
+ *
+ * &lt;p&gt;Not every relation type may connect arbitrary node combinations.
+ * This matrix encodes domain knowledge about which source taxonomy root
+ * may be linked to which target taxonomy root for a given relation type.
+ *
+ * &lt;p&gt;An empty set means &quot;no restriction&quot; (any root is allowed).
+ */
+@Component
+public class RelationCompatibilityMatrix {
+
+    /**
+     * Map: RelationType → Map&amp;lt;sourceRoot, Set&amp;lt;targetRoot&amp;gt;&amp;gt;.
+     * If a relation type is absent, or the sourceRoot is absent, all targets are allowed.
+     */
+    private final Map&lt;RelationType, Map&lt;String, Set&lt;String&gt;&gt;&gt; matrix;
+
+<span class="fc" id="L26">    public RelationCompatibilityMatrix() {</span>
+<span class="fc" id="L27">        matrix = new EnumMap&lt;&gt;(RelationType.class);</span>
+
+        // Capability → Service
+<span class="fc" id="L30">        addRule(RelationType.REALIZES,          &quot;CP&quot;,  Set.of(&quot;CS&quot;));</span>
+        // Service → Business Process
+<span class="fc" id="L32">        addRule(RelationType.SUPPORTS,          &quot;CS&quot;,  Set.of(&quot;BP&quot;));</span>
+        // Business Process → Information Product (COI taxonomy)
+<span class="fc" id="L34">        addRule(RelationType.CONSUMES,          &quot;BP&quot;,  Set.of(&quot;COI&quot;));</span>
+        // User Application → Core Service
+<span class="fc" id="L36">        addRule(RelationType.USES,              &quot;UA&quot;,  Set.of(&quot;CS&quot;));</span>
+        // COI Service → Capability
+<span class="fc" id="L38">        addRule(RelationType.FULFILLS,          &quot;COI&quot;, Set.of(&quot;CP&quot;));</span>
+        // Business Role → Business Process
+<span class="fc" id="L40">        addRule(RelationType.ASSIGNED_TO,       &quot;BR&quot;,  Set.of(&quot;BP&quot;));</span>
+        // Service → Service (same root)
+<span class="fc" id="L42">        addRule(RelationType.DEPENDS_ON,        &quot;CS&quot;,  Set.of(&quot;CS&quot;));</span>
+        // Business Process → Information Product
+<span class="fc" id="L44">        addRule(RelationType.PRODUCES,          &quot;BP&quot;,  Set.of(&quot;COI&quot;));</span>
+        // Communications Service → Core Service
+<span class="fc" id="L46">        addRule(RelationType.COMMUNICATES_WITH, &quot;CR&quot;,  Set.of(&quot;CS&quot;));</span>
+        // RELATED_TO has no restrictions
+<span class="fc" id="L48">    }</span>
+
+    private void addRule(RelationType type, String sourceRoot, Set&lt;String&gt; targetRoots) {
+<span class="fc" id="L51">        matrix.computeIfAbsent(type, k -&gt; new HashMap&lt;&gt;())</span>
+<span class="fc" id="L52">              .put(sourceRoot, targetRoots);</span>
+<span class="fc" id="L53">    }</span>
+
+    /**
+     * Returns the set of allowed target taxonomy roots for a given source root
+     * and relation type.
+     *
+     * &lt;p&gt;An empty set is returned in two cases:
+     * &lt;ol&gt;
+     *   &lt;li&gt;The relation type has no rules at all — meaning all roots are allowed
+     *       (use {@link #isCompatible} for the definitive check).&lt;/li&gt;
+     *   &lt;li&gt;The source root is not listed for a relation type that does have rules —
+     *       meaning no targets are allowed for that source root.&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * &lt;p&gt;Use {@link #isCompatible} for a clear yes/no answer that handles both cases.
+     */
+    public Set&lt;String&gt; allowedTargetRoots(String sourceRoot, RelationType relationType) {
+<span class="fc" id="L70">        Map&lt;String, Set&lt;String&gt;&gt; bySource = matrix.get(relationType);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (bySource == null) {</span>
+            // No rules for this relation type → all roots allowed
+<span class="fc" id="L73">            return Collections.emptySet();</span>
+        }
+<span class="fc" id="L75">        Set&lt;String&gt; targets = bySource.get(sourceRoot);</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        return targets != null ? Collections.unmodifiableSet(targets) : Collections.emptySet();</span>
+    }
+
+    /**
+     * Checks whether a specific source→target root combination is compatible
+     * with the given relation type.
+     */
+    public boolean isCompatible(String sourceRoot, String targetRoot, RelationType relationType) {
+<span class="fc" id="L84">        Map&lt;String, Set&lt;String&gt;&gt; bySource = matrix.get(relationType);</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (bySource == null) {</span>
+            // No rules at all for this relation type → no restriction
+<span class="fc" id="L87">            return true;</span>
+        }
+<span class="fc" id="L89">        Set&lt;String&gt; targets = bySource.get(sourceRoot);</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (targets == null) {</span>
+            // The relation type has rules but this sourceRoot is not listed →
+            // the sourceRoot is not a valid origin for this relation type
+<span class="fc" id="L93">            return false;</span>
+        }
+<span class="fc" id="L95">        return targets.contains(targetRoot);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

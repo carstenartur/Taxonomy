@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyNodeDto.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dto</a> &gt; <span class="el_source">TaxonomyNodeDto.java</span></div><h1>TaxonomyNodeDto.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dto;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class TaxonomyNodeDto {
+
+    private Long id;
+    private String code;
+    private String uuid;
+    private String nameEn;
+    private String nameDe;
+    private String descriptionEn;
+    private String descriptionDe;
+    private String parentCode;
+    private String taxonomyRoot;
+    private int level;
+    private String dataset;
+    private String externalId;
+    private String source;
+    private String reference;
+    private Integer sortOrder;
+    private String state;
+<span class="fc" id="L24">    private List&lt;TaxonomyNodeDto&gt; children = new ArrayList&lt;&gt;();</span>
+    private Integer matchPercentage;
+<span class="fc" id="L26">    private List&lt;TaxonomyRelationDto&gt; outgoingRelations = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L27">    private List&lt;TaxonomyRelationDto&gt; incomingRelations = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L29">    public TaxonomyNodeDto() {}</span>
+
+<span class="fc" id="L31">    public Long getId() { return id; }</span>
+<span class="fc" id="L32">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L34">    public String getCode() { return code; }</span>
+<span class="fc" id="L35">    public void setCode(String code) { this.code = code; }</span>
+
+<span class="fc" id="L37">    public String getUuid() { return uuid; }</span>
+<span class="fc" id="L38">    public void setUuid(String uuid) { this.uuid = uuid; }</span>
+
+<span class="fc" id="L40">    public String getNameEn() { return nameEn; }</span>
+<span class="fc" id="L41">    public void setNameEn(String nameEn) { this.nameEn = nameEn; }</span>
+
+<span class="fc" id="L43">    public String getNameDe() { return nameDe; }</span>
+<span class="fc" id="L44">    public void setNameDe(String nameDe) { this.nameDe = nameDe; }</span>
+
+    /** Backward-compatible getter; returns the English name. */
+<span class="fc" id="L47">    public String getName() { return nameEn; }</span>
+
+<span class="fc" id="L49">    public String getDescriptionEn() { return descriptionEn; }</span>
+<span class="fc" id="L50">    public void setDescriptionEn(String descriptionEn) { this.descriptionEn = descriptionEn; }</span>
+
+<span class="fc" id="L52">    public String getDescriptionDe() { return descriptionDe; }</span>
+<span class="fc" id="L53">    public void setDescriptionDe(String descriptionDe) { this.descriptionDe = descriptionDe; }</span>
+
+    /** Backward-compatible getter; returns the English description. */
+<span class="fc" id="L56">    public String getDescription() { return descriptionEn; }</span>
+
+<span class="fc" id="L58">    public String getParentCode() { return parentCode; }</span>
+<span class="fc" id="L59">    public void setParentCode(String parentCode) { this.parentCode = parentCode; }</span>
+
+<span class="fc" id="L61">    public String getTaxonomyRoot() { return taxonomyRoot; }</span>
+<span class="fc" id="L62">    public void setTaxonomyRoot(String taxonomyRoot) { this.taxonomyRoot = taxonomyRoot; }</span>
+
+<span class="fc" id="L64">    public int getLevel() { return level; }</span>
+<span class="fc" id="L65">    public void setLevel(int level) { this.level = level; }</span>
+
+<span class="fc" id="L67">    public String getDataset() { return dataset; }</span>
+<span class="fc" id="L68">    public void setDataset(String dataset) { this.dataset = dataset; }</span>
+
+<span class="fc" id="L70">    public String getExternalId() { return externalId; }</span>
+<span class="fc" id="L71">    public void setExternalId(String externalId) { this.externalId = externalId; }</span>
+
+<span class="fc" id="L73">    public String getSource() { return source; }</span>
+<span class="fc" id="L74">    public void setSource(String source) { this.source = source; }</span>
+
+<span class="fc" id="L76">    public String getReference() { return reference; }</span>
+<span class="fc" id="L77">    public void setReference(String reference) { this.reference = reference; }</span>
+
+<span class="fc" id="L79">    public Integer getSortOrder() { return sortOrder; }</span>
+<span class="fc" id="L80">    public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }</span>
+
+<span class="fc" id="L82">    public String getState() { return state; }</span>
+<span class="fc" id="L83">    public void setState(String state) { this.state = state; }</span>
+
+<span class="fc" id="L85">    public List&lt;TaxonomyNodeDto&gt; getChildren() { return children; }</span>
+<span class="fc" id="L86">    public void setChildren(List&lt;TaxonomyNodeDto&gt; children) { this.children = children; }</span>
+
+<span class="fc" id="L88">    public Integer getMatchPercentage() { return matchPercentage; }</span>
+<span class="fc" id="L89">    public void setMatchPercentage(Integer matchPercentage) { this.matchPercentage = matchPercentage; }</span>
+
+<span class="fc" id="L91">    public List&lt;TaxonomyRelationDto&gt; getOutgoingRelations() { return outgoingRelations; }</span>
+<span class="fc" id="L92">    public void setOutgoingRelations(List&lt;TaxonomyRelationDto&gt; outgoingRelations) { this.outgoingRelations = outgoingRelations; }</span>
+
+<span class="fc" id="L94">    public List&lt;TaxonomyRelationDto&gt; getIncomingRelations() { return incomingRelations; }</span>
+<span class="fc" id="L95">    public void setIncomingRelations(List&lt;TaxonomyRelationDto&gt; incomingRelations) { this.incomingRelations = incomingRelations; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
