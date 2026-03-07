@@ -13,8 +13,9 @@
         <span class="navbar-brand fw-bold">
             &#127756; NATO NC3T Taxonomy Browser &mdash; Baseline 7
         </span>
-        <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" title="AI availability status"></span>
-        <button id="adminLockBtn" class="btn btn-sm btn-outline-light d-none" title="Admin mode" style="font-size:1.1rem;">&#128274;</button>
+        <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" title="Shows the current AI/LLM provider status: green = available, red = no API key configured"></span>
+        <button id="darkModeToggle" class="btn btn-sm btn-outline-light me-2" title="Toggle dark/light theme" aria-label="Toggle dark mode">&#127769;</button>
+        <button id="adminLockBtn" class="btn btn-sm btn-outline-light d-none" title="Open admin mode to access diagnostic panels and prompt templates" style="font-size:1.1rem;">&#128274;</button>
     </div>
 </nav>
 
@@ -40,10 +41,11 @@
                             <button id="exportSvg" class="btn btn-sm btn-outline-info" title="Download current view as SVG">&#128229; SVG</button>
                             <button id="exportPng" class="btn btn-sm btn-outline-info" title="Download current view as PNG">&#128229; PNG</button>
                             <button id="exportPdf" class="btn btn-sm btn-outline-info" title="Print / Save as PDF">&#128229; PDF</button>
-                            <button id="exportCsv" class="btn btn-sm btn-outline-info" title="Download scores as CSV">&#128229; CSV</button>
-                            <button id="exportVisio" class="btn btn-sm btn-outline-info" title="Export Architecture View as Visio (.vsdx)">&#128229; Visio</button>
-                            <button id="exportArchiMate" class="btn btn-sm btn-outline-info" title="Export Architecture View as ArchiMate XML (.xml)">&#128229; ArchiMate</button>
+                            <button id="exportCsv" class="btn btn-sm btn-outline-info" title="Download scores as CSV spreadsheet">&#128229; CSV</button>
+                            <button id="exportVisio" class="btn btn-sm btn-outline-info" title="Export Architecture View as Visio (.vsdx) diagram">&#128229; Visio</button>
+                            <button id="exportArchiMate" class="btn btn-sm btn-outline-info" title="Export Architecture View as ArchiMate XML (.xml) for Archi or similar tools">&#128229; ArchiMate</button>
                         </div>
+                        <span id="exportHint" class="d-none" title="Export buttons appear after a successful analysis with scores &gt; 0">📋 Analyze first to enable exports</span>
                         <!-- Expand / Collapse (list & tabs only) -->
                         <div id="expandCollapseGroup">
                             <button id="expandAll"   class="btn btn-sm btn-outline-secondary me-1">Expand All</button>
@@ -81,19 +83,24 @@
                     </label>
                     <textarea id="businessText" class="form-control mb-3" rows="7"
                               placeholder="e.g. We need a system to manage and display real-time air tracks, integrate radar data, and provide a common operational picture to commanders at brigade and above level..."></textarea>
-                    <button id="analyzeBtn" class="btn btn-primary w-100">
+                    <button id="analyzeBtn" class="btn btn-primary w-100" title="Analyze the business requirement text against the taxonomy using the configured AI/LLM provider">
                         <span id="analyzeSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
                         Analyze with AI
                     </button>
+                    <div id="aiUnavailableWarning" class="mt-2 d-none">
+                        ⚠️ <strong>AI is not available.</strong> No LLM API key is configured.
+                        Set one of: <code>GEMINI_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>DEEPSEEK_API_KEY</code>,
+                        or use <code>LLM_PROVIDER=LOCAL_ONNX</code> for offline analysis.
+                    </div>
                     <div class="form-check form-check-inline ms-2 mt-2">
                         <input class="form-check-input" type="checkbox" id="interactiveMode" checked>
-                        <label class="form-check-label" for="interactiveMode">
+                        <label class="form-check-label" for="interactiveMode" title="In Interactive Mode, the taxonomy is expanded level-by-level. Click the 🔍 icon on any node to drill deeper. This saves API quota by only analyzing branches you explore.">
                             🔍 Interactive Mode <small class="text-muted">(saves API quota)</small>
                         </label>
                     </div>
                     <div class="form-check form-check-inline ms-2 mt-2">
                         <input class="form-check-input" type="checkbox" id="includeArchitectureView">
-                        <label class="form-check-label" for="includeArchitectureView">
+                        <label class="form-check-label" for="includeArchitectureView" title="When enabled, the analysis also produces an Architecture View showing how matched taxonomy nodes relate to each other through cross-taxonomy relations (REALIZES, SUPPORTS, etc.)">
                             🏗️ Architecture View <small class="text-muted">(relation-aware expansion)</small>
                         </label>
                     </div>
@@ -104,13 +111,13 @@
             <!-- Legend -->
             <div class="card shadow-sm mb-3">
                 <div class="card-body py-2">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <div class="d-flex align-items-center gap-2 flex-wrap" title="Score colour coding: green intensity indicates the match percentage. 0% = no match (transparent), 100% = perfect match (solid green). Text turns white above 60%.">
                         <small class="text-muted">Match legend:</small>
-                        <span class="legend-box" style="background:rgba(0,128,0,0);">0%</span>
-                        <span class="legend-box" style="background:rgba(0,128,0,0.25);">25%</span>
-                        <span class="legend-box" style="background:rgba(0,128,0,0.50);">50%</span>
-                        <span class="legend-box" style="background:rgba(0,128,0,0.75); color:#fff;">75%</span>
-                        <span class="legend-box" style="background:rgba(0,128,0,1.00); color:#fff;">100%</span>
+                        <span class="legend-box" style="background:rgba(0,128,0,0);" title="0% — No match detected">0%</span>
+                        <span class="legend-box" style="background:rgba(0,128,0,0.25);" title="25% — Weak match">25%</span>
+                        <span class="legend-box" style="background:rgba(0,128,0,0.50);" title="50% — Moderate match">50%</span>
+                        <span class="legend-box" style="background:rgba(0,128,0,0.75); color:#fff;" title="75% — Strong match">75%</span>
+                        <span class="legend-box" style="background:rgba(0,128,0,1.00); color:#fff;" title="100% — Perfect match">100%</span>
                     </div>
                 </div>
             </div>

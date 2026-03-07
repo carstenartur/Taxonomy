@@ -539,3 +539,135 @@
     background-color: #6f42c1;
     color: #fff;
 }
+
+/* ── Dark mode ──────────────────────────────────────────────── */
+[data-bs-theme="dark"] body {
+    background-color: #1a1d21;
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .card {
+    background-color: #212529;
+    border-color: #373b3e;
+}
+
+[data-bs-theme="dark"] .card-header {
+    background-color: #2b3035;
+    border-color: #373b3e;
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .tax-level-0 > .tax-node-header {
+    background: #2b3035;
+    border-color: #373b3e;
+}
+
+[data-bs-theme="dark"] .tax-code {
+    color: #6ea8fe;
+}
+
+[data-bs-theme="dark"] .tax-description {
+    color: #9ca3af;
+}
+
+[data-bs-theme="dark"] .tax-children {
+    border-color: #444;
+}
+
+[data-bs-theme="dark"] .legend-box {
+    border-color: #555;
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select {
+    background-color: #2b3035;
+    border-color: #495057;
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .form-control::placeholder {
+    color: #6c757d;
+}
+
+[data-bs-theme="dark"] .bg-light,
+[data-bs-theme="dark"] #llmCommLogContent,
+[data-bs-theme="dark"] #diagnosticsContent {
+    background-color: #2b3035 !important;
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .decision-stats,
+[data-bs-theme="dark"] .graph-stat-card {
+    background: #2b3035;
+    border-color: #444;
+}
+
+[data-bs-theme="dark"] .decision-tree-wrapper {
+    background: #212529;
+    border-color: #444;
+}
+
+[data-bs-theme="dark"] .decision-table thead th,
+[data-bs-theme="dark"] .graph-table thead th,
+[data-bs-theme="dark"] .proposal-table thead th {
+    background: #2b3035;
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .graph-node-link {
+    color: #6ea8fe;
+}
+
+[data-bs-theme="dark"] .text-muted {
+    color: #9ca3af !important;
+}
+
+[data-bs-theme="dark"] #llmCommLogContent .llm-log-prompt,
+[data-bs-theme="dark"] #llmCommLogContent .llm-log-response,
+[data-bs-theme="dark"] .llm-log-reasons {
+    background: #1a1d21;
+    border-color: #444;
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .proposal-table tbody tr:hover,
+[data-bs-theme="dark"] .graph-table tbody tr:hover {
+    background-color: #2c3034;
+}
+
+[data-bs-theme="dark"] .btn-outline-secondary {
+    color: #adb5bd;
+    border-color: #545b62;
+}
+
+[data-bs-theme="dark"] .btn-outline-info {
+    color: #6edff6;
+    border-color: #087990;
+}
+
+/* ── AI unavailable inline warning ─────────────────────────── */
+#aiUnavailableWarning {
+    font-size: 0.85rem;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background-color: #fff3cd;
+    border: 1px solid #ffecb5;
+    color: #664d03;
+}
+
+[data-bs-theme="dark"] #aiUnavailableWarning {
+    background-color: #332701;
+    border-color: #664d03;
+    color: #ffda6a;
+}
+
+/* ── Export unavailable hint ────────────────────────────────── */
+#exportHint {
+    font-size: 0.78rem;
+    color: #6c757d;
+}
+
+[data-bs-theme="dark"] #exportHint {
+    color: #9ca3af;
+}

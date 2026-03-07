@@ -104,6 +104,28 @@
             }
         });
 
+        // Dark mode toggle
+        const darkModeBtn = document.getElementById('darkModeToggle');
+        if (darkModeBtn) {
+            const savedTheme = localStorage.getItem('taxonomy-theme');
+            if (savedTheme === 'dark') {
+                document.documentElement.setAttribute('data-bs-theme', 'dark');
+                darkModeBtn.textContent = '☀️';
+            }
+            darkModeBtn.addEventListener('click', function () {
+                const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+                if (isDark) {
+                    document.documentElement.removeAttribute('data-bs-theme');
+                    darkModeBtn.textContent = '🌙';
+                    localStorage.setItem('taxonomy-theme', 'light');
+                } else {
+                    document.documentElement.setAttribute('data-bs-theme', 'dark');
+                    darkModeBtn.textContent = '☀️';
+                    localStorage.setItem('taxonomy-theme', 'dark');
+                }
+            });
+        }
+
         // Diagnostics panel
         checkAdminStatus();
         initAdminModal();
@@ -379,6 +401,8 @@
                 const badge = document.getElementById('aiStatusBadge');
                 if (status.available) {
                     btn.disabled = false;
+                    const aiWarn = document.getElementById('aiUnavailableWarning');
+                    if (aiWarn) aiWarn.classList.add('d-none');
                     if (!adminPasswordRequired || isAdminMode()) {
                         infoEl.textContent = 'Using: ' + status.provider;
                         infoEl.classList.remove('d-none');
@@ -398,6 +422,8 @@
                 } else {
                     btn.disabled = true;
                     infoEl.classList.add('d-none');
+                    const aiWarn = document.getElementById('aiUnavailableWarning');
+                    if (aiWarn) aiWarn.classList.remove('d-none');
                     if (badge) {
                         badge.textContent = '🔴 AI: Unavailable';
                         badge.className = 'badge bg-danger ms-auto me-2 fs-6';
@@ -609,9 +635,13 @@
     // ── Export group visibility ───────────────────────────────────────────────
     function updateExportGroupVisibility() {
         const exportGroup = document.getElementById('exportGroup');
+        const exportHint = document.getElementById('exportHint');
         if (!exportGroup) { return; }
         const hasScores = currentScores && Object.values(currentScores).some(v => v > 0);
         exportGroup.style.display = hasScores ? '' : 'none';
+        if (exportHint) {
+            exportHint.classList.toggle('d-none', hasScores);
+        }
     }
 
     // ── Export handler ────────────────────────────────────────────────────────
