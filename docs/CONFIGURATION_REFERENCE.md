@@ -77,9 +77,11 @@ huggingface-cli download sentence-transformers/all-MiniLM-L6-v2 --local-dir /opt
 
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
-| `ADMIN_PASSWORD` | `admin.password` | String | *(empty)* | Password to protect admin-only panels (LLM Diagnostics, Prompt Templates, Communication Log). When empty (default), admin panels are accessible to everyone. When set, users must click the 🔒 button and enter the password. |
+| `ADMIN_PASSWORD` | `admin.password` | String | *(must be set for non-local deployments)* | Password to protect admin-only panels (LLM Diagnostics, Prompt Templates, Communication Log). **For any deployment exposed beyond a fully trusted local machine, this MUST be set to a strong, non-empty value.** When left empty, all admin panels are accessible to everyone and this behaviour is intended for isolated development environments only. When set, users must click the 🔒 button and enter the password. |
 
 ### Configuring the Admin Password
+
+> **Security warning:** Running the application with an empty `ADMIN_PASSWORD` leaves all admin panels unauthenticated. **Do not use an empty admin password on any internet-exposed, shared, or production system.** Always configure a strong, non-empty value for `ADMIN_PASSWORD` in such environments.
 
 **Local development:**
 ```bash

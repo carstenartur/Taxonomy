@@ -13,8 +13,8 @@
         <span class="navbar-brand fw-bold">
             &#127756; NATO NC3T Taxonomy Browser &mdash; Baseline 7
         </span>
-        <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" title="Shows the current AI/LLM provider status: green = available, red = no API key configured"></span>
-        <button id="darkModeToggle" class="btn btn-sm btn-outline-light me-2" title="Toggle dark/light theme" aria-label="Toggle dark mode">&#127769;</button>
+        <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" title="Shows the current AI/LLM provider status: green = available, yellow = unknown (status check failed), red = no API key configured"></span>
+        <button id="darkModeToggle" class="btn btn-sm btn-outline-light me-2" title="Toggle dark/light theme" aria-label="Toggle theme">&#127769;</button>
         <button id="adminLockBtn" class="btn btn-sm btn-outline-light d-none" title="Open admin mode to access diagnostic panels and prompt templates" style="font-size:1.1rem;">&#128274;</button>
     </div>
 </nav>
@@ -89,7 +89,7 @@
                     </button>
                     <div id="aiUnavailableWarning" class="mt-2 d-none">
                         ⚠️ <strong>AI is not available.</strong> No LLM API key is configured.
-                        Set one of: <code>GEMINI_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>DEEPSEEK_API_KEY</code>,
+                        Set one of the supported API keys, such as <code>GEMINI_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>DEEPSEEK_API_KEY</code>, <code>DASHSCOPE_API_KEY</code>, <code>LLAMA_API_KEY</code>, or <code>MISTRAL_API_KEY</code>,
                         or use <code>LLM_PROVIDER=LOCAL_ONNX</code> for offline analysis.
                     </div>
                     <div class="form-check form-check-inline ms-2 mt-2">

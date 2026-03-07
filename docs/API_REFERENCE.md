@@ -667,21 +667,29 @@ The API uses standard HTTP status codes and returns structured error information
 
 **Analysis errors** (returned in the response body with HTTP 200):
 
+The `status` field is `"SUCCESS"` when all roots are scored, or `"PARTIAL"` when one or
+more roots failed or all scores are zero.  The value `"ERROR"` is **not** produced by the
+current implementation — failures always yield `"PARTIAL"` with as many scores as could
+be collected.
+
 ```json
 {
-  "status": "ERROR",
+  "status": "PARTIAL",
   "errorMessage": "LLM provider returned an error: Connection timed out",
-  "scores": {},
-  "warnings": ["Root BP was skipped due to timeout"]
+  "scores": { "BP": 75 },
+  "warnings": ["Root CS was skipped due to timeout"]
 }
 ```
 
 **Streaming analysis errors** (SSE `error` event):
 
+The streaming endpoint emits an `error` event with `status: "PARTIAL"` and any scores
+collected before the failure:
+
 ```json
 {
-  "status": "ERROR",
-  "errorMessage": "Rate limit exceeded (HTTP 429). Try again in 60 seconds.",
+  "status": "PARTIAL",
+  "errorMessage": "Analysis failed: Rate limit exceeded (HTTP 429)",
   "partialScores": { "BP": 75, "CS": 60 },
   "warnings": ["Some roots may be incomplete"]
 }

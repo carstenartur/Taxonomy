@@ -437,7 +437,11 @@
                 }
             })
             .catch(() => {
-                // If the status check fails, leave the button enabled and don't show a warning.
+                // If the status check fails, reset to a neutral unknown state.
+                const btn = document.getElementById('analyzeBtn');
+                if (btn) btn.disabled = false;
+                const aiWarn = document.getElementById('aiUnavailableWarning');
+                if (aiWarn) aiWarn.classList.add('d-none');
                 const badge = document.getElementById('aiStatusBadge');
                 if (badge) {
                     badge.textContent = '⚠️ AI: Unknown';
