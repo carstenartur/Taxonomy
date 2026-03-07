@@ -362,31 +362,31 @@ public class TaxonomyService {
 <span class="fc" id="L362">        }</span>
 <span class="fc" id="L363">        dto.setChildren(childDtos);</span>
 <span class="fc" id="L364">        List&lt;TaxonomyRelationDto&gt; outgoing = new ArrayList&lt;&gt;();</span>
-<span class="pc bpc" id="L365" title="1 of 2 branches missed.">        for (TaxonomyRelation rel : node.getOutgoingRelations()) {</span>
-<span class="nc" id="L366">            outgoing.add(relationToDto(rel));</span>
-<span class="nc" id="L367">        }</span>
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        for (TaxonomyRelation rel : node.getOutgoingRelations()) {</span>
+<span class="fc" id="L366">            outgoing.add(relationToDto(rel));</span>
+<span class="fc" id="L367">        }</span>
 <span class="fc" id="L368">        dto.setOutgoingRelations(outgoing);</span>
 <span class="fc" id="L369">        List&lt;TaxonomyRelationDto&gt; incoming = new ArrayList&lt;&gt;();</span>
-<span class="pc bpc" id="L370" title="1 of 2 branches missed.">        for (TaxonomyRelation rel : node.getIncomingRelations()) {</span>
-<span class="nc" id="L371">            incoming.add(relationToDto(rel));</span>
-<span class="nc" id="L372">        }</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">        for (TaxonomyRelation rel : node.getIncomingRelations()) {</span>
+<span class="fc" id="L371">            incoming.add(relationToDto(rel));</span>
+<span class="fc" id="L372">        }</span>
 <span class="fc" id="L373">        dto.setIncomingRelations(incoming);</span>
 <span class="fc" id="L374">        return dto;</span>
     }
 
     private TaxonomyRelationDto relationToDto(TaxonomyRelation relation) {
-<span class="nc" id="L378">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
-<span class="nc" id="L379">        dto.setId(relation.getId());</span>
-<span class="nc" id="L380">        dto.setSourceCode(relation.getSourceNode().getCode());</span>
-<span class="nc" id="L381">        dto.setSourceName(relation.getSourceNode().getNameEn());</span>
-<span class="nc" id="L382">        dto.setTargetCode(relation.getTargetNode().getCode());</span>
-<span class="nc" id="L383">        dto.setTargetName(relation.getTargetNode().getNameEn());</span>
-<span class="nc" id="L384">        dto.setRelationType(relation.getRelationType().name());</span>
-<span class="nc" id="L385">        dto.setDescription(relation.getDescription());</span>
-<span class="nc" id="L386">        dto.setProvenance(relation.getProvenance());</span>
-<span class="nc" id="L387">        dto.setWeight(relation.getWeight());</span>
-<span class="nc" id="L388">        dto.setBidirectional(relation.isBidirectional());</span>
-<span class="nc" id="L389">        return dto;</span>
+<span class="fc" id="L378">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
+<span class="fc" id="L379">        dto.setId(relation.getId());</span>
+<span class="fc" id="L380">        dto.setSourceCode(relation.getSourceNode().getCode());</span>
+<span class="fc" id="L381">        dto.setSourceName(relation.getSourceNode().getNameEn());</span>
+<span class="fc" id="L382">        dto.setTargetCode(relation.getTargetNode().getCode());</span>
+<span class="fc" id="L383">        dto.setTargetName(relation.getTargetNode().getNameEn());</span>
+<span class="fc" id="L384">        dto.setRelationType(relation.getRelationType().name());</span>
+<span class="fc" id="L385">        dto.setDescription(relation.getDescription());</span>
+<span class="fc" id="L386">        dto.setProvenance(relation.getProvenance());</span>
+<span class="fc" id="L387">        dto.setWeight(relation.getWeight());</span>
+<span class="fc" id="L388">        dto.setBidirectional(relation.isBidirectional());</span>
+<span class="fc" id="L389">        return dto;</span>
     }
 
     @Transactional(readOnly = true)
