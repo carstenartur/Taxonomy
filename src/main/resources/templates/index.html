@@ -14,6 +14,7 @@
             &#127756; NATO NC3T Taxonomy Browser &mdash; Baseline 7
         </span>
         <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" title="Shows the current AI/LLM provider status: green = available, yellow = unknown (status check failed), red = no API key configured"></span>
+        <span id="embeddingStatusBadge" class="badge bg-secondary ms-1 me-2 d-none" title="Embedding model status for semantic search"></span>
         <button id="darkModeToggle" class="btn btn-sm btn-outline-light me-2" title="Toggle dark/light theme" aria-label="Toggle theme">&#127769;</button>
         <button id="adminLockBtn" class="btn btn-sm btn-outline-light d-none" title="Open admin mode to access diagnostic panels and prompt templates" style="font-size:1.1rem;">&#128274;</button>
     </div>
@@ -125,6 +126,40 @@
             <!-- Status / error messages -->
             <div id="statusArea"></div>
 
+            <!-- Search Panel -->
+            <details id="searchPanel" class="mt-2">
+                <summary class="fw-semibold" style="cursor:pointer;">&#128269; Search Taxonomy</summary>
+                <div class="mt-2">
+                    <div class="row g-2 mb-2">
+                        <div class="col">
+                            <input type="text" id="searchInput" class="form-control form-control-sm"
+                                   placeholder="Search taxonomy nodes\u2026" aria-label="Search query"/>
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <select id="searchModeSelect" class="form-select form-select-sm" aria-label="Search mode">
+                                <option value="fulltext">Full-text</option>
+                                <option value="semantic">Semantic</option>
+                                <option value="hybrid">Hybrid</option>
+                                <option value="graph">Graph</option>
+                            </select>
+                        </div>
+                        <div class="col-3">
+                            <select id="searchMaxResults" class="form-select form-select-sm" aria-label="Max results">
+                                <option value="10">10</option>
+                                <option value="20" selected>20</option>
+                                <option value="50">50</option>
+                            </select>
+                        </div>
+                        <div class="col-3">
+                            <button id="searchBtn" class="btn btn-sm btn-primary w-100">&#128269; Search</button>
+                        </div>
+                    </div>
+                    <div id="searchResultsArea" style="display:none; max-height:300px; overflow-y:auto;"></div>
+                </div>
+            </details>
+
             <!-- Analysis log panel (collapsible) -->
             <details id="analysisLog" class="mt-2" style="display:none;">
                 <summary class="text-muted small" style="cursor:pointer;">&#128203; Analysis Log</summary>
@@ -179,10 +214,14 @@
                             <button id="graphFailureBtn" class="btn btn-sm btn-outline-danger" title="What is affected if this element fails?">
                                 &#9888;&#65039; Failure Impact
                             </button>
+                            <button id="requirementImpactBtn" class="btn btn-sm btn-outline-success" title="Analyze which elements are transitively impacted by the current requirement scores">
+                                &#127919; Req. Impact
+                            </button>
                         </div>
                         <div id="graphResultsArea" class="mt-2" style="display:none;">
                             <div id="graphResultsContent"></div>
                         </div>
+                        <div id="requirementImpactResults" class="mt-2" style="display:none;"></div>
                     </div>
                 </div>
             </div>
@@ -207,6 +246,43 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Quality Dashboard -->
+            <details id="qualityDashboard" class="mt-2">
+                <summary class="fw-semibold" style="cursor:pointer;">&#128202; Quality Dashboard</summary>
+                <div id="qualityDashboardContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
+                    <div class="text-muted">Open to load metrics.</div>
+                </div>
+                <div class="mt-1">
+                    <button id="qualityRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                </div>
+            </details>
+
+            <!-- Relations Browser -->
+            <details id="relationsBrowser" class="mt-2">
+                <summary class="fw-semibold" style="cursor:pointer;">&#128279; Relations Browser</summary>
+                <div class="mt-2">
+                    <div class="d-flex gap-2 align-items-center mb-2">
+                        <select id="relationsTypeFilter" class="form-select form-select-sm" style="max-width:180px;" aria-label="Filter by relation type">
+                            <option value="">All types</option>
+                            <option value="REALIZES">REALIZES</option>
+                            <option value="SUPPORTS">SUPPORTS</option>
+                            <option value="CONSUMES">CONSUMES</option>
+                            <option value="USES">USES</option>
+                            <option value="FULFILLS">FULFILLS</option>
+                            <option value="ASSIGNED_TO">ASSIGNED_TO</option>
+                            <option value="DEPENDS_ON">DEPENDS_ON</option>
+                            <option value="PRODUCES">PRODUCES</option>
+                            <option value="COMMUNICATES_WITH">COMMUNICATES_WITH</option>
+                            <option value="RELATED_TO">RELATED_TO</option>
+                        </select>
+                        <button id="createRelationBtn" class="btn btn-sm btn-outline-primary">&#10133; New Relation</button>
+                    </div>
+                    <div id="relationsTableContainer" style="max-height:300px; overflow-y:auto;">
+                        <div class="text-muted small p-2">Open to load relations.</div>
+                    </div>
+                </div>
+            </details>
 
             <!-- LLM Communication Log (collapsible) -->
             <details id="llmCommLog" class="mt-2 admin-only" open>
@@ -262,6 +338,9 @@
 <script th:src="@{/js/taxonomy-views.js}"></script>
 <script th:src="@{/js/taxonomy-export.js}"></script>
 <script th:src="@{/js/taxonomy-graph.js}"></script>
+<script th:src="@{/js/taxonomy-search.js}"></script>
+<script th:src="@{/js/taxonomy-quality.js}"></script>
+<script th:src="@{/js/taxonomy-relations.js}"></script>
 <script th:src="@{/js/taxonomy.js}"></script>
 
 <!-- Propose Relations Modal -->
@@ -357,6 +436,54 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="adminUnlockBtn">&#128275; Unlock</button>
                 <button type="button" class="btn btn-warning d-none" id="adminLockConfirmBtn">&#128274; Lock</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Relation Modal -->
+<div class="modal fade" id="createRelationModal" tabindex="-1" aria-labelledby="createRelationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createRelationModalLabel">&#10133; Create Relation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <label for="newRelSource" class="form-label small">Source Node Code</label>
+                    <input type="text" id="newRelSource" class="form-control form-control-sm" placeholder="e.g. BP-1040"/>
+                </div>
+                <div class="mb-2">
+                    <label for="newRelTarget" class="form-label small">Target Node Code</label>
+                    <input type="text" id="newRelTarget" class="form-control form-control-sm" placeholder="e.g. CP-2010"/>
+                </div>
+                <div class="mb-2">
+                    <label for="newRelType" class="form-label small">Relation Type</label>
+                    <select id="newRelType" class="form-select form-select-sm">
+                        <option value="REALIZES">REALIZES</option>
+                        <option value="SUPPORTS">SUPPORTS</option>
+                        <option value="CONSUMES">CONSUMES</option>
+                        <option value="USES">USES</option>
+                        <option value="FULFILLS">FULFILLS</option>
+                        <option value="ASSIGNED_TO">ASSIGNED_TO</option>
+                        <option value="DEPENDS_ON">DEPENDS_ON</option>
+                        <option value="PRODUCES">PRODUCES</option>
+                        <option value="COMMUNICATES_WITH">COMMUNICATES_WITH</option>
+                        <option value="RELATED_TO">RELATED_TO</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label for="newRelDescription" class="form-label small">Description (optional)</label>
+                    <textarea id="newRelDescription" class="form-control form-control-sm" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="createRelationSubmit" class="btn btn-primary">
+                    <span id="createRelationSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status" aria-hidden="true"></span>
+                    Create
+                </button>
             </div>
         </div>
     </div>

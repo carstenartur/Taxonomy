@@ -913,6 +913,21 @@
         });
         wrapper.appendChild(graphBtn);
 
+        // Find Similar button (visible when embeddings are available)
+        const similarBtn = document.createElement('button');
+        similarBtn.className = 'btn btn-sm btn-outline-secondary tax-justify-btn search-similar-btn';
+        similarBtn.textContent = '🔍 Similar';
+        similarBtn.title = 'Find semantically similar nodes to ' + node.code;
+        similarBtn.setAttribute('aria-label', 'Find similar nodes to ' + node.code);
+        similarBtn.dataset.code = node.code;
+        similarBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (window.TaxonomySearch) {
+                window.TaxonomySearch.findSimilar(node.code);
+            }
+        });
+        wrapper.appendChild(similarBtn);
+
         return wrapper;
     }
 
@@ -1835,6 +1850,9 @@
     // Expose accept/reject as global helpers for onclick handlers in rendered table
     window._proposalAccept = acceptProposal;
     window._proposalReject = rejectProposal;
+
+    // Expose current scores for Requirement Impact Analysis
+    window._getCurrentScores = function () { return currentScores; };
 
     // ── Prompt template editor ────────────────────────────────────────────────
 
