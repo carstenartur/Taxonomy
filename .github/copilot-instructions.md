@@ -76,6 +76,7 @@ LLM-dependent tests are skipped gracefully with `Assumptions.assumeTrue(System.g
 The workflow `.github/workflows/generate-screenshots.yml` runs automatically on:
 - Manual trigger (`workflow_dispatch`)
 - Push to `main` that changes files under `src/main/resources/templates/**` or `src/main/resources/static/**`
+- Push to `main` that changes `src/test/java/**/ScreenshotGeneratorIT.java`
 
 It builds the JAR, runs the screenshot generator (with `GEMINI_API_KEY` from repository secrets), and auto-commits any changed PNGs back to the branch with the message `docs: auto-generate UI screenshots [skip ci]`.
 
@@ -104,6 +105,15 @@ The key uses the **Google AI Studio free tier**, which has hard rate limits:
 - **Do not trigger the `generate-screenshots.yml` workflow repeatedly** in quick succession. Each full run with the key uses up to ~12 LLM calls (one per analysis request). Wait for a run to finish before triggering another.
 - **Do not hardcode or log the key.** The secret is masked in CI logs; keep it that way.
 - If a task only needs to verify that the LLM integration compiles or that the API wiring is correct, use the existing `DiagnosticsWithApiKeyContainerIT` tests, which make at most 1–2 LLM calls per run.
+
+## Gemini API Rate Limits
+
+The Gemini Free Tier has a rate limit of approximately 15 requests per minute. This affects:
+- `ScreenshotGeneratorIT.java`: Tests 15–26 make LLM calls and need `rateLimitDelay()` (10s pause) between them.
+- The `generate-screenshots.yml` workflow: Must account for total runtime of ~3–4 minutes for LLM-dependent screenshots.
+- Any new test that triggers LLM analysis must include a rate-limit delay.
+
+The `LlmService` throws `LlmRateLimitException` on HTTP 429 or `RESOURCE_EXHAUSTED`. The screenshot tests do NOT have automatic retry — they rely on delays to stay within limits, plus `failsafe.rerunFailingTestsCount=1` in the workflow as a safety net.
 
 ## Key Element IDs (for Selenium tests)
 
