@@ -41,6 +41,9 @@ import java.util.List;
  * Screenshots 1–14 do not require an LLM provider.
  * Screenshots 15–26 require {@code GEMINI_API_KEY} in the environment; they are
  * skipped gracefully when the key is absent.
+ * <p>
+ * Tests 15–22 call {@link #rateLimitDelay()} to stay within the Gemini free-tier
+ * rate limit (~15 requests/minute).
  */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -231,11 +234,12 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(3)
     void captureRightPanelDefault() throws IOException {
-        // Wait for visible content inside the right panel before capturing
-        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("graphExplorerPanel")));
-        saveElementScreenshot(
-                driver.findElement(By.cssSelector(".col-lg-5")),
-                "03-right-panel-default.png");
+        // Scroll back to top so both panels are in view, then take a full-viewport screenshot.
+        // Element screenshot of .col-lg-5 is unreliable because the flex column collapses after
+        // the tree expansion in test 2.
+        js("window.scrollTo(0, 0);");
+        wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("businessText")));
+        saveScreenshot("03-right-panel-default.png");
     }
 
     @Test
