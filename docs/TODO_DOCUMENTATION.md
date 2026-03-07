@@ -101,3 +101,4 @@ To generate screenshots:
 - [ ] **No documented error response schema**: the API returns various HTTP 4xx / 5xx responses but the error body format (fields, codes) is not documented
 - [ ] **No versioning strategy documented**: the API is currently unversioned (`/api/...`); future breaking changes may require a `/api/v2/...` strategy
 - [ ] **No rate-limiting documentation**: it is unclear whether the application enforces any rate limits on LLM-backed endpoints, and if so, what the limits are
+
