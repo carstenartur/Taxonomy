@@ -1,9 +1,11 @@
 package com.nato.taxonomy.controller;
 
 import com.nato.taxonomy.dto.ChangeImpactView;
+import com.nato.taxonomy.dto.EnrichedChangeImpactView;
 import com.nato.taxonomy.dto.GraphNeighborhoodView;
 import com.nato.taxonomy.dto.RequirementImpactView;
 import com.nato.taxonomy.service.ArchitectureGraphQueryService;
+import com.nato.taxonomy.service.EnrichedImpactService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -21,6 +23,7 @@ import java.util.Map;
  *   <li>{@code GET  /api/graph/node/{code}/upstream} — Upstream neighborhood</li>
  *   <li>{@code GET  /api/graph/node/{code}/downstream} — Downstream neighborhood</li>
  *   <li>{@code GET  /api/graph/node/{code}/failure-impact} — Failure/change impact</li>
+ *   <li>{@code GET  /api/graph/node/{code}/enriched-failure-impact} — Enriched failure impact with requirement correlation</li>
  * </ul>
  */
 @RestController
@@ -29,9 +32,12 @@ import java.util.Map;
 public class GraphQueryApiController {
 
     private final ArchitectureGraphQueryService graphQueryService;
+    private final EnrichedImpactService enrichedImpactService;
 
-    public GraphQueryApiController(ArchitectureGraphQueryService graphQueryService) {
+    public GraphQueryApiController(ArchitectureGraphQueryService graphQueryService,
+                                   EnrichedImpactService enrichedImpactService) {
         this.graphQueryService = graphQueryService;
+        this.enrichedImpactService = enrichedImpactService;
     }
 
     /**
@@ -99,6 +105,19 @@ public class GraphQueryApiController {
             @Parameter(description = "Taxonomy node code") @PathVariable String code,
             @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "3") int maxHops) {
         ChangeImpactView view = graphQueryService.findFailureImpact(code, maxHops);
+        return ResponseEntity.ok(view);
+    }
+
+    /**
+     * Enriched failure/change impact: includes requirement correlation for each affected element.
+     */
+    @Operation(summary = "Enriched failure impact",
+               description = "Returns failure impact enriched with requirement coverage data and risk score")
+    @GetMapping("/node/{code}/enriched-failure-impact")
+    public ResponseEntity<EnrichedChangeImpactView> findEnrichedFailureImpact(
+            @Parameter(description = "Taxonomy node code") @PathVariable String code,
+            @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "3") int maxHops) {
+        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(code, maxHops);
         return ResponseEntity.ok(view);
     }
 }

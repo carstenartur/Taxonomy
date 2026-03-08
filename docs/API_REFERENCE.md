@@ -18,14 +18,17 @@
 10. [Architecture Knowledge Base](#10-architecture-knowledge-base)
 11. [Relation Quality Dashboard](#11-relation-quality-dashboard)
 12. [Requirement Coverage](#12-requirement-coverage)
-13. [Diagram Export](#13-diagram-export)
-14. [Administration](#14-administration)
-15. [Embedding Configuration](#15-embedding-configuration)
-16. [API Reference](#16-api-reference)
-17. [Error Response Schema](#17-error-response-schema)
-18. [OpenAPI / Swagger UI](#18-openapi--swagger-ui)
-19. [Best Practices](#19-best-practices)
-20. [Glossary](#20-glossary)
+13. [Architecture Gap Analysis](#13-architecture-gap-analysis)
+14. [Architecture Recommendation](#14-architecture-recommendation)
+15. [Architecture Pattern Detection](#15-architecture-pattern-detection)
+16. [Diagram Export](#16-diagram-export)
+17. [Administration](#17-administration)
+18. [Embedding Configuration](#18-embedding-configuration)
+19. [API Reference](#19-api-reference)
+20. [Error Response Schema](#20-error-response-schema)
+21. [OpenAPI / Swagger UI](#21-openapi--swagger-ui)
+22. [Best Practices](#22-best-practices)
+23. [Glossary](#23-glossary)
 
 ---
 
@@ -50,8 +53,13 @@ Key capabilities:
 | Hybrid search | Reciprocal Rank Fusion of full-text + semantic results |
 | Graph search | Graph-semantic traversal combining embeddings with relation edges |
 | Graph Explorer | Upstream / downstream / failure-impact neighbourhood queries |
+| Enriched failure impact | Failure impact with requirement coverage correlation and risk scoring |
 | Relation Proposals | AI-assisted proposal pipeline with human review |
 | Quality Dashboard | Acceptance-rate metrics by relation type and provenance |
+| Requirement Coverage | Track which nodes are covered by which requirements |
+| Architecture Gap Analysis | Identify missing relations and incomplete patterns |
+| Architecture Recommendation | AI-driven architecture proposals combining gaps, scoring, and semantic search |
+| Architecture Pattern Detection | Verify presence of standard architecture patterns (Full Stack, App Chain, Role Chain) |
 | Diagram Export | Visio (.vsdx) and ArchiMate 3.x XML |
 | Analysis scores JSON | Export and import analysis results as JSON for reproducibility and sharing |
 | Admin Panel | Password protection, LLM diagnostics, prompt template editor |
@@ -357,6 +365,53 @@ GET /api/graph/node/{code}/failure-impact?maxHops=3
 
 Returns the nodes that would be disrupted if the given element failed or was changed.  Useful for change-impact and risk analysis.
 
+### 8.5 Enriched Failure Impact
+
+```
+GET /api/graph/node/{code}/enriched-failure-impact?maxHops=3
+```
+
+Returns the same failure/change impact data as §8.4, **enriched with requirement coverage correlation**.  For each affected element, the response includes which requirements cover it and how many.
+
+**Response fields (in addition to standard failure-impact fields):**
+
+| Field | Description |
+|---|---|
+| `directlyAffected[].coveredByRequirements` | List of requirement IDs that cover this element |
+| `directlyAffected[].requirementCount` | Number of distinct requirements covering this element |
+| `indirectlyAffected[].coveredByRequirements` | Same, for indirectly affected elements |
+| `indirectlyAffected[].requirementCount` | Same, for indirectly affected elements |
+| `affectedRequirements` | Deduplicated list of all requirement IDs affected by the failure |
+| `riskScore` | Aggregated risk score: `Σ(reqCount × relevance)` for direct, `× 0.5` for indirect |
+
+**Example:**
+
+```
+GET /api/graph/node/SVC_VOICE_001/enriched-failure-impact?maxHops=3
+```
+
+```json
+{
+  "failedNodeCode": "SVC_VOICE_001",
+  "maxHops": 3,
+  "directlyAffected": [
+    {
+      "nodeCode": "BP-3",
+      "title": "Voice Switching",
+      "relevance": 0.80,
+      "hopDistance": 1,
+      "coveredByRequirements": ["REQ-101", "REQ-205"],
+      "requirementCount": 2
+    }
+  ],
+  "indirectlyAffected": [],
+  "affectedRequirements": ["REQ-101", "REQ-205"],
+  "riskScore": 1.60,
+  "totalAffected": 1,
+  "totalRelationships": 1
+}
+```
+
 ---
 
 ## 9. Relation Proposals
@@ -541,11 +596,302 @@ visualisation over the taxonomy tree.
 
 ---
 
-## 13. Diagram Export
+## 13. Architecture Gap Analysis
+
+`ArchitectureGapService` identifies architectural gaps by comparing the expected relations
+(as defined by the `RelationCompatibilityMatrix`) with the actual relations stored in the
+knowledge base.  For each high-scoring anchor node, the service checks which relation types
+*should* exist and reports any that are missing.
+
+### Endpoint
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/gap/analyze` | Perform architecture gap analysis |
+
+### Request (`POST /api/gap/analyze`)
+
+```json
+{
+  "scores":       { "CP": 85, "BP": 72 },
+  "businessText": "Secure voice communications between HQ and deployed forces",
+  "minScore":     50
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `scores` | `Map<String,Integer>` | Node code → score (0–100) from requirement analysis |
+| `businessText` | `String` | Original business requirement text |
+| `minScore` | `int` | Minimum score threshold (default: 50 if 0 or omitted) |
+
+### Response (`GapAnalysisView`)
+
+| Field | Type | Description |
+|---|---|---|
+| `businessText` | `String` | Echo of the input requirement text |
+| `missingRelations` | `MissingRelation[]` | Expected but absent relations |
+| `incompletePatterns` | `IncompletePattern[]` | Patterns where at least one step is missing |
+| `coverageGaps` | `CoverageGap[]` | Nodes with coverage but missing expected neighbours |
+| `totalAnchors` | `int` | Number of anchor nodes above the threshold |
+| `totalGaps` | `int` | Total number of missing relations found |
+| `notes` | `String[]` | Informational notes (e.g. "no scores provided") |
+
+**`MissingRelation` fields:**
+
+| Field | Description |
+|---|---|
+| `sourceNodeCode` | Code of the anchor node |
+| `sourceRoot` | Taxonomy root of the anchor (e.g. `CP`) |
+| `expectedRelationType` | Relation type that should exist (e.g. `REALIZES`) |
+| `expectedTargetRoot` | Taxonomy root of the expected target (e.g. `CR`) |
+| `description` | Human-readable description of the gap |
+
+**`IncompletePattern` fields:**
+
+| Field | Description |
+|---|---|
+| `nodeCode` | Code of the anchor node |
+| `taxonomyRoot` | Taxonomy root |
+| `patternDescription` | The expected chain (e.g. `CP → REALIZES → CR`) |
+| `missingElement` | What is absent (e.g. "No REALIZES relation exists") |
+
+**`CoverageGap` fields:**
+
+| Field | Description |
+|---|---|
+| `nodeCode` | Code of the anchor node |
+| `taxonomyRoot` | Taxonomy root |
+| `coverageScore` | The node's score from the analysis |
+| `gapDescription` | Human-readable description |
+
+### Example
+
+```
+POST /api/gap/analyze
+```
+
+```json
+{
+  "businessText": "Secure voice communications",
+  "totalAnchors": 1,
+  "totalGaps": 1,
+  "missingRelations": [
+    {
+      "sourceNodeCode": "CP",
+      "sourceRoot": "CP",
+      "expectedRelationType": "REALIZES",
+      "expectedTargetRoot": "CR",
+      "description": "CP (CP) has no REALIZES relation to any CR node"
+    }
+  ],
+  "incompletePatterns": [
+    {
+      "nodeCode": "CP",
+      "taxonomyRoot": "CP",
+      "patternDescription": "CP → REALIZES → CR",
+      "missingElement": "No REALIZES relation exists"
+    }
+  ],
+  "coverageGaps": [
+    {
+      "nodeCode": "CP",
+      "taxonomyRoot": "CP",
+      "coverageScore": 85,
+      "gapDescription": "Node has coverage (score 85) but is missing expected architectural relations"
+    }
+  ]
+}
+```
+
+---
+
+## 14. Architecture Recommendation
+
+`ArchitectureRecommendationService` combines requirement scoring, gap analysis, and
+semantic search into a pipeline that produces architecture recommendations.  The service:
+
+1. Identifies **confirmed elements** (high-scoring nodes, score ≥ 70).
+2. Runs **gap analysis** (§13) to find missing architectural links.
+3. For each gap, proposes **candidate nodes** from the missing taxonomy root, ranked by
+   semantic similarity when the embedding model is available.
+4. Suggests **relations** to fill the gaps.
+
+### Endpoint
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/recommend` | Generate architecture recommendation |
+
+### Request (`POST /api/recommend`)
+
+```json
+{
+  "scores":       { "CP": 85, "BP": 72 },
+  "businessText": "Secure voice communications between HQ and deployed forces",
+  "minScore":     50
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `scores` | `Map<String,Integer>` | Node code → score (0–100) |
+| `businessText` | `String` | Original business requirement text |
+| `minScore` | `int` | Minimum score threshold (default: 50) |
+
+### Response (`ArchitectureRecommendation`)
+
+| Field | Type | Description |
+|---|---|---|
+| `businessText` | `String` | Echo of the input requirement text |
+| `confirmedElements` | `RecommendedElement[]` | High-confidence matched elements (score ≥ 70) |
+| `proposedElements` | `RecommendedElement[]` | AI-proposed elements to fill gaps |
+| `suggestedRelations` | `SuggestedRelation[]` | Relations recommended to complete the architecture |
+| `confidence` | `double` | Overall confidence percentage (confirmed / total expected × 100) |
+| `reasoning` | `String[]` | Step-by-step reasoning log |
+| `notes` | `String[]` | Informational notes |
+
+**`RecommendedElement` fields:**
+
+| Field | Description |
+|---|---|
+| `nodeCode` | Taxonomy node code |
+| `title` | Node name (English) |
+| `taxonomyRoot` | Taxonomy root (e.g. `CR`) |
+| `score` | Score (0–100 for confirmed, 0 for proposed) |
+| `reasoning` | Why this element is included or proposed |
+
+**`SuggestedRelation` fields:**
+
+| Field | Description |
+|---|---|
+| `sourceCode` | Source node code |
+| `targetCode` | Target node code |
+| `relationType` | Suggested relation type (e.g. `REALIZES`) |
+| `reasoning` | Why this relation is suggested |
+
+### Example
+
+```
+POST /api/recommend
+```
+
+```json
+{
+  "businessText": "Secure voice communications",
+  "confirmedElements": [
+    { "nodeCode": "CP", "title": "Capabilities", "taxonomyRoot": "CP", "score": 85,
+      "reasoning": "High-confidence match (score 85)" }
+  ],
+  "proposedElements": [
+    { "nodeCode": "CR-3", "title": "Voice Core Service", "taxonomyRoot": "CR", "score": 0,
+      "reasoning": "Proposed to fill gap: CP (CP) has no REALIZES relation to any CR node" }
+  ],
+  "suggestedRelations": [
+    { "sourceCode": "CP", "targetCode": "CR-3", "relationType": "REALIZES",
+      "reasoning": "Would complete CP → REALIZES → CR" }
+  ],
+  "confidence": 50.0,
+  "reasoning": [
+    "Identified 1 confirmed element with score >= 70",
+    "Gap analysis found 1 missing relation",
+    "Proposed 1 element and 1 relation to fill gaps",
+    "Overall confidence: 50.0% (1 confirmed / 2 expected)"
+  ]
+}
+```
+
+---
+
+## 15. Architecture Pattern Detection
+
+`ArchitecturePatternService` checks whether standard architecture patterns are present
+in the relation graph starting from a given node or set of scored nodes.
+
+### Pre-defined Patterns
+
+| Pattern | Chain | Description |
+|---|---|---|
+| **Full Stack** | `CP → REALIZES → CR → SUPPORTS → BP → CONSUMES → IP` | Capability fully realised through services, processes, and information products |
+| **App Chain** | `UA → USES → CR → SUPPORTS → BP` | User application consuming services that support business processes |
+| **Role Chain** | `BR → ASSIGNED_TO → BP → CONSUMES → IP` | Business role assigned to a process that consumes information products |
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/patterns/detect?nodeCode={code}` | Detect patterns starting from a specific node |
+| `POST` | `/api/patterns/detect` | Detect patterns across scored nodes |
+
+### GET Request
+
+```
+GET /api/patterns/detect?nodeCode=CP
+```
+
+### POST Request
+
+```json
+{
+  "scores": { "CP": 85, "BP": 72 },
+  "minScore": 50
+}
+```
+
+### Response (`PatternDetectionView`)
+
+| Field | Type | Description |
+|---|---|---|
+| `nodeCode` | `String` | Starting node code (for GET requests) |
+| `matchedPatterns` | `DetectedPattern[]` | Fully matched patterns (100% completeness) |
+| `incompletePatterns` | `DetectedPattern[]` | Partially matched patterns (0% < completeness < 100%) |
+| `patternCoverage` | `double` | Percentage of detected patterns that are fully matched |
+| `notes` | `String[]` | Informational notes |
+
+**`DetectedPattern` fields:**
+
+| Field | Description |
+|---|---|
+| `patternName` | Name of the pattern (e.g. "Full Stack") |
+| `expectedSteps` | All steps the pattern requires |
+| `presentSteps` | Steps that were found in the graph |
+| `missingSteps` | Steps that are absent |
+| `completeness` | Percentage of expected steps that are present (0–100) |
+
+### Example
+
+```
+GET /api/patterns/detect?nodeCode=CP
+```
+
+```json
+{
+  "nodeCode": "CP",
+  "matchedPatterns": [],
+  "incompletePatterns": [
+    {
+      "patternName": "Full Stack",
+      "expectedSteps": [
+        "CP → REALIZES → CR",
+        "CR → SUPPORTS → BP",
+        "BP → CONSUMES → IP"
+      ],
+      "presentSteps": ["CP → REALIZES → CR"],
+      "missingSteps": ["CR → SUPPORTS → BP", "BP → CONSUMES → IP"],
+      "completeness": 33.33
+    }
+  ],
+  "patternCoverage": 0.0
+}
+```
+
+---
+
+## 16. Diagram Export
 
 The system supports two export formats.  Both endpoints expect the `architectureView` JSON produced by `POST /api/analyze` (with `includeArchitectureView=true`).
 
-### 13.1 Visio Export
+### 16.1 Visio Export
 
 **Endpoint:** `POST /api/diagram/visio`
 
@@ -555,7 +901,7 @@ Generates a `.vsdx` file (Office Open XML package) containing a structured archi
 
 **Response:** Binary `.vsdx` file download.
 
-### 13.2 ArchiMate 3.x XML Export
+### 16.2 ArchiMate 3.x XML Export
 
 **Endpoint:** `POST /api/diagram/archimate`
 
@@ -563,7 +909,7 @@ Generates an ArchiMate 3.x compliant XML file suitable for import into tools suc
 
 **Response:** XML file download.
 
-### 13.3 Analysis Scores JSON Export
+### 16.3 Analysis Scores JSON Export
 
 **Endpoint:** `POST /api/scores/export`
 
@@ -595,7 +941,7 @@ Serialises the current analysis result as a `SavedAnalysis` JSON object, adding 
 
 **Semantic note:** Each root taxonomy is scored **independently** on a 0–100 scale — for example `"CO": 90` means "the Communications Services taxonomy covers 90% of this requirement". Scores across root taxonomies do **not** sum to 100. A score of `0` means the node was _evaluated and found not relevant_. An absent key means the node was _not evaluated_.
 
-### 13.4 Analysis Scores JSON Import
+### 16.4 Analysis Scores JSON Import
 
 **Endpoint:** `POST /api/scores/import`
 
@@ -623,9 +969,9 @@ Export buttons appear in the results panel only when analysis scores are present
 
 ---
 
-## 14. Administration
+## 17. Administration
 
-### 14.1 Admin Authentication
+### 17.1 Admin Authentication
 
 If `ADMIN_PASSWORD` is set, the admin panel is protected.
 
@@ -636,7 +982,7 @@ If `ADMIN_PASSWORD` is set, the admin panel is protected.
 
 Once authenticated, pass the token in the `X-Admin-Token` header for protected endpoints.
 
-### 14.2 LLM Diagnostics
+### 17.2 LLM Diagnostics
 
 ```
 GET /api/diagnostics
@@ -645,7 +991,7 @@ X-Admin-Token: <token>
 
 Returns statistics about LLM calls: total calls, error counts, average latency, provider name, model version.
 
-### 14.3 AI Status
+### 17.3 AI Status
 
 ```
 GET /api/ai-status
@@ -653,7 +999,7 @@ GET /api/ai-status
 
 Returns `{ available: true/false, provider: "GEMINI" }` (no authentication required).
 
-### 14.4 Prompt Template Editor
+### 17.4 Prompt Template Editor
 
 Prompt templates control what instructions are sent to the LLM.  Administrators can override individual templates without redeploying.
 
@@ -666,7 +1012,7 @@ Prompt templates control what instructions are sent to the LLM.  Administrators 
 
 ---
 
-## 15. Embedding Configuration
+## 18. Embedding Configuration
 
 Semantic, hybrid, and graph searches require the embedding subsystem to be enabled.
 
@@ -704,7 +1050,7 @@ GET /api/embedding/status
 
 ---
 
-## 16. API Reference
+## 19. API Reference
 
 Complete list of all REST endpoints.
 
@@ -752,10 +1098,21 @@ Complete list of all REST endpoints.
 | `GET` | `/api/graph/node/{code}/upstream` | Upstream neighbourhood | No |
 | `GET` | `/api/graph/node/{code}/downstream` | Downstream neighbourhood | No |
 | `GET` | `/api/graph/node/{code}/failure-impact` | Failure impact | No |
+| `GET` | `/api/graph/node/{code}/enriched-failure-impact` | Enriched failure impact with requirement correlation | No |
+| `POST` | `/api/gap/analyze` | Architecture gap analysis | No |
+| `POST` | `/api/recommend` | Architecture recommendation | No |
+| `GET` | `/api/patterns/detect?nodeCode={code}` | Pattern detection for a node | No |
+| `POST` | `/api/patterns/detect` | Pattern detection for scored nodes | No |
+| `POST` | `/api/coverage/record` | Record requirement coverage | No |
+| `GET` | `/api/coverage/node/{code}` | Requirements covering a node | No |
+| `GET` | `/api/coverage/requirement/{id}` | Nodes covered by a requirement | No |
+| `GET` | `/api/coverage/statistics` | Coverage statistics | No |
+| `GET` | `/api/coverage/density` | Requirement density map | No |
+| `DELETE` | `/api/coverage/requirement/{id}` | Remove coverage for a requirement | No |
 
 ---
 
-## 17. Error Response Schema
+## 20. Error Response Schema
 
 The API uses standard HTTP status codes and returns structured error information.
 
@@ -818,7 +1175,7 @@ When the LLM provider experiences an error, the application handles it gracefull
 
 ---
 
-## 18. OpenAPI / Swagger UI
+## 21. OpenAPI / Swagger UI
 
 The application includes auto-generated interactive API documentation via
 [springdoc-openapi](https://springdoc.org/).
@@ -834,7 +1191,7 @@ Proposals, Graph Queries, Quality Metrics, Export, Administration, Embedding).
 
 ---
 
-## 19. Best Practices
+## 22. Best Practices
 
 ### Requirement Text Quality
 
@@ -866,26 +1223,34 @@ Proposals, Graph Queries, Quality Metrics, Export, Administration, Embedding).
 
 ---
 
-## 20. Glossary
+## 23. Glossary
 
 | Term | Definition |
 |---|---|
 | **Anchor node** | A high-scoring leaf node that directly satisfies a business requirement; the starting point for architecture-view construction |
+| **Architecture gap** | An expected relation (per the compatibility matrix) that is absent from the knowledge base |
+| **Architecture pattern** | A named, predefined chain of relation types through the taxonomy (e.g. Full Stack: CP → REALIZES → CR → SUPPORTS → BP → CONSUMES → IP) |
+| **Architecture recommendation** | An AI-generated proposal combining confirmed elements, gap analysis, and candidate suggestions |
 | **Architecture view** | A filtered subgraph of the taxonomy containing only the elements relevant to a given requirement |
 | **ArchiMate** | An open standard modelling language for enterprise architecture, maintained by The Open Group |
 | **C3** | Command, Control and Communications — the NATO functional area covered by this taxonomy |
 | **Capability** | A bounded, outcome-oriented ability of an organisation or system (NAF, TOGAF) |
 | **COI** | Community of Interest — a group that shares information under a common governance framework |
+| **Compatibility matrix** | A rule set defining which relation types are valid between taxonomy root pairs (e.g. CP → REALIZES → CR) |
+| **Coverage gap** | A node that has requirement coverage but lacks expected architectural neighbours |
 | **DJL** | Deep Java Library — an open-source deep-learning framework used to run ONNX embedding models |
 | **Embedding** | A dense numeric vector that encodes the semantic meaning of text or a taxonomy node |
+| **Enriched failure impact** | Failure impact analysis enriched with requirement coverage data and an aggregated risk score |
 | **Hybrid search** | A retrieval strategy that merges full-text and semantic search rankings via Reciprocal Rank Fusion |
 | **Information Product** | A specific, structured output of a business process (TOGAF Data Architecture) |
 | **KNN** | K-Nearest Neighbours — a vector search algorithm that finds the closest embeddings |
 | **LLM** | Large Language Model — the AI component used for scoring and justification |
 | **NAF** | NATO Architecture Framework — the standard for describing NATO architectures |
 | **ONNX** | Open Neural Network Exchange — an interoperable format for ML models |
+| **Pattern detection** | The process of checking whether predefined architecture patterns are complete or partially present in the relation graph |
 | **Provenance** | The origin of a taxonomy relation: `MANUAL`, `ACCEPTED_PROPOSAL`, etc. |
 | **Proposal** | An AI-generated candidate relation awaiting human review |
+| **Risk score** | An aggregated metric combining requirement count and relevance for failure-impact analysis: `Σ(reqCount × relevance)` |
 | **RRF** | Reciprocal Rank Fusion — an algorithm for combining ranked lists from multiple retrieval methods |
 | **SSE** | Server-Sent Events — a web standard for streaming one-way events from server to browser |
 | **Taxonomy node** | A single element in the C3 Taxonomy Catalogue (capability, service, role, etc.) |

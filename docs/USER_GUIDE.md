@@ -16,6 +16,9 @@
     - [Quality Dashboard](#11a-quality-dashboard)
     - [Requirement Coverage](#11c-requirement-coverage)
     - [Relations Browser](#11b-relations-browser)
+    - [Architecture Gap Analysis](#11d-architecture-gap-analysis)
+    - [Architecture Recommendation](#11e-architecture-recommendation)
+    - [Architecture Pattern Detection](#11f-architecture-pattern-detection)
 12. [Administration](#12-administration)
 13. [Relation Types Reference](#13-relation-types-reference)
 14. [Tips and Best Practices](#14-tips-and-best-practices)
@@ -45,6 +48,10 @@ The **NATO NC3T Taxonomy Browser** is a web application that helps Architects, A
 | Find semantically similar nodes | Click 🔍 Similar on any taxonomy node |
 | Trace upstream/downstream dependencies | Right panel → Graph Explorer |
 | Run requirement impact analysis | Graph Explorer → 🎯 Req. Impact button |
+| Identify architecture gaps | API: `POST /api/gap/analyze` (§11d) |
+| Get architecture recommendations | API: `POST /api/recommend` (§11e) |
+| Detect architecture patterns | API: `GET /api/patterns/detect` (§11f) |
+| Enriched failure impact with requirement correlation | API: `GET /api/graph/node/{code}/enriched-failure-impact` (§8) |
 | Review and accept or reject AI-generated relation proposals | Right panel → Relation Proposals panel |
 | View quality metrics for relation proposals | Right panel → 📊 Quality Dashboard panel |
 | Record and analyse requirement coverage | Right panel → 📋 Requirement Coverage panel |
@@ -378,6 +385,18 @@ Click **⬇️ Downstream** to find all nodes that depend on the selected node.
 
 Click **⚠️ Failure Impact** to find all nodes that would be disrupted if the selected node failed or was removed. This is useful for change-impact analysis and risk assessment.
 
+### Enriched Failure Impact — "Which requirements are affected?"
+
+The **enriched failure impact** extends the standard failure impact analysis by correlating each affected node with its requirement coverage data. For every impacted element, you can see:
+
+- **Which requirements** cover that element (by requirement ID)
+- **How many requirements** are affected
+- An aggregated **risk score** that combines the number of affected requirements with the relevance of each element
+
+This is available via the REST API at `GET /api/graph/node/{code}/enriched-failure-impact?maxHops=3`. See the [API Reference](API_REFERENCE.md#85-enriched-failure-impact) for full details.
+
+> **Tip:** Use enriched failure impact together with the Requirement Coverage panel (§11c) to prioritise which failures carry the highest business risk.
+
 ### Understanding the Results Table
 
 The results table shows:
@@ -664,6 +683,155 @@ The **🎯 Req. Impact** button in the Graph Explorer panel runs a transitive im
 
 ---
 
+## 11d. Architecture Gap Analysis
+
+The **Architecture Gap Analysis** identifies missing architectural relations by comparing
+what *should* exist (according to the compatibility matrix) with what *actually* exists in
+the knowledge base.
+
+### What It Does
+
+For each high-scoring node from a requirement analysis, the gap analysis checks:
+
+1. **Expected outgoing relations** — which relation types should this node's taxonomy root have? (e.g., a Capability should `REALIZES` a Core Service)
+2. **Actual relations** — which of those expected relations actually exist in the knowledge base?
+3. **Missing relations** — the difference: expected minus actual.
+
+### Using the API
+
+Send a `POST` request to `/api/gap/analyze` with the scores from a requirement analysis:
+
+```json
+{
+  "scores":       { "CP": 85, "BP": 72 },
+  "businessText": "Secure voice communications",
+  "minScore":     50
+}
+```
+
+The response contains:
+
+| Field | Description |
+|---|---|
+| **Missing relations** | Expected but absent relations (e.g., "CP has no REALIZES to any CR node") |
+| **Incomplete patterns** | Relation chains with at least one missing step |
+| **Coverage gaps** | Nodes with high scores but missing expected architectural neighbours |
+
+### Interpreting Results
+
+- **Missing relations** tell you *what links need to be created* in the knowledge base to complete the architecture.
+- **Incomplete patterns** show *which chain of relations is broken* and where.
+- **Coverage gaps** highlight nodes that are important for the requirement but architecturally isolated.
+
+> **Tip:** After running a gap analysis, use the Relation Proposals feature (§9) to propose new relations that fill the identified gaps.
+
+See the [API Reference](API_REFERENCE.md#13-architecture-gap-analysis) for full request/response documentation.
+
+---
+
+## 11e. Architecture Recommendation
+
+The **Architecture Recommendation** feature combines requirement scoring, gap analysis, and semantic search into an automated pipeline that produces architecture recommendations for a business requirement.
+
+### What It Does
+
+The recommendation pipeline executes four steps:
+
+1. **Confirm elements** — nodes with high scores (≥ 70) are confirmed as relevant architecture elements.
+2. **Gap analysis** — identifies missing architectural links (see §11d).
+3. **Candidate proposal** — for each gap, proposes candidate nodes from the missing taxonomy root, ranked by semantic similarity to the business requirement when the embedding model is available.
+4. **Relation suggestion** — suggests relations that would fill the identified gaps.
+
+### Using the API
+
+Send a `POST` request to `/api/recommend`:
+
+```json
+{
+  "scores":       { "CP": 85, "BP": 72 },
+  "businessText": "Secure voice communications",
+  "minScore":     50
+}
+```
+
+The response contains:
+
+| Field | Description |
+|---|---|
+| **Confirmed elements** | High-confidence matched nodes (score ≥ 70) |
+| **Proposed elements** | AI-suggested nodes to fill gaps |
+| **Suggested relations** | Relations that would complete the architecture |
+| **Confidence** | Overall confidence percentage |
+| **Reasoning** | Step-by-step log of the recommendation pipeline |
+
+### Interpreting Results
+
+- **Confidence** reflects how complete the existing architecture is for the given requirement: `confirmed / (confirmed + gaps) × 100%`.
+- **Proposed elements** are suggestions — they should be reviewed by an architect before being accepted.
+- **Suggested relations** can be created manually via the Relations Browser (§11b) or by accepting proposals (§9).
+
+> **Tip:** Use the recommendation pipeline after an initial analysis to get a comprehensive view of what exists, what is missing, and what to do about it.
+
+See the [API Reference](API_REFERENCE.md#14-architecture-recommendation) for full request/response documentation.
+
+---
+
+## 11f. Architecture Pattern Detection
+
+The **Architecture Pattern Detection** feature checks whether standard architecture patterns
+are present (complete or partially complete) in the relation graph.
+
+### Pre-defined Patterns
+
+The system checks the following architecture patterns:
+
+| Pattern | Chain | Description |
+|---|---|---|
+| **Full Stack** | CP → REALIZES → CR → SUPPORTS → BP → CONSUMES → IP | A capability fully realised through services, processes, and information products |
+| **App Chain** | UA → USES → CR → SUPPORTS → BP | A user application consuming services that support business processes |
+| **Role Chain** | BR → ASSIGNED_TO → BP → CONSUMES → IP | A business role assigned to a process that consumes information products |
+
+### Using the API
+
+**For a specific node:**
+
+```
+GET /api/patterns/detect?nodeCode=CP
+```
+
+**For scored nodes from an analysis:**
+
+```json
+POST /api/patterns/detect
+{
+  "scores": { "CP": 85, "BP": 72 },
+  "minScore": 50
+}
+```
+
+### Interpreting Results
+
+The response shows:
+
+| Field | Description |
+|---|---|
+| **Matched patterns** | Patterns that are 100% complete |
+| **Incomplete patterns** | Patterns where at least one step is present but some are missing |
+| **Pattern coverage** | Percentage of detected patterns that are fully matched |
+
+For each pattern, you can see:
+- **Expected steps** — all the steps the pattern requires
+- **Present steps** — steps that exist in the graph
+- **Missing steps** — steps that are absent
+- **Completeness** — percentage of steps present (0–100%)
+
+> **Tip:** Incomplete patterns reveal specific architectural gaps. Use the missing steps
+> to guide which relations to create next — either manually or via the Relation Proposals pipeline (§9).
+
+See the [API Reference](API_REFERENCE.md#15-architecture-pattern-detection) for full request/response documentation.
+
+---
+
 ## 12. Administration
 
 Administration features are hidden behind a password-protected admin mode. A standard user does not need to access these features.
@@ -782,12 +950,18 @@ The system uses 10 relation types, each corresponding to a specific relationship
 | Term | Definition |
 |---|---|
 | **Anchor node** | A high-scoring leaf node that directly satisfies a business requirement; the starting point for the Architecture View |
+| **Architecture gap** | An expected relation (per the compatibility matrix) that is absent from the knowledge base |
+| **Architecture pattern** | A predefined chain of relation types through the taxonomy (e.g. Full Stack, App Chain, Role Chain) |
+| **Architecture recommendation** | An automated proposal combining confirmed elements, gap analysis, and candidate suggestions for a business requirement |
 | **Architecture View** | A filtered subgraph of the taxonomy showing only the elements and relationships relevant to a given requirement |
 | **ArchiMate** | An open standard modelling language for enterprise architecture, maintained by The Open Group |
 | **C3** | Command, Control and Communications — the NATO functional area covered by this taxonomy |
 | **Capability** | A bounded, outcome-oriented ability of an organisation or system (NAF, TOGAF) |
 | **COI** | Community of Interest — a group that shares information under a common governance framework |
+| **Compatibility matrix** | A rule set defining which relation types are valid between taxonomy root pairs |
 | **Confidence score** | A 0–100 % value indicating how strongly the AI believes a proposed relation is correct |
+| **Coverage gap** | A node that has requirement coverage but lacks expected architectural neighbours |
+| **Enriched failure impact** | Failure impact analysis that includes requirement coverage data and risk scoring |
 | **Graph Explorer** | The right-panel tool for running upstream, downstream, and failure-impact queries on the relation graph |
 | **Hybrid search** | A retrieval strategy combining full-text and semantic search rankings (available via API) |
 | **Information Product** | A specific, structured output of a business process (TOGAF Data Architecture) |
@@ -796,8 +970,10 @@ The system uses 10 relation types, each corresponding to a specific relationship
 | **LLM** | Large Language Model — the AI component used for scoring, justification, and proposal generation |
 | **Match Legend** | The colour scale on the right panel showing what each shade of green corresponds to in terms of score |
 | **NAF** | NATO Architecture Framework — the standard for describing NATO architectures |
+| **Pattern detection** | Checking whether predefined architecture patterns are complete or partially present in the relation graph |
 | **Proposal** | An AI-generated candidate relation awaiting human review in the Relation Proposals panel |
 | **Relation** | A confirmed, directed link between two taxonomy nodes stored in the knowledge base |
+| **Risk score** | An aggregated metric combining requirement count and relevance for failure-impact analysis |
 | **Stale results** | Analysis scores that no longer correspond to the current requirement text (shown with a yellow warning) |
 | **Taxonomy node** | A single element in the C3 Taxonomy Catalogue (capability, service, role, information product, etc.) |
 | **TOGAF** | The Open Group Architecture Framework — a widely used enterprise-architecture methodology |

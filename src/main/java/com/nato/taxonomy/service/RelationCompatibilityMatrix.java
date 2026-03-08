@@ -26,24 +26,24 @@ public class RelationCompatibilityMatrix {
     public RelationCompatibilityMatrix() {
         matrix = new EnumMap<>(RelationType.class);
 
-        // Capability → Service
-        addRule(RelationType.REALIZES,          "CP",  Set.of("CS"));
-        // Service → Business Process
-        addRule(RelationType.SUPPORTS,          "CS",  Set.of("BP"));
-        // Business Process → Information Product (COI taxonomy)
-        addRule(RelationType.CONSUMES,          "BP",  Set.of("COI"));
+        // Capability → Core Service
+        addRule(RelationType.REALIZES,          "CP",  Set.of("CR"));
+        // Core Service → Business Process
+        addRule(RelationType.SUPPORTS,          "CR",  Set.of("BP"));
+        // Business Process → Information Product
+        addRule(RelationType.CONSUMES,          "BP",  Set.of("IP"));
         // User Application → Core Service
-        addRule(RelationType.USES,              "UA",  Set.of("CS"));
+        addRule(RelationType.USES,              "UA",  Set.of("CR"));
         // COI Service → Capability
-        addRule(RelationType.FULFILLS,          "COI", Set.of("CP"));
+        addRule(RelationType.FULFILLS,          "CI", Set.of("CP"));
         // Business Role → Business Process
         addRule(RelationType.ASSIGNED_TO,       "BR",  Set.of("BP"));
-        // Service → Service (same root)
-        addRule(RelationType.DEPENDS_ON,        "CS",  Set.of("CS"));
+        // Core Service → Core Service (same root)
+        addRule(RelationType.DEPENDS_ON,        "CR",  Set.of("CR"));
         // Business Process → Information Product
-        addRule(RelationType.PRODUCES,          "BP",  Set.of("COI"));
+        addRule(RelationType.PRODUCES,          "BP",  Set.of("IP"));
         // Communications Service → Core Service
-        addRule(RelationType.COMMUNICATES_WITH, "CR",  Set.of("CS"));
+        addRule(RelationType.COMMUNICATES_WITH, "CO",  Set.of("CR"));
         // RELATED_TO has no restrictions
     }
 
@@ -74,6 +74,23 @@ public class RelationCompatibilityMatrix {
         }
         Set<String> targets = bySource.get(sourceRoot);
         return targets != null ? Collections.unmodifiableSet(targets) : Collections.emptySet();
+    }
+
+    /**
+     * Returns all expected outgoing relation types and their target roots
+     * for a given source taxonomy root.
+     *
+     * @return map of RelationType → Set of target roots that should exist
+     */
+    public Map<RelationType, Set<String>> getExpectedOutgoingRelations(String sourceRoot) {
+        Map<RelationType, Set<String>> expected = new EnumMap<>(RelationType.class);
+        for (Map.Entry<RelationType, Map<String, Set<String>>> entry : matrix.entrySet()) {
+            Set<String> targets = entry.getValue().get(sourceRoot);
+            if (targets != null && !targets.isEmpty()) {
+                expected.put(entry.getKey(), Collections.unmodifiableSet(targets));
+            }
+        }
+        return expected;
     }
 
     /**
