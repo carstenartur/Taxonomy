@@ -34,16 +34,16 @@ import java.util.stream.Collectors;
  *
  * <h2>Configuration</h2>
  * <ul>
- *   <li>{@code JGIT_EMBEDDING_ENABLED} (default {@code true}) — set to {@code false} to
+ *   <li>{@code TAXONOMY_EMBEDDING_ENABLED} (default {@code true}) — set to {@code false} to
  *       disable all embedding and semantic search globally.</li>
- *   <li>{@code JGIT_EMBEDDING_MODEL_DIR} — path to a pre-downloaded model directory;
+ *   <li>{@code TAXONOMY_EMBEDDING_MODEL_DIR} — path to a pre-downloaded model directory;
  *       empty = DJL auto-download to {@code ~/.djl.ai/}.</li>
- *   <li>{@code JGIT_EMBEDDING_MODEL_NAME} — DJL model URL;
+ *   <li>{@code TAXONOMY_EMBEDDING_MODEL_NAME} — DJL model URL;
  *       default {@code djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2}.</li>
  * </ul>
  *
  * <h2>Graceful degradation</h2>
- * <p>When {@code JGIT_EMBEDDING_ENABLED=false} or the model fails to load, all semantic
+ * <p>When {@code TAXONOMY_EMBEDDING_ENABLED=false} or the model fails to load, all semantic
  * search methods return empty results without throwing, and {@link #isAvailable()} returns
  * {@code false}.
  *
@@ -94,7 +94,7 @@ public class LocalEmbeddingService {
 
     /**
      * Returns {@code true} if embedding is configured as enabled
-     * ({@code JGIT_EMBEDDING_ENABLED=true}, which is the default).
+     * ({@code TAXONOMY_EMBEDDING_ENABLED=true}, which is the default).
      */
     public boolean isEnabled() {
         return embeddingEnabled;
@@ -119,7 +119,7 @@ public class LocalEmbeddingService {
     /** Returns the lazily loaded DJL model, downloading it on first call. */
     ZooModel<String, float[]> getModel() throws Exception {
         if (!embeddingEnabled) {
-            throw new IllegalStateException("Embedding is disabled (JGIT_EMBEDDING_ENABLED=false)");
+            throw new IllegalStateException("Embedding is disabled (TAXONOMY_EMBEDDING_ENABLED=false)");
         }
         if (modelLoadFailed) {
             throw new IllegalStateException("DJL model failed to load previously; embedding unavailable");

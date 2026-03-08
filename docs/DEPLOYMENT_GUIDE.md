@@ -59,7 +59,7 @@ docker run -d \
   -p 8080:8080 \
   -e GEMINI_API_KEY=your-gemini-api-key \
   -e ADMIN_PASSWORD=your-admin-password \
-  -e JGIT_EMBEDDING_ENABLED=true \
+  -e TAXONOMY_EMBEDDING_ENABLED=true \
   nato-taxonomy
 ```
 
@@ -70,24 +70,30 @@ docker run -d \
 | `-e GEMINI_API_KEY=...` | At least one LLM key or `LOCAL_ONNX` | Enables AI analysis |
 | `-e ADMIN_PASSWORD=...` | Optional | Protects admin panels |
 | `-e LLM_PROVIDER=...` | Optional | Forces a specific LLM provider |
-| `-e JGIT_EMBEDDING_ENABLED=false` | Optional | Disables semantic search |
+| `-e TAXONOMY_EMBEDDING_ENABLED=false` | Optional | Disables semantic search |
 
 ### Volume Mounts
 
-The application uses an in-memory database (HSQLDB) by default, so **no volume mounts are
-required** for basic operation. The taxonomy data is loaded from the bundled Excel file on
-each start.
+The application uses a file-based HSQLDB database and a filesystem Lucene index, both stored
+under `/app/data`. Mount a persistent volume to retain data across container restarts:
+
+```bash
+docker run -p 8080:8080 \
+  -v taxonomy-data:/app/data \
+  nato-taxonomy
+```
 
 For the DJL embedding model cache (LOCAL_ONNX mode):
 
 ```bash
 docker run -p 8080:8080 \
   -e LLM_PROVIDER=LOCAL_ONNX \
+  -v taxonomy-data:/app/data \
   -v djl-cache:/root/.djl.ai \
   nato-taxonomy
 ```
 
-This persists the downloaded model across container restarts.
+This persists the downloaded model, database, and search index across container restarts.
 
 ### Health Check
 
@@ -128,9 +134,19 @@ services:
     runtime: docker      # Uses the Dockerfile in the repository root
     plan: free           # Free tier (512 MB RAM, shared CPU)
     healthCheckPath: /   # Render pings GET / to check health
+    disk:
+      name: taxonomy-data  # Persistent disk for database and Lucene index
+      mountPath: /app/data
+      sizeGB: 1
     envVars:
       - key: GEMINI_API_KEY
         sync: false      # false = must be set manually in the dashboard
+      - key: TAXONOMY_DATASOURCE_URL
+        value: "jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached"
+      - key: TAXONOMY_DDL_AUTO
+        value: update
+      - key: TAXONOMY_SEARCH_DIRECTORY_TYPE
+        value: local-filesystem
 ```
 
 | Field | Description |
@@ -140,6 +156,10 @@ services:
 | `runtime: docker` | Tells Render to use the `Dockerfile` at the repo root |
 | `plan: free` | Render Free plan; upgrade to `starter` or higher for more resources |
 | `healthCheckPath: /` | Render probes `GET /` — the app returns the main page (HTTP 200) |
+| `disk` | Persistent disk so the HSQLDB files and Lucene index survive redeploys |
+| `TAXONOMY_DATASOURCE_URL` | Switches HSQLDB from the in-memory default to a disk-backed file database |
+| `TAXONOMY_DDL_AUTO` | `update` preserves data across restarts (vs. `create` which rebuilds the schema) |
+| `TAXONOMY_SEARCH_DIRECTORY_TYPE` | Switches Lucene from the in-memory heap default to a disk-backed filesystem index |
 | `envVars[].sync: false` | The variable must be entered manually as a secret in the dashboard |
 
 ### Setting Environment Variables in Render
@@ -162,7 +182,7 @@ services:
 | `ADMIN_PASSWORD` | ✅ Yes | Password for admin panels |
 | `LLM_PROVIDER` | No | `GEMINI`, `OPENAI`, etc. (overrides auto-detection) |
 | `OPENAI_API_KEY` | ✅ Yes | Alternative: OpenAI key instead of Gemini |
-| `JGIT_EMBEDDING_ENABLED` | No | `true` (default) or `false` |
+| `TAXONOMY_EMBEDDING_ENABLED` | No | `true` (default) or `false` |
 
 > **Tip:** Mark API keys and passwords as "Secret" in Render to prevent them from
 > appearing in logs and the dashboard.
@@ -198,7 +218,7 @@ Additional health indicators:
 
 ### Container fails to start
 
-- Check memory: the JRE + taxonomy + Lucene index need ~256 MB minimum
+- Check memory: the JRE + Lucene index + ONNX Runtime need ~256 MB minimum; heap is capped at 65 % of container memory to leave room for off-heap native memory
 - Check logs: `docker logs nato-taxonomy`
 
 ### AI analysis not working

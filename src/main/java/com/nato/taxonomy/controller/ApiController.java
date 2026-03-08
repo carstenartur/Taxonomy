@@ -515,7 +515,7 @@ public class ApiController {
     /**
      * Semantic search across the full taxonomy using embedding similarity.
      * Returns nodes ranked by cosine similarity to {@code q}.
-     * Requires {@code LLM_PROVIDER=LOCAL_ONNX} or {@code JGIT_EMBEDDING_ENABLED=true}.
+     * Requires {@code LLM_PROVIDER=LOCAL_ONNX} or {@code TAXONOMY_EMBEDDING_ENABLED=true}.
      *
      * @param q          natural-language query (e.g. "satellite communications")
      * @param maxResults maximum number of results (default 20)
