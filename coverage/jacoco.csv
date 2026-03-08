@@ -80,7 +80,7 @@ NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService.new TypeReferenc
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchiMateDiagramService,32,607,6,63,1,109,6,54,0,13
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,PropagationResult.TraversedRelation,0,27,0,0,0,10,0,5,0,5
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,TaxonomyService,242,892,46,57,67,212,36,33,2,14
+NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,TaxonomyService,324,1066,52,73,82,255,41,43,3,17
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,VisioDiagramService,1,207,3,11,0,37,3,8,0,4
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationValidationService,21,138,3,7,4,33,4,6,1,4
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RankFusionUtil,0,74,0,2,0,16,0,4,0,3
