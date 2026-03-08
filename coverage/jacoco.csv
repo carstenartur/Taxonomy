@@ -64,7 +64,7 @@ NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService.ScoreParseResult
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,VisioPackageBuilder,0,280,0,6,0,57,0,14,0,11
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationTraversalService,36,65,3,5,7,17,3,5,1,3
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,GraphSearchService,318,22,19,1,68,7,20,3,10,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService,1988,829,237,77,426,176,179,27,22,18
+NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService,1987,829,237,77,426,176,179,27,22,18
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,DiagramProjectionService,1,201,3,21,1,41,3,12,0,3
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationValidationService.ValidationResult,0,35,0,0,0,10,0,6,0,6
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationQualityService,148,122,8,4,22,33,9,6,3,6
