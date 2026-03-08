@@ -216,6 +216,49 @@ class ScreenshotGeneratorIT {
         wait(30).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
     }
 
+    /**
+     * Cleans up any leftover Bootstrap modal state (backdrops, stuck modals, body overflow).
+     * Must be called at the start of any test that shows a modal when running in a retry session,
+     * because failed modal tests in Run 1 leave stale state inherited by the Run 2 retry.
+     */
+    private void resetModalState() {
+        js("document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });" +
+           "document.querySelectorAll('.modal.show').forEach(function(m) {" +
+           "  try { var i = bootstrap.Modal.getInstance(m); if (i) i.dispose(); } catch(e) {}" +
+           "  m.classList.remove('show'); m.style.display='none';" +
+           "  m.removeAttribute('aria-modal'); m.setAttribute('aria-hidden','true');" +
+           "});" +
+           "document.body.classList.remove('modal-open');" +
+           "document.body.style.overflow='';" +
+           "document.body.style.paddingRight='';");
+        // Wait until all backdrops are gone before continuing
+        wait(3).until(ExpectedConditions.invisibilityOfElementLocated(By.cssSelector(".modal-backdrop")));
+    }
+
+    /**
+     * Shows a Bootstrap modal using direct DOM manipulation, bypassing Bootstrap's JS animation.
+     * This is a reliable fallback for when Bootstrap is loaded from CDN and may not be available,
+     * or when Bootstrap's show() animation does not complete within Selenium's wait window.
+     * Call this AFTER any action that should have triggered Bootstrap's own show() method.
+     */
+    private void showModalViaDOM(String modalId) {
+        js("(function(id) {" +
+           "  var el = document.getElementById(id);" +
+           "  if (!el) return;" +
+           "  el.style.display = 'block';" +
+           "  el.classList.add('show');" +
+           "  el.removeAttribute('aria-hidden');" +
+           "  el.setAttribute('aria-modal', 'true');" +
+           "  document.body.classList.add('modal-open');" +
+           "  if (!document.querySelector('.modal-backdrop')) {" +
+           "    var bd = document.createElement('div');" +
+           "    bd.className = 'modal-backdrop show';" +
+           "    document.body.appendChild(bd);" +
+           "  }" +
+           "})(arguments[0]);", modalId);
+        wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id(modalId)));
+    }
+
     /** Opens a <details> element if it is currently closed. */
     private void openDetails(WebElement details) {
         js("arguments[0].setAttribute('open', '');", details);
@@ -335,6 +378,8 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(13)
     void captureProposeRelationsModal() throws IOException, InterruptedException {
+        // Clean up any leftover modal state from a previous failed retry run
+        resetModalState();
         // Scroll to the taxonomy tree so the proposal buttons become visible
         WebElement taxonomyTree = driver.findElement(By.id("taxonomyTree"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'start'});", taxonomyTree);
@@ -344,9 +389,10 @@ class ScreenshotGeneratorIT {
         WebElement proposeBtn = driver.findElement(By.cssSelector(".proposal-btn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", proposeBtn);
         js("arguments[0].click();", proposeBtn);
-        // Brief pause to allow Bootstrap to initialize the modal after the click
+        // Brief pause to allow the event handler to set modal content
         Thread.sleep(500);
-        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("proposeRelationsModal")));
+        // Show modal via DOM manipulation (reliable fallback when Bootstrap CDN is slow/unavailable)
+        showModalViaDOM("proposeRelationsModal");
         saveScreenshot("13-propose-relations-modal.png");
         closeModalViaDOM("proposeRelationsModal");
         js("window.scrollTo(0, 0);");
@@ -412,23 +458,38 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(18)
     void captureLeafJustificationModal() throws IOException, InterruptedException {
-        // Reload the page to ensure clean state (interactive mode may have been left on by test 16)
+        // Reload the page to ensure clean JS state. After reload interactiveMode defaults to true
+        // (the checkbox has the checked attribute in HTML and the JS closure initialises to true).
         resetPageState();
-        // Disable interactive mode so the analysis produces per-node scores
-        forceNonInteractiveMode();
-        // Run a full analysis — leaf justify buttons (.btn-outline-info) only appear on nodes
-        // with score > 0, so scores must be populated before expanding the tree
-        runAnalysis();
 
-        // Expand the first parent node to reveal its scored leaf children
-        List<WebElement> toggles = driver.findElements(By.cssSelector(".tax-toggle"));
-        if (!toggles.isEmpty()) {
-            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", toggles.get(0));
-            js("arguments[0].click();", toggles.get(0));
-            // Wait for the leaf justify button specifically (.btn-outline-info distinguishes it
-            // from proposal/graph/search buttons which use .btn-outline-secondary)
-            wait(10).until(ExpectedConditions.presenceOfElementLocated(
-                    By.cssSelector(".tax-justify-btn.btn-outline-info")));
+        // Verify interactive mode is ON — leaf justify buttons only appear when storedBusinessText
+        // is set, which only happens during runInteractiveAnalysis(), not runStreamingAnalysis().
+        js("var cb = document.getElementById('interactiveMode');" +
+           "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change')); }");
+
+        // Run interactive analysis: sets storedBusinessText and renders tree without scores
+        WebElement textarea = driver.findElement(By.id("businessText"));
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
+        js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
+                textarea, REQUIREMENT_TEXT);
+        js("document.getElementById('analyzeBtn').click();");
+        // Interactive analysis renders the tree immediately, marking parent nodes as unevaluated
+        wait(10).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-has-unevaluated")));
+
+        // Expand parent nodes level by level until leaf justify buttons appear.
+        // Each expand triggers an API call to /api/analyze-node which scores child nodes;
+        // leaf children with score > 0 get the .btn-outline-info justify button.
+        for (int depth = 0; depth < 4; depth++) {
+            List<WebElement> unevalToggles = driver.findElements(
+                    By.cssSelector(".tax-has-unevaluated > .tax-node-header > .tax-toggle"));
+            if (unevalToggles.isEmpty()) break;
+            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", unevalToggles.get(0));
+            js("arguments[0].click();", unevalToggles.get(0));
+            // Wait for the evaluation API call to complete (tax-evaluating class is removed on finish)
+            wait(15).until(d -> driver.findElements(By.cssSelector(".tax-evaluating")).isEmpty());
+            if (!driver.findElements(By.cssSelector(".tax-justify-btn.btn-outline-info")).isEmpty()) {
+                break; // Leaf justify buttons found — no need to drill deeper
+            }
         }
 
         List<WebElement> justifyBtns = driver.findElements(
@@ -436,13 +497,20 @@ class ScreenshotGeneratorIT {
         if (!justifyBtns.isEmpty()) {
             js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", justifyBtns.get(0));
             js("arguments[0].click();", justifyBtns.get(0));
-            // Brief pause to allow Bootstrap to initialize the modal after the click
-            Thread.sleep(500);
-            wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("leafJustificationModal")));
+            // Wait for the /api/justify-leaf mock call to populate the modal body text, which
+            // is more reliable than a fixed sleep and confirms the API round-trip has completed.
+            wait(15).until(d -> {
+                List<WebElement> body = d.findElements(By.id("leafJustificationModalBody"));
+                return !body.isEmpty() && !body.get(0).getText().isEmpty();
+            });
+            // Force show via DOM in case Bootstrap CDN is unavailable or animation did not fire
+            showModalViaDOM("leafJustificationModal");
             saveScreenshot("18-leaf-justification-modal.png");
             closeModalViaDOM("leafJustificationModal");
             js("window.scrollTo(0, 0);");
         }
+        // Reset to non-interactive for subsequent tests
+        forceNonInteractiveMode();
     }
 
     @Test
@@ -469,14 +537,26 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(20)
     void captureArchitectureView() throws IOException {
+        // Reload page for a clean state — test 18/19 leave the page with a streaming analysis
+        // that does NOT include architectureView. A fresh load avoids stale SSE connections.
+        resetPageState();
+
+        // Disable interactive mode so a full analysis runs
+        forceNonInteractiveMode();
+
+        // Enable architecture view
         WebElement archCb = driver.findElement(By.id("includeArchitectureView"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", archCb);
         if (!archCb.isSelected()) {
             js("arguments[0].click();", archCb);
             wait(3).until(ExpectedConditions.elementSelectionStateToBe(archCb, true));
         }
-        // Force off interactive mode via JS (avoids stale-element or JS-variable race condition)
-        forceNonInteractiveMode();
+
+        // Switch to a non-list/tabs view (sunburst) so that clicking Analyze calls runAnalysis()
+        // instead of runStreamingAnalysis(). Only runAnalysis() (POST /api/analyze) sends
+        // includeArchitectureView:true and renders the architectureViewPanel on completion.
+        driver.findElement(By.id("viewSunburst")).click();
+        wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
 
         WebElement textarea = driver.findElement(By.id("businessText"));
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
@@ -486,12 +566,14 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
         js("arguments[0].click();", analyzeBtn);
 
-        // Wait for the analysis to complete before looking for the architecture view panel
+        // Wait for the analysis to complete — runAnalysis() POSTs and waits for JSON response
         wait(120).until(ExpectedConditions.textMatches(
                 By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error")));
-        wait(120).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
+        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")), "20-architecture-view.png");
 
+        // Reset: switch back to list view and uncheck architecture view
+        driver.findElement(By.id("viewList")).click();
         if (archCb.isSelected()) {
             js("arguments[0].click();", archCb);
         }
@@ -538,11 +620,16 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(24)
     void captureAdminModal() throws IOException, InterruptedException {
+        // Clean up any leftover modal state from a previous failed retry run
+        resetModalState();
         showAdminLockButton();
-        js("new bootstrap.Modal(document.getElementById('adminModal')).show();");
-        // Brief pause to allow Bootstrap to initialize the modal after the JS trigger
+        // Click the lock button via JS to trigger initAdminModal()'s event listener, which sets
+        // up the modal content before calling bsModal.show().
+        js("document.getElementById('adminLockBtn').click();");
+        // Allow time for Bootstrap to animate the modal open
         Thread.sleep(500);
-        wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("adminModal")));
+        // Force show via DOM in case Bootstrap CDN is unavailable or animation did not fire
+        showModalViaDOM("adminModal");
         saveScreenshot("24-admin-modal.png");
         closeModalViaDOM("adminModal");
         js("window.scrollTo(0, 0);");
