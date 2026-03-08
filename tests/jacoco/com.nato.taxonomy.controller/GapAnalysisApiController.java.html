@@ -45,7 +45,7 @@ public class GapAnalysisApiController {
     @PostMapping(&quot;/analyze&quot;)
     public ResponseEntity&lt;GapAnalysisView&gt; analyze(@RequestBody GapAnalysisRequest request) {
 <span class="fc" id="L47">        GapAnalysisView view = gapService.analyze(</span>
-<span class="pc bpc" id="L48" title="1 of 2 branches missed.">                request.scores() != null ? request.scores() : Map.of(),</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">                request.scores() != null ? request.scores() : Map.of(),</span>
 <span class="fc" id="L49">                request.businessText(),</span>
 <span class="fc" id="L50">                request.minScore());</span>
 <span class="fc" id="L51">        return ResponseEntity.ok(view);</span>
