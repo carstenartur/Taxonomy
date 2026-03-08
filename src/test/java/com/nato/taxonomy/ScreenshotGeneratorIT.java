@@ -214,6 +214,11 @@ class ScreenshotGeneratorIT {
     private void resetPageState() {
         driver.get("http://app:8080/");
         wait(30).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        // The #taxonomyTree div is always in the HTML (with a loading spinner).
+        // Wait for actual taxonomy nodes to appear — they are rendered by the JS
+        // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
+        wait(30).until(ExpectedConditions.presenceOfElementLocated(
+                By.cssSelector("#taxonomyTree .tax-node")));
     }
 
     /**
@@ -246,6 +251,7 @@ class ScreenshotGeneratorIT {
            "  var el = document.getElementById(id);" +
            "  if (!el) return;" +
            "  el.style.display = 'block';" +
+           "  el.style.opacity = '1';" +
            "  el.classList.add('show');" +
            "  el.removeAttribute('aria-hidden');" +
            "  el.setAttribute('aria-modal', 'true');" +
@@ -256,7 +262,7 @@ class ScreenshotGeneratorIT {
            "    document.body.appendChild(bd);" +
            "  }" +
            "})(arguments[0]);", modalId);
-        wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id(modalId)));
+        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id(modalId)));
     }
 
     /** Opens a <details> element if it is currently closed. */
@@ -390,7 +396,7 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", proposeBtn);
         js("arguments[0].click();", proposeBtn);
         // Brief pause to allow the event handler to set modal content
-        Thread.sleep(500);
+        Thread.sleep(1000);
         // Show modal via DOM manipulation (reliable fallback when Bootstrap CDN is slow/unavailable)
         showModalViaDOM("proposeRelationsModal");
         saveScreenshot("13-propose-relations-modal.png");
@@ -627,7 +633,7 @@ class ScreenshotGeneratorIT {
         // up the modal content before calling bsModal.show().
         js("document.getElementById('adminLockBtn').click();");
         // Allow time for Bootstrap to animate the modal open
-        Thread.sleep(500);
+        Thread.sleep(1000);
         // Force show via DOM in case Bootstrap CDN is unavailable or animation did not fire
         showModalViaDOM("adminModal");
         saveScreenshot("24-admin-modal.png");
