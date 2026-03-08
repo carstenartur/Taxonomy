@@ -60,7 +60,7 @@
         <dependency>
             <groupId>org.apache.lucene</groupId>
             <artifactId>lucene-analysis-common</artifactId>
-            <version>9.12.3</version>
+            <version>10.4.0</version>
         </dependency>
         <dependency>
             <groupId>org.apache.lucene</groupId>
