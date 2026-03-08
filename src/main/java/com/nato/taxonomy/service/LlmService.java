@@ -16,7 +16,6 @@ import org.springframework.web.client.RestTemplate;
 
 import com.nato.taxonomy.dto.SavedAnalysis;
 
-import java.io.IOException;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
