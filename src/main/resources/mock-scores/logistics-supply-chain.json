@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "requirement": "Manage logistics and supply chain operations for deployed NATO forces including inventory tracking and distribution",
+  "timestamp": "2026-03-08T14:30:00Z",
+  "provider": "GEMINI",
+  "scores": {
+    "BP": 32,
+    "CP": 22,
+    "IP": 18,
+    "CR": 12,
+    "UA": 8,
+    "CO": 4,
+    "BR": 3,
+    "CI": 1
+  },
+  "reasons": {
+    "BP": "Business Processes are central to logistics management, encompassing inventory control, distribution workflows, procurement, and supply chain coordination.",
+    "CP": "Capabilities packages cover the logistics and supply chain management capabilities required for tracking assets and managing distribution across deployed forces.",
+    "IP": "Information Products such as inventory reports, distribution manifests, asset tracking records, and supply chain status reports are core outputs of logistics operations.",
+    "CR": "Core Services provide the data exchange and messaging infrastructure needed to synchronise inventory data across distributed logistics nodes.",
+    "UA": "User Applications including inventory management systems, tracking dashboards, and ordering portals are the primary tools for logistics personnel.",
+    "CO": "Communications Services support the real-time data links required to update inventory and coordinate distribution across geographically dispersed supply chain nodes.",
+    "BR": "Business Roles define the responsibilities of logisticians, supply chain managers, and distribution officers within NATO force structures.",
+    "CI": "COI Services may expose logistics data feeds to operational communities that need situational awareness of supply availability."
+  }
+}

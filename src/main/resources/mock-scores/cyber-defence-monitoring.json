@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "requirement": "Implement continuous cyber defence monitoring, threat detection, and incident response for NATO IT infrastructure",
+  "timestamp": "2026-03-08T14:30:00Z",
+  "provider": "GEMINI",
+  "scores": {
+    "CO": 28,
+    "CR": 22,
+    "CP": 18,
+    "CI": 12,
+    "IP": 10,
+    "BP": 6,
+    "UA": 3,
+    "BR": 1
+  },
+  "reasons": {
+    "CO": "Communications Services include the network monitoring and security services required for cyber defence, including encrypted channels and intrusion detection traffic analysis.",
+    "CR": "Core Services provide the fundamental platform security services such as identity management, access control, and security event logging underpinning cyber defence.",
+    "CP": "Capabilities packages encompass the cyber defence capabilities including SIEM, vulnerability scanning, and incident response capabilities needed for continuous monitoring.",
+    "CI": "COI Services include the cyber threat intelligence sharing communities that distribute indicators of compromise and threat actor information across NATO networks.",
+    "IP": "Information Products such as threat intelligence reports, incident logs, vulnerability assessments, and security dashboards are produced by the cyber defence programme.",
+    "BP": "Business Processes cover the incident response procedures, threat hunting workflows, and escalation processes for handling cyber security events.",
+    "UA": "User Applications include the SOC analyst toolsets, threat hunting platforms, and incident management portals used by cyber defence personnel.",
+    "BR": "Business Roles define the responsibilities of SOC analysts, incident responders, and cyber defence coordinators within the NATO cyber defence organisation."
+  }
+}

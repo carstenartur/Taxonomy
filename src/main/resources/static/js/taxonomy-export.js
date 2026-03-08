@@ -192,6 +192,46 @@
         });
     }
 
+    /**
+     * Export the current analysis scores and reasons as a JSON file via the backend.
+     * Calls POST /api/scores/export and triggers a download of the resulting SavedAnalysis JSON.
+     * @param {Object} scores       - Map of node code → score.
+     * @param {Object} reasons      - Map of node code → reason text (may be empty).
+     * @param {string} businessText - The business requirement text.
+     * @param {string} provider     - LLM provider name (optional).
+     */
+    function exportJson(scores, reasons, businessText, provider) {
+        if (!scores || Object.keys(scores).length === 0) {
+            alert('No scores to export. Please run an analysis first.');
+            return;
+        }
+        fetch('/api/scores/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                requirement: businessText || '',
+                scores: scores,
+                reasons: reasons || {},
+                provider: provider || ''
+            })
+        })
+        .then(function (resp) {
+            if (!resp.ok) {
+                throw new Error('Export failed (HTTP ' + resp.status + ')');
+            }
+            return resp.json();
+        })
+        .then(function (data) {
+            var json = JSON.stringify(data, null, 2);
+            var blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+            var filename = 'taxonomy-scores-' + new Date().toISOString().slice(0, 10) + '.json';
+            downloadBlob(blob, filename);
+        })
+        .catch(function (err) {
+            alert('JSON export failed: ' + err.message);
+        });
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     function csvField(val) {
@@ -220,7 +260,8 @@
         exportPng: exportPng,
         exportCsv: exportCsv,
         exportVisio: exportVisio,
-        exportArchiMate: exportArchiMate
+        exportArchiMate: exportArchiMate,
+        exportJson: exportJson
     };
 
 })();

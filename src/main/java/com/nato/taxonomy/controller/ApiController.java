@@ -6,6 +6,7 @@ import com.nato.taxonomy.dto.AnalysisRequest;
 import com.nato.taxonomy.dto.AnalysisResult;
 import com.nato.taxonomy.dto.AiStatusResponse;
 import com.nato.taxonomy.dto.RequirementArchitectureView;
+import com.nato.taxonomy.dto.SavedAnalysis;
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
 import com.nato.taxonomy.model.TaxonomyNode;
 import com.nato.taxonomy.service.AnalysisEventCallback;
@@ -15,6 +16,7 @@ import com.nato.taxonomy.service.LocalEmbeddingService;
 import com.nato.taxonomy.service.LlmService;
 import com.nato.taxonomy.service.PromptTemplateService;
 import com.nato.taxonomy.service.RequirementArchitectureViewService;
+import com.nato.taxonomy.service.SavedAnalysisService;
 import com.nato.taxonomy.service.SearchService;
 import com.nato.taxonomy.service.TaxonomyService;
 import com.nato.taxonomy.archimate.ArchiMateModel;
@@ -67,6 +69,7 @@ public class ApiController {
     private final VisioPackageBuilder visioPackageBuilder;
     private final ArchiMateDiagramService archiMateDiagramService;
     private final ArchiMateXmlExporter archiMateXmlExporter;
+    private final SavedAnalysisService savedAnalysisService;
 
     @Value("${admin.password:}")
     private String adminPassword;
@@ -82,7 +85,8 @@ public class ApiController {
                          VisioDiagramService visioDiagramService,
                          VisioPackageBuilder visioPackageBuilder,
                          ArchiMateDiagramService archiMateDiagramService,
-                         ArchiMateXmlExporter archiMateXmlExporter) {
+                         ArchiMateXmlExporter archiMateXmlExporter,
+                         SavedAnalysisService savedAnalysisService) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.searchService = searchService;
@@ -98,6 +102,7 @@ public class ApiController {
         this.visioPackageBuilder = visioPackageBuilder;
         this.archiMateDiagramService = archiMateDiagramService;
         this.archiMateXmlExporter = archiMateXmlExporter;
+        this.savedAnalysisService = savedAnalysisService;
     }
 
     @Operation(summary = "Get full taxonomy tree", description = "Returns the complete taxonomy hierarchy as a nested tree of nodes", tags = {"Taxonomy"})
@@ -599,6 +604,87 @@ public class ApiController {
             @Parameter(description = "Maximum number of node results") @RequestParam(defaultValue = "20") int maxResults) {
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(graphSearchService.graphSearch(q, maxResults));
+    }
+
+    // ── Scores import / export endpoints ────────────────────────────────────────
+
+    /**
+     * Exports the current analysis result as a {@link SavedAnalysis} JSON.
+     *
+     * <p>Request body must contain:
+     * <ul>
+     *   <li>{@code requirement} — business requirement text</li>
+     *   <li>{@code scores} — map of node code → score</li>
+     *   <li>{@code reasons} — map of node code → reason text (optional)</li>
+     *   <li>{@code provider} — LLM provider name (optional, informational)</li>
+     * </ul>
+     */
+    @Operation(summary = "Export analysis scores as JSON",
+               description = "Returns a SavedAnalysis JSON with timestamp and version added. The frontend triggers a file download.",
+               tags = {"Export"})
+    @ApiResponse(responseCode = "200", description = "SavedAnalysis JSON returned")
+    @ApiResponse(responseCode = "400", description = "Requirement is blank or scores are missing")
+    @PostMapping("/scores/export")
+    public ResponseEntity<SavedAnalysis> exportScores(@RequestBody Map<String, Object> body) {
+        String requirement = (String) body.get("requirement");
+        if (requirement == null || requirement.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> rawScores = body.get("scores") instanceof Map<?, ?>
+                ? (Map<String, Object>) body.get("scores") : null;
+        if (rawScores == null || rawScores.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        Map<String, Integer> scores = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : rawScores.entrySet()) {
+            if (e.getValue() instanceof Number n) {
+                scores.put(e.getKey(), n.intValue());
+            }
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, String> reasons = body.get("reasons") instanceof Map<?, ?>
+                ? (Map<String, String>) body.get("reasons") : Map.of();
+        String provider = body.get("provider") instanceof String p ? p : llmService.getActiveProviderName();
+
+        SavedAnalysis saved = savedAnalysisService.buildExport(requirement, scores, reasons, provider);
+        return ResponseEntity.ok(saved);
+    }
+
+    /**
+     * Imports a {@link SavedAnalysis} JSON, validates it, and returns the scores and reasons
+     * so the frontend can apply them to the tree.
+     *
+     * <p>The response includes any warnings about unknown node codes.
+     */
+    @Operation(summary = "Import analysis scores from JSON",
+               description = "Validates a SavedAnalysis JSON and returns the scores, reasons, requirement, and any warnings.",
+               tags = {"Export"})
+    @ApiResponse(responseCode = "200", description = "Scores imported and returned with any warnings")
+    @ApiResponse(responseCode = "400", description = "Invalid JSON format or validation failure")
+    @PostMapping("/scores/import")
+    public ResponseEntity<Map<String, Object>> importScores(@RequestBody String jsonBody) {
+        try {
+            SavedAnalysis saved = savedAnalysisService.importFromJson(jsonBody);
+            List<String> warnings = savedAnalysisService.findUnknownCodes(saved)
+                    .stream()
+                    .map(code -> "Unknown node code: " + code)
+                    .toList();
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("requirement", saved.getRequirement());
+            result.put("scores",      saved.getScores() != null ? saved.getScores() : Map.of());
+            result.put("reasons",     saved.getReasons() != null ? saved.getReasons() : Map.of());
+            result.put("provider",    saved.getProvider());
+            result.put("warnings",    warnings);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", e.getMessage(), "warnings", List.of()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Invalid JSON: " + e.getMessage(), "warnings", List.of()));
+        }
     }
 
     // ── Admin authorization helper ────────────────────────────────────────────

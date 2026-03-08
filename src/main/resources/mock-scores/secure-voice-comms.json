@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "requirement": "Provide secure voice communications between HQ and deployed forces",
+  "timestamp": "2026-03-08T14:30:00Z",
+  "provider": "GEMINI",
+  "scores": {
+    "CO": 35,
+    "CR": 25,
+    "CP": 15,
+    "IP": 12,
+    "BP": 8,
+    "CI": 3,
+    "UA": 2,
+    "BR": 0
+  },
+  "reasons": {
+    "CO": "Communications Services directly covers voice communication systems, protocols, and infrastructure for tactical and strategic networks.",
+    "CR": "Core Services provide the foundational transport and switching capabilities required to carry voice traffic.",
+    "CP": "Capabilities packages include the planning and deployment of voice communication systems for operational use.",
+    "IP": "Information Products such as voice recordings, message logs, and call records are produced by voice communication systems.",
+    "BP": "Business Processes govern the procedures and workflows for requesting and using secure voice channels.",
+    "CI": "COI Services may leverage secure voice channels as part of their community information-sharing activities.",
+    "UA": "User Applications provide the interfaces (softphones, terminals) that deployed personnel use for voice communications.",
+    "BR": "Business Roles define responsibilities for managing and operating secure voice communication systems."
+  }
+}
