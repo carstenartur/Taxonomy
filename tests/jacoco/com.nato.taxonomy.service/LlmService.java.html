@@ -165,7 +165,7 @@ public class LlmService {
 <span class="nc bnc" id="L165" title="All 2 branches missed.">            String root = node.getTaxonomyRoot() != null ? node.getTaxonomyRoot() : node.getCode();</span>
 <span class="nc" id="L166">            int baseScore = MOCK_ROOT_SCORES.getOrDefault(root, 30);</span>
             // Add deterministic variation ±15 based on the node code
-<span class="nc" id="L168">            int variation = (Math.abs(node.getCode().hashCode()) % 31) - 15;</span>
+<span class="nc" id="L168">            int variation = Math.floorMod(node.getCode().hashCode(), 31) - 15;</span>
 <span class="nc" id="L169">            int score = Math.max(5, Math.min(100, baseScore + variation));</span>
 <span class="nc" id="L170">            scores.put(node.getCode(), score);</span>
 <span class="nc" id="L171">            String reason = MOCK_ROOT_REASONS.getOrDefault(root,</span>
