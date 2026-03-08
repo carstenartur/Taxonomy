@@ -115,15 +115,17 @@ public class LlmService {
     private volatile SavedAnalysis cachedMockAnalysis = null;
 
     // ── Mock-mode scores for "Provide secure voice communications between HQ and deployed forces" ──
+    // These are used as per-taxonomy independent scores (0–100 each), NOT a pie-chart that sums to 100.
+    // Each value represents "how well does this taxonomy cover the requirement?" independently.
     private static final Map<String, Integer> MOCK_ROOT_SCORES = Map.of(
             "CO", 90,
-            "CR", 75,
-            "CP", 65,
-            "IP", 45,
-            "BP", 40,
-            "CI", 25,
-            "UA", 15,
-            "BR", 15
+            "CR", 70,
+            "CP", 55,
+            "IP", 30,
+            "BP", 25,
+            "CI", 15,
+            "UA", 10,
+            "BR",  0
     );
 
     private static final Map<String, String> MOCK_ROOT_REASONS = Map.of(

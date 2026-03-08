@@ -4,13 +4,13 @@
   "timestamp": "2026-03-08T14:30:00Z",
   "provider": "GEMINI",
   "scores": {
-    "CO": 35,
-    "CR": 25,
-    "CP": 15,
-    "IP": 12,
-    "BP": 8,
-    "CI": 3,
-    "UA": 2,
+    "CO": 90,
+    "CR": 70,
+    "CP": 55,
+    "IP": 30,
+    "BP": 25,
+    "CI": 15,
+    "UA": 10,
     "BR": 0
   },
   "reasons": {
@@ -21,6 +21,7 @@
     "BP": "Business Processes govern the procedures and workflows for requesting and using secure voice channels.",
     "CI": "COI Services may leverage secure voice channels as part of their community information-sharing activities.",
     "UA": "User Applications provide the interfaces (softphones, terminals) that deployed personnel use for voice communications.",
-    "BR": "Business Roles define responsibilities for managing and operating secure voice communication systems."
+    "BR": "Business Roles were evaluated but are not relevant — the taxonomy does not cover voice communication systems through roles alone."
   }
 }
+

@@ -521,8 +521,8 @@ Serialises the current analysis result as a `SavedAnalysis` JSON object, adding 
 ```json
 {
   "requirement": "Provide secure voice communications between HQ and deployed forces",
-  "scores": { "CO": 35, "CR": 25, "BR": 0 },
-  "reasons": { "CO": "Voice comms are in scope" },
+  "scores": { "CO": 90, "CR": 70, "BP": 25, "BR": 0 },
+  "reasons": { "CO": "Voice comms are directly in scope", "CR": "Core transport services required" },
   "provider": "GEMINI"
 }
 ```
@@ -535,12 +535,12 @@ Serialises the current analysis result as a `SavedAnalysis` JSON object, adding 
   "requirement": "Provide secure voice communications between HQ and deployed forces",
   "timestamp": "2026-03-08T14:30:00Z",
   "provider": "GEMINI",
-  "scores": { "CO": 35, "CR": 25, "BR": 0 },
-  "reasons": { "CO": "Voice comms are in scope" }
+  "scores": { "CO": 90, "CR": 70, "BP": 25, "BR": 0 },
+  "reasons": { "CO": "Voice comms are directly in scope", "CR": "Core transport services required" }
 }
 ```
 
-**Semantic note:** A score of `0` means the node was _evaluated and found not relevant_. An absent key means the node was _not evaluated_.
+**Semantic note:** Each root taxonomy is scored **independently** on a 0–100 scale — for example `"CO": 90` means "the Communications Services taxonomy covers 90% of this requirement". Scores across root taxonomies do **not** sum to 100. A score of `0` means the node was _evaluated and found not relevant_. An absent key means the node was _not evaluated_.
 
 ### 12.4 Analysis Scores JSON Import
 
@@ -555,8 +555,8 @@ Accepts a `SavedAnalysis` JSON body, validates it, and returns the parsed scores
 ```json
 {
   "requirement": "...",
-  "scores": { "CO": 35, "CR": 25, "BR": 0 },
-  "reasons": { "CO": "Voice comms are in scope" },
+  "scores": { "CO": 90, "CR": 70, "BP": 25, "BR": 0 },
+  "reasons": { "CO": "Voice comms are directly in scope" },
   "provider": "GEMINI",
   "warnings": ["Unknown node code: XYZ"]
 }

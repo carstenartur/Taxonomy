@@ -193,4 +193,74 @@ class SavedAnalysisServiceTest {
 
         assertThat(savedAnalysisService.findUnknownCodes(saved)).isEmpty();
     }
+
+    // ── Independent scoring model validation ──────────────────────────────────
+
+    @Test
+    void secureVoiceCommsRootScoresSumExceedsOneHundred() throws IOException {
+        // Root taxonomies are scored INDEPENDENTLY (0–100 each), not as a pie chart.
+        // The sum of all root scores MUST be > 100 to confirm the independent model.
+        SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
+                "mock-scores/secure-voice-comms.json");
+
+        int sum = saved.getScores().values().stream().mapToInt(Integer::intValue).sum();
+        assertThat(sum).as("Root scores must not sum to exactly 100 (would indicate wrong pie-chart model)")
+                .isGreaterThan(100);
+    }
+
+    @Test
+    void logisticsSupplyChainRootScoresSumExceedsOneHundred() throws IOException {
+        SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
+                "mock-scores/logistics-supply-chain.json");
+
+        int sum = saved.getScores().values().stream().mapToInt(Integer::intValue).sum();
+        assertThat(sum).as("Root scores must not sum to exactly 100 (would indicate wrong pie-chart model)")
+                .isGreaterThan(100);
+    }
+
+    @Test
+    void cyberDefenceRootScoresSumExceedsOneHundred() throws IOException {
+        SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
+                "mock-scores/cyber-defence-monitoring.json");
+
+        int sum = saved.getScores().values().stream().mapToInt(Integer::intValue).sum();
+        assertThat(sum).as("Root scores must not sum to exactly 100 (would indicate wrong pie-chart model)")
+                .isGreaterThan(100);
+    }
+
+    @Test
+    void secureVoiceCommsDominantRootIsCo() throws IOException {
+        // For a voice comms requirement, CO must be the highest-scoring root taxonomy
+        SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
+                "mock-scores/secure-voice-comms.json");
+
+        int coScore = saved.getScores().getOrDefault("CO", 0);
+        int maxScore = saved.getScores().values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        assertThat(coScore).as("CO must be the dominant taxonomy for a voice comms requirement")
+                .isEqualTo(maxScore);
+    }
+
+    @Test
+    void logisticsSupplyChainDominantRootIsBp() throws IOException {
+        // For a logistics requirement, BP must be the highest-scoring root taxonomy
+        SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
+                "mock-scores/logistics-supply-chain.json");
+
+        int bpScore = saved.getScores().getOrDefault("BP", 0);
+        int maxScore = saved.getScores().values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        assertThat(bpScore).as("BP must be the dominant taxonomy for a logistics requirement")
+                .isEqualTo(maxScore);
+    }
+
+    @Test
+    void cyberDefenceDominantRootIsCo() throws IOException {
+        // For a cyber defence requirement, CO must be the highest-scoring root taxonomy
+        SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
+                "mock-scores/cyber-defence-monitoring.json");
+
+        int coScore = saved.getScores().getOrDefault("CO", 0);
+        int maxScore = saved.getScores().values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        assertThat(coScore).as("CO must be the dominant taxonomy for a cyber defence requirement")
+                .isEqualTo(maxScore);
+    }
 }
