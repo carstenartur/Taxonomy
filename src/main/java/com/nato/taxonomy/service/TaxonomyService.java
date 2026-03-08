@@ -8,13 +8,18 @@ import com.nato.taxonomy.model.TaxonomyRelation;
 import com.nato.taxonomy.repository.TaxonomyNodeRepository;
 import com.nato.taxonomy.repository.TaxonomyRelationRepository;
 import jakarta.annotation.PostConstruct;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -28,6 +33,8 @@ public class TaxonomyService {
     private static final Logger log = LoggerFactory.getLogger(TaxonomyService.class);
 
     private static final String CATALOGUE_PATH = "data/C3_Taxonomy_Catalogue_25AUG2025.xlsx";
+
+    private static final int BATCH_SIZE = 50;
 
     /** Maps sheet name → two-letter prefix used as virtual root code. */
     private static final Map<String, String> SHEET_PREFIXES = new LinkedHashMap<>();
@@ -45,131 +52,247 @@ public class TaxonomyService {
     private final TaxonomyNodeRepository repository;
     private final TaxonomyRelationRepository relationRepository;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     public TaxonomyService(TaxonomyNodeRepository repository,
                            TaxonomyRelationRepository relationRepository) {
         this.repository = repository;
         this.relationRepository = relationRepository;
     }
 
+    /**
+     * Load the taxonomy from the bundled Excel workbook.
+     * Uses an explicit {@link TransactionTemplate} because {@code @Transactional} is not
+     * honoured when a method is invoked directly by the container via {@code @PostConstruct}.
+     */
     @PostConstruct
-    @Transactional
     public void loadTaxonomyFromExcel() {
-        relationRepository.deleteAll();
-        repository.deleteAll();
         try {
-            ClassPathResource resource = new ClassPathResource(CATALOGUE_PATH);
-            try (InputStream is = resource.getInputStream();
-                 Workbook workbook = new XSSFWorkbook(is)) {
-
-                // Global node map: code → entity (across all sheets)
-                Map<String, TaxonomyNode> nodeMap = new LinkedHashMap<>();
-
-                // UUID → code map used to resolve parent references that use UUIDs
-                Map<String, String> uuidToCode = new HashMap<>();
-
-                // 1. Create one virtual root per sheet (level 0)
-                List<TaxonomyNode> virtualRoots = new ArrayList<>();
-                for (Map.Entry<String, String> entry : SHEET_PREFIXES.entrySet()) {
-                    String sheetName = entry.getKey();
-                    String prefix    = entry.getValue();
-                    TaxonomyNode root = new TaxonomyNode();
-                    root.setCode(prefix);
-                    root.setNameEn(sheetName);
-                    root.setDescriptionEn("NATO C3 Taxonomy – " + sheetName);
-                    root.setTaxonomyRoot(prefix);
-                    root.setLevel(0);
-                    nodeMap.put(prefix, root);
-                    virtualRoots.add(root);
+            new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                try {
+                    doLoadTaxonomy();
+                } catch (RuntimeException e) {
+                    throw e;
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
                 }
-
-                // 2. Read every sheet and collect raw rows
-                for (Map.Entry<String, String> entry : SHEET_PREFIXES.entrySet()) {
-                    String sheetName = entry.getKey();
-                    String prefix    = entry.getValue();
-                    Sheet sheet = workbook.getSheet(sheetName);
-                    if (sheet == null) {
-                        log.warn("Sheet '{}' not found in workbook.", sheetName);
-                        continue;
-                    }
-                    readSheet(sheet, prefix, nodeMap, uuidToCode);
-                }
-
-                // 3. Wire parent-child relationships
-                for (TaxonomyNode node : nodeMap.values()) {
-                    if (node.getLevel() == 0) continue; // virtual roots have no parent
-                    String parentCode = node.getParentCode();
-                    TaxonomyNode parent = (parentCode != null) ? nodeMap.get(parentCode) : null;
-
-                    // Fallback: parentCode might be a UUID — resolve it to the actual code
-                    if (parent == null && parentCode != null) {
-                        String resolvedCode = uuidToCode.get(parentCode);
-                        if (resolvedCode != null) {
-                            parent = nodeMap.get(resolvedCode);
-                            if (parent != null) {
-                                node.setParentCode(resolvedCode);
-                            }
-                        }
-                    }
-
-                    // Last resort: attach to the virtual sheet root
-                    if (parent == null) {
-                        log.debug("Last resort parent assignment for node '{}' (parentCode='{}', root='{}')",
-                                node.getCode(), node.getParentCode(), node.getTaxonomyRoot());
-                        parent = nodeMap.get(node.getTaxonomyRoot());
-                        node.setParentCode(node.getTaxonomyRoot());
-                    }
-                    if (parent != null) {
-                        node.setParent(parent);
-                        parent.getChildren().add(node);
-                    }
-                }
-
-                // 4. Persist (save virtual roots first; cascade saves children)
-                repository.saveAll(virtualRoots);
-                log.info("Taxonomy loaded: {} nodes from {} sheets.",
-                        nodeMap.size(), SHEET_PREFIXES.size());
-
-                // 4b. Load relations from the optional "Relations" sheet
-                Sheet relationsSheet = workbook.getSheet("Relations");
-                if (relationsSheet != null) {
-                    loadRelationsSheet(relationsSheet, nodeMap);
-                } else {
-                    log.info("No 'Relations' sheet found in workbook — trying CSV fallback.");
-                    loadRelationsFromCsv(nodeMap);
-                }
-
-                // 5. Hibernate Search auto-indexes nodes on JPA persist; log the count.
-                log.info("Full-text and vector index will be populated automatically by Hibernate Search.");
-
-                // 6. No explicit KNN index invalidation needed – Hibernate Search manages the index.
-                log.debug("Hibernate Search manages the vector index; no manual invalidation required.");
-            }
-        } catch (Exception e) {
-            log.error("Failed to load taxonomy from Excel", e);
+            });
+        } catch (RuntimeException e) {
+            // Unwrap to log the original exception (IOException, etc.) with its full stack trace
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            log.error("Failed to load taxonomy from Excel", cause);
         }
     }
 
-    /** Read the "Relations" sheet and persist TaxonomyRelation entities. */
-    private void loadRelationsSheet(Sheet sheet, Map<String, TaxonomyNode> nodeMap) {
-        // Expected columns: SourceCode(0), TargetCode(1), RelationType(2), Description(3)
+    private void doLoadTaxonomy() throws Exception {
+        relationRepository.deleteAll();
+        repository.deleteAll();
+
+        ClassPathResource resource = new ClassPathResource(CATALOGUE_PATH);
+
+        // Global node map: code → entity (across all sheets)
+        Map<String, TaxonomyNode> nodeMap = new LinkedHashMap<>();
+
+        // UUID → code map used to resolve parent references that use UUIDs
+        Map<String, String> uuidToCode = new HashMap<>();
+
+        // 1. Create one virtual root per sheet (level 0)
+        List<TaxonomyNode> virtualRoots = new ArrayList<>();
+        for (Map.Entry<String, String> entry : SHEET_PREFIXES.entrySet()) {
+            String sheetName = entry.getKey();
+            String prefix    = entry.getValue();
+            TaxonomyNode root = new TaxonomyNode();
+            root.setCode(prefix);
+            root.setNameEn(sheetName);
+            root.setDescriptionEn("NATO C3 Taxonomy – " + sheetName);
+            root.setTaxonomyRoot(prefix);
+            root.setLevel(0);
+            nodeMap.put(prefix, root);
+            virtualRoots.add(root);
+        }
+
+        // Raw relation tuples extracted from the workbook before it is closed:
+        // each entry is [sourceCode, targetCode, typeStr, description]
+        List<String[]> rawRelations = new ArrayList<>();
+        boolean hasExcelRelations = false;
+
+        try (InputStream is = resource.getInputStream();
+             Workbook workbook = new XSSFWorkbook(is)) {
+
+            // 2. Read every sheet and collect raw rows
+            for (Map.Entry<String, String> entry : SHEET_PREFIXES.entrySet()) {
+                String sheetName = entry.getKey();
+                String prefix    = entry.getValue();
+                Sheet sheet = workbook.getSheet(sheetName);
+                if (sheet == null) {
+                    log.warn("Sheet '{}' not found in workbook.", sheetName);
+                    continue;
+                }
+                readSheet(sheet, prefix, nodeMap, uuidToCode);
+            }
+
+            // 3. Wire parent-child relationships
+            for (TaxonomyNode node : nodeMap.values()) {
+                if (node.getLevel() == 0) continue; // virtual roots have no parent
+                String parentCode = node.getParentCode();
+                TaxonomyNode parent = (parentCode != null) ? nodeMap.get(parentCode) : null;
+
+                // Fallback: parentCode might be a UUID — resolve it to the actual code
+                if (parent == null && parentCode != null) {
+                    String resolvedCode = uuidToCode.get(parentCode);
+                    if (resolvedCode != null) {
+                        parent = nodeMap.get(resolvedCode);
+                        if (parent != null) {
+                            node.setParentCode(resolvedCode);
+                        }
+                    }
+                }
+
+                // Last resort: attach to the virtual sheet root
+                if (parent == null) {
+                    log.debug("Last resort parent assignment for node '{}' (parentCode='{}', root='{}')",
+                            node.getCode(), node.getParentCode(), node.getTaxonomyRoot());
+                    parent = nodeMap.get(node.getTaxonomyRoot());
+                    node.setParentCode(node.getTaxonomyRoot());
+                }
+                if (parent != null) {
+                    node.setParent(parent);
+                    parent.getChildren().add(node);
+                }
+            }
+
+            // 4a. Extract raw relation rows BEFORE closing the workbook so the workbook
+            //     can be released from heap before the (memory-intensive) persist phase.
+            Sheet relationsSheet = workbook.getSheet("Relations");
+            if (relationsSheet != null) {
+                hasExcelRelations = true;
+                extractRawRelations(relationsSheet, rawRelations);
+            }
+        } // workbook closes here, releasing its heap memory
+
+        // 4b. Persist nodes in batches to limit Persistence Context size.
+        //     Returns a code → database ID map for subsequent relation wiring.
+        Map<String, Long> codeToId = persistNodesBatched(virtualRoots, nodeMap);
+        log.info("Taxonomy loaded: {} nodes from {} sheets.",
+                nodeMap.size(), SHEET_PREFIXES.size());
+
+        // 4c. Load relations using managed entity proxies (via codeToId)
+        if (hasExcelRelations) {
+            persistRawRelations(rawRelations, codeToId);
+        } else {
+            log.info("No 'Relations' sheet found in workbook — trying CSV fallback.");
+            loadRelationsFromCsv(codeToId);
+        }
+
+        // 4d. Help GC by releasing the large in-memory maps
+        nodeMap.clear();
+        uuidToCode.clear();
+        log.info("Cleared in-memory node maps to free heap.");
+
+        // 5. Hibernate Search auto-indexes nodes on JPA persist; log the count.
+        log.info("Full-text and vector index will be populated automatically by Hibernate Search.");
+
+        // 6. No explicit KNN index invalidation needed – Hibernate Search manages the index.
+        log.debug("Hibernate Search manages the vector index; no manual invalidation required.");
+    }
+
+    /**
+     * Persist all nodes in batches, flushing and clearing the Persistence Context every
+     * {@value #BATCH_SIZE} inserts to keep its memory footprint small.
+     *
+     * @return a map of node code → generated database ID for subsequent FK wiring
+     */
+    private Map<String, Long> persistNodesBatched(List<TaxonomyNode> virtualRoots,
+                                                   Map<String, TaxonomyNode> nodeMap) {
+        Map<String, Long> codeToId = new HashMap<>();
+
+        // Clear in-memory children lists so that individual entityManager.persist() calls
+        // do NOT trigger CascadeType.ALL and accidentally persist the entire tree at once.
+        // The nodeMap itself (and thus these entities) is discarded after the loading phase,
+        // so mutating the transient children collections here has no runtime side effects.
+        for (TaxonomyNode node : nodeMap.values()) {
+            node.getChildren().clear();
+        }
+
+        // Persist level-0 (virtual root) nodes first; they have no parent FK to resolve.
+        for (TaxonomyNode root : virtualRoots) {
+            entityManager.persist(root);
+            // For IDENTITY generation strategy the INSERT is executed immediately,
+            // so the generated ID is available right after persist().
+            codeToId.put(root.getCode(), root.getId());
+        }
+        entityManager.flush();
+        entityManager.clear();
+
+        // Collect non-root nodes and sort by level so that a parent is always persisted
+        // before any of its children, regardless of the order in nodeMap.
+        List<TaxonomyNode> nonRoots = new ArrayList<>();
+        for (TaxonomyNode node : nodeMap.values()) {
+            if (node.getLevel() > 0) {
+                nonRoots.add(node);
+            }
+        }
+        nonRoots.sort(Comparator.comparingInt(TaxonomyNode::getLevel));
+
+        int count = 0;
+        for (TaxonomyNode node : nonRoots) {
+            // Replace the in-memory parent reference with a lightweight managed proxy so
+            // that the FK column is set correctly even after earlier PC.clear() calls.
+            // getReference() returns an uninitialized proxy whose ID is set immediately;
+            // no SELECT is issued because only the FK value (the ID) is needed for the INSERT.
+            String parentCode = node.getParentCode();
+            if (parentCode != null && codeToId.containsKey(parentCode)) {
+                node.setParent(entityManager.getReference(TaxonomyNode.class,
+                        codeToId.get(parentCode)));
+            }
+            entityManager.persist(node);
+            codeToId.put(node.getCode(), node.getId());
+            count++;
+            if (count % BATCH_SIZE == 0) {
+                entityManager.flush();
+                entityManager.clear();
+            }
+        }
+        entityManager.flush();
+        entityManager.clear();
+
+        return codeToId;
+    }
+
+    /** Extract raw relation rows from the Relations sheet into a list of tuples. */
+    private void extractRawRelations(Sheet sheet, List<String[]> rawRelations) {
         boolean first = true;
-        List<TaxonomyRelation> relations = new ArrayList<>();
         for (Row row : sheet) {
             if (first) { first = false; continue; } // skip header
-            String sourceCode   = cellString(row, 0);
-            String targetCode   = cellString(row, 1);
-            String typeStr      = cellString(row, 2);
-            String description  = cellString(row, 3);
-
+            String sourceCode  = cellString(row, 0);
+            String targetCode  = cellString(row, 1);
+            String typeStr     = cellString(row, 2);
+            String description = cellString(row, 3);
             if (sourceCode == null || targetCode == null || typeStr == null) continue;
+            rawRelations.add(new String[]{sourceCode, targetCode, typeStr, description});
+        }
+    }
 
-            TaxonomyNode source = nodeMap.get(sourceCode);
-            TaxonomyNode target = nodeMap.get(targetCode);
-            if (source == null) {
+    /** Persist raw relation tuples as TaxonomyRelation entities. */
+    private void persistRawRelations(List<String[]> rawRelations, Map<String, Long> codeToId) {
+        List<TaxonomyRelation> relations = new ArrayList<>();
+        for (String[] raw : rawRelations) {
+            String sourceCode  = raw[0];
+            String targetCode  = raw[1];
+            String typeStr     = raw[2];
+            String description = raw[3];
+
+            Long sourceId = codeToId.get(sourceCode);
+            Long targetId = codeToId.get(targetCode);
+            if (sourceId == null) {
                 log.warn("Relations sheet: source node '{}' not found — skipping row.", sourceCode);
                 continue;
             }
-            if (target == null) {
+            if (targetId == null) {
                 log.warn("Relations sheet: target node '{}' not found — skipping row.", targetCode);
                 continue;
             }
@@ -183,8 +306,8 @@ public class TaxonomyService {
             }
 
             TaxonomyRelation relation = new TaxonomyRelation();
-            relation.setSourceNode(source);
-            relation.setTargetNode(target);
+            relation.setSourceNode(entityManager.getReference(TaxonomyNode.class, sourceId));
+            relation.setTargetNode(entityManager.getReference(TaxonomyNode.class, targetId));
             relation.setRelationType(relationType);
             relation.setDescription(truncate(description, 2000));
             relation.setProvenance("excel");
@@ -195,7 +318,7 @@ public class TaxonomyService {
     }
 
     /** Load relations from the CSV fallback file when no Relations sheet is present in the workbook. */
-    private void loadRelationsFromCsv(Map<String, TaxonomyNode> nodeMap) {
+    private void loadRelationsFromCsv(Map<String, Long> codeToId) {
         ClassPathResource csvResource = new ClassPathResource("data/relations.csv");
         if (!csvResource.exists()) {
             log.warn("CSV fallback 'data/relations.csv' not found — no relations loaded.");
@@ -216,13 +339,13 @@ public class TaxonomyService {
                 String typeStr     = parts[2].trim();
                 String description = parts.length >= 4 ? parts[3].trim() : null;
 
-                TaxonomyNode source = nodeMap.get(sourceCode);
-                TaxonomyNode target = nodeMap.get(targetCode);
-                if (source == null) {
+                Long sourceId = codeToId.get(sourceCode);
+                Long targetId = codeToId.get(targetCode);
+                if (sourceId == null) {
                     log.warn("CSV relations: source node '{}' not found — skipping row.", sourceCode);
                     continue;
                 }
-                if (target == null) {
+                if (targetId == null) {
                     log.warn("CSV relations: target node '{}' not found — skipping row.", targetCode);
                     continue;
                 }
@@ -236,8 +359,8 @@ public class TaxonomyService {
                 }
 
                 TaxonomyRelation relation = new TaxonomyRelation();
-                relation.setSourceNode(source);
-                relation.setTargetNode(target);
+                relation.setSourceNode(entityManager.getReference(TaxonomyNode.class, sourceId));
+                relation.setTargetNode(entityManager.getReference(TaxonomyNode.class, targetId));
                 relation.setRelationType(relationType);
                 relation.setDescription(truncate(description, 2000));
                 relation.setProvenance("csv-default");

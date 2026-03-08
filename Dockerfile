@@ -13,4 +13,7 @@ FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY --from=build /workspace/target/taxonomy-*.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# -XX:+UseSerialGC    : lower GC memory overhead than G1 for small (≤1 GB) heaps
+# -Xss512k            : reduce per-thread stack size (default 1 MB is wasteful on constrained hosts)
+# -XX:MaxRAMPercentage: auto-size heap to 75 % of the container's memory limit (works with Docker --memory)
+ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xss512k", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
