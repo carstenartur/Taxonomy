@@ -46,6 +46,8 @@
                             <button id="exportJson" class="btn btn-sm btn-outline-info" title="Download scores as JSON file">&#128229; JSON</button>
                             <button id="exportVisio" class="btn btn-sm btn-outline-info" title="Export Architecture View as Visio (.vsdx) diagram">&#128229; Visio</button>
                             <button id="exportArchiMate" class="btn btn-sm btn-outline-info" title="Export Architecture View as ArchiMate XML (.xml) for Archi or similar tools">&#128229; ArchiMate</button>
+                            <button id="archiMateImportBtn" class="btn btn-sm btn-outline-success" title="Import an ArchiMate XML model to map elements and relations to taxonomy" aria-label="Import ArchiMate XML">&#128228; Import ArchiMate</button>
+                            <input type="file" id="archiMateImportFile" accept=".xml" style="display:none;">
                         </div>
                         <span id="exportHint" class="d-none" title="Export buttons appear after a successful analysis with scores &gt; 0">📋 Analyze first to enable exports</span>
                         <button id="importJson" class="btn btn-sm btn-outline-secondary" title="Load saved analysis from JSON file">&#128228; Load Scores</button>
@@ -87,10 +89,16 @@
                     </label>
                     <textarea id="businessText" class="form-control mb-3" rows="7"
                               placeholder="e.g. We need a system to manage and display real-time air tracks, integrate radar data, and provide a common operational picture to commanders at brigade and above level..."></textarea>
-                    <button id="analyzeBtn" class="btn btn-primary w-100" title="Analyze the business requirement text against the taxonomy using the configured AI/LLM provider">
-                        <span id="analyzeSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
-                        Analyze with AI
-                    </button>
+                    <div class="d-flex gap-2">
+                        <button id="analyzeBtn" class="btn btn-primary flex-grow-1" title="Analyze the business requirement text against the taxonomy using the configured AI/LLM provider">
+                            <span id="analyzeSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
+                            Analyze with AI
+                        </button>
+                        <button id="copilotBtn" class="btn btn-success" title="One-click AI Architecture Copilot: Analyze → Gap Analysis → Pattern Detection → Recommendation">
+                            <span id="copilotSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"><span class="visually-hidden">Loading...</span></span>
+                            &#128640; Copilot
+                        </button>
+                    </div>
                     <div id="aiUnavailableWarning" class="mt-2 d-none">
                         ⚠️ <strong>AI is not available.</strong> No LLM API key is configured.
                         Set one of the supported API keys, such as <code>GEMINI_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>DEEPSEEK_API_KEY</code>, <code>DASHSCOPE_API_KEY</code>, <code>LLAMA_API_KEY</code>, or <code>MISTRAL_API_KEY</code>,
@@ -177,6 +185,55 @@
                 </div>
             </div>
 
+            <!-- ArchiMate Import Status -->
+            <div id="archiMateImportStatus" class="mt-2" style="display:none;"></div>
+
+            <!-- AI Architecture Copilot Panel -->
+            <div id="copilotPanel" class="mt-3" style="display:none;">
+                <div class="card shadow-sm border-success">
+                    <div class="card-header fw-semibold d-flex justify-content-between align-items-center bg-success bg-opacity-10">
+                        <span>&#128640; AI Architecture Copilot</span>
+                        <span class="badge bg-success">One-Click</span>
+                    </div>
+                    <div class="card-body p-3" id="copilotContent">
+                        <div class="text-muted small">Click the &#128640; Copilot button to start a full architecture analysis.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gap Analysis Panel -->
+            <details id="gapAnalysisPanel" class="mt-2">
+                <summary class="fw-semibold" style="cursor:pointer;">&#128269; Gap Analysis</summary>
+                <div id="gapAnalysisContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
+                    <div class="text-muted">Run gap analysis to identify missing relations and incomplete patterns.</div>
+                </div>
+                <div class="mt-1">
+                    <button id="gapAnalyzeBtn" class="btn btn-sm btn-outline-primary">&#128269; Analyze Gaps</button>
+                </div>
+            </details>
+
+            <!-- Pattern Detection Panel -->
+            <details id="patternDetectionPanel" class="mt-2">
+                <summary class="fw-semibold" style="cursor:pointer;">&#129513; Pattern Detection</summary>
+                <div id="patternDetectionContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
+                    <div class="text-muted">Detect architecture patterns (Full Stack, App Chain, Role Chain) across scored nodes.</div>
+                </div>
+                <div class="mt-1">
+                    <button id="patternDetectBtn" class="btn btn-sm btn-outline-primary">&#129513; Detect Patterns</button>
+                </div>
+            </details>
+
+            <!-- Architecture Recommendation Panel -->
+            <details id="recommendationPanel" class="mt-2">
+                <summary class="fw-semibold" style="cursor:pointer;">&#128161; Architecture Recommendation</summary>
+                <div id="recommendationContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
+                    <div class="text-muted">Generate architecture recommendations combining matches, gap analysis, and semantic search.</div>
+                </div>
+                <div class="mt-1">
+                    <button id="recommendBtn" class="btn btn-sm btn-outline-primary">&#128161; Generate Recommendation</button>
+                </div>
+            </details>
+
             <!-- Graph Explorer Panel -->
             <div id="graphExplorerPanel" class="mt-3">
                 <div class="card shadow-sm">
@@ -216,6 +273,9 @@
                             </button>
                             <button id="graphFailureBtn" class="btn btn-sm btn-outline-danger" title="What is affected if this element fails?">
                                 &#9888;&#65039; Failure Impact
+                            </button>
+                            <button id="graphEnrichedFailureBtn" class="btn btn-sm btn-outline-warning" title="Failure impact enriched with requirement coverage and risk score">
+                                &#128200; Enriched Impact
                             </button>
                             <button id="requirementImpactBtn" class="btn btn-sm btn-outline-success" title="Analyze which elements are transitively impacted by the current requirement scores">
                                 &#127919; Req. Impact
@@ -357,6 +417,7 @@
 <script th:src="@{/js/taxonomy-quality.js}"></script>
 <script th:src="@{/js/taxonomy-coverage.js}"></script>
 <script th:src="@{/js/taxonomy-relations.js}"></script>
+<script th:src="@{/js/taxonomy-analysis.js}"></script>
 <script th:src="@{/js/taxonomy.js}"></script>
 
 <!-- Propose Relations Modal -->
