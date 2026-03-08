@@ -14,6 +14,8 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import com.nato.taxonomy.dto.SavedAnalysis;
+
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -107,17 +109,23 @@ public class LlmService {
     private final TaxonomyService taxonomyService;
     private final PromptTemplateService promptTemplateService;
     private final LocalEmbeddingService localEmbeddingService;
+    private final SavedAnalysisService savedAnalysisService;
+
+    // ── Cached mock data loaded from classpath ────────────────────────────────
+    private volatile SavedAnalysis cachedMockAnalysis = null;
 
     // ── Mock-mode scores for "Provide secure voice communications between HQ and deployed forces" ──
+    // These are used as per-taxonomy independent scores (0–100 each), NOT a pie-chart that sums to 100.
+    // Each value represents "how well does this taxonomy cover the requirement?" independently.
     private static final Map<String, Integer> MOCK_ROOT_SCORES = Map.of(
             "CO", 90,
-            "CR", 75,
-            "CP", 65,
-            "IP", 45,
-            "BP", 40,
-            "CI", 25,
-            "UA", 15,
-            "BR", 15
+            "CR", 70,
+            "CP", 55,
+            "IP", 30,
+            "BP", 25,
+            "CI", 15,
+            "UA", 10,
+            "BR",  0
     );
 
     private static final Map<String, String> MOCK_ROOT_REASONS = Map.of(
@@ -143,34 +151,71 @@ public class LlmService {
                       ObjectMapper objectMapper,
                       TaxonomyService taxonomyService,
                       PromptTemplateService promptTemplateService,
-                      LocalEmbeddingService localEmbeddingService) {
+                      LocalEmbeddingService localEmbeddingService,
+                      SavedAnalysisService savedAnalysisService) {
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.taxonomyService = taxonomyService;
         this.promptTemplateService = promptTemplateService;
         this.localEmbeddingService = localEmbeddingService;
+        this.savedAnalysisService = savedAnalysisService;
     }
 
     // ── Mock-mode helpers ─────────────────────────────────────────────────────
 
     /**
-     * Builds mock {@link ScoreParseResult} for the given nodes using hardcoded scores based on the
-     * taxonomy root. The scores are varied per node using a deterministic hash of the node code so
-     * the resulting tree looks realistically populated.
+     * Loads the mock {@link SavedAnalysis} from classpath, caching it after first load.
+     * Falls back to the hardcoded score maps if the file cannot be read.
+     */
+    private SavedAnalysis loadMockAnalysis() {
+        if (cachedMockAnalysis != null) { return cachedMockAnalysis; }
+        try {
+            cachedMockAnalysis = savedAnalysisService.loadFromClasspath(
+                    "mock-scores/secure-voice-comms.json");
+            log.info("MOCK — loaded mock scores from classpath:mock-scores/secure-voice-comms.json");
+        } catch (Exception e) {
+            log.warn("MOCK — failed to load mock scores from classpath, using hardcoded fallback: {}", e.getMessage());
+        }
+        return cachedMockAnalysis;
+    }
+
+    /**
+     * Builds mock {@link ScoreParseResult} for the given nodes.
+     *
+     * <p>First tries to look up each node's score in the saved analysis JSON loaded from
+     * {@code classpath:mock-scores/secure-voice-comms.json}. If the node code is found,
+     * that score is used. If not found (e.g. a deeper child node not in the JSON), falls
+     * back to the hardcoded root-score + deterministic variation approach.
      */
     private ScoreParseResult buildMockScores(List<TaxonomyNode> nodes) {
+        SavedAnalysis mockAnalysis = loadMockAnalysis();
         Map<String, Integer> scores = new HashMap<>();
         Map<String, String> reasons = new HashMap<>();
         for (TaxonomyNode node : nodes) {
-            String root = node.getTaxonomyRoot() != null ? node.getTaxonomyRoot() : node.getCode();
-            int baseScore = MOCK_ROOT_SCORES.getOrDefault(root, 30);
-            // Add deterministic variation ±15 based on the node code
-            int variation = Math.floorMod(node.getCode().hashCode(), 31) - 15;
-            int score = Math.max(5, Math.min(100, baseScore + variation));
-            scores.put(node.getCode(), score);
-            String reason = MOCK_ROOT_REASONS.getOrDefault(root,
-                    "Relevant to the secure voice communications requirement.");
-            reasons.put(node.getCode(), reason);
+            // Try to look up score from the saved analysis JSON
+            if (mockAnalysis != null && mockAnalysis.getScores() != null
+                    && mockAnalysis.getScores().containsKey(node.getCode())) {
+                scores.put(node.getCode(), mockAnalysis.getScores().get(node.getCode()));
+                String reason = (mockAnalysis.getReasons() != null)
+                        ? mockAnalysis.getReasons().get(node.getCode()) : null;
+                if (reason == null) {
+                    String root = node.getTaxonomyRoot() != null ? node.getTaxonomyRoot() : node.getCode();
+                    reason = MOCK_ROOT_REASONS.getOrDefault(root,
+                            "Relevant to the secure voice communications requirement.");
+                }
+                reasons.put(node.getCode(), reason);
+            } else {
+                // Fallback: use hardcoded root scores with deterministic variation
+                String root = node.getTaxonomyRoot() != null ? node.getTaxonomyRoot() : node.getCode();
+                int baseScore = MOCK_ROOT_SCORES.getOrDefault(root, 30);
+                // Add deterministic variation ±15 based on the node code
+                int variation = Math.floorMod(node.getCode().hashCode(), 31) - 15;
+                int score = Math.max(5, Math.min(100, baseScore + variation));
+                scores.put(node.getCode(), score);
+                String reason = MOCK_ROOT_REASONS.getOrDefault(root,
+                        "Relevant to the secure voice communications requirement.");
+                reasons.put(node.getCode(), reason);
+            }
         }
         recordSuccess();
         return new ScoreParseResult(scores, reasons);

@@ -52,6 +52,7 @@ Key capabilities:
 | Relation Proposals | AI-assisted proposal pipeline with human review |
 | Quality Dashboard | Acceptance-rate metrics by relation type and provenance |
 | Diagram Export | Visio (.vsdx) and ArchiMate 3.x XML |
+| Analysis scores JSON | Export and import analysis results as JSON for reproducibility and sharing |
 | Admin Panel | Password protection, LLM diagnostics, prompt template editor |
 
 ---
@@ -509,9 +510,63 @@ Generates an ArchiMate 3.x compliant XML file suitable for import into tools suc
 
 **Response:** XML file download.
 
+### 12.3 Analysis Scores JSON Export
+
+**Endpoint:** `POST /api/scores/export`
+
+Serialises the current analysis result as a `SavedAnalysis` JSON object, adding a timestamp and format version. The frontend downloads this as a `.json` file.
+
+**Request body:**
+
+```json
+{
+  "requirement": "Provide secure voice communications between HQ and deployed forces",
+  "scores": { "CO": 90, "CR": 70, "BP": 25, "BR": 0 },
+  "reasons": { "CO": "Voice comms are directly in scope", "CR": "Core transport services required" },
+  "provider": "GEMINI"
+}
+```
+
+**Response:** `SavedAnalysis` JSON:
+
+```json
+{
+  "version": 1,
+  "requirement": "Provide secure voice communications between HQ and deployed forces",
+  "timestamp": "2026-03-08T14:30:00Z",
+  "provider": "GEMINI",
+  "scores": { "CO": 90, "CR": 70, "BP": 25, "BR": 0 },
+  "reasons": { "CO": "Voice comms are directly in scope", "CR": "Core transport services required" }
+}
+```
+
+**Semantic note:** Each root taxonomy is scored **independently** on a 0–100 scale — for example `"CO": 90` means "the Communications Services taxonomy covers 90% of this requirement". Scores across root taxonomies do **not** sum to 100. A score of `0` means the node was _evaluated and found not relevant_. An absent key means the node was _not evaluated_.
+
+### 12.4 Analysis Scores JSON Import
+
+**Endpoint:** `POST /api/scores/import`
+
+Accepts a `SavedAnalysis` JSON body, validates it, and returns the parsed scores and reasons so the frontend can apply them to the tree.
+
+**Request body:** Full `SavedAnalysis` JSON (as produced by `/api/scores/export`).
+
+**Response:**
+
+```json
+{
+  "requirement": "...",
+  "scores": { "CO": 90, "CR": 70, "BP": 25, "BR": 0 },
+  "reasons": { "CO": "Voice comms are directly in scope" },
+  "provider": "GEMINI",
+  "warnings": ["Unknown node code: XYZ"]
+}
+```
+
+Warnings are generated for node codes not found in the current taxonomy, but the import succeeds unless the JSON is structurally invalid (bad version, blank requirement, empty scores).
+
 ### UI Usage
 
-Export buttons appear in the results panel only when analysis scores are present.  Click **Export Visio** or **Export ArchiMate** to download the corresponding file.
+Export buttons appear in the results panel only when analysis scores are present.  Click **📥 JSON** to download a `SavedAnalysis` JSON file.  Click **📤 Load Scores** (always visible in the toolbar) to upload a previously saved JSON file and restore the analysis results.
 
 ---
 
@@ -613,6 +668,8 @@ Complete list of all REST endpoints.
 | `POST` | `/api/admin/verify` | Verify admin password | No |
 | `POST` | `/api/diagram/visio` | Export Visio .vsdx | No |
 | `POST` | `/api/diagram/archimate` | Export ArchiMate XML | No |
+| `POST` | `/api/scores/export` | Export analysis scores as JSON | No |
+| `POST` | `/api/scores/import` | Import analysis scores from JSON | No |
 | `GET` | `/api/search` | Full-text search | No |
 | `GET` | `/api/search/semantic` | Semantic KNN search | No |
 | `GET` | `/api/search/hybrid` | Hybrid RRF search | No |

@@ -97,12 +97,64 @@
         }
 
         // Export buttons
-        ['exportSvg', 'exportPng', 'exportPdf', 'exportCsv', 'exportVisio', 'exportArchiMate'].forEach(function (id) {
+        ['exportSvg', 'exportPng', 'exportPdf', 'exportCsv', 'exportJson', 'exportVisio', 'exportArchiMate'].forEach(function (id) {
             const btn = document.getElementById(id);
             if (btn) {
                 btn.addEventListener('click', function () { handleExport(id); });
             }
         });
+
+        // Import JSON button
+        const importJsonBtn = document.getElementById('importJson');
+        const importJsonFile = document.getElementById('importJsonFile');
+        if (importJsonBtn && importJsonFile) {
+            importJsonBtn.addEventListener('click', function () {
+                importJsonFile.value = '';
+                importJsonFile.click();
+            });
+            importJsonFile.addEventListener('change', function () {
+                const file = importJsonFile.files && importJsonFile.files[0];
+                if (!file) { return; }
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const jsonText = e.target.result;
+                    fetch('/api/scores/import', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: jsonText
+                    })
+                    .then(function (resp) { return resp.json(); })
+                    .then(function (data) {
+                        if (data.error) {
+                            showStatus('danger', '❌ Import failed: ' + data.error);
+                            return;
+                        }
+                        currentScores = data.scores || {};
+                        currentReasons = data.reasons || {};
+                        // Update business text field if present in the imported data
+                        if (data.requirement) {
+                            const btEl = document.getElementById('businessText');
+                            if (btEl) { btEl.value = data.requirement; }
+                            storedBusinessText = data.requirement;
+                            lastAnalyzedText   = data.requirement;
+                        }
+                        // Render tree with imported scores
+                        renderView(taxonomyData, currentScores);
+                        updateExportGroupVisibility();
+                        const scored = Object.keys(currentScores).length;
+                        let msg = '✅ Loaded analysis: ' + scored + ' node(s) scored.';
+                        if (data.warnings && data.warnings.length > 0) {
+                            msg += ' ⚠️ ' + data.warnings.join('; ');
+                        }
+                        showStatus(data.warnings && data.warnings.length > 0 ? 'warning' : 'success', msg);
+                    })
+                    .catch(function (err) {
+                        showStatus('danger', '❌ Import failed: ' + err.message);
+                    });
+                };
+                reader.readAsText(file);
+            });
+        }
 
         // Dark mode toggle
         const darkModeBtn = document.getElementById('darkModeToggle');
@@ -683,6 +735,13 @@
             if (window.TaxonomyExport) {
                 var bt = document.getElementById('businessText');
                 window.TaxonomyExport.exportArchiMate(bt ? bt.value : '');
+            }
+            return;
+        }
+        if (btnId === 'exportJson') {
+            if (window.TaxonomyExport) {
+                var bt = document.getElementById('businessText');
+                window.TaxonomyExport.exportJson(currentScores, currentReasons, bt ? bt.value : '', null);
             }
             return;
         }

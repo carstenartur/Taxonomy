@@ -48,6 +48,8 @@ The **NATO NC3T Taxonomy Browser** is a web application that helps Architects, A
 | View quality metrics for relation proposals | Right panel → 📊 Quality Dashboard panel |
 | Browse, create, or delete taxonomy relations | Right panel → 🔗 Relations Browser panel |
 | Export a diagram or scoresheet | Left panel → export buttons (appear after analysis) |
+| Save analysis as JSON | Left panel → export buttons → 📥 JSON |
+| Load a saved analysis | Left panel → 📤 Load Scores button |
 | Manage LLM settings and prompt templates | Unlock admin mode via 🔒 in the navigation bar |
 
 > For the REST API reference used by developers and integrators, see [API Reference](API_REFERENCE.md).
@@ -84,7 +86,8 @@ The left panel (wider column) displays the **Taxonomy Tree**. This is the full c
 At the top of the left panel you will find:
 
 - **View switcher buttons:** 📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision — switch between different visualisations of the taxonomy.
-- **Export buttons** (appear only after a successful analysis): 📥 SVG | 📥 PNG | 📥 PDF | 📥 CSV | 📥 Visio | 📥 ArchiMate
+- **Export buttons** (appear only after a successful analysis): 📥 SVG | 📥 PNG | 📥 PDF | 📥 CSV | 📥 JSON | 📥 Visio | 📥 ArchiMate
+- **Load Scores button** (always visible): 📤 Load Scores — imports a previously saved JSON analysis file
 - **Expand All / Collapse All** — expand or collapse all nodes in the current view.
 - **Taxonomy root selector** (Tree view only) — choose which taxonomy root to display.
 - **Descriptions toggle switch** — show or hide the description text for each node.
@@ -220,7 +223,7 @@ Partial results are preserved when possible — if 7 of 10 roots were scored bef
 
 ### Export Button Visibility
 
-The export buttons (SVG, PNG, PDF, CSV, Visio, ArchiMate) only appear when there are analysis scores greater than 0. If no analysis has been run, or if all scores are 0, the export buttons are hidden and a hint text **"📋 Analyze first to enable exports"** is shown instead. If you navigate away and return, scores may be lost — re-run the analysis to restore the export buttons.
+The export buttons (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate) only appear when there are analysis scores greater than 0. If no analysis has been run, or if all scores are 0, the export buttons are hidden and a hint text **"📋 Analyze first to enable exports"** is shown instead. The **📤 Load Scores** button is always visible and can be used to restore a previous analysis.
 
 ---
 
@@ -478,9 +481,33 @@ Click **📥 ArchiMate** to download an ArchiMate 3.x XML file suitable for impo
 
 > **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
 
+### JSON Scores Export
+
+Click **📥 JSON** (in the export group, visible after a successful analysis) to download the current analysis result as a `SavedAnalysis` JSON file. The file contains:
+
+- The business requirement text
+- All scored node codes and their scores (0–100)
+- The reasons/explanations for each scored node
+- The LLM provider name and a timestamp
+
+This file can be shared with colleagues or loaded back at a later time using the **📤 Load Scores** button, without re-running the AI analysis.
+
+> **Semantic distinction:** A score of `0` in the JSON means the node was _evaluated and found not relevant_. A node code that is _absent_ from the JSON was never evaluated.
+
+### Loading a Saved Analysis (Import)
+
+Click **📤 Load Scores** (always visible in the toolbar, next to the export buttons) to load a previously exported `SavedAnalysis` JSON file. After selecting the file:
+
+1. The business requirement text is restored in the text area.
+2. The taxonomy tree is rendered with the imported scores.
+3. The export buttons become visible.
+4. A status message confirms how many nodes were scored and reports any warnings (e.g. node codes not present in the current taxonomy version).
+
+This enables **offline review** and **reproducibility** — you can share a scored result with a colleague who can open it without needing an API key.
+
 ### When Export Buttons Appear
 
-The export buttons only appear after analysis has been run and at least one taxonomy node has a score greater than 0. If you navigate away or refresh the page, scores are lost and the buttons disappear. A hint message **"📋 Analyze first to enable exports"** is shown when exports are unavailable. Re-run the analysis to restore the export buttons.
+The export buttons only appear after analysis has been run and at least one taxonomy node has a score greater than 0. If you navigate away or refresh the page, scores are lost and the buttons disappear. A hint message **"📋 Analyze first to enable exports"** is shown when exports are unavailable. Re-run the analysis or use **📤 Load Scores** to restore the export buttons.
 
 ### Dark Mode
 
@@ -689,6 +716,7 @@ The system uses 10 relation types, each corresponding to a specific relationship
 ### Exporting
 
 - Use **CSV** to share scores with colleagues who do not have access to the application.
+- Use **JSON** to save a complete snapshot of the analysis result (scores + reasons + requirement text) that can be loaded back later with **📤 Load Scores**.
 - Use **Visio** or **ArchiMate** export to integrate results into your enterprise architecture tooling.
 - Always enable the **Architecture View** checkbox before analysis if you intend to export Visio or ArchiMate files.
 
@@ -742,7 +770,7 @@ The system uses 10 relation types, each corresponding to a specific relationship
 
 **Cause:** Export buttons only appear after a completed analysis with non-zero scores.
 
-**Action:** Run an analysis first. If scores are present but buttons are still missing, try refreshing the page and re-running the analysis.
+**Action:** Run an analysis first, or use **📤 Load Scores** to import a previously saved JSON analysis file. If scores are present but buttons are still missing, try refreshing the page and re-running the analysis.
 
 ### The Visio or ArchiMate export file is empty or has no elements
 

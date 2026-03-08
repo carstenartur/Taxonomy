@@ -261,4 +261,80 @@ class TaxonomyApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.error").isString());
     }
+
+    @Test
+    void scoresExportEndpointReturns200ForValidInput() throws Exception {
+        mockMvc.perform(post("/api/scores/export")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requirement\":\"Provide secure voice communications\","
+                                + "\"scores\":{\"CO\":35,\"CR\":25,\"BR\":0},"
+                                + "\"reasons\":{\"CO\":\"Voice comms\"},"
+                                + "\"provider\":\"GEMINI\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.requirement").value("Provide secure voice communications"))
+                .andExpect(jsonPath("$.timestamp").isString())
+                .andExpect(jsonPath("$.scores.CO").value(35))
+                .andExpect(jsonPath("$.scores.BR").value(0));
+    }
+
+    @Test
+    void scoresExportEndpointReturnsBadRequestForBlankRequirement() throws Exception {
+        mockMvc.perform(post("/api/scores/export")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requirement\":\"\","
+                                + "\"scores\":{\"CO\":35},"
+                                + "\"reasons\":{}}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void scoresExportEndpointReturnsBadRequestForMissingScores() throws Exception {
+        mockMvc.perform(post("/api/scores/export")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requirement\":\"Test requirement\","
+                                + "\"scores\":{},"
+                                + "\"reasons\":{}}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void scoresImportEndpointReturns200ForValidJson() throws Exception {
+        String json = "{\"version\":1,\"requirement\":\"Test requirement\","
+                + "\"scores\":{\"CO\":35,\"BR\":0},\"reasons\":{\"CO\":\"Voice\"}}";
+
+        mockMvc.perform(post("/api/scores/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requirement").value("Test requirement"))
+                .andExpect(jsonPath("$.scores.CO").value(35))
+                .andExpect(jsonPath("$.scores.BR").value(0))
+                .andExpect(jsonPath("$.warnings").isArray());
+    }
+
+    @Test
+    void scoresImportEndpointReturnsBadRequestForInvalidVersion() throws Exception {
+        String json = "{\"version\":99,\"requirement\":\"Test\","
+                + "\"scores\":{\"CO\":35},\"reasons\":{}}";
+
+        mockMvc.perform(post("/api/scores/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isString());
+    }
+
+    @Test
+    void scoresImportEndpointIncludesWarningsForUnknownCodes() throws Exception {
+        String json = "{\"version\":1,\"requirement\":\"Test requirement\","
+                + "\"scores\":{\"CO\":35,\"UNKNOWN_XYZ\":10},\"reasons\":{}}";
+
+        mockMvc.perform(post("/api/scores/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.warnings").isArray())
+                .andExpect(jsonPath("$.warnings[0]").value(org.hamcrest.Matchers.containsString("UNKNOWN_XYZ")));
+    }
 }
