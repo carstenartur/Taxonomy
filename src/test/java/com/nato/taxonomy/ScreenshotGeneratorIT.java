@@ -169,8 +169,9 @@ class ScreenshotGeneratorIT {
 
     /** Makes the admin lock button visible (it is hidden until the AI status check resolves). */
     private void showAdminLockButton() {
-        // Wait for the page's async AI status check to complete before forcing the button visible.
-        wait(10).until(ExpectedConditions.presenceOfElementLocated(By.id("aiStatusBadge")));
+        // Wait for the page's async AI status check to complete — the badge starts as d-none
+        // and becomes visible only after the /api/ai-status fetch resolves.
+        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("aiStatusBadge")));
         js("var btn = document.getElementById('adminLockBtn');" +
            "if (btn) { btn.classList.remove('d-none'); btn.style.display = ''; " +
            "btn.scrollIntoView({behavior:'instant', block:'center'}); }");
@@ -196,18 +197,23 @@ class ScreenshotGeneratorIT {
             List<WebElement> panels = driver.findElements(By.cssSelector(".admin-only"));
             return !panels.isEmpty() && panels.stream().anyMatch(WebElement::isDisplayed);
         });
+        // Trigger diagnostics load — the REST unlock above doesn't go through the UI's
+        // initAdminModal() flow, so loadDiagnostics() is never called automatically.
+        // Click the refresh button which has a click listener bound to loadDiagnostics().
+        js("var btn = document.getElementById('refreshDiagnostics'); if (btn) btn.click();");
     }
 
     /**
      * Forces the interactive-mode checkbox OFF via direct JS property assignment and fires the
      * {@code change} event so the taxonomy.js module-level variable is also updated.
-     * More reliable than a Selenium click on a potentially-stale element reference.
+     * Uses a JS-based wait to avoid StaleElementReferenceException from page re-renders.
      */
     private void forceNonInteractiveMode() {
         js("var cb = document.getElementById('interactiveMode');" +
            "if (cb) { cb.checked = false; cb.dispatchEvent(new Event('change')); }");
-        wait(3).until(ExpectedConditions.elementSelectionStateToBe(
-                driver.findElement(By.id("interactiveMode")), false));
+        wait(3).until(d -> (Boolean) ((JavascriptExecutor) d).executeScript(
+                "var cb = document.getElementById('interactiveMode');" +
+                "return !!cb && cb.checked === false;"));
     }
 
     /** Reloads the page and waits for the taxonomy tree to be fully rendered. */
@@ -650,6 +656,12 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", diagPanel);
         openDetails(diagPanel);
         wait(5).until(ExpectedConditions.visibilityOf(diagPanel));
+        // Wait for diagnostics content to load (no longer shows "Loading…" placeholder)
+        wait(10).until(d -> {
+            WebElement content = d.findElement(By.id("diagnosticsContent"));
+            String text = content.getText();
+            return text != null && !text.isEmpty() && !text.contains("Loading");
+        });
         saveElementScreenshot(diagPanel, "25-llm-diagnostics.png");
     }
 
