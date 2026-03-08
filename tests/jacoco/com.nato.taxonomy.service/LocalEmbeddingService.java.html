@@ -34,16 +34,16 @@ import java.util.stream.Collectors;
  *
  * &lt;h2&gt;Configuration&lt;/h2&gt;
  * &lt;ul&gt;
- *   &lt;li&gt;{@code JGIT_EMBEDDING_ENABLED} (default {@code true}) — set to {@code false} to
+ *   &lt;li&gt;{@code TAXONOMY_EMBEDDING_ENABLED} (default {@code true}) — set to {@code false} to
  *       disable all embedding and semantic search globally.&lt;/li&gt;
- *   &lt;li&gt;{@code JGIT_EMBEDDING_MODEL_DIR} — path to a pre-downloaded model directory;
+ *   &lt;li&gt;{@code TAXONOMY_EMBEDDING_MODEL_DIR} — path to a pre-downloaded model directory;
  *       empty = DJL auto-download to {@code ~/.djl.ai/}.&lt;/li&gt;
- *   &lt;li&gt;{@code JGIT_EMBEDDING_MODEL_NAME} — DJL model URL;
+ *   &lt;li&gt;{@code TAXONOMY_EMBEDDING_MODEL_NAME} — DJL model URL;
  *       default {@code djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2}.&lt;/li&gt;
  * &lt;/ul&gt;
  *
  * &lt;h2&gt;Graceful degradation&lt;/h2&gt;
- * &lt;p&gt;When {@code JGIT_EMBEDDING_ENABLED=false} or the model fails to load, all semantic
+ * &lt;p&gt;When {@code TAXONOMY_EMBEDDING_ENABLED=false} or the model fails to load, all semantic
  * search methods return empty results without throwing, and {@link #isAvailable()} returns
  * {@code false}.
  *
@@ -94,7 +94,7 @@ import java.util.stream.Collectors;
 
     /**
      * Returns {@code true} if embedding is configured as enabled
-     * ({@code JGIT_EMBEDDING_ENABLED=true}, which is the default).
+     * ({@code TAXONOMY_EMBEDDING_ENABLED=true}, which is the default).
      */
     public boolean isEnabled() {
 <span class="fc" id="L100">        return embeddingEnabled;</span>
@@ -119,7 +119,7 @@ import java.util.stream.Collectors;
     /** Returns the lazily loaded DJL model, downloading it on first call. */
     ZooModel&lt;String, float[]&gt; getModel() throws Exception {
 <span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (!embeddingEnabled) {</span>
-<span class="nc" id="L122">            throw new IllegalStateException(&quot;Embedding is disabled (JGIT_EMBEDDING_ENABLED=false)&quot;);</span>
+<span class="nc" id="L122">            throw new IllegalStateException(&quot;Embedding is disabled (TAXONOMY_EMBEDDING_ENABLED=false)&quot;);</span>
         }
 <span class="pc bpc" id="L124" title="1 of 2 branches missed.">        if (modelLoadFailed) {</span>
 <span class="nc" id="L125">            throw new IllegalStateException(&quot;DJL model failed to load previously; embedding unavailable&quot;);</span>
