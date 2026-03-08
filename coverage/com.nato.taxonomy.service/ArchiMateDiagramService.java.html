@@ -145,43 +145,56 @@ import java.util.stream.Collectors;
 
     public static String toArchiMateType(String taxonomyType) {
 <span class="fc bfc" id="L147" title="All 2 branches covered.">        if (taxonomyType == null) return &quot;BusinessObject&quot;;</span>
-<span class="fc bfc" id="L148" title="All 6 branches covered.">        return switch (taxonomyType) {</span>
-<span class="fc" id="L149">            case &quot;Capabilities&quot;        -&gt; &quot;Capability&quot;;</span>
-<span class="fc" id="L150">            case &quot;Business Processes&quot;  -&gt; &quot;BusinessProcess&quot;;</span>
-<span class="fc" id="L151">            case &quot;Services&quot;            -&gt; &quot;ApplicationService&quot;;</span>
-<span class="fc" id="L152">            case &quot;Applications&quot;        -&gt; &quot;ApplicationComponent&quot;;</span>
-<span class="fc" id="L153">            case &quot;Information Products&quot;-&gt; &quot;DataObject&quot;;</span>
-<span class="fc" id="L154">            default                    -&gt; &quot;BusinessObject&quot;;</span>
+<span class="fc bfc" id="L148" title="All 11 branches covered.">        return switch (taxonomyType) {</span>
+<span class="fc" id="L149">            case &quot;Capabilities&quot;          -&gt; &quot;Capability&quot;;</span>
+<span class="fc" id="L150">            case &quot;Business Processes&quot;    -&gt; &quot;BusinessProcess&quot;;</span>
+<span class="fc" id="L151">            case &quot;Business Roles&quot;        -&gt; &quot;BusinessRole&quot;;</span>
+<span class="fc" id="L152">            case &quot;Services&quot;              -&gt; &quot;ApplicationService&quot;;</span>
+<span class="fc" id="L153">            case &quot;COI Services&quot;          -&gt; &quot;BusinessService&quot;;</span>
+<span class="fc" id="L154">            case &quot;Communications Services&quot; -&gt; &quot;CommunicationNetwork&quot;;</span>
+<span class="fc" id="L155">            case &quot;Core Services&quot;         -&gt; &quot;TechnologyService&quot;;</span>
+<span class="fc" id="L156">            case &quot;Applications&quot;          -&gt; &quot;ApplicationComponent&quot;;</span>
+<span class="fc" id="L157">            case &quot;User Applications&quot;     -&gt; &quot;ApplicationComponent&quot;;</span>
+<span class="fc" id="L158">            case &quot;Information Products&quot;  -&gt; &quot;DataObject&quot;;</span>
+<span class="fc" id="L159">            default                      -&gt; &quot;BusinessObject&quot;;</span>
         };
     }
 
     public static String toArchiMateRelType(String relationType) {
-<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (relationType == null) return &quot;Association&quot;;</span>
-<span class="fc bfc" id="L160" title="All 6 branches covered.">        return switch (relationType) {</span>
-<span class="fc" id="L161">            case &quot;SUPPORTS&quot;, &quot;ENABLES&quot; -&gt; &quot;Serving&quot;;</span>
-<span class="fc" id="L162">            case &quot;PRODUCES&quot;            -&gt; &quot;Access&quot;;</span>
-<span class="fc" id="L163">            case &quot;CONSUMES&quot;            -&gt; &quot;Access&quot;;</span>
-<span class="fc" id="L164">            case &quot;IMPLEMENTS&quot;          -&gt; &quot;Realization&quot;;</span>
-<span class="fc" id="L165">            case &quot;PART_OF&quot;             -&gt; &quot;Composition&quot;;</span>
-<span class="fc" id="L166">            default                    -&gt; &quot;Association&quot;;</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        if (relationType == null) return &quot;Association&quot;;</span>
+<span class="fc bfc" id="L165" title="All 9 branches covered.">        return switch (relationType) {</span>
+<span class="fc" id="L166">            case &quot;SUPPORTS&quot;, &quot;ENABLES&quot;, &quot;USES&quot;, &quot;DEPENDS_ON&quot; -&gt; &quot;Serving&quot;;</span>
+<span class="fc" id="L167">            case &quot;PRODUCES&quot;                                   -&gt; &quot;Access&quot;;</span>
+<span class="fc" id="L168">            case &quot;CONSUMES&quot;                                   -&gt; &quot;Access&quot;;</span>
+<span class="fc" id="L169">            case &quot;REALIZES&quot;, &quot;IMPLEMENTS&quot;, &quot;FULFILLS&quot;         -&gt; &quot;Realization&quot;;</span>
+<span class="fc" id="L170">            case &quot;ASSIGNED_TO&quot;                                -&gt; &quot;Assignment&quot;;</span>
+<span class="fc" id="L171">            case &quot;COMMUNICATES_WITH&quot;                          -&gt; &quot;Flow&quot;;</span>
+<span class="fc" id="L172">            case &quot;PART_OF&quot;                                    -&gt; &quot;Composition&quot;;</span>
+<span class="fc" id="L173">            case &quot;RELATED_TO&quot;                                 -&gt; &quot;Association&quot;;</span>
+<span class="fc" id="L174">            default                                           -&gt; &quot;Association&quot;;</span>
         };
     }
 
     public static String toAccessType(String relationType) {
-<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (&quot;PRODUCES&quot;.equals(relationType)) return &quot;Write&quot;;</span>
-<span class="fc bfc" id="L172" title="All 2 branches covered.">        if (&quot;CONSUMES&quot;.equals(relationType)) return &quot;Read&quot;;</span>
-<span class="fc" id="L173">        return null;</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (&quot;PRODUCES&quot;.equals(relationType)) return &quot;Write&quot;;</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (&quot;CONSUMES&quot;.equals(relationType)) return &quot;Read&quot;;</span>
+<span class="fc" id="L181">        return null;</span>
     }
 
     public static int[] toColor(String taxonomyType) {
-<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        if (taxonomyType == null) return new int[]{224, 224, 224};</span>
-<span class="pc bpc" id="L178" title="1 of 6 branches missed.">        return switch (taxonomyType) {</span>
-<span class="fc" id="L179">            case &quot;Capabilities&quot;         -&gt; new int[]{255, 255, 181};</span>
-<span class="fc" id="L180">            case &quot;Business Processes&quot;   -&gt; new int[]{255, 255, 181};</span>
-<span class="fc" id="L181">            case &quot;Services&quot;             -&gt; new int[]{181, 255, 255};</span>
-<span class="nc" id="L182">            case &quot;Applications&quot;         -&gt; new int[]{181, 255, 255};</span>
-<span class="fc" id="L183">            case &quot;Information Products&quot; -&gt; new int[]{204, 255, 204};</span>
-<span class="fc" id="L184">            default                     -&gt; new int[]{224, 224, 224};</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        if (taxonomyType == null) return new int[]{224, 224, 224};</span>
+<span class="pc bpc" id="L186" title="1 of 11 branches missed.">        return switch (taxonomyType) {</span>
+<span class="fc" id="L187">            case &quot;Capabilities&quot;           -&gt; new int[]{255, 255, 181};</span>
+<span class="fc" id="L188">            case &quot;Business Processes&quot;     -&gt; new int[]{255, 255, 181};</span>
+<span class="fc" id="L189">            case &quot;Business Roles&quot;         -&gt; new int[]{255, 224, 181};</span>
+<span class="fc" id="L190">            case &quot;Services&quot;               -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L191">            case &quot;COI Services&quot;           -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L192">            case &quot;Core Services&quot;          -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L193">            case &quot;Communications Services&quot;-&gt; new int[]{204, 224, 255};</span>
+<span class="nc" id="L194">            case &quot;Applications&quot;           -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L195">            case &quot;User Applications&quot;      -&gt; new int[]{181, 255, 255};</span>
+<span class="fc" id="L196">            case &quot;Information Products&quot;   -&gt; new int[]{204, 255, 204};</span>
+<span class="fc" id="L197">            default                       -&gt; new int[]{224, 224, 224};</span>
         };
     }
 }

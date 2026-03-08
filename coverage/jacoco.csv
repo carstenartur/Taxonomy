@@ -66,7 +66,7 @@ NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,VisioPackageBuilder,0,280,0
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationTraversalService,36,65,3,5,7,17,3,5,1,3
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,GraphSearchService,318,22,19,1,68,7,20,3,10,3
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService,2073,835,251,77,444,178,187,27,23,18
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,DiagramProjectionService,1,201,3,21,1,41,3,12,0,3
+NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,DiagramProjectionService,1,258,3,21,1,46,3,12,0,3
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationValidationService.ValidationResult,0,35,0,0,0,10,0,6,0,6
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationQualityService,148,122,8,4,22,33,9,6,3,6
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmProvider,0,45,0,0,0,8,0,1,0,1
@@ -78,7 +78,7 @@ NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,TaxonomyRelationService,6,2
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchiMateDiagramService,32,516,6,50,1,96,6,41,0,13
+NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchiMateDiagramService,32,607,6,63,1,109,6,54,0,13
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,PropagationResult.TraversedRelation,0,27,0,0,0,10,0,5,0,5
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,TaxonomyService,242,892,46,57,67,212,36,33,2,14
 NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,VisioDiagramService,1,207,3,11,0,37,3,8,0,4
