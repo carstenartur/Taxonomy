@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PatternDetectionApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.controller</a> &gt; <span class="el_source">PatternDetectionApiController.java</span></div><h1>PatternDetectionApiController.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.controller;
+
+import com.nato.taxonomy.dto.PatternDetectionView;
+import com.nato.taxonomy.service.ArchitecturePatternService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+
+/**
+ * REST API for Architecture Pattern Detection.
+ *
+ * &lt;p&gt;Endpoints:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code GET  /api/patterns/detect?nodeCode=...} — Detect patterns for a single node&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/patterns/detect} — Detect patterns across scored nodes&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/patterns&quot;)
+@Tag(name = &quot;Pattern Detection&quot;)
+public class PatternDetectionApiController {
+
+    private final ArchitecturePatternService patternService;
+
+<span class="fc" id="L29">    public PatternDetectionApiController(ArchitecturePatternService patternService) {</span>
+<span class="fc" id="L30">        this.patternService = patternService;</span>
+<span class="fc" id="L31">    }</span>
+
+    /**
+     * Request body for pattern detection on scored nodes.
+     */
+<span class="fc" id="L36">    public record PatternDetectionRequest(</span>
+            Map&lt;String, Integer&gt; scores,
+            int minScore) {
+    }
+
+    /**
+     * Detects architecture patterns starting from a specific node.
+     */
+    @Operation(summary = &quot;Detect patterns for node&quot;,
+               description = &quot;Checks which standard architecture patterns are present starting from the given node&quot;)
+    @GetMapping(&quot;/detect&quot;)
+    public ResponseEntity&lt;PatternDetectionView&gt; detectForNode(
+            @Parameter(description = &quot;Taxonomy node code&quot;) @RequestParam String nodeCode) {
+<span class="fc" id="L49">        PatternDetectionView view = patternService.detectForNode(nodeCode);</span>
+<span class="fc" id="L50">        return ResponseEntity.ok(view);</span>
+    }
+
+    /**
+     * Detects architecture patterns across all scored nodes.
+     */
+    @Operation(summary = &quot;Detect patterns for scores&quot;,
+               description = &quot;Detects architecture patterns across all nodes above the score threshold&quot;)
+    @PostMapping(&quot;/detect&quot;)
+    public ResponseEntity&lt;PatternDetectionView&gt; detectForScores(@RequestBody PatternDetectionRequest request) {
+<span class="fc" id="L60">        PatternDetectionView view = patternService.detectForScores(</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                request.scores() != null ? request.scores() : Map.of(),</span>
+<span class="fc" id="L62">                request.minScore());</span>
+<span class="fc" id="L63">        return ResponseEntity.ok(view);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IncompletePattern.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dto</a> &gt; <span class="el_source">IncompletePattern.java</span></div><h1>IncompletePattern.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dto;
+
+/**
+ * Describes an incomplete architectural pattern.
+ * For example, &quot;Capability CP-3 has no realizing Service&quot;.
+ */
+public class IncompletePattern {
+
+    private String nodeCode;
+    private String taxonomyRoot;
+    private String patternDescription;
+    private String missingElement;
+
+<span class="nc" id="L14">    public IncompletePattern() {}</span>
+
+    public IncompletePattern(String nodeCode, String taxonomyRoot,
+<span class="fc" id="L17">                             String patternDescription, String missingElement) {</span>
+<span class="fc" id="L18">        this.nodeCode = nodeCode;</span>
+<span class="fc" id="L19">        this.taxonomyRoot = taxonomyRoot;</span>
+<span class="fc" id="L20">        this.patternDescription = patternDescription;</span>
+<span class="fc" id="L21">        this.missingElement = missingElement;</span>
+<span class="fc" id="L22">    }</span>
+
+<span class="fc" id="L24">    public String getNodeCode() { return nodeCode; }</span>
+<span class="nc" id="L25">    public void setNodeCode(String nodeCode) { this.nodeCode = nodeCode; }</span>
+
+<span class="fc" id="L27">    public String getTaxonomyRoot() { return taxonomyRoot; }</span>
+<span class="nc" id="L28">    public void setTaxonomyRoot(String taxonomyRoot) { this.taxonomyRoot = taxonomyRoot; }</span>
+
+<span class="fc" id="L30">    public String getPatternDescription() { return patternDescription; }</span>
+<span class="nc" id="L31">    public void setPatternDescription(String patternDescription) { this.patternDescription = patternDescription; }</span>
+
+<span class="fc" id="L33">    public String getMissingElement() { return missingElement; }</span>
+<span class="nc" id="L34">    public void setMissingElement(String missingElement) { this.missingElement = missingElement; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PatternDetectionView.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dto</a> &gt; <span class="el_source">PatternDetectionView.java</span></div><h1>PatternDetectionView.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dto;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Result of architecture pattern detection.
+ * Identifies which standard architectural patterns are present, partially
+ * present, or missing in the analysed set of nodes.
+ */
+public class PatternDetectionView {
+
+    private String nodeCode;
+<span class="fc" id="L14">    private List&lt;DetectedPattern&gt; matchedPatterns = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L15">    private List&lt;DetectedPattern&gt; incompletePatterns = new ArrayList&lt;&gt;();</span>
+    private double patternCoverage;
+<span class="fc" id="L17">    private List&lt;String&gt; notes = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L19">    public PatternDetectionView() {}</span>
+
+<span class="fc" id="L21">    public String getNodeCode() { return nodeCode; }</span>
+<span class="fc" id="L22">    public void setNodeCode(String nodeCode) { this.nodeCode = nodeCode; }</span>
+
+<span class="fc" id="L24">    public List&lt;DetectedPattern&gt; getMatchedPatterns() { return matchedPatterns; }</span>
+<span class="fc" id="L25">    public void setMatchedPatterns(List&lt;DetectedPattern&gt; matchedPatterns) { this.matchedPatterns = matchedPatterns; }</span>
+
+<span class="fc" id="L27">    public List&lt;DetectedPattern&gt; getIncompletePatterns() { return incompletePatterns; }</span>
+<span class="fc" id="L28">    public void setIncompletePatterns(List&lt;DetectedPattern&gt; incompletePatterns) { this.incompletePatterns = incompletePatterns; }</span>
+
+<span class="fc" id="L30">    public double getPatternCoverage() { return patternCoverage; }</span>
+<span class="fc" id="L31">    public void setPatternCoverage(double patternCoverage) { this.patternCoverage = patternCoverage; }</span>
+
+<span class="fc" id="L33">    public List&lt;String&gt; getNotes() { return notes; }</span>
+<span class="nc" id="L34">    public void setNotes(List&lt;String&gt; notes) { this.notes = notes; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

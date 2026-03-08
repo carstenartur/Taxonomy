@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GraphQueryApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.controller</a> &gt; <span class="el_source">GraphQueryApiController.java</span></div><h1>GraphQueryApiController.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.controller;
 
 import com.nato.taxonomy.dto.ChangeImpactView;
+import com.nato.taxonomy.dto.EnrichedChangeImpactView;
 import com.nato.taxonomy.dto.GraphNeighborhoodView;
 import com.nato.taxonomy.dto.RequirementImpactView;
 import com.nato.taxonomy.service.ArchitectureGraphQueryService;
+import com.nato.taxonomy.service.EnrichedImpactService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -21,6 +23,7 @@ import java.util.Map;
  *   &lt;li&gt;{@code GET  /api/graph/node/{code}/upstream} — Upstream neighborhood&lt;/li&gt;
  *   &lt;li&gt;{@code GET  /api/graph/node/{code}/downstream} — Downstream neighborhood&lt;/li&gt;
  *   &lt;li&gt;{@code GET  /api/graph/node/{code}/failure-impact} — Failure/change impact&lt;/li&gt;
+ *   &lt;li&gt;{@code GET  /api/graph/node/{code}/enriched-failure-impact} — Enriched failure impact with requirement correlation&lt;/li&gt;
  * &lt;/ul&gt;
  */
 @RestController
@@ -29,10 +32,13 @@ import java.util.Map;
 public class GraphQueryApiController {
 
     private final ArchitectureGraphQueryService graphQueryService;
+    private final EnrichedImpactService enrichedImpactService;
 
-<span class="fc" id="L33">    public GraphQueryApiController(ArchitectureGraphQueryService graphQueryService) {</span>
-<span class="fc" id="L34">        this.graphQueryService = graphQueryService;</span>
-<span class="fc" id="L35">    }</span>
+    public GraphQueryApiController(ArchitectureGraphQueryService graphQueryService,
+<span class="fc" id="L38">                                   EnrichedImpactService enrichedImpactService) {</span>
+<span class="fc" id="L39">        this.graphQueryService = graphQueryService;</span>
+<span class="fc" id="L40">        this.enrichedImpactService = enrichedImpactService;</span>
+<span class="fc" id="L41">    }</span>
 
     /**
      * Requirement impact: which elements are affected by a business requirement?
@@ -44,26 +50,26 @@ public class GraphQueryApiController {
     @PostMapping(&quot;/impact&quot;)
     public ResponseEntity&lt;RequirementImpactView&gt; findImpact(@RequestBody Map&lt;String, Object&gt; body) {
         @SuppressWarnings(&quot;unchecked&quot;)
-<span class="fc" id="L47">        Map&lt;String, Object&gt; rawScores = (Map&lt;String, Object&gt;) body.get(&quot;scores&quot;);</span>
-<span class="fc" id="L48">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
-<span class="fc bfc" id="L49" title="All 2 branches covered.">        int maxHops = body.containsKey(&quot;maxHops&quot;)</span>
-<span class="fc" id="L50">                ? ((Number) body.get(&quot;maxHops&quot;)).intValue()</span>
-<span class="fc" id="L51">                : 2;</span>
+<span class="fc" id="L53">        Map&lt;String, Object&gt; rawScores = (Map&lt;String, Object&gt;) body.get(&quot;scores&quot;);</span>
+<span class="fc" id="L54">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        int maxHops = body.containsKey(&quot;maxHops&quot;)</span>
+<span class="fc" id="L56">                ? ((Number) body.get(&quot;maxHops&quot;)).intValue()</span>
+<span class="fc" id="L57">                : 2;</span>
 
-<span class="pc bpc" id="L53" title="1 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
-<span class="fc" id="L54">            return ResponseEntity.badRequest().build();</span>
+<span class="pc bpc" id="L59" title="1 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L60">            return ResponseEntity.badRequest().build();</span>
         }
 
-<span class="fc" id="L57">        Map&lt;String, Integer&gt; scores = new java.util.LinkedHashMap&lt;&gt;();</span>
-<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        if (rawScores != null) {</span>
-<span class="fc bfc" id="L59" title="All 2 branches covered.">            for (Map.Entry&lt;String, Object&gt; entry : rawScores.entrySet()) {</span>
-<span class="fc" id="L60">                scores.put(entry.getKey(), ((Number) entry.getValue()).intValue());</span>
-<span class="fc" id="L61">            }</span>
+<span class="fc" id="L63">        Map&lt;String, Integer&gt; scores = new java.util.LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (rawScores != null) {</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            for (Map.Entry&lt;String, Object&gt; entry : rawScores.entrySet()) {</span>
+<span class="fc" id="L66">                scores.put(entry.getKey(), ((Number) entry.getValue()).intValue());</span>
+<span class="fc" id="L67">            }</span>
         }
 
-<span class="fc" id="L64">        RequirementImpactView view = graphQueryService.findImpactForRequirement(</span>
+<span class="fc" id="L70">        RequirementImpactView view = graphQueryService.findImpactForRequirement(</span>
                 scores, businessText, maxHops);
-<span class="fc" id="L66">        return ResponseEntity.ok(view);</span>
+<span class="fc" id="L72">        return ResponseEntity.ok(view);</span>
     }
 
     /**
@@ -74,8 +80,8 @@ public class GraphQueryApiController {
     public ResponseEntity&lt;GraphNeighborhoodView&gt; findUpstream(
             @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code,
             @Parameter(description = &quot;Maximum traversal hops&quot;) @RequestParam(defaultValue = &quot;2&quot;) int maxHops) {
-<span class="fc" id="L77">        GraphNeighborhoodView view = graphQueryService.findUpstream(code, maxHops);</span>
-<span class="fc" id="L78">        return ResponseEntity.ok(view);</span>
+<span class="fc" id="L83">        GraphNeighborhoodView view = graphQueryService.findUpstream(code, maxHops);</span>
+<span class="fc" id="L84">        return ResponseEntity.ok(view);</span>
     }
 
     /**
@@ -86,8 +92,8 @@ public class GraphQueryApiController {
     public ResponseEntity&lt;GraphNeighborhoodView&gt; findDownstream(
             @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code,
             @Parameter(description = &quot;Maximum traversal hops&quot;) @RequestParam(defaultValue = &quot;2&quot;) int maxHops) {
-<span class="fc" id="L89">        GraphNeighborhoodView view = graphQueryService.findDownstream(code, maxHops);</span>
-<span class="fc" id="L90">        return ResponseEntity.ok(view);</span>
+<span class="fc" id="L95">        GraphNeighborhoodView view = graphQueryService.findDownstream(code, maxHops);</span>
+<span class="fc" id="L96">        return ResponseEntity.ok(view);</span>
     }
 
     /**
@@ -98,8 +104,21 @@ public class GraphQueryApiController {
     public ResponseEntity&lt;ChangeImpactView&gt; findFailureImpact(
             @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code,
             @Parameter(description = &quot;Maximum traversal hops&quot;) @RequestParam(defaultValue = &quot;3&quot;) int maxHops) {
-<span class="fc" id="L101">        ChangeImpactView view = graphQueryService.findFailureImpact(code, maxHops);</span>
-<span class="fc" id="L102">        return ResponseEntity.ok(view);</span>
+<span class="fc" id="L107">        ChangeImpactView view = graphQueryService.findFailureImpact(code, maxHops);</span>
+<span class="fc" id="L108">        return ResponseEntity.ok(view);</span>
+    }
+
+    /**
+     * Enriched failure/change impact: includes requirement correlation for each affected element.
+     */
+    @Operation(summary = &quot;Enriched failure impact&quot;,
+               description = &quot;Returns failure impact enriched with requirement coverage data and risk score&quot;)
+    @GetMapping(&quot;/node/{code}/enriched-failure-impact&quot;)
+    public ResponseEntity&lt;EnrichedChangeImpactView&gt; findEnrichedFailureImpact(
+            @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code,
+            @Parameter(description = &quot;Maximum traversal hops&quot;) @RequestParam(defaultValue = &quot;3&quot;) int maxHops) {
+<span class="fc" id="L120">        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(code, maxHops);</span>
+<span class="fc" id="L121">        return ResponseEntity.ok(view);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
