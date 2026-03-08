@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateXmlImporter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.service</a> &gt; <span class="el_source">ArchiMateXmlImporter.java</span></div><h1>ArchiMateXmlImporter.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.service;
+
+import com.nato.taxonomy.dto.ArchiMateImportResult;
+import com.nato.taxonomy.model.RelationType;
+import com.nato.taxonomy.model.TaxonomyNode;
+import com.nato.taxonomy.model.TaxonomyRelation;
+import com.nato.taxonomy.repository.TaxonomyNodeRepository;
+import com.nato.taxonomy.repository.TaxonomyRelationRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamReader;
+import java.io.InputStream;
+import java.util.*;
+
+/**
+ * Imports an ArchiMate 3.x Model Exchange Format XML file and maps its
+ * elements and relationships to taxonomy nodes and relations.
+ *
+ * &lt;p&gt;The importer performs the following steps:
+ * &lt;ol&gt;
+ *   &lt;li&gt;Parse elements from the XML and extract id, type, and label.&lt;/li&gt;
+ *   &lt;li&gt;Parse relationships from the XML and extract source, target, and type.&lt;/li&gt;
+ *   &lt;li&gt;Map each ArchiMate element type to a taxonomy root code using the
+ *       reverse of {@link ArchiMateDiagramService#toArchiMateType(String)}.&lt;/li&gt;
+ *   &lt;li&gt;Match elements to existing taxonomy nodes by name similarity.&lt;/li&gt;
+ *   &lt;li&gt;Create new relations for matched elements.&lt;/li&gt;
+ * &lt;/ol&gt;
+ */
+@Service
+public class ArchiMateXmlImporter {
+
+<span class="fc" id="L37">    private static final Logger log = LoggerFactory.getLogger(ArchiMateXmlImporter.class);</span>
+
+    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyRelationRepository relationRepository;
+
+    /**
+     * Reverse mapping from ArchiMate element type to taxonomy root code.
+     */
+<span class="fc" id="L45">    private static final Map&lt;String, String&gt; ARCHIMATE_TO_TAXONOMY_ROOT = Map.ofEntries(</span>
+<span class="fc" id="L46">            Map.entry(&quot;Capability&quot;, &quot;CP&quot;),</span>
+<span class="fc" id="L47">            Map.entry(&quot;BusinessProcess&quot;, &quot;BP&quot;),</span>
+<span class="fc" id="L48">            Map.entry(&quot;BusinessRole&quot;, &quot;BR&quot;),</span>
+<span class="fc" id="L49">            Map.entry(&quot;ApplicationService&quot;, &quot;CR&quot;),</span>
+<span class="fc" id="L50">            Map.entry(&quot;BusinessService&quot;, &quot;CI&quot;),</span>
+<span class="fc" id="L51">            Map.entry(&quot;CommunicationNetwork&quot;, &quot;CO&quot;),</span>
+<span class="fc" id="L52">            Map.entry(&quot;TechnologyService&quot;, &quot;CR&quot;),</span>
+<span class="fc" id="L53">            Map.entry(&quot;ApplicationComponent&quot;, &quot;UA&quot;),</span>
+<span class="fc" id="L54">            Map.entry(&quot;DataObject&quot;, &quot;IP&quot;),</span>
+<span class="fc" id="L55">            Map.entry(&quot;BusinessObject&quot;, &quot;IP&quot;)</span>
+    );
+
+    /**
+     * Mapping from ArchiMate relationship type to taxonomy RelationType.
+     */
+<span class="fc" id="L61">    private static final Map&lt;String, RelationType&gt; ARCHIMATE_TO_RELATION_TYPE = Map.ofEntries(</span>
+<span class="fc" id="L62">            Map.entry(&quot;Realization&quot;, RelationType.REALIZES),</span>
+<span class="fc" id="L63">            Map.entry(&quot;Serving&quot;, RelationType.SUPPORTS),</span>
+<span class="fc" id="L64">            Map.entry(&quot;Access&quot;, RelationType.CONSUMES),</span>
+<span class="fc" id="L65">            Map.entry(&quot;Assignment&quot;, RelationType.ASSIGNED_TO),</span>
+<span class="fc" id="L66">            Map.entry(&quot;Flow&quot;, RelationType.COMMUNICATES_WITH),</span>
+<span class="fc" id="L67">            Map.entry(&quot;Composition&quot;, RelationType.RELATED_TO),</span>
+<span class="fc" id="L68">            Map.entry(&quot;Aggregation&quot;, RelationType.RELATED_TO),</span>
+<span class="fc" id="L69">            Map.entry(&quot;Association&quot;, RelationType.RELATED_TO),</span>
+<span class="fc" id="L70">            Map.entry(&quot;Triggering&quot;, RelationType.SUPPORTS),</span>
+<span class="fc" id="L71">            Map.entry(&quot;Influence&quot;, RelationType.RELATED_TO),</span>
+<span class="fc" id="L72">            Map.entry(&quot;Specialization&quot;, RelationType.RELATED_TO)</span>
+    );
+
+    public ArchiMateXmlImporter(TaxonomyNodeRepository nodeRepository,
+<span class="fc" id="L76">                                 TaxonomyRelationRepository relationRepository) {</span>
+<span class="fc" id="L77">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L78">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L79">    }</span>
+
+    /**
+     * Imports an ArchiMate XML file and creates taxonomy relations.
+     *
+     * @param inputStream the XML input stream
+     * @return the import result with statistics
+     */
+    @Transactional
+    public ArchiMateImportResult importXml(InputStream inputStream) {
+<span class="fc" id="L89">        ArchiMateImportResult result = new ArchiMateImportResult();</span>
+<span class="fc" id="L90">        List&lt;String&gt; notes = new ArrayList&lt;&gt;();</span>
+
+        try {
+            // Parse XML
+<span class="fc" id="L94">            Map&lt;String, ParsedElement&gt; elements = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L95">            List&lt;ParsedRelationship&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L96">            parseXml(inputStream, elements, relationships);</span>
+
+<span class="fc" id="L98">            notes.add(&quot;Parsed &quot; + elements.size() + &quot; elements and &quot; + relationships.size() + &quot; relationships from XML&quot;);</span>
+
+            // Match elements to taxonomy nodes
+<span class="fc" id="L101">            Map&lt;String, TaxonomyNode&gt; matchedNodes = matchElements(elements, notes);</span>
+<span class="fc" id="L102">            result.setElementsMatched(matchedNodes.size());</span>
+<span class="fc" id="L103">            result.setElementsUnmatched(elements.size() - matchedNodes.size());</span>
+<span class="fc" id="L104">            result.setElementsImported(elements.size());</span>
+
+            // Create relations for matched element pairs
+<span class="fc" id="L107">            int relationsCreated = createRelations(relationships, elements, matchedNodes, notes);</span>
+<span class="fc" id="L108">            result.setRelationsImported(relationsCreated);</span>
+
+<span class="nc" id="L110">        } catch (Exception e) {</span>
+<span class="nc" id="L111">            log.error(&quot;ArchiMate import failed&quot;, e);</span>
+<span class="nc" id="L112">            notes.add(&quot;Import error: &quot; + e.getMessage());</span>
+<span class="fc" id="L113">        }</span>
+
+<span class="fc" id="L115">        result.setNotes(notes);</span>
+<span class="fc" id="L116">        return result;</span>
+    }
+
+    private void parseXml(InputStream inputStream,
+                          Map&lt;String, ParsedElement&gt; elements,
+                          List&lt;ParsedRelationship&gt; relationships) throws Exception {
+
+<span class="fc" id="L123">        XMLInputFactory factory = XMLInputFactory.newInstance();</span>
+        // Security: disable external entities
+<span class="fc" id="L125">        factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.FALSE);</span>
+<span class="fc" id="L126">        factory.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.FALSE);</span>
+
+<span class="fc" id="L128">        XMLStreamReader reader = factory.createXMLStreamReader(inputStream);</span>
+
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        while (reader.hasNext()) {</span>
+<span class="fc" id="L131">            int event = reader.next();</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">            if (event == XMLStreamConstants.START_ELEMENT) {</span>
+<span class="fc" id="L133">                String localName = reader.getLocalName();</span>
+
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                if (&quot;element&quot;.equals(localName)) {</span>
+<span class="fc" id="L136">                    parseElement(reader, elements);</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                } else if (&quot;relationship&quot;.equals(localName)) {</span>
+<span class="fc" id="L138">                    parseRelationship(reader, relationships);</span>
+                }
+            }
+<span class="fc" id="L141">        }</span>
+<span class="fc" id="L142">        reader.close();</span>
+<span class="fc" id="L143">    }</span>
+
+    private void parseElement(XMLStreamReader reader, Map&lt;String, ParsedElement&gt; elements) throws Exception {
+<span class="fc" id="L146">        String identifier = reader.getAttributeValue(null, &quot;identifier&quot;);</span>
+<span class="fc" id="L147">        String xsiType = reader.getAttributeValue(</span>
+                &quot;http://www.w3.org/2001/XMLSchema-instance&quot;, &quot;type&quot;);
+
+<span class="pc bpc" id="L150" title="2 of 4 branches missed.">        if (identifier == null || xsiType == null) return;</span>
+
+        // Strip &quot;id-&quot; prefix if present
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">        String id = identifier.startsWith(&quot;id-&quot;) ? identifier.substring(3) : identifier;</span>
+
+<span class="fc" id="L155">        String label = null;</span>
+<span class="fc" id="L156">        String documentation = null;</span>
+
+        // Read child elements for name and documentation
+<span class="fc" id="L159">        int depth = 1;</span>
+<span class="pc bpc" id="L160" title="1 of 4 branches missed.">        while (reader.hasNext() &amp;&amp; depth &gt; 0) {</span>
+<span class="fc" id="L161">            int event = reader.next();</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">            if (event == XMLStreamConstants.START_ELEMENT) {</span>
+<span class="fc" id="L163">                depth++;</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">                if (&quot;name&quot;.equals(reader.getLocalName())) {</span>
+<span class="fc" id="L165">                    label = reader.getElementText();</span>
+<span class="fc" id="L166">                    depth--; // getElementText consumes the end element</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">                } else if (&quot;documentation&quot;.equals(reader.getLocalName())) {</span>
+<span class="nc" id="L168">                    documentation = reader.getElementText();</span>
+<span class="nc" id="L169">                    depth--;</span>
+                }
+<span class="fc bfc" id="L171" title="All 2 branches covered.">            } else if (event == XMLStreamConstants.END_ELEMENT) {</span>
+<span class="fc" id="L172">                depth--;</span>
+            }
+<span class="fc" id="L174">        }</span>
+
+<span class="fc" id="L176">        elements.put(id, new ParsedElement(id, xsiType, label, documentation));</span>
+<span class="fc" id="L177">    }</span>
+
+    private void parseRelationship(XMLStreamReader reader, List&lt;ParsedRelationship&gt; relationships) throws Exception {
+<span class="fc" id="L180">        String identifier = reader.getAttributeValue(null, &quot;identifier&quot;);</span>
+<span class="fc" id="L181">        String xsiType = reader.getAttributeValue(</span>
+                &quot;http://www.w3.org/2001/XMLSchema-instance&quot;, &quot;type&quot;);
+<span class="fc" id="L183">        String source = reader.getAttributeValue(null, &quot;source&quot;);</span>
+<span class="fc" id="L184">        String target = reader.getAttributeValue(null, &quot;target&quot;);</span>
+
+<span class="pc bpc" id="L186" title="3 of 6 branches missed.">        if (identifier == null || source == null || target == null) return;</span>
+
+        // Strip &quot;id-&quot; prefix variants
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">        String sourceId = source.startsWith(&quot;id-&quot;) ? source.substring(3) : source;</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        String targetId = target.startsWith(&quot;id-&quot;) ? target.substring(3) : target;</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        String type = xsiType != null ? xsiType : &quot;Association&quot;;</span>
+
+<span class="fc" id="L193">        relationships.add(new ParsedRelationship(identifier, sourceId, targetId, type));</span>
+<span class="fc" id="L194">    }</span>
+
+    private Map&lt;String, TaxonomyNode&gt; matchElements(Map&lt;String, ParsedElement&gt; elements,
+                                                      List&lt;String&gt; notes) {
+<span class="fc" id="L198">        Map&lt;String, TaxonomyNode&gt; matched = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L200" title="All 2 branches covered.">        for (ParsedElement el : elements.values()) {</span>
+<span class="fc" id="L201">            String taxonomyRoot = ARCHIMATE_TO_TAXONOMY_ROOT.get(el.type);</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">            if (taxonomyRoot == null) {</span>
+<span class="fc" id="L203">                notes.add(&quot;Unknown ArchiMate type: &quot; + el.type + &quot; for element &quot; + el.label);</span>
+<span class="fc" id="L204">                continue;</span>
+            }
+
+            // Try to find a matching taxonomy node by name in the expected root
+<span class="pc bpc" id="L208" title="2 of 4 branches missed.">            if (el.label != null &amp;&amp; !el.label.isBlank()) {</span>
+<span class="fc" id="L209">                List&lt;TaxonomyNode&gt; candidates = nodeRepository</span>
+<span class="fc" id="L210">                        .findByTaxonomyRootOrderByLevelAscNameEnAsc(taxonomyRoot);</span>
+
+<span class="fc" id="L212">                TaxonomyNode bestMatch = findBestMatch(el.label, candidates);</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">                if (bestMatch != null) {</span>
+<span class="nc" id="L214">                    matched.put(el.id, bestMatch);</span>
+                }
+            }
+<span class="fc" id="L217">        }</span>
+
+<span class="fc" id="L219">        notes.add(&quot;Matched &quot; + matched.size() + &quot; of &quot; + elements.size() + &quot; elements to taxonomy nodes&quot;);</span>
+<span class="fc" id="L220">        return matched;</span>
+    }
+
+    private TaxonomyNode findBestMatch(String label, List&lt;TaxonomyNode&gt; candidates) {
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">        if (candidates.isEmpty()) return null;</span>
+
+<span class="fc" id="L226">        String normalizedLabel = label.toLowerCase(Locale.ROOT).trim();</span>
+
+        // First: exact name match
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        for (TaxonomyNode node : candidates) {</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">            if (node.getNameEn() != null &amp;&amp;</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">                    node.getNameEn().toLowerCase(Locale.ROOT).trim().equals(normalizedLabel)) {</span>
+<span class="nc" id="L232">                return node;</span>
+            }
+<span class="fc" id="L234">        }</span>
+
+        // Second: contains match
+<span class="fc bfc" id="L237" title="All 2 branches covered.">        for (TaxonomyNode node : candidates) {</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">            if (node.getNameEn() != null) {</span>
+<span class="fc" id="L239">                String nodeName = node.getNameEn().toLowerCase(Locale.ROOT).trim();</span>
+<span class="pc bpc" id="L240" title="2 of 4 branches missed.">                if (nodeName.contains(normalizedLabel) || normalizedLabel.contains(nodeName)) {</span>
+<span class="nc" id="L241">                    return node;</span>
+                }
+            }
+<span class="fc" id="L244">        }</span>
+
+<span class="fc" id="L246">        return null;</span>
+    }
+
+    private int createRelations(List&lt;ParsedRelationship&gt; relationships,
+                                 Map&lt;String, ParsedElement&gt; elements,
+                                 Map&lt;String, TaxonomyNode&gt; matchedNodes,
+                                 List&lt;String&gt; notes) {
+<span class="fc" id="L253">        int created = 0;</span>
+
+<span class="fc bfc" id="L255" title="All 2 branches covered.">        for (ParsedRelationship rel : relationships) {</span>
+<span class="fc" id="L256">            TaxonomyNode sourceNode = matchedNodes.get(rel.sourceId);</span>
+<span class="fc" id="L257">            TaxonomyNode targetNode = matchedNodes.get(rel.targetId);</span>
+
+<span class="pc bpc" id="L259" title="3 of 4 branches missed.">            if (sourceNode == null || targetNode == null) continue;</span>
+
+<span class="nc" id="L261">            RelationType relationType = ARCHIMATE_TO_RELATION_TYPE.getOrDefault(</span>
+                    rel.type, RelationType.RELATED_TO);
+
+            // Check if relation already exists
+<span class="nc" id="L265">            List&lt;TaxonomyRelation&gt; existing = relationRepository</span>
+<span class="nc" id="L266">                    .findBySourceNodeCode(sourceNode.getCode());</span>
+<span class="nc" id="L267">            boolean alreadyExists = existing.stream()</span>
+<span class="nc bnc" id="L268" title="All 2 branches missed.">                    .anyMatch(r -&gt; r.getTargetNode().getCode().equals(targetNode.getCode()) &amp;&amp;</span>
+<span class="nc bnc" id="L269" title="All 2 branches missed.">                            r.getRelationType() == relationType);</span>
+
+<span class="nc bnc" id="L271" title="All 2 branches missed.">            if (!alreadyExists) {</span>
+<span class="nc" id="L272">                TaxonomyRelation newRel = new TaxonomyRelation();</span>
+<span class="nc" id="L273">                newRel.setSourceNode(sourceNode);</span>
+<span class="nc" id="L274">                newRel.setTargetNode(targetNode);</span>
+<span class="nc" id="L275">                newRel.setRelationType(relationType);</span>
+<span class="nc" id="L276">                newRel.setDescription(&quot;Imported from ArchiMate XML&quot;);</span>
+<span class="nc" id="L277">                newRel.setProvenance(&quot;ARCHIMATE_IMPORT&quot;);</span>
+<span class="nc" id="L278">                relationRepository.save(newRel);</span>
+<span class="nc" id="L279">                created++;</span>
+            }
+<span class="nc" id="L281">        }</span>
+
+<span class="fc" id="L283">        notes.add(&quot;Created &quot; + created + &quot; new relations (&quot; +</span>
+<span class="fc" id="L284">                (relationships.size() - created) + &quot; already existed or had unmatched endpoints)&quot;);</span>
+<span class="fc" id="L285">        return created;</span>
+    }
+
+    // ── Internal record types ─────────────────────────────────────────────────
+
+    /** Represents a parsed ArchiMate element with its id, ArchiMate type, display label, and optional documentation text. */
+<span class="fc" id="L291">    private record ParsedElement(String id, String type, String label, String documentation) {}</span>
+
+    /** Represents a parsed ArchiMate relationship linking a source element to a target element via a specific relationship type. */
+<span class="fc" id="L294">    private record ParsedRelationship(String id, String sourceId, String targetId, String type) {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

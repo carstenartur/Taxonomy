@@ -70,7 +70,7 @@ public class ArchitectureRecommendationService {
 <span class="fc bfc" id="L70" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
 <span class="pc bpc" id="L71" title="2 of 4 branches missed.">            if (entry.getValue() != null &amp;&amp; entry.getValue() &gt;= HIGH_SCORE_THRESHOLD) {</span>
 <span class="fc" id="L72">                Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(entry.getKey());</span>
-<span class="pc bpc" id="L73" title="1 of 2 branches missed.">                if (nodeOpt.isPresent()) {</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                if (nodeOpt.isPresent()) {</span>
 <span class="fc" id="L74">                    TaxonomyNode node = nodeOpt.get();</span>
 <span class="fc" id="L75">                    confirmed.add(new RecommendedElement(</span>
 <span class="fc" id="L76">                            node.getCode(),</span>

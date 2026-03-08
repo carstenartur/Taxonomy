@@ -82,8 +82,8 @@ public class ArchitectureGapService {
 <span class="fc" id="L82">            int score = entry.getValue();</span>
 
 <span class="fc" id="L84">            Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
-<span class="pc bpc" id="L85" title="1 of 2 branches missed.">            if (nodeOpt.isEmpty()) {</span>
-<span class="nc" id="L86">                continue;</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (nodeOpt.isEmpty()) {</span>
+<span class="fc" id="L86">                continue;</span>
             }
 
 <span class="fc" id="L89">            TaxonomyNode node = nodeOpt.get();</span>
