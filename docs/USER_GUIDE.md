@@ -73,6 +73,13 @@ Open your web browser and navigate to the application URL (for example `http://l
 
 The application loads as a single page. No login is required for standard use; administrator features require unlocking admin mode (see [Section 12](#12-administration)).
 
+**First-time users** will see a **Welcome overlay** with a 3-step guide explaining how to get started:
+1. Describe your requirement in the text area
+2. Click **Analyze with AI**
+3. Explore the results
+
+Click **Got it — let's start!** to dismiss the overlay. The overlay will not appear again on subsequent visits (stored in your browser's localStorage). To reset the onboarding, open the browser console and run `TaxonomyOnboarding.reset()`.
+
 ![Full page layout](images/01-full-page-layout.png)
 
 ### Checking AI Availability
@@ -94,8 +101,8 @@ The left panel (wider column) displays the **Taxonomy Tree**. This is the full c
 
 At the top of the left panel you will find:
 
-- **View switcher buttons:** 📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision — switch between different visualisations of the taxonomy.
-- **Export buttons** (appear only after a successful analysis): 📥 SVG | 📥 PNG | 📥 PDF | 📥 CSV | 📥 JSON | 📥 Visio | 📥 ArchiMate
+- **View switcher buttons:** 📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision | 📋 Summary — switch between different visualisations of the taxonomy.
+- **Export buttons** (appear only after a successful analysis): 📥 SVG | 📥 PNG | 📥 PDF | 📥 CSV | 📥 JSON | 📥 Visio | 📥 ArchiMate | 📥 Mermaid
 - **Load Scores button** (always visible): 📤 Load Scores — imports a previously saved JSON analysis file
 - **Expand All / Collapse All** — expand or collapse all nodes in the current view.
 - **Taxonomy root selector** (Tree view only) — choose which taxonomy root to display.
@@ -232,13 +239,13 @@ Partial results are preserved when possible — if 7 of 10 roots were scored bef
 
 ### Export Button Visibility
 
-The export buttons (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate) only appear when there are analysis scores greater than 0. If no analysis has been run, or if all scores are 0, the export buttons are hidden and a hint text **"📋 Analyze first to enable exports"** is shown instead. The **📤 Load Scores** button is always visible and can be used to restore a previous analysis.
+The export buttons (SVG, PNG, PDF, CSV, JSON, Visio, ArchiMate, Mermaid) only appear when there are analysis scores greater than 0. If no analysis has been run, or if all scores are 0, the export buttons are hidden and a hint text **"📋 Analyze first to enable exports"** is shown instead. The **📤 Load Scores** button is always visible and can be used to restore a previous analysis.
 
 ---
 
 ## 5. Exploring the Taxonomy
 
-The left panel displays the taxonomy in five different views. Switch between them using the buttons at the top: **📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision**.
+The left panel displays the taxonomy in six different views. Switch between them using the buttons at the top: **📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision | 📋 Summary**.
 
 ### List View (Default)
 
@@ -277,9 +284,26 @@ The Decision Map view shows the taxonomy as a decision-tree style layout optimis
 
 ![Decision Map view](images/08-decision-map-view.png)
 
+### Summary View (📋 Summary)
+
+The Summary view appears automatically after running an analysis with the **Architecture View** checkbox enabled. It presents a layered architecture overview of your analysis results, grouping elements by their taxonomy category:
+
+- **🔵 Capabilities** — Top-level capability nodes
+- **🟢 Business Processes / Business Roles** — Operational processes and organisational roles
+- **🟠 Services** — Core, COI, and general service nodes
+- **🟣 Applications** — User-facing application elements
+- **🔷 Information Products** — Data and information artefacts
+- **🔴 Communications Services** — Network and communications infrastructure
+
+Each element shows its node code, name, relevance percentage, and an anchor marker (★) if it was a direct match. Arrows between layers indicate the predominant relationship types (e.g., SUPPORTS, REALIZES).
+
+**Clicking any element** in the Summary view switches to the List view and scrolls to that node, highlighting it briefly.
+
+The Summary button appears in the view switcher only after a successful analysis with Architecture View enabled.
+
 ### Switching Between Views
 
-Click any of the view switcher buttons (📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision) at any time. Your analysis scores are preserved across view switches.
+Click any of the view switcher buttons (📋 List | 📑 Tabs | 🔆 Sunburst | 🌳 Tree | 🏆 Decision | 📋 Summary) at any time. Your analysis scores are preserved across view switches.
 
 ### Using Expand All / Collapse All
 
@@ -399,7 +423,12 @@ This is available via the REST API at `GET /api/graph/node/{code}/enriched-failu
 
 ### Understanding the Results Table
 
-The results table shows:
+The results are presented with a **Graph/Table toggle**:
+
+- **🔗 Graph view** (default) — an interactive force-directed node-link diagram built with D3.js. Nodes are coloured by taxonomy category, and the origin node is highlighted with a thick border. You can drag nodes to rearrange the layout, hover for details, and click a node to select it for further queries.
+- **📊 Table view** — the traditional tabular display with sortable columns.
+
+The table/graph shows:
 
 | Column | Meaning |
 |---|---|
@@ -460,7 +489,16 @@ For each row in the proposals table:
 - Click **Accept** to approve the relation. A confirmed `TaxonomyRelation` is created in the knowledge base and the proposal status changes to ACCEPTED.
 - Click **Reject** to decline the relation. The proposal status changes to REJECTED.
 
-> **Note:** There is currently no undo for accept or reject decisions in the UI.
+After each accept or reject action, an **Undo toast notification** appears in the bottom-right corner for 8 seconds. Click **↩️ Undo** to revert the proposal back to PENDING status (and, if it was accepted, delete the created relation).
+
+### Bulk Actions
+
+When viewing pending proposals, a **checkbox column** appears on the left and a **bulk actions bar** appears above the table:
+
+1. Use the **Select All** checkbox in the header to toggle all proposals, or select individual rows.
+2. Click **✅ Accept Selected** to accept all selected proposals at once.
+3. Click **❌ Reject Selected** to reject all selected proposals at once.
+4. The undo toast after a bulk action lets you revert all affected proposals in one click.
 
 ### Understanding Confidence Scores and Rationale
 
@@ -499,6 +537,19 @@ Click **📥 Visio** to download a structured Microsoft Visio file (`.vsdx`) rep
 ### ArchiMate XML Architecture Diagram
 
 Click **📥 ArchiMate** to download an ArchiMate 3.x XML file suitable for import into tools such as Archi or Sparx EA.
+
+> **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
+
+### Mermaid Flowchart Export
+
+Click **📥 Mermaid** to download the Architecture View as a Mermaid flowchart text file (`.mmd`). The generated diagram uses:
+
+- **Subgraphs** for each taxonomy layer (Capabilities, Processes, Services, etc.)
+- **Colour-coded class definitions** matching the layer colour scheme
+- **Labelled edges** showing relationship types (REALIZES, SUPPORTS, etc.)
+- **Anchor markers** (★) and relevance percentages
+
+The Mermaid file can be embedded directly in GitHub READMEs, Confluence pages, and any Markdown renderer that supports Mermaid syntax. Simply paste the content inside a ` ```mermaid ` code block.
 
 > **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
 
