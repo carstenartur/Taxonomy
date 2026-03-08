@@ -169,18 +169,30 @@ class ScreenshotGeneratorIT {
 
     /** Makes the admin lock button visible (it is hidden until the AI status check resolves). */
     private void showAdminLockButton() {
-        js("document.getElementById('adminLockBtn').classList.remove('d-none');");
+        // Wait for the page's async AI status check to complete before forcing the button visible.
+        wait(10).until(ExpectedConditions.presenceOfElementLocated(By.id("aiStatusBadge")));
+        js("var btn = document.getElementById('adminLockBtn');" +
+           "if (btn) { btn.classList.remove('d-none'); btn.style.display = ''; " +
+           "btn.scrollIntoView({behavior:'instant', block:'center'}); }");
         wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("adminLockBtn")));
     }
 
     /** Unlocks admin mode via the REST endpoint and reveals the admin-only panels. */
     private void unlockAdmin() {
-        js("fetch('/api/admin/unlock', {method:'POST', " +
+        js("fetch('/api/admin/verify', {method:'POST', " +
                 "headers:{'Content-Type':'application/json'}, " +
-                "body: JSON.stringify({password:'testpassword123'})})");
-        // Wait for admin panels to become visible after unlock
-        wait(10).until(d -> {
-            js("document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('d-none'));");
+                "body: JSON.stringify({password:'testpassword123'})})" +
+                ".then(r => r.json()).then(data => { " +
+                "  if (data.valid) { " +
+                "    sessionStorage.setItem('adminToken', 'testpassword123'); " +
+                "    document.body.classList.add('admin-unlocked'); " +
+                "    document.querySelectorAll('.admin-only').forEach(el => { el.style.display = ''; el.classList.remove('d-none'); }); " +
+                "  } " +
+                "});");
+        // Wait for admin panels to become visible after unlock, re-applying DOM changes each poll
+        wait(15).until(d -> {
+            js("document.body.classList.add('admin-unlocked');");
+            js("document.querySelectorAll('.admin-only').forEach(el => { el.style.display = ''; el.classList.remove('d-none'); });");
             List<WebElement> panels = driver.findElements(By.cssSelector(".admin-only"));
             return !panels.isEmpty() && panels.stream().anyMatch(WebElement::isDisplayed);
         });
@@ -304,7 +316,7 @@ class ScreenshotGeneratorIT {
 
     @Test
     @Order(13)
-    void captureProposeRelationsModal() throws IOException {
+    void captureProposeRelationsModal() throws IOException, InterruptedException {
         // Scroll to the taxonomy tree so the proposal buttons become visible
         WebElement taxonomyTree = driver.findElement(By.id("taxonomyTree"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'start'});", taxonomyTree);
@@ -314,7 +326,9 @@ class ScreenshotGeneratorIT {
         WebElement proposeBtn = driver.findElement(By.cssSelector(".proposal-btn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", proposeBtn);
         js("arguments[0].click();", proposeBtn);
-        wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("proposeRelationsModal")));
+        // Brief pause to allow Bootstrap to initialize the modal after the click
+        Thread.sleep(500);
+        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("proposeRelationsModal")));
         saveScreenshot("13-propose-relations-modal.png");
         closeModalViaDOM("proposeRelationsModal");
         js("window.scrollTo(0, 0);");
@@ -381,7 +395,7 @@ class ScreenshotGeneratorIT {
 
     @Test
     @Order(18)
-    void captureLeafJustificationModal() throws IOException {
+    void captureLeafJustificationModal() throws IOException, InterruptedException {
         // Ensure scores are present — expand the first node to reveal justify buttons
         List<WebElement> toggles = driver.findElements(By.cssSelector(".tax-toggle"));
         if (!toggles.isEmpty()) {
@@ -394,7 +408,9 @@ class ScreenshotGeneratorIT {
         if (!justifyBtns.isEmpty()) {
             js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", justifyBtns.get(0));
             js("arguments[0].click();", justifyBtns.get(0));
-            wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("leafJustificationModal")));
+            // Brief pause to allow Bootstrap to initialize the modal after the click
+            Thread.sleep(500);
+            wait(60).until(ExpectedConditions.visibilityOfElementLocated(By.id("leafJustificationModal")));
             saveScreenshot("18-leaf-justification-modal.png");
             closeModalViaDOM("leafJustificationModal");
             js("window.scrollTo(0, 0);");
@@ -450,6 +466,9 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
         js("arguments[0].click();", analyzeBtn);
 
+        // Wait for the analysis to complete before looking for the architecture view panel
+        wait(120).until(ExpectedConditions.textMatches(
+                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error")));
         wait(120).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")), "20-architecture-view.png");
 
@@ -498,9 +517,11 @@ class ScreenshotGeneratorIT {
 
     @Test
     @Order(24)
-    void captureAdminModal() throws IOException {
+    void captureAdminModal() throws IOException, InterruptedException {
         showAdminLockButton();
         js("new bootstrap.Modal(document.getElementById('adminModal')).show();");
+        // Brief pause to allow Bootstrap to initialize the modal after the JS trigger
+        Thread.sleep(500);
         wait(5).until(ExpectedConditions.visibilityOfElementLocated(By.id("adminModal")));
         saveScreenshot("24-admin-modal.png");
         closeModalViaDOM("adminModal");
