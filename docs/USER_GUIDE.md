@@ -590,6 +590,8 @@ been covered by any requirement (gap candidates).
 Click the **📋 Requirement Coverage** summary in the right column. Coverage statistics
 are loaded automatically from the database.
 
+<img src="images/27-coverage-dashboard-empty.png" alt="Coverage Dashboard — empty state" width="600">
+
 ### Summary Metrics
 
 | Metric | Description |
@@ -610,6 +612,8 @@ view the list of requirements that cover it, together with scores and analysis t
 
 A table showing up to 10 nodes with no requirement coverage. These are prime candidates
 for architecture gaps — no existing requirement addresses these elements.
+
+<img src="images/28-coverage-dashboard-data.png" alt="Coverage Dashboard — after recording an analysis" width="600">
 
 ### Recording an Analysis
 
