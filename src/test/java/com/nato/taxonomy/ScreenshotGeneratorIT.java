@@ -169,9 +169,16 @@ class ScreenshotGeneratorIT {
 
     /** Makes the admin lock button visible (it is hidden until the AI status check resolves). */
     private void showAdminLockButton() {
-        // Wait for the page's async AI status check to complete — the badge starts as d-none
-        // and becomes visible only after the /api/ai-status fetch resolves.
-        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("aiStatusBadge")));
+        // Wait for the page's async AI status check to complete.
+        // The badge starts empty and d-none; after checkAiStatus() resolves (success, failure,
+        // or catch), it gets text content.  We check for non-empty text rather than Selenium
+        // visibility because the badge may remain hidden by CSS (d-none) if the JS that removes
+        // d-none has not executed yet in the rendering pipeline.
+        wait(15).until(d -> {
+            String text = (String) ((JavascriptExecutor) d).executeScript(
+                    "var b = document.getElementById('aiStatusBadge'); return b ? b.textContent : '';");
+            return text != null && !text.trim().isEmpty();
+        });
         js("var btn = document.getElementById('adminLockBtn');" +
            "if (btn) { btn.classList.remove('d-none'); btn.style.display = ''; " +
            "btn.scrollIntoView({behavior:'instant', block:'center'}); }");
@@ -268,7 +275,14 @@ class ScreenshotGeneratorIT {
            "    document.body.appendChild(bd);" +
            "  }" +
            "})(arguments[0]);", modalId);
-        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id(modalId)));
+        // Verify DOM manipulation took effect via JS.  Selenium's visibilityOfElementLocated
+        // is unreliable here because Bootstrap's ".modal.fade" CSS transition can make the
+        // element appear as zero-opacity during the transition period, even though our inline
+        // style.opacity = '1' should override it.  A JS-based check avoids that race.
+        wait(10).until(d -> (Boolean) ((JavascriptExecutor) d).executeScript(
+                "var el = document.getElementById(arguments[0]);" +
+                "return el != null && el.style.display === 'block' && el.classList.contains('show');",
+                modalId));
     }
 
     /** Opens a <details> element if it is currently closed. */
@@ -384,7 +398,9 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(12)
     void captureRelationProposalsPanel() throws IOException {
-        saveElementScreenshot(driver.findElement(By.id("proposalsPanel")), "12-relation-proposals-panel.png");
+        WebElement panel = driver.findElement(By.id("proposalsPanel"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
+        saveElementScreenshot(panel, "12-relation-proposals-panel.png");
     }
 
     @Test
