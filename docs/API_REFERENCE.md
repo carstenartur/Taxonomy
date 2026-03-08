@@ -793,9 +793,9 @@ POST /api/recommend
   ],
   "confidence": 50.0,
   "reasoning": [
-    "Identified 1 confirmed elements with score >= 70",
-    "Gap analysis found 1 missing relations",
-    "Proposed 1 elements and 1 relations to fill gaps",
+    "Identified 1 confirmed element with score >= 70",
+    "Gap analysis found 1 missing relation",
+    "Proposed 1 element and 1 relation to fill gaps",
     "Overall confidence: 50.0% (1 confirmed / 2 expected)"
   ]
 }
