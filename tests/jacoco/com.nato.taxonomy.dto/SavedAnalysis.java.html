@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SavedAnalysis.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dto</a> &gt; <span class="el_source">SavedAnalysis.java</span></div><h1>SavedAnalysis.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dto;
+
+import java.util.Map;
+
+/**
+ * DTO representing a saved (exported/imported) taxonomy analysis result.
+ *
+ * &lt;p&gt;Semantic distinction:
+ * &lt;ul&gt;
+ *   &lt;li&gt;A node code &lt;b&gt;present with value {@code 0}&lt;/b&gt; → the node was &lt;b&gt;evaluated and scored 0%&lt;/b&gt; (not relevant)&lt;/li&gt;
+ *   &lt;li&gt;A node code &lt;b&gt;absent / {@code null}&lt;/b&gt; → the node was &lt;b&gt;not yet evaluated&lt;/b&gt;&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+public class SavedAnalysis {
+
+    /** Format version — currently always {@code 1}. */
+<span class="fc" id="L17">    private int version = 1;</span>
+
+    /** The business requirement text that was analyzed. */
+    private String requirement;
+
+    /** ISO 8601 timestamp of when the analysis was performed or exported. */
+    private String timestamp;
+
+    /** Name of the LLM provider that generated these scores (informational). */
+    private String provider;
+
+    /**
+     * Node code → score (0–100).
+     * {@code 0} means the node was evaluated but scored zero (not relevant).
+     * An absent key means the node was not evaluated at all.
+     */
+    private Map&lt;String, Integer&gt; scores;
+
+    /**
+     * Node code → reason text (optional, may be sparse).
+     */
+    private Map&lt;String, String&gt; reasons;
+
+<span class="fc" id="L40">    public SavedAnalysis() {}</span>
+
+<span class="fc" id="L42">    public int getVersion() { return version; }</span>
+<span class="fc" id="L43">    public void setVersion(int version) { this.version = version; }</span>
+
+<span class="fc" id="L45">    public String getRequirement() { return requirement; }</span>
+<span class="fc" id="L46">    public void setRequirement(String requirement) { this.requirement = requirement; }</span>
+
+<span class="fc" id="L48">    public String getTimestamp() { return timestamp; }</span>
+<span class="fc" id="L49">    public void setTimestamp(String timestamp) { this.timestamp = timestamp; }</span>
+
+<span class="fc" id="L51">    public String getProvider() { return provider; }</span>
+<span class="fc" id="L52">    public void setProvider(String provider) { this.provider = provider; }</span>
+
+<span class="fc" id="L54">    public Map&lt;String, Integer&gt; getScores() { return scores; }</span>
+<span class="fc" id="L55">    public void setScores(Map&lt;String, Integer&gt; scores) { this.scores = scores; }</span>
+
+<span class="fc" id="L57">    public Map&lt;String, String&gt; getReasons() { return reasons; }</span>
+<span class="fc" id="L58">    public void setReasons(Map&lt;String, String&gt; reasons) { this.reasons = reasons; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
