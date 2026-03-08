@@ -621,9 +621,9 @@ Semantic, hybrid, and graph searches require the embedding subsystem to be enabl
 
 | Variable | Default | Description |
 |---|---|---|
-| `JGIT_EMBEDDING_ENABLED` | `true` | Master switch for all embedding features |
-| `JGIT_EMBEDDING_MODEL_DIR` | *(empty)* | Path to a locally cached model directory.  If empty, DJL auto-downloads. |
-| `JGIT_EMBEDDING_MODEL_NAME` | `djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2` | DJL model URI or HuggingFace model name |
+| `TAXONOMY_EMBEDDING_ENABLED` | `true` | Master switch for all embedding features |
+| `TAXONOMY_EMBEDDING_MODEL_DIR` | *(empty)* | Path to a locally cached model directory.  If empty, DJL auto-downloads. |
+| `TAXONOMY_EMBEDDING_MODEL_NAME` | `djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2` | DJL model URI or HuggingFace model name |
 
 ### How It Works
 
@@ -804,7 +804,7 @@ Proposals, Graph Queries, Quality Metrics, Export, Administration, Embedding).
 ### Embedding
 
 - Enable embedding for all production deployments to unlock semantic and hybrid search.
-- If bandwidth or storage is limited, pre-download the model and set `JGIT_EMBEDDING_MODEL_DIR` to the local path.
+- If bandwidth or storage is limited, pre-download the model and set `TAXONOMY_EMBEDDING_MODEL_DIR` to the local path.
 
 ### Security
 

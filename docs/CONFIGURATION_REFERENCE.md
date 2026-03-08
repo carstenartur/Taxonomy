@@ -42,9 +42,9 @@ key or internet connection is required (after the first model download).
 
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
-| `JGIT_EMBEDDING_ENABLED` | `embedding.enabled` | Boolean | `true` | Set to `false` to disable embedding and all semantic search globally. |
-| `JGIT_EMBEDDING_MODEL_DIR` | `embedding.model.dir` | Path | *(empty)* | Absolute path to a pre-downloaded model directory. When empty, DJL downloads the model automatically on first use. |
-| `JGIT_EMBEDDING_MODEL_NAME` | `embedding.model.name` | String | `djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2` | DJL model URL or HuggingFace model name. Change only if you want a different embedding model. |
+| `TAXONOMY_EMBEDDING_ENABLED` | `embedding.enabled` | Boolean | `true` | Set to `false` to disable embedding and all semantic search globally. |
+| `TAXONOMY_EMBEDDING_MODEL_DIR` | `embedding.model.dir` | Path | *(empty)* | Absolute path to a pre-downloaded model directory. When empty, DJL downloads the model automatically on first use. |
+| `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | String | `djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2` | DJL model URL or HuggingFace model name. Change only if you want a different embedding model. |
 
 ### Pre-Downloading the Embedding Model (Air-Gapped Deployments)
 
@@ -60,7 +60,7 @@ scp -r ~/.djl.ai/cache/repo/model/ai/djl/huggingface/onnxruntime/all-MiniLM-L6-v
     target-machine:/opt/models/all-MiniLM-L6-v2/
 
 # 3. Set the environment variable on the target machine:
-export JGIT_EMBEDDING_MODEL_DIR=/opt/models/all-MiniLM-L6-v2
+export TAXONOMY_EMBEDDING_MODEL_DIR=/opt/models/all-MiniLM-L6-v2
 ```
 
 Alternatively, download the model directly from HuggingFace:
@@ -116,9 +116,9 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
-| — | `spring.datasource.url` | String | `jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1` | JDBC URL. Default: in-memory HSQLDB. |
+| — | `spring.datasource.url` | String | `jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached` | JDBC URL. Default: file-based HSQLDB with disk-backed tables. |
 | — | `spring.datasource.driver-class-name` | String | `org.hsqldb.jdbc.JDBCDriver` | JDBC driver class. |
-| — | `spring.jpa.hibernate.ddl-auto` | String | `create` | Schema generation strategy. `create` rebuilds on each start (safe for in-memory DB). |
+| — | `spring.jpa.hibernate.ddl-auto` | String | `update` | Schema generation strategy. `update` applies incremental changes without dropping existing data. |
 | — | `spring.jpa.show-sql` | Boolean | `false` | Whether to log SQL statements. |
 
 ---
@@ -129,7 +129,8 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 |---|---|---|---|---|
 | — | `spring.jpa.properties.hibernate.search.enabled` | Boolean | `true` | Enable Hibernate Search integration. |
 | — | `spring.jpa.properties.hibernate.search.backend.type` | String | `lucene` | Search backend type. |
-| — | `spring.jpa.properties.hibernate.search.backend.directory.type` | String | `local-heap` | Index storage. `local-heap` = in-memory (fast, lost on restart). |
+| — | `spring.jpa.properties.hibernate.search.backend.directory.type` | String | `local-filesystem` | Index storage. `local-filesystem` = disk-backed (persists across restarts). |
+| — | `spring.jpa.properties.hibernate.search.backend.directory.root` | String | `/app/data/lucene-index` | Root directory for the Lucene index files. |
 
 ---
 

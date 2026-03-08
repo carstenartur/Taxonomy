@@ -4,6 +4,10 @@ services:
     runtime: docker
     plan: free
     healthCheckPath: /
+    disk:
+      name: taxonomy-data
+      mountPath: /app/data
+      sizeGB: 1
     envVars:
       - key: GEMINI_API_KEY
         sync: false        # set manually in the Render dashboard

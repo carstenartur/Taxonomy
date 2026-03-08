@@ -12,8 +12,10 @@ RUN mvn -q -DskipTests package
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY --from=build /workspace/target/taxonomy-*.jar app.jar
+RUN mkdir -p /app/data
 EXPOSE 8080
 # -XX:+UseSerialGC    : lower GC memory overhead than G1 for small (≤1 GB) heaps
 # -Xss512k            : reduce per-thread stack size (default 1 MB is wasteful on constrained hosts)
-# -XX:MaxRAMPercentage: auto-size heap to 75 % of the container's memory limit (works with Docker --memory)
-ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xss512k", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]
+# -XX:MaxRAMPercentage: auto-size heap to 65 % of the container's memory limit; the remaining
+#                       headroom is needed for off-heap/native memory (Lucene mmap, ONNX Runtime)
+ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xss512k", "-XX:MaxRAMPercentage=65.0", "-jar", "app.jar"]
