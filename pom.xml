@@ -16,6 +16,7 @@
     <properties>
         <java.version>17</java.version>
         <djl.version>0.31.1</djl.version>
+        <excludedGroups></excludedGroups>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -169,11 +170,19 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>${excludedGroups}</excludedGroups>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
                     <includes>
                         <include>**/*IT.java</include>
                     </includes>
+                    <excludedGroups>${excludedGroups}</excludedGroups>
                 </configuration>
                 <executions>
                     <execution>
