@@ -86,6 +86,21 @@ public class TaxonomyRelationService {
         log.info("Deleted relation with id: {}", id);
     }
 
+    /**
+     * Delete all relations matching a specific source, target, and type combination.
+     * Used by the proposal revert mechanism to remove accepted relations.
+     */
+    @Transactional
+    public void deleteRelationBySourceTargetType(String sourceCode, String targetCode,
+                                                  RelationType type) {
+        List<TaxonomyRelation> matches = relationRepository
+                .findBySourceNodeCodeAndTargetNodeCodeAndRelationType(sourceCode, targetCode, type);
+        if (!matches.isEmpty()) {
+            relationRepository.deleteAll(matches);
+            log.info("Deleted {} relation(s): {} --[{}]--> {}", matches.size(), sourceCode, type, targetCode);
+        }
+    }
+
     public TaxonomyRelationDto toDto(TaxonomyRelation relation) {
         TaxonomyRelationDto dto = new TaxonomyRelationDto();
         dto.setId(relation.getId());

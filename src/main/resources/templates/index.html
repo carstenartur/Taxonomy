@@ -36,6 +36,7 @@
                             <button id="viewSunburst" data-view="sunburst" class="btn btn-sm btn-outline-secondary" title="Zoomable sunburst chart">&#128262; Sunburst</button>
                             <button id="viewTree"     data-view="tree"     class="btn btn-sm btn-outline-secondary" title="Bottom-up tree diagram">&#127795; Tree</button>
                             <button id="viewDecision" data-view="decision" class="btn btn-sm btn-outline-secondary" title="Decision overview map">&#127942; Decision</button>
+                            <button id="viewSummary"  data-view="summary"  class="btn btn-sm btn-outline-secondary" title="Architecture summary after analysis" style="display:none;">&#128203; Summary</button>
                         </div>
                         <!-- Export buttons (visible when scores are available) -->
                         <div id="exportGroup" class="btn-group" role="group" aria-label="Export" style="display:none;">
@@ -46,6 +47,7 @@
                             <button id="exportJson" class="btn btn-sm btn-outline-info" title="Download scores as JSON file">&#128229; JSON</button>
                             <button id="exportVisio" class="btn btn-sm btn-outline-info" title="Export Architecture View as Visio (.vsdx) diagram">&#128229; Visio</button>
                             <button id="exportArchiMate" class="btn btn-sm btn-outline-info" title="Export Architecture View as ArchiMate XML (.xml) for Archi or similar tools">&#128229; ArchiMate</button>
+                            <button id="exportMermaid" class="btn btn-sm btn-outline-info" title="Export Architecture View as Mermaid flowchart for Markdown documents">&#128229; Mermaid</button>
                             <button id="archiMateImportBtn" class="btn btn-sm btn-outline-success" title="Import an ArchiMate XML model to map elements and relations to taxonomy" aria-label="Import ArchiMate XML">&#128228; Import ArchiMate</button>
                             <input type="file" id="archiMateImportFile" accept=".xml" style="display:none;">
                         </div>
@@ -418,6 +420,7 @@
 <script th:src="@{/js/taxonomy-coverage.js}"></script>
 <script th:src="@{/js/taxonomy-relations.js}"></script>
 <script th:src="@{/js/taxonomy-analysis.js}"></script>
+<script th:src="@{/js/taxonomy-onboarding.js}"></script>
 <script th:src="@{/js/taxonomy.js}"></script>
 
 <!-- Propose Relations Modal -->

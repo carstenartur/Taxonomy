@@ -6,7 +6,8 @@
     let taxonomyData = [];
     let currentScores = null;
     let currentReasons = {};   // code → reason string
-    let currentView = 'list'; // 'list' | 'tabs' | 'sunburst' | 'tree' | 'decision'
+    let currentArchView = null; // latest architecture view from analysis
+    let currentView = 'list'; // 'list' | 'tabs' | 'sunburst' | 'tree' | 'decision' | 'summary'
     let currentTreeRoot = 'BP'; // code of the taxonomy shown in tree view
 
     // ── Interactive mode state ─────────────────────────────────────────────────
@@ -73,7 +74,7 @@
         }
 
         // View switcher buttons
-        ['viewList', 'viewTabs', 'viewSunburst', 'viewTree', 'viewDecision'].forEach(function (id) {
+        ['viewList', 'viewTabs', 'viewSunburst', 'viewTree', 'viewDecision', 'viewSummary'].forEach(function (id) {
             const btn = document.getElementById(id);
             if (btn) {
                 btn.addEventListener('click', function () {
@@ -97,7 +98,7 @@
         }
 
         // Export buttons
-        ['exportSvg', 'exportPng', 'exportPdf', 'exportCsv', 'exportJson', 'exportVisio', 'exportArchiMate'].forEach(function (id) {
+        ['exportSvg', 'exportPng', 'exportPdf', 'exportCsv', 'exportJson', 'exportVisio', 'exportArchiMate', 'exportMermaid'].forEach(function (id) {
             const btn = document.getElementById(id);
             if (btn) {
                 btn.addEventListener('click', function () { handleExport(id); });
@@ -623,7 +624,7 @@
         currentView = view;
 
         // Update button active states
-        const viewIds = { list: 'viewList', tabs: 'viewTabs', sunburst: 'viewSunburst', tree: 'viewTree', decision: 'viewDecision' };
+        const viewIds = { list: 'viewList', tabs: 'viewTabs', sunburst: 'viewSunburst', tree: 'viewTree', decision: 'viewDecision', summary: 'viewSummary' };
         Object.entries(viewIds).forEach(([v, id]) => {
             const btn = document.getElementById(id);
             if (!btn) { return; }
@@ -634,7 +635,7 @@
         // Show/hide Expand All / Collapse All only for list & tabs views
         const ecGroup = document.getElementById('expandCollapseGroup');
         if (ecGroup) {
-            ecGroup.style.display = (view === 'sunburst' || view === 'tree' || view === 'decision') ? 'none' : '';
+            ecGroup.style.display = (view === 'list' || view === 'tabs') ? '' : 'none';
         }
 
         // Show taxonomy root selector only in tree view
@@ -643,7 +644,7 @@
             treeRootGroup.style.display = (view === 'tree') ? '' : 'none';
         }
 
-        // Disable SVG/PNG export buttons for non-D3 views (list/tabs have no SVG)
+        // Disable SVG/PNG export buttons for non-D3 views (list/tabs/summary have no SVG)
         const svgViewActive = (view === 'sunburst' || view === 'tree' || view === 'decision');
         ['exportSvg', 'exportPng'].forEach(function (id) {
             const btn = document.getElementById(id);
@@ -683,6 +684,9 @@
                     window.TaxonomyViews.renderDecisionMap(
                         document.getElementById('taxonomyTree'), data, scores);
                 }
+                break;
+            case 'summary':
+                renderSummaryView(data, scores);
                 break;
         }
         updateExportGroupVisibility();
@@ -744,6 +748,13 @@
             if (window.TaxonomyExport) {
                 var bt = document.getElementById('businessText');
                 window.TaxonomyExport.exportJson(currentScores, currentReasons, bt ? bt.value : '', null);
+            }
+            return;
+        }
+        if (btnId === 'exportMermaid') {
+            if (window.TaxonomyExport) {
+                var bt = document.getElementById('businessText');
+                window.TaxonomyExport.exportMermaid(bt ? bt.value : '');
             }
             return;
         }
@@ -1286,6 +1297,15 @@
 
                 // Render architecture view if present
                 renderArchitectureView(result.architectureView);
+
+                // Store architecture view and show summary button
+                if (result.architectureView) {
+                    currentArchView = result.architectureView;
+                    var summaryBtn = document.getElementById('viewSummary');
+                    if (summaryBtn) summaryBtn.style.display = '';
+                    // Auto-switch to summary view
+                    switchView('summary');
+                }
             })
             .catch(err => {
                 setAnalyzing(false);
@@ -1385,6 +1405,139 @@
 
         content.innerHTML = html;
         panel.style.display = '';
+    }
+
+    // ── Architecture Summary View ─────────────────────────────────────────────
+    var LAYER_CONFIG = {
+        'Capabilities':           { order: 1, cls: 'layer-cap',  icon: '🔵', label: 'Capabilities' },
+        'Business Processes':     { order: 2, cls: 'layer-proc', icon: '🟢', label: 'Business Processes' },
+        'Business Roles':         { order: 2, cls: 'layer-proc', icon: '🟢', label: 'Business Roles' },
+        'Services':               { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'Services' },
+        'COI Services':           { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'COI Services' },
+        'Core Services':          { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'Core Services' },
+        'Applications':           { order: 4, cls: 'layer-app',  icon: '🟣', label: 'Applications' },
+        'User Applications':      { order: 4, cls: 'layer-app',  icon: '🟣', label: 'User Applications' },
+        'Information Products':   { order: 5, cls: 'layer-info', icon: '🔷', label: 'Information Products' },
+        'Communications Services':{ order: 6, cls: 'layer-comm', icon: '🔴', label: 'Communications Services' }
+    };
+
+    function renderSummaryView(data, scores) {
+        var container = document.getElementById('taxonomyTree');
+        if (!container) return;
+
+        var view = currentArchView;
+        if (!view || !view.includedElements || view.includedElements.length === 0) {
+            container.innerHTML = '<div class="summary-view"><p class="text-muted">No architecture view available. Enable "🏗️ Architecture View" checkbox and run an analysis first.</p></div>';
+            return;
+        }
+
+        var bt = document.getElementById('businessText');
+        var requirement = bt ? bt.value.trim() : '';
+
+        // Group elements by taxonomy sheet
+        var groups = {};
+        view.includedElements.forEach(function (el) {
+            var sheet = el.taxonomySheet || 'Unknown';
+            if (!groups[sheet]) groups[sheet] = [];
+            groups[sheet].push(el);
+        });
+
+        // Sort groups by layer order
+        var sortedSheets = Object.keys(groups).sort(function (a, b) {
+            var oa = LAYER_CONFIG[a] ? LAYER_CONFIG[a].order : 99;
+            var ob = LAYER_CONFIG[b] ? LAYER_CONFIG[b].order : 99;
+            return oa - ob;
+        });
+
+        // Collect relationship types between layers for arrow labels
+        var layerRelations = {};
+        if (view.includedRelationships) {
+            view.includedRelationships.forEach(function (r) {
+                var srcSheet = null, tgtSheet = null;
+                view.includedElements.forEach(function (el) {
+                    if (el.nodeCode === r.sourceCode) srcSheet = el.taxonomySheet;
+                    if (el.nodeCode === r.targetCode) tgtSheet = el.taxonomySheet;
+                });
+                if (srcSheet && tgtSheet && srcSheet !== tgtSheet) {
+                    var key = srcSheet + '→' + tgtSheet;
+                    if (!layerRelations[key]) layerRelations[key] = new Set();
+                    layerRelations[key].add(r.relationType);
+                }
+            });
+        }
+
+        var html = '<div class="summary-view">';
+        html += '<div class="summary-header">📋 Architecture Summary</div>';
+        if (requirement) {
+            html += '<div class="summary-requirement">"' + escapeHtml(requirement.substring(0, 200)) +
+                (requirement.length > 200 ? '…' : '') + '"</div>';
+        }
+
+        for (var i = 0; i < sortedSheets.length; i++) {
+            var sheet = sortedSheets[i];
+            var cfg = LAYER_CONFIG[sheet] || { order: 99, cls: '', icon: '⬜', label: sheet };
+            var elements = groups[sheet];
+
+            // Arrow between groups
+            if (i > 0) {
+                var prevSheet = sortedSheets[i - 1];
+                var key = prevSheet + '→' + sheet;
+                var rKey = sheet + '→' + prevSheet;
+                var relTypes = layerRelations[key] || layerRelations[rKey] || new Set();
+                var arrowLabel = relTypes.size > 0 ? Array.from(relTypes).join(', ') : '';
+                html += '<div class="summary-arrow">│<br>';
+                if (arrowLabel) html += '<span class="arrow-label">' + escapeHtml(arrowLabel) + '</span><br>';
+                html += '▼</div>';
+            }
+
+            html += '<div class="summary-layer ' + cfg.cls + '">';
+            html += '<div class="summary-layer-title">' + cfg.icon + ' ' + escapeHtml(cfg.label) +
+                ' <span class="badge bg-secondary" style="font-size:0.7rem;">' + elements.length + '</span></div>';
+
+            elements.sort(function (a, b) { return b.relevance - a.relevance; });
+            elements.forEach(function (el) {
+                var pct = (el.relevance * 100).toFixed(0);
+                html += '<span class="summary-layer-element" data-code="' + escapeHtml(el.nodeCode) +
+                    '" title="' + escapeHtml(el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '')) + '">';
+                html += escapeHtml(el.nodeCode);
+                if (el.title) html += ' ' + escapeHtml(el.title.substring(0, 30));
+                html += ' <span class="summary-pct">[' + pct + '%]</span>';
+                if (el.anchor) html += ' ★';
+                html += '</span>';
+            });
+
+            html += '</div>';
+        }
+
+        // Stats footer
+        var anchorCount = view.anchors ? view.anchors.length : 0;
+        var elemCount = view.includedElements ? view.includedElements.length : 0;
+        var relCount = view.includedRelationships ? view.includedRelationships.length : 0;
+        html += '<div class="summary-stats">';
+        html += anchorCount + ' Anchors · ' + elemCount + ' Elements · ' + relCount + ' Relations';
+        html += ' · ' + sortedSheets.length + ' Layers';
+        html += '</div>';
+        html += '</div>';
+
+        container.innerHTML = html;
+
+        // Click handler: navigate to node in list view
+        container.querySelectorAll('.summary-layer-element').forEach(function (el) {
+            el.addEventListener('click', function () {
+                var code = this.dataset.code;
+                if (code) {
+                    switchView('list');
+                    setTimeout(function () {
+                        var nodeEl = document.querySelector('[data-node-code="' + code + '"]');
+                        if (nodeEl) {
+                            nodeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            nodeEl.classList.add('search-highlight');
+                            setTimeout(function () { nodeEl.classList.remove('search-highlight'); }, 2000);
+                        }
+                    }, 200);
+                }
+            });
+        });
     }
 
     function updateAnalysisLog(info) {
@@ -1764,9 +1917,27 @@
             return;
         }
 
-        let html = '<table class="table table-sm table-hover proposal-table mb-0">' +
-            '<thead><tr>' +
-            '<th scope="col">Source</th>' +
+        const hasPending = proposals.some(function (p) { return p.status === 'PENDING'; });
+
+        let html = '';
+
+        // Bulk actions bar (only for pending proposals)
+        if (hasPending) {
+            html += '<div class="bulk-actions-bar" id="bulkActionsBar">' +
+                '<span class="bulk-count" id="bulkCount">0 selected</span>' +
+                '<button class="btn btn-sm btn-accept" id="bulkAcceptBtn" disabled>✅ Accept Selected</button>' +
+                '<button class="btn btn-sm btn-reject" id="bulkRejectBtn" disabled>❌ Reject Selected</button>' +
+                '</div>';
+        }
+
+        html += '<table class="table table-sm table-hover proposal-table mb-0">' +
+            '<thead><tr>';
+
+        if (hasPending) {
+            html += '<th scope="col"><input type="checkbox" id="proposalSelectAll" aria-label="Select all proposals" title="Select all"></th>';
+        }
+
+        html += '<th scope="col">Source</th>' +
             '<th scope="col" aria-label="arrow">→</th>' +
             '<th scope="col">Target</th>' +
             '<th scope="col">Type</th>' +
@@ -1808,8 +1979,17 @@
                 : '<span class="badge ' + (p.status === 'ACCEPTED' ? 'bg-success' : 'bg-secondary') + '">' +
                     escapeHtml(p.status) + '</span>';
 
-            html += '<tr>' +
-                '<td>' + sourceLabel + '</td>' +
+            html += '<tr>';
+
+            if (hasPending) {
+                html += '<td>';
+                if (isPending) {
+                    html += '<input type="checkbox" class="proposal-select" data-id="' + p.id + '" aria-label="Select proposal ' + p.id + '">';
+                }
+                html += '</td>';
+            }
+
+            html += '<td>' + sourceLabel + '</td>' +
                 '<td>→</td>' +
                 '<td>' + targetLabel + '</td>' +
                 '<td><span class="badge bg-light text-dark border">' + escapeHtml(p.relationType || '') + '</span></td>' +
@@ -1821,6 +2001,85 @@
 
         html += '</tbody></table>';
         container.innerHTML = html;
+
+        // Attach bulk action event listeners
+        if (hasPending) {
+            attachBulkListeners();
+        }
+    }
+
+    function attachBulkListeners() {
+        var selectAll = document.getElementById('proposalSelectAll');
+        var bulkAccept = document.getElementById('bulkAcceptBtn');
+        var bulkReject = document.getElementById('bulkRejectBtn');
+
+        function updateBulkCount() {
+            var checked = document.querySelectorAll('.proposal-select:checked');
+            var countEl = document.getElementById('bulkCount');
+            if (countEl) countEl.textContent = checked.length + ' selected';
+            if (bulkAccept) bulkAccept.disabled = checked.length === 0;
+            if (bulkReject) bulkReject.disabled = checked.length === 0;
+        }
+
+        if (selectAll) {
+            selectAll.addEventListener('change', function () {
+                document.querySelectorAll('.proposal-select').forEach(function (cb) {
+                    cb.checked = selectAll.checked;
+                });
+                updateBulkCount();
+            });
+        }
+
+        document.querySelectorAll('.proposal-select').forEach(function (cb) {
+            cb.addEventListener('change', updateBulkCount);
+        });
+
+        if (bulkAccept) {
+            bulkAccept.addEventListener('click', function () {
+                var ids = getSelectedProposalIds();
+                if (ids.length === 0) return;
+                bulkAction(ids, 'ACCEPT');
+            });
+        }
+
+        if (bulkReject) {
+            bulkReject.addEventListener('click', function () {
+                var ids = getSelectedProposalIds();
+                if (ids.length === 0) return;
+                bulkAction(ids, 'REJECT');
+            });
+        }
+    }
+
+    function getSelectedProposalIds() {
+        var ids = [];
+        document.querySelectorAll('.proposal-select:checked').forEach(function (cb) {
+            ids.push(parseInt(cb.dataset.id, 10));
+        });
+        return ids;
+    }
+
+    function bulkAction(ids, action) {
+        fetch('/api/proposals/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: ids, action: action })
+        })
+        .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function (result) {
+            showStatus('success', action === 'ACCEPT'
+                ? '✅ ' + result.success + ' proposal(s) accepted.'
+                : '🗑️ ' + result.success + ' proposal(s) rejected.');
+            loadProposals(currentProposalFilter);
+            // Show undo toast
+            showUndoToast(ids, action);
+        })
+        .catch(function (err) {
+            showStatus('danger', '❌ Bulk action failed: ' + err.message);
+        });
     }
 
     function acceptProposal(id) {
@@ -1832,6 +2091,7 @@
             .then(function () {
                 showStatus('success', '✅ Proposal accepted and relation created.');
                 loadProposals(currentProposalFilter);
+                showUndoToast([id], 'ACCEPT');
             })
             .catch(function (err) {
                 console.error('[Taxonomy] Accept proposal failed', err);
@@ -1848,10 +2108,70 @@
             .then(function () {
                 showStatus('success', '🗑️ Proposal rejected.');
                 loadProposals(currentProposalFilter);
+                showUndoToast([id], 'REJECT');
             })
             .catch(function (err) {
                 console.error('[Taxonomy] Reject proposal failed', err);
                 showStatus('danger', '❌ Failed to reject proposal: ' + err.message);
+            });
+    }
+
+    // ── Undo Toast ────────────────────────────────────────────────────────────
+    var undoTimeout = null;
+
+    function showUndoToast(ids, action) {
+        // Remove existing toast
+        var existing = document.getElementById('undoToast');
+        if (existing) existing.remove();
+        if (undoTimeout) clearTimeout(undoTimeout);
+
+        var label = action === 'ACCEPT'
+            ? '✅ ' + ids.length + ' proposal(s) accepted'
+            : '🗑️ ' + ids.length + ' proposal(s) rejected';
+
+        var toast = document.createElement('div');
+        toast.className = 'undo-toast';
+        toast.id = 'undoToast';
+        toast.innerHTML = '<span>' + label + '</span>' +
+            '<button class="undo-btn" id="undoBtn">↩️ Undo</button>';
+
+        document.body.appendChild(toast);
+
+        var undoBtn = document.getElementById('undoBtn');
+        if (undoBtn) {
+            undoBtn.addEventListener('click', function () {
+                revertProposals(ids);
+                toast.remove();
+                if (undoTimeout) clearTimeout(undoTimeout);
+            });
+        }
+
+        // Auto-dismiss after 8 seconds
+        undoTimeout = setTimeout(function () {
+            if (toast.parentNode) {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s ease';
+                setTimeout(function () { if (toast.parentNode) toast.remove(); }, 300);
+            }
+        }, 8000);
+    }
+
+    function revertProposals(ids) {
+        var promises = ids.map(function (id) {
+            return fetch('/api/proposals/' + id + '/revert', { method: 'POST' })
+                .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                });
+        });
+
+        Promise.all(promises)
+            .then(function () {
+                showStatus('info', '↩️ ' + ids.length + ' proposal(s) reverted to pending.');
+                loadProposals(currentProposalFilter);
+            })
+            .catch(function (err) {
+                showStatus('danger', '❌ Undo failed: ' + err.message);
             });
     }
 

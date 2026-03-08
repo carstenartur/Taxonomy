@@ -742,3 +742,331 @@
     background: #6edff6;
     color: #000;
 }
+
+/* ── Architecture Summary View ─────────────────────────────────────────── */
+.summary-view {
+    padding: 12px;
+}
+
+.summary-header {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #003580;
+}
+
+.summary-requirement {
+    font-size: 0.82rem;
+    color: #666;
+    font-style: italic;
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border-left: 3px solid #003580;
+}
+
+.summary-layer {
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 0;
+    position: relative;
+}
+
+.summary-layer-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.summary-layer-element {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    margin: 2px;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: filter 0.15s;
+    color: #fff;
+}
+
+.summary-layer-element:hover {
+    filter: brightness(1.15);
+}
+
+.summary-layer-element .summary-pct {
+    font-weight: 700;
+    opacity: 0.9;
+}
+
+.summary-arrow {
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.82rem;
+    padding: 2px 0;
+    line-height: 1;
+}
+
+.summary-arrow .arrow-label {
+    font-size: 0.7rem;
+    color: #999;
+}
+
+.summary-stats {
+    margin-top: 10px;
+    padding: 6px 10px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+    font-size: 0.78rem;
+    color: #555;
+}
+
+/* Layer colours */
+.layer-cap { border-color: #4A90D9; }
+.layer-cap .summary-layer-title { color: #4A90D9; }
+.layer-cap .summary-layer-element { background: #4A90D9; }
+
+.layer-proc { border-color: #27AE60; }
+.layer-proc .summary-layer-title { color: #27AE60; }
+.layer-proc .summary-layer-element { background: #27AE60; }
+
+.layer-svc { border-color: #F39C12; }
+.layer-svc .summary-layer-title { color: #F39C12; }
+.layer-svc .summary-layer-element { background: #F39C12; }
+
+.layer-app { border-color: #8E44AD; }
+.layer-app .summary-layer-title { color: #8E44AD; }
+.layer-app .summary-layer-element { background: #8E44AD; }
+
+.layer-info { border-color: #3498DB; }
+.layer-info .summary-layer-title { color: #3498DB; }
+.layer-info .summary-layer-element { background: #3498DB; }
+
+.layer-comm { border-color: #E74C3C; }
+.layer-comm .summary-layer-title { color: #E74C3C; }
+.layer-comm .summary-layer-element { background: #E74C3C; }
+
+/* ── Force-Directed Graph ──────────────────────────────────────────────── */
+.graph-view-toggle {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.graph-view-toggle .btn {
+    font-size: 0.78rem;
+    padding: 2px 10px;
+}
+
+.force-graph-container {
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: #fff;
+    overflow: hidden;
+}
+
+.force-graph-container svg {
+    display: block;
+}
+
+.force-graph-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    border-top: 1px solid #dee2e6;
+    background: #f8f9fa;
+}
+
+.force-graph-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.force-graph-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+/* ── Onboarding Overlay ────────────────────────────────────────────────── */
+.onboarding-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 10000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.onboarding-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px 32px;
+    max-width: 520px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    text-align: center;
+}
+
+.onboarding-card h2 {
+    font-size: 1.3rem;
+    color: #003580;
+    margin-bottom: 12px;
+}
+
+.onboarding-card p {
+    font-size: 0.92rem;
+    color: #555;
+    line-height: 1.6;
+    margin-bottom: 16px;
+}
+
+.onboarding-card .steps {
+    text-align: left;
+    margin-bottom: 16px;
+}
+
+.onboarding-card .step-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.88rem;
+    color: #444;
+}
+
+.onboarding-card .step-number {
+    background: #003580;
+    color: #fff;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+/* ── Undo Toast ────────────────────────────────────────────────────────── */
+.undo-toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #212529;
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 9999;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.undo-toast .undo-btn {
+    background: #0d6efd;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.undo-toast .undo-btn:hover {
+    background: #0b5ed7;
+}
+
+/* ── Bulk action bar for proposals ─────────────────────────────────────── */
+.bulk-actions-bar {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 8px;
+    padding: 4px 8px;
+    background: #f0f4fa;
+    border-radius: 6px;
+    font-size: 0.82rem;
+}
+
+.bulk-actions-bar .bulk-count {
+    font-weight: 600;
+    color: #003580;
+}
+
+/* ── Dark mode overrides for new features ──────────────────────────────── */
+[data-bs-theme="dark"] .summary-requirement {
+    background: #2b3035;
+    color: #9ca3af;
+    border-left-color: #6ea8fe;
+}
+
+[data-bs-theme="dark"] .summary-header { color: #6ea8fe; }
+
+[data-bs-theme="dark"] .summary-layer {
+    border-color: #444;
+}
+
+[data-bs-theme="dark"] .summary-stats {
+    background: #2b3035;
+    border-color: #444;
+    color: #9ca3af;
+}
+
+[data-bs-theme="dark"] .force-graph-container {
+    background: #1a1d21;
+    border-color: #444;
+}
+
+[data-bs-theme="dark"] .force-graph-legend {
+    background: #2b3035;
+    border-color: #444;
+}
+
+[data-bs-theme="dark"] .onboarding-card {
+    background: #212529;
+    color: #dee2e6;
+}
+
+[data-bs-theme="dark"] .onboarding-card h2 { color: #6ea8fe; }
+[data-bs-theme="dark"] .onboarding-card p { color: #9ca3af; }
+[data-bs-theme="dark"] .onboarding-card .step-item { color: #dee2e6; }
+
+[data-bs-theme="dark"] .bulk-actions-bar {
+    background: #2b3035;
+}
+
+[data-bs-theme="dark"] .bulk-actions-bar .bulk-count {
+    color: #6ea8fe;
+}

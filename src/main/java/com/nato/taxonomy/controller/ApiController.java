@@ -22,6 +22,7 @@ import com.nato.taxonomy.service.TaxonomyService;
 import com.nato.taxonomy.archimate.ArchiMateModel;
 import com.nato.taxonomy.service.ArchiMateDiagramService;
 import com.nato.taxonomy.service.ArchiMateXmlExporter;
+import com.nato.taxonomy.service.MermaidExportService;
 import com.nato.taxonomy.service.VisioDiagramService;
 import com.nato.taxonomy.service.VisioPackageBuilder;
 import com.nato.taxonomy.visio.VisioDocument;
@@ -69,6 +70,7 @@ public class ApiController {
     private final VisioPackageBuilder visioPackageBuilder;
     private final ArchiMateDiagramService archiMateDiagramService;
     private final ArchiMateXmlExporter archiMateXmlExporter;
+    private final MermaidExportService mermaidExportService;
     private final SavedAnalysisService savedAnalysisService;
 
     @Value("${admin.password:}")
@@ -86,6 +88,7 @@ public class ApiController {
                          VisioPackageBuilder visioPackageBuilder,
                          ArchiMateDiagramService archiMateDiagramService,
                          ArchiMateXmlExporter archiMateXmlExporter,
+                         MermaidExportService mermaidExportService,
                          SavedAnalysisService savedAnalysisService) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
@@ -102,6 +105,7 @@ public class ApiController {
         this.visioPackageBuilder = visioPackageBuilder;
         this.archiMateDiagramService = archiMateDiagramService;
         this.archiMateXmlExporter = archiMateXmlExporter;
+        this.mermaidExportService = mermaidExportService;
         this.savedAnalysisService = savedAnalysisService;
     }
 
@@ -429,6 +433,44 @@ public class ApiController {
         headers.set(HttpHeaders.CONTENT_TYPE, "application/xml");
 
         return ResponseEntity.ok().headers(headers).body(xml);
+    }
+
+    // ── Mermaid Diagram Export ────────────────────────────────────────────────
+
+    /**
+     * Generates a Mermaid flowchart from a business text requirement.
+     * The requirement is first analyzed, then an architecture view is built, projected
+     * into a diagram model, and exported as Mermaid markdown text.
+     */
+    @Operation(summary = "Export Mermaid diagram", description = "Generates a Mermaid flowchart from a business requirement for use in Markdown documents", tags = {"Export"})
+    @ApiResponse(responseCode = "200", description = "Mermaid text returned")
+    @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
+    @PostMapping("/diagram/mermaid")
+    public ResponseEntity<String> exportMermaid(@RequestBody Map<String, Object> body) {
+        String businessText = (String) body.get("businessText");
+        if (businessText == null || businessText.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        // 1. Analyze
+        AnalysisResult result = llmService.analyzeWithBudget(businessText);
+
+        // 2. Build architecture view
+        RequirementArchitectureView view = architectureViewService.build(
+                result.getScores(), businessText, 20);
+
+        // 3. Project to neutral diagram model
+        String title = businessText.length() > 60
+                ? businessText.substring(0, 57) + "..."
+                : businessText;
+        DiagramModel diagram = diagramProjectionService.project(view, title);
+
+        // 4. Convert to Mermaid text
+        String mermaid = mermaidExportService.export(diagram);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8")
+                .body(mermaid);
     }
 
     @Operation(summary = "Full-text search", description = "Search taxonomy nodes using full-text Lucene search", tags = {"Search"})

@@ -232,6 +232,36 @@
         });
     }
 
+    /**
+     * Export the architecture view as a Mermaid flowchart text file via the backend.
+     * Calls POST /api/diagram/mermaid with the business text and triggers a download.
+     * @param {string} businessText - The business requirement text used for analysis.
+     */
+    function exportMermaid(businessText) {
+        if (!businessText || !businessText.trim()) {
+            alert('Please enter a business requirement text before exporting to Mermaid.');
+            return;
+        }
+        fetch('/api/diagram/mermaid', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ businessText: businessText })
+        })
+        .then(function (resp) {
+            if (!resp.ok) {
+                throw new Error('Export failed (HTTP ' + resp.status + ')');
+            }
+            return resp.text();
+        })
+        .then(function (mermaidText) {
+            var blob = new Blob([mermaidText], { type: 'text/plain;charset=utf-8' });
+            downloadBlob(blob, 'requirement-architecture.mmd');
+        })
+        .catch(function (err) {
+            alert('Mermaid export failed: ' + err.message);
+        });
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     function csvField(val) {
@@ -261,6 +291,7 @@
         exportCsv: exportCsv,
         exportVisio: exportVisio,
         exportArchiMate: exportArchiMate,
+        exportMermaid: exportMermaid,
         exportJson: exportJson
     };
 
