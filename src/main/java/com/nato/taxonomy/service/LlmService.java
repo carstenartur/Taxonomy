@@ -109,26 +109,34 @@ public class LlmService {
     private final LocalEmbeddingService localEmbeddingService;
 
     // ── Mock-mode scores for "Provide secure voice communications between HQ and deployed forces" ──
-    private static final Map<String, Integer> MOCK_ROOT_SCORES = Map.of(
-            "CO", 90,
-            "CR", 75,
-            "CP", 65,
-            "IP", 45,
-            "BP", 40,
-            "CI", 25,
-            "UA", 15,
-            "BR", 15
+    // Root scores sum to exactly 100%, reflecting the hierarchical percentage distribution model.
+    private static final Map<String, Integer> MOCK_HIERARCHICAL_SCORES = Map.of(
+            "CO", 35,   // Communications & Information Systems — primary area for voice comms
+            "CR", 25,   // Communications Resources — radio/frequency/bandwidth essential
+            "CP", 15,   // Capability Packages — implementation of comms capability
+            "IP", 12,   // Infrastructure Products — physical/network foundation
+            "BP",  8,   // Business Processes — operational governance
+            "CI",  3,   // COI Services — tangentially uses secure voice channels
+            "UA",  2,   // User Applications — end-user voice interfaces
+            "BR",  0    // Business Rules — not directly relevant
     );
 
+    /** Assumed average branching factor used to decay the parent budget through each tree level. */
+    private static final int    MOCK_AVERAGE_BRANCHING_FACTOR = 3;
+    /** Fraction of the estimated parent budget assigned to children (simulates a slight taxonomy gap). */
+    private static final double MOCK_TAXONOMY_GAP_FACTOR      = 0.95;
+    /** Range modifier for the deterministic sibling weight distribution (weights are in [1, 1 + MOCK_WEIGHT_RANGE)). */
+    private static final int    MOCK_WEIGHT_RANGE             = 6;
+
     private static final Map<String, String> MOCK_ROOT_REASONS = Map.of(
-            "CO", "Directly related to providing secure voice communication channels between headquarters and deployed forces.",
-            "CR", "Communications resources are needed to establish the secure voice links.",
-            "CP", "Capability packages enable the implementation of secure voice communications.",
-            "IP", "Infrastructure products form the physical foundation for voice communications.",
-            "BP", "Business processes govern the use of secure voice communications.",
-            "CI", "COI services may leverage secure voice communication channels.",
-            "UA", "User applications provide interfaces for voice communication.",
-            "BR", "Business rules define policies for secure voice communication usage."
+            "CO", "Communications & Information Systems directly covers secure voice communication channels between HQ and deployed forces — the primary taxonomy area for this requirement (35% of total relevance).",
+            "CR", "Communications resources (frequencies, bandwidth, radio equipment) are essential to establish and sustain the secure voice links (25%).",
+            "CP", "Capability packages define the integrated capability sets that implement secure voice communications (15%).",
+            "IP", "Infrastructure products provide the physical and network foundation required for secure voice communications (12%).",
+            "BP", "Business processes govern how secure voice communications are requested, allocated, and used operationally (8%).",
+            "CI", "COI services may use or depend on secure voice channels as part of broader information exchange (3%).",
+            "UA", "User applications provide end-user interfaces for accessing secure voice communication capabilities (2%).",
+            "BR", "Business rules have minimal direct relevance to the technical provision of secure voice communications (0%)."
     );
 
     // ── Diagnostics tracking ──────────────────────────────────────────────────
@@ -154,24 +162,84 @@ public class LlmService {
     // ── Mock-mode helpers ─────────────────────────────────────────────────────
 
     /**
-     * Builds mock {@link ScoreParseResult} for the given nodes using hardcoded scores based on the
-     * taxonomy root. The scores are varied per node using a deterministic hash of the node code so
-     * the resulting tree looks realistically populated.
+     * Builds mock {@link ScoreParseResult} for the given nodes using a hierarchical scoring model.
+     *
+     * <p>Root nodes (level 0) receive scores from {@link #MOCK_HIERARCHICAL_SCORES}, which sum to
+     * exactly 100%. For child batches (level &gt; 0), an estimated parent budget is derived by
+     * decaying the root score through each level (assuming an average branching factor of 3), and
+     * that budget is then distributed deterministically among the siblings. This ensures that
+     * sibling scores always sum to approximately the parent's expected score, preserving the
+     * hierarchical percentage distribution model.
      */
     private ScoreParseResult buildMockScores(List<TaxonomyNode> nodes) {
+        if (nodes == null || nodes.isEmpty()) {
+            return new ScoreParseResult(Map.of(), Map.of());
+        }
         Map<String, Integer> scores = new HashMap<>();
         Map<String, String> reasons = new HashMap<>();
-        for (TaxonomyNode node : nodes) {
-            String root = node.getTaxonomyRoot() != null ? node.getTaxonomyRoot() : node.getCode();
-            int baseScore = MOCK_ROOT_SCORES.getOrDefault(root, 30);
-            // Add deterministic variation ±15 based on the node code
-            int variation = Math.floorMod(node.getCode().hashCode(), 31) - 15;
-            int score = Math.max(5, Math.min(100, baseScore + variation));
-            scores.put(node.getCode(), score);
-            String reason = MOCK_ROOT_REASONS.getOrDefault(root,
-                    "Relevant to the secure voice communications requirement.");
-            reasons.put(node.getCode(), reason);
+
+        TaxonomyNode first = nodes.get(0);
+        int level = first.getLevel();
+
+        if (level == 0) {
+            // Root batch: assign scores from the hierarchical map (sum = 100%)
+            for (TaxonomyNode node : nodes) {
+                int score = MOCK_HIERARCHICAL_SCORES.getOrDefault(node.getCode(), 0);
+                scores.put(node.getCode(), score);
+                reasons.put(node.getCode(), MOCK_ROOT_REASONS.getOrDefault(
+                        node.getCode(), "Marginally relevant to the secure voice communications requirement."));
+            }
+        } else {
+            // Non-root batch: estimate parent budget and distribute among siblings.
+            // The budget decays by a factor of ~3 per level (assumed average branching factor),
+            // so siblings at level N collectively receive roughly root_score / 3^(N-1).
+            String root = first.getTaxonomyRoot() != null ? first.getTaxonomyRoot() : first.getCode();
+            int rootScore = MOCK_HIERARCHICAL_SCORES.getOrDefault(root, 0);
+
+            int parentBudget = rootScore;
+            for (int l = 1; l < level; l++) {
+                parentBudget = Math.max(0, parentBudget / MOCK_AVERAGE_BRANCHING_FACTOR);
+            }
+
+            // Use MOCK_TAXONOMY_GAP_FACTOR of the estimated parent budget to represent a slight taxonomy gap
+            int totalBudget = (int) Math.round(parentBudget * MOCK_TAXONOMY_GAP_FACTOR);
+
+            if (totalBudget <= 0) {
+                // Root is not relevant or budget has decayed to zero — all children score 0
+                for (TaxonomyNode node : nodes) {
+                    scores.put(node.getCode(), 0);
+                    reasons.put(node.getCode(),
+                            "Not relevant for the secure voice communications requirement.");
+                }
+            } else {
+                // Distribute totalBudget among siblings using deterministic weights
+                int n = nodes.size();
+                int[] weights = new int[n];
+                int sumWeights = 0;
+                for (int i = 0; i < n; i++) {
+                    // Deterministic weight 1–(1+MOCK_WEIGHT_RANGE) based on a hash of the node code
+                    weights[i] = 1 + Math.abs(nodes.get(i).getCode().hashCode() % MOCK_WEIGHT_RANGE);
+                    sumWeights += weights[i];
+                }
+
+                int remaining = totalBudget;
+                for (int i = 0; i < n; i++) {
+                    int nodeScore;
+                    if (i == n - 1) {
+                        // Last sibling receives whatever is left to avoid rounding drift
+                        nodeScore = Math.max(0, remaining);
+                    } else {
+                        nodeScore = (totalBudget * weights[i]) / sumWeights;
+                        remaining -= nodeScore;
+                    }
+                    scores.put(nodes.get(i).getCode(), nodeScore);
+                    reasons.put(nodes.get(i).getCode(),
+                            "Contributes to the secure voice communications requirement within the "
+                            + root + " taxonomy area.");
+                }
+            }
         }
+
         recordSuccess();
         return new ScoreParseResult(scores, reasons);
     }
@@ -1067,10 +1135,12 @@ public class LlmService {
                                              Map<String, String> allReasons) {
         if (llmMock) {
             recordSuccess();
-            return "Node " + leafCode + " is relevant because it supports the requirement to "
+            return "Node " + leafCode + " is relevant to the requirement to "
                     + businessText.toLowerCase()
-                    + ". The node's position within the taxonomy hierarchy indicates a direct "
-                    + "contribution to the required capability.";
+                    + ". In the hierarchical scoring model, this leaf node's score represents its"
+                    + " proportional share of the parent branch's budget, which derives from the"
+                    + " root taxonomy area allocation. The node's content directly supports the"
+                    + " required capability within its part of the taxonomy hierarchy.";
         }
 
         LlmProvider provider = getActiveProvider();
