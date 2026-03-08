@@ -261,6 +261,18 @@
                 </div>
             </details>
 
+            <!-- Requirement Coverage -->
+            <details id="coverageDashboard" class="mt-2">
+                <summary class="fw-semibold" style="cursor:pointer;">&#128203; Requirement Coverage</summary>
+                <div id="coverageDashboardContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
+                    <div class="text-muted">Open to load coverage data.</div>
+                </div>
+                <div class="mt-1 d-flex gap-2 flex-wrap">
+                    <button id="coverageRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                    <button id="coverageRecordBtn" class="btn btn-sm btn-outline-primary">&#128442; Record Current Analysis</button>
+                </div>
+            </details>
+
             <!-- Relations Browser -->
             <details id="relationsBrowser" class="mt-2">
                 <summary class="fw-semibold" style="cursor:pointer;">&#128279; Relations Browser</summary>
@@ -343,6 +355,7 @@
 <script th:src="@{/js/taxonomy-graph.js}"></script>
 <script th:src="@{/js/taxonomy-search.js}"></script>
 <script th:src="@{/js/taxonomy-quality.js}"></script>
+<script th:src="@{/js/taxonomy-coverage.js}"></script>
 <script th:src="@{/js/taxonomy-relations.js}"></script>
 <script th:src="@{/js/taxonomy.js}"></script>
 
