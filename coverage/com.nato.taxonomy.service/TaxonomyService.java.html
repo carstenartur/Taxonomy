@@ -404,7 +404,7 @@ public class TaxonomyService {
      */
     @Transactional(readOnly = true)
     public TaxonomyNode getNodeByCode(String code) {
-<span class="nc" id="L407">        return repository.findByCode(code).orElse(null);</span>
+<span class="fc" id="L407">        return repository.findByCode(code).orElse(null);</span>
     }
 
     /**
