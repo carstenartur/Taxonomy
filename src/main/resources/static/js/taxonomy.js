@@ -295,8 +295,8 @@
         })
         .then(r => r.json())
         .then(data => {
-            if (data.valid) {
-                sessionStorage.setItem('adminToken', password);
+            if (data.valid && data.token) {
+                sessionStorage.setItem('adminToken', data.token);
                 updateAdminVisibility();
             }
             return data.valid;
