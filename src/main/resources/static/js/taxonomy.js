@@ -698,6 +698,8 @@
         if (exportHint) {
             exportHint.classList.toggle('d-none', hasScores);
         }
+        // Share scores with other modules (e.g. taxonomy-analysis.js)
+        window._taxonomyCurrentScores = currentScores;
     }
 
     // ── Export handler ────────────────────────────────────────────────────────
