@@ -46,7 +46,7 @@
                             <button id="exportJson" class="btn btn-sm btn-outline-info" title="Download scores as JSON file">&#128229; JSON</button>
                             <button id="exportVisio" class="btn btn-sm btn-outline-info" title="Export Architecture View as Visio (.vsdx) diagram">&#128229; Visio</button>
                             <button id="exportArchiMate" class="btn btn-sm btn-outline-info" title="Export Architecture View as ArchiMate XML (.xml) for Archi or similar tools">&#128229; ArchiMate</button>
-                            <button id="archiMateImportBtn" class="btn btn-sm btn-outline-success" title="Import an ArchiMate XML model to map elements and relations to taxonomy">&#128228; Import ArchiMate</button>
+                            <button id="archiMateImportBtn" class="btn btn-sm btn-outline-success" title="Import an ArchiMate XML model to map elements and relations to taxonomy" aria-label="Import ArchiMate XML">&#128228; Import ArchiMate</button>
                             <input type="file" id="archiMateImportFile" accept=".xml" style="display:none;">
                         </div>
                         <span id="exportHint" class="d-none" title="Export buttons appear after a successful analysis with scores &gt; 0">📋 Analyze first to enable exports</span>
@@ -95,7 +95,7 @@
                             Analyze with AI
                         </button>
                         <button id="copilotBtn" class="btn btn-success" title="One-click AI Architecture Copilot: Analyze → Gap Analysis → Pattern Detection → Recommendation">
-                            <span id="copilotSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
+                            <span id="copilotSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"><span class="visually-hidden">Loading...</span></span>
                             &#128640; Copilot
                         </button>
                     </div>

@@ -4,6 +4,8 @@ import com.nato.taxonomy.dto.ArchiMateImportResult;
 import com.nato.taxonomy.service.ArchiMateXmlImporter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,6 +23,8 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/api/import")
 @Tag(name = "ArchiMate Import")
 public class ArchiMateImportController {
+
+    private static final Logger log = LoggerFactory.getLogger(ArchiMateImportController.class);
 
     private final ArchiMateXmlImporter importer;
 
@@ -43,8 +47,9 @@ public class ArchiMateImportController {
             ArchiMateImportResult result = importer.importXml(file.getInputStream());
             return ResponseEntity.ok(result);
         } catch (Exception e) {
+            log.error("ArchiMate import failed for file: {}", file.getOriginalFilename(), e);
             ArchiMateImportResult error = new ArchiMateImportResult();
-            error.getNotes().add("Import failed: " + e.getMessage());
+            error.getNotes().add("Import failed: unable to process the uploaded file");
             return ResponseEntity.badRequest().body(error);
         }
     }

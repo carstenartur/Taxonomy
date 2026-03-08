@@ -576,7 +576,7 @@
 
     function waitForScores(callback) {
         var attempts = 0;
-        var maxAttempts = 60; // 60 seconds timeout
+        var maxAttempts = 60; // 60 attempts at 1s intervals = 60s timeout
         var interval = setInterval(function () {
             attempts++;
             if (hasScores()) {

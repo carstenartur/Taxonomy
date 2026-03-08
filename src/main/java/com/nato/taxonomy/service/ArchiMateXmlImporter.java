@@ -287,7 +287,9 @@ public class ArchiMateXmlImporter {
 
     // ── Internal record types ─────────────────────────────────────────────────
 
+    /** Represents a parsed ArchiMate element with its id, ArchiMate type, display label, and optional documentation text. */
     private record ParsedElement(String id, String type, String label, String documentation) {}
 
+    /** Represents a parsed ArchiMate relationship linking a source element to a target element via a specific relationship type. */
     private record ParsedRelationship(String id, String sourceId, String targetId, String type) {}
 }
