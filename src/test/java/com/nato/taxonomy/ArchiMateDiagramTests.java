@@ -77,6 +77,36 @@ class ArchiMateDiagramTests {
                 .isEqualTo("BusinessObject");
     }
 
+    @Test
+    void typeMapping_BusinessRoles() {
+        assertThat(ArchiMateDiagramService.toArchiMateType("Business Roles"))
+                .isEqualTo("BusinessRole");
+    }
+
+    @Test
+    void typeMapping_COIServices() {
+        assertThat(ArchiMateDiagramService.toArchiMateType("COI Services"))
+                .isEqualTo("BusinessService");
+    }
+
+    @Test
+    void typeMapping_CommunicationsServices() {
+        assertThat(ArchiMateDiagramService.toArchiMateType("Communications Services"))
+                .isEqualTo("CommunicationNetwork");
+    }
+
+    @Test
+    void typeMapping_CoreServices() {
+        assertThat(ArchiMateDiagramService.toArchiMateType("Core Services"))
+                .isEqualTo("TechnologyService");
+    }
+
+    @Test
+    void typeMapping_UserApplications() {
+        assertThat(ArchiMateDiagramService.toArchiMateType("User Applications"))
+                .isEqualTo("ApplicationComponent");
+    }
+
     // ── ArchiMateDiagramService – relationship mapping ──────────────────────
 
     @Test
@@ -117,6 +147,41 @@ class ArchiMateDiagramTests {
     void relMapping_unknown_defaultsToAssociation() {
         assertThat(ArchiMateDiagramService.toArchiMateRelType("SOMETHING")).isEqualTo("Association");
         assertThat(ArchiMateDiagramService.toArchiMateRelType(null)).isEqualTo("Association");
+    }
+
+    @Test
+    void relMapping_REALIZES_isRealization() {
+        assertThat(ArchiMateDiagramService.toArchiMateRelType("REALIZES")).isEqualTo("Realization");
+    }
+
+    @Test
+    void relMapping_USES_isServing() {
+        assertThat(ArchiMateDiagramService.toArchiMateRelType("USES")).isEqualTo("Serving");
+    }
+
+    @Test
+    void relMapping_FULFILLS_isRealization() {
+        assertThat(ArchiMateDiagramService.toArchiMateRelType("FULFILLS")).isEqualTo("Realization");
+    }
+
+    @Test
+    void relMapping_ASSIGNED_TO_isAssignment() {
+        assertThat(ArchiMateDiagramService.toArchiMateRelType("ASSIGNED_TO")).isEqualTo("Assignment");
+    }
+
+    @Test
+    void relMapping_DEPENDS_ON_isServing() {
+        assertThat(ArchiMateDiagramService.toArchiMateRelType("DEPENDS_ON")).isEqualTo("Serving");
+    }
+
+    @Test
+    void relMapping_COMMUNICATES_WITH_isFlow() {
+        assertThat(ArchiMateDiagramService.toArchiMateRelType("COMMUNICATES_WITH")).isEqualTo("Flow");
+    }
+
+    @Test
+    void relMapping_RELATED_TO_isAssociation() {
+        assertThat(ArchiMateDiagramService.toArchiMateRelType("RELATED_TO")).isEqualTo("Association");
     }
 
     @Test
@@ -267,6 +332,36 @@ class ArchiMateDiagramTests {
     void convertDefaultColorIsGray() {
         int[] color = ArchiMateDiagramService.toColor("Unknown");
         assertThat(color).containsExactly(224, 224, 224);
+    }
+
+    @Test
+    void convertBusinessRolesColorIsLightOrange() {
+        int[] color = ArchiMateDiagramService.toColor("Business Roles");
+        assertThat(color).containsExactly(255, 224, 181);
+    }
+
+    @Test
+    void convertCOIServicesColorIsBlue() {
+        int[] color = ArchiMateDiagramService.toColor("COI Services");
+        assertThat(color).containsExactly(181, 255, 255);
+    }
+
+    @Test
+    void convertCommunicationsServicesColorIsLightBlue() {
+        int[] color = ArchiMateDiagramService.toColor("Communications Services");
+        assertThat(color).containsExactly(204, 224, 255);
+    }
+
+    @Test
+    void convertCoreServicesColorIsBlue() {
+        int[] color = ArchiMateDiagramService.toColor("Core Services");
+        assertThat(color).containsExactly(181, 255, 255);
+    }
+
+    @Test
+    void convertUserApplicationsColorIsBlue() {
+        int[] color = ArchiMateDiagramService.toColor("User Applications");
+        assertThat(color).containsExactly(181, 255, 255);
     }
 
     // ── ArchiMateXmlExporter ────────────────────────────────────────────────

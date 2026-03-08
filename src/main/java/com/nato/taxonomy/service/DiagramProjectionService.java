@@ -29,12 +29,17 @@ public class DiagramProjectionService {
     static final int MAX_EDGES = 40;
     static final double MIN_RELEVANCE = 0.35;
 
-    private static final Map<String, Integer> LAYER_MAP = Map.of(
-            "Capabilities", 1,
-            "Business Processes", 2,
-            "Services", 3,
-            "Applications", 4,
-            "Information Products", 5
+    private static final Map<String, Integer> LAYER_MAP = Map.ofEntries(
+            Map.entry("Capabilities", 1),
+            Map.entry("Business Processes", 2),
+            Map.entry("Business Roles", 2),
+            Map.entry("Services", 3),
+            Map.entry("COI Services", 3),
+            Map.entry("Core Services", 3),
+            Map.entry("Applications", 4),
+            Map.entry("User Applications", 4),
+            Map.entry("Information Products", 5),
+            Map.entry("Communications Services", 6)
     );
 
     /**
