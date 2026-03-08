@@ -2,6 +2,7 @@ package com.nato.taxonomy.model;
 
 import com.nato.taxonomy.search.NodeEmbeddingBinder;
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.Nationalized;
 import org.hibernate.search.mapper.pojo.bridge.mapping.annotation.TypeBinderRef;
 import org.hibernate.search.mapper.pojo.mapping.definition.annotation.*;
@@ -101,12 +102,15 @@ public class TaxonomyNode {
 
     @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
     @OrderBy("nameEn ASC")
+    @BatchSize(size = 50)
     private List<TaxonomyNode> children = new ArrayList<>();
 
     @OneToMany(mappedBy = "sourceNode", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     private List<TaxonomyRelation> outgoingRelations = new ArrayList<>();
 
     @OneToMany(mappedBy = "targetNode", cascade = CascadeType.ALL, orphanRemoval = true)
+    @BatchSize(size = 50)
     private List<TaxonomyRelation> incomingRelations = new ArrayList<>();
 
     public Long getId() { return id; }
