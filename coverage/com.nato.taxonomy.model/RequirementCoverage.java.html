@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RequirementCoverage.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.model</a> &gt; <span class="el_source">RequirementCoverage.java</span></div><h1>RequirementCoverage.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.model;
+
+import jakarta.persistence.*;
+import java.time.Instant;
+
+/**
+ * Persists the mapping between a requirement identifier and a taxonomy node that
+ * the requirement covers (score ≥ configured threshold).
+ */
+@Entity
+@Table(name = &quot;requirement_coverage&quot;, uniqueConstraints = {
+        @UniqueConstraint(columnNames = {&quot;requirement_id&quot;, &quot;node_code&quot;})
+})
+public class RequirementCoverage {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;requirement_id&quot;, nullable = false)
+    private String requirementId;
+
+    @Column(name = &quot;requirement_text&quot;, length = 2000)
+    private String requirementText;
+
+    @Column(name = &quot;node_code&quot;, nullable = false)
+    private String nodeCode;
+
+    @Column(name = &quot;score&quot;)
+    private int score;
+
+    @Column(name = &quot;analyzed_at&quot;)
+    private Instant analyzedAt;
+
+<span class="fc" id="L35">    protected RequirementCoverage() {</span>
+<span class="fc" id="L36">    }</span>
+
+    public RequirementCoverage(String requirementId, String requirementText,
+<span class="fc" id="L39">                               String nodeCode, int score, Instant analyzedAt) {</span>
+<span class="fc" id="L40">        this.requirementId = requirementId;</span>
+<span class="fc" id="L41">        this.requirementText = requirementText;</span>
+<span class="fc" id="L42">        this.nodeCode = nodeCode;</span>
+<span class="fc" id="L43">        this.score = score;</span>
+<span class="fc" id="L44">        this.analyzedAt = analyzedAt;</span>
+<span class="fc" id="L45">    }</span>
+
+<span class="fc" id="L47">    public Long getId() { return id; }</span>
+
+<span class="fc" id="L49">    public String getRequirementId() { return requirementId; }</span>
+
+<span class="fc" id="L51">    public String getRequirementText() { return requirementText; }</span>
+
+<span class="fc" id="L53">    public String getNodeCode() { return nodeCode; }</span>
+
+<span class="fc" id="L55">    public int getScore() { return score; }</span>
+
+<span class="fc" id="L57">    public Instant getAnalyzedAt() { return analyzedAt; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
