@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EnrichedImpactElement.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dto</a> &gt; <span class="el_source">EnrichedImpactElement.java</span></div><h1>EnrichedImpactElement.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dto;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Extends {@link ImpactElement} with requirement coverage information.
+ * Each element carries a list of requirements that cover it.
+ */
+public class EnrichedImpactElement {
+
+    private String nodeCode;
+    private String title;
+    private String taxonomySheet;
+    private double relevance;
+    private int hopDistance;
+    private String includedBecause;
+<span class="fc" id="L18">    private List&lt;String&gt; coveredByRequirements = new ArrayList&lt;&gt;();</span>
+    private int requirementCount;
+
+<span class="fc" id="L21">    public EnrichedImpactElement() {}</span>
+
+<span class="fc" id="L23">    public String getNodeCode() { return nodeCode; }</span>
+<span class="fc" id="L24">    public void setNodeCode(String nodeCode) { this.nodeCode = nodeCode; }</span>
+
+<span class="nc" id="L26">    public String getTitle() { return title; }</span>
+<span class="fc" id="L27">    public void setTitle(String title) { this.title = title; }</span>
+
+<span class="nc" id="L29">    public String getTaxonomySheet() { return taxonomySheet; }</span>
+<span class="fc" id="L30">    public void setTaxonomySheet(String taxonomySheet) { this.taxonomySheet = taxonomySheet; }</span>
+
+<span class="fc" id="L32">    public double getRelevance() { return relevance; }</span>
+<span class="fc" id="L33">    public void setRelevance(double relevance) { this.relevance = relevance; }</span>
+
+<span class="nc" id="L35">    public int getHopDistance() { return hopDistance; }</span>
+<span class="fc" id="L36">    public void setHopDistance(int hopDistance) { this.hopDistance = hopDistance; }</span>
+
+<span class="nc" id="L38">    public String getIncludedBecause() { return includedBecause; }</span>
+<span class="fc" id="L39">    public void setIncludedBecause(String includedBecause) { this.includedBecause = includedBecause; }</span>
+
+<span class="fc" id="L41">    public List&lt;String&gt; getCoveredByRequirements() { return coveredByRequirements; }</span>
+<span class="fc" id="L42">    public void setCoveredByRequirements(List&lt;String&gt; coveredByRequirements) { this.coveredByRequirements = coveredByRequirements; }</span>
+
+<span class="fc" id="L44">    public int getRequirementCount() { return requirementCount; }</span>
+<span class="fc" id="L45">    public void setRequirementCount(int requirementCount) { this.requirementCount = requirementCount; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
