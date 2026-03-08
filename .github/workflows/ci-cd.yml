@@ -32,12 +32,6 @@ jobs:
           GEMINI_API_KEY: ""
         run: mvn -q verify -DexcludedGroups=real-llm
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: target/site/jacoco/jacoco.xml
-          fail_ci_if_error: false
-
       - name: Publish test results
         uses: dorny/test-reporter@v2
         if: always()
@@ -51,9 +45,68 @@ jobs:
         if: always()
         run: mvn surefire-report:report-only --no-transfer-progress -DskipTests
 
+      - name: Generate badge JSON files
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import xml.etree.ElementTree as ET
+          import json, os, glob
+
+          COVERAGE_GREEN_THRESHOLD  = 80  # % >= this → brightgreen
+          COVERAGE_YELLOW_THRESHOLD = 60  # % >= this → yellow, else red
+
+          # --- Coverage badge ---
+          try:
+              tree = ET.parse('target/site/jacoco/jacoco.xml')
+              root = tree.getroot()
+              covered, missed = 0, 0
+              for counter in root.iter('counter'):
+                  if counter.get('type') == 'INSTRUCTION':
+                      covered += int(counter.get('covered', 0))
+                      missed  += int(counter.get('missed', 0))
+              total = covered + missed
+              pct   = round(covered / total * 100) if total > 0 else 0
+              if pct >= COVERAGE_GREEN_THRESHOLD:
+                  color = 'brightgreen'
+              elif pct >= COVERAGE_YELLOW_THRESHOLD:
+                  color = 'yellow'
+              else:
+                  color = 'red'
+              badge = {"schemaVersion": 1, "label": "coverage", "message": f"{pct}%", "color": color}
+          except Exception as e:
+              print(f"Coverage badge generation failed: {e}")
+              badge = {"schemaVersion": 1, "label": "coverage", "message": "unknown", "color": "lightgrey"}
+          os.makedirs('target/site/jacoco', exist_ok=True)
+          with open('target/site/jacoco/badge.json', 'w') as f:
+              json.dump(badge, f)
+
+          # --- Tests badge ---
+          try:
+              files = glob.glob('target/surefire-reports/TEST-*.xml')
+              total_tests = total_failures = total_errors = 0
+              for path in files:
+                  root = ET.parse(path).getroot()
+                  total_tests    += int(root.get('tests',    0))
+                  total_failures += int(root.get('failures', 0))
+                  total_errors   += int(root.get('errors',   0))
+              failed = total_failures + total_errors
+              passed = total_tests - failed
+              if failed > 0:
+                  msg, color = f"{failed}/{total_tests} failed", "red"
+              else:
+                  msg, color = f"{passed} passed", "brightgreen"
+              badge = {"schemaVersion": 1, "label": "tests", "message": msg, "color": color}
+          except Exception as e:
+              print(f"Tests badge generation failed: {e}")
+              badge = {"schemaVersion": 1, "label": "tests", "message": "unknown", "color": "lightgrey"}
+          os.makedirs('target/site', exist_ok=True)
+          with open('target/site/badge.json', 'w') as f:
+              json.dump(badge, f)
+          EOF
+
       - name: Deploy test report to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
-        if: always()
+        if: always() && github.ref == 'refs/heads/main'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: target/site
@@ -65,7 +118,7 @@ jobs:
 
       - name: Deploy coverage report to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
-        if: always()
+        if: always() && github.ref == 'refs/heads/main'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: target/site/jacoco
