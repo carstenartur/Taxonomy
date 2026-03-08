@@ -141,6 +141,12 @@ services:
     envVars:
       - key: GEMINI_API_KEY
         sync: false      # false = must be set manually in the dashboard
+      - key: TAXONOMY_DATASOURCE_URL
+        value: "jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached"
+      - key: TAXONOMY_DDL_AUTO
+        value: update
+      - key: TAXONOMY_SEARCH_DIRECTORY_TYPE
+        value: local-filesystem
 ```
 
 | Field | Description |
@@ -150,6 +156,10 @@ services:
 | `runtime: docker` | Tells Render to use the `Dockerfile` at the repo root |
 | `plan: free` | Render Free plan; upgrade to `starter` or higher for more resources |
 | `healthCheckPath: /` | Render probes `GET /` — the app returns the main page (HTTP 200) |
+| `disk` | Persistent disk so the HSQLDB files and Lucene index survive redeploys |
+| `TAXONOMY_DATASOURCE_URL` | Switches HSQLDB from the in-memory default to a disk-backed file database |
+| `TAXONOMY_DDL_AUTO` | `update` preserves data across restarts (vs. `create` which rebuilds the schema) |
+| `TAXONOMY_SEARCH_DIRECTORY_TYPE` | Switches Lucene from the in-memory heap default to a disk-backed filesystem index |
 | `envVars[].sync: false` | The variable must be entered manually as a secret in the dashboard |
 
 ### Setting Environment Variables in Render

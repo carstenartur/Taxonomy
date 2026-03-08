@@ -116,9 +116,9 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
-| — | `spring.datasource.url` | String | `jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached` | JDBC URL. Default: file-based HSQLDB with disk-backed tables. |
+| `TAXONOMY_DATASOURCE_URL` | `spring.datasource.url` | String | `jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1` | JDBC URL. Defaults to in-memory HSQLDB (local dev / tests). Set to `jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached` for production disk-backed storage. |
 | — | `spring.datasource.driver-class-name` | String | `org.hsqldb.jdbc.JDBCDriver` | JDBC driver class. |
-| — | `spring.jpa.hibernate.ddl-auto` | String | `update` | Schema generation strategy. `update` applies incremental changes without dropping existing data. |
+| `TAXONOMY_DDL_AUTO` | `spring.jpa.hibernate.ddl-auto` | String | `create` | Schema generation strategy. `create` rebuilds on each start (safe for in-memory default). Set to `update` for file-based deployments so data is not wiped on restart. |
 | — | `spring.jpa.show-sql` | Boolean | `false` | Whether to log SQL statements. |
 
 ---
@@ -129,8 +129,8 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 |---|---|---|---|---|
 | — | `spring.jpa.properties.hibernate.search.enabled` | Boolean | `true` | Enable Hibernate Search integration. |
 | — | `spring.jpa.properties.hibernate.search.backend.type` | String | `lucene` | Search backend type. |
-| — | `spring.jpa.properties.hibernate.search.backend.directory.type` | String | `local-filesystem` | Index storage. `local-filesystem` = disk-backed (persists across restarts). |
-| — | `spring.jpa.properties.hibernate.search.backend.directory.root` | String | `/app/data/lucene-index` | Root directory for the Lucene index files. |
+| `TAXONOMY_SEARCH_DIRECTORY_TYPE` | `spring.jpa.properties.hibernate.search.backend.directory.type` | String | `local-heap` | Index storage. `local-heap` = in-memory (local dev / tests). Set to `local-filesystem` for production disk-backed deployments. |
+| `TAXONOMY_SEARCH_DIRECTORY_ROOT` | `spring.jpa.properties.hibernate.search.backend.directory.root` | String | `/app/data/lucene-index` | Root directory for the Lucene index files (only used when `TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem`). |
 
 ---
 
