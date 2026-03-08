@@ -22,5 +22,9 @@ public interface RequirementCoverageRepository extends JpaRepository<Requirement
     @Query("SELECT COUNT(DISTINCT c.requirementId) FROM RequirementCoverage c")
     long countDistinctRequirementIds();
 
+    /** Returns pairs of (nodeCode, count) grouped by nodeCode. */
+    @Query("SELECT c.nodeCode, COUNT(c) FROM RequirementCoverage c GROUP BY c.nodeCode")
+    List<Object[]> findNodeCodeCountPairs();
+
     void deleteByRequirementId(String requirementId);
 }

@@ -59,9 +59,9 @@
         html += metricBadge('Total nodes', stats.totalNodes, 'bg-primary');
         html += metricBadge('Covered', stats.coveredNodes, 'bg-success');
         html += metricBadge('Uncovered', stats.uncoveredNodes, stats.uncoveredNodes > 0 ? 'bg-warning text-dark' : 'bg-secondary');
-        html += metricBadge('Coverage', stats.coveragePercentage.toFixed(1) + '%', coverageClass(stats.coveragePercentage));
+        html += metricBadge('Coverage', (stats.coveragePercentage != null ? stats.coveragePercentage : 0).toFixed(1) + '%', coverageClass(stats.coveragePercentage || 0));
         html += metricBadge('Requirements', stats.totalRequirements, 'bg-info text-dark');
-        html += metricBadge('Avg req/node', stats.avgRequirementsPerNode.toFixed(2), 'bg-secondary');
+        html += metricBadge('Avg req/node', (stats.avgRequirementsPerNode != null ? stats.avgRequirementsPerNode : 0).toFixed(2), 'bg-secondary');
         html += '</div>';
 
         /* Top-covered nodes */

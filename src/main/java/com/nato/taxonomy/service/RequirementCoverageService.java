@@ -147,7 +147,10 @@ public class RequirementCoverageService {
     // -------------------------------------------------------------------------
 
     private Map<String, Long> buildDensityMap() {
-        return coverageRepository.findAll().stream()
-                .collect(Collectors.groupingBy(RequirementCoverage::getNodeCode, Collectors.counting()));
+        return coverageRepository.findNodeCodeCountPairs().stream()
+                .collect(Collectors.toMap(
+                        row -> (String) row[0],
+                        row -> (Long) row[1]
+                ));
     }
 }
