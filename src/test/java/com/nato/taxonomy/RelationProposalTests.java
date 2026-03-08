@@ -51,29 +51,29 @@ class RelationProposalTests {
 
     @Test
     void compatibilityMatrixAllowsCorrectPairs() {
-        // CP → CS is valid for REALIZES
-        assertThat(compatibilityMatrix.isCompatible("CP", "CS", RelationType.REALIZES)).isTrue();
-        // CS → BP is valid for SUPPORTS
-        assertThat(compatibilityMatrix.isCompatible("CS", "BP", RelationType.SUPPORTS)).isTrue();
+        // CP → CR is valid for REALIZES
+        assertThat(compatibilityMatrix.isCompatible("CP", "CR", RelationType.REALIZES)).isTrue();
+        // CR → BP is valid for SUPPORTS
+        assertThat(compatibilityMatrix.isCompatible("CR", "BP", RelationType.SUPPORTS)).isTrue();
     }
 
     @Test
     void compatibilityMatrixRejectsIncorrectPairs() {
-        // BP → CS should not be valid for REALIZES (source must be CP)
-        assertThat(compatibilityMatrix.isCompatible("BP", "CS", RelationType.REALIZES)).isFalse();
+        // BP → CR should not be valid for REALIZES (source must be CP)
+        assertThat(compatibilityMatrix.isCompatible("BP", "CR", RelationType.REALIZES)).isFalse();
     }
 
     @Test
     void compatibilityMatrixRelatedToHasNoRestrictions() {
         // RELATED_TO should allow any combination
-        assertThat(compatibilityMatrix.isCompatible("BP", "CS", RelationType.RELATED_TO)).isTrue();
-        assertThat(compatibilityMatrix.isCompatible("CP", "COI", RelationType.RELATED_TO)).isTrue();
+        assertThat(compatibilityMatrix.isCompatible("BP", "CR", RelationType.RELATED_TO)).isTrue();
+        assertThat(compatibilityMatrix.isCompatible("CP", "CI", RelationType.RELATED_TO)).isTrue();
     }
 
     @Test
     void allowedTargetRootsReturnsCorrectSets() {
         Set<String> targets = compatibilityMatrix.allowedTargetRoots("CP", RelationType.REALIZES);
-        assertThat(targets).containsExactly("CS");
+        assertThat(targets).containsExactly("CR");
     }
 
     // ── Validation Service ────────────────────────────────────────────────────
