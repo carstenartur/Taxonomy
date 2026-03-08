@@ -198,6 +198,24 @@ class ScreenshotGeneratorIT {
         });
     }
 
+    /**
+     * Forces the interactive-mode checkbox OFF via direct JS property assignment and fires the
+     * {@code change} event so the taxonomy.js module-level variable is also updated.
+     * More reliable than a Selenium click on a potentially-stale element reference.
+     */
+    private void forceNonInteractiveMode() {
+        js("var cb = document.getElementById('interactiveMode');" +
+           "if (cb) { cb.checked = false; cb.dispatchEvent(new Event('change')); }");
+        wait(3).until(ExpectedConditions.elementSelectionStateToBe(
+                driver.findElement(By.id("interactiveMode")), false));
+    }
+
+    /** Reloads the page and waits for the taxonomy tree to be fully rendered. */
+    private void resetPageState() {
+        driver.get("http://app:8080/");
+        wait(30).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+    }
+
     /** Opens a <details> element if it is currently closed. */
     private void openDetails(WebElement details) {
         js("arguments[0].setAttribute('open', '');", details);
@@ -379,10 +397,8 @@ class ScreenshotGeneratorIT {
         wait(60).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-toggle")));
         saveScreenshot("16-interactive-mode.png");
 
-        // Reset to non-interactive
-        if (interactiveCb.isSelected()) {
-            js("arguments[0].click();", interactiveCb);
-        }
+        // Reset to non-interactive using JS direct manipulation to avoid stale-element issues
+        forceNonInteractiveMode();
     }
 
     @Test
@@ -396,21 +412,33 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(18)
     void captureLeafJustificationModal() throws IOException, InterruptedException {
-        // Ensure scores are present — expand the first node to reveal justify buttons
+        // Reload the page to ensure clean state (interactive mode may have been left on by test 16)
+        resetPageState();
+        // Disable interactive mode so the analysis produces per-node scores
+        forceNonInteractiveMode();
+        // Run a full analysis — leaf justify buttons (.btn-outline-info) only appear on nodes
+        // with score > 0, so scores must be populated before expanding the tree
+        runAnalysis();
+
+        // Expand the first parent node to reveal its scored leaf children
         List<WebElement> toggles = driver.findElements(By.cssSelector(".tax-toggle"));
         if (!toggles.isEmpty()) {
             js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", toggles.get(0));
             js("arguments[0].click();", toggles.get(0));
-            wait(5).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-justify-btn")));
+            // Wait for the leaf justify button specifically (.btn-outline-info distinguishes it
+            // from proposal/graph/search buttons which use .btn-outline-secondary)
+            wait(10).until(ExpectedConditions.presenceOfElementLocated(
+                    By.cssSelector(".tax-justify-btn.btn-outline-info")));
         }
 
-        List<WebElement> justifyBtns = driver.findElements(By.cssSelector(".tax-justify-btn"));
+        List<WebElement> justifyBtns = driver.findElements(
+                By.cssSelector(".tax-justify-btn.btn-outline-info"));
         if (!justifyBtns.isEmpty()) {
             js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", justifyBtns.get(0));
             js("arguments[0].click();", justifyBtns.get(0));
             // Brief pause to allow Bootstrap to initialize the modal after the click
             Thread.sleep(500);
-            wait(60).until(ExpectedConditions.visibilityOfElementLocated(By.id("leafJustificationModal")));
+            wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("leafJustificationModal")));
             saveScreenshot("18-leaf-justification-modal.png");
             closeModalViaDOM("leafJustificationModal");
             js("window.scrollTo(0, 0);");
@@ -420,15 +448,11 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(19)
     void captureStaleResultsWarning() throws IOException {
-        // Ensure a completed analysis exists
+        // Ensure a completed non-interactive analysis exists
         String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
         if (!statusText.contains("complete")) {
-            WebElement interactiveCb = driver.findElement(By.id("interactiveMode"));
-            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", interactiveCb);
-            if (interactiveCb.isSelected()) {
-                js("arguments[0].click();", interactiveCb);
-                wait(3).until(ExpectedConditions.elementSelectionStateToBe(interactiveCb, false));
-            }
+            // Force off interactive mode via JS to avoid stale-element or JS-variable race
+            forceNonInteractiveMode();
             runAnalysis();
         }
 
@@ -451,12 +475,8 @@ class ScreenshotGeneratorIT {
             js("arguments[0].click();", archCb);
             wait(3).until(ExpectedConditions.elementSelectionStateToBe(archCb, true));
         }
-        WebElement interactiveCb = driver.findElement(By.id("interactiveMode"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", interactiveCb);
-        if (interactiveCb.isSelected()) {
-            js("arguments[0].click();", interactiveCb);
-            wait(3).until(ExpectedConditions.elementSelectionStateToBe(interactiveCb, false));
-        }
+        // Force off interactive mode via JS (avoids stale-element or JS-variable race condition)
+        forceNonInteractiveMode();
 
         WebElement textarea = driver.findElement(By.id("businessText"));
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
