@@ -266,12 +266,12 @@ class ArchitectureAnalysisTests {
 
     @Test
     void recommendationProposesElementsForGaps() {
-        // CP needs REALIZES → CS, so the recommendation should propose CS nodes
+        // CP needs REALIZES → CR, so the recommendation should propose CR nodes
         ArchitectureRecommendation rec = recommendationService.recommend(
                 Map.of("CP", 85), "secure voice communications", 50);
 
         assertThat(rec.getConfirmedElements()).isNotEmpty();
-        // Proposals depend on available nodes in the CS root
+        // Proposals depend on available nodes in the CR root
         assertThat(rec.getReasoning()).isNotEmpty();
         assertThat(rec.getConfidence()).isGreaterThanOrEqualTo(0.0);
     }
@@ -344,10 +344,10 @@ class ArchitectureAnalysisTests {
 
     @Test
     void patternDetectionFindsCompleteFullStackPattern() {
-        // Create the full chain: CP → REALIZES → CR → SUPPORTS → BP → CONSUMES → CI
+        // Create the full chain: CP → REALIZES → CR → SUPPORTS → BP → CONSUMES → IP
         relationService.createRelation("CP", "CR", RelationType.REALIZES, null, "test");
         relationService.createRelation("CR", "BP", RelationType.SUPPORTS, null, "test");
-        relationService.createRelation("BP", "CI", RelationType.CONSUMES, null, "test");
+        relationService.createRelation("BP", "IP", RelationType.CONSUMES, null, "test");
 
         PatternDetectionView view = patternService.detectForNode("CP");
 

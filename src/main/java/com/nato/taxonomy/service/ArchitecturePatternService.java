@@ -65,7 +65,7 @@ public class ArchitecturePatternService {
                 new PatternTemplate("Full Stack", List.of(
                         new PatternStep("CP", "REALIZES", "CR"),
                         new PatternStep("CR", "SUPPORTS", "BP"),
-                        new PatternStep("BP", "CONSUMES", "CI")
+                        new PatternStep("BP", "CONSUMES", "IP")
                 )),
                 new PatternTemplate("App Chain", List.of(
                         new PatternStep("UA", "USES", "CR"),
@@ -73,7 +73,7 @@ public class ArchitecturePatternService {
                 )),
                 new PatternTemplate("Role Chain", List.of(
                         new PatternStep("BR", "ASSIGNED_TO", "BP"),
-                        new PatternStep("BP", "CONSUMES", "CI")
+                        new PatternStep("BP", "CONSUMES", "IP")
                 ))
         );
     }
