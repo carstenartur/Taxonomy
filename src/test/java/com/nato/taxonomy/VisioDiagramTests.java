@@ -90,8 +90,10 @@ class VisioDiagramTests {
         RequirementArchitectureView view = new RequirementArchitectureView();
 
         var sheets = List.of("Capabilities", "Business Processes", "Services",
-                             "Applications", "Information Products");
-        var expectedLayers = List.of(1, 2, 3, 4, 5);
+                             "Applications", "Information Products",
+                             "Business Roles", "COI Services", "Core Services",
+                             "User Applications", "Communications Services");
+        var expectedLayers = List.of(1, 2, 3, 4, 5, 2, 3, 3, 4, 6);
 
         for (int i = 0; i < sheets.size(); i++) {
             RequirementElementView el = new RequirementElementView();
@@ -105,7 +107,7 @@ class VisioDiagramTests {
 
         DiagramModel model = projectionService.project(view, "Layers");
 
-        assertThat(model.nodes()).hasSize(5);
+        assertThat(model.nodes()).hasSize(10);
         for (int i = 0; i < sheets.size(); i++) {
             final int idx = i;
             DiagramNode node = model.nodes().stream()

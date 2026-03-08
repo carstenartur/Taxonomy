@@ -146,24 +146,32 @@ public class ArchiMateDiagramService {
     public static String toArchiMateType(String taxonomyType) {
         if (taxonomyType == null) return "BusinessObject";
         return switch (taxonomyType) {
-            case "Capabilities"        -> "Capability";
-            case "Business Processes"  -> "BusinessProcess";
-            case "Services"            -> "ApplicationService";
-            case "Applications"        -> "ApplicationComponent";
-            case "Information Products"-> "DataObject";
-            default                    -> "BusinessObject";
+            case "Capabilities"          -> "Capability";
+            case "Business Processes"    -> "BusinessProcess";
+            case "Business Roles"        -> "BusinessRole";
+            case "Services"              -> "ApplicationService";
+            case "COI Services"          -> "BusinessService";
+            case "Communications Services" -> "CommunicationNetwork";
+            case "Core Services"         -> "TechnologyService";
+            case "Applications"          -> "ApplicationComponent";
+            case "User Applications"     -> "ApplicationComponent";
+            case "Information Products"  -> "DataObject";
+            default                      -> "BusinessObject";
         };
     }
 
     public static String toArchiMateRelType(String relationType) {
         if (relationType == null) return "Association";
         return switch (relationType) {
-            case "SUPPORTS", "ENABLES" -> "Serving";
-            case "PRODUCES"            -> "Access";
-            case "CONSUMES"            -> "Access";
-            case "IMPLEMENTS"          -> "Realization";
-            case "PART_OF"             -> "Composition";
-            default                    -> "Association";
+            case "SUPPORTS", "ENABLES", "USES", "DEPENDS_ON" -> "Serving";
+            case "PRODUCES"                                   -> "Access";
+            case "CONSUMES"                                   -> "Access";
+            case "REALIZES", "IMPLEMENTS", "FULFILLS"         -> "Realization";
+            case "ASSIGNED_TO"                                -> "Assignment";
+            case "COMMUNICATES_WITH"                          -> "Flow";
+            case "PART_OF"                                    -> "Composition";
+            case "RELATED_TO"                                 -> "Association";
+            default                                           -> "Association";
         };
     }
 
@@ -176,12 +184,17 @@ public class ArchiMateDiagramService {
     public static int[] toColor(String taxonomyType) {
         if (taxonomyType == null) return new int[]{224, 224, 224};
         return switch (taxonomyType) {
-            case "Capabilities"         -> new int[]{255, 255, 181};
-            case "Business Processes"   -> new int[]{255, 255, 181};
-            case "Services"             -> new int[]{181, 255, 255};
-            case "Applications"         -> new int[]{181, 255, 255};
-            case "Information Products" -> new int[]{204, 255, 204};
-            default                     -> new int[]{224, 224, 224};
+            case "Capabilities"           -> new int[]{255, 255, 181};
+            case "Business Processes"     -> new int[]{255, 255, 181};
+            case "Business Roles"         -> new int[]{255, 224, 181};
+            case "Services"               -> new int[]{181, 255, 255};
+            case "COI Services"           -> new int[]{181, 255, 255};
+            case "Core Services"          -> new int[]{181, 255, 255};
+            case "Communications Services"-> new int[]{204, 224, 255};
+            case "Applications"           -> new int[]{181, 255, 255};
+            case "User Applications"      -> new int[]{181, 255, 255};
+            case "Information Products"   -> new int[]{204, 255, 204};
+            default                       -> new int[]{224, 224, 224};
         };
     }
 }
