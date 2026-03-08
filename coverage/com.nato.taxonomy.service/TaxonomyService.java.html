@@ -8,18 +8,13 @@ import com.nato.taxonomy.model.TaxonomyRelation;
 import com.nato.taxonomy.repository.TaxonomyNodeRepository;
 import com.nato.taxonomy.repository.TaxonomyRelationRepository;
 import jakarta.annotation.PostConstruct;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -30,349 +25,231 @@ import java.util.*;
 @Service
 public class TaxonomyService {
 
-<span class="fc" id="L33">    private static final Logger log = LoggerFactory.getLogger(TaxonomyService.class);</span>
+<span class="fc" id="L28">    private static final Logger log = LoggerFactory.getLogger(TaxonomyService.class);</span>
 
     private static final String CATALOGUE_PATH = &quot;data/C3_Taxonomy_Catalogue_25AUG2025.xlsx&quot;;
 
-    private static final int BATCH_SIZE = 50;
-
     /** Maps sheet name → two-letter prefix used as virtual root code. */
-<span class="fc" id="L40">    private static final Map&lt;String, String&gt; SHEET_PREFIXES = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L33">    private static final Map&lt;String, String&gt; SHEET_PREFIXES = new LinkedHashMap&lt;&gt;();</span>
     static {
-<span class="fc" id="L42">        SHEET_PREFIXES.put(&quot;Business Processes&quot;,       &quot;BP&quot;);</span>
-<span class="fc" id="L43">        SHEET_PREFIXES.put(&quot;Business Roles&quot;,           &quot;BR&quot;);</span>
-<span class="fc" id="L44">        SHEET_PREFIXES.put(&quot;Capabilities&quot;,             &quot;CP&quot;);</span>
-<span class="fc" id="L45">        SHEET_PREFIXES.put(&quot;COI Services&quot;,             &quot;CI&quot;);</span>
-<span class="fc" id="L46">        SHEET_PREFIXES.put(&quot;Communications Services&quot;,  &quot;CO&quot;);</span>
-<span class="fc" id="L47">        SHEET_PREFIXES.put(&quot;Core Services&quot;,            &quot;CR&quot;);</span>
-<span class="fc" id="L48">        SHEET_PREFIXES.put(&quot;Information Products&quot;,     &quot;IP&quot;);</span>
-<span class="fc" id="L49">        SHEET_PREFIXES.put(&quot;User Applications&quot;,        &quot;UA&quot;);</span>
-<span class="fc" id="L50">    }</span>
+<span class="fc" id="L35">        SHEET_PREFIXES.put(&quot;Business Processes&quot;,       &quot;BP&quot;);</span>
+<span class="fc" id="L36">        SHEET_PREFIXES.put(&quot;Business Roles&quot;,           &quot;BR&quot;);</span>
+<span class="fc" id="L37">        SHEET_PREFIXES.put(&quot;Capabilities&quot;,             &quot;CP&quot;);</span>
+<span class="fc" id="L38">        SHEET_PREFIXES.put(&quot;COI Services&quot;,             &quot;CI&quot;);</span>
+<span class="fc" id="L39">        SHEET_PREFIXES.put(&quot;Communications Services&quot;,  &quot;CO&quot;);</span>
+<span class="fc" id="L40">        SHEET_PREFIXES.put(&quot;Core Services&quot;,            &quot;CR&quot;);</span>
+<span class="fc" id="L41">        SHEET_PREFIXES.put(&quot;Information Products&quot;,     &quot;IP&quot;);</span>
+<span class="fc" id="L42">        SHEET_PREFIXES.put(&quot;User Applications&quot;,        &quot;UA&quot;);</span>
+<span class="fc" id="L43">    }</span>
 
     private final TaxonomyNodeRepository repository;
     private final TaxonomyRelationRepository relationRepository;
 
-    @PersistenceContext
-    private EntityManager entityManager;
-
-    @Autowired
-    private PlatformTransactionManager transactionManager;
-
     public TaxonomyService(TaxonomyNodeRepository repository,
-<span class="fc" id="L62">                           TaxonomyRelationRepository relationRepository) {</span>
-<span class="fc" id="L63">        this.repository = repository;</span>
-<span class="fc" id="L64">        this.relationRepository = relationRepository;</span>
-<span class="fc" id="L65">    }</span>
+<span class="fc" id="L49">                           TaxonomyRelationRepository relationRepository) {</span>
+<span class="fc" id="L50">        this.repository = repository;</span>
+<span class="fc" id="L51">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L52">    }</span>
 
-    /**
-     * Load the taxonomy from the bundled Excel workbook.
-     * Uses an explicit {@link TransactionTemplate} because {@code @Transactional} is not
-     * honoured when a method is invoked directly by the container via {@code @PostConstruct}.
-     */
     @PostConstruct
+    @Transactional
     public void loadTaxonomyFromExcel() {
+<span class="fc" id="L57">        relationRepository.deleteAll();</span>
+<span class="fc" id="L58">        repository.deleteAll();</span>
         try {
-<span class="fc" id="L75">            new TransactionTemplate(transactionManager).executeWithoutResult(status -&gt; {</span>
-                try {
-<span class="fc" id="L77">                    doLoadTaxonomy();</span>
-<span class="nc" id="L78">                } catch (RuntimeException e) {</span>
-<span class="nc" id="L79">                    throw e;</span>
-<span class="nc" id="L80">                } catch (Exception e) {</span>
-<span class="nc" id="L81">                    throw new RuntimeException(e);</span>
-<span class="fc" id="L82">                }</span>
-<span class="fc" id="L83">            });</span>
-<span class="nc" id="L84">        } catch (RuntimeException e) {</span>
-            // Unwrap to log the original exception (IOException, etc.) with its full stack trace
-<span class="nc bnc" id="L86" title="All 2 branches missed.">            Throwable cause = e.getCause() != null ? e.getCause() : e;</span>
-<span class="nc" id="L87">            log.error(&quot;Failed to load taxonomy from Excel&quot;, cause);</span>
-<span class="fc" id="L88">        }</span>
-<span class="fc" id="L89">    }</span>
+<span class="fc" id="L60">            ClassPathResource resource = new ClassPathResource(CATALOGUE_PATH);</span>
+<span class="fc" id="L61">            try (InputStream is = resource.getInputStream();</span>
+<span class="fc" id="L62">                 Workbook workbook = new XSSFWorkbook(is)) {</span>
 
-    private void doLoadTaxonomy() throws Exception {
-<span class="fc" id="L92">        relationRepository.deleteAll();</span>
-<span class="fc" id="L93">        repository.deleteAll();</span>
+                // Global node map: code → entity (across all sheets)
+<span class="fc" id="L65">                Map&lt;String, TaxonomyNode&gt; nodeMap = new LinkedHashMap&lt;&gt;();</span>
 
-<span class="fc" id="L95">        ClassPathResource resource = new ClassPathResource(CATALOGUE_PATH);</span>
+                // UUID → code map used to resolve parent references that use UUIDs
+<span class="fc" id="L68">                Map&lt;String, String&gt; uuidToCode = new HashMap&lt;&gt;();</span>
 
-        // Global node map: code → entity (across all sheets)
-<span class="fc" id="L98">        Map&lt;String, TaxonomyNode&gt; nodeMap = new LinkedHashMap&lt;&gt;();</span>
+                // 1. Create one virtual root per sheet (level 0)
+<span class="fc" id="L71">                List&lt;TaxonomyNode&gt; virtualRoots = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                for (Map.Entry&lt;String, String&gt; entry : SHEET_PREFIXES.entrySet()) {</span>
+<span class="fc" id="L73">                    String sheetName = entry.getKey();</span>
+<span class="fc" id="L74">                    String prefix    = entry.getValue();</span>
+<span class="fc" id="L75">                    TaxonomyNode root = new TaxonomyNode();</span>
+<span class="fc" id="L76">                    root.setCode(prefix);</span>
+<span class="fc" id="L77">                    root.setNameEn(sheetName);</span>
+<span class="fc" id="L78">                    root.setDescriptionEn(&quot;NATO C3 Taxonomy – &quot; + sheetName);</span>
+<span class="fc" id="L79">                    root.setTaxonomyRoot(prefix);</span>
+<span class="fc" id="L80">                    root.setLevel(0);</span>
+<span class="fc" id="L81">                    nodeMap.put(prefix, root);</span>
+<span class="fc" id="L82">                    virtualRoots.add(root);</span>
+<span class="fc" id="L83">                }</span>
 
-        // UUID → code map used to resolve parent references that use UUIDs
-<span class="fc" id="L101">        Map&lt;String, String&gt; uuidToCode = new HashMap&lt;&gt;();</span>
+                // 2. Read every sheet and collect raw rows
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                for (Map.Entry&lt;String, String&gt; entry : SHEET_PREFIXES.entrySet()) {</span>
+<span class="fc" id="L87">                    String sheetName = entry.getKey();</span>
+<span class="fc" id="L88">                    String prefix    = entry.getValue();</span>
+<span class="fc" id="L89">                    Sheet sheet = workbook.getSheet(sheetName);</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">                    if (sheet == null) {</span>
+<span class="nc" id="L91">                        log.warn(&quot;Sheet '{}' not found in workbook.&quot;, sheetName);</span>
+<span class="nc" id="L92">                        continue;</span>
+                    }
+<span class="fc" id="L94">                    readSheet(sheet, prefix, nodeMap, uuidToCode);</span>
+<span class="fc" id="L95">                }</span>
 
-        // 1. Create one virtual root per sheet (level 0)
-<span class="fc" id="L104">        List&lt;TaxonomyNode&gt; virtualRoots = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L105" title="All 2 branches covered.">        for (Map.Entry&lt;String, String&gt; entry : SHEET_PREFIXES.entrySet()) {</span>
-<span class="fc" id="L106">            String sheetName = entry.getKey();</span>
-<span class="fc" id="L107">            String prefix    = entry.getValue();</span>
-<span class="fc" id="L108">            TaxonomyNode root = new TaxonomyNode();</span>
-<span class="fc" id="L109">            root.setCode(prefix);</span>
-<span class="fc" id="L110">            root.setNameEn(sheetName);</span>
-<span class="fc" id="L111">            root.setDescriptionEn(&quot;NATO C3 Taxonomy – &quot; + sheetName);</span>
-<span class="fc" id="L112">            root.setTaxonomyRoot(prefix);</span>
-<span class="fc" id="L113">            root.setLevel(0);</span>
-<span class="fc" id="L114">            nodeMap.put(prefix, root);</span>
-<span class="fc" id="L115">            virtualRoots.add(root);</span>
-<span class="fc" id="L116">        }</span>
+                // 3. Wire parent-child relationships
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                for (TaxonomyNode node : nodeMap.values()) {</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                    if (node.getLevel() == 0) continue; // virtual roots have no parent</span>
+<span class="fc" id="L100">                    String parentCode = node.getParentCode();</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                    TaxonomyNode parent = (parentCode != null) ? nodeMap.get(parentCode) : null;</span>
 
-        // Raw relation tuples extracted from the workbook before it is closed:
-        // each entry is [sourceCode, targetCode, typeStr, description]
-<span class="fc" id="L120">        List&lt;String[]&gt; rawRelations = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L121">        boolean hasExcelRelations = false;</span>
-
-<span class="fc" id="L123">        try (InputStream is = resource.getInputStream();</span>
-<span class="fc" id="L124">             Workbook workbook = new XSSFWorkbook(is)) {</span>
-
-            // 2. Read every sheet and collect raw rows
-<span class="fc bfc" id="L127" title="All 2 branches covered.">            for (Map.Entry&lt;String, String&gt; entry : SHEET_PREFIXES.entrySet()) {</span>
-<span class="fc" id="L128">                String sheetName = entry.getKey();</span>
-<span class="fc" id="L129">                String prefix    = entry.getValue();</span>
-<span class="fc" id="L130">                Sheet sheet = workbook.getSheet(sheetName);</span>
-<span class="pc bpc" id="L131" title="1 of 2 branches missed.">                if (sheet == null) {</span>
-<span class="nc" id="L132">                    log.warn(&quot;Sheet '{}' not found in workbook.&quot;, sheetName);</span>
-<span class="nc" id="L133">                    continue;</span>
-                }
-<span class="fc" id="L135">                readSheet(sheet, prefix, nodeMap, uuidToCode);</span>
-<span class="fc" id="L136">            }</span>
-
-            // 3. Wire parent-child relationships
-<span class="fc bfc" id="L139" title="All 2 branches covered.">            for (TaxonomyNode node : nodeMap.values()) {</span>
-<span class="fc bfc" id="L140" title="All 2 branches covered.">                if (node.getLevel() == 0) continue; // virtual roots have no parent</span>
-<span class="fc" id="L141">                String parentCode = node.getParentCode();</span>
-<span class="fc bfc" id="L142" title="All 2 branches covered.">                TaxonomyNode parent = (parentCode != null) ? nodeMap.get(parentCode) : null;</span>
-
-                // Fallback: parentCode might be a UUID — resolve it to the actual code
-<span class="fc bfc" id="L145" title="All 4 branches covered.">                if (parent == null &amp;&amp; parentCode != null) {</span>
-<span class="fc" id="L146">                    String resolvedCode = uuidToCode.get(parentCode);</span>
-<span class="pc bpc" id="L147" title="1 of 2 branches missed.">                    if (resolvedCode != null) {</span>
-<span class="nc" id="L148">                        parent = nodeMap.get(resolvedCode);</span>
-<span class="nc bnc" id="L149" title="All 2 branches missed.">                        if (parent != null) {</span>
-<span class="nc" id="L150">                            node.setParentCode(resolvedCode);</span>
+                    // Fallback: parentCode might be a UUID — resolve it to the actual code
+<span class="fc bfc" id="L104" title="All 4 branches covered.">                    if (parent == null &amp;&amp; parentCode != null) {</span>
+<span class="fc" id="L105">                        String resolvedCode = uuidToCode.get(parentCode);</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                        if (resolvedCode != null) {</span>
+<span class="nc" id="L107">                            parent = nodeMap.get(resolvedCode);</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">                            if (parent != null) {</span>
+<span class="nc" id="L109">                                node.setParentCode(resolvedCode);</span>
+                            }
                         }
                     }
+
+                    // Last resort: attach to the virtual sheet root
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                    if (parent == null) {</span>
+<span class="fc" id="L116">                        log.debug(&quot;Last resort parent assignment for node '{}' (parentCode='{}', root='{}')&quot;,</span>
+<span class="fc" id="L117">                                node.getCode(), node.getParentCode(), node.getTaxonomyRoot());</span>
+<span class="fc" id="L118">                        parent = nodeMap.get(node.getTaxonomyRoot());</span>
+<span class="fc" id="L119">                        node.setParentCode(node.getTaxonomyRoot());</span>
+                    }
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">                    if (parent != null) {</span>
+<span class="fc" id="L122">                        node.setParent(parent);</span>
+<span class="fc" id="L123">                        parent.getChildren().add(node);</span>
+                    }
+<span class="fc" id="L125">                }</span>
+
+                // 4. Persist (save virtual roots first; cascade saves children)
+<span class="fc" id="L128">                repository.saveAll(virtualRoots);</span>
+<span class="fc" id="L129">                log.info(&quot;Taxonomy loaded: {} nodes from {} sheets.&quot;,</span>
+<span class="fc" id="L130">                        nodeMap.size(), SHEET_PREFIXES.size());</span>
+
+                // 4b. Load relations from the optional &quot;Relations&quot; sheet
+<span class="fc" id="L133">                Sheet relationsSheet = workbook.getSheet(&quot;Relations&quot;);</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">                if (relationsSheet != null) {</span>
+<span class="nc" id="L135">                    loadRelationsSheet(relationsSheet, nodeMap);</span>
+                } else {
+<span class="fc" id="L137">                    log.info(&quot;No 'Relations' sheet found in workbook — trying CSV fallback.&quot;);</span>
+<span class="fc" id="L138">                    loadRelationsFromCsv(nodeMap);</span>
                 }
 
-                // Last resort: attach to the virtual sheet root
-<span class="fc bfc" id="L156" title="All 2 branches covered.">                if (parent == null) {</span>
-<span class="fc" id="L157">                    log.debug(&quot;Last resort parent assignment for node '{}' (parentCode='{}', root='{}')&quot;,</span>
-<span class="fc" id="L158">                            node.getCode(), node.getParentCode(), node.getTaxonomyRoot());</span>
-<span class="fc" id="L159">                    parent = nodeMap.get(node.getTaxonomyRoot());</span>
-<span class="fc" id="L160">                    node.setParentCode(node.getTaxonomyRoot());</span>
-                }
-<span class="pc bpc" id="L162" title="1 of 2 branches missed.">                if (parent != null) {</span>
-<span class="fc" id="L163">                    node.setParent(parent);</span>
-<span class="fc" id="L164">                    parent.getChildren().add(node);</span>
-                }
-<span class="fc" id="L166">            }</span>
+                // 5. Hibernate Search auto-indexes nodes on JPA persist; log the count.
+<span class="fc" id="L142">                log.info(&quot;Full-text and vector index will be populated automatically by Hibernate Search.&quot;);</span>
 
-            // 4a. Extract raw relation rows BEFORE closing the workbook so the workbook
-            //     can be released from heap before the (memory-intensive) persist phase.
-<span class="fc" id="L170">            Sheet relationsSheet = workbook.getSheet(&quot;Relations&quot;);</span>
-<span class="pc bpc" id="L171" title="1 of 2 branches missed.">            if (relationsSheet != null) {</span>
-<span class="nc" id="L172">                hasExcelRelations = true;</span>
-<span class="nc" id="L173">                extractRawRelations(relationsSheet, rawRelations);</span>
+                // 6. No explicit KNN index invalidation needed – Hibernate Search manages the index.
+<span class="fc" id="L145">                log.debug(&quot;Hibernate Search manages the vector index; no manual invalidation required.&quot;);</span>
             }
-        } // workbook closes here, releasing its heap memory
+<span class="nc" id="L147">        } catch (Exception e) {</span>
+<span class="nc" id="L148">            log.error(&quot;Failed to load taxonomy from Excel&quot;, e);</span>
+<span class="fc" id="L149">        }</span>
+<span class="fc" id="L150">    }</span>
 
-        // 4b. Persist nodes in batches to limit Persistence Context size.
-        //     Returns a code → database ID map for subsequent relation wiring.
-<span class="fc" id="L179">        Map&lt;String, Long&gt; codeToId = persistNodesBatched(virtualRoots, nodeMap);</span>
-<span class="fc" id="L180">        log.info(&quot;Taxonomy loaded: {} nodes from {} sheets.&quot;,</span>
-<span class="fc" id="L181">                nodeMap.size(), SHEET_PREFIXES.size());</span>
+    /** Read the &quot;Relations&quot; sheet and persist TaxonomyRelation entities. */
+    private void loadRelationsSheet(Sheet sheet, Map&lt;String, TaxonomyNode&gt; nodeMap) {
+        // Expected columns: SourceCode(0), TargetCode(1), RelationType(2), Description(3)
+<span class="nc" id="L155">        boolean first = true;</span>
+<span class="nc" id="L156">        List&lt;TaxonomyRelation&gt; relations = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        for (Row row : sheet) {</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">            if (first) { first = false; continue; } // skip header</span>
+<span class="nc" id="L159">            String sourceCode   = cellString(row, 0);</span>
+<span class="nc" id="L160">            String targetCode   = cellString(row, 1);</span>
+<span class="nc" id="L161">            String typeStr      = cellString(row, 2);</span>
+<span class="nc" id="L162">            String description  = cellString(row, 3);</span>
 
-        // 4c. Load relations using managed entity proxies (via codeToId)
-<span class="pc bpc" id="L184" title="1 of 2 branches missed.">        if (hasExcelRelations) {</span>
-<span class="nc" id="L185">            persistRawRelations(rawRelations, codeToId);</span>
-        } else {
-<span class="fc" id="L187">            log.info(&quot;No 'Relations' sheet found in workbook — trying CSV fallback.&quot;);</span>
-<span class="fc" id="L188">            loadRelationsFromCsv(codeToId);</span>
-        }
+<span class="nc bnc" id="L164" title="All 6 branches missed.">            if (sourceCode == null || targetCode == null || typeStr == null) continue;</span>
 
-        // 4d. Help GC by releasing the large in-memory maps
-<span class="fc" id="L192">        nodeMap.clear();</span>
-<span class="fc" id="L193">        uuidToCode.clear();</span>
-<span class="fc" id="L194">        log.info(&quot;Cleared in-memory node maps to free heap.&quot;);</span>
-
-        // 5. Hibernate Search auto-indexes nodes on JPA persist; log the count.
-<span class="fc" id="L197">        log.info(&quot;Full-text and vector index will be populated automatically by Hibernate Search.&quot;);</span>
-
-        // 6. No explicit KNN index invalidation needed – Hibernate Search manages the index.
-<span class="fc" id="L200">        log.debug(&quot;Hibernate Search manages the vector index; no manual invalidation required.&quot;);</span>
-<span class="fc" id="L201">    }</span>
-
-    /**
-     * Persist all nodes in batches, flushing and clearing the Persistence Context every
-     * {@value #BATCH_SIZE} inserts to keep its memory footprint small.
-     *
-     * @return a map of node code → generated database ID for subsequent FK wiring
-     */
-    private Map&lt;String, Long&gt; persistNodesBatched(List&lt;TaxonomyNode&gt; virtualRoots,
-                                                   Map&lt;String, TaxonomyNode&gt; nodeMap) {
-<span class="fc" id="L211">        Map&lt;String, Long&gt; codeToId = new HashMap&lt;&gt;();</span>
-
-        // Clear in-memory children lists so that individual entityManager.persist() calls
-        // do NOT trigger CascadeType.ALL and accidentally persist the entire tree at once.
-        // The nodeMap itself (and thus these entities) is discarded after the loading phase,
-        // so mutating the transient children collections here has no runtime side effects.
-<span class="fc bfc" id="L217" title="All 2 branches covered.">        for (TaxonomyNode node : nodeMap.values()) {</span>
-<span class="fc" id="L218">            node.getChildren().clear();</span>
-<span class="fc" id="L219">        }</span>
-
-        // Persist level-0 (virtual root) nodes first; they have no parent FK to resolve.
-<span class="fc bfc" id="L222" title="All 2 branches covered.">        for (TaxonomyNode root : virtualRoots) {</span>
-<span class="fc" id="L223">            entityManager.persist(root);</span>
-            // For IDENTITY generation strategy the INSERT is executed immediately,
-            // so the generated ID is available right after persist().
-<span class="fc" id="L226">            codeToId.put(root.getCode(), root.getId());</span>
-<span class="fc" id="L227">        }</span>
-<span class="fc" id="L228">        entityManager.flush();</span>
-<span class="fc" id="L229">        entityManager.clear();</span>
-
-        // Collect non-root nodes and sort by level so that a parent is always persisted
-        // before any of its children, regardless of the order in nodeMap.
-<span class="fc" id="L233">        List&lt;TaxonomyNode&gt; nonRoots = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L234" title="All 2 branches covered.">        for (TaxonomyNode node : nodeMap.values()) {</span>
-<span class="fc bfc" id="L235" title="All 2 branches covered.">            if (node.getLevel() &gt; 0) {</span>
-<span class="fc" id="L236">                nonRoots.add(node);</span>
+<span class="nc" id="L166">            TaxonomyNode source = nodeMap.get(sourceCode);</span>
+<span class="nc" id="L167">            TaxonomyNode target = nodeMap.get(targetCode);</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">            if (source == null) {</span>
+<span class="nc" id="L169">                log.warn(&quot;Relations sheet: source node '{}' not found — skipping row.&quot;, sourceCode);</span>
+<span class="nc" id="L170">                continue;</span>
             }
-<span class="fc" id="L238">        }</span>
-<span class="fc" id="L239">        nonRoots.sort(Comparator.comparingInt(TaxonomyNode::getLevel));</span>
-
-<span class="fc" id="L241">        int count = 0;</span>
-<span class="fc bfc" id="L242" title="All 2 branches covered.">        for (TaxonomyNode node : nonRoots) {</span>
-            // Replace the in-memory parent reference with a lightweight managed proxy so
-            // that the FK column is set correctly even after earlier PC.clear() calls.
-            // getReference() returns an uninitialized proxy whose ID is set immediately;
-            // no SELECT is issued because only the FK value (the ID) is needed for the INSERT.
-<span class="fc" id="L247">            String parentCode = node.getParentCode();</span>
-<span class="pc bpc" id="L248" title="1 of 4 branches missed.">            if (parentCode != null &amp;&amp; codeToId.containsKey(parentCode)) {</span>
-<span class="fc" id="L249">                node.setParent(entityManager.getReference(TaxonomyNode.class,</span>
-<span class="fc" id="L250">                        codeToId.get(parentCode)));</span>
-            }
-<span class="fc" id="L252">            entityManager.persist(node);</span>
-<span class="fc" id="L253">            codeToId.put(node.getCode(), node.getId());</span>
-<span class="fc" id="L254">            count++;</span>
-<span class="fc bfc" id="L255" title="All 2 branches covered.">            if (count % BATCH_SIZE == 0) {</span>
-<span class="fc" id="L256">                entityManager.flush();</span>
-<span class="fc" id="L257">                entityManager.clear();</span>
-            }
-<span class="fc" id="L259">        }</span>
-<span class="fc" id="L260">        entityManager.flush();</span>
-<span class="fc" id="L261">        entityManager.clear();</span>
-
-<span class="fc" id="L263">        return codeToId;</span>
-    }
-
-    /** Extract raw relation rows from the Relations sheet into a list of tuples. */
-    private void extractRawRelations(Sheet sheet, List&lt;String[]&gt; rawRelations) {
-<span class="nc" id="L268">        boolean first = true;</span>
-<span class="nc bnc" id="L269" title="All 2 branches missed.">        for (Row row : sheet) {</span>
-<span class="nc bnc" id="L270" title="All 2 branches missed.">            if (first) { first = false; continue; } // skip header</span>
-<span class="nc" id="L271">            String sourceCode  = cellString(row, 0);</span>
-<span class="nc" id="L272">            String targetCode  = cellString(row, 1);</span>
-<span class="nc" id="L273">            String typeStr     = cellString(row, 2);</span>
-<span class="nc" id="L274">            String description = cellString(row, 3);</span>
-<span class="nc bnc" id="L275" title="All 6 branches missed.">            if (sourceCode == null || targetCode == null || typeStr == null) continue;</span>
-<span class="nc" id="L276">            rawRelations.add(new String[]{sourceCode, targetCode, typeStr, description});</span>
-<span class="nc" id="L277">        }</span>
-<span class="nc" id="L278">    }</span>
-
-    /** Persist raw relation tuples as TaxonomyRelation entities. */
-    private void persistRawRelations(List&lt;String[]&gt; rawRelations, Map&lt;String, Long&gt; codeToId) {
-<span class="nc" id="L282">        List&lt;TaxonomyRelation&gt; relations = new ArrayList&lt;&gt;();</span>
-<span class="nc bnc" id="L283" title="All 2 branches missed.">        for (String[] raw : rawRelations) {</span>
-<span class="nc" id="L284">            String sourceCode  = raw[0];</span>
-<span class="nc" id="L285">            String targetCode  = raw[1];</span>
-<span class="nc" id="L286">            String typeStr     = raw[2];</span>
-<span class="nc" id="L287">            String description = raw[3];</span>
-
-<span class="nc" id="L289">            Long sourceId = codeToId.get(sourceCode);</span>
-<span class="nc" id="L290">            Long targetId = codeToId.get(targetCode);</span>
-<span class="nc bnc" id="L291" title="All 2 branches missed.">            if (sourceId == null) {</span>
-<span class="nc" id="L292">                log.warn(&quot;Relations sheet: source node '{}' not found — skipping row.&quot;, sourceCode);</span>
-<span class="nc" id="L293">                continue;</span>
-            }
-<span class="nc bnc" id="L295" title="All 2 branches missed.">            if (targetId == null) {</span>
-<span class="nc" id="L296">                log.warn(&quot;Relations sheet: target node '{}' not found — skipping row.&quot;, targetCode);</span>
-<span class="nc" id="L297">                continue;</span>
+<span class="nc bnc" id="L172" title="All 2 branches missed.">            if (target == null) {</span>
+<span class="nc" id="L173">                log.warn(&quot;Relations sheet: target node '{}' not found — skipping row.&quot;, targetCode);</span>
+<span class="nc" id="L174">                continue;</span>
             }
 
             RelationType relationType;
             try {
-<span class="nc" id="L302">                relationType = RelationType.valueOf(typeStr.trim().toUpperCase());</span>
-<span class="nc" id="L303">            } catch (IllegalArgumentException e) {</span>
-<span class="nc" id="L304">                log.warn(&quot;Relations sheet: unknown relation type '{}' — skipping row.&quot;, typeStr);</span>
-<span class="nc" id="L305">                continue;</span>
-<span class="nc" id="L306">            }</span>
+<span class="nc" id="L179">                relationType = RelationType.valueOf(typeStr.trim().toUpperCase());</span>
+<span class="nc" id="L180">            } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L181">                log.warn(&quot;Relations sheet: unknown relation type '{}' — skipping row.&quot;, typeStr);</span>
+<span class="nc" id="L182">                continue;</span>
+<span class="nc" id="L183">            }</span>
 
-<span class="nc" id="L308">            TaxonomyRelation relation = new TaxonomyRelation();</span>
-<span class="nc" id="L309">            relation.setSourceNode(entityManager.getReference(TaxonomyNode.class, sourceId));</span>
-<span class="nc" id="L310">            relation.setTargetNode(entityManager.getReference(TaxonomyNode.class, targetId));</span>
-<span class="nc" id="L311">            relation.setRelationType(relationType);</span>
-<span class="nc" id="L312">            relation.setDescription(truncate(description, 2000));</span>
-<span class="nc" id="L313">            relation.setProvenance(&quot;excel&quot;);</span>
-<span class="nc" id="L314">            relations.add(relation);</span>
-<span class="nc" id="L315">        }</span>
-<span class="nc" id="L316">        relationRepository.saveAll(relations);</span>
-<span class="nc" id="L317">        log.info(&quot;Relations sheet loaded: {} relations.&quot;, relations.size());</span>
-<span class="nc" id="L318">    }</span>
+<span class="nc" id="L185">            TaxonomyRelation relation = new TaxonomyRelation();</span>
+<span class="nc" id="L186">            relation.setSourceNode(source);</span>
+<span class="nc" id="L187">            relation.setTargetNode(target);</span>
+<span class="nc" id="L188">            relation.setRelationType(relationType);</span>
+<span class="nc" id="L189">            relation.setDescription(truncate(description, 2000));</span>
+<span class="nc" id="L190">            relation.setProvenance(&quot;excel&quot;);</span>
+<span class="nc" id="L191">            relations.add(relation);</span>
+<span class="nc" id="L192">        }</span>
+<span class="nc" id="L193">        relationRepository.saveAll(relations);</span>
+<span class="nc" id="L194">        log.info(&quot;Relations sheet loaded: {} relations.&quot;, relations.size());</span>
+<span class="nc" id="L195">    }</span>
 
     /** Load relations from the CSV fallback file when no Relations sheet is present in the workbook. */
-    private void loadRelationsFromCsv(Map&lt;String, Long&gt; codeToId) {
-<span class="fc" id="L322">        ClassPathResource csvResource = new ClassPathResource(&quot;data/relations.csv&quot;);</span>
-<span class="pc bpc" id="L323" title="1 of 2 branches missed.">        if (!csvResource.exists()) {</span>
-<span class="nc" id="L324">            log.warn(&quot;CSV fallback 'data/relations.csv' not found — no relations loaded.&quot;);</span>
-<span class="nc" id="L325">            return;</span>
+    private void loadRelationsFromCsv(Map&lt;String, TaxonomyNode&gt; nodeMap) {
+<span class="fc" id="L199">        ClassPathResource csvResource = new ClassPathResource(&quot;data/relations.csv&quot;);</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        if (!csvResource.exists()) {</span>
+<span class="nc" id="L201">            log.warn(&quot;CSV fallback 'data/relations.csv' not found — no relations loaded.&quot;);</span>
+<span class="nc" id="L202">            return;</span>
         }
-<span class="fc" id="L327">        List&lt;TaxonomyRelation&gt; relations = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L328">        try (BufferedReader reader = new BufferedReader(</span>
-<span class="fc" id="L329">                new InputStreamReader(csvResource.getInputStream(), StandardCharsets.UTF_8))) {</span>
-<span class="fc" id="L330">            reader.readLine(); // skip header row</span>
+<span class="fc" id="L204">        List&lt;TaxonomyRelation&gt; relations = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L205">        try (BufferedReader reader = new BufferedReader(</span>
+<span class="fc" id="L206">                new InputStreamReader(csvResource.getInputStream(), StandardCharsets.UTF_8))) {</span>
+<span class="fc" id="L207">            reader.readLine(); // skip header row</span>
             String line;
-<span class="fc bfc" id="L332" title="All 2 branches covered.">            while ((line = reader.readLine()) != null) {</span>
-<span class="pc bpc" id="L333" title="1 of 2 branches missed.">                if (line.isBlank()) continue;</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            while ((line = reader.readLine()) != null) {</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">                if (line.isBlank()) continue;</span>
                 // Split on comma with limit 4; descriptions in the CSV must not contain commas
-<span class="fc" id="L335">                String[] parts = line.split(&quot;,&quot;, 4);</span>
-<span class="pc bpc" id="L336" title="1 of 2 branches missed.">                if (parts.length &lt; 3) continue;</span>
-<span class="fc" id="L337">                String sourceCode  = parts[0].trim();</span>
-<span class="fc" id="L338">                String targetCode  = parts[1].trim();</span>
-<span class="fc" id="L339">                String typeStr     = parts[2].trim();</span>
-<span class="pc bpc" id="L340" title="1 of 2 branches missed.">                String description = parts.length &gt;= 4 ? parts[3].trim() : null;</span>
+<span class="fc" id="L212">                String[] parts = line.split(&quot;,&quot;, 4);</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">                if (parts.length &lt; 3) continue;</span>
+<span class="fc" id="L214">                String sourceCode  = parts[0].trim();</span>
+<span class="fc" id="L215">                String targetCode  = parts[1].trim();</span>
+<span class="fc" id="L216">                String typeStr     = parts[2].trim();</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                String description = parts.length &gt;= 4 ? parts[3].trim() : null;</span>
 
-<span class="fc" id="L342">                Long sourceId = codeToId.get(sourceCode);</span>
-<span class="fc" id="L343">                Long targetId = codeToId.get(targetCode);</span>
-<span class="pc bpc" id="L344" title="1 of 2 branches missed.">                if (sourceId == null) {</span>
-<span class="nc" id="L345">                    log.warn(&quot;CSV relations: source node '{}' not found — skipping row.&quot;, sourceCode);</span>
-<span class="nc" id="L346">                    continue;</span>
+<span class="fc" id="L219">                TaxonomyNode source = nodeMap.get(sourceCode);</span>
+<span class="fc" id="L220">                TaxonomyNode target = nodeMap.get(targetCode);</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">                if (source == null) {</span>
+<span class="nc" id="L222">                    log.warn(&quot;CSV relations: source node '{}' not found — skipping row.&quot;, sourceCode);</span>
+<span class="nc" id="L223">                    continue;</span>
                 }
-<span class="pc bpc" id="L348" title="1 of 2 branches missed.">                if (targetId == null) {</span>
-<span class="nc" id="L349">                    log.warn(&quot;CSV relations: target node '{}' not found — skipping row.&quot;, targetCode);</span>
-<span class="nc" id="L350">                    continue;</span>
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">                if (target == null) {</span>
+<span class="nc" id="L226">                    log.warn(&quot;CSV relations: target node '{}' not found — skipping row.&quot;, targetCode);</span>
+<span class="nc" id="L227">                    continue;</span>
                 }
 
                 RelationType relationType;
                 try {
-<span class="fc" id="L355">                    relationType = RelationType.valueOf(typeStr.toUpperCase());</span>
-<span class="nc" id="L356">                } catch (IllegalArgumentException e) {</span>
-<span class="nc" id="L357">                    log.warn(&quot;CSV relations: unknown relation type '{}' — skipping row.&quot;, typeStr);</span>
-<span class="nc" id="L358">                    continue;</span>
-<span class="fc" id="L359">                }</span>
+<span class="fc" id="L232">                    relationType = RelationType.valueOf(typeStr.toUpperCase());</span>
+<span class="nc" id="L233">                } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L234">                    log.warn(&quot;CSV relations: unknown relation type '{}' — skipping row.&quot;, typeStr);</span>
+<span class="nc" id="L235">                    continue;</span>
+<span class="fc" id="L236">                }</span>
 
-<span class="fc" id="L361">                TaxonomyRelation relation = new TaxonomyRelation();</span>
-<span class="fc" id="L362">                relation.setSourceNode(entityManager.getReference(TaxonomyNode.class, sourceId));</span>
-<span class="fc" id="L363">                relation.setTargetNode(entityManager.getReference(TaxonomyNode.class, targetId));</span>
-<span class="fc" id="L364">                relation.setRelationType(relationType);</span>
-<span class="fc" id="L365">                relation.setDescription(truncate(description, 2000));</span>
-<span class="fc" id="L366">                relation.setProvenance(&quot;csv-default&quot;);</span>
-<span class="fc" id="L367">                relations.add(relation);</span>
-<span class="fc" id="L368">            }</span>
-<span class="nc" id="L369">        } catch (Exception e) {</span>
-<span class="nc" id="L370">            log.error(&quot;Failed to load relations from CSV fallback&quot;, e);</span>
-<span class="nc" id="L371">            return;</span>
-<span class="fc" id="L372">        }</span>
-<span class="fc" id="L373">        relationRepository.saveAll(relations);</span>
-<span class="fc" id="L374">        log.info(&quot;CSV relations loaded: {} relations.&quot;, relations.size());</span>
-<span class="fc" id="L375">    }</span>
+<span class="fc" id="L238">                TaxonomyRelation relation = new TaxonomyRelation();</span>
+<span class="fc" id="L239">                relation.setSourceNode(source);</span>
+<span class="fc" id="L240">                relation.setTargetNode(target);</span>
+<span class="fc" id="L241">                relation.setRelationType(relationType);</span>
+<span class="fc" id="L242">                relation.setDescription(truncate(description, 2000));</span>
+<span class="fc" id="L243">                relation.setProvenance(&quot;csv-default&quot;);</span>
+<span class="fc" id="L244">                relations.add(relation);</span>
+<span class="fc" id="L245">            }</span>
+<span class="nc" id="L246">        } catch (Exception e) {</span>
+<span class="nc" id="L247">            log.error(&quot;Failed to load relations from CSV fallback&quot;, e);</span>
+<span class="nc" id="L248">            return;</span>
+<span class="fc" id="L249">        }</span>
+<span class="fc" id="L250">        relationRepository.saveAll(relations);</span>
+<span class="fc" id="L251">        log.info(&quot;CSV relations loaded: {} relations.&quot;, relations.size());</span>
+<span class="fc" id="L252">    }</span>
 
     /** Read one sheet and populate nodeMap and uuidToCode. */
     private void readSheet(Sheet sheet, String sheetPrefix, Map&lt;String, TaxonomyNode&gt; nodeMap,
@@ -380,146 +257,146 @@ public class TaxonomyService {
         // Expected columns: Page(0), UUID(1), Title(2), Description(3),
         //                   Parent(4), Dataset(5), ExternalID(6), Source(7),
         //                   Reference(8), Order(9), State(10), Level(11)
-<span class="fc" id="L383">        boolean first = true;</span>
-<span class="fc bfc" id="L384" title="All 2 branches covered.">        for (Row row : sheet) {</span>
-<span class="fc bfc" id="L385" title="All 2 branches covered.">            if (first) { first = false; continue; } // skip header</span>
-<span class="fc" id="L386">            String code        = cellString(row, 0);</span>
-<span class="fc" id="L387">            String uuid        = cellString(row, 1);</span>
-<span class="fc" id="L388">            String name        = cellString(row, 2);</span>
-<span class="fc" id="L389">            String description = cellString(row, 3);</span>
-<span class="fc" id="L390">            String parentCode  = cellString(row, 4);</span>
-<span class="fc" id="L391">            String dataset     = cellString(row, 5);</span>
-<span class="fc" id="L392">            String externalId  = cellString(row, 6);</span>
-<span class="fc" id="L393">            String source      = cellString(row, 7);</span>
-<span class="fc" id="L394">            String reference   = cellString(row, 8);</span>
-<span class="fc" id="L395">            String orderStr    = cellString(row, 9);</span>
-<span class="fc" id="L396">            String state       = cellString(row, 10);</span>
-<span class="fc" id="L397">            String levelStr    = cellString(row, 11);</span>
+<span class="fc" id="L260">        boolean first = true;</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        for (Row row : sheet) {</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">            if (first) { first = false; continue; } // skip header</span>
+<span class="fc" id="L263">            String code        = cellString(row, 0);</span>
+<span class="fc" id="L264">            String uuid        = cellString(row, 1);</span>
+<span class="fc" id="L265">            String name        = cellString(row, 2);</span>
+<span class="fc" id="L266">            String description = cellString(row, 3);</span>
+<span class="fc" id="L267">            String parentCode  = cellString(row, 4);</span>
+<span class="fc" id="L268">            String dataset     = cellString(row, 5);</span>
+<span class="fc" id="L269">            String externalId  = cellString(row, 6);</span>
+<span class="fc" id="L270">            String source      = cellString(row, 7);</span>
+<span class="fc" id="L271">            String reference   = cellString(row, 8);</span>
+<span class="fc" id="L272">            String orderStr    = cellString(row, 9);</span>
+<span class="fc" id="L273">            String state       = cellString(row, 10);</span>
+<span class="fc" id="L274">            String levelStr    = cellString(row, 11);</span>
 
-<span class="pc bpc" id="L399" title="2 of 4 branches missed.">            if (code == null || name == null) continue;</span>
+<span class="pc bpc" id="L276" title="2 of 4 branches missed.">            if (code == null || name == null) continue;</span>
 
             // Build UUID → code mapping for parent resolution fallback
-<span class="pc bpc" id="L402" title="1 of 2 branches missed.">            if (uuid != null) {</span>
-<span class="fc" id="L403">                uuidToCode.put(uuid, code);</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">            if (uuid != null) {</span>
+<span class="fc" id="L280">                uuidToCode.put(uuid, code);</span>
             }
 
-<span class="fc" id="L406">            int level = 1;</span>
-<span class="pc bpc" id="L407" title="1 of 2 branches missed.">            if (levelStr != null) {</span>
-<span class="pc" id="L408">                try { level = Integer.parseInt(levelStr.trim()); } catch (NumberFormatException ignored) { }</span>
+<span class="fc" id="L283">            int level = 1;</span>
+<span class="pc bpc" id="L284" title="1 of 2 branches missed.">            if (levelStr != null) {</span>
+<span class="pc" id="L285">                try { level = Integer.parseInt(levelStr.trim()); } catch (NumberFormatException ignored) { }</span>
             }
 
-<span class="fc" id="L411">            Integer sortOrder = null;</span>
-<span class="pc bpc" id="L412" title="1 of 2 branches missed.">            if (orderStr != null) {</span>
-<span class="fc" id="L413">                try { sortOrder = Integer.parseInt(orderStr.trim()); } catch (NumberFormatException ignored) { }</span>
+<span class="fc" id="L288">            Integer sortOrder = null;</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">            if (orderStr != null) {</span>
+<span class="fc" id="L290">                try { sortOrder = Integer.parseInt(orderStr.trim()); } catch (NumberFormatException ignored) { }</span>
             }
 
-<span class="fc" id="L416">            TaxonomyNode node = new TaxonomyNode();</span>
-<span class="fc" id="L417">            node.setCode(code);</span>
-<span class="fc" id="L418">            node.setUuid(uuid);</span>
-<span class="fc" id="L419">            node.setNameEn(name);</span>
-<span class="fc" id="L420">            node.setDescriptionEn(truncate(description, 5000));</span>
-<span class="fc" id="L421">            node.setParentCode(parentCode);</span>
-<span class="fc" id="L422">            node.setTaxonomyRoot(sheetPrefix);</span>
-<span class="fc" id="L423">            node.setLevel(level);</span>
-<span class="fc" id="L424">            node.setDataset(dataset);</span>
-<span class="fc" id="L425">            node.setExternalId(externalId);</span>
-<span class="fc" id="L426">            node.setSource(source);</span>
-<span class="fc" id="L427">            node.setReference(truncate(reference, 5000));</span>
-<span class="fc" id="L428">            node.setSortOrder(sortOrder);</span>
-<span class="fc" id="L429">            node.setState(state);</span>
-<span class="fc" id="L430">            nodeMap.put(code, node);</span>
-<span class="fc" id="L431">        }</span>
-<span class="fc" id="L432">    }</span>
+<span class="fc" id="L293">            TaxonomyNode node = new TaxonomyNode();</span>
+<span class="fc" id="L294">            node.setCode(code);</span>
+<span class="fc" id="L295">            node.setUuid(uuid);</span>
+<span class="fc" id="L296">            node.setNameEn(name);</span>
+<span class="fc" id="L297">            node.setDescriptionEn(truncate(description, 5000));</span>
+<span class="fc" id="L298">            node.setParentCode(parentCode);</span>
+<span class="fc" id="L299">            node.setTaxonomyRoot(sheetPrefix);</span>
+<span class="fc" id="L300">            node.setLevel(level);</span>
+<span class="fc" id="L301">            node.setDataset(dataset);</span>
+<span class="fc" id="L302">            node.setExternalId(externalId);</span>
+<span class="fc" id="L303">            node.setSource(source);</span>
+<span class="fc" id="L304">            node.setReference(truncate(reference, 5000));</span>
+<span class="fc" id="L305">            node.setSortOrder(sortOrder);</span>
+<span class="fc" id="L306">            node.setState(state);</span>
+<span class="fc" id="L307">            nodeMap.put(code, node);</span>
+<span class="fc" id="L308">        }</span>
+<span class="fc" id="L309">    }</span>
 
     private String cellString(Row row, int col) {
-<span class="fc" id="L435">        Cell cell = row.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);</span>
-<span class="fc bfc" id="L436" title="All 2 branches covered.">        if (cell == null) return null;</span>
-<span class="pc bpc" id="L437" title="4 of 5 branches missed.">        String val = switch (cell.getCellType()) {</span>
-<span class="fc" id="L438">            case STRING  -&gt; cell.getStringCellValue();</span>
-<span class="nc" id="L439">            case NUMERIC -&gt; String.valueOf((long) cell.getNumericCellValue());</span>
-<span class="nc" id="L440">            case BOOLEAN -&gt; String.valueOf(cell.getBooleanCellValue());</span>
-<span class="nc" id="L441">            case FORMULA -&gt; cell.getCellFormula();</span>
-<span class="pc" id="L442">            default      -&gt; null;</span>
+<span class="fc" id="L312">        Cell cell = row.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">        if (cell == null) return null;</span>
+<span class="pc bpc" id="L314" title="4 of 5 branches missed.">        String val = switch (cell.getCellType()) {</span>
+<span class="fc" id="L315">            case STRING  -&gt; cell.getStringCellValue();</span>
+<span class="nc" id="L316">            case NUMERIC -&gt; String.valueOf((long) cell.getNumericCellValue());</span>
+<span class="nc" id="L317">            case BOOLEAN -&gt; String.valueOf(cell.getBooleanCellValue());</span>
+<span class="nc" id="L318">            case FORMULA -&gt; cell.getCellFormula();</span>
+<span class="pc" id="L319">            default      -&gt; null;</span>
         };
-<span class="pc bpc" id="L444" title="2 of 4 branches missed.">        return (val == null || val.isBlank()) ? null : val.trim();</span>
+<span class="pc bpc" id="L321" title="2 of 4 branches missed.">        return (val == null || val.isBlank()) ? null : val.trim();</span>
     }
 
     private String truncate(String s, int maxLen) {
-<span class="fc bfc" id="L448" title="All 2 branches covered.">        if (s == null) return null;</span>
-<span class="pc bpc" id="L449" title="1 of 2 branches missed.">        return s.length() &lt;= maxLen ? s : s.substring(0, maxLen);</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">        if (s == null) return null;</span>
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">        return s.length() &lt;= maxLen ? s : s.substring(0, maxLen);</span>
     }
 
     // ---- read-side methods ----
 
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNodeDto&gt; getFullTree() {
-<span class="fc" id="L456">        List&lt;TaxonomyNode&gt; roots = repository.findByParentIsNullOrderByCodeAsc();</span>
-<span class="fc" id="L457">        List&lt;TaxonomyNodeDto&gt; dtos = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L458" title="All 2 branches covered.">        for (TaxonomyNode root : roots) {</span>
-<span class="fc" id="L459">            dtos.add(toDto(root));</span>
-<span class="fc" id="L460">        }</span>
-<span class="fc" id="L461">        return dtos;</span>
+<span class="fc" id="L333">        List&lt;TaxonomyNode&gt; roots = repository.findByParentIsNullOrderByCodeAsc();</span>
+<span class="fc" id="L334">        List&lt;TaxonomyNodeDto&gt; dtos = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">        for (TaxonomyNode root : roots) {</span>
+<span class="fc" id="L336">            dtos.add(toDto(root));</span>
+<span class="fc" id="L337">        }</span>
+<span class="fc" id="L338">        return dtos;</span>
     }
 
     public TaxonomyNodeDto toDto(TaxonomyNode node) {
-<span class="fc" id="L465">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
-<span class="fc" id="L466">        dto.setId(node.getId());</span>
-<span class="fc" id="L467">        dto.setCode(node.getCode());</span>
-<span class="fc" id="L468">        dto.setUuid(node.getUuid());</span>
-<span class="fc" id="L469">        dto.setNameEn(node.getNameEn());</span>
-<span class="fc" id="L470">        dto.setNameDe(node.getNameDe());</span>
-<span class="fc" id="L471">        dto.setDescriptionEn(node.getDescriptionEn());</span>
-<span class="fc" id="L472">        dto.setDescriptionDe(node.getDescriptionDe());</span>
-<span class="fc" id="L473">        dto.setParentCode(node.getParentCode());</span>
-<span class="fc" id="L474">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
-<span class="fc" id="L475">        dto.setLevel(node.getLevel());</span>
-<span class="fc" id="L476">        dto.setDataset(node.getDataset());</span>
-<span class="fc" id="L477">        dto.setExternalId(node.getExternalId());</span>
-<span class="fc" id="L478">        dto.setSource(node.getSource());</span>
-<span class="fc" id="L479">        dto.setReference(node.getReference());</span>
-<span class="fc" id="L480">        dto.setSortOrder(node.getSortOrder());</span>
-<span class="fc" id="L481">        dto.setState(node.getState());</span>
-<span class="fc" id="L482">        List&lt;TaxonomyNodeDto&gt; childDtos = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L483" title="All 2 branches covered.">        for (TaxonomyNode child : node.getChildren()) {</span>
-<span class="fc" id="L484">            childDtos.add(toDto(child));</span>
-<span class="fc" id="L485">        }</span>
-<span class="fc" id="L486">        dto.setChildren(childDtos);</span>
-<span class="fc" id="L487">        List&lt;TaxonomyRelationDto&gt; outgoing = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L488" title="All 2 branches covered.">        for (TaxonomyRelation rel : node.getOutgoingRelations()) {</span>
-<span class="fc" id="L489">            outgoing.add(relationToDto(rel));</span>
-<span class="fc" id="L490">        }</span>
-<span class="fc" id="L491">        dto.setOutgoingRelations(outgoing);</span>
-<span class="fc" id="L492">        List&lt;TaxonomyRelationDto&gt; incoming = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L493" title="All 2 branches covered.">        for (TaxonomyRelation rel : node.getIncomingRelations()) {</span>
-<span class="fc" id="L494">            incoming.add(relationToDto(rel));</span>
-<span class="fc" id="L495">        }</span>
-<span class="fc" id="L496">        dto.setIncomingRelations(incoming);</span>
-<span class="fc" id="L497">        return dto;</span>
+<span class="fc" id="L342">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
+<span class="fc" id="L343">        dto.setId(node.getId());</span>
+<span class="fc" id="L344">        dto.setCode(node.getCode());</span>
+<span class="fc" id="L345">        dto.setUuid(node.getUuid());</span>
+<span class="fc" id="L346">        dto.setNameEn(node.getNameEn());</span>
+<span class="fc" id="L347">        dto.setNameDe(node.getNameDe());</span>
+<span class="fc" id="L348">        dto.setDescriptionEn(node.getDescriptionEn());</span>
+<span class="fc" id="L349">        dto.setDescriptionDe(node.getDescriptionDe());</span>
+<span class="fc" id="L350">        dto.setParentCode(node.getParentCode());</span>
+<span class="fc" id="L351">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
+<span class="fc" id="L352">        dto.setLevel(node.getLevel());</span>
+<span class="fc" id="L353">        dto.setDataset(node.getDataset());</span>
+<span class="fc" id="L354">        dto.setExternalId(node.getExternalId());</span>
+<span class="fc" id="L355">        dto.setSource(node.getSource());</span>
+<span class="fc" id="L356">        dto.setReference(node.getReference());</span>
+<span class="fc" id="L357">        dto.setSortOrder(node.getSortOrder());</span>
+<span class="fc" id="L358">        dto.setState(node.getState());</span>
+<span class="fc" id="L359">        List&lt;TaxonomyNodeDto&gt; childDtos = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L360" title="All 2 branches covered.">        for (TaxonomyNode child : node.getChildren()) {</span>
+<span class="fc" id="L361">            childDtos.add(toDto(child));</span>
+<span class="fc" id="L362">        }</span>
+<span class="fc" id="L363">        dto.setChildren(childDtos);</span>
+<span class="fc" id="L364">        List&lt;TaxonomyRelationDto&gt; outgoing = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L365" title="All 2 branches covered.">        for (TaxonomyRelation rel : node.getOutgoingRelations()) {</span>
+<span class="fc" id="L366">            outgoing.add(relationToDto(rel));</span>
+<span class="fc" id="L367">        }</span>
+<span class="fc" id="L368">        dto.setOutgoingRelations(outgoing);</span>
+<span class="fc" id="L369">        List&lt;TaxonomyRelationDto&gt; incoming = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">        for (TaxonomyRelation rel : node.getIncomingRelations()) {</span>
+<span class="fc" id="L371">            incoming.add(relationToDto(rel));</span>
+<span class="fc" id="L372">        }</span>
+<span class="fc" id="L373">        dto.setIncomingRelations(incoming);</span>
+<span class="fc" id="L374">        return dto;</span>
     }
 
     private TaxonomyRelationDto relationToDto(TaxonomyRelation relation) {
-<span class="fc" id="L501">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
-<span class="fc" id="L502">        dto.setId(relation.getId());</span>
-<span class="fc" id="L503">        dto.setSourceCode(relation.getSourceNode().getCode());</span>
-<span class="fc" id="L504">        dto.setSourceName(relation.getSourceNode().getNameEn());</span>
-<span class="fc" id="L505">        dto.setTargetCode(relation.getTargetNode().getCode());</span>
-<span class="fc" id="L506">        dto.setTargetName(relation.getTargetNode().getNameEn());</span>
-<span class="fc" id="L507">        dto.setRelationType(relation.getRelationType().name());</span>
-<span class="fc" id="L508">        dto.setDescription(relation.getDescription());</span>
-<span class="fc" id="L509">        dto.setProvenance(relation.getProvenance());</span>
-<span class="fc" id="L510">        dto.setWeight(relation.getWeight());</span>
-<span class="fc" id="L511">        dto.setBidirectional(relation.isBidirectional());</span>
-<span class="fc" id="L512">        return dto;</span>
+<span class="fc" id="L378">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
+<span class="fc" id="L379">        dto.setId(relation.getId());</span>
+<span class="fc" id="L380">        dto.setSourceCode(relation.getSourceNode().getCode());</span>
+<span class="fc" id="L381">        dto.setSourceName(relation.getSourceNode().getNameEn());</span>
+<span class="fc" id="L382">        dto.setTargetCode(relation.getTargetNode().getCode());</span>
+<span class="fc" id="L383">        dto.setTargetName(relation.getTargetNode().getNameEn());</span>
+<span class="fc" id="L384">        dto.setRelationType(relation.getRelationType().name());</span>
+<span class="fc" id="L385">        dto.setDescription(relation.getDescription());</span>
+<span class="fc" id="L386">        dto.setProvenance(relation.getProvenance());</span>
+<span class="fc" id="L387">        dto.setWeight(relation.getWeight());</span>
+<span class="fc" id="L388">        dto.setBidirectional(relation.isBidirectional());</span>
+<span class="fc" id="L389">        return dto;</span>
     }
 
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNode&gt; getRootNodes() {
-<span class="fc" id="L517">        return repository.findByParentIsNullOrderByCodeAsc();</span>
+<span class="fc" id="L394">        return repository.findByParentIsNullOrderByCodeAsc();</span>
     }
 
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNode&gt; getChildrenOf(String parentCode) {
-<span class="fc" id="L522">        return repository.findByParentCodeOrderByNameEnAsc(parentCode);</span>
+<span class="fc" id="L399">        return repository.findByParentCodeOrderByNameEnAsc(parentCode);</span>
     }
 
     /**
@@ -527,7 +404,7 @@ public class TaxonomyService {
      */
     @Transactional(readOnly = true)
     public TaxonomyNode getNodeByCode(String code) {
-<span class="fc" id="L530">        return repository.findByCode(code).orElse(null);</span>
+<span class="fc" id="L407">        return repository.findByCode(code).orElse(null);</span>
     }
 
     /**
@@ -536,29 +413,29 @@ public class TaxonomyService {
      */
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNode&gt; getPathToRoot(String code) {
-<span class="nc" id="L539">        TaxonomyNode node = repository.findByCode(code).orElse(null);</span>
-<span class="nc bnc" id="L540" title="All 2 branches missed.">        if (node == null) return List.of();</span>
-<span class="nc" id="L541">        LinkedList&lt;TaxonomyNode&gt; path = new LinkedList&lt;&gt;();</span>
-<span class="nc" id="L542">        TaxonomyNode current = node;</span>
-<span class="nc bnc" id="L543" title="All 2 branches missed.">        while (current != null) {</span>
-<span class="nc" id="L544">            path.addFirst(current);</span>
-<span class="nc" id="L545">            String parentCode = current.getParentCode();</span>
-<span class="nc bnc" id="L546" title="All 4 branches missed.">            if (parentCode == null || parentCode.isBlank()) break;</span>
-<span class="nc" id="L547">            current = repository.findByCode(parentCode).orElse(null);</span>
-<span class="nc" id="L548">        }</span>
-<span class="nc" id="L549">        return List.copyOf(path);</span>
+<span class="nc" id="L416">        TaxonomyNode node = repository.findByCode(code).orElse(null);</span>
+<span class="nc bnc" id="L417" title="All 2 branches missed.">        if (node == null) return List.of();</span>
+<span class="nc" id="L418">        LinkedList&lt;TaxonomyNode&gt; path = new LinkedList&lt;&gt;();</span>
+<span class="nc" id="L419">        TaxonomyNode current = node;</span>
+<span class="nc bnc" id="L420" title="All 2 branches missed.">        while (current != null) {</span>
+<span class="nc" id="L421">            path.addFirst(current);</span>
+<span class="nc" id="L422">            String parentCode = current.getParentCode();</span>
+<span class="nc bnc" id="L423" title="All 4 branches missed.">            if (parentCode == null || parentCode.isBlank()) break;</span>
+<span class="nc" id="L424">            current = repository.findByCode(parentCode).orElse(null);</span>
+<span class="nc" id="L425">        }</span>
+<span class="nc" id="L426">        return List.copyOf(path);</span>
     }
 
     public TaxonomyNodeDto applyScores(TaxonomyNodeDto dto, Map&lt;String, Integer&gt; scores) {
-<span class="fc bfc" id="L553" title="All 2 branches covered.">        if (scores.containsKey(dto.getCode())) {</span>
-<span class="fc" id="L554">            dto.setMatchPercentage(scores.get(dto.getCode()));</span>
+<span class="fc bfc" id="L430" title="All 2 branches covered.">        if (scores.containsKey(dto.getCode())) {</span>
+<span class="fc" id="L431">            dto.setMatchPercentage(scores.get(dto.getCode()));</span>
         }
-<span class="fc" id="L556">        List&lt;TaxonomyNodeDto&gt; updatedChildren = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L557" title="All 2 branches covered.">        for (TaxonomyNodeDto child : dto.getChildren()) {</span>
-<span class="fc" id="L558">            updatedChildren.add(applyScores(child, scores));</span>
-<span class="fc" id="L559">        }</span>
-<span class="fc" id="L560">        dto.setChildren(updatedChildren);</span>
-<span class="fc" id="L561">        return dto;</span>
+<span class="fc" id="L433">        List&lt;TaxonomyNodeDto&gt; updatedChildren = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">        for (TaxonomyNodeDto child : dto.getChildren()) {</span>
+<span class="fc" id="L435">            updatedChildren.add(applyScores(child, scores));</span>
+<span class="fc" id="L436">        }</span>
+<span class="fc" id="L437">        dto.setChildren(updatedChildren);</span>
+<span class="fc" id="L438">        return dto;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
