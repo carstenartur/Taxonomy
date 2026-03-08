@@ -38,7 +38,7 @@ import java.util.List;
  * Run with: {@code mvn verify -DgenerateScreenshots -Dtest=ScreenshotGeneratorIT}
  * <p>
  * Screenshots 1–14 do not require an LLM provider.
- * Screenshots 15–26 use mock LLM mode ({@code LLM_MOCK=true}) to produce
+ * Screenshots 15–28 use mock LLM mode ({@code LLM_MOCK=true}) to produce
  * realistic scores without calling any real LLM API.
  */
 @Testcontainers
@@ -433,7 +433,7 @@ class ScreenshotGeneratorIT {
         saveScreenshot("14-navbar-admin-lock.png");
     }
 
-    // ── Screenshots 15–26: LLM-dependent (use mock LLM — no real API key needed) ──
+    // ── Screenshots 15–28: LLM-dependent (use mock LLM — no real API key needed) ──
 
     @Test
     @Order(15)
@@ -689,5 +689,62 @@ class ScreenshotGeneratorIT {
         openDetails(promptEditor);
         wait(5).until(ExpectedConditions.visibilityOf(promptEditor));
         saveElementScreenshot(promptEditor, "26-prompt-template-editor.png");
+    }
+
+    // ── Screenshots 27–28: Requirement Coverage Dashboard ─────────────────────
+
+    @Test
+    @Order(27)
+    void captureCoverageDashboardEmpty() throws IOException {
+        WebElement panel = driver.findElement(By.id("coverageDashboard"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
+        openDetails(panel);
+        // Wait for the content area to finish its initial load (spinner disappears)
+        wait(10).until(d -> {
+            String text = d.findElement(By.id("coverageDashboardContent")).getText();
+            return text != null && !text.contains("Loading");
+        });
+        saveElementScreenshot(panel, "27-coverage-dashboard-empty.png");
+    }
+
+    @Test
+    @Order(28)
+    void captureCoverageDashboardWithData() throws IOException {
+        // Ensure scores are available — run a fresh analysis if window._getCurrentScores() is empty
+        String hasScores = (String) ((JavascriptExecutor) driver).executeScript(
+                "var s = typeof window._getCurrentScores === 'function' ? window._getCurrentScores() : null;" +
+                "return (s && Object.keys(s).length > 0) ? 'yes' : 'no';");
+        if (!"yes".equals(hasScores)) {
+            forceNonInteractiveMode();
+            runAnalysis();
+        }
+
+        // POST coverage record directly via fetch (avoids window.prompt dialog).
+        // A sentinel variable signals completion.
+        js("window._coverageRecorded = false;" +
+           "fetch('/api/coverage/record', {" +
+           "  method: 'POST'," +
+           "  headers: {'Content-Type': 'application/json'}," +
+           "  body: JSON.stringify({" +
+           "    requirementId: 'REQ-001'," +
+           "    requirementText: arguments[0]," +
+           "    scores: (typeof window._getCurrentScores === 'function' ? window._getCurrentScores() : {})," +
+           "    minScore: 50" +
+           "  })" +
+           "}).then(function() { window._coverageRecorded = true; });",
+           REQUIREMENT_TEXT);
+        wait(10).until(d ->
+                (Boolean) ((JavascriptExecutor) d).executeScript("return window._coverageRecorded === true;"));
+
+        // Reload the dashboard so it picks up the newly recorded data
+        js("if (window.TaxonomyCoverage) window.TaxonomyCoverage.loadCoverageDashboard();");
+        wait(10).until(d -> {
+            String text = d.findElement(By.id("coverageDashboardContent")).getText();
+            return text != null && !text.contains("Loading") && !text.isEmpty();
+        });
+
+        WebElement panel = driver.findElement(By.id("coverageDashboard"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
+        saveElementScreenshot(panel, "28-coverage-dashboard-data.png");
     }
 }

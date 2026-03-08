@@ -14,6 +14,7 @@
 10. [Exporting Results](#10-exporting-results)
 11. [Search](#11-search)
     - [Quality Dashboard](#11a-quality-dashboard)
+    - [Requirement Coverage](#11c-requirement-coverage)
     - [Relations Browser](#11b-relations-browser)
 12. [Administration](#12-administration)
 13. [Relation Types Reference](#13-relation-types-reference)
@@ -46,6 +47,7 @@ The **NATO NC3T Taxonomy Browser** is a web application that helps Architects, A
 | Run requirement impact analysis | Graph Explorer → 🎯 Req. Impact button |
 | Review and accept or reject AI-generated relation proposals | Right panel → Relation Proposals panel |
 | View quality metrics for relation proposals | Right panel → 📊 Quality Dashboard panel |
+| Record and analyse requirement coverage | Right panel → 📋 Requirement Coverage panel |
 | Browse, create, or delete taxonomy relations | Right panel → 🔗 Relations Browser panel |
 | Export a diagram or scoresheet | Left panel → export buttons (appear after analysis) |
 | Save analysis as JSON | Left panel → export buttons → 📥 JSON |
@@ -574,6 +576,59 @@ A breakdown table shows how many proposals of each relation type were proposed, 
 The table lists the most-confident proposals that were rejected (highest confidence false positives). Hover over a row to see the rejection rationale.
 
 Click **🔄 Refresh** to reload the dashboard at any time.
+
+---
+
+## 11c. Requirement Coverage
+
+The **📋 Requirement Coverage** panel (right column, collapsible) tracks which taxonomy
+nodes are covered by your recorded requirements, and highlights nodes that have not yet
+been covered by any requirement (gap candidates).
+
+### Opening the Panel
+
+Click the **📋 Requirement Coverage** summary in the right column. Coverage statistics
+are loaded automatically from the database.
+
+<img src="images/27-coverage-dashboard-empty.png" alt="Coverage Dashboard — empty state" width="600">
+
+### Summary Metrics
+
+| Metric | Description |
+|---|---|
+| **Total nodes** | Total number of taxonomy nodes |
+| **Covered** | Nodes covered by at least one requirement |
+| **Uncovered** | Nodes with no requirement coverage (gap candidates) |
+| **Coverage %** | Percentage of nodes that have coverage |
+| **Requirements** | Distinct requirement IDs that have been recorded |
+| **Avg req/node** | Average number of requirements per covered node |
+
+### Top Covered Nodes
+
+A table showing the 10 nodes covered by the most requirements. Click a node code to
+view the list of requirements that cover it, together with scores and analysis timestamps.
+
+### Gap Candidates
+
+A table showing up to 10 nodes with no requirement coverage. These are prime candidates
+for architecture gaps — no existing requirement addresses these elements.
+
+<img src="images/28-coverage-dashboard-data.png" alt="Coverage Dashboard — after recording an analysis" width="600">
+
+### Recording an Analysis
+
+1. Run a requirement analysis in the main panel (enter your business text and click **Analyse**).
+2. Open the **📋 Requirement Coverage** panel.
+3. Click **📥 Record Current Analysis**.
+4. Enter a short requirement identifier (e.g. `REQ-101`) when prompted.
+5. The analysis scores are sent to the server; nodes scoring ≥ 50 are recorded as covered
+   by that requirement.
+
+Click **🔄 Refresh** to reload coverage statistics after recording new analyses.
+
+> **Tip:** Use descriptive requirement IDs (e.g. `REQ-001-COMMS`, `SPRINT-3-SEC`) to
+> build up a requirement register over time and track architecture coverage per sprint or
+> release.
 
 ---
 

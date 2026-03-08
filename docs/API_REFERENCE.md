@@ -17,14 +17,15 @@
 9. [Relation Proposals](#9-relation-proposals)
 10. [Architecture Knowledge Base](#10-architecture-knowledge-base)
 11. [Relation Quality Dashboard](#11-relation-quality-dashboard)
-12. [Diagram Export](#12-diagram-export)
-13. [Administration](#13-administration)
-14. [Embedding Configuration](#14-embedding-configuration)
-15. [API Reference](#15-api-reference)
-16. [Error Response Schema](#16-error-response-schema)
-17. [OpenAPI / Swagger UI](#17-openapi--swagger-ui)
-18. [Best Practices](#18-best-practices)
-19. [Glossary](#19-glossary)
+12. [Requirement Coverage](#12-requirement-coverage)
+13. [Diagram Export](#13-diagram-export)
+14. [Administration](#14-administration)
+15. [Embedding Configuration](#15-embedding-configuration)
+16. [API Reference](#16-api-reference)
+17. [Error Response Schema](#17-error-response-schema)
+18. [OpenAPI / Swagger UI](#18-openapi--swagger-ui)
+19. [Best Practices](#19-best-practices)
+20. [Glossary](#20-glossary)
 
 ---
 
@@ -488,11 +489,63 @@ Returns the top `limit` rejected proposals ordered by confidence descending — 
 
 ---
 
-## 12. Diagram Export
+## 12. Requirement Coverage
+
+`RequirementCoverageService` stores requirement → node mappings produced by the analysis
+pipeline and exposes coverage statistics.  Accessed via `CoverageApiController`.
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/coverage/record` | Record coverage from an analysis result |
+| `GET` | `/api/coverage/node/{code}` | Requirements covering a specific node |
+| `GET` | `/api/coverage/requirement/{id}` | Nodes covered by a specific requirement |
+| `GET` | `/api/coverage/statistics` | Overall coverage statistics |
+| `GET` | `/api/coverage/density` | Requirement density map (nodeCode → count) |
+| `DELETE` | `/api/coverage/requirement/{id}` | Remove all coverage for a requirement |
+
+### Record Coverage (`POST /api/coverage/record`)
+
+Request body:
+
+```json
+{
+  "requirementId": "REQ-101",
+  "requirementText": "The system shall support secure communications.",
+  "scores": { "CP-1": 85, "BP-3": 72, "SP-2": 34 },
+  "minScore": 50
+}
+```
+
+Only node→score pairs with `score ≥ minScore` are persisted (default threshold: 50).
+Existing entries for the same `requirementId` are replaced.
+
+### Coverage Statistics (`GET /api/coverage/statistics`)
+
+| Field | Description |
+|---|---|
+| `totalNodes` | Total nodes in the taxonomy |
+| `coveredNodes` | Nodes with at least one requirement |
+| `uncoveredNodes` | Nodes with no requirement coverage (gap candidates) |
+| `coveragePercentage` | `coveredNodes / totalNodes × 100` |
+| `avgRequirementsPerNode` | Average requirements per covered node |
+| `totalRequirements` | Distinct requirement IDs stored |
+| `topCovered` | Top 10 nodes ordered by requirement count descending |
+| `gapCandidates` | Up to 10 uncovered nodes (gap candidates) |
+
+### Density Map (`GET /api/coverage/density`)
+
+Returns a flat `{ "nodeCode": requirementCount, … }` map suitable for heatmap
+visualisation over the taxonomy tree.
+
+---
+
+## 13. Diagram Export
 
 The system supports two export formats.  Both endpoints expect the `architectureView` JSON produced by `POST /api/analyze` (with `includeArchitectureView=true`).
 
-### 12.1 Visio Export
+### 13.1 Visio Export
 
 **Endpoint:** `POST /api/diagram/visio`
 
@@ -502,7 +555,7 @@ Generates a `.vsdx` file (Office Open XML package) containing a structured archi
 
 **Response:** Binary `.vsdx` file download.
 
-### 12.2 ArchiMate 3.x XML Export
+### 13.2 ArchiMate 3.x XML Export
 
 **Endpoint:** `POST /api/diagram/archimate`
 
@@ -510,7 +563,7 @@ Generates an ArchiMate 3.x compliant XML file suitable for import into tools suc
 
 **Response:** XML file download.
 
-### 12.3 Analysis Scores JSON Export
+### 13.3 Analysis Scores JSON Export
 
 **Endpoint:** `POST /api/scores/export`
 
@@ -542,7 +595,7 @@ Serialises the current analysis result as a `SavedAnalysis` JSON object, adding 
 
 **Semantic note:** Each root taxonomy is scored **independently** on a 0–100 scale — for example `"CO": 90` means "the Communications Services taxonomy covers 90% of this requirement". Scores across root taxonomies do **not** sum to 100. A score of `0` means the node was _evaluated and found not relevant_. An absent key means the node was _not evaluated_.
 
-### 12.4 Analysis Scores JSON Import
+### 13.4 Analysis Scores JSON Import
 
 **Endpoint:** `POST /api/scores/import`
 
@@ -570,9 +623,9 @@ Export buttons appear in the results panel only when analysis scores are present
 
 ---
 
-## 13. Administration
+## 14. Administration
 
-### 13.1 Admin Authentication
+### 14.1 Admin Authentication
 
 If `ADMIN_PASSWORD` is set, the admin panel is protected.
 
@@ -583,7 +636,7 @@ If `ADMIN_PASSWORD` is set, the admin panel is protected.
 
 Once authenticated, pass the token in the `X-Admin-Token` header for protected endpoints.
 
-### 13.2 LLM Diagnostics
+### 14.2 LLM Diagnostics
 
 ```
 GET /api/diagnostics
@@ -592,7 +645,7 @@ X-Admin-Token: <token>
 
 Returns statistics about LLM calls: total calls, error counts, average latency, provider name, model version.
 
-### 13.3 AI Status
+### 14.3 AI Status
 
 ```
 GET /api/ai-status
@@ -600,7 +653,7 @@ GET /api/ai-status
 
 Returns `{ available: true/false, provider: "GEMINI" }` (no authentication required).
 
-### 13.4 Prompt Template Editor
+### 14.4 Prompt Template Editor
 
 Prompt templates control what instructions are sent to the LLM.  Administrators can override individual templates without redeploying.
 
@@ -613,7 +666,7 @@ Prompt templates control what instructions are sent to the LLM.  Administrators 
 
 ---
 
-## 14. Embedding Configuration
+## 15. Embedding Configuration
 
 Semantic, hybrid, and graph searches require the embedding subsystem to be enabled.
 
@@ -651,7 +704,7 @@ GET /api/embedding/status
 
 ---
 
-## 15. API Reference
+## 16. API Reference
 
 Complete list of all REST endpoints.
 
@@ -702,7 +755,7 @@ Complete list of all REST endpoints.
 
 ---
 
-## 16. Error Response Schema
+## 17. Error Response Schema
 
 The API uses standard HTTP status codes and returns structured error information.
 
@@ -765,7 +818,7 @@ When the LLM provider experiences an error, the application handles it gracefull
 
 ---
 
-## 17. OpenAPI / Swagger UI
+## 18. OpenAPI / Swagger UI
 
 The application includes auto-generated interactive API documentation via
 [springdoc-openapi](https://springdoc.org/).
@@ -781,7 +834,7 @@ Proposals, Graph Queries, Quality Metrics, Export, Administration, Embedding).
 
 ---
 
-## 18. Best Practices
+## 19. Best Practices
 
 ### Requirement Text Quality
 
@@ -813,7 +866,7 @@ Proposals, Graph Queries, Quality Metrics, Export, Administration, Embedding).
 
 ---
 
-## 19. Glossary
+## 20. Glossary
 
 | Term | Definition |
 |---|---|
