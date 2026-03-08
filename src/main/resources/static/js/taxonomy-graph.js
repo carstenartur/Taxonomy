@@ -135,6 +135,10 @@
         return GRAPH_NODE_COLORS[taxonomySheet] || '#6c757d';
     }
 
+    var GRAPH_MAX_HEIGHT = 400;
+    var GRAPH_MIN_HEIGHT = 250;
+    var GRAPH_HEIGHT_PER_NODE = 25;
+
     /**
      * Render a D3 force-directed graph from graph explorer data.
      * @param {HTMLElement} container - DOM element to render into
@@ -146,7 +150,7 @@
         if (typeof d3 === 'undefined' || !nodes || nodes.length === 0) return;
 
         var width = container.clientWidth || 500;
-        var height = Math.min(400, Math.max(250, nodes.length * 25));
+        var height = Math.min(GRAPH_MAX_HEIGHT, Math.max(GRAPH_MIN_HEIGHT, nodes.length * GRAPH_HEIGHT_PER_NODE));
 
         // Deduplicate nodes
         var nodeMap = {};

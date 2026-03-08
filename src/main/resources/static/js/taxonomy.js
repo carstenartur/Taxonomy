@@ -2118,6 +2118,8 @@
 
     // ── Undo Toast ────────────────────────────────────────────────────────────
     var undoTimeout = null;
+    var UNDO_TOAST_DURATION_MS = 8000;
+    var UNDO_FADE_DURATION_MS = 300;
 
     function showUndoToast(ids, action) {
         // Remove existing toast
@@ -2146,14 +2148,14 @@
             });
         }
 
-        // Auto-dismiss after 8 seconds
+        // Auto-dismiss after configured duration
         undoTimeout = setTimeout(function () {
             if (toast.parentNode) {
                 toast.style.opacity = '0';
-                toast.style.transition = 'opacity 0.3s ease';
-                setTimeout(function () { if (toast.parentNode) toast.remove(); }, 300);
+                toast.style.transition = 'opacity ' + UNDO_FADE_DURATION_MS + 'ms ease';
+                setTimeout(function () { if (toast.parentNode) toast.remove(); }, UNDO_FADE_DURATION_MS);
             }
-        }, 8000);
+        }, UNDO_TOAST_DURATION_MS);
     }
 
     function revertProposals(ids) {
