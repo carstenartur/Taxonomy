@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -196,15 +197,19 @@ class SavedAnalysisServiceTest {
 
     // ── Independent scoring model validation ──────────────────────────────────
 
+    private static final List<String> ROOT_CODES = List.of("BP", "BR", "CI", "CO", "CP", "CR", "IP", "UA");
+
     @Test
     void secureVoiceCommsRootScoresSumExceedsOneHundred() throws IOException {
         // Root taxonomies are scored INDEPENDENTLY (0–100 each), not as a pie chart.
-        // The sum of all root scores MUST be > 100 to confirm the independent model.
+        // The sum of the 8 root scores MUST be > 100 to confirm the independent model.
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/secure-voice-comms.json");
 
-        int sum = saved.getScores().values().stream().mapToInt(Integer::intValue).sum();
-        assertThat(sum).as("Root scores must not sum to exactly 100 (would indicate wrong pie-chart model)")
+        int sum = ROOT_CODES.stream()
+                .mapToInt(r -> saved.getScores().getOrDefault(r, 0))
+                .sum();
+        assertThat(sum).as("Sum of 8 root scores must exceed 100 (independent per-taxonomy model)")
                 .isGreaterThan(100);
     }
 
@@ -213,8 +218,10 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/logistics-supply-chain.json");
 
-        int sum = saved.getScores().values().stream().mapToInt(Integer::intValue).sum();
-        assertThat(sum).as("Root scores must not sum to exactly 100 (would indicate wrong pie-chart model)")
+        int sum = ROOT_CODES.stream()
+                .mapToInt(r -> saved.getScores().getOrDefault(r, 0))
+                .sum();
+        assertThat(sum).as("Sum of 8 root scores must exceed 100 (independent per-taxonomy model)")
                 .isGreaterThan(100);
     }
 
@@ -223,8 +230,10 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/cyber-defence-monitoring.json");
 
-        int sum = saved.getScores().values().stream().mapToInt(Integer::intValue).sum();
-        assertThat(sum).as("Root scores must not sum to exactly 100 (would indicate wrong pie-chart model)")
+        int sum = ROOT_CODES.stream()
+                .mapToInt(r -> saved.getScores().getOrDefault(r, 0))
+                .sum();
+        assertThat(sum).as("Sum of 8 root scores must exceed 100 (independent per-taxonomy model)")
                 .isGreaterThan(100);
     }
 
@@ -234,9 +243,11 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/secure-voice-comms.json");
 
-        int coScore = saved.getScores().getOrDefault("CO", 0);
-        int maxScore = saved.getScores().values().stream().mapToInt(Integer::intValue).max().orElse(0);
-        assertThat(coScore).as("CO must be the dominant taxonomy for a voice comms requirement")
+        int coScore  = saved.getScores().getOrDefault("CO", 0);
+        int maxScore = ROOT_CODES.stream()
+                .mapToInt(r -> saved.getScores().getOrDefault(r, 0))
+                .max().orElse(0);
+        assertThat(coScore).as("CO must be the dominant root taxonomy for a voice comms requirement")
                 .isEqualTo(maxScore);
     }
 
@@ -246,9 +257,11 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/logistics-supply-chain.json");
 
-        int bpScore = saved.getScores().getOrDefault("BP", 0);
-        int maxScore = saved.getScores().values().stream().mapToInt(Integer::intValue).max().orElse(0);
-        assertThat(bpScore).as("BP must be the dominant taxonomy for a logistics requirement")
+        int bpScore  = saved.getScores().getOrDefault("BP", 0);
+        int maxScore = ROOT_CODES.stream()
+                .mapToInt(r -> saved.getScores().getOrDefault(r, 0))
+                .max().orElse(0);
+        assertThat(bpScore).as("BP must be the dominant root taxonomy for a logistics requirement")
                 .isEqualTo(maxScore);
     }
 
@@ -258,9 +271,56 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
                 "mock-scores/cyber-defence-monitoring.json");
 
-        int coScore = saved.getScores().getOrDefault("CO", 0);
-        int maxScore = saved.getScores().values().stream().mapToInt(Integer::intValue).max().orElse(0);
-        assertThat(coScore).as("CO must be the dominant taxonomy for a cyber defence requirement")
+        int coScore  = saved.getScores().getOrDefault("CO", 0);
+        int maxScore = ROOT_CODES.stream()
+                .mapToInt(r -> saved.getScores().getOrDefault(r, 0))
+                .max().orElse(0);
+        assertThat(coScore).as("CO must be the dominant root taxonomy for a cyber defence requirement")
                 .isEqualTo(maxScore);
+    }
+
+    @Test
+    void secureVoiceCommsContainsAllTaxonomyNodes() throws IOException {
+        // The mock JSON must contain scores for ALL taxonomy nodes (roots + full hierarchy)
+        SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
+                "mock-scores/secure-voice-comms.json");
+
+        assertThat(saved.getScores().size())
+                .as("Mock JSON must contain scores for the full taxonomy tree (not only the 8 roots)")
+                .isGreaterThan(2500);
+    }
+
+    @Test
+    void logisticsSupplyChainContainsAllTaxonomyNodes() throws IOException {
+        SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
+                "mock-scores/logistics-supply-chain.json");
+
+        assertThat(saved.getScores().size())
+                .as("Mock JSON must contain scores for the full taxonomy tree (not only the 8 roots)")
+                .isGreaterThan(2500);
+    }
+
+    @Test
+    void cyberDefenceContainsAllTaxonomyNodes() throws IOException {
+        SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
+                "mock-scores/cyber-defence-monitoring.json");
+
+        assertThat(saved.getScores().size())
+                .as("Mock JSON must contain scores for the full taxonomy tree (not only the 8 roots)")
+                .isGreaterThan(2500);
+    }
+
+    @Test
+    void secureVoiceCommsBrRootAndAllChildrenAreZero() throws IOException {
+        // BR has root score 0 → all BR children must also be 0 (not relevant taxonomy)
+        SavedAnalysis saved = savedAnalysisService.loadFromClasspath(
+                "mock-scores/secure-voice-comms.json");
+
+        assertThat(saved.getScores().getOrDefault("BR", -1)).isEqualTo(0);
+        long nonZeroBrNodes = saved.getScores().entrySet().stream()
+                .filter(e -> e.getKey().startsWith("BR") && e.getValue() > 0)
+                .count();
+        assertThat(nonZeroBrNodes).as("All BR nodes must be zero when root BR=0")
+                .isEqualTo(0L);
     }
 }
