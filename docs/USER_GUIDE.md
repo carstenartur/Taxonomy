@@ -660,7 +660,7 @@ been covered by any requirement (gap candidates).
 Click the **📋 Requirement Coverage** summary in the right column. Coverage statistics
 are loaded automatically from the database.
 
-<img src="images/27-coverage-dashboard-empty.png" alt="Coverage Dashboard — empty state" width="600">
+<img src="images/26-coverage-dashboard-empty.png" alt="Coverage Dashboard — empty state" width="600">
 
 ### Summary Metrics
 
@@ -683,7 +683,7 @@ view the list of requirements that cover it, together with scores and analysis t
 A table showing up to 10 nodes with no requirement coverage. These are prime candidates
 for architecture gaps — no existing requirement addresses these elements.
 
-<img src="images/28-coverage-dashboard-data.png" alt="Coverage Dashboard — after recording an analysis" width="600">
+<img src="images/27-coverage-dashboard-data.png" alt="Coverage Dashboard — after recording an analysis" width="600">
 
 ### Recording an Analysis
 
@@ -913,8 +913,6 @@ When AI is unavailable, an **inline warning message** appears below the Analyze 
 
 To lock admin mode again, click the lock button and choose **Lock**.
 
-![Admin Mode modal](images/24-admin-modal.png)
-
 ### LLM Communication Log
 
 Once admin mode is unlocked, the **LLM Communication Log** panel is visible in the right panel. It records the full prompt sent to the LLM and the raw response received for each analysis operation. Expand the panel to view the log entries. This is useful for debugging unexpected scoring results.
@@ -930,7 +928,7 @@ The **LLM Diagnostics Panel** (admin only, collapsible) shows statistics about L
 
 Click **Refresh** to update the statistics. Click **Test Connection** to send a test request to the LLM provider and confirm it is responding correctly.
 
-![LLM Diagnostics panel](images/25-llm-diagnostics.png)
+![LLM Diagnostics panel](images/24-llm-diagnostics.png)
 
 ### Prompt Template Editor
 
@@ -941,7 +939,7 @@ The **Prompt Templates Editor** (admin only, collapsible) allows you to customis
 3. Edit the text as needed.
 4. Click **Save** to save your changes, or **Reset** to restore the built-in default.
 
-![Prompt Template Editor](images/26-prompt-template-editor.png)
+![Prompt Template Editor](images/25-prompt-template-editor.png)
 
 ---
 
