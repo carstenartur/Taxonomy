@@ -144,6 +144,10 @@ public class TaxonomyService {
      * @param async {@code true} when running on the async/background thread (affects log messages)
      */
     private void doInitialize(boolean async) {
+        if (initialized.get()) {
+            log.info("Taxonomy already initialized — skipping duplicate call.");
+            return;
+        }
         initStatus.set("loading");
         try {
             new TransactionTemplate(transactionManager).executeWithoutResult(status -> {

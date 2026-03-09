@@ -137,7 +137,7 @@ services:
     name: taxonomy-analyzer  # Service name in the Render dashboard
     runtime: docker      # Uses the Dockerfile in the repository root
     plan: free           # Free tier (512 MB RAM, shared CPU)
-    healthCheckPath: /   # Render pings GET / to check health
+    healthCheckPath: /api/status/startup   # Render pings this lightweight endpoint to check health
     disk:
       name: taxonomy-data  # Persistent disk for database and Lucene index
       mountPath: /app/data
@@ -159,12 +159,13 @@ services:
 | `name` | Display name in the Render dashboard |
 | `runtime: docker` | Tells Render to use the `Dockerfile` at the repo root |
 | `plan: free` | Render Free plan; upgrade to `starter` or higher for more resources |
-| `healthCheckPath: /` | Render probes `GET /` — the app returns the main page (HTTP 200) |
+| `healthCheckPath: /api/status/startup` | Render probes `GET /api/status/startup` — always returns HTTP 200 even while the taxonomy is still loading |
 | `disk` | Persistent disk so the HSQLDB files and Lucene index survive redeploys |
 | `TAXONOMY_DATASOURCE_URL` | Switches HSQLDB from the in-memory default to a disk-backed file database |
 | `TAXONOMY_DDL_AUTO` | `update` preserves data across restarts (vs. `create` which rebuilds the schema) |
 | `TAXONOMY_SEARCH_DIRECTORY_TYPE` | Switches Lucene from the in-memory heap default to a disk-backed filesystem index |
 | `TAXONOMY_EMBEDDING_ENABLED` | Set to `false` on the free tier to save ~80–140 MB of native memory (disables semantic KNN search) |
+| `TAXONOMY_INIT_ASYNC` | Set to `true` so the taxonomy loads in a background thread after Tomcat opens its port (prevents Render port-scan timeout) |
 | `envVars[].sync: false` | The variable must be entered manually as a secret in the dashboard |
 
 ### Setting Environment Variables in Render
@@ -206,14 +207,16 @@ The deploy takes approximately 3–5 minutes (Maven build + Docker image).
 
 ## 3. Health Check
 
-The application exposes a health check at `GET /` which returns the main HTML page with
-HTTP 200 status. Both Docker and Render use this path for health monitoring.
+The application exposes a startup status endpoint at `GET /api/status/startup` which always
+returns HTTP 200 with a JSON body indicating whether the taxonomy has been fully loaded.
+Render uses this path for health monitoring.
 
 Additional health indicators:
 
 | Endpoint | What It Checks |
 |---|---|
-| `GET /` | Application is running and Thymeleaf renders |
+| `GET /api/status/startup` | Always HTTP 200; `{"initialized": true/false, "status": "pending/loading/ready/error"}` |
+| `GET /` | Application is running and Thymeleaf renders (requires taxonomy loaded) |
 | `GET /api/ai-status` | LLM provider availability |
 | `GET /api/embedding/status` | Embedding model loaded and ready |
 | `GET /api/taxonomy` | Taxonomy data loaded from Excel |

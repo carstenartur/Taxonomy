@@ -2,7 +2,9 @@ package com.nato.taxonomy;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.concurrent.ExecutorService;
@@ -22,5 +24,17 @@ public class AppConfig {
     @Bean(destroyMethod = "shutdown")
     public ExecutorService analysisExecutor() {
         return Executors.newFixedThreadPool(10);
+    }
+
+    @Bean
+    public TaskExecutor taskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(10);
+        executor.setThreadNamePrefix("taxonomy-async-");
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
+        executor.initialize();
+        return executor;
     }
 }

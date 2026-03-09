@@ -3,7 +3,7 @@ services:
     name: taxonomy-analyzer
     runtime: docker
     plan: free
-    healthCheckPath: /
+    healthCheckPath: /api/status/startup
     disk:
       name: taxonomy-data
       mountPath: /app/data
@@ -19,3 +19,5 @@ services:
         value: local-filesystem
       - key: TAXONOMY_EMBEDDING_ENABLED
         value: "false"        # DJL/ONNX model uses ~80–140 MB native memory; disable on the 512 MB free tier
+      - key: TAXONOMY_INIT_ASYNC
+        value: "true"         # load taxonomy after Tomcat opens its port so Render detects the port quickly
