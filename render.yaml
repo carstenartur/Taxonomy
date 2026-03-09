@@ -4,19 +4,9 @@ services:
     runtime: docker
     plan: free
     healthCheckPath: /api/status/startup
-    disk:
-      name: taxonomy-data
-      mountPath: /app/data
-      sizeGB: 1
     envVars:
       - key: GEMINI_API_KEY
         sync: false        # set manually in the Render dashboard
-      - key: TAXONOMY_DATASOURCE_URL
-        value: "jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;shutdown=true"
-      - key: TAXONOMY_DDL_AUTO
-        value: update
-      - key: TAXONOMY_SEARCH_DIRECTORY_TYPE
-        value: local-filesystem
       - key: TAXONOMY_EMBEDDING_ENABLED
         value: "false"        # DJL/ONNX model uses ~80–140 MB native memory; disable on the 512 MB free tier
       - key: TAXONOMY_INIT_ASYNC

@@ -129,28 +129,22 @@ docker run -p 8080:8080 -e GEMINI_API_KEY=your-key ghcr.io/carstenartur/taxonomy
 
 ### Understanding `render.yaml`
 
-The repository includes a `render.yaml` Blueprint specification:
+The repository includes a `render.yaml` Blueprint specification for the Render **Free Tier**:
 
 ```yaml
 services:
-  - type: web            # Web service (publicly accessible)
-    name: taxonomy-analyzer  # Service name in the Render dashboard
-    runtime: docker      # Uses the Dockerfile in the repository root
-    plan: free           # Free tier (512 MB RAM, shared CPU)
-    healthCheckPath: /api/status/startup   # Render pings this lightweight endpoint to check health
-    disk:
-      name: taxonomy-data  # Persistent disk for database and Lucene index
-      mountPath: /app/data
-      sizeGB: 1
+  - type: web
+    name: taxonomy-analyzer
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/status/startup
     envVars:
       - key: GEMINI_API_KEY
-        sync: false      # false = must be set manually in the dashboard
-      - key: TAXONOMY_DATASOURCE_URL
-        value: "jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached"
-      - key: TAXONOMY_DDL_AUTO
-        value: update
-      - key: TAXONOMY_SEARCH_DIRECTORY_TYPE
-        value: local-filesystem
+        sync: false        # set manually in the Render dashboard
+      - key: TAXONOMY_EMBEDDING_ENABLED
+        value: "false"        # DJL/ONNX model uses ~80–140 MB native memory; disable on the 512 MB free tier
+      - key: TAXONOMY_INIT_ASYNC
+        value: "true"         # load taxonomy after Tomcat opens its port so Render detects the port quickly
 ```
 
 | Field | Description |
@@ -160,13 +154,16 @@ services:
 | `runtime: docker` | Tells Render to use the `Dockerfile` at the repo root |
 | `plan: free` | Render Free plan; upgrade to `starter` or higher for more resources |
 | `healthCheckPath: /api/status/startup` | Render probes `GET /api/status/startup` — always returns HTTP 200 even while the taxonomy is still loading |
-| `disk` | Persistent disk so the HSQLDB files and Lucene index survive redeploys |
-| `TAXONOMY_DATASOURCE_URL` | Switches HSQLDB from the in-memory default to a disk-backed file database; `shutdown=true` ensures a clean checkpoint on JVM exit |
-| `TAXONOMY_DDL_AUTO` | `update` preserves data across restarts (vs. `create` which rebuilds the schema) |
-| `TAXONOMY_SEARCH_DIRECTORY_TYPE` | Switches Lucene from the in-memory heap default to a disk-backed filesystem index |
 | `TAXONOMY_EMBEDDING_ENABLED` | Set to `false` on the free tier to save ~80–140 MB of native memory (disables semantic KNN search) |
 | `TAXONOMY_INIT_ASYNC` | Set to `true` so the taxonomy loads in a background thread after Tomcat opens its port (prevents Render port-scan timeout) |
 | `envVars[].sync: false` | The variable must be entered manually as a secret in the dashboard |
+
+> **Note:** Render Free Tier does **not** support persistent disks. The application uses an
+> in-memory HSQLDB database (`mem:`) and Lucene heap index by default, which are the correct
+> settings for the free tier. Taxonomy data is reloaded from the embedded Excel workbook on
+> every deploy. To persist data across redeploys, upgrade to a paid Render plan and add a
+> `disk:` section with `TAXONOMY_DATASOURCE_URL`, `TAXONOMY_DDL_AUTO=update`, and
+> `TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem`.
 
 ### Setting Environment Variables in Render
 
