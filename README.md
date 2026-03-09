@@ -50,13 +50,13 @@ The system scores every taxonomy node, selects the most relevant elements, propa
 
 - [Why This Project Exists](#why-this-project-exists)
 - [Key Features](#key-features)
-- [Architecture Overview](#architecture-overview)
 - [Typical Workflow](#typical-workflow)
+- [Export Formats](#export-formats)
+- [Architecture Overview](#architecture-overview)
 - [Prerequisites](#prerequisites)
 - [Installation & Running](#installation--running)
 - [Example Usage](#example-usage)
 - [API Overview](#api-overview)
-- [Export Formats](#export-formats)
 - [Repository Structure](#repository-structure)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
@@ -96,6 +96,41 @@ Requirement  →  Semantic Analysis  →  Taxonomy Matching  →  Architecture G
 
 ---
 
+## Typical Workflow
+
+```mermaid
+flowchart LR
+    A["✏️ Enter<br/>Requirement"] --> B["🤖 AI<br/>Analysis"]
+    B --> C["🌳 Scored<br/>Tree"]
+    C --> D["🏗️ Architecture<br/>View"]
+    D --> E["📐 Export<br/>Diagram"]
+
+    style A fill:#e3f2fd
+    style B fill:#fff3e0
+    style C fill:#e8f5e9
+    style D fill:#f3e5f5
+    style E fill:#fce4ec
+```
+
+1. **Describe your requirement** — enter a free-text business or mission requirement in the analysis panel.
+2. **AI scores the taxonomy** — the configured LLM evaluates every taxonomy node and returns match percentages (0–100).
+3. **Explore the scored tree** — results are overlaid on the taxonomy tree with green colour intensity proportional to the score. Switch between view modes for different perspectives.
+4. **Generate an architecture view** — anchor nodes (score ≥ 70) are selected and relevance propagates through taxonomy relations to build a structured architecture model.
+5. **Export a diagram** — one-click export to ArchiMate XML, Visio, Mermaid flowchart, or JSON for integration with downstream tools.
+
+---
+
+## Export Formats
+
+| Format | Extension | Use Case |
+|---|---|---|
+| **ArchiMate 3.x XML** | `.xml` | Import into Archi, BiZZdesign, MEGA, and other ArchiMate-compatible tools |
+| **Visio** | `.vsdx` | Microsoft Visio 2013+ diagrams |
+| **Mermaid** | `.md` | Text-based diagrams renderable in GitHub, GitLab, Notion, Confluence |
+| **JSON** | `.json` | Save and reload analysis scores; integrate with external tooling |
+
+---
+
 ## Architecture Overview
 
 ```mermaid
@@ -123,30 +158,6 @@ graph TB
 ```
 
 **Technology stack:** Java 17, Spring Boot 4, HSQLDB, Hibernate Search 8, Lucene 9, Apache POI, DJL/ONNX Runtime, Bootstrap 5, Thymeleaf.
-
----
-
-## Typical Workflow
-
-```mermaid
-flowchart LR
-    A["✏️ Enter<br/>Requirement"] --> B["🤖 AI<br/>Analysis"]
-    B --> C["🌳 Scored<br/>Tree"]
-    C --> D["🏗️ Architecture<br/>View"]
-    D --> E["📐 Export<br/>Diagram"]
-
-    style A fill:#e3f2fd
-    style B fill:#fff3e0
-    style C fill:#e8f5e9
-    style D fill:#f3e5f5
-    style E fill:#fce4ec
-```
-
-1. **Describe your requirement** — enter a free-text business or mission requirement in the analysis panel.
-2. **AI scores the taxonomy** — the configured LLM evaluates every taxonomy node and returns match percentages (0–100).
-3. **Explore the scored tree** — results are overlaid on the taxonomy tree with green colour intensity proportional to the score. Switch between view modes for different perspectives.
-4. **Generate an architecture view** — anchor nodes (score ≥ 70) are selected and relevance propagates through taxonomy relations to build a structured architecture model.
-5. **Export a diagram** — one-click export to ArchiMate XML, Visio, Mermaid flowchart, or JSON for integration with downstream tools.
 
 ---
 
@@ -238,6 +249,8 @@ mvn verify            # Unit + integration tests (requires Docker for container 
 
 ### REST API (curl)
 
+The system also exposes a REST API for automation and integration with external tools.
+
 ```bash
 # Analyze a requirement
 curl -X POST http://localhost:8080/api/analyze \
@@ -286,17 +299,6 @@ The application exposes a comprehensive REST API. Interactive documentation is a
 | **Admin** | `GET /api/diagnostics`, `GET /api/ai-status` | LLM diagnostics and system status |
 
 > For the full API reference with request/response schemas, see [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
-
----
-
-## Export Formats
-
-| Format | Extension | Use Case |
-|---|---|---|
-| **ArchiMate 3.x XML** | `.xml` | Import into Archi, BiZZdesign, MEGA, and other ArchiMate-compatible tools |
-| **Visio** | `.vsdx` | Microsoft Visio 2013+ diagrams |
-| **Mermaid** | `.md` | Text-based diagrams renderable in GitHub, GitLab, Notion, Confluence |
-| **JSON** | `.json` | Save and reload analysis scores; integrate with external tooling |
 
 ---
 
