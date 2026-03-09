@@ -1,134 +1,134 @@
 GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.config,HibernateSearchAnalysisConfigurer,0,28,0,0,0,5,0,2,0,2
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.config,OpenApiConfig,0,114,0,0,0,25,0,2,0,2
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.config,SpringContextHolder,5,12,1,1,2,5,1,3,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0,4,0,2,0
-NATO NC3T Taxonomy Browser,com.nato.taxonomy,TaxonomyApplication,5,3,0,0,2,1,1,1,1,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy,AppConfig,0,21,0,0,0,6,0,3,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,RecommendationApiController,1,23,1,1,0,8,1,2,0,2
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,GapAnalysisApiController.GapAnalysisRequest,0,12,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,RelationApiController,4,116,6,10,2,29,6,8,0,6
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,GraphQueryApiController,0,114,2,8,0,26,2,9,0,6
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,CoverageApiController.RecordCoverageRequest,0,15,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,ApiController,323,887,58,68,69,186,48,45,2,28
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,QualityApiController,0,27,0,0,0,7,0,5,0,5
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,GapAnalysisApiController,0,24,0,2,0,8,0,3,0,2
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,RecommendationApiController.RecommendationRequest,0,12,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,ApiController.new AnalysisEventCallback() {...},34,85,2,2,7,17,4,5,2,5
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,TaxonomyController,0,19,0,0,0,6,0,2,0,2
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,ProposalApiController,43,185,7,19,12,51,7,15,0,9
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,PatternDetectionApiController.PatternDetectionRequest,0,9,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,PatternDetectionApiController,1,29,1,1,0,9,1,3,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,ArchiMateImportController,20,25,0,2,5,8,0,4,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.controller,CoverageApiController,1,53,1,1,0,15,1,7,0,7
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.archimate,ArchiMateViewConnection,0,15,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.archimate,ArchiMateModel,0,18,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.archimate,ArchiMateViewNode,0,36,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.archimate,ArchiMateRelationship,0,21,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.archimate,ArchiMateView,0,15,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.archimate,ArchiMateElement,0,15,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,TopRejectedProposal,24,0,0,0,1,0,1,0,1,0
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,CoverageGap,19,27,0,0,5,10,5,5,5,5
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,ImpactRelationship,15,30,0,0,5,8,5,8,5,8
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,SavedAnalysis,0,48,0,0,0,14,0,13,0,13
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,EnrichedChangeImpactView,4,94,0,0,1,25,1,20,1,20
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,ArchitectureRecommendation,8,69,0,0,2,18,2,13,2,13
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,RelationTypeMetrics,18,0,0,0,1,0,1,0,1,0
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,RecommendedElement,23,33,0,0,6,12,6,6,6,6
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,PatternDetectionView,4,49,0,0,1,13,1,10,1,10
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,CoverageStatistics,0,27,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,MissingRelation,23,33,0,0,6,12,6,6,6,6
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,GraphNeighborhoodView,4,70,0,0,1,19,1,16,1,16
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,RequirementImpactView,4,63,0,0,1,17,1,14,1,14
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,LlmCallDetail,4,48,0,0,1,14,1,14,1,14
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,ProvenanceMetrics,15,0,0,0,1,0,1,0,1,0
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,RequirementElementView,0,52,0,0,0,15,0,15,0,15
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,DetectedPattern,44,42,0,0,8,13,8,4,8,4
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,RequirementRelationshipView,6,46,0,0,2,13,2,13,2,13
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,TaxonomyRelationDto,0,73,0,0,0,21,0,21,0,21
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,RequirementAnchor,18,18,0,0,5,7,5,3,5,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,AiStatusResponse,0,15,0,0,0,6,0,3,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,ArchiMateImportResult,0,43,0,0,0,12,0,11,0,11
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,TaxonomyNodeDto,0,164,0,0,0,46,0,43,0,43
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,EnrichedImpactElement,12,52,0,0,4,14,4,13,4,13
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,RelationProposalDto,0,87,0,0,0,25,0,25,0,25
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,AnalysisRequest,14,22,0,0,3,8,3,5,3,5
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,ImpactElement,0,45,0,0,0,13,0,13,0,13
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,AnalysisResult,20,44,0,0,4,14,4,10,4,10
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,NodeCoverageEntry,0,9,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,ChangeImpactView,4,75,0,0,1,20,1,16,1,16
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,RequirementArchitectureView,4,75,0,0,1,20,1,16,1,16
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,GapAnalysisView,4,68,0,0,1,18,1,14,1,14
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,IncompletePattern,19,27,0,0,5,10,5,5,5,5
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,GraphSearchResult,19,27,0,0,7,10,5,5,5,5
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,RelationQualityMetrics,0,30,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.dto,SuggestedRelation,19,27,0,0,5,10,5,5,5,5
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.diagram,DiagramModel,0,15,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.diagram,DiagramLayout,0,9,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.diagram,DiagramNode,0,21,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.diagram,DiagramEdge,0,18,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.model,RelationProposal,8,75,1,1,2,23,3,20,2,20
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.model,FloatArrayConverter,0,68,0,8,0,13,0,7,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.model,RequirementCoverage,0,39,0,0,0,15,0,8,0,8
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.model,RelationType,0,63,0,0,0,11,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.model,TaxonomyNode,51,134,2,0,14,38,13,35,12,35
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.model,ProposalStatus,0,21,0,0,0,4,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.model,TaxonomyRelation,33,50,2,0,9,15,8,14,7,14
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.visio,VisioConnect,0,21,0,0,0,8,0,4,0,4
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.visio,VisioDocument,0,11,0,0,0,3,0,2,0,2
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.visio,VisioPage,3,28,0,0,1,9,1,4,1,4
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.visio,VisioShape,3,48,0,0,1,17,1,8,1,8
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchitectureGraphQueryServiceImpl,62,963,23,84,13,197,19,55,0,20
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationCandidateService,6,138,5,5,0,25,4,7,0,6
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchitecturePatternService.PatternTemplate,0,9,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,PropagationResult,0,27,0,0,0,10,0,5,0,5
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationProposalService,20,268,3,5,3,59,3,9,0,8
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchitectureGapService,20,351,6,32,5,77,6,19,0,6
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchitecturePatternService,25,491,12,42,4,92,11,22,0,6
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelevancePropagationService,16,289,8,20,4,53,6,12,0,4
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,HybridSearchService,45,28,3,1,7,9,2,3,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,SearchService,11,186,2,2,4,37,2,6,0,6
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService.ScoreParseResult,0,37,0,2,0,4,0,3,0,2
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,VisioPackageBuilder,0,280,0,6,0,57,0,14,0,11
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationTraversalService,36,65,3,5,7,17,3,5,1,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,GraphSearchService,318,22,19,1,68,7,20,3,10,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RequirementCoverageService,3,247,4,8,0,47,4,19,0,17
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService,2073,835,251,77,444,178,187,27,23,18
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,DiagramProjectionService,1,258,3,21,1,46,3,12,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationValidationService.ValidationResult,0,35,0,0,0,10,0,6,0,6
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchiMateXmlImporter,105,547,31,45,25,121,27,21,1,9
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationQualityService,148,122,8,4,22,33,9,6,3,6
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmProvider,0,45,0,0,0,8,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,EnrichedImpactService,26,238,2,8,4,52,2,7,0,4
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchitectureRecommendationService,60,320,10,20,13,73,10,10,2,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationCompatibilityMatrix,1,162,2,12,0,34,2,11,0,6
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,MermaidExportService,14,314,10,21,5,55,10,15,0,7
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchitectureGraphQueryServiceImpl.TraversalResult,0,15,0,0,0,6,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,PromptTemplateService,45,242,5,11,13,55,5,15,1,11
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LocalEmbeddingService,427,106,25,11,92,28,26,11,9,10
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchiMateXmlImporter.ParsedElement,0,15,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchitecturePatternService.PatternStep,0,20,0,0,0,2,0,2,0,2
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,TaxonomyRelationService,44,231,2,6,6,53,3,13,2,10
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchiMateDiagramService,32,607,6,63,1,109,6,54,0,13
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,PropagationResult.TraversedRelation,0,27,0,0,0,10,0,5,0,5
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,TaxonomyService,324,1066,52,73,82,255,41,43,3,17
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,VisioDiagramService,1,207,3,11,0,37,3,8,0,4
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationValidationService,21,138,3,7,4,33,4,6,1,4
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RankFusionUtil,0,74,0,2,0,16,0,4,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,SavedAnalysisService,2,170,1,21,0,40,1,16,0,6
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchiMateXmlExporter,3,502,5,23,1,105,5,18,0,9
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchiMateXmlImporter.ParsedRelationship,0,15,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,ArchitectureGraphQueryServiceImpl.Direction,0,21,0,0,0,1,0,1,0,1
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,LlmRateLimitException,9,0,0,0,4,0,2,0,2,0
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RequirementArchitectureViewService,55,566,13,49,8,116,11,28,1,7
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.service,RelationReviewService,94,162,6,2,20,35,4,8,0,8
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.search,RelationEmbeddingBinder.Bridge,18,86,8,10,6,18,8,4,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.search,RelationEmbeddingBinder,0,37,0,0,0,12,0,3,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.search,NodeEmbeddingBinder,0,41,0,0,0,14,0,3,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.search,NodeEmbeddingBinder.Bridge,142,61,25,9,25,15,15,5,0,3
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.visio.converter,VisioDocumentConverter,0,61,0,0,0,21,0,4,0,4
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.visio.converter,VisioPagesConverter,0,66,0,2,0,16,0,5,0,4
-NATO NC3T Taxonomy Browser,com.nato.taxonomy.visio.converter,VisioPageContentsConverter,0,243,0,8,0,59,0,9,0,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.config,HibernateSearchAnalysisConfigurer,0,28,0,0,0,5,0,2,0,2
+Taxonomy Architecture Analyzer,com.nato.taxonomy.config,OpenApiConfig,0,114,0,0,0,25,0,2,0,2
+Taxonomy Architecture Analyzer,com.nato.taxonomy.config,SpringContextHolder,5,12,1,1,2,5,1,3,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0,4,0,2,0
+Taxonomy Architecture Analyzer,com.nato.taxonomy,TaxonomyApplication,5,3,0,0,2,1,1,1,1,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy,AppConfig,0,21,0,0,0,6,0,3,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RecommendationApiController,1,23,1,1,0,8,1,2,0,2
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GapAnalysisApiController.GapAnalysisRequest,0,12,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RelationApiController,4,116,6,10,2,29,6,8,0,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GraphQueryApiController,0,114,2,8,0,26,2,9,0,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,CoverageApiController.RecordCoverageRequest,0,15,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ApiController,323,887,58,68,69,186,48,45,2,28
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,QualityApiController,0,27,0,0,0,7,0,5,0,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GapAnalysisApiController,0,24,0,2,0,8,0,3,0,2
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RecommendationApiController.RecommendationRequest,0,12,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ApiController.new AnalysisEventCallback() {...},34,85,2,2,7,17,4,5,2,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,TaxonomyController,0,19,0,0,0,6,0,2,0,2
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ProposalApiController,43,185,7,19,12,51,7,15,0,9
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,PatternDetectionApiController.PatternDetectionRequest,0,9,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,PatternDetectionApiController,1,29,1,1,0,9,1,3,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ArchiMateImportController,20,25,0,2,5,8,0,4,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,CoverageApiController,1,53,1,1,0,15,1,7,0,7
+Taxonomy Architecture Analyzer,com.nato.taxonomy.archimate,ArchiMateViewConnection,0,15,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.archimate,ArchiMateModel,0,18,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.archimate,ArchiMateViewNode,0,36,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.archimate,ArchiMateRelationship,0,21,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.archimate,ArchiMateView,0,15,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.archimate,ArchiMateElement,0,15,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,TopRejectedProposal,24,0,0,0,1,0,1,0,1,0
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,CoverageGap,19,27,0,0,5,10,5,5,5,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,ImpactRelationship,15,30,0,0,5,8,5,8,5,8
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,SavedAnalysis,0,48,0,0,0,14,0,13,0,13
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,EnrichedChangeImpactView,4,94,0,0,1,25,1,20,1,20
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,ArchitectureRecommendation,8,69,0,0,2,18,2,13,2,13
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RelationTypeMetrics,18,0,0,0,1,0,1,0,1,0
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RecommendedElement,23,33,0,0,6,12,6,6,6,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,PatternDetectionView,4,49,0,0,1,13,1,10,1,10
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,CoverageStatistics,0,27,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,MissingRelation,23,33,0,0,6,12,6,6,6,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,GraphNeighborhoodView,4,70,0,0,1,19,1,16,1,16
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RequirementImpactView,4,63,0,0,1,17,1,14,1,14
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,LlmCallDetail,4,48,0,0,1,14,1,14,1,14
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,ProvenanceMetrics,15,0,0,0,1,0,1,0,1,0
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RequirementElementView,0,52,0,0,0,15,0,15,0,15
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,DetectedPattern,44,42,0,0,8,13,8,4,8,4
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RequirementRelationshipView,6,46,0,0,2,13,2,13,2,13
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,TaxonomyRelationDto,0,73,0,0,0,21,0,21,0,21
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RequirementAnchor,18,18,0,0,5,7,5,3,5,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,AiStatusResponse,0,15,0,0,0,6,0,3,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,ArchiMateImportResult,0,43,0,0,0,12,0,11,0,11
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,TaxonomyNodeDto,0,164,0,0,0,46,0,43,0,43
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,EnrichedImpactElement,12,52,0,0,4,14,4,13,4,13
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RelationProposalDto,0,87,0,0,0,25,0,25,0,25
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,AnalysisRequest,14,22,0,0,3,8,3,5,3,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,ImpactElement,0,45,0,0,0,13,0,13,0,13
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,AnalysisResult,20,44,0,0,4,14,4,10,4,10
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,NodeCoverageEntry,0,9,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,ChangeImpactView,4,75,0,0,1,20,1,16,1,16
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RequirementArchitectureView,4,75,0,0,1,20,1,16,1,16
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,GapAnalysisView,4,68,0,0,1,18,1,14,1,14
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,IncompletePattern,19,27,0,0,5,10,5,5,5,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,GraphSearchResult,19,27,0,0,7,10,5,5,5,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RelationQualityMetrics,0,30,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,SuggestedRelation,19,27,0,0,5,10,5,5,5,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.diagram,DiagramModel,0,15,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.diagram,DiagramLayout,0,9,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.diagram,DiagramNode,0,21,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.diagram,DiagramEdge,0,18,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.model,RelationProposal,8,75,1,1,2,23,3,20,2,20
+Taxonomy Architecture Analyzer,com.nato.taxonomy.model,FloatArrayConverter,0,68,0,8,0,13,0,7,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.model,RequirementCoverage,0,39,0,0,0,15,0,8,0,8
+Taxonomy Architecture Analyzer,com.nato.taxonomy.model,RelationType,0,63,0,0,0,11,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.model,TaxonomyNode,51,134,2,0,14,38,13,35,12,35
+Taxonomy Architecture Analyzer,com.nato.taxonomy.model,ProposalStatus,0,21,0,0,0,4,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.model,TaxonomyRelation,33,50,2,0,9,15,8,14,7,14
+Taxonomy Architecture Analyzer,com.nato.taxonomy.visio,VisioConnect,0,21,0,0,0,8,0,4,0,4
+Taxonomy Architecture Analyzer,com.nato.taxonomy.visio,VisioDocument,0,11,0,0,0,3,0,2,0,2
+Taxonomy Architecture Analyzer,com.nato.taxonomy.visio,VisioPage,3,28,0,0,1,9,1,4,1,4
+Taxonomy Architecture Analyzer,com.nato.taxonomy.visio,VisioShape,3,48,0,0,1,17,1,8,1,8
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureGraphQueryServiceImpl,62,963,23,84,13,197,19,55,0,20
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationCandidateService,6,138,5,5,0,25,4,7,0,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitecturePatternService.PatternTemplate,0,9,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,PropagationResult,0,27,0,0,0,10,0,5,0,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationProposalService,20,268,3,5,3,59,3,9,0,8
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureGapService,20,351,6,32,5,77,6,19,0,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitecturePatternService,25,491,12,42,4,92,11,22,0,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelevancePropagationService,16,289,8,20,4,53,6,12,0,4
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,HybridSearchService,45,28,3,1,7,9,2,3,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,SearchService,11,186,2,2,4,37,2,6,0,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.ScoreParseResult,0,37,0,2,0,4,0,3,0,2
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,VisioPackageBuilder,0,280,0,6,0,57,0,14,0,11
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationTraversalService,36,65,3,5,7,17,3,5,1,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,GraphSearchService,318,22,19,1,68,7,20,3,10,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RequirementCoverageService,3,247,4,8,0,47,4,19,0,17
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService,2073,835,251,77,444,178,187,27,23,18
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,DiagramProjectionService,1,258,3,21,1,46,3,12,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationValidationService.ValidationResult,0,35,0,0,0,10,0,6,0,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateXmlImporter,105,547,31,45,25,121,27,21,1,9
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationQualityService,148,122,8,4,22,33,9,6,3,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmProvider,0,45,0,0,0,8,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,EnrichedImpactService,26,238,2,8,4,52,2,7,0,4
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureRecommendationService,60,320,10,20,13,73,10,10,2,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationCompatibilityMatrix,1,162,2,12,0,34,2,11,0,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,MermaidExportService,14,314,10,21,5,55,10,15,0,7
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureGraphQueryServiceImpl.TraversalResult,0,15,0,0,0,6,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,PromptTemplateService,45,242,5,11,13,55,5,15,1,11
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LocalEmbeddingService,427,106,25,11,92,28,26,11,9,10
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateXmlImporter.ParsedElement,0,15,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitecturePatternService.PatternStep,0,20,0,0,0,2,0,2,0,2
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,TaxonomyRelationService,44,231,2,6,6,53,3,13,2,10
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateDiagramService,32,607,6,63,1,109,6,54,0,13
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,PropagationResult.TraversedRelation,0,27,0,0,0,10,0,5,0,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,TaxonomyService,324,1066,52,73,82,255,41,43,3,17
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,VisioDiagramService,1,207,3,11,0,37,3,8,0,4
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationValidationService,21,138,3,7,4,33,4,6,1,4
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RankFusionUtil,0,74,0,2,0,16,0,4,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,SavedAnalysisService,2,170,1,21,0,40,1,16,0,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateXmlExporter,3,502,5,23,1,105,5,18,0,9
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateXmlImporter.ParsedRelationship,0,15,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureGraphQueryServiceImpl.Direction,0,21,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmRateLimitException,9,0,0,0,4,0,2,0,2,0
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RequirementArchitectureViewService,55,566,13,49,8,116,11,28,1,7
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationReviewService,94,162,6,2,20,35,4,8,0,8
+Taxonomy Architecture Analyzer,com.nato.taxonomy.search,RelationEmbeddingBinder.Bridge,18,86,8,10,6,18,8,4,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.search,RelationEmbeddingBinder,0,37,0,0,0,12,0,3,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.search,NodeEmbeddingBinder,0,41,0,0,0,14,0,3,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.search,NodeEmbeddingBinder.Bridge,142,61,25,9,25,15,15,5,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.visio.converter,VisioDocumentConverter,0,61,0,0,0,21,0,4,0,4
+Taxonomy Architecture Analyzer,com.nato.taxonomy.visio.converter,VisioPagesConverter,0,66,0,2,0,16,0,5,0,4
+Taxonomy Architecture Analyzer,com.nato.taxonomy.visio.converter,VisioPageContentsConverter,0,243,0,8,0,59,0,9,0,5
