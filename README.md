@@ -5,16 +5,51 @@
 [![Tests](https://img.shields.io/endpoint?url=https://carstenartur.github.io/Taxonomy/tests/badge.json)](https://carstenartur.github.io/Taxonomy/tests/surefire-report.html)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A Spring Boot web application for browsing, analysing, and visualising the **NATO C3 Taxonomy Catalogue**. It maps free-text business requirements to taxonomy nodes using AI, generates architecture views, and exports diagrams to industry-standard formats.
+**An AI-assisted system that derives architecture insights from requirements.**
+
+The system maps free-text business requirements to the NATO C3 Taxonomy, discovers relationships between architecture elements, and generates architecture views and diagrams — all in one step.
+
+> **Requirement → Taxonomy Matching → Architecture Insight → Architecture Diagram**
 
 <img src="docs/images/01-full-page-layout.png" alt="Application screenshot" width="800">
+
+### Quick Example
+
+> _"Provide secure voice communications for deployed forces."_
+
+| Category | Matched Taxonomy Element |
+|---|---|
+| **Capability** | Secure Communications Capability |
+| **Service** | Secure Voice Service |
+| **Process** | Conduct Operations |
+| **Application** | Operations Coordination System |
+
+The system scores every taxonomy node, selects the most relevant elements, propagates relevance through their relations, and generates a complete architecture view — ready for export.
+
+<details>
+<summary><strong>Scored taxonomy tree</strong></summary>
+
+<img src="docs/images/15-scored-taxonomy-tree.png" alt="Scored taxonomy tree with match percentages" width="800">
+</details>
+
+<details>
+<summary><strong>Architecture view</strong></summary>
+
+<img src="docs/images/20-architecture-view.png" alt="Generated architecture view" width="800">
+</details>
+
+<details>
+<summary><strong>Diagram export</strong></summary>
+
+<img src="docs/images/23-export-buttons.png" alt="Export buttons for ArchiMate, Visio, Mermaid and JSON" width="800">
+</details>
 
 ---
 
 ## Table of Contents
 
-- [Problem Statement](#problem-statement)
-- [Key Capabilities](#key-capabilities)
+- [Why This Project Exists](#why-this-project-exists)
+- [Key Features](#key-features)
 - [Architecture Overview](#architecture-overview)
 - [Typical Workflow](#typical-workflow)
 - [Prerequisites](#prerequisites)
@@ -29,11 +64,11 @@ A Spring Boot web application for browsing, analysing, and visualising the **NAT
 
 ---
 
-## Problem Statement
+## Why This Project Exists
 
-The NATO C3 Taxonomy Catalogue (Baseline 7) contains approximately **2,500 nodes** across 8 taxonomy sheets — covering Business Processes, Business Roles, Capabilities, COI Services, Communications Services, Core Services, Information Products, and User Applications. Navigating this hierarchy and mapping a plain-text mission or business requirement to the correct taxonomy elements is time-consuming and error-prone when done manually.
+Architecture analysis often starts with vague requirements. The NATO C3 Taxonomy Catalogue (Baseline 7) contains approximately **2,500 nodes** across 8 taxonomy sheets — covering Business Processes, Business Roles, Capabilities, COI Services, Communications Services, Core Services, Information Products, and User Applications. Navigating this hierarchy and mapping a plain-text mission or business requirement to the correct taxonomy elements is time-consuming and error-prone when done manually.
 
-This application solves that problem by:
+This project bridges the gap between requirements and architecture by automatically identifying relevant architecture elements and their relationships. It does so by:
 
 1. Loading the full catalogue from the bundled Excel workbook into an **embedded HSQLDB** database at startup — no external database required.
 2. Providing a **collapsible tree browser** (Bootstrap 5) with five view modes (List, Tabs, Sunburst, Tree, Decision Map).
@@ -42,24 +77,22 @@ This application solves that problem by:
 
 ---
 
-## Key Capabilities
+## Key Features
 
-| Capability | Description |
-|---|---|
-| **Taxonomy Browsing** | Collapsible tree with 5 view modes: List, Tabs, Sunburst, Tree, Decision Map |
-| **AI-Powered Analysis** | Score every node against free-text using Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral, or a **local offline model** (`all-MiniLM-L6-v2` via DJL/ONNX — no API key needed) |
-| **Streaming Analysis** | Real-time Server-Sent Event (SSE) progress during scoring |
-| **Interactive Mode** | Expand the taxonomy level by level, analysing one branch at a time |
-| **Leaf Justification** | Natural-language explanation for why a specific leaf node scored highly |
-| **Architecture Views** | Automatic architecture model from scored results with anchor selection and relevance propagation |
-| **Multi-Format Export** | ArchiMate 3.x XML, Visio `.vsdx`, Mermaid flowcharts, JSON score sheets |
-| **Search** | Full-text (Lucene), semantic (embedding KNN), hybrid (Reciprocal Rank Fusion), and graph-based search |
-| **Graph Explorer** | Upstream, downstream, and failure-impact neighbourhood queries |
-| **Relation Proposals** | AI-assisted relation proposal pipeline with human review (accept/reject) |
-| **Gap Analysis** | Identify missing relations and incomplete architecture patterns |
-| **Pattern Detection** | Verify presence of standard patterns (Full Stack, App Chain, Role Chain) |
-| **Recommendations** | AI-driven architecture proposals combining gaps, scoring, and semantic search |
-| **Admin Panel** | Password-protected LLM diagnostics, prompt template editor, communication log |
+- **Requirement → Taxonomy mapping** — AI scores every taxonomy node against your free-text requirement
+- **Semantic and hybrid search** — full-text (Lucene), semantic (embedding KNN), hybrid (Reciprocal Rank Fusion), and graph-based search
+- **Architecture relationship discovery** — automatic architecture views from scored results with relevance propagation
+- **Architecture impact analysis** — upstream, downstream, and failure-impact neighbourhood queries
+- **Relation proposals and review** — AI-generated relation proposals with human accept/reject workflow
+- **Architecture graph exploration** — trace dependencies and discover gaps and patterns
+- **Automatic architecture diagrams** — one-click export from scored taxonomy to structured diagrams
+- **Export to Visio, ArchiMate, Mermaid and JSON** — industry-standard diagram formats for downstream tools
+
+### Processing Pipeline
+
+```
+Requirement  →  Semantic Analysis  →  Taxonomy Matching  →  Architecture Graph  →  Architecture Views  →  Diagram Export
+```
 
 ---
 
@@ -305,11 +338,13 @@ Taxonomy/
 
 | Document | Description |
 |---|---|
-| **[Architecture Description](docs/ARCHITECTURE.md)** | System design, generation pipeline, CI/CD, database |
-| **[Configuration Reference](docs/CONFIGURATION_REFERENCE.md)** | All environment variables: LLM providers, embedding, admin, database |
-| **[API Reference](docs/API_REFERENCE.md)** | Complete REST API documentation with request/response examples |
-| **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** | Docker, Render.com, health checks, troubleshooting |
 | **[User Guide](docs/USER_GUIDE.md)** | End-user guide for the web interface with screenshots |
+| **[Concepts & Glossary](docs/CONCEPTS.md)** | Key terms: Taxonomy Node, Relation, Architecture View, Requirement Impact |
+| **[Examples](docs/EXAMPLES.md)** | Worked examples: requirement analysis, failure impact, gap analysis, relation proposals |
+| **[Architecture Description](docs/ARCHITECTURE.md)** | System design, generation pipeline, CI/CD, database |
+| **[API Reference](docs/API_REFERENCE.md)** | Complete REST API documentation with request/response examples |
+| **[Configuration Reference](docs/CONFIGURATION_REFERENCE.md)** | All environment variables: LLM providers, embedding, admin, database |
+| **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** | Docker, Render.com, health checks, troubleshooting |
 
 ---
 
