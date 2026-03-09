@@ -4,7 +4,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.config,OpenApiConfig,0,114,0,0,
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,SpringContextHolder,5,12,1,1,2,5,1,3,0,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0,4,0,2,0
 Taxonomy Architecture Analyzer,com.nato.taxonomy,TaxonomyApplication,5,3,0,0,2,1,1,1,1,1
-Taxonomy Architecture Analyzer,com.nato.taxonomy,AppConfig,0,21,0,0,0,6,0,3,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy,AppConfig,0,46,0,0,0,14,0,4,0,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RecommendationApiController,1,23,1,1,0,8,1,2,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GapAnalysisApiController.GapAnalysisRequest,0,12,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RelationApiController,4,116,6,10,2,29,6,8,0,6
@@ -114,7 +114,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.new TypeRefe
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateDiagramService,32,607,6,63,1,109,6,54,0,13
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,PropagationResult.TraversedRelation,0,27,0,0,0,10,0,5,0,5
-Taxonomy Architecture Analyzer,com.nato.taxonomy.service,TaxonomyService,360,1122,60,77,92,271,48,47,4,21
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,TaxonomyService,364,1126,61,78,94,272,49,47,4,21
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,VisioDiagramService,1,207,3,11,0,37,3,8,0,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationValidationService,21,138,3,7,4,33,4,6,1,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RankFusionUtil,0,74,0,2,0,16,0,4,0,3
