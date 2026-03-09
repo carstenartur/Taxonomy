@@ -187,9 +187,11 @@ public class ApiController {
             try {
                 emitter.send(SseEmitter.event()
                         .name("error")
-                        .data("{\"status\":\"ERROR\",\"errorMessage\":\"Taxonomy data is still loading. Please wait.\",\"initStatus\":\""
-                                + taxonomyService.getInitStatus() + "\"}"));
-            } catch (IOException ignored) {
+                        .data(objectMapper.writeValueAsString(Map.of(
+                                "status", "ERROR",
+                                "errorMessage", "Taxonomy data is still loading. Please wait.",
+                                "initStatus", taxonomyService.getInitStatus()))));
+            } catch (Exception ignored) {
                 // client already disconnected
             }
             emitter.complete();

@@ -127,7 +127,7 @@ public class TaxonomyService {
         }
         if (initializing.compareAndSet(false, true)) {
             log.info("Application ready — starting async taxonomy initialization...");
-            performInitializationAsync();
+            doInitialize(true);
         }
     }
 
@@ -135,27 +135,15 @@ public class TaxonomyService {
         if (!initializing.compareAndSet(false, true)) {
             return; // already in progress or done
         }
-        initStatus.set("loading");
-        try {
-            new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-                try {
-                    doLoadTaxonomy();
-                } catch (RuntimeException e) {
-                    throw e;
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            initialized.set(true);
-            initStatus.set("ready");
-        } catch (RuntimeException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            initStatus.set("error");
-            log.error("Failed to load taxonomy from Excel", cause);
-        }
+        doInitialize(false);
     }
 
-    private void performInitializationAsync() {
+    /**
+     * Core initialization logic shared by the synchronous and asynchronous paths.
+     *
+     * @param async {@code true} when running on the async/background thread (affects log messages)
+     */
+    private void doInitialize(boolean async) {
         initStatus.set("loading");
         try {
             new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
@@ -169,11 +157,14 @@ public class TaxonomyService {
             });
             initialized.set(true);
             initStatus.set("ready");
-            log.info("Async taxonomy initialization complete.");
+            if (async) {
+                log.info("Async taxonomy initialization complete.");
+            }
         } catch (RuntimeException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             initStatus.set("error");
-            log.error("Async taxonomy initialization failed", cause);
+            String msg = async ? "Async taxonomy initialization failed" : "Failed to load taxonomy from Excel";
+            log.error(msg, cause);
         }
     }
 

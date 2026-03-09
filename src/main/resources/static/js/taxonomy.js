@@ -582,15 +582,15 @@
     }
 
     // ── Load taxonomy tree from API ───────────────────────────────────────────
+    var LOADING_MSG = '⏳ Taxonomy data is loading&hellip; This takes about 1&ndash;2 minutes on first start. Please wait.';
+
     function loadTaxonomy() {
         fetch('/api/taxonomy')
             .then(function (r) {
                 if (r.status === 503) {
                     // Taxonomy is still loading — show message and poll until ready
                     document.getElementById('taxonomyTree').innerHTML =
-                        '<div class="alert alert-info">' +
-                        '⏳ Taxonomy data is loading&hellip; This takes about 1&ndash;2 minutes on first start. Please wait.' +
-                        '</div>';
+                        '<div class="alert alert-info">' + LOADING_MSG + '</div>';
                     pollStartupStatus();
                     return null;
                 }
@@ -623,10 +623,7 @@
                     } else {
                         var statusMsg = s && s.status ? ' (status: ' + s.status + ')' : '';
                         document.getElementById('taxonomyTree').innerHTML =
-                            '<div class="alert alert-info">' +
-                            '⏳ Taxonomy data is loading&hellip; This takes about 1&ndash;2 minutes on first start. Please wait.' +
-                            statusMsg +
-                            '</div>';
+                            '<div class="alert alert-info">' + LOADING_MSG + statusMsg + '</div>';
                         pollStartupStatus();
                     }
                 })
