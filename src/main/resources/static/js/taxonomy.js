@@ -312,17 +312,20 @@
     function updateAdminVisibility() {
         const body = document.body;
         const lockBtn = document.getElementById('adminLockBtn');
+        const adminNavTab = document.getElementById('adminNavTab');
         if (!adminPasswordRequired) {
-            // No password configured — show everything, no lock button
-            body.classList.remove('admin-unlocked');
+            // No password configured — admin features always accessible, no lock button
+            body.classList.add('admin-unlocked');
             document.querySelectorAll('.admin-only').forEach(el => {
                 el.style.display = '';
             });
+            if (adminNavTab) { adminNavTab.style.display = ''; }
             if (lockBtn) { lockBtn.classList.add('d-none'); }
             return;
         }
         if (isAdminMode()) {
             body.classList.add('admin-unlocked');
+            if (adminNavTab) { adminNavTab.style.display = ''; }
             if (lockBtn) {
                 lockBtn.textContent = '🔓';
                 lockBtn.title = 'Admin mode active — click to lock';
@@ -330,6 +333,7 @@
             }
         } else {
             body.classList.remove('admin-unlocked');
+            if (adminNavTab) { adminNavTab.style.display = 'none'; }
             if (lockBtn) {
                 lockBtn.textContent = '🔐';
                 lockBtn.title = 'Click to unlock admin mode';
@@ -1338,6 +1342,20 @@
                     if (summaryBtn) summaryBtn.style.display = '';
                     // Auto-switch to summary view
                     switchView('summary');
+                    // Add quick action to navigate to Architecture tab
+                    var statusArea = document.getElementById('statusArea');
+                    if (statusArea && window.navigateToPage) {
+                        var archLink = document.createElement('div');
+                        archLink.className = 'mt-2';
+                        var archBtn = document.createElement('button');
+                        archBtn.className = 'btn btn-sm btn-outline-primary';
+                        archBtn.textContent = '\uD83C\uDFDB\uFE0F View Architecture \u2192';
+                        archBtn.addEventListener('click', function () {
+                            window.navigateToPage('architecture');
+                        });
+                        archLink.appendChild(archBtn);
+                        statusArea.appendChild(archLink);
+                    }
                 }
             })
             .catch(err => {
@@ -1366,10 +1384,12 @@
     function renderArchitectureView(view) {
         const panel = document.getElementById('architectureViewPanel');
         const content = document.getElementById('architectureViewContent');
+        const placeholder = document.getElementById('architecturePlaceholder');
         if (!panel || !content) return;
 
         if (!view) {
             panel.style.display = 'none';
+            if (placeholder) { placeholder.style.display = ''; }
             return;
         }
 
@@ -1438,6 +1458,7 @@
 
         content.innerHTML = html;
         panel.style.display = '';
+        if (placeholder) { placeholder.style.display = 'none'; }
     }
 
     // ── Architecture Summary View ─────────────────────────────────────────────
