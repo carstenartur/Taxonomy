@@ -1,4 +1,4 @@
-# NATO NC3T Taxonomy Browser
+# Taxonomy Architecture Analyzer
 
 [![CI/CD](https://github.com/carstenartur/Taxonomy/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/carstenartur/Taxonomy/actions/workflows/ci-cd.yml)
 [![Coverage](https://img.shields.io/endpoint?url=https://carstenartur.github.io/Taxonomy/coverage/badge.json)](https://carstenartur.github.io/Taxonomy/coverage/)
@@ -7,7 +7,7 @@
 
 **An AI-assisted system that derives architecture insights from requirements.**
 
-The system maps free-text business requirements to the NATO C3 Taxonomy, discovers relationships between architecture elements, and generates architecture views and diagrams — all in one step.
+The system maps free-text business requirements to a structured C3 Taxonomy, discovers relationships between architecture elements, and generates architecture views and diagrams — all in one step.
 
 > **Requirement → Taxonomy Matching → Architecture Insight → Architecture Diagram**
 
@@ -66,7 +66,7 @@ The system scores every taxonomy node, selects the most relevant elements, propa
 
 ## Why This Project Exists
 
-Architecture analysis often starts with vague requirements. The NATO C3 Taxonomy Catalogue (Baseline 7) contains approximately **2,500 nodes** across 8 taxonomy sheets — covering Business Processes, Business Roles, Capabilities, COI Services, Communications Services, Core Services, Information Products, and User Applications. Navigating this hierarchy and mapping a plain-text mission or business requirement to the correct taxonomy elements is time-consuming and error-prone when done manually.
+Architecture analysis often starts with vague requirements. The C3 Taxonomy Catalogue (Baseline 7) contains approximately **2,500 nodes** across 8 taxonomy sheets — covering Business Processes, Business Roles, Capabilities, COI Services, Communications Services, Core Services, Information Products, and User Applications. Navigating this hierarchy and mapping a plain-text mission or business requirement to the correct taxonomy elements is time-consuming and error-prone when done manually.
 
 This project bridges the gap between requirements and architecture by automatically identifying relevant architecture elements and their relationships. It does so by:
 
@@ -200,20 +200,20 @@ Open <http://localhost:8080> in your browser.
 
 ```bash
 # Build the image
-docker build -t nato-taxonomy .
+docker build -t taxonomy-analyzer .
 
 # Run with a cloud LLM provider
-docker run -p 8080:8080 -e GEMINI_API_KEY=your-key nato-taxonomy
+docker run -p 8080:8080 -e GEMINI_API_KEY=your-key taxonomy-analyzer
 
 # Run fully offline
-docker run -p 8080:8080 -e LLM_PROVIDER=LOCAL_ONNX nato-taxonomy
+docker run -p 8080:8080 -e LLM_PROVIDER=LOCAL_ONNX taxonomy-analyzer
 
 # Production (with admin password and persistent storage)
 docker run -d -p 8080:8080 \
   -e GEMINI_API_KEY=your-key \
   -e ADMIN_PASSWORD=your-password \
   -v taxonomy-data:/app/data \
-  nato-taxonomy
+  taxonomy-analyzer
 ```
 
 ### Pre-Built Image
@@ -240,7 +240,7 @@ mvn verify            # Unit + integration tests (requires Docker for container 
 1. Open <http://localhost:8080>
 2. Type a business requirement in the text area, for example:
 
-   > _"Provide secure voice and video communications for deployed NATO forces with interoperability across national systems"_
+   > _"Provide secure voice and video communications for deployed forces with interoperability across national systems"_
 
 3. Click **Analyze with AI**
 4. Explore matching nodes in the scored taxonomy tree

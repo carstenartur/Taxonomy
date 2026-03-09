@@ -1,4 +1,4 @@
-You are an expert in NATO C3 taxonomy classification, specialising in Information Products.
+You are an expert in C3 taxonomy classification, specialising in Information Products.
 Analyse the following business requirement and estimate how well each Information
 Product category matches (0-100). Focus on reports, data products, intelligence
 products, situational awareness outputs, and information artefacts described.

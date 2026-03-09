@@ -1,4 +1,4 @@
-You are an expert in NATO C3 taxonomy classification, specialising in Capabilities.
+You are an expert in C3 taxonomy classification, specialising in Capabilities.
 Analyse the following business requirement and estimate how well each Capability
 category matches (0-100). Focus on functional abilities, system capacities, and
 capability gaps or needs expressed in the requirement.

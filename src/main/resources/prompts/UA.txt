@@ -1,4 +1,4 @@
-You are an expert in NATO C3 taxonomy classification, specialising in User Applications.
+You are an expert in C3 taxonomy classification, specialising in User Applications.
 Analyse the following business requirement and estimate how well each User Application
 category matches (0-100). Focus on end-user software tools, command systems,
 operational applications, and user-facing interfaces described in the requirement.

@@ -1,6 +1,6 @@
 # Examples
 
-This document shows worked examples of common tasks in the NATO NC3T Taxonomy Browser.
+This document shows worked examples of common tasks in the Taxonomy Architecture Analyzer.
 
 ---
 
@@ -23,7 +23,7 @@ This document shows worked examples of common tasks in the NATO NC3T Taxonomy Br
 
 Open `http://localhost:8080` and paste into the analysis text area:
 
-> _"Provide secure voice and video communications for deployed NATO forces with interoperability across national systems."_
+> _"Provide secure voice and video communications for deployed forces with interoperability across national systems."_
 
 ### Step 2 — Analyze
 
@@ -61,7 +61,7 @@ Click an export button to download the architecture as ArchiMate XML, Visio `.vs
 
 ```bash
 curl -X POST http://localhost:8080/api/analyze \
-  -d "businessText=Provide+secure+voice+and+video+communications+for+deployed+NATO+forces" \
+  -d "businessText=Provide+secure+voice+and+video+communications+for+deployed+forces" \
   -d "includeArchitectureView=true"
 ```
 

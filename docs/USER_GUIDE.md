@@ -1,4 +1,4 @@
-# NATO NC3T Taxonomy Browser — User Guide
+# Taxonomy Architecture Analyzer — User Guide
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@
 
 ## 1. Overview
 
-The **NATO NC3T Taxonomy Browser** is a web application that helps Architects, Analysts, and Requirements Engineers map free-text mission and business requirements to the NATO C3 Taxonomy catalogue. You describe what you need in plain English, and the application finds the most relevant taxonomy nodes, shows you how they relate to each other, and lets you export structured diagrams.
+The **Taxonomy Architecture Analyzer** is a web application that helps Architects, Analysts, and Requirements Engineers map free-text mission and business requirements to the C3 Taxonomy catalogue. You describe what you need in plain English, and the application finds the most relevant taxonomy nodes, shows you how they relate to each other, and lets you export structured diagrams.
 
 **Who is this guide for?**
 
@@ -97,7 +97,7 @@ The application is divided into two main panels side by side.
 
 ### Left Panel — Taxonomy Tree
 
-The left panel (wider column) displays the **Taxonomy Tree**. This is the full catalogue of NATO C3 capabilities, services, roles, and information products.
+The left panel (wider column) displays the **Taxonomy Tree**. This is the full catalogue of C3 capabilities, services, roles, and information products.
 
 At the top of the left panel you will find:
 
@@ -1045,7 +1045,7 @@ The system uses 10 relation types, each corresponding to a specific relationship
 
 **Action:**
 1. Check the **Analysis Log** (right panel, collapsible) for error messages.
-2. Try rephrasing the requirement using more specific NATO/C3 domain terminology.
+2. Try rephrasing the requirement using more specific C3 domain terminology.
 3. If admin mode is available, check the **LLM Communication Log** to see what the LLM returned.
 
 ### Export buttons are not visible

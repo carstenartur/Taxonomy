@@ -1,6 +1,6 @@
 # Architecture Description
 
-This document describes the architecture of the NC3T Taxonomy Browser — a Spring Boot web application for browsing, analysing, and visualising NATO C3 Taxonomy data. It is intended for developers and system integrators who need to understand the system design, processing pipelines, and operational setup.
+This document describes the architecture of the Taxonomy Architecture Analyzer — a Spring Boot web application for browsing, analysing, and visualising C3 Taxonomy data. It is intended for developers and system integrators who need to understand the system design, processing pipelines, and operational setup.
 
 ---
 

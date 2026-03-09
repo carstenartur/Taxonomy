@@ -1,6 +1,6 @@
-# NATO Taxonomy Analyser — Deployment Guide
+# Taxonomy Architecture Analyzer — Deployment Guide
 
-This guide covers deploying the NATO NC3T Taxonomy Browser using Docker and Render.com.
+This guide covers deploying the Taxonomy Architecture Analyzer using Docker and Render.com.
 
 > **Prerequisites:** Docker 20+ for containerised deployment. No external database or message broker is required — the application is fully self-contained.
 
@@ -30,7 +30,7 @@ The repository includes a multi-stage `Dockerfile`:
 
 ```bash
 # Build the image
-docker build -t nato-taxonomy .
+docker build -t taxonomy-analyzer .
 
 # The image is approximately 200 MB (JRE + application JAR)
 ```
@@ -39,32 +39,32 @@ docker build -t nato-taxonomy .
 
 **Minimal (browser-only, no AI):**
 ```bash
-docker run -p 8080:8080 nato-taxonomy
+docker run -p 8080:8080 taxonomy-analyzer
 ```
 
 **With a cloud LLM provider (e.g. Gemini):**
 ```bash
 docker run -p 8080:8080 \
   -e GEMINI_API_KEY=your-gemini-api-key \
-  nato-taxonomy
+  taxonomy-analyzer
 ```
 
 **With local offline AI (no API key needed):**
 ```bash
 docker run -p 8080:8080 \
   -e LLM_PROVIDER=LOCAL_ONNX \
-  nato-taxonomy
+  taxonomy-analyzer
 ```
 
 **Full production configuration:**
 ```bash
 docker run -d \
-  --name nato-taxonomy \
+  --name taxonomy-analyzer \
   -p 8080:8080 \
   -e GEMINI_API_KEY=your-gemini-api-key \
   -e ADMIN_PASSWORD=your-admin-password \
   -e TAXONOMY_EMBEDDING_ENABLED=true \
-  nato-taxonomy
+  taxonomy-analyzer
 ```
 
 ### Required `-e` Flags
@@ -84,7 +84,7 @@ under `/app/data`. Mount a persistent volume to retain data across container res
 ```bash
 docker run -p 8080:8080 \
   -v taxonomy-data:/app/data \
-  nato-taxonomy
+  taxonomy-analyzer
 ```
 
 For the DJL embedding model cache (LOCAL_ONNX mode):
@@ -94,7 +94,7 @@ docker run -p 8080:8080 \
   -e LLM_PROVIDER=LOCAL_ONNX \
   -v taxonomy-data:/app/data \
   -v djl-cache:/root/.djl.ai \
-  nato-taxonomy
+  taxonomy-analyzer
 ```
 
 This persists the downloaded model, database, and search index across container restarts.
@@ -105,13 +105,13 @@ The application responds to `GET /` with a 200 status when healthy:
 
 ```bash
 docker run -d \
-  --name nato-taxonomy \
+  --name taxonomy-analyzer \
   --health-cmd="wget -q -O /dev/null http://localhost:8080/ || exit 1" \
   --health-interval=30s \
   --health-timeout=10s \
   --health-retries=3 \
   -p 8080:8080 \
-  nato-taxonomy
+  taxonomy-analyzer
 ```
 
 ### Using the Published Image
@@ -134,7 +134,7 @@ The repository includes a `render.yaml` Blueprint specification:
 ```yaml
 services:
   - type: web            # Web service (publicly accessible)
-    name: nato-taxonomy  # Service name in the Render dashboard
+    name: taxonomy-analyzer  # Service name in the Render dashboard
     runtime: docker      # Uses the Dockerfile in the repository root
     plan: free           # Free tier (512 MB RAM, shared CPU)
     healthCheckPath: /   # Render pings GET / to check health
@@ -169,7 +169,7 @@ services:
 ### Setting Environment Variables in Render
 
 1. Go to the [Render Dashboard](https://dashboard.render.com)
-2. Select your **nato-taxonomy** service
+2. Select your **taxonomy-analyzer** service
 3. Click **Environment** in the left sidebar
 4. Click **Add Environment Variable**
 
@@ -223,11 +223,11 @@ Additional health indicators:
 ### Container fails to start
 
 - Check memory: the JRE + Lucene index + ONNX Runtime need ~256 MB minimum; heap is capped at 65 % of container memory to leave room for off-heap native memory
-- Check logs: `docker logs nato-taxonomy`
+- Check logs: `docker logs taxonomy-analyzer`
 
 ### AI analysis not working
 
-- Verify the API key is set: `docker exec nato-taxonomy printenv | grep API_KEY`
+- Verify the API key is set: `docker exec taxonomy-analyzer printenv | grep API_KEY`
 - Check `GET /api/ai-status` for provider status
 
 ### Embedding model download fails

@@ -29,7 +29,7 @@ public class VisioDocumentConverter implements Converter {
 
         writer.startNode("DocumentProperties");
         writer.startNode("Creator");
-        writer.setValue("NATO NC3T Taxonomy Browser");
+        writer.setValue("Taxonomy Architecture Analyzer");
         writer.endNode();
         writer.startNode("Description");
         writer.setValue("Architecture diagram generated from requirement analysis");
