@@ -92,7 +92,7 @@ Key capabilities:
 │  └──────────────┬──────────────────────────────────────────┘  │
 │                 │                                              │
 │  ┌──────────────▼──────────────────────────────────────────┐  │
-│  │         Persistence (H2/Postgres, Hibernate Search)     │  │
+│  │         Persistence (HSQLDB, Hibernate Search / Lucene)  │  │
 │  │  TaxonomyNode · TaxonomyRelation · RelationProposal     │  │
 │  └──────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
@@ -112,7 +112,7 @@ Key capabilities:
 
 | Requirement | Notes |
 |---|---|
-| Java 21+ | Runtime |
+| Java 17+ | Runtime |
 | Maven 3.9+ | Build only |
 | LLM API key **or** `LLM_PROVIDER=LOCAL_ONNX` | Required for analysis; optional for browse/search |
 | Embedding enabled (optional) | Enables semantic and hybrid search |
