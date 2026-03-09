@@ -121,6 +121,7 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 | — | `spring.datasource.type` | String | `org.springframework.jdbc.datasource.SimpleDriverDataSource` | DataSource implementation. `SimpleDriverDataSource` bypasses HikariCP entirely — no connection pool is needed for in-process HSQLDB, which eliminates pool-exhaustion issues and reduces memory overhead. |
 | `TAXONOMY_DDL_AUTO` | `spring.jpa.hibernate.ddl-auto` | String | `create` | Schema generation strategy. `create` rebuilds on each start (safe for in-memory default). Set to `update` for file-based deployments so data is not wiped on restart. |
 | — | `spring.jpa.show-sql` | Boolean | `false` | Whether to log SQL statements. |
+| — | `spring.jpa.database-platform` | String | `org.hibernate.dialect.HSQLDialect` | Explicit Hibernate dialect. Required because `SimpleDriverDataSource` does not expose JDBC metadata, so Hibernate 7.x cannot detect the dialect automatically. |
 
 ---
 
