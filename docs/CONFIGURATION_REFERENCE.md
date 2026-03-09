@@ -106,7 +106,7 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
-| — | `server.port` | Integer | `8080` | HTTP port the application listens on. |
+| `PORT` | `server.port` | Integer | `8080` | HTTP port the application listens on. Set by Render and similar platforms; falls back to `8080` locally. |
 | — | `spring.application.name` | String | `taxonomy-analyzer` | Application name (used in logs). |
 | — | `spring.thymeleaf.cache` | Boolean | `false` | Set to `true` in production for template caching. |
 
