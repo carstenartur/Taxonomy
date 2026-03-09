@@ -2240,6 +2240,11 @@
 
     // Expose current scores for Requirement Impact Analysis
     window._getCurrentScores = function () { return currentScores; };
+    // Test helpers (screenshot tests only — not for production use): allow Selenium tests to set
+    // storedBusinessText and re-render the list view so that leaf justify buttons appear without
+    // relying on the interactive expansion flow.
+    window._setStoredBusinessText = function (text) { storedBusinessText = text; };
+    window._renderViewWithCurrentScores = function () { renderView(taxonomyData, currentScores); };
 
     // ── Prompt template editor ────────────────────────────────────────────────
 

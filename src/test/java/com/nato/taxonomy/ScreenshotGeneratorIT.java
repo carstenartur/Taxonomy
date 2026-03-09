@@ -1,6 +1,7 @@
 package com.nato.taxonomy;
 
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -38,7 +39,7 @@ import java.util.List;
  * Run with: {@code mvn verify -DgenerateScreenshots -Dtest=ScreenshotGeneratorIT}
  * <p>
  * Screenshots 1–14 do not require an LLM provider.
- * Screenshots 15–28 use mock LLM mode ({@code LLM_MOCK=true}) to produce
+ * Screenshots 15–27 use mock LLM mode ({@code LLM_MOCK=true}) to produce
  * realistic scores without calling any real LLM API.
  */
 @Testcontainers
@@ -447,7 +448,7 @@ class ScreenshotGeneratorIT {
         saveScreenshot("14-navbar-admin-lock.png");
     }
 
-    // ── Screenshots 15–28: LLM-dependent (use mock LLM — no real API key needed) ──
+    // ── Screenshots 15–27: LLM-dependent (use mock LLM — no real API key needed) ──
 
     @Test
     @Order(15)
@@ -492,65 +493,60 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(17)
     void captureMatchLegendWithScores() throws IOException {
-        WebElement legendCard = driver.findElement(
-                By.xpath("//div[contains(@class,'card')]//small[contains(text(),'Match legend')]/ancestor::div[contains(@class,'card')]"));
-        saveElementScreenshot(legendCard, "17-match-legend-with-scores.png");
+        // Full-page screenshot so the legend is shown in context with the scored tree visible,
+        // making this visually distinct from the element-only screenshot 10 (captureMatchLegend).
+        saveScreenshot("17-match-legend-with-scores.png");
     }
 
     @Test
     @Order(18)
     void captureLeafJustificationModal() throws IOException, InterruptedException {
-        // Reload the page to ensure clean JS state. After reload interactiveMode defaults to true
-        // (the checkbox has the checked attribute in HTML and the JS closure initialises to true).
+        // Reload the page for a clean JS state
         resetPageState();
+        // Clean up any leftover Bootstrap modal state from a previous failed retry run
+        resetModalState();
 
-        // Verify interactive mode is ON — leaf justify buttons only appear when storedBusinessText
-        // is set, which only happens during runInteractiveAnalysis(), not runStreamingAnalysis().
-        js("var cb = document.getElementById('interactiveMode');" +
-           "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change')); }");
+        // 1. Run a full non-interactive analysis to score ALL nodes (including leaf nodes).
+        //    The mock LLM always returns scores > 0 for non-BR nodes, so leaves will be scored > 0.
+        forceNonInteractiveMode();
+        runAnalysis();
 
-        // Run interactive analysis: sets storedBusinessText and renders tree without scores
-        WebElement textarea = driver.findElement(By.id("businessText"));
-        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
-        js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
-                textarea, REQUIREMENT_TEXT);
-        js("document.getElementById('analyzeBtn').click();");
-        // Interactive analysis renders the tree immediately, marking parent nodes as unevaluated
-        wait(10).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-has-unevaluated")));
+        // 2. Set storedBusinessText via the window test helper so that buildNodeEl creates
+        //    leaf justify buttons when the tree is re-rendered.  storedBusinessText is normally
+        //    a closure variable only set by runInteractiveAnalysis(); the window helper is
+        //    exposed specifically to support this screenshot-test scenario.
+        js("window._setStoredBusinessText(arguments[0]);", REQUIREMENT_TEXT);
 
-        // Expand parent nodes level by level until leaf justify buttons appear.
-        // Each expand triggers an API call to /api/analyze-node which scores child nodes;
-        // leaf children with score > 0 get the .btn-outline-info justify button.
-        for (int depth = 0; depth < 4; depth++) {
-            List<WebElement> unevalToggles = driver.findElements(
-                    By.cssSelector(".tax-has-unevaluated > .tax-node-header > .tax-toggle"));
-            if (unevalToggles.isEmpty()) break;
-            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", unevalToggles.get(0));
-            js("arguments[0].click();", unevalToggles.get(0));
-            // Wait for the evaluation API call to complete (tax-evaluating class is removed on finish)
-            wait(15).until(d -> driver.findElements(By.cssSelector(".tax-evaluating")).isEmpty());
-            if (!driver.findElements(By.cssSelector(".tax-justify-btn.btn-outline-info")).isEmpty()) {
-                break; // Leaf justify buttons found — no need to drill deeper
-            }
-        }
+        // 3. Re-render the taxonomy list view with currentScores AND storedBusinessText now set.
+        //    buildNodeEl will create .tax-justify-btn.btn-outline-info for every leaf node
+        //    whose score is > 0.
+        js("window._renderViewWithCurrentScores();");
 
+        // 4. Expand all nodes so the leaf-level justify buttons are visible in the DOM.
+        js("document.getElementById('expandAll').click();");
+
+        // 5. Wait for at least one leaf justify button to appear.
+        wait(10).until(ExpectedConditions.presenceOfElementLocated(
+                By.cssSelector(".tax-justify-btn.btn-outline-info")));
         List<WebElement> justifyBtns = driver.findElements(
                 By.cssSelector(".tax-justify-btn.btn-outline-info"));
-        if (!justifyBtns.isEmpty()) {
-            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", justifyBtns.get(0));
-            js("arguments[0].click();", justifyBtns.get(0));
-            // Wait for the /api/justify-leaf mock call to populate the modal body text, which
-            // is more reliable than a fixed sleep and confirms the API round-trip has completed.
-            wait(15).until(d -> {
-                List<WebElement> body = d.findElements(By.id("leafJustificationModalBody"));
-                return !body.isEmpty() && !body.get(0).getText().isEmpty();
-            });
-            // Force show via DOM in case Bootstrap CDN is unavailable or animation did not fire
-            showModalViaDOM("leafJustificationModal");
-            saveScreenshot("18-leaf-justification-modal.png");
-            closeModalViaDOM("leafJustificationModal");
-            js("window.scrollTo(0, 0);");
-        }
+        Assertions.assertFalse(justifyBtns.isEmpty(),
+                "No leaf justify buttons found after non-interactive analysis + expand-all. " +
+                "The mock LLM may not be producing scores > 0 for leaf nodes.");
+
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", justifyBtns.get(0));
+        js("arguments[0].click();", justifyBtns.get(0));
+        // Wait for the /api/justify-leaf mock call to populate the modal body text, which
+        // is more reliable than a fixed sleep and confirms the API round-trip has completed.
+        wait(15).until(d -> {
+            List<WebElement> body = d.findElements(By.id("leafJustificationModalBody"));
+            return !body.isEmpty() && !body.get(0).getText().isEmpty();
+        });
+        // Force show via DOM in case Bootstrap CDN is unavailable or animation did not fire
+        showModalViaDOM("leafJustificationModal");
+        saveScreenshot("18-leaf-justification-modal.png");
+        closeModalViaDOM("leafJustificationModal");
+        js("window.scrollTo(0, 0);");
         // Reset to non-interactive for subsequent tests
         forceNonInteractiveMode();
     }
@@ -654,31 +650,24 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(23)
     void captureExportButtons() throws IOException {
+        // Ensure a completed analysis exists so export buttons are visible
+        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
+        if (!statusText.contains("complete")) {
+            forceNonInteractiveMode();
+            runAnalysis();
+        }
         js("window.scrollTo(0, 0);");
         wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
+        // Wait for the export group to have a non-zero size (not collapsed)
+        wait(5).until(d -> {
+            WebElement eg = d.findElement(By.id("exportGroup"));
+            return eg.getSize().getWidth() > 0 && eg.getSize().getHeight() > 0;
+        });
         saveElementScreenshot(driver.findElement(By.id("exportGroup")), "23-export-buttons.png");
     }
 
     @Test
     @Order(24)
-    void captureAdminModal() throws IOException, InterruptedException {
-        // Clean up any leftover modal state from a previous failed retry run
-        resetModalState();
-        showAdminLockButton();
-        // Click the lock button via JS to trigger initAdminModal()'s event listener, which sets
-        // up the modal content before calling bsModal.show().
-        js("document.getElementById('adminLockBtn').click();");
-        // Allow time for Bootstrap to animate the modal open
-        Thread.sleep(1000);
-        // Force show via DOM in case Bootstrap CDN is unavailable or animation did not fire
-        showModalViaDOM("adminModal");
-        saveScreenshot("24-admin-modal.png");
-        closeModalViaDOM("adminModal");
-        js("window.scrollTo(0, 0);");
-    }
-
-    @Test
-    @Order(25)
     void captureLlmDiagnostics() throws IOException {
         unlockAdmin();
 
@@ -692,23 +681,23 @@ class ScreenshotGeneratorIT {
             String text = content.getText();
             return text != null && !text.isEmpty() && !text.contains("Loading");
         });
-        saveElementScreenshot(diagPanel, "25-llm-diagnostics.png");
+        saveElementScreenshot(diagPanel, "24-llm-diagnostics.png");
     }
 
     @Test
-    @Order(26)
+    @Order(25)
     void capturePromptTemplateEditor() throws IOException {
         WebElement promptEditor = driver.findElement(By.id("promptEditor"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", promptEditor);
         openDetails(promptEditor);
         wait(5).until(ExpectedConditions.visibilityOf(promptEditor));
-        saveElementScreenshot(promptEditor, "26-prompt-template-editor.png");
+        saveElementScreenshot(promptEditor, "25-prompt-template-editor.png");
     }
 
-    // ── Screenshots 27–28: Requirement Coverage Dashboard ─────────────────────
+    // ── Screenshots 26–27: Requirement Coverage Dashboard ─────────────────────
 
     @Test
-    @Order(27)
+    @Order(26)
     void captureCoverageDashboardEmpty() throws IOException {
         WebElement panel = driver.findElement(By.id("coverageDashboard"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
@@ -718,11 +707,11 @@ class ScreenshotGeneratorIT {
             String text = d.findElement(By.id("coverageDashboardContent")).getText();
             return text != null && !text.contains("Loading");
         });
-        saveElementScreenshot(panel, "27-coverage-dashboard-empty.png");
+        saveElementScreenshot(panel, "26-coverage-dashboard-empty.png");
     }
 
     @Test
-    @Order(28)
+    @Order(27)
     void captureCoverageDashboardWithData() throws IOException {
         // Ensure scores are available — run a fresh analysis if window._getCurrentScores() is empty
         String hasScores = (String) ((JavascriptExecutor) driver).executeScript(
@@ -759,6 +748,6 @@ class ScreenshotGeneratorIT {
 
         WebElement panel = driver.findElement(By.id("coverageDashboard"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
-        saveElementScreenshot(panel, "28-coverage-dashboard-data.png");
+        saveElementScreenshot(panel, "27-coverage-dashboard-data.png");
     }
 }
