@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MermaidExportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">NATO NC3T Taxonomy Browser</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.service</a> &gt; <span class="el_source">MermaidExportService.java</span></div><h1>MermaidExportService.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.service;
+
+import com.nato.taxonomy.diagram.DiagramEdge;
+import com.nato.taxonomy.diagram.DiagramModel;
+import com.nato.taxonomy.diagram.DiagramNode;
+import org.springframework.stereotype.Service;
+
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+/**
+ * Converts a neutral {@link DiagramModel} into Mermaid flowchart syntax.
+ *
+ * &lt;p&gt;The generated output is suitable for embedding in GitHub READMEs, Confluence pages,
+ * and any Markdown renderer that supports Mermaid diagrams.&lt;/p&gt;
+ */
+@Service
+<span class="fc" id="L21">public class MermaidExportService {</span>
+
+<span class="fc" id="L23">    private static final Map&lt;String, String&gt; LAYER_STYLE = Map.of(</span>
+            &quot;Capabilities&quot;, &quot;cap&quot;,
+            &quot;Business Processes&quot;, &quot;proc&quot;,
+            &quot;Business Roles&quot;, &quot;role&quot;,
+            &quot;Services&quot;, &quot;svc&quot;,
+            &quot;COI Services&quot;, &quot;svc&quot;,
+            &quot;Core Services&quot;, &quot;svc&quot;,
+            &quot;Applications&quot;, &quot;app&quot;,
+            &quot;User Applications&quot;, &quot;app&quot;,
+            &quot;Information Products&quot;, &quot;info&quot;,
+            &quot;Communications Services&quot;, &quot;comm&quot;
+    );
+
+    /**
+     * Exports a {@link DiagramModel} as a Mermaid flowchart string.
+     *
+     * @param model the neutral diagram model
+     * @return Mermaid-formatted diagram text
+     */
+    public String export(DiagramModel model) {
+<span class="fc bfc" id="L43" title="All 4 branches covered.">        if (model == null || model.nodes().isEmpty()) {</span>
+<span class="fc" id="L44">            return &quot;flowchart LR\n    empty[\&quot;No data\&quot;]\n&quot;;</span>
+        }
+
+<span class="fc" id="L47">        StringBuilder sb = new StringBuilder();</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">        String direction = model.layout() != null ? model.layout().direction() : &quot;LR&quot;;</span>
+<span class="fc" id="L49">        sb.append(&quot;flowchart &quot;).append(direction).append('\n');</span>
+
+        // Group nodes by layer for subgraph rendering
+<span class="fc" id="L52">        Map&lt;String, List&lt;DiagramNode&gt;&gt; grouped = model.nodes().stream()</span>
+<span class="fc" id="L53">                .collect(Collectors.groupingBy(</span>
+                        DiagramNode::type,
+                        LinkedHashMap::new,
+<span class="fc" id="L56">                        Collectors.toList()));</span>
+
+        // Sort groups by layer order
+<span class="fc" id="L59">        List&lt;Map.Entry&lt;String, List&lt;DiagramNode&gt;&gt;&gt; sortedGroups = grouped.entrySet().stream()</span>
+<span class="fc" id="L60">                .sorted(Comparator.comparingInt(e -&gt; layerOrder(e.getKey())))</span>
+<span class="fc" id="L61">                .toList();</span>
+
+        // Render subgraphs
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;DiagramNode&gt;&gt; entry : sortedGroups) {</span>
+<span class="fc" id="L65">            String type = entry.getKey();</span>
+<span class="fc" id="L66">            List&lt;DiagramNode&gt; nodes = entry.getValue();</span>
+<span class="fc" id="L67">            String subId = sanitizeId(type);</span>
+
+<span class="fc" id="L69">            sb.append(&quot;    subgraph &quot;).append(subId).append(&quot;[\&quot;&quot;).append(escape(type)).append(&quot;\&quot;]\n&quot;);</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            for (DiagramNode node : nodes) {</span>
+<span class="fc" id="L71">                String nodeId = sanitizeId(node.id());</span>
+<span class="fc" id="L72">                String label = node.id() + &quot; &quot; + node.label();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                if (node.anchor()) {</span>
+<span class="fc" id="L74">                    label += &quot; ★&quot;;</span>
+                }
+<span class="fc" id="L76">                double pct = node.relevance() * 100;</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                if (pct &gt; 0) {</span>
+<span class="fc" id="L78">                    label += &quot; [&quot; + String.format(&quot;%.0f%%&quot;, pct) + &quot;]&quot;;</span>
+                }
+<span class="fc" id="L80">                sb.append(&quot;        &quot;).append(nodeId).append(&quot;[\&quot;&quot;).append(escape(label)).append(&quot;\&quot;]\n&quot;);</span>
+<span class="fc" id="L81">            }</span>
+<span class="fc" id="L82">            sb.append(&quot;    end\n&quot;);</span>
+<span class="fc" id="L83">        }</span>
+
+        // Render edges
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        for (DiagramEdge edge : model.edges()) {</span>
+<span class="fc" id="L87">            String src = sanitizeId(edge.sourceId());</span>
+<span class="fc" id="L88">            String tgt = sanitizeId(edge.targetId());</span>
+<span class="fc" id="L89">            sb.append(&quot;    &quot;).append(src).append(&quot; --&gt;|&quot;).append(escape(edge.relationType())).append(&quot;| &quot;).append(tgt).append('\n');</span>
+<span class="fc" id="L90">        }</span>
+
+        // Class definitions for styling
+<span class="fc" id="L93">        sb.append(&quot;    classDef cap fill:#4A90D9,color:#fff,stroke:#2171B5\n&quot;);</span>
+<span class="fc" id="L94">        sb.append(&quot;    classDef proc fill:#27AE60,color:#fff,stroke:#1E8449\n&quot;);</span>
+<span class="fc" id="L95">        sb.append(&quot;    classDef role fill:#27AE60,color:#fff,stroke:#1E8449\n&quot;);</span>
+<span class="fc" id="L96">        sb.append(&quot;    classDef svc fill:#F39C12,color:#fff,stroke:#D68910\n&quot;);</span>
+<span class="fc" id="L97">        sb.append(&quot;    classDef app fill:#8E44AD,color:#fff,stroke:#6C3483\n&quot;);</span>
+<span class="fc" id="L98">        sb.append(&quot;    classDef info fill:#3498DB,color:#fff,stroke:#2980B9\n&quot;);</span>
+<span class="fc" id="L99">        sb.append(&quot;    classDef comm fill:#E74C3C,color:#fff,stroke:#C0392B\n&quot;);</span>
+
+        // Apply classes to nodes
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        for (DiagramNode node : model.nodes()) {</span>
+<span class="fc" id="L103">            String cls = LAYER_STYLE.getOrDefault(node.type(), &quot;&quot;);</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">            if (!cls.isEmpty()) {</span>
+<span class="fc" id="L105">                sb.append(&quot;    class &quot;).append(sanitizeId(node.id())).append(&quot; &quot;).append(cls).append('\n');</span>
+            }
+<span class="fc" id="L107">        }</span>
+
+<span class="fc" id="L109">        return sb.toString();</span>
+    }
+
+    private int layerOrder(String type) {
+<span class="pc bpc" id="L113" title="5 of 7 branches missed.">        return switch (type) {</span>
+<span class="fc" id="L114">            case &quot;Capabilities&quot; -&gt; 1;</span>
+<span class="fc" id="L115">            case &quot;Business Processes&quot;, &quot;Business Roles&quot; -&gt; 2;</span>
+<span class="nc" id="L116">            case &quot;Services&quot;, &quot;COI Services&quot;, &quot;Core Services&quot; -&gt; 3;</span>
+<span class="nc" id="L117">            case &quot;Applications&quot;, &quot;User Applications&quot; -&gt; 4;</span>
+<span class="nc" id="L118">            case &quot;Information Products&quot; -&gt; 5;</span>
+<span class="nc" id="L119">            case &quot;Communications Services&quot; -&gt; 6;</span>
+<span class="nc" id="L120">            default -&gt; 99;</span>
+        };
+    }
+
+    /**
+     * Sanitize a node/subgraph ID for Mermaid (alphanumeric + underscores only).
+     */
+    static String sanitizeId(String id) {
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (id == null) return &quot;unknown&quot;;</span>
+<span class="fc" id="L129">        return id.replaceAll(&quot;[^a-zA-Z0-9_]&quot;, &quot;_&quot;);</span>
+    }
+
+    /**
+     * Escape special characters for Mermaid labels.
+     */
+    static String escape(String text) {
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (text == null) return &quot;&quot;;</span>
+<span class="fc" id="L137">        return text.replace(&quot;\&quot;&quot;, &quot;&amp;quot;&quot;).replace(&quot;#&quot;, &quot;&amp;num;&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

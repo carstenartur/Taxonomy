@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -35,10 +36,10 @@ public class ProposalApiController {
     private final RelationReviewService reviewService;
 
     public ProposalApiController(RelationProposalService proposalService,
-<span class="fc" id="L38">                                  RelationReviewService reviewService) {</span>
-<span class="fc" id="L39">        this.proposalService = proposalService;</span>
-<span class="fc" id="L40">        this.reviewService = reviewService;</span>
-<span class="fc" id="L41">    }</span>
+<span class="fc" id="L39">                                  RelationReviewService reviewService) {</span>
+<span class="fc" id="L40">        this.proposalService = proposalService;</span>
+<span class="fc" id="L41">        this.reviewService = reviewService;</span>
+<span class="fc" id="L42">    }</span>
 
     /**
      * Trigger the proposal pipeline for a source node and relation type.
@@ -47,36 +48,36 @@ public class ProposalApiController {
     @PostMapping(&quot;/proposals/propose&quot;)
     public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; proposeRelations(
             @RequestBody Map&lt;String, String&gt; body) {
-<span class="fc" id="L50">        String sourceCode = body.get(&quot;sourceCode&quot;);</span>
-<span class="fc" id="L51">        String relationTypeStr = body.get(&quot;relationType&quot;);</span>
-<span class="fc" id="L52">        String limitStr = body.getOrDefault(&quot;limit&quot;, &quot;10&quot;);</span>
+<span class="fc" id="L51">        String sourceCode = body.get(&quot;sourceCode&quot;);</span>
+<span class="fc" id="L52">        String relationTypeStr = body.get(&quot;relationType&quot;);</span>
+<span class="fc" id="L53">        String limitStr = body.getOrDefault(&quot;limit&quot;, &quot;10&quot;);</span>
 
-<span class="pc bpc" id="L54" title="2 of 6 branches missed.">        if (sourceCode == null || sourceCode.isBlank() ||</span>
-<span class="pc bpc" id="L55" title="1 of 2 branches missed.">                relationTypeStr == null || relationTypeStr.isBlank()) {</span>
-<span class="fc" id="L56">            return ResponseEntity.badRequest().build();</span>
+<span class="pc bpc" id="L55" title="2 of 6 branches missed.">        if (sourceCode == null || sourceCode.isBlank() ||</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">                relationTypeStr == null || relationTypeStr.isBlank()) {</span>
+<span class="fc" id="L57">            return ResponseEntity.badRequest().build();</span>
         }
 
         RelationType relationType;
         try {
-<span class="fc" id="L61">            relationType = RelationType.valueOf(relationTypeStr.toUpperCase());</span>
-<span class="fc" id="L62">        } catch (IllegalArgumentException e) {</span>
-<span class="fc" id="L63">            return ResponseEntity.badRequest().build();</span>
-<span class="fc" id="L64">        }</span>
+<span class="fc" id="L62">            relationType = RelationType.valueOf(relationTypeStr.toUpperCase());</span>
+<span class="fc" id="L63">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L64">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L65">        }</span>
 
         int limit;
         try {
-<span class="fc" id="L68">            limit = Integer.parseInt(limitStr);</span>
-<span class="pc bpc" id="L69" title="2 of 4 branches missed.">            if (limit &lt; 1 || limit &gt; 100) limit = 10;</span>
-<span class="nc" id="L70">        } catch (NumberFormatException e) {</span>
-<span class="nc" id="L71">            limit = 10;</span>
-<span class="fc" id="L72">        }</span>
+<span class="fc" id="L69">            limit = Integer.parseInt(limitStr);</span>
+<span class="pc bpc" id="L70" title="2 of 4 branches missed.">            if (limit &lt; 1 || limit &gt; 100) limit = 10;</span>
+<span class="nc" id="L71">        } catch (NumberFormatException e) {</span>
+<span class="nc" id="L72">            limit = 10;</span>
+<span class="fc" id="L73">        }</span>
 
         try {
-<span class="fc" id="L75">            List&lt;RelationProposalDto&gt; proposals =</span>
-<span class="fc" id="L76">                    proposalService.proposeRelations(sourceCode, relationType, limit);</span>
-<span class="fc" id="L77">            return ResponseEntity.ok(proposals);</span>
-<span class="fc" id="L78">        } catch (IllegalArgumentException e) {</span>
-<span class="fc" id="L79">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L76">            List&lt;RelationProposalDto&gt; proposals =</span>
+<span class="fc" id="L77">                    proposalService.proposeRelations(sourceCode, relationType, limit);</span>
+<span class="fc" id="L78">            return ResponseEntity.ok(proposals);</span>
+<span class="fc" id="L79">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L80">            return ResponseEntity.badRequest().build();</span>
         }
     }
 
@@ -86,7 +87,7 @@ public class ProposalApiController {
     @Operation(summary = &quot;List all proposals&quot;, description = &quot;Returns all relation proposals&quot;)
     @GetMapping(&quot;/proposals&quot;)
     public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; getAllProposals() {
-<span class="fc" id="L89">        return ResponseEntity.ok(proposalService.getAllProposals());</span>
+<span class="fc" id="L90">        return ResponseEntity.ok(proposalService.getAllProposals());</span>
     }
 
     /**
@@ -95,7 +96,7 @@ public class ProposalApiController {
     @Operation(summary = &quot;List pending proposals&quot;, description = &quot;Returns all proposals with PENDING status (review queue)&quot;)
     @GetMapping(&quot;/proposals/pending&quot;)
     public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; getPendingProposals() {
-<span class="fc" id="L98">        return ResponseEntity.ok(proposalService.getPendingProposals());</span>
+<span class="fc" id="L99">        return ResponseEntity.ok(proposalService.getPendingProposals());</span>
     }
 
     /**
@@ -105,7 +106,7 @@ public class ProposalApiController {
     @GetMapping(&quot;/node/{code}/proposals&quot;)
     public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; getProposalsForNode(
             @PathVariable String code) {
-<span class="fc" id="L108">        return ResponseEntity.ok(proposalService.getProposalsForNode(code));</span>
+<span class="fc" id="L109">        return ResponseEntity.ok(proposalService.getProposalsForNode(code));</span>
     }
 
     /**
@@ -115,10 +116,10 @@ public class ProposalApiController {
     @PostMapping(&quot;/proposals/{id}/accept&quot;)
     public ResponseEntity&lt;TaxonomyRelationDto&gt; acceptProposal(@PathVariable Long id) {
         try {
-<span class="nc" id="L118">            TaxonomyRelationDto relation = reviewService.acceptProposal(id);</span>
-<span class="nc" id="L119">            return ResponseEntity.ok(relation);</span>
-<span class="fc" id="L120">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
-<span class="fc" id="L121">            return ResponseEntity.badRequest().build();</span>
+<span class="nc" id="L119">            TaxonomyRelationDto relation = reviewService.acceptProposal(id);</span>
+<span class="nc" id="L120">            return ResponseEntity.ok(relation);</span>
+<span class="fc" id="L121">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="fc" id="L122">            return ResponseEntity.badRequest().build();</span>
         }
     }
 
@@ -129,11 +130,68 @@ public class ProposalApiController {
     @PostMapping(&quot;/proposals/{id}/reject&quot;)
     public ResponseEntity&lt;RelationProposalDto&gt; rejectProposal(@PathVariable Long id) {
         try {
-<span class="nc" id="L132">            RelationProposalDto dto = reviewService.rejectProposal(id);</span>
-<span class="nc" id="L133">            return ResponseEntity.ok(dto);</span>
-<span class="fc" id="L134">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
-<span class="fc" id="L135">            return ResponseEntity.badRequest().build();</span>
+<span class="nc" id="L133">            RelationProposalDto dto = reviewService.rejectProposal(id);</span>
+<span class="nc" id="L134">            return ResponseEntity.ok(dto);</span>
+<span class="fc" id="L135">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="fc" id="L136">            return ResponseEntity.badRequest().build();</span>
         }
+    }
+
+    /**
+     * Revert a proposal back to PENDING status (undo accept/reject).
+     * If the proposal was accepted, the corresponding relation is deleted.
+     */
+    @Operation(summary = &quot;Revert proposal&quot;, description = &quot;Reverts a proposal back to PENDING status (undo last action)&quot;)
+    @PostMapping(&quot;/proposals/{id}/revert&quot;)
+    public ResponseEntity&lt;RelationProposalDto&gt; revertProposal(@PathVariable Long id) {
+        try {
+<span class="nc" id="L148">            RelationProposalDto dto = reviewService.revertProposal(id);</span>
+<span class="nc" id="L149">            return ResponseEntity.ok(dto);</span>
+<span class="fc" id="L150">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="fc" id="L151">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+    /**
+     * Bulk accept or reject multiple proposals.
+     * Request body: {@code { &quot;ids&quot;: [1, 2, 3], &quot;action&quot;: &quot;ACCEPT&quot; | &quot;REJECT&quot; }}
+     */
+    @Operation(summary = &quot;Bulk action on proposals&quot;, description = &quot;Accept or reject multiple proposals at once&quot;)
+    @PostMapping(&quot;/proposals/bulk&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; bulkAction(@RequestBody Map&lt;String, Object&gt; body) {
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L163">        List&lt;Number&gt; ids = (List&lt;Number&gt;) body.get(&quot;ids&quot;);</span>
+<span class="fc" id="L164">        String action = (String) body.get(&quot;action&quot;);</span>
+
+<span class="pc bpc" id="L166" title="1 of 8 branches missed.">        if (ids == null || ids.isEmpty() || action == null || action.isBlank()) {</span>
+<span class="fc" id="L167">            return ResponseEntity.badRequest().build();</span>
+        }
+
+<span class="fc" id="L170">        int success = 0;</span>
+<span class="fc" id="L171">        int failed = 0;</span>
+
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        for (Number idNum : ids) {</span>
+<span class="fc" id="L174">            Long id = idNum.longValue();</span>
+            try {
+<span class="fc bfc" id="L176" title="All 2 branches covered.">                if (&quot;ACCEPT&quot;.equalsIgnoreCase(action)) {</span>
+<span class="nc" id="L177">                    reviewService.acceptProposal(id);</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">                } else if (&quot;REJECT&quot;.equalsIgnoreCase(action)) {</span>
+<span class="nc" id="L179">                    reviewService.rejectProposal(id);</span>
+                } else {
+<span class="fc" id="L181">                    return ResponseEntity.badRequest().build();</span>
+                }
+<span class="nc" id="L183">                success++;</span>
+<span class="fc" id="L184">            } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="fc" id="L185">                failed++;</span>
+<span class="nc" id="L186">            }</span>
+<span class="fc" id="L187">        }</span>
+
+<span class="fc" id="L189">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L190">        result.put(&quot;action&quot;, action);</span>
+<span class="fc" id="L191">        result.put(&quot;success&quot;, success);</span>
+<span class="fc" id="L192">        result.put(&quot;failed&quot;, failed);</span>
+<span class="fc" id="L193">        result.put(&quot;total&quot;, ids.size());</span>
+<span class="fc" id="L194">        return ResponseEntity.ok(result);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
