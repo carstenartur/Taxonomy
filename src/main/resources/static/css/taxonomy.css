@@ -1070,3 +1070,57 @@
 [data-bs-theme="dark"] .bulk-actions-bar .bulk-count {
     color: #6ea8fe;
 }
+
+/* ── Page Navigation Tabs ──────────────────────────────────────────────── */
+.nav-tabs-page {
+    border-bottom: none;
+}
+
+.nav-tabs-page .nav-link {
+    color: rgba(255, 255, 255, 0.7);
+    border: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    padding: 0.6rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.nav-tabs-page .nav-link:hover {
+    color: rgba(255, 255, 255, 0.95);
+    border-bottom-color: rgba(255, 255, 255, 0.3);
+    background: transparent;
+}
+
+.nav-tabs-page .nav-link.active {
+    color: #fff;
+    border-bottom-color: #0d6efd;
+    background: transparent;
+}
+
+.nav-tabs-page .nav-link.text-warning.active {
+    border-bottom-color: #ffc107;
+}
+
+/* ── Tab pane content sections ─────────────────────────────────────────── */
+.tab-pane-content {
+    min-height: 100px;
+}
+
+/* ── Print: hide navigation ────────────────────────────────────────────── */
+@media print {
+    .nav-tabs-page,
+    #mainNavTabs,
+    #adminNavTab {
+        display: none !important;
+    }
+}
+
+/* Admin nav tab: override display:block from .admin-unlocked .admin-only rule */
+#mainNavTabs .admin-only {
+    display: none;
+}
+.admin-unlocked #mainNavTabs .admin-only {
+    display: list-item;
+}

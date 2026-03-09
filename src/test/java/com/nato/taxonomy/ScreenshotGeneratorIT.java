@@ -132,6 +132,7 @@ class ScreenshotGeneratorIT {
 
     /** Runs a standard (non-interactive) analysis and waits up to 120 s for completion. */
     private void runAnalysis() {
+        navigateToTab("analyze");
         WebElement textarea = driver.findElement(By.id("businessText"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", textarea);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
@@ -306,6 +307,15 @@ class ScreenshotGeneratorIT {
         wait(5).until(ExpectedConditions.attributeContains(details, "open", ""));
     }
 
+    /** Navigates to a named page tab using the client-side navigateToPage() function. */
+    private void navigateToTab(String page) {
+        js("if (window.navigateToPage) { window.navigateToPage(arguments[0]); }", page);
+        wait(5).until(d -> {
+            WebElement pane = d.findElement(By.id("tab-" + page));
+            return !pane.getAttribute("class").contains("d-none");
+        });
+    }
+
     // ── Screenshots 1–14: no LLM required ─────────────────────────────────────
 
     @Test
@@ -404,6 +414,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(11)
     void captureGraphExplorerPanel() throws IOException {
+        navigateToTab("graph");
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         input.clear();
         input.sendKeys("BP");
@@ -413,6 +424,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(12)
     void captureRelationProposalsPanel() throws IOException {
+        navigateToTab("relations");
         WebElement panel = driver.findElement(By.id("proposalsPanel"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
         saveElementScreenshot(panel, "12-relation-proposals-panel.png");
@@ -423,6 +435,7 @@ class ScreenshotGeneratorIT {
     void captureProposeRelationsModal() throws IOException, InterruptedException {
         // Clean up any leftover modal state from a previous failed retry run
         resetModalState();
+        navigateToTab("analyze");
         // Scroll to the taxonomy tree so the proposal buttons become visible
         WebElement taxonomyTree = driver.findElement(By.id("taxonomyTree"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'start'});", taxonomyTree);
@@ -607,10 +620,13 @@ class ScreenshotGeneratorIT {
         // Wait for the analysis to complete — runAnalysis() POSTs and waits for JSON response
         wait(120).until(ExpectedConditions.textMatches(
                 By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error")));
+        // Navigate to Architecture tab to see the panel
+        navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")), "20-architecture-view.png");
 
-        // Reset: switch back to list view and uncheck architecture view
+        // Reset: navigate back to analyze, switch back to list view and uncheck architecture view
+        navigateToTab("analyze");
         driver.findElement(By.id("viewList")).click();
         if (archCb.isSelected()) {
             js("arguments[0].click();", archCb);
@@ -620,6 +636,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(21)
     void captureGraphExplorerUpstream() throws IOException {
+        navigateToTab("graph");
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
@@ -635,6 +652,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(22)
     void captureGraphExplorerFailure() throws IOException {
+        navigateToTab("graph");
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
@@ -651,12 +669,13 @@ class ScreenshotGeneratorIT {
     @Order(23)
     void captureExportButtons() throws IOException {
         // Ensure a completed analysis exists so export buttons are visible
+        navigateToTab("analyze");
         String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
         if (!statusText.contains("complete")) {
             forceNonInteractiveMode();
             runAnalysis();
         }
-        js("window.scrollTo(0, 0);");
+        navigateToTab("export");
         wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
         // Wait for the export group to have a non-zero size (not collapsed)
         wait(5).until(d -> {
@@ -670,6 +689,7 @@ class ScreenshotGeneratorIT {
     @Order(24)
     void captureLlmDiagnostics() throws IOException {
         unlockAdmin();
+        navigateToTab("admin");
 
         WebElement diagPanel = driver.findElement(By.id("diagnosticsPanel"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", diagPanel);
@@ -687,6 +707,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(25)
     void capturePromptTemplateEditor() throws IOException {
+        navigateToTab("admin");
         WebElement promptEditor = driver.findElement(By.id("promptEditor"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", promptEditor);
         openDetails(promptEditor);
@@ -699,6 +720,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(26)
     void captureCoverageDashboardEmpty() throws IOException {
+        navigateToTab("admin");
         WebElement panel = driver.findElement(By.id("coverageDashboard"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
         openDetails(panel);
@@ -721,6 +743,7 @@ class ScreenshotGeneratorIT {
             forceNonInteractiveMode();
             runAnalysis();
         }
+        navigateToTab("admin");
 
         // POST coverage record directly via fetch (avoids window.prompt dialog).
         // A sentinel variable signals completion.
