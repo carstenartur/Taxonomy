@@ -2,26 +2,40 @@
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 @Configuration
-<span class="fc" id="L12">public class AppConfig {</span>
+<span class="fc" id="L14">public class AppConfig {</span>
 
     @Bean
     public RestTemplate restTemplate() {
-<span class="fc" id="L16">        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();</span>
-<span class="fc" id="L17">        factory.setConnectTimeout(10_000);  // 10 seconds</span>
-<span class="fc" id="L18">        factory.setReadTimeout(60_000);     // 60 seconds</span>
-<span class="fc" id="L19">        return new RestTemplate(factory);</span>
+<span class="fc" id="L18">        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();</span>
+<span class="fc" id="L19">        factory.setConnectTimeout(10_000);  // 10 seconds</span>
+<span class="fc" id="L20">        factory.setReadTimeout(60_000);     // 60 seconds</span>
+<span class="fc" id="L21">        return new RestTemplate(factory);</span>
     }
 
     @Bean(destroyMethod = &quot;shutdown&quot;)
     public ExecutorService analysisExecutor() {
-<span class="fc" id="L24">        return Executors.newFixedThreadPool(10);</span>
+<span class="fc" id="L26">        return Executors.newFixedThreadPool(10);</span>
+    }
+
+    @Bean
+    public TaskExecutor taskExecutor() {
+<span class="fc" id="L31">        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();</span>
+<span class="fc" id="L32">        executor.setCorePoolSize(2);</span>
+<span class="fc" id="L33">        executor.setMaxPoolSize(4);</span>
+<span class="fc" id="L34">        executor.setQueueCapacity(10);</span>
+<span class="fc" id="L35">        executor.setThreadNamePrefix(&quot;taxonomy-async-&quot;);</span>
+<span class="fc" id="L36">        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());</span>
+<span class="fc" id="L37">        executor.initialize();</span>
+<span class="fc" id="L38">        return executor;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
