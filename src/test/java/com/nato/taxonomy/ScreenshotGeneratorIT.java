@@ -52,6 +52,9 @@ class ScreenshotGeneratorIT {
 
     private static final Path OUTPUT_DIR = Path.of("docs/images");
 
+    /** Maximum number of interactive-mode node expansions when searching for leaf justify buttons. */
+    private static final int MAX_TREE_EXPANSION_ITERATIONS = 50;
+
     private static Network network;
     private static GenericContainer<?> app;
     private static BrowserWebDriverContainer<?> chrome;
@@ -519,10 +522,12 @@ class ScreenshotGeneratorIT {
         // Interactive analysis renders the tree immediately, marking parent nodes as unevaluated
         wait(10).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-has-unevaluated")));
 
-        // Expand parent nodes level by level until leaf justify buttons appear.
+        // Expand nodes level by level until leaf justify buttons appear or tree is fully evaluated.
         // Each expand triggers an API call to /api/analyze-node which scores child nodes;
         // leaf children with score > 0 get the .btn-outline-info justify button.
-        for (int depth = 0; depth < 4; depth++) {
+        // The loop follows the first unevaluated branch in DOM order. 50 iterations handles trees
+        // where the initial path to the first leaf node is deeper than 4 levels.
+        for (int i = 0; i < MAX_TREE_EXPANSION_ITERATIONS; i++) {
             List<WebElement> unevalToggles = driver.findElements(
                     By.cssSelector(".tax-has-unevaluated > .tax-node-header > .tax-toggle"));
             if (unevalToggles.isEmpty()) break;
@@ -537,55 +542,22 @@ class ScreenshotGeneratorIT {
 
         List<WebElement> justifyBtns = driver.findElements(
                 By.cssSelector(".tax-justify-btn.btn-outline-info"));
-        if (justifyBtns.isEmpty()) {
-            // Fallback: run a non-interactive full analysis first to guarantee scores, then
-            // reload and retry the interactive expansion loop.
-            forceNonInteractiveMode();
-            runAnalysis();
-            resetPageState();
-
-            js("var cb = document.getElementById('interactiveMode');" +
-               "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change')); }");
-
-            WebElement textarea2 = driver.findElement(By.id("businessText"));
-            js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea2);
-            js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
-                    textarea2, REQUIREMENT_TEXT);
-            js("document.getElementById('analyzeBtn').click();");
-            wait(10).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-has-unevaluated")));
-
-            for (int depth = 0; depth < 4; depth++) {
-                List<WebElement> unevalToggles = driver.findElements(
-                        By.cssSelector(".tax-has-unevaluated > .tax-node-header > .tax-toggle"));
-                if (unevalToggles.isEmpty()) break;
-                js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", unevalToggles.get(0));
-                js("arguments[0].click();", unevalToggles.get(0));
-                wait(15).until(d -> driver.findElements(By.cssSelector(".tax-evaluating")).isEmpty());
-                if (!driver.findElements(By.cssSelector(".tax-justify-btn.btn-outline-info")).isEmpty()) {
-                    break;
-                }
-            }
-            justifyBtns = driver.findElements(By.cssSelector(".tax-justify-btn.btn-outline-info"));
-        }
-
         Assertions.assertFalse(justifyBtns.isEmpty(),
                 "No leaf justify buttons found — screenshot cannot be captured. " +
                 "The mock LLM may not be producing scores > 0 for leaf nodes.");
-        if (!justifyBtns.isEmpty()) {
-            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", justifyBtns.get(0));
-            js("arguments[0].click();", justifyBtns.get(0));
-            // Wait for the /api/justify-leaf mock call to populate the modal body text, which
-            // is more reliable than a fixed sleep and confirms the API round-trip has completed.
-            wait(15).until(d -> {
-                List<WebElement> body = d.findElements(By.id("leafJustificationModalBody"));
-                return !body.isEmpty() && !body.get(0).getText().isEmpty();
-            });
-            // Force show via DOM in case Bootstrap CDN is unavailable or animation did not fire
-            showModalViaDOM("leafJustificationModal");
-            saveScreenshot("18-leaf-justification-modal.png");
-            closeModalViaDOM("leafJustificationModal");
-            js("window.scrollTo(0, 0);");
-        }
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", justifyBtns.get(0));
+        js("arguments[0].click();", justifyBtns.get(0));
+        // Wait for the /api/justify-leaf mock call to populate the modal body text, which
+        // is more reliable than a fixed sleep and confirms the API round-trip has completed.
+        wait(15).until(d -> {
+            List<WebElement> body = d.findElements(By.id("leafJustificationModalBody"));
+            return !body.isEmpty() && !body.get(0).getText().isEmpty();
+        });
+        // Force show via DOM in case Bootstrap CDN is unavailable or animation did not fire
+        showModalViaDOM("leafJustificationModal");
+        saveScreenshot("18-leaf-justification-modal.png");
+        closeModalViaDOM("leafJustificationModal");
+        js("window.scrollTo(0, 0);");
         // Reset to non-interactive for subsequent tests
         forceNonInteractiveMode();
     }
