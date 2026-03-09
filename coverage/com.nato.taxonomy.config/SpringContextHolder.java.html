@@ -11,19 +11,19 @@ import org.springframework.stereotype.Component;
  * Spring beans by type without requiring constructor injection.
  */
 @Component
-<span class="fc" id="L14">public class SpringContextHolder implements ApplicationContextAware {</span>
+<span class="nc" id="L14">public class SpringContextHolder implements ApplicationContextAware {</span>
 
     private static ApplicationContext context;
 
     @Override
     public void setApplicationContext(@NonNull ApplicationContext ctx) {
-<span class="fc" id="L20">        context = ctx;</span>
-<span class="fc" id="L21">    }</span>
+<span class="nc" id="L20">        context = ctx;</span>
+<span class="nc" id="L21">    }</span>
 
     public static &lt;T&gt; T getBean(Class&lt;T&gt; beanType) {
 <span class="pc bpc" id="L24" title="1 of 2 branches missed.">        if (context == null) return null;</span>
         try {
-<span class="fc" id="L26">            return context.getBean(beanType);</span>
+<span class="nc" id="L26">            return context.getBean(beanType);</span>
 <span class="nc" id="L27">        } catch (Exception e) {</span>
 <span class="nc" id="L28">            return null;</span>
         }

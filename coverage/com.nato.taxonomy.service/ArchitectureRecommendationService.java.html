@@ -104,8 +104,8 @@ public class ArchitectureRecommendationService {
 
             // If embedding service is available, score candidates semantically
             List&lt;TaxonomyNode&gt; ranked;
-<span class="pc bpc" id="L107" title="5 of 6 branches missed.">            if (embeddingService.isAvailable() &amp;&amp; businessText != null &amp;&amp; !businessText.isBlank()) {</span>
-<span class="nc" id="L108">                ranked = rankByEmbeddingSimilarity(candidates, businessText);</span>
+<span class="pc bpc" id="L107" title="2 of 6 branches missed.">            if (embeddingService.isAvailable() &amp;&amp; businessText != null &amp;&amp; !businessText.isBlank()) {</span>
+<span class="fc" id="L108">                ranked = rankByEmbeddingSimilarity(candidates, businessText);</span>
             } else {
                 // Fallback: use first N candidates sorted by level (leaf nodes are more specific)
 <span class="fc" id="L111">                ranked = candidates.stream()</span>
@@ -164,14 +164,14 @@ public class ArchitectureRecommendationService {
     private List&lt;TaxonomyNode&gt; rankByEmbeddingSimilarity(List&lt;TaxonomyNode&gt; candidates,
                                                           String businessText) {
         try {
-<span class="nc" id="L167">            Map&lt;String, Integer&gt; candidateScores = embeddingService.scoreNodes(</span>
+<span class="fc" id="L167">            Map&lt;String, Integer&gt; candidateScores = embeddingService.scoreNodes(</span>
                     businessText, candidates);
 
-<span class="nc" id="L170">            return candidates.stream()</span>
-<span class="nc" id="L171">                    .sorted(Comparator.comparingInt(</span>
-<span class="nc" id="L172">                            (TaxonomyNode n) -&gt; candidateScores.getOrDefault(n.getCode(), 0)).reversed())</span>
-<span class="nc" id="L173">                    .limit(MAX_PROPOSALS_PER_GAP)</span>
-<span class="nc" id="L174">                    .collect(Collectors.toList());</span>
+<span class="fc" id="L170">            return candidates.stream()</span>
+<span class="fc" id="L171">                    .sorted(Comparator.comparingInt(</span>
+<span class="fc" id="L172">                            (TaxonomyNode n) -&gt; candidateScores.getOrDefault(n.getCode(), 0)).reversed())</span>
+<span class="fc" id="L173">                    .limit(MAX_PROPOSALS_PER_GAP)</span>
+<span class="fc" id="L174">                    .collect(Collectors.toList());</span>
 <span class="nc" id="L175">        } catch (Exception e) {</span>
 <span class="nc" id="L176">            log.warn(&quot;Embedding ranking failed, using fallback: {}&quot;, e.getMessage());</span>
 <span class="nc" id="L177">            return candidates.stream()</span>

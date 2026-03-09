@@ -192,12 +192,12 @@ import java.util.stream.Collectors;
      */
     @Transactional(readOnly = true)
     public Map&lt;String, Integer&gt; scoreNodes(String businessText, List&lt;TaxonomyNode&gt; nodes) {
-<span class="nc" id="L195">        Map&lt;String, Integer&gt; scores = new HashMap&lt;&gt;();</span>
-<span class="nc bnc" id="L196" title="All 2 branches missed.">        for (TaxonomyNode node : nodes) {</span>
-<span class="nc" id="L197">            scores.put(node.getCode(), 0);</span>
-<span class="nc" id="L198">        }</span>
+<span class="fc" id="L195">        Map&lt;String, Integer&gt; scores = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        for (TaxonomyNode node : nodes) {</span>
+<span class="fc" id="L197">            scores.put(node.getCode(), 0);</span>
+<span class="fc" id="L198">        }</span>
 
-<span class="nc bnc" id="L200" title="All 2 branches missed.">        if (!isAvailable()) return scores;</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        if (!isAvailable()) return scores;</span>
 
         try {
 <span class="nc" id="L203">            float[] queryVector = embed(businessText);</span>
@@ -226,11 +226,11 @@ import java.util.stream.Collectors;
 
 <span class="nc" id="L227">            log.info(&quot;LOCAL_ONNX scores: {}&quot;, scores);</span>
 
-<span class="nc" id="L229">        } catch (Exception e) {</span>
-<span class="nc" id="L230">            log.error(&quot;Error in KNN vector scoring; returning zero scores&quot;, e);</span>
+<span class="fc" id="L229">        } catch (Exception e) {</span>
+<span class="fc" id="L230">            log.error(&quot;Error in KNN vector scoring; returning zero scores&quot;, e);</span>
 <span class="nc" id="L231">        }</span>
 
-<span class="nc" id="L233">        return scores;</span>
+<span class="fc" id="L233">        return scores;</span>
     }
 
     /**
