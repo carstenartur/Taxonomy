@@ -108,7 +108,8 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 |---|---|---|---|---|
 | `PORT` | `server.port` | Integer | `8080` | HTTP port the application listens on. Set by Render and similar platforms; falls back to `8080` locally. |
 | — | `spring.application.name` | String | `taxonomy-analyzer` | Application name (used in logs). |
-| — | `spring.thymeleaf.cache` | Boolean | `false` | Set to `true` in production for template caching. |
+| `TAXONOMY_THYMELEAF_CACHE` | `spring.thymeleaf.cache` | Boolean | `true` | Cache compiled Thymeleaf templates. Defaults to `true` (production). Set `TAXONOMY_THYMELEAF_CACHE=false` for local development to pick up template changes without restart. |
+| `TAXONOMY_LAZY_INIT` | `spring.main.lazy-initialization` | Boolean | `true` | Lazy bean initialization — beans are created only on first access. Reduces Spring context startup time significantly (typical saving: 30–50 s). `TaxonomyService` is annotated `@Lazy(false)` and is always eagerly initialized regardless of this setting. |
 
 ---
 
@@ -133,6 +134,7 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 | — | `spring.jpa.properties.hibernate.search.backend.type` | String | `lucene` | Search backend type. |
 | `TAXONOMY_SEARCH_DIRECTORY_TYPE` | `spring.jpa.properties.hibernate.search.backend.directory.type` | String | `local-heap` | Index storage. `local-heap` = in-memory (local dev / tests). Set to `local-filesystem` for production disk-backed deployments. |
 | `TAXONOMY_SEARCH_DIRECTORY_ROOT` | `spring.jpa.properties.hibernate.search.backend.directory.root` | String | `/app/data/lucene-index` | Root directory for the Lucene index files (only used when `TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem`). |
+| — | `spring.jpa.properties.hibernate.search.configuration_property_checking.strategy` | String | `ignore` | Suppresses `HSEARCH000568` warning about `directory.root` being unused when `directory.type=local-heap`. |
 
 ---
 

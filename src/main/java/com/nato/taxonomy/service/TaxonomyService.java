@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.scheduling.annotation.Async;
@@ -33,7 +34,10 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+// Eagerly initialized even when spring.main.lazy-initialization=true so that
+// @PostConstruct (sync init) and @EventListener(ApplicationReadyEvent) (async init) both fire.
 @Service
+@Lazy(false)
 public class TaxonomyService {
 
     private static final Logger log = LoggerFactory.getLogger(TaxonomyService.class);
