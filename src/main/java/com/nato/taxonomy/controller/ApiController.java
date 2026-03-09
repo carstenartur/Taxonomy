@@ -113,6 +113,8 @@ public class ApiController {
     @ApiResponse(responseCode = "200", description = "Taxonomy tree returned successfully")
     @GetMapping("/taxonomy")
     public ResponseEntity<List<TaxonomyNodeDto>> getTaxonomy() {
+        ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
+        if (guard != null) return guard;
         return ResponseEntity.ok(taxonomyService.getFullTree());
     }
 
@@ -124,11 +126,38 @@ public class ApiController {
         return ResponseEntity.ok(new AiStatusResponse(available, provider));
     }
 
+    @Operation(summary = "Startup status", description = "Returns the initialization state of the taxonomy data. Poll this endpoint after receiving a 503 to know when the app is ready.", tags = {"Status"})
+    @GetMapping("/status/startup")
+    public ResponseEntity<Map<String, Object>> startupStatus() {
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("initialized", taxonomyService.isInitialized());
+        status.put("status", taxonomyService.getInitStatus());
+        return ResponseEntity.ok(status);
+    }
+
+    /**
+     * Returns a 503 response when the taxonomy is not yet initialized, or {@code null} when
+     * the request may proceed normally.  Add {@code ResponseEntity<?> guard = checkInitialized(); if (guard != null) return guard;}
+     * at the top of every data-dependent endpoint.
+     */
+    @SuppressWarnings("unchecked")
+    private <T> ResponseEntity<T> checkInitialized() {
+        if (!taxonomyService.isInitialized()) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("error", "Taxonomy data is still loading. Please wait.");
+            body.put("status", taxonomyService.getInitStatus());
+            return (ResponseEntity<T>) ResponseEntity.status(503).body(body);
+        }
+        return null;
+    }
+
     @Operation(summary = "Analyze business requirement", description = "Analyzes a business requirement against the taxonomy using the configured LLM provider. Optionally includes an architecture view.", tags = {"Analysis"})
     @ApiResponse(responseCode = "200", description = "Analysis completed")
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
     @PostMapping("/analyze")
     public ResponseEntity<AnalysisResult> analyze(@RequestBody AnalysisRequest request) {
+        ResponseEntity<AnalysisResult> guard = checkInitialized();
+        if (guard != null) return guard;
         if (request.getBusinessText() == null || request.getBusinessText().isBlank()) {
             return ResponseEntity.badRequest().build();
         }
@@ -153,6 +182,19 @@ public class ApiController {
     @GetMapping(value = "/analyze-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter analyzeStream(@Parameter(description = "Business requirement text to analyze") @RequestParam String businessText) {
         SseEmitter emitter = new SseEmitter(120_000L);
+
+        if (!taxonomyService.isInitialized()) {
+            try {
+                emitter.send(SseEmitter.event()
+                        .name("error")
+                        .data("{\"status\":\"ERROR\",\"errorMessage\":\"Taxonomy data is still loading. Please wait.\",\"initStatus\":\""
+                                + taxonomyService.getInitStatus() + "\"}"));
+            } catch (IOException ignored) {
+                // client already disconnected
+            }
+            emitter.complete();
+            return emitter;
+        }
 
         if (businessText == null || businessText.isBlank()) {
             try {
@@ -243,6 +285,8 @@ public class ApiController {
     public ResponseEntity<Map<String, Object>> analyzeNode(
             @Parameter(description = "Parent taxonomy node code") @RequestParam String parentCode,
             @Parameter(description = "Business requirement text") @RequestParam String businessText) {
+        ResponseEntity<Map<String, Object>> guard = checkInitialized();
+        if (guard != null) return guard;
         if (businessText == null || businessText.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
@@ -277,6 +321,8 @@ public class ApiController {
     @PostMapping("/justify-leaf")
     public ResponseEntity<Map<String, Object>> justifyLeaf(
             @RequestBody Map<String, Object> body) {
+        ResponseEntity<Map<String, Object>> guard = checkInitialized();
+        if (guard != null) return guard;
         String nodeCode = (String) body.get("nodeCode");
         String businessText = (String) body.get("businessText");
         if (nodeCode == null || nodeCode.isBlank() || businessText == null || businessText.isBlank()) {
@@ -478,6 +524,8 @@ public class ApiController {
     public ResponseEntity<List<TaxonomyNodeDto>> search(
             @Parameter(description = "Search query") @RequestParam String q,
             @Parameter(description = "Maximum number of results") @RequestParam(defaultValue = "50") int maxResults) {
+        ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
+        if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(searchService.search(q, maxResults));
     }
@@ -567,6 +615,8 @@ public class ApiController {
     public ResponseEntity<List<TaxonomyNodeDto>> semanticSearch(
             @Parameter(description = "Natural-language query") @RequestParam String q,
             @Parameter(description = "Maximum number of results") @RequestParam(defaultValue = "20") int maxResults) {
+        ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
+        if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(embeddingService.semanticSearch(q, maxResults));
     }
@@ -583,6 +633,8 @@ public class ApiController {
     public ResponseEntity<List<TaxonomyNodeDto>> hybridSearch(
             @Parameter(description = "Natural-language query") @RequestParam String q,
             @Parameter(description = "Maximum number of results") @RequestParam(defaultValue = "20") int maxResults) {
+        ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
+        if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(hybridSearchService.hybridSearch(q, maxResults));
     }
@@ -598,6 +650,8 @@ public class ApiController {
     public ResponseEntity<List<TaxonomyNodeDto>> findSimilar(
             @Parameter(description = "Taxonomy node code") @PathVariable String code,
             @Parameter(description = "Maximum number of similar nodes") @RequestParam(defaultValue = "10") int topK) {
+        ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
+        if (guard != null) return guard;
         return ResponseEntity.ok(embeddingService.findSimilarNodes(code, topK));
     }
 
@@ -644,6 +698,8 @@ public class ApiController {
     public ResponseEntity<GraphSearchResult> graphSearch(
             @Parameter(description = "Natural-language query") @RequestParam String q,
             @Parameter(description = "Maximum number of node results") @RequestParam(defaultValue = "20") int maxResults) {
+        ResponseEntity<GraphSearchResult> guard = checkInitialized();
+        if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
         return ResponseEntity.ok(graphSearchService.graphSearch(q, maxResults));
     }
