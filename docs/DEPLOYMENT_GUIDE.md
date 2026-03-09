@@ -164,6 +164,7 @@ services:
 | `TAXONOMY_DATASOURCE_URL` | Switches HSQLDB from the in-memory default to a disk-backed file database |
 | `TAXONOMY_DDL_AUTO` | `update` preserves data across restarts (vs. `create` which rebuilds the schema) |
 | `TAXONOMY_SEARCH_DIRECTORY_TYPE` | Switches Lucene from the in-memory heap default to a disk-backed filesystem index |
+| `TAXONOMY_EMBEDDING_ENABLED` | Set to `false` on the free tier to save ~80–140 MB of native memory (disables semantic KNN search) |
 | `envVars[].sync: false` | The variable must be entered manually as a secret in the dashboard |
 
 ### Setting Environment Variables in Render
@@ -186,7 +187,8 @@ services:
 | `ADMIN_PASSWORD` | ✅ Yes | Password for admin panels |
 | `LLM_PROVIDER` | No | `GEMINI`, `OPENAI`, etc. (overrides auto-detection) |
 | `OPENAI_API_KEY` | ✅ Yes | Alternative: OpenAI key instead of Gemini |
-| `TAXONOMY_EMBEDDING_ENABLED` | No | `true` (default) or `false` |
+| `TAXONOMY_EMBEDDING_ENABLED` | No | `true` (default) or `false` — set to `false` in `render.yaml` for the free tier |
+| `JAVA_OPTS` | No | Override JVM flags without rebuilding the image (e.g. `-XX:+UseSerialGC -Xss512k -XX:MaxRAMPercentage=50.0 -Xmx220m`) |
 
 > **Tip:** Mark API keys and passwords as "Secret" in Render to prevent them from
 > appearing in logs and the dashboard.
@@ -222,7 +224,7 @@ Additional health indicators:
 
 ### Container fails to start
 
-- Check memory: the JRE + Lucene index + ONNX Runtime need ~256 MB minimum; heap is capped at 65 % of container memory to leave room for off-heap native memory
+- Check memory: the JRE + Lucene index + ONNX Runtime need ~256 MB minimum; heap is capped at 50 % of container memory (hard cap `-Xmx220m`) to leave room for off-heap native memory. On Render's 512 MB free tier, semantic embedding is disabled via `TAXONOMY_EMBEDDING_ENABLED=false` to save ~80–140 MB of native memory.
 - Check logs: `docker logs taxonomy-analyzer`
 
 ### AI analysis not working
