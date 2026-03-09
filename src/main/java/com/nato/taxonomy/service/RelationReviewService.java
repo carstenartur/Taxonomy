@@ -94,4 +94,42 @@ public class RelationReviewService {
 
         return proposalService.toDto(proposal);
     }
+
+    /**
+     * Revert a previously accepted or rejected proposal back to PENDING status.
+     * If the proposal was accepted, the corresponding relation is deleted.
+     */
+    @Transactional
+    public RelationProposalDto revertProposal(Long proposalId) {
+        RelationProposal proposal = proposalRepository.findById(proposalId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Proposal not found: " + proposalId));
+
+        if (proposal.getStatus() == ProposalStatus.PENDING) {
+            throw new IllegalStateException(
+                    "Proposal " + proposalId + " is already PENDING");
+        }
+
+        ProposalStatus oldStatus = proposal.getStatus();
+
+        // If accepted, remove the created relation
+        if (oldStatus == ProposalStatus.ACCEPTED) {
+            relationService.deleteRelationBySourceTargetType(
+                    proposal.getSourceNode().getCode(),
+                    proposal.getTargetNode().getCode(),
+                    proposal.getRelationType());
+        }
+
+        proposal.setStatus(ProposalStatus.PENDING);
+        proposal.setReviewedAt(null);
+        proposalRepository.save(proposal);
+
+        log.info("Reverted proposal {} from {} to PENDING: {} → {} [{}]",
+                proposalId, oldStatus,
+                proposal.getSourceNode().getCode(),
+                proposal.getTargetNode().getCode(),
+                proposal.getRelationType());
+
+        return proposalService.toDto(proposal);
+    }
 }

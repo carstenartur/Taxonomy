@@ -116,6 +116,237 @@
             '<div class="graph-stat-label">' + escapeHtml(label) + '</div></div></div>';
     }
 
+    // ── Force-Directed Graph ─────────────────────────────────────────────────
+
+    var GRAPH_NODE_COLORS = {
+        'Capabilities': '#4A90D9',
+        'Business Processes': '#27AE60',
+        'Business Roles': '#27AE60',
+        'Services': '#F39C12',
+        'COI Services': '#F39C12',
+        'Core Services': '#F39C12',
+        'Applications': '#8E44AD',
+        'User Applications': '#8E44AD',
+        'Information Products': '#3498DB',
+        'Communications Services': '#E74C3C'
+    };
+
+    function getNodeColor(taxonomySheet) {
+        return GRAPH_NODE_COLORS[taxonomySheet] || '#6c757d';
+    }
+
+    var GRAPH_MAX_HEIGHT = 400;
+    var GRAPH_MIN_HEIGHT = 250;
+    var GRAPH_HEIGHT_PER_NODE = 25;
+
+    /**
+     * Render a D3 force-directed graph from graph explorer data.
+     * @param {HTMLElement} container - DOM element to render into
+     * @param {Array} nodes - Array of {nodeCode, title, taxonomySheet, hopDistance, relevance}
+     * @param {Array} edges - Array of {sourceCode, targetCode, relationType}
+     * @param {string} originCode - The origin node code
+     */
+    function renderForceGraph(container, nodes, edges, originCode) {
+        if (typeof d3 === 'undefined' || !nodes || nodes.length === 0) return;
+
+        var width = container.clientWidth || 500;
+        var height = Math.min(GRAPH_MAX_HEIGHT, Math.max(GRAPH_MIN_HEIGHT, nodes.length * GRAPH_HEIGHT_PER_NODE));
+
+        // Deduplicate nodes
+        var nodeMap = {};
+        nodes.forEach(function (n) {
+            if (!nodeMap[n.nodeCode]) nodeMap[n.nodeCode] = n;
+        });
+        var nodeList = Object.values(nodeMap);
+
+        // Build D3-compatible data
+        var d3Nodes = nodeList.map(function (n) {
+            return {
+                id: n.nodeCode,
+                title: n.title || n.nodeCode,
+                sheet: n.taxonomySheet || n.taxonomyRoot || '',
+                hop: n.hopDistance || 0,
+                relevance: n.relevance || 0,
+                isOrigin: n.nodeCode === originCode
+            };
+        });
+
+        var nodeIdSet = new Set(d3Nodes.map(function (n) { return n.id; }));
+        var d3Links = (edges || []).filter(function (e) {
+            return nodeIdSet.has(e.sourceCode) && nodeIdSet.has(e.targetCode);
+        }).map(function (e) {
+            return { source: e.sourceCode, target: e.targetCode, type: e.relationType };
+        });
+
+        // SVG setup
+        var svg = d3.select(container)
+            .append('div').attr('class', 'force-graph-container')
+            .append('svg')
+            .attr('width', width)
+            .attr('height', height)
+            .attr('viewBox', [0, 0, width, height].join(' '));
+
+        // Arrow markers
+        svg.append('defs').append('marker')
+            .attr('id', 'arrowhead')
+            .attr('viewBox', '-0 -5 10 10')
+            .attr('refX', 20)
+            .attr('refY', 0)
+            .attr('orient', 'auto')
+            .attr('markerWidth', 6)
+            .attr('markerHeight', 6)
+            .append('path')
+            .attr('d', 'M 0,-5 L 10,0 L 0,5')
+            .attr('fill', '#999');
+
+        var simulation = d3.forceSimulation(d3Nodes)
+            .force('link', d3.forceLink(d3Links).id(function (d) { return d.id; }).distance(80))
+            .force('charge', d3.forceManyBody().strength(-200))
+            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('collision', d3.forceCollide().radius(25));
+
+        // Links
+        var link = svg.append('g')
+            .selectAll('line')
+            .data(d3Links)
+            .join('line')
+            .attr('stroke', '#999')
+            .attr('stroke-opacity', 0.6)
+            .attr('stroke-width', 1.5)
+            .attr('marker-end', 'url(#arrowhead)');
+
+        // Link labels
+        var linkLabel = svg.append('g')
+            .selectAll('text')
+            .data(d3Links)
+            .join('text')
+            .attr('font-size', '8px')
+            .attr('fill', '#888')
+            .attr('text-anchor', 'middle')
+            .text(function (d) { return d.type; });
+
+        // Nodes
+        var node = svg.append('g')
+            .selectAll('g')
+            .data(d3Nodes)
+            .join('g')
+            .call(d3.drag()
+                .on('start', function (event, d) {
+                    if (!event.active) simulation.alphaTarget(0.3).restart();
+                    d.fx = d.x;
+                    d.fy = d.y;
+                })
+                .on('drag', function (event, d) {
+                    d.fx = event.x;
+                    d.fy = event.y;
+                })
+                .on('end', function (event, d) {
+                    if (!event.active) simulation.alphaTarget(0);
+                    d.fx = null;
+                    d.fy = null;
+                }));
+
+        node.append('circle')
+            .attr('r', function (d) { return d.isOrigin ? 12 : 8 + (d.relevance * 4); })
+            .attr('fill', function (d) { return getNodeColor(d.sheet); })
+            .attr('stroke', function (d) { return d.isOrigin ? '#000' : '#fff'; })
+            .attr('stroke-width', function (d) { return d.isOrigin ? 3 : 1.5; })
+            .style('cursor', 'pointer');
+
+        node.append('text')
+            .attr('dx', 14)
+            .attr('dy', 4)
+            .attr('font-size', '10px')
+            .attr('fill', '#333')
+            .text(function (d) { return d.id; });
+
+        // Tooltip on hover
+        node.append('title')
+            .text(function (d) {
+                return d.id + ' — ' + d.title + '\nSheet: ' + d.sheet +
+                    '\nRelevance: ' + (d.relevance * 100).toFixed(0) + '%' +
+                    '\nHop: ' + d.hop;
+            });
+
+        // Click to set node input
+        node.on('click', function (event, d) {
+            var input = document.getElementById('graphNodeInput');
+            if (input) input.value = d.id;
+        });
+
+        simulation.on('tick', function () {
+            link
+                .attr('x1', function (d) { return d.source.x; })
+                .attr('y1', function (d) { return d.source.y; })
+                .attr('x2', function (d) { return d.target.x; })
+                .attr('y2', function (d) { return d.target.y; });
+
+            linkLabel
+                .attr('x', function (d) { return (d.source.x + d.target.x) / 2; })
+                .attr('y', function (d) { return (d.source.y + d.target.y) / 2; });
+
+            node.attr('transform', function (d) {
+                d.x = Math.max(15, Math.min(width - 15, d.x));
+                d.y = Math.max(15, Math.min(height - 15, d.y));
+                return 'translate(' + d.x + ',' + d.y + ')';
+            });
+        });
+
+        // Legend
+        var legendDiv = d3.select(container.querySelector('.force-graph-container'))
+            .append('div').attr('class', 'force-graph-legend');
+
+        var usedSheets = new Set(d3Nodes.map(function (n) { return n.sheet; }));
+        usedSheets.forEach(function (sheet) {
+            if (sheet) {
+                legendDiv.append('span').attr('class', 'force-graph-legend-item')
+                    .html('<span class="force-graph-legend-dot" style="background:' +
+                        getNodeColor(sheet) + '"></span> ' + sheet);
+            }
+        });
+        legendDiv.append('span').attr('class', 'force-graph-legend-item')
+            .html('<span class="force-graph-legend-dot" style="background:#000;border:2px solid #000;width:10px;height:10px;"></span> Origin');
+    }
+
+    /**
+     * Wrap graph results with a toggle for Graph/Table view.
+     */
+    function wrapWithGraphToggle(nodes, edges, originCode, tableHtml) {
+        var content = document.getElementById('graphResultsContent');
+        if (!content) return;
+
+        var toggleHtml = '<div class="graph-view-toggle">' +
+            '<button class="btn btn-sm btn-primary graph-toggle-btn" data-mode="graph">🔗 Graph</button>' +
+            '<button class="btn btn-sm btn-outline-secondary graph-toggle-btn" data-mode="table">📊 Table</button>' +
+            '</div>';
+
+        content.innerHTML = toggleHtml +
+            '<div id="graphViewGraph"></div>' +
+            '<div id="graphViewTable" style="display:none;">' + tableHtml + '</div>';
+
+        var graphContainer = document.getElementById('graphViewGraph');
+        if (graphContainer && nodes && nodes.length > 0) {
+            renderForceGraph(graphContainer, nodes, edges, originCode);
+        }
+
+        // Toggle buttons
+        content.querySelectorAll('.graph-toggle-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var mode = btn.dataset.mode;
+                var graphDiv = document.getElementById('graphViewGraph');
+                var tableDiv = document.getElementById('graphViewTable');
+                if (graphDiv) graphDiv.style.display = mode === 'graph' ? '' : 'none';
+                if (tableDiv) tableDiv.style.display = mode === 'table' ? '' : 'none';
+                content.querySelectorAll('.graph-toggle-btn').forEach(function (b) {
+                    b.classList.toggle('btn-primary', b.dataset.mode === mode);
+                    b.classList.toggle('btn-outline-secondary', b.dataset.mode !== mode);
+                });
+            });
+        });
+
+        attachNodeLinks();
+    }
+
     // ── Upstream / Downstream renderer ────────────────────────────────────────
 
     function renderNeighborhoodResult(data, inline) {
@@ -204,9 +435,10 @@
         if (!code) { showGraphError('Please enter a node code.'); return; }
         showGraphLoading();
         fetchUpstream(code, getMaxHops(), function (data) {
-            var content = document.getElementById('graphResultsContent');
-            if (content) content.innerHTML = renderNeighborhoodResult(data, true);
-            attachNodeLinks();
+            var tableHtml = renderNeighborhoodResult(data, true);
+            var allNodes = data.neighbors || [];
+            var edges = data.traversedRelationships || [];
+            wrapWithGraphToggle(allNodes, edges, data.originNodeCode, tableHtml);
         });
     }
 
@@ -215,9 +447,10 @@
         if (!code) { showGraphError('Please enter a node code.'); return; }
         showGraphLoading();
         fetchDownstream(code, getMaxHops(), function (data) {
-            var content = document.getElementById('graphResultsContent');
-            if (content) content.innerHTML = renderNeighborhoodResult(data, true);
-            attachNodeLinks();
+            var tableHtml = renderNeighborhoodResult(data, true);
+            var allNodes = data.neighbors || [];
+            var edges = data.traversedRelationships || [];
+            wrapWithGraphToggle(allNodes, edges, data.originNodeCode, tableHtml);
         });
     }
 
@@ -226,9 +459,10 @@
         if (!code) { showGraphError('Please enter a node code.'); return; }
         showGraphLoading();
         fetchFailureImpact(code, getMaxHops(), function (data) {
-            var content = document.getElementById('graphResultsContent');
-            if (content) content.innerHTML = renderFailureResult(data);
-            attachNodeLinks();
+            var tableHtml = renderFailureResult(data);
+            var allNodes = (data.directlyAffected || []).concat(data.indirectlyAffected || []);
+            var edges = data.traversedRelationships || [];
+            wrapWithGraphToggle(allNodes, edges, data.failedNodeCode, tableHtml);
         });
     }
 

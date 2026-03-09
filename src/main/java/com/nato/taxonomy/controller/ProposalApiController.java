@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -134,5 +135,62 @@ public class ProposalApiController {
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().build();
         }
+    }
+
+    /**
+     * Revert a proposal back to PENDING status (undo accept/reject).
+     * If the proposal was accepted, the corresponding relation is deleted.
+     */
+    @Operation(summary = "Revert proposal", description = "Reverts a proposal back to PENDING status (undo last action)")
+    @PostMapping("/proposals/{id}/revert")
+    public ResponseEntity<RelationProposalDto> revertProposal(@PathVariable Long id) {
+        try {
+            RelationProposalDto dto = reviewService.revertProposal(id);
+            return ResponseEntity.ok(dto);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * Bulk accept or reject multiple proposals.
+     * Request body: {@code { "ids": [1, 2, 3], "action": "ACCEPT" | "REJECT" }}
+     */
+    @Operation(summary = "Bulk action on proposals", description = "Accept or reject multiple proposals at once")
+    @PostMapping("/proposals/bulk")
+    public ResponseEntity<Map<String, Object>> bulkAction(@RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Number> ids = (List<Number>) body.get("ids");
+        String action = (String) body.get("action");
+
+        if (ids == null || ids.isEmpty() || action == null || action.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        int success = 0;
+        int failed = 0;
+
+        for (Number idNum : ids) {
+            Long id = idNum.longValue();
+            try {
+                if ("ACCEPT".equalsIgnoreCase(action)) {
+                    reviewService.acceptProposal(id);
+                } else if ("REJECT".equalsIgnoreCase(action)) {
+                    reviewService.rejectProposal(id);
+                } else {
+                    return ResponseEntity.badRequest().build();
+                }
+                success++;
+            } catch (IllegalArgumentException | IllegalStateException e) {
+                failed++;
+            }
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("action", action);
+        result.put("success", success);
+        result.put("failed", failed);
+        result.put("total", ids.size());
+        return ResponseEntity.ok(result);
     }
 }
