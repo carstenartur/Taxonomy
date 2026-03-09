@@ -2,7 +2,7 @@
 
 ---
 
-# NATO Taxonomy Analyser — API Reference
+# Taxonomy Architecture Analyzer — API Reference
 
 ## Table of Contents
 
@@ -34,9 +34,9 @@
 
 ## 1. Overview
 
-The **NATO Taxonomy Analyser** is a Spring Boot web application that maps free-text business or mission requirements to a structured C3 Taxonomy catalogue.  It is aimed at:
+The **Taxonomy Architecture Analyzer** is a Spring Boot web application that maps free-text business or mission requirements to a structured C3 Taxonomy catalogue.  It is aimed at:
 
-- **Architects and capability planners** who need to align requirements to NATO/TOGAF reference architecture elements.
+- **Architects and capability planners** who need to align requirements to standard reference architecture elements.
 - **System engineers** looking for existing services, capabilities, or information products that satisfy a requirement.
 - **Documentation teams** maintaining an architecture knowledge base of confirmed element relationships.
 
@@ -1196,7 +1196,7 @@ Proposals, Graph Queries, Quality Metrics, Export, Administration, Embedding).
 ### Requirement Text Quality
 
 - Write requirements as **imperative sentences**: *"Provide secure voice communications between HQ and deployed forces."*
-- Include domain-specific terminology from the NATO/TOGAF vocabulary (capability, service, information product, etc.) to maximise scoring precision.
+- Include domain-specific terminology from the C3/TOGAF vocabulary (capability, service, information product, etc.) to maximise scoring precision.
 - Keep text under 500 words; longer texts do not improve accuracy and increase LLM latency.
 
 ### Search Strategy

@@ -1,6 +1,6 @@
 # Concepts & Glossary
 
-This document explains the key terms used throughout the NATO NC3T Taxonomy Browser.
+This document explains the key terms used throughout the Taxonomy Architecture Analyzer.
 
 ---
 
@@ -27,7 +27,7 @@ This document explains the key terms used throughout the NATO NC3T Taxonomy Brow
 
 ## Taxonomy Node
 
-A single element in the NATO C3 Taxonomy hierarchy. Each node has:
+A single element in the C3 Taxonomy hierarchy. Each node has:
 
 - **Code** — a hierarchical identifier such as `CP-3` (Capability, third entry) or `CR-3-1` (Core Service, third group, first child).
 - **Title** — a short English name, for example _"Secure Voice Service"_.

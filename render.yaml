@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: nato-taxonomy
+    name: taxonomy-analyzer
     runtime: docker
     plan: free
     healthCheckPath: /

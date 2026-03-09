@@ -1,4 +1,4 @@
-# NATO Taxonomy Analyser — Documentation Status
+# Taxonomy Architecture Analyzer — Documentation Status
 
 This file tracks known documentation gaps and improvement opportunities. Items marked with ✅ have been addressed.
 

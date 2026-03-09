@@ -1020,7 +1020,7 @@ public class LlmService {
     }
 
     private String buildPrompt(String businessText, String nodeList) {
-        return "You are an expert in NATO C3 taxonomy classification. " +
+        return "You are an expert in C3 taxonomy classification. " +
                 "Given the following taxonomy categories and a business requirement, " +
                 "estimate the percentage match (0-100) for each category.\n\n" +
                 "Business Requirement: " + businessText + "\n\n" +

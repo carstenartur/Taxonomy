@@ -91,7 +91,7 @@ class MockScoreGeneratorIT {
             "IP", "Information Products such as inventory reports, distribution manifests, asset tracking records, and supply chain status reports are core outputs of logistics operations.",
             "UA", "User Applications including inventory management systems, tracking dashboards, and ordering portals are the primary tools for logistics personnel.",
             "CR", "Core Services provide the data exchange and messaging infrastructure needed to synchronise inventory data across distributed logistics nodes.",
-            "BR", "Business Roles define the responsibilities of logisticians, supply chain managers, and distribution officers within NATO force structures.",
+            "BR", "Business Roles define the responsibilities of logisticians, supply chain managers, and distribution officers within force structures.",
             "CO", "Communications Services support the real-time data links required to update inventory and coordinate distribution across geographically dispersed supply chain nodes.",
             "CI", "COI Services may expose logistics data feeds to operational communities that need situational awareness of supply availability."
     );
@@ -114,10 +114,10 @@ class MockScoreGeneratorIT {
             "CR", "Core Services provide the fundamental platform security services such as identity management, access control, and security event logging underpinning cyber defence.",
             "CP", "Capabilities packages encompass the cyber defence capabilities including SIEM, vulnerability scanning, and incident response capabilities needed for continuous monitoring.",
             "IP", "Information Products such as threat intelligence reports, incident logs, vulnerability assessments, and security dashboards are produced by the cyber defence programme.",
-            "CI", "COI Services include the cyber threat intelligence sharing communities that distribute indicators of compromise and threat actor information across NATO networks.",
+            "CI", "COI Services include the cyber threat intelligence sharing communities that distribute indicators of compromise and threat actor information across networks.",
             "BP", "Business Processes cover the incident response procedures, threat hunting workflows, and escalation processes for handling cyber security events.",
             "UA", "User Applications include the SOC analyst toolsets, threat hunting platforms, and incident management portals used by cyber defence personnel.",
-            "BR", "Business Roles define the responsibilities of SOC analysts, incident responders, and cyber defence coordinators within the NATO cyber defence organisation."
+            "BR", "Business Roles define the responsibilities of SOC analysts, incident responders, and cyber defence coordinators within the cyber defence organisation."
     );
 
     // ── Generator tests ───────────────────────────────────────────────────────
@@ -137,7 +137,7 @@ class MockScoreGeneratorIT {
     @Order(2)
     void generateLogisticsSupplyChain() throws IOException {
         generateAndSave(
-                "Manage logistics and supply chain operations for deployed NATO forces including inventory tracking and distribution",
+                "Manage logistics and supply chain operations for deployed forces including inventory tracking and distribution",
                 LOGISTICS_ROOT_SCORES,
                 LOGISTICS_REASONS,
                 "logistics-supply-chain.json"
@@ -148,7 +148,7 @@ class MockScoreGeneratorIT {
     @Order(3)
     void generateCyberDefenceMonitoring() throws IOException {
         generateAndSave(
-                "Implement continuous cyber defence monitoring, threat detection, and incident response for NATO IT infrastructure",
+                "Implement continuous cyber defence monitoring, threat detection, and incident response for IT infrastructure",
                 CYBER_DEFENCE_ROOT_SCORES,
                 CYBER_DEFENCE_REASONS,
                 "cyber-defence-monitoring.json"

@@ -1,7 +1,7 @@
-# NATO Taxonomy Analyser — Configuration Reference
+# Taxonomy Architecture Analyzer — Configuration Reference
 
 This document is the **canonical, complete list** of every environment variable and
-application property recognised by the NATO NC3T Taxonomy Browser.  
+application property recognised by the Taxonomy Architecture Analyzer.  
 Values are set via environment variables (recommended for production) or in
 `src/main/resources/application.properties` for local development.
 
@@ -107,7 +107,7 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
 | — | `server.port` | Integer | `8080` | HTTP port the application listens on. |
-| — | `spring.application.name` | String | `nato-taxonomy` | Application name (used in logs). |
+| — | `spring.application.name` | String | `taxonomy-analyzer` | Application name (used in logs). |
 | — | `spring.thymeleaf.cache` | Boolean | `false` | Set to `true` in production for template caching. |
 
 ---

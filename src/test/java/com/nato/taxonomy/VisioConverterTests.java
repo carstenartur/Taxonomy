@@ -199,7 +199,7 @@ class VisioConverterTests {
         VisioDocument doc = new VisioDocument();
         String xml = documentXstream.toXML(doc);
         assertThat(xml).contains("DocumentProperties");
-        assertThat(xml).contains("NATO NC3T Taxonomy Browser");
+        assertThat(xml).contains("Taxonomy Architecture Analyzer");
         assertThat(xml).contains("Architecture diagram generated from requirement analysis");
     }
 

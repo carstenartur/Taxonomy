@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration;
 import java.util.List;
 
 /**
- * OpenAPI 3.0 configuration for the NATO NC3T Taxonomy Analyser.
+ * OpenAPI 3.0 configuration for the Taxonomy Architecture Analyzer.
  * <p>
  * Provides auto-generated interactive API documentation at {@code /swagger-ui.html}.
  */
@@ -23,15 +23,15 @@ public class OpenApiConfig {
     public OpenAPI taxonomyOpenAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("NATO NC3T Taxonomy Analyser API")
+                        .title("Taxonomy Architecture Analyzer API")
                         .description("""
-                                REST API for the NATO NC3T Taxonomy Browser.
+                                REST API for the Taxonomy Architecture Analyzer.
                                 Analyse business requirements against the C3 Taxonomy catalogue,
                                 manage taxonomy relations, run graph-based architecture queries,
                                 and export results as Visio or ArchiMate diagrams.""")
                         .version("1.0.0")
                         .contact(new Contact()
-                                .name("NATO NC3T Taxonomy Browser")
+                                .name("Taxonomy Architecture Analyzer")
                                 .url("https://github.com/carstenartur/Taxonomy"))
                         .license(new License()
                                 .name("MIT License")

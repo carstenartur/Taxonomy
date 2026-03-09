@@ -1,5 +1,5 @@
-You are an expert in NATO C3 taxonomy classification.
-A business requirement has been evaluated against the NATO NC3T taxonomy and the following
+You are an expert in C3 taxonomy classification.
+A business requirement has been evaluated against the C3 taxonomy and the following
 classification path with match percentages has been computed. Explain in 3-5 sentences:
 1. At each step from root to leaf, why the node received its specific match percentage —
    which aspects of the business requirement were addressed and which were not

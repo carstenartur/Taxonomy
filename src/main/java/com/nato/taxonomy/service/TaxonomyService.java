@@ -108,7 +108,7 @@ public class TaxonomyService {
             TaxonomyNode root = new TaxonomyNode();
             root.setCode(prefix);
             root.setNameEn(sheetName);
-            root.setDescriptionEn("NATO C3 Taxonomy – " + sheetName);
+            root.setDescriptionEn("C3 Taxonomy – " + sheetName);
             root.setTaxonomyRoot(prefix);
             root.setLevel(0);
             nodeMap.put(prefix, root);

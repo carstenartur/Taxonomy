@@ -1,4 +1,4 @@
-# GitHub Copilot Instructions — NATO NC3T Taxonomy Browser
+# GitHub Copilot Instructions — Taxonomy Architecture Analyzer
 
 ## Project Overview
 

@@ -141,7 +141,7 @@ public class PromptTemplateService {
         String template = defaults.getOrDefault("justify-leaf", "");
         if (template.isBlank()) {
             // Fallback inline template if the file is missing
-            template = "You are an expert in NATO C3 taxonomy classification.\n"
+            template = "You are an expert in C3 taxonomy classification.\n"
                     + "Explain in 3-5 sentences why the taxonomy path ending at {{LEAF_CODE}} "
                     + "best matches the following business requirement.\n\n"
                     + "Business Requirement: {{BUSINESS_TEXT}}\n\n"
