@@ -86,24 +86,39 @@ public class TaxonomyRelationService {
 <span class="fc" id="L86">        log.info(&quot;Deleted relation with id: {}&quot;, id);</span>
 <span class="fc" id="L87">    }</span>
 
+    /**
+     * Delete all relations matching a specific source, target, and type combination.
+     * Used by the proposal revert mechanism to remove accepted relations.
+     */
+    @Transactional
+    public void deleteRelationBySourceTargetType(String sourceCode, String targetCode,
+                                                  RelationType type) {
+<span class="nc" id="L96">        List&lt;TaxonomyRelation&gt; matches = relationRepository</span>
+<span class="nc" id="L97">                .findBySourceNodeCodeAndTargetNodeCodeAndRelationType(sourceCode, targetCode, type);</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (!matches.isEmpty()) {</span>
+<span class="nc" id="L99">            relationRepository.deleteAll(matches);</span>
+<span class="nc" id="L100">            log.info(&quot;Deleted {} relation(s): {} --[{}]--&gt; {}&quot;, matches.size(), sourceCode, type, targetCode);</span>
+        }
+<span class="nc" id="L102">    }</span>
+
     public TaxonomyRelationDto toDto(TaxonomyRelation relation) {
-<span class="fc" id="L90">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
-<span class="fc" id="L91">        dto.setId(relation.getId());</span>
-<span class="fc" id="L92">        dto.setSourceCode(relation.getSourceNode().getCode());</span>
-<span class="fc" id="L93">        dto.setSourceName(relation.getSourceNode().getNameEn());</span>
-<span class="fc" id="L94">        dto.setTargetCode(relation.getTargetNode().getCode());</span>
-<span class="fc" id="L95">        dto.setTargetName(relation.getTargetNode().getNameEn());</span>
-<span class="fc" id="L96">        dto.setRelationType(relation.getRelationType().name());</span>
-<span class="fc" id="L97">        dto.setDescription(relation.getDescription());</span>
-<span class="fc" id="L98">        dto.setProvenance(relation.getProvenance());</span>
-<span class="fc" id="L99">        dto.setWeight(relation.getWeight());</span>
-<span class="fc" id="L100">        dto.setBidirectional(relation.isBidirectional());</span>
-<span class="fc" id="L101">        return dto;</span>
+<span class="fc" id="L105">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
+<span class="fc" id="L106">        dto.setId(relation.getId());</span>
+<span class="fc" id="L107">        dto.setSourceCode(relation.getSourceNode().getCode());</span>
+<span class="fc" id="L108">        dto.setSourceName(relation.getSourceNode().getNameEn());</span>
+<span class="fc" id="L109">        dto.setTargetCode(relation.getTargetNode().getCode());</span>
+<span class="fc" id="L110">        dto.setTargetName(relation.getTargetNode().getNameEn());</span>
+<span class="fc" id="L111">        dto.setRelationType(relation.getRelationType().name());</span>
+<span class="fc" id="L112">        dto.setDescription(relation.getDescription());</span>
+<span class="fc" id="L113">        dto.setProvenance(relation.getProvenance());</span>
+<span class="fc" id="L114">        dto.setWeight(relation.getWeight());</span>
+<span class="fc" id="L115">        dto.setBidirectional(relation.isBidirectional());</span>
+<span class="fc" id="L116">        return dto;</span>
     }
 
     @Transactional(readOnly = true)
     public long countRelations() {
-<span class="fc" id="L106">        return relationRepository.count();</span>
+<span class="fc" id="L121">        return relationRepository.count();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>

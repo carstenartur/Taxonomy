@@ -94,5 +94,43 @@ public class RelationReviewService {
 
 <span class="fc" id="L95">        return proposalService.toDto(proposal);</span>
     }
+
+    /**
+     * Revert a previously accepted or rejected proposal back to PENDING status.
+     * If the proposal was accepted, the corresponding relation is deleted.
+     */
+    @Transactional
+    public RelationProposalDto revertProposal(Long proposalId) {
+<span class="fc" id="L104">        RelationProposal proposal = proposalRepository.findById(proposalId)</span>
+<span class="pc" id="L105">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Proposal not found: &quot; + proposalId));
+
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        if (proposal.getStatus() == ProposalStatus.PENDING) {</span>
+<span class="nc" id="L109">            throw new IllegalStateException(</span>
+                    &quot;Proposal &quot; + proposalId + &quot; is already PENDING&quot;);
+        }
+
+<span class="nc" id="L113">        ProposalStatus oldStatus = proposal.getStatus();</span>
+
+        // If accepted, remove the created relation
+<span class="nc bnc" id="L116" title="All 2 branches missed.">        if (oldStatus == ProposalStatus.ACCEPTED) {</span>
+<span class="nc" id="L117">            relationService.deleteRelationBySourceTargetType(</span>
+<span class="nc" id="L118">                    proposal.getSourceNode().getCode(),</span>
+<span class="nc" id="L119">                    proposal.getTargetNode().getCode(),</span>
+<span class="nc" id="L120">                    proposal.getRelationType());</span>
+        }
+
+<span class="nc" id="L123">        proposal.setStatus(ProposalStatus.PENDING);</span>
+<span class="nc" id="L124">        proposal.setReviewedAt(null);</span>
+<span class="nc" id="L125">        proposalRepository.save(proposal);</span>
+
+<span class="nc" id="L127">        log.info(&quot;Reverted proposal {} from {} to PENDING: {} → {} [{}]&quot;,</span>
+                proposalId, oldStatus,
+<span class="nc" id="L129">                proposal.getSourceNode().getCode(),</span>
+<span class="nc" id="L130">                proposal.getTargetNode().getCode(),</span>
+<span class="nc" id="L131">                proposal.getRelationType());</span>
+
+<span class="nc" id="L133">        return proposalService.toDto(proposal);</span>
+    }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
