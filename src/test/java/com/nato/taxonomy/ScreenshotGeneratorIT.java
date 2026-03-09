@@ -97,6 +97,13 @@ class ScreenshotGeneratorIT {
         driver.get("http://app:8080/");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        // Dismiss the onboarding overlay if it is present (it blocks clicks on all UI elements)
+        List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
+        if (!dismissBtns.isEmpty()) {
+            dismissBtns.get(0).click();
+            new WebDriverWait(driver, Duration.ofSeconds(5))
+                    .until(ExpectedConditions.invisibilityOfElementLocated(By.id("onboardingOverlay")));
+        }
     }
 
     @AfterAll
@@ -232,6 +239,13 @@ class ScreenshotGeneratorIT {
         // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
         wait(30).until(ExpectedConditions.presenceOfElementLocated(
                 By.cssSelector("#taxonomyTree .tax-node")));
+        // Dismiss the onboarding overlay if it reappears after page reload
+        List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
+        if (!dismissBtns.isEmpty()) {
+            dismissBtns.get(0).click();
+            new WebDriverWait(driver, Duration.ofSeconds(5))
+                    .until(ExpectedConditions.invisibilityOfElementLocated(By.id("onboardingOverlay")));
+        }
     }
 
     /**
