@@ -588,11 +588,31 @@
     // ── Load taxonomy tree from API ───────────────────────────────────────────
     var LOADING_MSG = '⏳ Taxonomy data is loading&hellip; This takes about 1&ndash;2 minutes on first start. Please wait.';
 
+    /** Shows or hides the global startup banner and disables/enables interactive elements. */
+    function setStartupBanner(show, statusText) {
+        var banner = document.getElementById('startupBanner');
+        var statusSpan = document.getElementById('startupBannerStatus');
+        var analyzeBtn = document.getElementById('analyzeBtn');
+        if (banner) {
+            banner.classList.toggle('d-none', !show);
+        }
+        if (statusSpan) {
+            statusSpan.textContent = statusText || '';
+        }
+        if (analyzeBtn) {
+            analyzeBtn.disabled = show;
+            analyzeBtn.title = show
+                ? 'Waiting for taxonomy data to finish loading…'
+                : 'Analyze the business requirement text against the taxonomy using the configured AI/LLM provider';
+        }
+    }
+
     function loadTaxonomy() {
         fetch('/api/taxonomy')
             .then(function (r) {
                 if (r.status === 503) {
-                    // Taxonomy is still loading — show message and poll until ready
+                    // Taxonomy is still loading — show global banner and poll until ready
+                    setStartupBanner(true);
                     document.getElementById('taxonomyTree').innerHTML =
                         '<div class="alert alert-info">' + LOADING_MSG + '</div>';
                     pollStartupStatus();
@@ -602,6 +622,7 @@
             })
             .then(function (data) {
                 if (!data) return; // 503 branch already handled
+                setStartupBanner(false);
                 taxonomyData = data;
                 populateTreeRootSelect(data);
                 renderView(data, null);
@@ -611,6 +632,7 @@
                 }
             })
             .catch(function (err) {
+                setStartupBanner(false);
                 document.getElementById('taxonomyTree').innerHTML =
                     '<div class="alert alert-danger">Failed to load taxonomy: ' + err + '</div>';
             });
@@ -623,9 +645,11 @@
                 .then(function (r) { return r.json(); })
                 .then(function (s) {
                     if (s && s.initialized) {
+                        setStartupBanner(false);
                         loadTaxonomy();
                     } else {
                         var statusMsg = s && s.status ? ' (status: ' + s.status + ')' : '';
+                        setStartupBanner(true, statusMsg.trim());
                         document.getElementById('taxonomyTree').innerHTML =
                             '<div class="alert alert-info">' + LOADING_MSG + statusMsg + '</div>';
                         pollStartupStatus();

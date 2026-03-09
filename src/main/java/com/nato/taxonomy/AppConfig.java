@@ -23,14 +23,17 @@ public class AppConfig {
 
     @Bean(destroyMethod = "shutdown")
     public ExecutorService analysisExecutor() {
-        return Executors.newFixedThreadPool(10);
+        // Scale to available CPUs; cap at 4 to avoid over-threading on constrained hosts
+        // (e.g. Render Free Tier has 1 CPU — uses 2 threads, which is still useful for I/O waits)
+        int poolSize = Math.min(Runtime.getRuntime().availableProcessors() + 1, 4);
+        return Executors.newFixedThreadPool(poolSize);
     }
 
     @Bean
     public TaskExecutor taskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(4);
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(2);
         executor.setQueueCapacity(10);
         executor.setThreadNamePrefix("taxonomy-async-");
         executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());

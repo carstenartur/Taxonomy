@@ -46,6 +46,14 @@
     </div>
 </div>
 
+<!-- Global startup loading banner — shown while taxonomy data is initializing,
+     visible across all tabs to give clear feedback on any page. -->
+<div id="startupBanner" class="alert alert-info text-center mb-0 d-none" role="alert"
+     style="border-radius:0; border-left:none; border-right:none; position:sticky; top:0; z-index:1050;">
+    ⏳ <strong>Application is starting up…</strong> Taxonomy data is loading — this takes about 1–2 minutes on first start.
+    <span id="startupBannerStatus" class="ms-2 text-muted small"></span>
+</div>
+
 <div class="container-fluid px-3 pt-3">
     <div class="row g-3" id="mainContent">
 
