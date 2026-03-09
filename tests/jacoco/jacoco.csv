@@ -10,7 +10,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GapAnalysisApiContro
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RelationApiController,4,116,6,10,2,29,6,8,0,6
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GraphQueryApiController,0,114,2,8,0,26,2,9,0,6
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,CoverageApiController.RecordCoverageRequest,0,15,0,0,0,1,0,1,0,1
-Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ApiController,323,887,58,68,69,186,48,45,2,28
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ApiController,413,937,70,78,87,205,60,46,3,29
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,QualityApiController,0,27,0,0,0,7,0,5,0,5
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GapAnalysisApiController,0,24,0,2,0,8,0,3,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RecommendationApiController.RecommendationRequest,0,12,0,0,0,1,0,1,0,1
@@ -114,7 +114,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.new TypeRefe
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateDiagramService,32,607,6,63,1,109,6,54,0,13
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,PropagationResult.TraversedRelation,0,27,0,0,0,10,0,5,0,5
-Taxonomy Architecture Analyzer,com.nato.taxonomy.service,TaxonomyService,324,1066,52,73,82,255,41,43,3,17
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,TaxonomyService,360,1122,60,77,92,271,48,47,4,21
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,VisioDiagramService,1,207,3,11,0,37,3,8,0,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationValidationService,21,138,3,7,4,33,4,6,1,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RankFusionUtil,0,74,0,2,0,16,0,4,0,3
