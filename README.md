@@ -22,6 +22,22 @@ using an AI language model.
 * AI availability indicator: the Analyze button is disabled with a clear warning
   when no API key is configured
 
+## Architecture Intelligence
+
+Describe a business requirement in plain text and the application automatically:
+
+🏗️ **Generates an architecture view** — identifies relevant taxonomy nodes, propagates
+relevance through known relationships, and builds a structured architecture model
+
+📐 **Exports to industry standards** — one-click export to **ArchiMate XML** (for tools
+like Archi, BiZZdesign, MEGA), **Visio diagrams**, and **Mermaid flowcharts**
+
+🔍 **Recommends missing elements** — gap analysis and semantic search suggest additional
+nodes and relations that may be relevant to your requirement
+
+> See the [Architecture Description](docs/ARCHITECTURE.md) for technical details on the
+> generation pipeline and system design.
+
 ## Quick Start (local)
 
 ```bash
@@ -39,35 +55,9 @@ Then open <http://localhost:8080>.
 
 | Document | Description |
 |---|---|
+| [Architecture Description](docs/ARCHITECTURE.md) | System design, generation pipeline, CI/CD, database |
 | [Configuration Reference](docs/CONFIGURATION_REFERENCE.md) | All environment variables: LLM providers, embedding model, admin password, database |
 | [API Reference](docs/API_REFERENCE.md) | Complete REST API documentation with examples |
 | [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) | Docker, Render.com, health checks, troubleshooting |
 | [User Guide](docs/USER_GUIDE.md) | End-user guide for the web interface |
-
-## CI / CD
-
-Every push triggers the **CI / CD** GitHub Actions workflow:
-
-| Step | What happens |
-|---|---|
-| **Build & Test** | `mvn verify` — compiles, runs integration tests |
-| **Publish Docker Image** | Pushes to GitHub Container Registry (`ghcr.io`) |
-| **Deploy to Render** | Triggers a Render deploy hook (if secret is set) |
-
-📋 **[Test Results Report](https://carstenartur.github.io/Taxonomy/tests/surefire-report.html)**
-📈 **[Code Coverage Report](https://carstenartur.github.io/Taxonomy/coverage/)**
-
-## MSSQL Compatibility
-
-All entity classes are annotated for correct behaviour on Microsoft SQL Server:
-
-- **`@Nationalized`** on every `String` field → produces `nvarchar` instead of `varchar`,
-  preventing corruption of non-ASCII characters (e.g. German umlauts ä, ö, ü, ß).
-- **`@Lob`** on text fields that may exceed 4000 characters (`descriptionEn`,
-  `descriptionDe`, `reference`) → produces `nvarchar(max)` / `ntext` on MSSQL.
-- **`@Lob` + `FloatArrayConverter`** on `semanticEmbedding` fields in `TaxonomyNode`
-  and `TaxonomyRelation` → stores embedding vectors as streamable BLOBs using
-  little-endian IEEE 754 serialisation.
-
-The application continues to use HSQLDB by default (no MSSQL setup required).
 
