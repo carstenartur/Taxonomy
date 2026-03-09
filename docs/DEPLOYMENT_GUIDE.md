@@ -2,6 +2,8 @@
 
 This guide covers deploying the NATO NC3T Taxonomy Browser using Docker and Render.com.
 
+> **Prerequisites:** Docker 20+ for containerised deployment. No external database or message broker is required — the application is fully self-contained.
+
 ---
 
 ## Table of Contents
@@ -10,6 +12,8 @@ This guide covers deploying the NATO NC3T Taxonomy Browser using Docker and Rend
 2. [Render.com Deployment](#2-rendercom-deployment)
 3. [Health Check](#3-health-check)
 4. [Troubleshooting](#4-troubleshooting)
+
+> See also: [Configuration Reference](CONFIGURATION_REFERENCE.md) for all environment variables, [Architecture Description](ARCHITECTURE.md) for system design details.
 
 ---
 
