@@ -314,8 +314,8 @@
         const lockBtn = document.getElementById('adminLockBtn');
         const adminNavTab = document.getElementById('adminNavTab');
         if (!adminPasswordRequired) {
-            // No password configured — show everything, no lock button
-            body.classList.remove('admin-unlocked');
+            // No password configured — admin features always accessible, no lock button
+            body.classList.add('admin-unlocked');
             document.querySelectorAll('.admin-only').forEach(el => {
                 el.style.display = '';
             });
@@ -1347,7 +1347,13 @@
                     if (statusArea && window.navigateToPage) {
                         var archLink = document.createElement('div');
                         archLink.className = 'mt-2';
-                        archLink.innerHTML = '<button class="btn btn-sm btn-outline-primary" onclick="window.navigateToPage(\'architecture\')">&#127959;&#65039; View Architecture &rarr;</button>';
+                        var archBtn = document.createElement('button');
+                        archBtn.className = 'btn btn-sm btn-outline-primary';
+                        archBtn.textContent = '\uD83C\uDFDB\uFE0F View Architecture \u2192';
+                        archBtn.addEventListener('click', function () {
+                            window.navigateToPage('architecture');
+                        });
+                        archLink.appendChild(archBtn);
                         statusArea.appendChild(archLink);
                     }
                 }

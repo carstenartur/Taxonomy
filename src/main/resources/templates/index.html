@@ -39,7 +39,7 @@
             <li class="nav-item">
                 <a class="nav-link" data-page="export" href="#export">&#128229; Export</a>
             </li>
-            <li id="adminNavTab" class="nav-item admin-only" style="display:none;">
+            <li id="adminNavTab" class="nav-item admin-only">
                 <a class="nav-link text-warning" data-page="admin" href="#admin">&#9881;&#65039; Admin</a>
             </li>
         </ul>
@@ -263,7 +263,7 @@
                         <div style="font-size:3rem;">&#127959;&#65039;</div>
                         <h5 class="mt-3">No Architecture View Yet</h5>
                         <p class="mb-3">Run an analysis with the <strong>Architecture View</strong> option enabled to see the architecture breakdown here.</p>
-                        <button class="btn btn-primary" onclick="window.navigateToPage && window.navigateToPage('analyze')">
+                        <button class="btn btn-primary" data-page="analyze">
                             &#128269; Go to Analyze
                         </button>
                     </div>
