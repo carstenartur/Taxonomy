@@ -582,10 +582,22 @@
     }
 
     // ── Load taxonomy tree from API ───────────────────────────────────────────
+    var LOADING_MSG = '⏳ Taxonomy data is loading&hellip; This takes about 1&ndash;2 minutes on first start. Please wait.';
+
     function loadTaxonomy() {
         fetch('/api/taxonomy')
-            .then(r => r.json())
-            .then(data => {
+            .then(function (r) {
+                if (r.status === 503) {
+                    // Taxonomy is still loading — show message and poll until ready
+                    document.getElementById('taxonomyTree').innerHTML =
+                        '<div class="alert alert-info">' + LOADING_MSG + '</div>';
+                    pollStartupStatus();
+                    return null;
+                }
+                return r.json();
+            })
+            .then(function (data) {
+                if (!data) return; // 503 branch already handled
                 taxonomyData = data;
                 populateTreeRootSelect(data);
                 renderView(data, null);
@@ -594,10 +606,31 @@
                     window.TaxonomyGraph.populateNodeSuggestions(data);
                 }
             })
-            .catch(err => {
+            .catch(function (err) {
                 document.getElementById('taxonomyTree').innerHTML =
                     '<div class="alert alert-danger">Failed to load taxonomy: ' + err + '</div>';
             });
+    }
+
+    /** Polls /api/status/startup every 5 s until the taxonomy is ready, then reloads the tree. */
+    function pollStartupStatus() {
+        setTimeout(function () {
+            fetch('/api/status/startup')
+                .then(function (r) { return r.json(); })
+                .then(function (s) {
+                    if (s && s.initialized) {
+                        loadTaxonomy();
+                    } else {
+                        var statusMsg = s && s.status ? ' (status: ' + s.status + ')' : '';
+                        document.getElementById('taxonomyTree').innerHTML =
+                            '<div class="alert alert-info">' + LOADING_MSG + statusMsg + '</div>';
+                        pollStartupStatus();
+                    }
+                })
+                .catch(function () {
+                    pollStartupStatus(); // retry on network error
+                });
+        }, 5000);
     }
 
     function populateTreeRootSelect(data) {

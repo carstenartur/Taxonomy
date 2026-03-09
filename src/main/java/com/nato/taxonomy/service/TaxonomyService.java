@@ -15,7 +15,11 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +30,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 public class TaxonomyService {
@@ -58,19 +64,87 @@ public class TaxonomyService {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    /** Whether to load taxonomy asynchronously after the server starts. */
+    @Value("${taxonomy.init.async:false}")
+    private boolean asyncInit;
+
+    // ── Startup readiness tracking ────────────────────────────────────────────
+    private final AtomicBoolean initialized  = new AtomicBoolean(false);
+    private final AtomicBoolean initializing = new AtomicBoolean(false);
+    private final AtomicReference<String> initStatus = new AtomicReference<>("pending");
+
     public TaxonomyService(TaxonomyNodeRepository repository,
                            TaxonomyRelationRepository relationRepository) {
         this.repository = repository;
         this.relationRepository = relationRepository;
     }
 
+    /** Returns {@code true} once the taxonomy has been fully loaded and indexed. */
+    public boolean isInitialized() {
+        return initialized.get();
+    }
+
+    /** Returns a human-readable initialization status: {@code pending}, {@code loading}, {@code ready}, or {@code error}. */
+    public String getInitStatus() {
+        return initStatus.get();
+    }
+
     /**
-     * Load the taxonomy from the bundled Excel workbook.
-     * Uses an explicit {@link TransactionTemplate} because {@code @Transactional} is not
-     * honoured when a method is invoked directly by the container via {@code @PostConstruct}.
+     * Called by Spring at context startup.
+     * <ul>
+     *   <li>When {@code taxonomy.init.async=false} (default): loads the taxonomy synchronously so
+     *       the application is fully ready before the first HTTP request is served.  This is the
+     *       preferred mode for local development and integration tests.</li>
+     *   <li>When {@code taxonomy.init.async=true}: skips synchronous loading here; the actual work
+     *       is deferred to {@link #onApplicationReady} which runs in a background thread AFTER
+     *       Tomcat has opened its port.  This prevents Render from reporting "No open ports
+     *       detected" during the 2+ minute startup.</li>
+     * </ul>
      */
     @PostConstruct
-    public void loadTaxonomyFromExcel() {
+    public void initOnStartup() {
+        if (asyncInit) {
+            log.info("Async taxonomy init enabled — taxonomy will load after server starts.");
+        } else {
+            // Synchronous path: load before the first request is served
+            performInitialization();
+        }
+    }
+
+    /**
+     * Triggers asynchronous taxonomy loading AFTER the web server has opened its port.
+     * Only active when {@code taxonomy.init.async=true}.
+     *
+     * <p>Combining {@code @EventListener} and {@code @Async} on the same method is supported
+     * since Spring 4.2: the event infrastructure calls this via the bean proxy, so the
+     * {@code @Async} interceptor fires correctly.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    @Async
+    public void onApplicationReady(ApplicationReadyEvent event) {
+        if (!asyncInit) {
+            return;
+        }
+        if (initializing.compareAndSet(false, true)) {
+            log.info("Application ready — starting async taxonomy initialization...");
+            doInitialize(true);
+        }
+    }
+
+    private void performInitialization() {
+        if (!initializing.compareAndSet(false, true)) {
+            return; // already in progress or done
+        }
+        doInitialize(false);
+    }
+
+    /**
+     * Core initialization logic shared by the synchronous and asynchronous paths.
+     *
+     * @param async {@code true} when running on the async/background thread (affects log messages)
+     */
+    private void doInitialize(boolean async) {
+        initStatus.set("loading");
         try {
             new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
                 try {
@@ -81,10 +155,16 @@ public class TaxonomyService {
                     throw new RuntimeException(e);
                 }
             });
+            initialized.set(true);
+            initStatus.set("ready");
+            if (async) {
+                log.info("Async taxonomy initialization complete.");
+            }
         } catch (RuntimeException e) {
-            // Unwrap to log the original exception (IOException, etc.) with its full stack trace
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            log.error("Failed to load taxonomy from Excel", cause);
+            initStatus.set("error");
+            String msg = async ? "Async taxonomy initialization failed" : "Failed to load taxonomy from Excel";
+            log.error(msg, cause);
         }
     }
 
