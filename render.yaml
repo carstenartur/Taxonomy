@@ -12,7 +12,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false        # set manually in the Render dashboard
       - key: TAXONOMY_DATASOURCE_URL
-        value: "jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached"
+        value: "jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;shutdown=true"
       - key: TAXONOMY_DDL_AUTO
         value: update
       - key: TAXONOMY_SEARCH_DIRECTORY_TYPE

@@ -116,8 +116,9 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
-| `TAXONOMY_DATASOURCE_URL` | `spring.datasource.url` | String | `jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1` | JDBC URL. Defaults to in-memory HSQLDB (local dev / tests). Set to `jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached` for production disk-backed storage. |
+| `TAXONOMY_DATASOURCE_URL` | `spring.datasource.url` | String | `jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1` | JDBC URL. Defaults to in-memory HSQLDB (local dev / tests). Set to `jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;shutdown=true` for production disk-backed storage. |
 | — | `spring.datasource.driver-class-name` | String | `org.hsqldb.jdbc.JDBCDriver` | JDBC driver class. |
+| — | `spring.datasource.type` | String | `org.springframework.jdbc.datasource.SimpleDriverDataSource` | DataSource implementation. `SimpleDriverDataSource` bypasses HikariCP entirely — no connection pool is needed for in-process HSQLDB, which eliminates pool-exhaustion issues and reduces memory overhead. |
 | `TAXONOMY_DDL_AUTO` | `spring.jpa.hibernate.ddl-auto` | String | `create` | Schema generation strategy. `create` rebuilds on each start (safe for in-memory default). Set to `update` for file-based deployments so data is not wiped on restart. |
 | — | `spring.jpa.show-sql` | Boolean | `false` | Whether to log SQL statements. |
 

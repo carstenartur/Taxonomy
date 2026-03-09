@@ -146,6 +146,8 @@ Every push triggers the **CI / CD** GitHub Actions workflow:
 
 The application ships with an embedded HSQLDB database. No installation or external database server is required. All taxonomy data is loaded from the bundled Excel workbook at startup.
 
+Because HSQLDB runs **in-process** (same JVM, no network hop), a JDBC connection pool adds only overhead. The application therefore uses `SimpleDriverDataSource` instead of the Spring Boot default HikariCP. This eliminates HikariPool connection-exhaustion issues and reduces memory usage — particularly important on constrained hosts such as the Render free tier (512 MB RAM).
+
 ### MSSQL Compatibility
 
 All entity classes are annotated for correct behaviour on Microsoft SQL Server:

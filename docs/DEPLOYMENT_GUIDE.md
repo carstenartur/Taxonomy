@@ -161,7 +161,7 @@ services:
 | `plan: free` | Render Free plan; upgrade to `starter` or higher for more resources |
 | `healthCheckPath: /api/status/startup` | Render probes `GET /api/status/startup` — always returns HTTP 200 even while the taxonomy is still loading |
 | `disk` | Persistent disk so the HSQLDB files and Lucene index survive redeploys |
-| `TAXONOMY_DATASOURCE_URL` | Switches HSQLDB from the in-memory default to a disk-backed file database |
+| `TAXONOMY_DATASOURCE_URL` | Switches HSQLDB from the in-memory default to a disk-backed file database; `shutdown=true` ensures a clean checkpoint on JVM exit |
 | `TAXONOMY_DDL_AUTO` | `update` preserves data across restarts (vs. `create` which rebuilds the schema) |
 | `TAXONOMY_SEARCH_DIRECTORY_TYPE` | Switches Lucene from the in-memory heap default to a disk-backed filesystem index |
 | `TAXONOMY_EMBEDDING_ENABLED` | Set to `false` on the free tier to save ~80–140 MB of native memory (disables semantic KNN search) |
