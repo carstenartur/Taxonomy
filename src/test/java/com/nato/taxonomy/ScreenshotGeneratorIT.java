@@ -52,9 +52,6 @@ class ScreenshotGeneratorIT {
 
     private static final Path OUTPUT_DIR = Path.of("docs/images");
 
-    /** Maximum number of interactive-mode node expansions when searching for leaf justify buttons. */
-    private static final int MAX_TREE_EXPANSION_ITERATIONS = 50;
-
     private static Network network;
     private static GenericContainer<?> app;
     private static BrowserWebDriverContainer<?> chrome;
@@ -504,47 +501,39 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(18)
     void captureLeafJustificationModal() throws IOException, InterruptedException {
-        // Reload the page to ensure clean JS state. After reload interactiveMode defaults to true
-        // (the checkbox has the checked attribute in HTML and the JS closure initialises to true).
+        // Reload the page for a clean JS state
         resetPageState();
+        // Clean up any leftover Bootstrap modal state from a previous failed retry run
+        resetModalState();
 
-        // Verify interactive mode is ON — leaf justify buttons only appear when storedBusinessText
-        // is set, which only happens during runInteractiveAnalysis(), not runStreamingAnalysis().
-        js("var cb = document.getElementById('interactiveMode');" +
-           "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change')); }");
+        // 1. Run a full non-interactive analysis to score ALL nodes (including leaf nodes).
+        //    The mock LLM always returns scores > 0 for non-BR nodes, so leaves will be scored > 0.
+        forceNonInteractiveMode();
+        runAnalysis();
 
-        // Run interactive analysis: sets storedBusinessText and renders tree without scores
-        WebElement textarea = driver.findElement(By.id("businessText"));
-        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
-        js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
-                textarea, REQUIREMENT_TEXT);
-        js("document.getElementById('analyzeBtn').click();");
-        // Interactive analysis renders the tree immediately, marking parent nodes as unevaluated
-        wait(10).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-has-unevaluated")));
+        // 2. Set storedBusinessText via the window test helper so that buildNodeEl creates
+        //    leaf justify buttons when the tree is re-rendered.  storedBusinessText is normally
+        //    a closure variable only set by runInteractiveAnalysis(); the window helper is
+        //    exposed specifically to support this screenshot-test scenario.
+        js("window._setStoredBusinessText(arguments[0]);", REQUIREMENT_TEXT);
 
-        // Expand nodes level by level until leaf justify buttons appear or tree is fully evaluated.
-        // Each expand triggers an API call to /api/analyze-node which scores child nodes;
-        // leaf children with score > 0 get the .btn-outline-info justify button.
-        // The loop follows the first unevaluated branch in DOM order. 50 iterations handles trees
-        // where the initial path to the first leaf node is deeper than 4 levels.
-        for (int i = 0; i < MAX_TREE_EXPANSION_ITERATIONS; i++) {
-            List<WebElement> unevalToggles = driver.findElements(
-                    By.cssSelector(".tax-has-unevaluated > .tax-node-header > .tax-toggle"));
-            if (unevalToggles.isEmpty()) break;
-            js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", unevalToggles.get(0));
-            js("arguments[0].click();", unevalToggles.get(0));
-            // Wait for the evaluation API call to complete (tax-evaluating class is removed on finish)
-            wait(15).until(d -> driver.findElements(By.cssSelector(".tax-evaluating")).isEmpty());
-            if (!driver.findElements(By.cssSelector(".tax-justify-btn.btn-outline-info")).isEmpty()) {
-                break; // Leaf justify buttons found — no need to drill deeper
-            }
-        }
+        // 3. Re-render the taxonomy list view with currentScores AND storedBusinessText now set.
+        //    buildNodeEl will create .tax-justify-btn.btn-outline-info for every leaf node
+        //    whose score is > 0.
+        js("window._renderViewWithCurrentScores();");
 
+        // 4. Expand all nodes so the leaf-level justify buttons are visible in the DOM.
+        js("document.getElementById('expandAll').click();");
+
+        // 5. Wait for at least one leaf justify button to appear.
+        wait(10).until(ExpectedConditions.presenceOfElementLocated(
+                By.cssSelector(".tax-justify-btn.btn-outline-info")));
         List<WebElement> justifyBtns = driver.findElements(
                 By.cssSelector(".tax-justify-btn.btn-outline-info"));
         Assertions.assertFalse(justifyBtns.isEmpty(),
-                "No leaf justify buttons found — screenshot cannot be captured. " +
+                "No leaf justify buttons found after non-interactive analysis + expand-all. " +
                 "The mock LLM may not be producing scores > 0 for leaf nodes.");
+
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", justifyBtns.get(0));
         js("arguments[0].click();", justifyBtns.get(0));
         // Wait for the /api/justify-leaf mock call to populate the modal body text, which
