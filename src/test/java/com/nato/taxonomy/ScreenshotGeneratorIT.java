@@ -685,10 +685,12 @@ class ScreenshotGeneratorIT {
         js("arguments[0].click();", failureBtn);
 
         // Wait until the failure impact results have fully rendered.
-        // renderFailureResult() in taxonomy-graph.js produces "Directly Affected" text,
-        // which is unique to failure results and only present after the API response arrives.
+        // renderFailureResult() in taxonomy-graph.js always renders a "Failed Node" summary
+        // card regardless of whether BP-1 has any relations, so this text is always present
+        // after the API response arrives. It is unique to the failure view (upstream/downstream
+        // show "Origin"/"Direction" instead), so it won't false-match on prior results.
         wait(30).until(ExpectedConditions.textToBePresentInElementLocated(
-                By.id("graphResultsArea"), "Directly Affected"));
+                By.id("graphResultsArea"), "Failed Node"));
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "22-graph-explorer-failure.png");
     }
 
