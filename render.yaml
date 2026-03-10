@@ -15,3 +15,5 @@ services:
         value: "true"         # lazy bean initialization reduces Spring context startup time significantly
       - key: TAXONOMY_THYMELEAF_CACHE
         value: "true"         # cache Thymeleaf templates in production for faster response times
+      - key: TAXONOMY_SPRINGDOC_ENABLED
+        value: "false"         # disable Swagger UI in production to save memory and reduce attack surface
