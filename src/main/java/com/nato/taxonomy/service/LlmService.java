@@ -304,7 +304,6 @@ public class LlmService {
     public AnalysisResult analyzeWithBudget(String businessText) {
         Map<String, Integer> allScores = new HashMap<>();
         List<String> warnings = new ArrayList<>();
-        List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
 
         // Sort root nodes by priority order
         List<TaxonomyNode> roots = taxonomyService.getRootNodes();
@@ -358,7 +357,6 @@ public class LlmService {
 
         AnalysisResult result = new AnalysisResult(allScores, annotatedTree);
         result.setWarnings(warnings);
-        result.setDiscrepancies(allDiscrepancies);
 
         if (rateLimitHit) {
             String msg = "Rate limit reached after processing: " +
@@ -1011,6 +1009,7 @@ public class LlmService {
     /**
      * Derives the parent code from a batch of sibling nodes.
      * All nodes in the batch should share the same parent.
+     * Returns {@code "unknown"} if no parent code can be determined.
      */
     private String deriveParentCode(List<TaxonomyNode> nodes) {
         if (nodes.isEmpty()) return "unknown";

@@ -42,6 +42,12 @@ class ScoringPipelineTests {
         assertThat(d1.hashCode()).isEqualTo(d2.hashCode());
     }
 
+    @Test
+    void taxonomyDiscrepancyToString() {
+        TaxonomyDiscrepancy d = new TaxonomyDiscrepancy("CP", 75, 120);
+        assertThat(d.toString()).contains("CP", "75", "120");
+    }
+
     // ── normalizeToParent — pass-through when sum already matches ─────────────
 
     @Test
@@ -76,5 +82,22 @@ class ScoringPipelineTests {
         // Sum = 25, target = 75 → must normalize up
         Map<String, Integer> result = llmService.normalizeToParent(scores, 75);
         assertThat(result.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(75);
+    }
+
+    // ── AnalysisResult discrepancies field ────────────────────────────────────
+
+    @Test
+    void analysisResultDiscrepanciesDefaultsToEmpty() {
+        var result = new com.nato.taxonomy.dto.AnalysisResult();
+        assertThat(result.getDiscrepancies()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void analysisResultDiscrepanciesCanBeSet() {
+        var result = new com.nato.taxonomy.dto.AnalysisResult();
+        var discrepancy = new TaxonomyDiscrepancy("CP", 75, 120);
+        result.setDiscrepancies(java.util.List.of(discrepancy));
+        assertThat(result.getDiscrepancies()).hasSize(1);
+        assertThat(result.getDiscrepancies().get(0).parentCode()).isEqualTo("CP");
     }
 }
