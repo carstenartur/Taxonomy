@@ -298,7 +298,8 @@ public class ApiController {
     @GetMapping("/analyze-node")
     public ResponseEntity<Map<String, Object>> analyzeNode(
             @Parameter(description = "Parent taxonomy node code") @RequestParam String parentCode,
-            @Parameter(description = "Business requirement text") @RequestParam String businessText) {
+            @Parameter(description = "Business requirement text") @RequestParam String businessText,
+            @Parameter(description = "Parent node's score (0-100); defaults to 100 for root-level nodes") @RequestParam(defaultValue = "100") int parentScore) {
         ResponseEntity<Map<String, Object>> guard = checkInitialized();
         if (guard != null) return guard;
         if (businessText == null || businessText.isBlank()) {
@@ -314,7 +315,7 @@ public class ApiController {
             empty.put("durationMs", 0);
             return ResponseEntity.ok(empty);
         }
-        LlmCallDetail detail = llmService.analyzeSingleBatchDetailed(businessText, children);
+        LlmCallDetail detail = llmService.analyzeSingleBatchDetailed(businessText, children, parentScore);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("scores", detail.getScores());
         result.put("reasons", detail.getReasons() != null ? detail.getReasons() : Map.of());

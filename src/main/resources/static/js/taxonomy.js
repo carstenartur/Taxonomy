@@ -1087,8 +1087,11 @@
         console.log('[Taxonomy] evaluateNodeChildren: parentCode=' + parentCode
             + ', businessText=' + (storedBusinessText ? storedBusinessText.substring(0, 80) : ''));
 
+        const parentScore = (currentScores && currentScores[parentCode] != null)
+            ? currentScores[parentCode] : 100;
         fetch('/api/analyze-node?parentCode=' + encodeURIComponent(parentCode)
-              + '&businessText=' + encodeURIComponent(storedBusinessText))
+              + '&businessText=' + encodeURIComponent(storedBusinessText)
+              + '&parentScore=' + encodeURIComponent(parentScore))
             .then(r => {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();

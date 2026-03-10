@@ -52,6 +52,7 @@ class PromptTemplateTests {
         String template = promptTemplateService.getDefaultTemplate("default");
         assertThat(template).contains("{{BUSINESS_TEXT}}");
         assertThat(template).contains("{{NODE_LIST}}");
+        assertThat(template).contains("{{PARENT_SCORE}}");
     }
 
     @Test
@@ -60,15 +61,28 @@ class PromptTemplateTests {
         assertThat(bpTemplate).contains("{{BUSINESS_TEXT}}");
         assertThat(bpTemplate).contains("{{NODE_LIST}}");
         assertThat(bpTemplate).contains("{{TAXONOMY_NAME}}");
+        assertThat(bpTemplate).contains("{{PARENT_SCORE}}");
     }
 
     @Test
     void renderPromptReplacesAllPlaceholders() {
-        String rendered = promptTemplateService.renderPrompt("default", "test business text", "C1: Capability");
+        String rendered = promptTemplateService.renderPrompt("default", "test business text", "C1: Capability", 75);
         assertThat(rendered).contains("test business text");
         assertThat(rendered).contains("C1: Capability");
+        assertThat(rendered).contains("75");
         assertThat(rendered).doesNotContain("{{BUSINESS_TEXT}}");
         assertThat(rendered).doesNotContain("{{NODE_LIST}}");
+        assertThat(rendered).doesNotContain("{{PARENT_SCORE}}");
+    }
+
+    @Test
+    void renderPromptDefaultOverloadUsesHundred() {
+        String rendered = promptTemplateService.renderPrompt("default", "test text", "C1: Node");
+        assertThat(rendered).doesNotContain("{{PARENT_SCORE}}");
+        // The default overload should use 100 as the parent score
+        // Verify by checking with the 4-arg variant that produces the same result
+        String renderedExplicit = promptTemplateService.renderPrompt("default", "test text", "C1: Node", 100);
+        assertThat(rendered).isEqualTo(renderedExplicit);
     }
 
     @Test

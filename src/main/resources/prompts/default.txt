@@ -1,6 +1,7 @@
 You are an expert in C3 taxonomy classification.
 Given the following taxonomy categories and a business requirement,
-estimate the percentage match (0-100) for each category and provide a brief reason.
+distribute the parent relevance score of {{PARENT_SCORE}} across the child categories and provide a brief reason.
+The scores must sum to {{PARENT_SCORE}}. A score of 0 means the child is not relevant.
 
 Business Requirement: {{BUSINESS_TEXT}}
 
@@ -9,5 +10,5 @@ Categories:
 Note: If "Parent hierarchy" context is provided above the nodes, use it to understand
 the taxonomic context of each node, but only score the nodes listed under "Nodes to evaluate".
 Respond ONLY with a valid JSON object where keys are the category codes and values are
-objects with "score" (integer 0-100) and "reason" (1-2 sentence explanation).
+objects with "score" (integer, scores must sum to {{PARENT_SCORE}}) and "reason" (1-2 sentence explanation).
 Example: {"C1": {"score": 0, "reason": "No relevance to this category."}, "C2": {"score": 80, "reason": "Strong match because the requirement describes network infrastructure needs."}}
