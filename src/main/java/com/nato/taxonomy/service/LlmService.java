@@ -3,6 +3,7 @@ package com.nato.taxonomy.service;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import com.nato.taxonomy.dto.AnalysisResult;
+import com.nato.taxonomy.dto.TaxonomyDiscrepancy;
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
 import com.nato.taxonomy.model.TaxonomyNode;
 import org.slf4j.Logger;
@@ -39,14 +40,20 @@ public class LlmService {
     private static final Logger log = LoggerFactory.getLogger(LlmService.class);
 
     /**
-     * Holds the parsed scores and optional reasons from an LLM response.
+     * Holds the parsed scores, optional reasons, and an optional discrepancy from an LLM response.
      * Backward-compatible: if the LLM returns the old integer-only format, reasons will be empty.
+     * A non-null {@code discrepancy} indicates the LLM's raw child scores exceeded the parent
+     * budget — a taxonomy inconsistency signal.
      */
-    record ScoreParseResult(Map<String, Integer> scores, Map<String, String> reasons) {
+    record ScoreParseResult(Map<String, Integer> scores, Map<String, String> reasons,
+                            TaxonomyDiscrepancy discrepancy) {
+        ScoreParseResult(Map<String, Integer> scores, Map<String, String> reasons) {
+            this(scores, reasons, null);
+        }
         static ScoreParseResult empty(List<TaxonomyNode> nodes) {
             Map<String, Integer> zeros = new HashMap<>();
             for (TaxonomyNode n : nodes) zeros.put(n.getCode(), 0);
-            return new ScoreParseResult(zeros, Map.of());
+            return new ScoreParseResult(zeros, Map.of(), null);
         }
     }
 
@@ -288,6 +295,7 @@ public class LlmService {
 
     /**
      * Analyses business text using a sequential, prioritized traversal of taxonomy roots.
+     * Each root is scored independently (0–100), then children distribute the root's score.
      * Handles rate-limit errors gracefully by returning partial results.
      *
      * @param businessText the business requirement text
@@ -296,6 +304,7 @@ public class LlmService {
     public AnalysisResult analyzeWithBudget(String businessText) {
         Map<String, Integer> allScores = new HashMap<>();
         List<String> warnings = new ArrayList<>();
+        List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
 
         // Sort root nodes by priority order
         List<TaxonomyNode> roots = taxonomyService.getRootNodes();
@@ -314,20 +323,16 @@ public class LlmService {
                 continue;
             }
             try {
-                // Build list including root + Level-1 children for scoring
-                List<TaxonomyNode> level1Children = taxonomyService.getChildrenOf(root.getCode());
-                List<TaxonomyNode> nodesToScore = new ArrayList<>();
-                nodesToScore.add(root);
-                nodesToScore.addAll(level1Children);
+                // Score root independently (0-100) to gauge branch relevance
+                Map<String, Integer> rootScore = callLlmPropagating(businessText, List.of(root), 100);
+                allScores.putAll(rootScore);
+                int score = rootScore.getOrDefault(root.getCode(), 0);
 
-                // Score root + Level-1 children together
-                Map<String, Integer> scores = callLlmPropagating(businessText, nodesToScore, 100);
-                allScores.putAll(scores);
-
-                // Drill into children of matched Level-1 nodes (skip root to avoid re-scoring its children)
-                for (Map.Entry<String, Integer> entry : scores.entrySet()) {
-                    if (entry.getValue() > 0 && !entry.getKey().equals(root.getCode())) {
-                        analyzeNodesPropagating(businessText, taxonomyService.getChildrenOf(entry.getKey()), allScores, entry.getValue());
+                if (score > 0) {
+                    // Score Level-1 children distributing the root's score
+                    List<TaxonomyNode> level1Children = taxonomyService.getChildrenOf(root.getCode());
+                    if (!level1Children.isEmpty()) {
+                        analyzeNodesPropagating(businessText, level1Children, allScores, score);
                     }
                 }
 
@@ -353,6 +358,7 @@ public class LlmService {
 
         AnalysisResult result = new AnalysisResult(allScores, annotatedTree);
         result.setWarnings(warnings);
+        result.setDiscrepancies(allDiscrepancies);
 
         if (rateLimitHit) {
             String msg = "Rate limit reached after processing: " +
@@ -393,11 +399,15 @@ public class LlmService {
      * Processes root nodes one at a time, firing {@link AnalysisEventCallback} events so callers
      * can forward results incrementally (e.g. via Server-Sent Events).
      *
+     * <p>Each root is scored independently (0–100) to determine how relevant that taxonomy
+     * branch is to the business requirement. Children then distribute the root's score.
+     *
      * @param businessText the text to analyse
      * @param callback     receives phase, scores, expanding, complete and error events
      */
     public void analyzeStreaming(String businessText, AnalysisEventCallback callback) {
         Map<String, Integer> allScores = new HashMap<>();
+        List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
         try {
             List<TaxonomyNode> roots = taxonomyService.getRootNodes();
 
@@ -408,46 +418,46 @@ public class LlmService {
                         "Evaluating " + root.getName() + " (" + (i + 1) + "/" + roots.size() + ")…",
                         progress);
 
-                // Score root + Level-1 children together to avoid single-node normalization issues
-                List<TaxonomyNode> level1Children = taxonomyService.getChildrenOf(root.getCode());
-                List<TaxonomyNode> nodesToScore = new ArrayList<>();
-                nodesToScore.add(root);
-                nodesToScore.addAll(level1Children);
+                // Score root independently (0-100) to gauge branch relevance
+                ScoreParseResult rootResult = callLlmResult(businessText, List.of(root), 100);
+                int rootScore = rootResult.scores().getOrDefault(root.getCode(), 0);
+                allScores.put(root.getCode(), rootScore);
+                callback.onScores(rootResult.scores(), rootResult.reasons(),
+                        root.getName() + " scored " + rootScore + "/100");
 
-                ScoreParseResult result = callLlmResult(businessText, nodesToScore, 100);
-                allScores.putAll(result.scores());
-                callback.onScores(result.scores(), result.reasons(), root.getName() + " evaluated");
-
-                // Drill into children of matched Level-1 nodes (skip root to avoid re-scoring its children)
-                for (Map.Entry<String, Integer> entry : result.scores().entrySet()) {
-                    if (entry.getValue() > 0 && !entry.getKey().equals(root.getCode())) {
-                        List<TaxonomyNode> grandchildren = taxonomyService.getChildrenOf(entry.getKey());
-                        if (!grandchildren.isEmpty()) {
-                            callback.onExpanding(entry.getKey(),
-                                    grandchildren.stream().map(TaxonomyNode::getCode).toList());
-                            analyzeStreamingNodes(businessText, grandchildren, allScores, callback, entry.getValue());
-                        }
+                if (rootScore > 0) {
+                    // Score Level-1 children distributing the root's score
+                    List<TaxonomyNode> level1Children = taxonomyService.getChildrenOf(root.getCode());
+                    if (!level1Children.isEmpty()) {
+                        callback.onExpanding(root.getCode(),
+                                level1Children.stream().map(TaxonomyNode::getCode).toList());
+                        analyzeStreamingNodes(businessText, level1Children, allScores,
+                                allDiscrepancies, callback, rootScore);
                     }
                 }
             }
 
-            callback.onComplete("SUCCESS", allScores, List.of());
+            callback.onComplete("SUCCESS", allScores, List.of(), allDiscrepancies);
         } catch (Exception e) {
             log.error("Streaming analysis failed", e);
             callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
-                    allScores, List.of());
+                    allScores, List.of(), allDiscrepancies);
         }
     }
 
     private void analyzeStreamingNodes(String businessText,
                                         List<TaxonomyNode> nodes,
                                         Map<String, Integer> allScores,
+                                        List<TaxonomyDiscrepancy> allDiscrepancies,
                                         AnalysisEventCallback callback,
                                         int parentScore) {
         if (nodes == null || nodes.isEmpty()) return;
 
         ScoreParseResult result = callLlmResult(businessText, nodes, parentScore);
         allScores.putAll(result.scores());
+        if (result.discrepancy() != null) {
+            allDiscrepancies.add(result.discrepancy());
+        }
         callback.onScores(result.scores(), result.reasons(), "Evaluated " + nodes.size() + " node(s)");
 
         for (Map.Entry<String, Integer> entry : result.scores().entrySet()) {
@@ -456,7 +466,8 @@ public class LlmService {
                 if (!children.isEmpty()) {
                     callback.onExpanding(entry.getKey(),
                             children.stream().map(TaxonomyNode::getCode).toList());
-                    analyzeStreamingNodes(businessText, children, allScores, callback, entry.getValue());
+                    analyzeStreamingNodes(businessText, children, allScores,
+                            allDiscrepancies, callback, entry.getValue());
                 }
             }
         }
@@ -937,8 +948,12 @@ public class LlmService {
      *   <li>Old format: {@code {"C1": 80, "C2": 0}} — integer values, no reasons</li>
      *   <li>New format: {@code {"C1": {"score": 80, "reason": "..."}, "C2": {"score": 0, "reason": "..."}}}
      * </ul>
-     * Scores are normalized using the distribution model: they are scaled proportionally so
-     * their sum equals {@code parentScore}.
+     * <p>The LLM is asked to distribute exactly {@code parentScore} across child categories.
+     * If the raw sum already matches, scores are passed through without normalization.
+     * If the raw sum differs, scores are normalized as a fallback.
+     * If the raw sum <em>exceeds</em> the parent score, a {@link TaxonomyDiscrepancy} is
+     * recorded — this signals that the LLM considers the children collectively more relevant
+     * than the parent budget allows, which is a useful taxonomy inconsistency indicator.
      */
     private ScoreParseResult parseScoreParseResult(String text,
                                                     List<TaxonomyNode> nodes, int parentScore) throws Exception {
@@ -969,9 +984,41 @@ public class LlmService {
         for (TaxonomyNode n : nodes) {
             scores.putIfAbsent(n.getCode(), 0);
         }
-        Map<String, Integer> normalizedScores = normalizeToParent(scores, parentScore);
-        log.info("LLM Scores parsed (normalized to {}): {}", parentScore, normalizedScores);
-        return new ScoreParseResult(normalizedScores, reasons);
+
+        int rawSum = scores.values().stream().mapToInt(Integer::intValue).sum();
+
+        // Detect discrepancy: raw child sum exceeds parent budget
+        TaxonomyDiscrepancy discrepancy = null;
+        if (rawSum > parentScore) {
+            String parentCode = deriveParentCode(nodes);
+            discrepancy = new TaxonomyDiscrepancy(parentCode, parentScore, rawSum);
+            log.warn("Discrepancy detected: children of '{}' sum to {} but parent score is {}",
+                    parentCode, rawSum, parentScore);
+        }
+
+        // Only normalize if sum doesn't match parent (fallback); trust the LLM otherwise
+        Map<String, Integer> finalScores;
+        if (rawSum == parentScore) {
+            finalScores = scores;
+        } else {
+            finalScores = normalizeToParent(scores, parentScore);
+        }
+
+        log.info("LLM Scores parsed (target {}, raw sum {}): {}", parentScore, rawSum, finalScores);
+        return new ScoreParseResult(finalScores, reasons, discrepancy);
+    }
+
+    /**
+     * Derives the parent code from a batch of sibling nodes.
+     * All nodes in the batch should share the same parent.
+     */
+    private String deriveParentCode(List<TaxonomyNode> nodes) {
+        if (nodes.isEmpty()) return "unknown";
+        String parentCode = nodes.get(0).getParentCode();
+        if (parentCode != null && !parentCode.isBlank()) return parentCode;
+        // For root-level nodes, use their taxonomy root
+        String root = nodes.get(0).getTaxonomyRoot();
+        return root != null ? root : "unknown";
     }
 
     /**

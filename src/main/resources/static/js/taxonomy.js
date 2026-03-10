@@ -6,6 +6,7 @@
     let taxonomyData = [];
     let currentScores = null;
     let currentReasons = {};   // code → reason string
+    let currentDiscrepancies = []; // TaxonomyDiscrepancy list from analysis
     let currentArchView = null; // latest architecture view from analysis
     let currentView = 'list'; // 'list' | 'tabs' | 'sunburst' | 'tree' | 'decision' | 'summary'
     let currentTreeRoot = 'BP'; // code of the taxonomy shown in tree view
@@ -1307,6 +1308,7 @@
                 setAnalyzing(false);
                 taxonomyData = result.tree;
                 currentScores = result.scores;
+                currentDiscrepancies = result.discrepancies || [];
                 lastAnalyzedText = text;
                 renderView(taxonomyData, currentScores);
 
@@ -1787,9 +1789,16 @@
             eventSource.close();
             setAnalyzing(false);
             currentScores = data.totalScores;
+            currentDiscrepancies = data.discrepancies || [];
             lastAnalyzedText = text;
             const matchedCount = Object.values(data.totalScores).filter(v => v > 0).length;
-            showStatus('success', '✅ Analysis complete. ' + matchedCount + ' node(s) matched.');
+            let statusMsg = '✅ Analysis complete. ' + matchedCount + ' node(s) matched.';
+            if (currentDiscrepancies.length > 0) {
+                statusMsg += ' ⚠️ ' + currentDiscrepancies.length + ' scoring discrepanc'
+                    + (currentDiscrepancies.length === 1 ? 'y' : 'ies') + ' detected.';
+                console.log('[Taxonomy] Discrepancies:', currentDiscrepancies);
+            }
+            showStatus('success', statusMsg);
             updateExportGroupVisibility();
         });
 

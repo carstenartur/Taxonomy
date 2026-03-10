@@ -7,6 +7,7 @@ import com.nato.taxonomy.dto.AnalysisResult;
 import com.nato.taxonomy.dto.AiStatusResponse;
 import com.nato.taxonomy.dto.RequirementArchitectureView;
 import com.nato.taxonomy.dto.SavedAnalysis;
+import com.nato.taxonomy.dto.TaxonomyDiscrepancy;
 import com.nato.taxonomy.dto.TaxonomyNodeDto;
 import com.nato.taxonomy.model.TaxonomyNode;
 import com.nato.taxonomy.service.AnalysisEventCallback;
@@ -250,26 +251,32 @@ public class ApiController {
 
                     @Override
                     public void onComplete(String status, Map<String, Integer> allScores,
-                                           List<String> warnings) {
+                                           List<String> warnings,
+                                           List<TaxonomyDiscrepancy> discrepancies) {
                         int matched = (int) allScores.values().stream()
                                 .filter(v -> v > 0).count();
-                        sendEvent(emitter, "complete",
-                                Map.of("status", status,
-                                       "totalScores", allScores,
-                                       "totalMatched", matched,
-                                       "warnings", warnings));
+                        Map<String, Object> payload = new LinkedHashMap<>();
+                        payload.put("status", status);
+                        payload.put("totalScores", allScores);
+                        payload.put("totalMatched", matched);
+                        payload.put("warnings", warnings);
+                        payload.put("discrepancies", discrepancies);
+                        sendEvent(emitter, "complete", payload);
                         emitter.complete();
                     }
 
                     @Override
                     public void onError(String status, String errorMessage,
                                         Map<String, Integer> partialScores,
-                                        List<String> warnings) {
-                        sendEvent(emitter, "error",
-                                Map.of("status", status,
-                                       "errorMessage", errorMessage,
-                                       "partialScores", partialScores,
-                                       "warnings", warnings));
+                                        List<String> warnings,
+                                        List<TaxonomyDiscrepancy> discrepancies) {
+                        Map<String, Object> payload = new LinkedHashMap<>();
+                        payload.put("status", status);
+                        payload.put("errorMessage", errorMessage);
+                        payload.put("partialScores", partialScores);
+                        payload.put("warnings", warnings);
+                        payload.put("discrepancies", discrepancies);
+                        sendEvent(emitter, "error", payload);
                         emitter.complete();
                     }
                 });
