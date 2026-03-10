@@ -321,13 +321,13 @@ public class LlmService {
                 nodesToScore.addAll(level1Children);
 
                 // Score root + Level-1 children together
-                Map<String, Integer> scores = callLlmPropagating(businessText, nodesToScore);
+                Map<String, Integer> scores = callLlmPropagating(businessText, nodesToScore, 100);
                 allScores.putAll(scores);
 
                 // Drill into children of matched Level-1 nodes (skip root to avoid re-scoring its children)
                 for (Map.Entry<String, Integer> entry : scores.entrySet()) {
                     if (entry.getValue() > 0 && !entry.getKey().equals(root.getCode())) {
-                        analyzeNodesPropagating(businessText, taxonomyService.getChildrenOf(entry.getKey()), allScores);
+                        analyzeNodesPropagating(businessText, taxonomyService.getChildrenOf(entry.getKey()), allScores, entry.getValue());
                     }
                 }
 
@@ -373,16 +373,17 @@ public class LlmService {
 
     private void analyzeNodesPropagating(String businessText,
                                           List<TaxonomyNode> nodes,
-                                          Map<String, Integer> allScores) {
+                                          Map<String, Integer> allScores,
+                                          int parentScore) {
         if (nodes == null || nodes.isEmpty()) return;
 
-        Map<String, Integer> scores = callLlmPropagating(businessText, nodes);
+        Map<String, Integer> scores = callLlmPropagating(businessText, nodes, parentScore);
         for (Map.Entry<String, Integer> entry : scores.entrySet()) {
             allScores.put(entry.getKey(), entry.getValue());
             if (entry.getValue() > 0) {
                 List<TaxonomyNode> children = taxonomyService.getChildrenOf(entry.getKey());
                 if (!children.isEmpty()) {
-                    analyzeNodesPropagating(businessText, children, allScores);
+                    analyzeNodesPropagating(businessText, children, allScores, entry.getValue());
                 }
             }
         }
@@ -413,7 +414,7 @@ public class LlmService {
                 nodesToScore.add(root);
                 nodesToScore.addAll(level1Children);
 
-                ScoreParseResult result = callLlmResult(businessText, nodesToScore);
+                ScoreParseResult result = callLlmResult(businessText, nodesToScore, 100);
                 allScores.putAll(result.scores());
                 callback.onScores(result.scores(), result.reasons(), root.getName() + " evaluated");
 
@@ -424,7 +425,7 @@ public class LlmService {
                         if (!grandchildren.isEmpty()) {
                             callback.onExpanding(entry.getKey(),
                                     grandchildren.stream().map(TaxonomyNode::getCode).toList());
-                            analyzeStreamingNodes(businessText, grandchildren, allScores, callback);
+                            analyzeStreamingNodes(businessText, grandchildren, allScores, callback, entry.getValue());
                         }
                     }
                 }
@@ -441,10 +442,11 @@ public class LlmService {
     private void analyzeStreamingNodes(String businessText,
                                         List<TaxonomyNode> nodes,
                                         Map<String, Integer> allScores,
-                                        AnalysisEventCallback callback) {
+                                        AnalysisEventCallback callback,
+                                        int parentScore) {
         if (nodes == null || nodes.isEmpty()) return;
 
-        ScoreParseResult result = callLlmResult(businessText, nodes);
+        ScoreParseResult result = callLlmResult(businessText, nodes, parentScore);
         allScores.putAll(result.scores());
         callback.onScores(result.scores(), result.reasons(), "Evaluated " + nodes.size() + " node(s)");
 
@@ -454,7 +456,7 @@ public class LlmService {
                 if (!children.isEmpty()) {
                     callback.onExpanding(entry.getKey(),
                             children.stream().map(TaxonomyNode::getCode).toList());
-                    analyzeStreamingNodes(businessText, children, allScores, callback);
+                    analyzeStreamingNodes(businessText, children, allScores, callback, entry.getValue());
                 }
             }
         }
@@ -465,8 +467,8 @@ public class LlmService {
      * Makes exactly ONE LLM API call. Does NOT recurse into children.
      * Used by interactive mode. Delegates to {@link #analyzeSingleBatchDetailed}.
      */
-    public Map<String, Integer> analyzeSingleBatch(String businessText, List<TaxonomyNode> nodes) {
-        return callLlm(businessText, nodes);
+    public Map<String, Integer> analyzeSingleBatch(String businessText, List<TaxonomyNode> nodes, int parentScore) {
+        return callLlm(businessText, nodes, parentScore);
     }
 
     /**
@@ -475,9 +477,9 @@ public class LlmService {
      * the frontend can display the LLM communication log.
      */
     public com.nato.taxonomy.dto.LlmCallDetail analyzeSingleBatchDetailed(
-            String businessText, List<TaxonomyNode> nodes) {
+            String businessText, List<TaxonomyNode> nodes, int parentScore) {
         try {
-            return callLlmPropagatingDetailed(businessText, nodes);
+            return callLlmPropagatingDetailed(businessText, nodes, parentScore);
         } catch (Exception e) {
             log.error("Error in detailed LLM call", e);
             com.nato.taxonomy.dto.LlmCallDetail detail = new com.nato.taxonomy.dto.LlmCallDetail();
@@ -493,9 +495,9 @@ public class LlmService {
         }
     }
 
-    private Map<String, Integer> callLlm(String businessText, List<TaxonomyNode> nodes) {
+    private Map<String, Integer> callLlm(String businessText, List<TaxonomyNode> nodes, int parentScore) {
         try {
-            return callLlmPropagating(businessText, nodes);
+            return callLlmPropagating(businessText, nodes, parentScore);
         } catch (Exception e) {
             log.error("Error calling LLM API", e);
             return zeroScores(nodes);
@@ -506,7 +508,7 @@ public class LlmService {
      * Like {@link #callLlm} but returns both scores and reasons (backward-compatible).
      * Reasons will be empty when using LOCAL_ONNX or when the LLM returns the old integer-only format.
      */
-    private ScoreParseResult callLlmResult(String businessText, List<TaxonomyNode> nodes) {
+    private ScoreParseResult callLlmResult(String businessText, List<TaxonomyNode> nodes, int parentScore) {
         try {
             if (llmMock) {
                 log.info("MOCK — returning hardcoded scores for {} nodes", nodes.size());
@@ -517,8 +519,8 @@ public class LlmService {
 
             if (provider == LlmProvider.LOCAL_ONNX) {
                 log.info("LOCAL_ONNX — computing cosine-similarity scores for {} nodes", nodes.size());
-                Map<String, Integer> scores = normalizeToHundred(
-                        localEmbeddingService.scoreNodes(businessText, nodes));
+                Map<String, Integer> scores = normalizeToParent(
+                        localEmbeddingService.scoreNodes(businessText, nodes), parentScore);
                 recordSuccess();
                 return new ScoreParseResult(scores, Map.of());
             }
@@ -533,7 +535,7 @@ public class LlmService {
 
             String nodeList = buildNodeListWithContext(nodes);
             String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
-            String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList);
+            String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore);
 
             log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
                     provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));
@@ -552,7 +554,7 @@ public class LlmService {
                 return ScoreParseResult.empty(nodes);
             }
             try {
-                ScoreParseResult result = parseScoreParseResult(rawText, nodes);
+                ScoreParseResult result = parseScoreParseResult(rawText, nodes, parentScore);
                 recordSuccess();
                 return result;
             } catch (Exception e) {
@@ -569,7 +571,7 @@ public class LlmService {
     /**
      * Like {@link #callLlm} but propagates {@link LlmRateLimitException} instead of swallowing it.
      */
-    private Map<String, Integer> callLlmPropagating(String businessText, List<TaxonomyNode> nodes) {
+    private Map<String, Integer> callLlmPropagating(String businessText, List<TaxonomyNode> nodes, int parentScore) {
         if (llmMock) {
             log.info("MOCK — returning hardcoded scores for {} nodes", nodes.size());
             return buildMockScores(nodes).scores();
@@ -579,8 +581,8 @@ public class LlmService {
 
         if (provider == LlmProvider.LOCAL_ONNX) {
             log.info("LOCAL_ONNX — computing cosine-similarity scores for {} nodes", nodes.size());
-            Map<String, Integer> scores = normalizeToHundred(
-                    localEmbeddingService.scoreNodes(businessText, nodes));
+            Map<String, Integer> scores = normalizeToParent(
+                    localEmbeddingService.scoreNodes(businessText, nodes), parentScore);
             recordSuccess();
             return scores;
         }
@@ -596,16 +598,16 @@ public class LlmService {
 
         String nodeList = buildNodeListWithContext(nodes);
         String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
-        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList);
+        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore);
 
         log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
                 provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));
         log.debug("Full LLM prompt:\n{}", prompt);
 
         if (provider == LlmProvider.GEMINI) {
-            return callGemini(prompt, apiKey, nodes);
+            return callGemini(prompt, apiKey, nodes, parentScore);
         } else {
-            return callOpenAiCompatible(prompt, apiKey, provider, nodes);
+            return callOpenAiCompatible(prompt, apiKey, provider, nodes, parentScore);
         }
     }
 
@@ -614,7 +616,7 @@ public class LlmService {
      * raw LLM text response, returning them in a {@link com.nato.taxonomy.dto.LlmCallDetail}.
      */
     private com.nato.taxonomy.dto.LlmCallDetail callLlmPropagatingDetailed(
-            String businessText, List<TaxonomyNode> nodes) {
+            String businessText, List<TaxonomyNode> nodes, int parentScore) {
         com.nato.taxonomy.dto.LlmCallDetail detail = new com.nato.taxonomy.dto.LlmCallDetail();
         detail.setProvider(getActiveProviderName());
 
@@ -635,8 +637,8 @@ public class LlmService {
         // ── Local embedding path ──────────────────────────────────────────────
         if (provider == LlmProvider.LOCAL_ONNX) {
             long start = System.currentTimeMillis();
-            Map<String, Integer> scores = normalizeToHundred(
-                    localEmbeddingService.scoreNodes(businessText, nodes));
+            Map<String, Integer> scores = normalizeToParent(
+                    localEmbeddingService.scoreNodes(businessText, nodes), parentScore);
             detail.setDurationMs(System.currentTimeMillis() - start);
             detail.setScores(scores);
             detail.setPrompt("(local embedding – no prompt sent)");
@@ -663,7 +665,7 @@ public class LlmService {
 
         String nodeList = buildNodeListWithContext(nodes);
         String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
-        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList);
+        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore);
         detail.setPrompt(prompt);
 
         log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
@@ -695,7 +697,7 @@ public class LlmService {
 
         if (rawText != null) {
             try {
-                ScoreParseResult parsed = parseScoreParseResult(rawText, nodes);
+                ScoreParseResult parsed = parseScoreParseResult(rawText, nodes, parentScore);
                 detail.setScores(parsed.scores());
                 detail.setReasons(parsed.reasons());
                 recordSuccess();
@@ -774,10 +776,10 @@ public class LlmService {
     }
 
     private Map<String, Integer> callGemini(String prompt, String apiKey,
-                                             List<TaxonomyNode> nodes) {
+                                             List<TaxonomyNode> nodes, int parentScore) {
         String responseBody = callGeminiHttpBody(prompt, apiKey);
         if (responseBody == null) return zeroScores(nodes);
-        return parseGeminiResponse(responseBody, nodes);
+        return parseGeminiResponse(responseBody, nodes, parentScore);
     }
 
     /**
@@ -848,10 +850,10 @@ public class LlmService {
 
     private Map<String, Integer> callOpenAiCompatible(String prompt, String apiKey,
                                                        LlmProvider provider,
-                                                       List<TaxonomyNode> nodes) {
+                                                       List<TaxonomyNode> nodes, int parentScore) {
         String responseBody = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
         if (responseBody == null) return zeroScores(nodes);
-        return parseOpenAiResponse(responseBody, nodes);
+        return parseOpenAiResponse(responseBody, nodes, parentScore);
     }
 
     // ── Response parsers ──────────────────────────────────────────────────────
@@ -899,14 +901,14 @@ public class LlmService {
     }
 
     private Map<String, Integer> parseGeminiResponse(String responseBody,
-                                                      List<TaxonomyNode> nodes) {
+                                                      List<TaxonomyNode> nodes, int parentScore) {
         String text = extractGeminiText(responseBody);
         if (text == null) {
             log.error("Failed to parse Gemini response: {}", responseBody);
             return zeroScores(nodes);
         }
         try {
-            return parseScoreParseResult(text, nodes).scores();
+            return parseScoreParseResult(text, nodes, parentScore).scores();
         } catch (Exception e) {
             log.error("Failed to parse scores from Gemini response: {}", responseBody, e);
             return zeroScores(nodes);
@@ -914,14 +916,14 @@ public class LlmService {
     }
 
     private Map<String, Integer> parseOpenAiResponse(String responseBody,
-                                                      List<TaxonomyNode> nodes) {
+                                                      List<TaxonomyNode> nodes, int parentScore) {
         String text = extractOpenAiText(responseBody);
         if (text == null) {
             log.error("Failed to parse OpenAI-compatible response: {}", responseBody);
             return zeroScores(nodes);
         }
         try {
-            return parseScoreParseResult(text, nodes).scores();
+            return parseScoreParseResult(text, nodes, parentScore).scores();
         } catch (Exception e) {
             log.error("Failed to parse scores from OpenAI-compatible response: {}", responseBody, e);
             return zeroScores(nodes);
@@ -935,9 +937,11 @@ public class LlmService {
      *   <li>Old format: {@code {"C1": 80, "C2": 0}} — integer values, no reasons</li>
      *   <li>New format: {@code {"C1": {"score": 80, "reason": "..."}, "C2": {"score": 0, "reason": "..."}}}
      * </ul>
+     * Scores are normalized using the distribution model: they are scaled proportionally so
+     * their sum equals {@code parentScore}.
      */
     private ScoreParseResult parseScoreParseResult(String text,
-                                                    List<TaxonomyNode> nodes) throws Exception {
+                                                    List<TaxonomyNode> nodes, int parentScore) throws Exception {
         String jsonText = extractJson(text);
         Map<String, Object> raw = objectMapper.readValue(jsonText, new TypeReference<>() {});
 
@@ -965,17 +969,20 @@ public class LlmService {
         for (TaxonomyNode n : nodes) {
             scores.putIfAbsent(n.getCode(), 0);
         }
-        Map<String, Integer> normalizedScores = normalizeToHundred(scores);
-        log.info("LLM Scores parsed (normalized): {}", normalizedScores);
+        Map<String, Integer> normalizedScores = normalizeToParent(scores, parentScore);
+        log.info("LLM Scores parsed (normalized to {}): {}", parentScore, normalizedScores);
         return new ScoreParseResult(normalizedScores, reasons);
     }
 
     /**
-     * Normalizes a set of scores proportionally so that their sum equals 100.
+     * Normalizes a set of scores proportionally so that their sum equals {@code target}.
      * Preserves the ratio between scores. If all scores are zero, they are returned unchanged.
-     * Rounding is adjusted using the largest-remainder method to ensure the exact sum is 100.
+     * Rounding is adjusted using the largest-remainder method to ensure the exact sum equals {@code target}.
+     *
+     * @param scores raw scores to normalize
+     * @param target the target sum (e.g. parent node's score, or 100 for root-level nodes)
      */
-    public Map<String, Integer> normalizeToHundred(Map<String, Integer> scores) {
+    public Map<String, Integer> normalizeToParent(Map<String, Integer> scores, int target) {
         int total = scores.values().stream().mapToInt(Integer::intValue).sum();
         if (total == 0) return scores;
 
@@ -984,7 +991,7 @@ public class LlmService {
         int runningSum = 0;
 
         for (Map.Entry<String, Integer> e : scores.entrySet()) {
-            double scaled = (double) e.getValue() * 100.0 / total;
+            double scaled = (double) e.getValue() * target / total;
             int floor = (int) scaled;
             normalized.put(e.getKey(), floor);
             fractionals.add(Map.entry(e.getKey(), scaled - floor));
@@ -992,13 +999,22 @@ public class LlmService {
         }
 
         // Distribute the remaining points to entries with the largest fractional parts
-        int remaining = 100 - runningSum;
+        int remaining = target - runningSum;
         fractionals.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
         for (int i = 0; i < remaining && i < fractionals.size(); i++) {
             normalized.merge(fractionals.get(i).getKey(), 1, Integer::sum);
         }
 
         return normalized;
+    }
+
+    /**
+     * Normalizes a set of scores proportionally so that their sum equals 100.
+     * Delegates to {@link #normalizeToParent(Map, int)} with target = 100.
+     * Preserved for backward compatibility.
+     */
+    public Map<String, Integer> normalizeToHundred(Map<String, Integer> scores) {
+        return normalizeToParent(scores, 100);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

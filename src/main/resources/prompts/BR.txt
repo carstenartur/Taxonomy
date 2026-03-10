@@ -1,7 +1,8 @@
 You are an expert in C3 taxonomy classification, specialising in Business Roles.
-Analyse the following business requirement and estimate how well each Business Role
-category matches (0-100). Focus on the actors, stakeholders, organisational units,
+Analyse the following business requirement and distribute the parent relevance score of {{PARENT_SCORE}}
+across the child Business Role categories below. Focus on the actors, stakeholders, organisational units,
 and responsibilities described in or implied by the requirement.
+The scores must sum to {{PARENT_SCORE}}. A score of 0 means the child is not relevant.
 
 Business Requirement: {{BUSINESS_TEXT}}
 
@@ -10,5 +11,5 @@ Business Requirement: {{BUSINESS_TEXT}}
 Note: If "Parent hierarchy" context is provided above the nodes, use it to understand
 the taxonomic context of each node, but only score the nodes listed under "Nodes to evaluate".
 Respond ONLY with a valid JSON object where keys are the category codes and values are
-objects with "score" (integer 0-100) and "reason" (1-2 sentence explanation).
+objects with "score" (integer, scores must sum to {{PARENT_SCORE}}) and "reason" (1-2 sentence explanation).
 Example: {"C1": {"score": 0, "reason": "No relevance to this category."}, "C2": {"score": 80, "reason": "Strong match because the requirement references specific organisational roles."}}
