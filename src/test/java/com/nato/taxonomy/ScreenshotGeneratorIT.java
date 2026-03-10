@@ -684,13 +684,19 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", failureBtn);
         js("arguments[0].click();", failureBtn);
 
-        // Wait until the failure impact results have fully rendered.
-        // renderFailureResult() in taxonomy-graph.js always renders a "Failed Node" summary
-        // card regardless of whether BP-1 has any relations, so this text is always present
-        // after the API response arrives. It is unique to the failure view (upstream/downstream
-        // show "Origin"/"Direction" instead), so it won't false-match on prior results.
-        wait(30).until(ExpectedConditions.textToBePresentInElementLocated(
-                By.id("graphResultsArea"), "Failed Node"));
+        // Wait for the failure impact results to load.
+        // The results are rendered inside graphViewTable (display:none by default) by wrapWithGraphToggle(),
+        // so Selenium's textToBePresentInElementLocated cannot see the text. Instead, check innerHTML
+        // via JavaScript: the loading spinner sets innerHTML to contain "spinner-border", and once the
+        // API response arrives, wrapWithGraphToggle replaces it with toggle buttons + graph/table divs.
+        wait(30).until(d -> {
+            String html = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('graphResultsContent');" +
+                    "return el ? el.innerHTML : '';");
+            return html != null
+                    && !html.contains("spinner-border")
+                    && html.contains("graphViewTable");
+        });
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "22-graph-explorer-failure.png");
     }
 
