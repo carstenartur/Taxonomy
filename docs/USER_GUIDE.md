@@ -14,8 +14,8 @@
 10. [Exporting Results](#10-exporting-results)
 11. [Search](#11-search)
     - [Quality Dashboard](#11a-quality-dashboard)
-    - [Requirement Coverage](#11c-requirement-coverage)
     - [Relations Browser](#11b-relations-browser)
+    - [Requirement Coverage](#11c-requirement-coverage)
     - [Architecture Gap Analysis](#11d-architecture-gap-analysis)
     - [Architecture Recommendation](#11e-architecture-recommendation)
     - [Architecture Pattern Detection](#11f-architecture-pattern-detection)
@@ -121,6 +121,9 @@ The right panel (narrower column) contains all interactive tools:
 
 - **Business Requirement Analysis card** — the main textarea where you type a requirement and run the analysis.
 - **Match Legend** — colour scale from 0 % to 100 % showing what each green shade means.
+
+![Match Legend](images/10-match-legend.png)
+
 - **Status Area** — messages and warnings about the current operation.
 - **Analysis Log** (collapsible) — step-by-step log of the scoring process.
 - **Architecture View Panel** — appears after analysis when the Architecture View checkbox is enabled.
@@ -139,6 +142,10 @@ The navigation bar at the top of the page contains:
 - **Application title / logo**
 - **AI Status badge** (🟢 green or 🔴 red)
 - **🔒 Admin mode button** — click to open the Admin Mode password modal
+
+### Dark Mode
+
+Click the **🌙** (moon) button in the navigation bar to switch to dark mode. Click **☀️** (sun) to switch back to light mode. Your preference is saved in your browser and persists across sessions.
 
 ---
 
@@ -581,10 +588,6 @@ This enables **offline review** and **reproducibility** — you can share a scor
 
 The export buttons only appear after analysis has been run and at least one taxonomy node has a score greater than 0. If you navigate away or refresh the page, scores are lost and the buttons disappear. A hint message **"📋 Analyze first to enable exports"** is shown when exports are unavailable. Re-run the analysis or use **📤 Load Scores** to restore the export buttons.
 
-### Dark Mode
-
-Click the **🌙** (moon) button in the navigation bar to switch to dark mode. Click **☀️** (sun) to switch back to light mode. Your preference is saved in your browser and persists across sessions.
-
 ---
 
 ## 11. Search
@@ -649,6 +652,38 @@ Click **🔄 Refresh** to reload the dashboard at any time.
 
 ---
 
+## 11b. Relations Browser
+
+The **🔗 Relations Browser** panel (right column, collapsible) lets you browse, create, and delete confirmed taxonomy relations.
+
+### Browsing Relations
+
+1. Open the **🔗 Relations Browser** panel.
+2. Optionally filter by relation type using the dropdown.
+3. A table lists all matching relations showing source, target, type, and provenance.
+
+### Creating a Relation
+
+1. Click **➕ New Relation** to open the Create Relation modal.
+2. Enter the **Source Node Code** and **Target Node Code**.
+3. Select the **Relation Type**.
+4. Optionally add a **Description**.
+5. Click **Create**.
+
+### Deleting a Relation
+
+Click the **✖** button on any relation row and confirm the deletion.
+
+### Requirement Impact Analysis
+
+The **🎯 Req. Impact** button in the Graph Explorer panel runs a transitive impact analysis based on the current analysis scores. It shows which taxonomy elements are indirectly affected through the relation graph.
+
+1. First, run an analysis (see [Section 4](#4-analyzing-a-business-requirement)).
+2. Click **🎯 Req. Impact** in the Graph Explorer.
+3. The results show impacted elements and the relationships traversed.
+
+---
+
 ## 11c. Requirement Coverage
 
 The **📋 Requirement Coverage** panel (right column, collapsible) tracks which taxonomy
@@ -699,38 +734,6 @@ Click **🔄 Refresh** to reload coverage statistics after recording new analyse
 > **Tip:** Use descriptive requirement IDs (e.g. `REQ-001-COMMS`, `SPRINT-3-SEC`) to
 > build up a requirement register over time and track architecture coverage per sprint or
 > release.
-
----
-
-## 11b. Relations Browser
-
-The **🔗 Relations Browser** panel (right column, collapsible) lets you browse, create, and delete confirmed taxonomy relations.
-
-### Browsing Relations
-
-1. Open the **🔗 Relations Browser** panel.
-2. Optionally filter by relation type using the dropdown.
-3. A table lists all matching relations showing source, target, type, and provenance.
-
-### Creating a Relation
-
-1. Click **➕ New Relation** to open the Create Relation modal.
-2. Enter the **Source Node Code** and **Target Node Code**.
-3. Select the **Relation Type**.
-4. Optionally add a **Description**.
-5. Click **Create**.
-
-### Deleting a Relation
-
-Click the **✖** button on any relation row and confirm the deletion.
-
-### Requirement Impact Analysis
-
-The **🎯 Req. Impact** button in the Graph Explorer panel runs a transitive impact analysis based on the current analysis scores. It shows which taxonomy elements are indirectly affected through the relation graph.
-
-1. First, run an analysis (see [Section 4](#4-analyzing-a-business-requirement)).
-2. Click **🎯 Req. Impact** in the Graph Explorer.
-3. The results show impacted elements and the relationships traversed.
 
 ---
 
