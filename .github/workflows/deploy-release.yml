@@ -1,0 +1,447 @@
+name: Release Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Release version (e.g., 1.0.0) - check current SNAPSHOT version in pom.xml'
+        required: true
+        type: string
+        default: '1.0.0'
+      skip_tests:
+        description: 'Skip tests during release build'
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Dry run - validate everything but do not publish'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  packages: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  preflight:
+    name: Preflight Checks
+    runs-on: ubuntu-latest
+    outputs:
+      current_version: ${{ steps.version.outputs.current }}
+      suggested_release: ${{ steps.version.outputs.suggested_release }}
+      suggested_next: ${{ steps.version.outputs.suggested_next }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Extract current version from pom.xml
+        id: version
+        run: |
+          CURRENT=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+
+          # Calculate suggested versions
+          if [[ "$CURRENT" == *-SNAPSHOT ]]; then
+            RELEASE="${CURRENT%-SNAPSHOT}"
+            echo "suggested_release=$RELEASE" >> $GITHUB_OUTPUT
+
+            # Calculate next version (patch increment)
+            IFS='.' read -r major minor patch <<< "$RELEASE"
+            NEXT_PATCH=$((patch + 1))
+            echo "suggested_next=${major}.${minor}.${NEXT_PATCH}-SNAPSHOT" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Current version $CURRENT is not a SNAPSHOT version"
+            exit 1
+          fi
+
+      - name: Validate release version input
+        run: |
+          INPUT_VERSION="${{ inputs.release_version }}"
+          SUGGESTED="${{ steps.version.outputs.suggested_release }}"
+
+          # Check semver format
+          if ! [[ "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid version format: $INPUT_VERSION (expected: X.Y.Z)"
+            exit 1
+          fi
+
+          # Warn if different from suggested
+          if [[ "$INPUT_VERSION" != "$SUGGESTED" ]]; then
+            echo "::warning::Input version $INPUT_VERSION differs from suggested $SUGGESTED"
+          fi
+
+      - name: Check if release tag already exists
+        run: |
+          VERSION="${{ inputs.release_version }}"
+          if git ls-remote --tags origin | grep -q "refs/tags/v${VERSION}$"; then
+            echo "::error::Tag v${VERSION} already exists!"
+            exit 1
+          fi
+
+      - name: Check for SNAPSHOT references in pom.xml
+        run: |
+          echo "Checking for SNAPSHOT references in pom.xml..."
+          SNAPSHOT_REFS=$(grep -r "SNAPSHOT" --include="pom.xml" . \
+            | grep -v "target/" \
+            | grep -v "\.git/" \
+            || true)
+
+          if [ -n "$SNAPSHOT_REFS" ]; then
+            echo "Found SNAPSHOT references (expected for current development version):"
+            echo "$SNAPSHOT_REFS"
+          fi
+
+      - name: Validate Maven configuration
+        run: |
+          echo "Validating Maven configuration..."
+          mvn validate -q || {
+            echo "::error::Maven validation failed"
+            exit 1
+          }
+
+      - name: Summary of preflight checks
+        run: |
+          INPUT_VERSION="${{ inputs.release_version }}"
+          IFS='.' read -r major minor patch <<< "$INPUT_VERSION"
+          NEXT_PATCH=$((patch + 1))
+          ACTUAL_NEXT="${major}.${minor}.${NEXT_PATCH}-SNAPSHOT"
+
+          echo "## Preflight Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Current Version | ${{ steps.version.outputs.current }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release Version | ${{ inputs.release_version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Next Dev Version | ${ACTUAL_NEXT} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag exists | No ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Maven valid | Yes ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dry run mode | ${{ inputs.dry_run }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Skip tests | ${{ inputs.skip_tests }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          SUGGESTED="${{ steps.version.outputs.suggested_release }}"
+          if [[ "$INPUT_VERSION" != "$SUGGESTED" ]]; then
+            echo "⚠️ **Warning:** Release version ($INPUT_VERSION) differs from suggested ($SUGGESTED)" >> $GITHUB_STEP_SUMMARY
+            echo "Next SNAPSHOT will be based on the release version: **${ACTUAL_NEXT}**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  release:
+    name: Build and Release
+    needs: preflight
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout with full history
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 2. Checkout main branch explicitly
+      - name: Ensure on main branch
+        run: |
+          git checkout main
+          echo "Checked out main branch"
+
+      # 3. Set up JDK 17
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 4. Cache Maven dependencies
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+
+      # 5. Set release version
+      - name: Set release version
+        run: |
+          echo "Setting version to ${{ inputs.release_version }}"
+          mvn versions:set -DnewVersion=${{ inputs.release_version }} -DgenerateBackupPoms=false
+          echo "Version updated to ${{ inputs.release_version }}"
+
+      # 6. Verify no SNAPSHOT references remain
+      - name: Verify version update
+        run: |
+          REMAINING=$(grep -r "SNAPSHOT" --include="pom.xml" . \
+            | grep -v "target/" \
+            | grep -v "\.git/" \
+            || true)
+          if [ -n "$REMAINING" ]; then
+            echo "::error::SNAPSHOT references still found in pom.xml after version update:"
+            echo "$REMAINING"
+            exit 1
+          fi
+          echo "✓ No SNAPSHOT references remain in pom.xml"
+
+      # 7. Commit version changes
+      - name: Commit version changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A -- ':!.github/workflows/'
+          git commit -m "Release version ${{ inputs.release_version }}"
+          echo "Committed release version ${{ inputs.release_version }}"
+
+      # 8. Build and verify
+      - name: Build and verify
+        env:
+          GEMINI_API_KEY: ""
+        run: |
+          if [[ "${{ inputs.skip_tests }}" == "true" ]]; then
+            TEST_FLAG="-DskipTests"
+          else
+            TEST_FLAG=""
+          fi
+          mvn clean verify -DexcludedGroups=real-llm $TEST_FLAG
+
+      # 9. Push release commit to remote
+      - name: Push release commit to remote
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -e
+          COMMIT_SHA=$(git rev-parse HEAD)
+          echo "Pushing release commit $COMMIT_SHA to main branch..."
+
+          # Step 1: Push to a temporary branch to get the commit into GitHub's object store.
+          # Temporary branches are not protected, so git push works with GITHUB_TOKEN.
+          TEMP_BRANCH="release-temp-${{ inputs.release_version }}"
+          TEMP_PUSHED=false
+
+          # Register cleanup trap so the temp branch is always deleted, even if a later step fails.
+          trap '[[ $TEMP_PUSHED == true ]] && git push origin ":refs/heads/${TEMP_BRANCH}" || true' EXIT
+
+          # Ensure reruns are idempotent: delete any existing remote temp branch, then push.
+          git push origin ":refs/heads/${TEMP_BRANCH}" || true
+          git push origin "HEAD:refs/heads/${TEMP_BRANCH}"
+          TEMP_PUSHED=true
+          echo "Pushed commit to temporary branch ${TEMP_BRANCH}"
+
+          # Step 2: Fast-forward the protected main branch via the GitHub API.
+          gh api "repos/${{ github.repository }}/git/refs/heads/main" \
+            --method PATCH \
+            -f sha="$COMMIT_SHA"
+          echo "Fast-forwarded main branch to $COMMIT_SHA"
+
+          echo "Successfully pushed release commit to main"
+          # Trap will clean up the temporary branch on exit.
+
+      - name: Dry run - Skip pushing release commit
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "::notice::Dry run mode - would push release commit $(git rev-parse HEAD) to main via temp branch + API fast-forward"
+
+      # 10. Create and push Git tag
+      - name: Create and push Git tag
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -e
+          COMMIT_SHA=$(git rev-parse HEAD)
+
+          # Create annotated tag object via GitHub API
+          TAG_SHA=$(gh api "repos/${{ github.repository }}/git/tags" \
+            --method POST \
+            -f tag="v${{ inputs.release_version }}" \
+            -f message="Release version ${{ inputs.release_version }}" \
+            -f object="$COMMIT_SHA" \
+            -f type="commit" \
+            --jq '.sha')
+          if [ -z "$TAG_SHA" ]; then
+            echo "::error::Failed to create tag object via GitHub API (empty SHA returned)"
+            exit 1
+          fi
+
+          # Create tag reference
+          gh api "repos/${{ github.repository }}/git/refs" \
+            --method POST \
+            -f ref="refs/tags/v${{ inputs.release_version }}" \
+            -f sha="$TAG_SHA"
+
+          echo "Created and pushed tag v${{ inputs.release_version }}"
+
+      - name: Dry run - Skip tag creation
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "::notice::Dry run mode - would create tag v${{ inputs.release_version }}"
+
+      # 11. Create maintenance branch
+      - name: Create and push maintenance branch
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -e
+          MAJOR_MINOR=$(echo "${{ inputs.release_version }}" | sed 's/\.[^.]*$//')
+          BRANCH_NAME="maintenance/${MAJOR_MINOR}.x"
+
+          # Check if branch already exists on remote
+          if git ls-remote --exit-code --heads origin "${BRANCH_NAME}" >/dev/null 2>&1; then
+            echo "Branch ${BRANCH_NAME} already exists on remote, skipping creation"
+          else
+            echo "Creating and pushing maintenance branch: ${BRANCH_NAME}"
+            gh api "repos/${{ github.repository }}/git/refs" \
+              --method POST \
+              -f ref="refs/heads/${BRANCH_NAME}" \
+              -f sha="$(git rev-parse HEAD)"
+            echo "Created and pushed maintenance branch: ${BRANCH_NAME}"
+          fi
+
+      - name: Dry run - Skip maintenance branch creation
+        if: ${{ inputs.dry_run }}
+        run: |
+          MAJOR_MINOR=$(echo "${{ inputs.release_version }}" | sed 's/\.[^.]*$//')
+          echo "::notice::Dry run mode - would create maintenance branch maintenance/${MAJOR_MINOR}.x"
+
+      # 12. Generate release notes from closed issues
+      - name: Generate release notes
+        run: |
+          echo "Generating release notes from closed issues..."
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null | grep -v "^v${{ inputs.release_version }}$" || echo "")
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Getting closed issues since $PREVIOUS_TAG"
+            PREVIOUS_DATE=$(git log -1 --format=%aI $PREVIOUS_TAG)
+            gh issue list --state closed --search "closed:>$PREVIOUS_DATE" \
+              --json number,title --jq '.[] | "- #\(.number): \(.title)"' > release_notes.md
+            if [ ! -s release_notes.md ]; then
+              echo "No closed issues found since $PREVIOUS_TAG" > release_notes.md
+            fi
+          else
+            echo "No previous tag found - first release"
+            echo "Initial release" > release_notes.md
+          fi
+
+          echo "Release notes generated:"
+          cat release_notes.md
+
+      # 13. Create GitHub Release
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
+        run: |
+          echo "Creating GitHub release for v${{ inputs.release_version }}..."
+          gh release create "v${{ inputs.release_version }}" \
+            --title "Release ${{ inputs.release_version }}" \
+            --notes-file release_notes.md \
+            --generate-notes
+
+      - name: Dry run - Skip GitHub Release
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "::notice::Dry run mode - would create GitHub release v${{ inputs.release_version }}"
+          echo "Release notes preview:"
+          cat release_notes.md
+
+      # 14. Upload JAR to release
+      - name: Upload JAR to release
+        if: ${{ !inputs.dry_run }}
+        run: |
+          JAR_FILE=$(find target -name "taxonomy-*.jar" -not -name "*sources*" | head -1)
+          if [ -f "$JAR_FILE" ]; then
+            echo "Uploading $(basename $JAR_FILE) to release..."
+            gh release upload "v${{ inputs.release_version }}" "$JAR_FILE" --clobber
+            echo "✓ JAR uploaded: $(basename $JAR_FILE)"
+          else
+            echo "::warning::No taxonomy-*.jar found in target directory"
+          fi
+
+      - name: Dry run - Show JAR that would be uploaded
+        if: ${{ inputs.dry_run }}
+        run: |
+          JAR_FILE=$(find target -name "taxonomy-*.jar" -not -name "*sources*" | head -1)
+          if [ -f "$JAR_FILE" ]; then
+            echo "::notice::Dry run mode - would upload $(basename $JAR_FILE) to release v${{ inputs.release_version }}"
+          else
+            echo "::warning::No taxonomy-*.jar found in target directory"
+          fi
+
+      # 15. Trigger Render deploy
+      - name: Trigger Render deploy
+        if: ${{ !inputs.dry_run }}
+        env:
+          HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$HOOK_URL" ]; then
+            curl -fSL --retry 3 "$HOOK_URL"
+            echo "Render deployment triggered."
+          else
+            echo "::notice::RENDER_DEPLOY_HOOK_URL secret not set - skipping Render deploy"
+          fi
+
+      - name: Dry run - Skip Render deploy
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "::notice::Dry run mode - would trigger Render deploy hook"
+
+      # 16. Bump to next SNAPSHOT version
+      - name: Bump to next SNAPSHOT version
+        run: |
+          RELEASED_VERSION="${{ inputs.release_version }}"
+          IFS='.' read -r major minor patch <<< "$RELEASED_VERSION"
+          NEXT_PATCH=$((patch + 1))
+          NEXT_VERSION="${major}.${minor}.${NEXT_PATCH}-SNAPSHOT"
+          echo "Bumping version to ${NEXT_VERSION} (based on released version ${RELEASED_VERSION})"
+          mvn versions:set -DnewVersion=${NEXT_VERSION} -DgenerateBackupPoms=false
+          echo "Version bumped to ${NEXT_VERSION}"
+
+      # 17. Create PR for next development iteration
+      - name: Create PR for next development iteration
+        run: |
+          RELEASED_VERSION="${{ inputs.release_version }}"
+          IFS='.' read -r major minor patch <<< "$RELEASED_VERSION"
+          NEXT_PATCH=$((patch + 1))
+          NEXT_VERSION="${major}.${minor}.${NEXT_PATCH}-SNAPSHOT"
+          NEXT_RELEASE="${major}.${minor}.${NEXT_PATCH}"
+
+          # Create a branch for the next development iteration
+          NEXT_VERSION_BRANCH="release/prepare-next-${NEXT_VERSION}"
+          git checkout -b "${NEXT_VERSION_BRANCH}"
+
+          # Commit all changes (excluding workflow files)
+          git add -A -- ':!.github/workflows/'
+          git commit -m "Prepare for next development iteration ${NEXT_VERSION}"
+
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            echo "::notice::Dry run mode - would push branch ${NEXT_VERSION_BRANCH} and create PR"
+          else
+            # Push the branch
+            git push origin "${NEXT_VERSION_BRANCH}"
+
+            # Create PR body
+            cat > /tmp/pr_body.md << EOF
+          Automated PR to bump version to ${NEXT_VERSION} after release ${RELEASED_VERSION}
+
+          ## Changes
+          - Bump version in pom.xml to ${NEXT_VERSION}
+
+          ## Release Notes
+
+          EOF
+            cat release_notes.md >> /tmp/pr_body.md
+
+            # Create PR
+            echo "Creating PR for next development iteration..."
+            gh pr create \
+              --title "Prepare for next development iteration ${NEXT_VERSION}" \
+              --body-file /tmp/pr_body.md \
+              --base main \
+              --head "${NEXT_VERSION_BRANCH}"
+
+            echo "✓ PR created successfully"
+          fi
