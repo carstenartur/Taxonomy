@@ -1,8 +1,10 @@
 GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+Taxonomy Architecture Analyzer,com.nato.taxonomy.config,TaxonomyHealthIndicator,68,6,2,0,12,3,2,1,1,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,HibernateSearchAnalysisConfigurer,0,28,0,0,0,5,0,2,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,OpenApiConfig,0,114,0,0,0,25,0,2,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,SpringContextHolder,13,4,1,1,6,1,3,1,2,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0,4,0,2,0
+Taxonomy Architecture Analyzer,com.nato.taxonomy.config,ActuatorSecurityFilter,54,15,13,1,15,5,7,2,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy,TaxonomyApplication,8,0,0,0,3,0,2,0,2,0
 Taxonomy Architecture Analyzer,com.nato.taxonomy,AppConfig,0,53,0,0,0,15,0,4,0,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RecommendationApiController,1,23,1,1,0,8,1,2,0,2
@@ -10,7 +12,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GapAnalysisApiContro
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RelationApiController,4,116,6,10,2,29,6,8,0,6
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GraphQueryApiController,0,114,2,8,0,26,2,9,0,6
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,CoverageApiController.RecordCoverageRequest,0,15,0,0,0,1,0,1,0,1
-Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ApiController,413,937,70,78,87,205,60,46,3,29
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ApiController,468,937,70,78,96,205,60,46,3,29
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,QualityApiController,0,27,0,0,0,7,0,5,0,5
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GapAnalysisApiController,0,24,0,2,0,8,0,3,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RecommendationApiController.RecommendationRequest,0,12,0,0,0,1,0,1,0,1
