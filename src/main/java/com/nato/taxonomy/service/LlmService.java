@@ -314,20 +314,19 @@ public class LlmService {
                 continue;
             }
             try {
-                // Get Level-1 children of this root
+                // Build list including root + Level-1 children for scoring
                 List<TaxonomyNode> level1Children = taxonomyService.getChildrenOf(root.getCode());
-                if (level1Children.isEmpty()) {
-                    completedRoots.add(root.getName());
-                    continue;
-                }
+                List<TaxonomyNode> nodesToScore = new ArrayList<>();
+                nodesToScore.add(root);
+                nodesToScore.addAll(level1Children);
 
-                // Score the Level-1 children
-                Map<String, Integer> level1Scores = callLlmPropagating(businessText, level1Children);
-                allScores.putAll(level1Scores);
+                // Score root + Level-1 children together
+                Map<String, Integer> scores = callLlmPropagating(businessText, nodesToScore);
+                allScores.putAll(scores);
 
-                // Drill into children of matched Level-1 nodes
-                for (Map.Entry<String, Integer> entry : level1Scores.entrySet()) {
-                    if (entry.getValue() > 0) {
+                // Drill into children of matched Level-1 nodes (skip root to avoid re-scoring its children)
+                for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+                    if (entry.getValue() > 0 && !entry.getKey().equals(root.getCode())) {
                         analyzeNodesPropagating(businessText, taxonomyService.getChildrenOf(entry.getKey()), allScores);
                     }
                 }
@@ -408,16 +407,25 @@ public class LlmService {
                         "Evaluating " + root.getName() + " (" + (i + 1) + "/" + roots.size() + ")…",
                         progress);
 
-                ScoreParseResult result = callLlmResult(businessText, List.of(root));
+                // Score root + Level-1 children together to avoid single-node normalization issues
+                List<TaxonomyNode> level1Children = taxonomyService.getChildrenOf(root.getCode());
+                List<TaxonomyNode> nodesToScore = new ArrayList<>();
+                nodesToScore.add(root);
+                nodesToScore.addAll(level1Children);
+
+                ScoreParseResult result = callLlmResult(businessText, nodesToScore);
                 allScores.putAll(result.scores());
                 callback.onScores(result.scores(), result.reasons(), root.getName() + " evaluated");
 
-                if (result.scores().getOrDefault(root.getCode(), 0) > 0) {
-                    List<TaxonomyNode> children = taxonomyService.getChildrenOf(root.getCode());
-                    if (!children.isEmpty()) {
-                        callback.onExpanding(root.getCode(),
-                                children.stream().map(TaxonomyNode::getCode).toList());
-                        analyzeStreamingNodes(businessText, children, allScores, callback);
+                // Drill into children of matched Level-1 nodes (skip root to avoid re-scoring its children)
+                for (Map.Entry<String, Integer> entry : result.scores().entrySet()) {
+                    if (entry.getValue() > 0 && !entry.getKey().equals(root.getCode())) {
+                        List<TaxonomyNode> grandchildren = taxonomyService.getChildrenOf(entry.getKey());
+                        if (!grandchildren.isEmpty()) {
+                            callback.onExpanding(entry.getKey(),
+                                    grandchildren.stream().map(TaxonomyNode::getCode).toList());
+                            analyzeStreamingNodes(businessText, grandchildren, allScores, callback);
+                        }
                     }
                 }
             }
@@ -523,7 +531,7 @@ public class LlmService {
                 return ScoreParseResult.empty(nodes);
             }
 
-            String nodeList = buildNodeList(nodes);
+            String nodeList = buildNodeListWithContext(nodes);
             String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
             String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList);
 
@@ -586,7 +594,7 @@ public class LlmService {
             return zeroScores(nodes);
         }
 
-        String nodeList = buildNodeList(nodes);
+        String nodeList = buildNodeListWithContext(nodes);
         String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
         String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList);
 
@@ -653,7 +661,7 @@ public class LlmService {
             return detail;
         }
 
-        String nodeList = buildNodeList(nodes);
+        String nodeList = buildNodeListWithContext(nodes);
         String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
         String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList);
         detail.setPrompt(prompt);
@@ -1009,6 +1017,49 @@ public class LlmService {
 
     private String buildNodeList(List<TaxonomyNode> nodes) {
         StringBuilder sb = new StringBuilder();
+        for (TaxonomyNode n : nodes) {
+            sb.append(n.getCode()).append(": ").append(n.getName());
+            if (n.getDescription() != null && !n.getDescription().isBlank()) {
+                sb.append(" - ").append(n.getDescription());
+            }
+            sb.append("\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Builds the node list for LLM prompts, optionally prepending the ancestor hierarchy as
+     * context when the nodes share a common parent.
+     *
+     * <p>All nodes in the list are expected to be siblings (i.e. share the same parent) — this is
+     * guaranteed by all callers, which always pass the result of {@link TaxonomyService#getChildrenOf}
+     * or a root node combined with its direct children. The ancestor path is derived from the first
+     * node's parent, which is representative for the whole batch. Nodes that have no parent (e.g. root
+     * nodes) receive the same plain formatting as {@link #buildNodeList} without any ancestor header.
+     */
+    private String buildNodeListWithContext(List<TaxonomyNode> nodes) {
+        if (nodes.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+
+        // Use the first node's parent as the shared context anchor
+        String parentCode = nodes.get(0).getParentCode();
+        if (parentCode != null && !parentCode.isBlank()) {
+            List<TaxonomyNode> ancestors = taxonomyService.getPathToRoot(parentCode);
+            if (!ancestors.isEmpty()) {
+                sb.append("Parent hierarchy (for context — do NOT score these):\n");
+                for (TaxonomyNode ancestor : ancestors) {
+                    sb.append("  ").append(ancestor.getCode()).append(": ").append(ancestor.getName());
+                    if (ancestor.getDescription() != null && !ancestor.getDescription().isBlank()) {
+                        sb.append(" - ").append(ancestor.getDescription());
+                    }
+                    sb.append("\n");
+                }
+                sb.append("\nNodes to evaluate:\n");
+            }
+        }
+
         for (TaxonomyNode n : nodes) {
             sb.append(n.getCode()).append(": ").append(n.getName());
             if (n.getDescription() != null && !n.getDescription().isBlank()) {
