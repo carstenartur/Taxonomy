@@ -61,7 +61,7 @@ public class ActuatorSecurityFilter extends OncePerRequestFilter {
         }
 
         // Unauthorized
-        response.setStatus(401);
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json");
         response.getWriter().write("{\"error\":\"Admin authentication required for actuator endpoints\"}");
     }
