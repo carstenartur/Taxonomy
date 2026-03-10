@@ -370,8 +370,12 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(4)
     void captureAnalysisPanelEmpty() throws IOException {
+        navigateToTab("analyze");
         driver.findElement(By.id("businessText")).clear();
-        saveElementScreenshot(driver.findElement(By.cssSelector(".card.shadow-sm")), "04-analysis-panel-empty.png");
+        wait(2).until(ExpectedConditions.textToBe(By.id("businessText"), ""));
+        saveElementScreenshot(
+                driver.findElement(By.xpath("//textarea[@id='businessText']/ancestor::div[contains(@class,'card')][1]")),
+                "04-analysis-panel-empty.png");
     }
 
     @Test
@@ -675,10 +679,15 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
         js("arguments[0].value = 'BP-1'; arguments[0].dispatchEvent(new Event('input'));", input);
+
+        // Hide the results area from the previous upstream query so we can detect new results
+        js("var r = document.getElementById('graphResultsArea'); if (r) r.style.display = 'none';");
+
         WebElement failureBtn = driver.findElement(By.id("graphFailureBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", failureBtn);
         js("arguments[0].click();", failureBtn);
 
+        // Wait for new results to appear (the area was hidden, so visibility means new content)
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("graphResultsArea")));
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "22-graph-explorer-failure.png");
     }
