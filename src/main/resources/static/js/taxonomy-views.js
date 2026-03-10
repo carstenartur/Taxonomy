@@ -38,7 +38,7 @@
         if (nodeData.name) { html += ' &ndash; ' + esc(nodeData.name); }
         var showDescChk = document.getElementById('showDescriptions');
         var showDesc = !showDescChk || showDescChk.checked;
-        if (showDesc && nodeData.description) { html += '<br><small>' + esc(nodeData.description) + '</small>'; }
+        if (showDesc && nodeData.description) { html += '<br><small>' + esc(nodeData.description).replace(/\n/g, '<br>') + '</small>'; }
         if (pct !== undefined && pct > 0) {
             html += '<br><span class="tax-tooltip-pct">Match: ' + pct + '%</span>';
         }
