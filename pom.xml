@@ -11,7 +11,7 @@
     </parent>
     <groupId>com.nato</groupId>
     <artifactId>taxonomy</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <name>Taxonomy Architecture Analyzer</name>
     <properties>
         <java.version>17</java.version>
