@@ -153,3 +153,82 @@ To disable in production (optional):
 springdoc.api-docs.enabled=false
 springdoc.swagger-ui.enabled=false
 ```
+
+---
+
+## Spring Boot Actuator (Monitoring)
+
+The application includes Spring Boot Actuator with Micrometer Prometheus for HTTP-based monitoring.
+This is the modern replacement for JMX (which is not available on Render Free Tier).
+
+### Available Endpoints
+
+| Endpoint | Auth Required | Description |
+|---|---|---|
+| `GET /actuator/health` | No | Application health status (always public — used by Render health checks) |
+| `GET /actuator/health/liveness` | No | Liveness probe (Kubernetes-compatible) |
+| `GET /actuator/health/readiness` | No | Readiness probe (Kubernetes-compatible) |
+| `GET /actuator/info` | No | Application info (name, version, Java, OS) |
+| `GET /actuator/metrics` | Yes (X-Admin-Token) | List of all available metric names |
+| `GET /actuator/metrics/{name}` | Yes (X-Admin-Token) | Value of a specific metric (e.g. `jvm.memory.used`) |
+| `GET /actuator/prometheus` | Yes (X-Admin-Token) | All metrics in Prometheus text format (for scraping) |
+
+### Accessing Protected Endpoints
+
+Endpoints marked "Yes" require the `X-Admin-Token` header when `ADMIN_PASSWORD` is configured:
+
+```bash
+# Health (public)
+curl https://your-app.onrender.com/actuator/health
+
+# Metrics (requires admin token)
+curl -H "X-Admin-Token: your-admin-password" \
+     https://your-app.onrender.com/actuator/metrics
+
+# Prometheus scrape
+curl -H "X-Admin-Token: your-admin-password" \
+     https://your-app.onrender.com/actuator/prometheus
+
+# Specific metric
+curl -H "X-Admin-Token: your-admin-password" \
+     https://your-app.onrender.com/actuator/metrics/jvm.memory.used
+```
+
+If `ADMIN_PASSWORD` is not set, all actuator endpoints are accessible without authentication
+(backward compatible with local development).
+
+### JMX Equivalents
+
+| JMX MBean | Actuator Equivalent |
+|---|---|
+| `java.lang:type=Memory` | `/actuator/metrics/jvm.memory.used`, `/actuator/metrics/jvm.memory.max` |
+| `java.lang:type=GarbageCollector` | `/actuator/metrics/jvm.gc.pause`, `/actuator/metrics/jvm.gc.memory.promoted` |
+| `java.lang:type=Threading` | `/actuator/metrics/jvm.threads.live`, `/actuator/metrics/jvm.threads.peak` |
+| `java.lang:type=OperatingSystem` | `/actuator/metrics/process.cpu.usage`, `/actuator/metrics/system.cpu.usage` |
+| `java.lang:type=Runtime` | `/actuator/info`, `/actuator/metrics/process.uptime` |
+| Custom MBeans | `/actuator/prometheus` (all metrics in one scrape) |
+
+### Taxonomy Health Indicator
+
+The `/actuator/health` endpoint includes a custom `taxonomy` component that reports:
+
+```json
+{
+  "status": "UP",
+  "components": {
+    "taxonomy": {
+      "status": "UP",
+      "details": {
+        "initStatus": "Async taxonomy initialization complete.",
+        "initialized": true,
+        "heapUsedMB": 256,
+        "heapMaxMB": 512,
+        "heapUsagePercent": 50
+      }
+    }
+  }
+}
+```
+
+Health component details are only shown when `management.endpoint.health.show-components=when-authorized`
+and the request includes a valid `X-Admin-Token` header.

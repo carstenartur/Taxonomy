@@ -73,7 +73,7 @@ public class ApiController {
     private final MermaidExportService mermaidExportService;
     private final SavedAnalysisService savedAnalysisService;
 
-    @Value("${admin.password:}")
+    @Value("${admin.token:}")
     private String adminPassword;
 
     public ApiController(TaxonomyService taxonomyService, LlmService llmService,
@@ -132,6 +132,18 @@ public class ApiController {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("initialized", taxonomyService.isInitialized());
         status.put("status", taxonomyService.getInitStatus());
+
+        // Memory info
+        Runtime rt = Runtime.getRuntime();
+        long heapUsed = rt.totalMemory() - rt.freeMemory();
+        long heapMax = rt.maxMemory();
+        Map<String, Object> memory = new LinkedHashMap<>();
+        memory.put("heapUsedMB", heapUsed / (1024 * 1024));
+        memory.put("heapMaxMB", heapMax / (1024 * 1024));
+        memory.put("heapUsagePercent", Math.round((double) heapUsed / heapMax * 100));
+        memory.put("threadCount", Thread.activeCount());
+        status.put("memory", memory);
+
         return ResponseEntity.ok(status);
     }
 
