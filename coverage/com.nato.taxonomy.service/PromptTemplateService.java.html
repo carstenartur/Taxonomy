@@ -116,15 +116,30 @@ import java.util.concurrent.ConcurrentHashMap;
      * @param taxonomyCode the taxonomy root code (e.g. &quot;BP&quot;)
      * @param businessText the user-entered business requirement text
      * @param nodeList     the formatted list of taxonomy nodes
+     * @param parentScore  the parent node's score (100 for root-level nodes); used for distribution
+     * @return the rendered prompt string ready to send to the LLM
+     */
+    public String renderPrompt(String taxonomyCode, String businessText, String nodeList, int parentScore) {
+<span class="fc" id="L123">        String name = TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode);</span>
+<span class="fc" id="L124">        String template = getTemplate(taxonomyCode);</span>
+<span class="fc" id="L125">        return template</span>
+<span class="fc" id="L126">                .replace(&quot;{{BUSINESS_TEXT}}&quot;, businessText)</span>
+<span class="fc" id="L127">                .replace(&quot;{{NODE_LIST}}&quot;, nodeList)</span>
+<span class="fc" id="L128">                .replace(&quot;{{TAXONOMY_NAME}}&quot;, name)</span>
+<span class="fc" id="L129">                .replace(&quot;{{PARENT_SCORE}}&quot;, String.valueOf(parentScore));</span>
+    }
+
+    /**
+     * Renders the effective prompt using a parent score of 100 (root-level default).
+     * Delegates to {@link #renderPrompt(String, String, String, int)}.
+     *
+     * @param taxonomyCode the taxonomy root code (e.g. &quot;BP&quot;)
+     * @param businessText the user-entered business requirement text
+     * @param nodeList     the formatted list of taxonomy nodes
      * @return the rendered prompt string ready to send to the LLM
      */
     public String renderPrompt(String taxonomyCode, String businessText, String nodeList) {
-<span class="fc" id="L122">        String name = TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode);</span>
-<span class="fc" id="L123">        String template = getTemplate(taxonomyCode);</span>
-<span class="fc" id="L124">        return template</span>
-<span class="fc" id="L125">                .replace(&quot;{{BUSINESS_TEXT}}&quot;, businessText)</span>
-<span class="fc" id="L126">                .replace(&quot;{{NODE_LIST}}&quot;, nodeList)</span>
-<span class="fc" id="L127">                .replace(&quot;{{TAXONOMY_NAME}}&quot;, name);</span>
+<span class="fc" id="L142">        return renderPrompt(taxonomyCode, businessText, nodeList, 100);</span>
     }
 
     /**
@@ -138,10 +153,10 @@ import java.util.concurrent.ConcurrentHashMap;
      */
     public String renderLeafJustificationPrompt(String businessText, String leafCode,
                                                 String pathDescription, String crossRefs) {
-<span class="nc" id="L141">        String template = defaults.getOrDefault(&quot;justify-leaf&quot;, &quot;&quot;);</span>
-<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (template.isBlank()) {</span>
+<span class="nc" id="L156">        String template = defaults.getOrDefault(&quot;justify-leaf&quot;, &quot;&quot;);</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (template.isBlank()) {</span>
             // Fallback inline template if the file is missing
-<span class="nc" id="L144">            template = &quot;You are an expert in C3 taxonomy classification.\n&quot;</span>
+<span class="nc" id="L159">            template = &quot;You are an expert in C3 taxonomy classification.\n&quot;</span>
                     + &quot;Explain in 3-5 sentences why the taxonomy path ending at {{LEAF_CODE}} &quot;
                     + &quot;best matches the following business requirement.\n\n&quot;
                     + &quot;Business Requirement: {{BUSINESS_TEXT}}\n\n&quot;
@@ -151,30 +166,30 @@ import java.util.concurrent.ConcurrentHashMap;
                     + &quot;how the leaf node relates to the requirement, and note any relevant &quot;
                     + &quot;connections to the cross-referenced nodes.&quot;;
         }
-<span class="nc" id="L154">        return template</span>
-<span class="nc" id="L155">                .replace(&quot;{{BUSINESS_TEXT}}&quot;, businessText)</span>
-<span class="nc" id="L156">                .replace(&quot;{{LEAF_CODE}}&quot;, leafCode)</span>
-<span class="nc" id="L157">                .replace(&quot;{{PATH_DESCRIPTION}}&quot;, pathDescription)</span>
-<span class="nc" id="L158">                .replace(&quot;{{CROSS_REFERENCES}}&quot;, crossRefs);</span>
+<span class="nc" id="L169">        return template</span>
+<span class="nc" id="L170">                .replace(&quot;{{BUSINESS_TEXT}}&quot;, businessText)</span>
+<span class="nc" id="L171">                .replace(&quot;{{LEAF_CODE}}&quot;, leafCode)</span>
+<span class="nc" id="L172">                .replace(&quot;{{PATH_DESCRIPTION}}&quot;, pathDescription)</span>
+<span class="nc" id="L173">                .replace(&quot;{{CROSS_REFERENCES}}&quot;, crossRefs);</span>
     }
 
     /**
      * Returns a list of all known template codes (both defaults and any that only have overrides).
      */
     public List&lt;String&gt; getAllTemplateCodes() {
-<span class="fc" id="L165">        List&lt;String&gt; codes = new ArrayList&lt;&gt;(defaults.keySet());</span>
-<span class="fc bfc" id="L166" title="All 2 branches covered.">        for (String code : overrides.keySet()) {</span>
-<span class="pc bpc" id="L167" title="1 of 2 branches missed.">            if (!codes.contains(code)) {</span>
-<span class="nc" id="L168">                codes.add(code);</span>
+<span class="fc" id="L180">        List&lt;String&gt; codes = new ArrayList&lt;&gt;(defaults.keySet());</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        for (String code : overrides.keySet()) {</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">            if (!codes.contains(code)) {</span>
+<span class="nc" id="L183">                codes.add(code);</span>
             }
-<span class="fc" id="L170">        }</span>
-<span class="fc" id="L171">        Collections.sort(codes);</span>
-<span class="fc" id="L172">        return codes;</span>
+<span class="fc" id="L185">        }</span>
+<span class="fc" id="L186">        Collections.sort(codes);</span>
+<span class="fc" id="L187">        return codes;</span>
     }
 
     /** Returns the human-readable taxonomy name for a code, or the code itself if unknown. */
     public String getTaxonomyName(String taxonomyCode) {
-<span class="fc" id="L177">        return TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode);</span>
+<span class="fc" id="L192">        return TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.12.202403310830</span></div></body></html>
