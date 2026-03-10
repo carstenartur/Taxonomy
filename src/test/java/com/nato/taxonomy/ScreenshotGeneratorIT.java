@@ -680,15 +680,15 @@ class ScreenshotGeneratorIT {
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
         js("arguments[0].value = 'BP-1'; arguments[0].dispatchEvent(new Event('input'));", input);
 
-        // Hide the results area from the previous upstream query so we can detect new results
-        js("var r = document.getElementById('graphResultsArea'); if (r) r.style.display = 'none';");
-
         WebElement failureBtn = driver.findElement(By.id("graphFailureBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", failureBtn);
         js("arguments[0].click();", failureBtn);
 
-        // Wait for new results to appear (the area was hidden, so visibility means new content)
-        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("graphResultsArea")));
+        // Wait until the failure impact results have fully rendered.
+        // renderFailureResult() in taxonomy-graph.js produces "Directly Affected" text,
+        // which is unique to failure results and only present after the API response arrives.
+        wait(30).until(ExpectedConditions.textToBePresentInElementLocated(
+                By.id("graphResultsArea"), "Directly Affected"));
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "22-graph-explorer-failure.png");
     }
 
