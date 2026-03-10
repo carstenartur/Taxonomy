@@ -94,10 +94,18 @@ class ScreenshotGeneratorIT {
         driver = chrome.getWebDriver();
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
 
-        // Load the application and wait for the taxonomy tree to be present
+        // Load the application and wait for the taxonomy tree to be FULLY RENDERED
         driver.get("http://app:8080/");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        // The #taxonomyTree div is always in the HTML (with a loading spinner).
+        // Wait for actual taxonomy nodes to appear — they are rendered by the JS
+        // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
+        // Use 60s here because this is the first load after container startup —
+        // the taxonomy Excel import may still be running in the background.
+        new WebDriverWait(driver, Duration.ofSeconds(60))
+                .until(ExpectedConditions.presenceOfElementLocated(
+                        By.cssSelector("#taxonomyTree .tax-node")));
         // Dismiss the onboarding overlay if it is present (it blocks clicks on all UI elements)
         List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
         if (!dismissBtns.isEmpty()) {
@@ -322,7 +330,17 @@ class ScreenshotGeneratorIT {
     @Order(1)
     void captureFullPageLayout() throws IOException {
         driver.get("http://app:8080/");
-        wait(20).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        wait(30).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        // Wait for actual taxonomy nodes to be rendered (not just the container div with loading spinner)
+        wait(60).until(ExpectedConditions.presenceOfElementLocated(
+                By.cssSelector("#taxonomyTree .tax-node")));
+        // Dismiss the onboarding overlay if present
+        List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
+        if (!dismissBtns.isEmpty()) {
+            dismissBtns.get(0).click();
+            new WebDriverWait(driver, Duration.ofSeconds(5))
+                    .until(ExpectedConditions.invisibilityOfElementLocated(By.id("onboardingOverlay")));
+        }
         saveScreenshot("01-full-page-layout.png");
     }
 
