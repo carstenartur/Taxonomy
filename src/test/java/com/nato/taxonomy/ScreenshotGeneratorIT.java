@@ -680,15 +680,23 @@ class ScreenshotGeneratorIT {
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
         js("arguments[0].value = 'BP-1'; arguments[0].dispatchEvent(new Event('input'));", input);
 
-        // Hide the results area from the previous upstream query so we can detect new results
-        js("var r = document.getElementById('graphResultsArea'); if (r) r.style.display = 'none';");
-
         WebElement failureBtn = driver.findElement(By.id("graphFailureBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", failureBtn);
         js("arguments[0].click();", failureBtn);
 
-        // Wait for new results to appear (the area was hidden, so visibility means new content)
-        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("graphResultsArea")));
+        // Wait for the failure impact results to load.
+        // The results are rendered inside graphViewTable (display:none by default) by wrapWithGraphToggle(),
+        // so Selenium's textToBePresentInElementLocated cannot see the text. Instead, check innerHTML
+        // via JavaScript: the loading spinner sets innerHTML to contain "spinner-border", and once the
+        // API response arrives, wrapWithGraphToggle replaces it with toggle buttons + graph/table divs.
+        wait(30).until(d -> {
+            String html = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('graphResultsContent');" +
+                    "return el ? el.innerHTML : '';");
+            return html != null
+                    && !html.contains("spinner-border")
+                    && html.contains("graphViewTable");
+        });
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "22-graph-explorer-failure.png");
     }
 
