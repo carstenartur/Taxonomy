@@ -25,7 +25,7 @@ import java.io.IOException;
 @Component
 <span class="fc" id="L26">public class ActuatorSecurityFilter extends OncePerRequestFilter {</span>
 
-    @Value(&quot;${admin.password:}&quot;)
+    @Value(&quot;${admin.token:}&quot;)
     private String adminPassword;
 
     @Override
