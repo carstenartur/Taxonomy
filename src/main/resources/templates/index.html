@@ -776,5 +776,32 @@
     window.navigateToPage = activatePage;
 }());
 </script>
+
+<!-- System Status Bar -->
+<div id="systemStatusBar" style="position:fixed;bottom:0;left:0;right:0;background:rgba(33,37,41,0.85);color:#adb5bd;font-size:0.72rem;padding:3px 12px;z-index:1050;text-align:center;backdrop-filter:blur(4px);">
+    ⏳ Loading status…
+</div>
+<script>
+(function () {
+    function updateSystemStatus() {
+        fetch('/api/status/startup')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var bar = document.getElementById('systemStatusBar');
+                if (!bar) { return; }
+                var mem = data.memory || {};
+                var pct = mem.heapUsagePercent || 0;
+                var icon = pct > 85 ? '🔴' : pct > 70 ? '🟡' : '🟢';
+                var statusText = data.initialized ? 'Ready' : ('Loading (' + (data.status || '…') + ')');
+                bar.textContent = icon + ' ' + statusText +
+                    ' | Heap: ' + pct + '% (' + (mem.heapUsedMB || '?') + '/' + (mem.heapMaxMB || '?') + ' MB)' +
+                    ' | Threads: ' + (mem.threadCount || '?');
+            })
+            .catch(function () {});
+    }
+    setInterval(updateSystemStatus, 15000);
+    document.addEventListener('DOMContentLoaded', updateSystemStatus);
+}());
+</script>
 </body>
 </html>
