@@ -73,7 +73,7 @@ public class ApiController {
     private final MermaidExportService mermaidExportService;
     private final SavedAnalysisService savedAnalysisService;
 
-    @Value("${admin.password:}")
+    @Value("${admin.token:}")
     private String adminPassword;
 
     public ApiController(TaxonomyService taxonomyService, LlmService llmService,

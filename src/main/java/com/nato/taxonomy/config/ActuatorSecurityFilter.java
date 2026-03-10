@@ -25,7 +25,7 @@ import java.io.IOException;
 @Component
 public class ActuatorSecurityFilter extends OncePerRequestFilter {
 
-    @Value("${admin.password:}")
+    @Value("${admin.token:}")
     private String adminPassword;
 
     @Override
