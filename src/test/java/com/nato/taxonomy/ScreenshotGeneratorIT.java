@@ -65,7 +65,7 @@ class ScreenshotGeneratorIT {
 
         GenericContainer<?> appContainer = new GenericContainer<>(
                 new ImageFromDockerfile()
-                        .withFileFromPath("app.jar", Path.of("target/taxonomy-1.0.0-SNAPSHOT.jar"))
+                        .withFileFromPath("app.jar", ContainerTestUtils.findApplicationJar())
                         .withDockerfileFromBuilder(builder -> builder
                                 .from("eclipse-temurin:17-jre-alpine")
                                 .workDir("/app")

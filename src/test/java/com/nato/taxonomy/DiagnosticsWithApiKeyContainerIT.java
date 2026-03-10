@@ -14,7 +14,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 
@@ -41,7 +40,7 @@ class DiagnosticsWithApiKeyContainerIT {
     @Container
     static GenericContainer<?> app = new GenericContainer<>(
             new ImageFromDockerfile()
-                    .withFileFromPath("app.jar", Path.of("target/taxonomy-1.0.0-SNAPSHOT.jar"))
+                    .withFileFromPath("app.jar", ContainerTestUtils.findApplicationJar())
                     .withDockerfileFromBuilder(builder -> builder
                             .from("eclipse-temurin:17-jre-alpine")
                             .workDir("/app")
