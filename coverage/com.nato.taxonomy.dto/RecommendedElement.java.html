@@ -11,31 +11,35 @@ public class RecommendedElement {
     private String taxonomyRoot;
     private int score;
     private String reasoning;
+    private ExplanationTrace explanationTrace;
 
-<span class="nc" id="L15">    public RecommendedElement() {}</span>
+<span class="nc" id="L16">    public RecommendedElement() {}</span>
 
     public RecommendedElement(String nodeCode, String title, String taxonomyRoot,
-<span class="fc" id="L18">                              int score, String reasoning) {</span>
-<span class="fc" id="L19">        this.nodeCode = nodeCode;</span>
-<span class="fc" id="L20">        this.title = title;</span>
-<span class="fc" id="L21">        this.taxonomyRoot = taxonomyRoot;</span>
-<span class="fc" id="L22">        this.score = score;</span>
-<span class="fc" id="L23">        this.reasoning = reasoning;</span>
-<span class="fc" id="L24">    }</span>
+<span class="fc" id="L19">                              int score, String reasoning) {</span>
+<span class="fc" id="L20">        this.nodeCode = nodeCode;</span>
+<span class="fc" id="L21">        this.title = title;</span>
+<span class="fc" id="L22">        this.taxonomyRoot = taxonomyRoot;</span>
+<span class="fc" id="L23">        this.score = score;</span>
+<span class="fc" id="L24">        this.reasoning = reasoning;</span>
+<span class="fc" id="L25">    }</span>
 
-<span class="fc" id="L26">    public String getNodeCode() { return nodeCode; }</span>
-<span class="nc" id="L27">    public void setNodeCode(String nodeCode) { this.nodeCode = nodeCode; }</span>
+<span class="fc" id="L27">    public String getNodeCode() { return nodeCode; }</span>
+<span class="nc" id="L28">    public void setNodeCode(String nodeCode) { this.nodeCode = nodeCode; }</span>
 
-<span class="fc" id="L29">    public String getTitle() { return title; }</span>
-<span class="nc" id="L30">    public void setTitle(String title) { this.title = title; }</span>
+<span class="fc" id="L30">    public String getTitle() { return title; }</span>
+<span class="nc" id="L31">    public void setTitle(String title) { this.title = title; }</span>
 
-<span class="fc" id="L32">    public String getTaxonomyRoot() { return taxonomyRoot; }</span>
-<span class="nc" id="L33">    public void setTaxonomyRoot(String taxonomyRoot) { this.taxonomyRoot = taxonomyRoot; }</span>
+<span class="fc" id="L33">    public String getTaxonomyRoot() { return taxonomyRoot; }</span>
+<span class="nc" id="L34">    public void setTaxonomyRoot(String taxonomyRoot) { this.taxonomyRoot = taxonomyRoot; }</span>
 
-<span class="fc" id="L35">    public int getScore() { return score; }</span>
-<span class="nc" id="L36">    public void setScore(int score) { this.score = score; }</span>
+<span class="fc" id="L36">    public int getScore() { return score; }</span>
+<span class="nc" id="L37">    public void setScore(int score) { this.score = score; }</span>
 
-<span class="fc" id="L38">    public String getReasoning() { return reasoning; }</span>
-<span class="nc" id="L39">    public void setReasoning(String reasoning) { this.reasoning = reasoning; }</span>
+<span class="fc" id="L39">    public String getReasoning() { return reasoning; }</span>
+<span class="nc" id="L40">    public void setReasoning(String reasoning) { this.reasoning = reasoning; }</span>
+
+<span class="fc" id="L42">    public ExplanationTrace getExplanationTrace() { return explanationTrace; }</span>
+<span class="fc" id="L43">    public void setExplanationTrace(ExplanationTrace explanationTrace) { this.explanationTrace = explanationTrace; }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
