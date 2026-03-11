@@ -18,6 +18,7 @@ import com.nato.taxonomy.service.LlmService;
 import com.nato.taxonomy.service.PromptTemplateService;
 import com.nato.taxonomy.service.RequirementArchitectureViewService;
 import com.nato.taxonomy.service.AnalysisRelationGenerator;
+import com.nato.taxonomy.service.HypothesisService;
 import com.nato.taxonomy.service.SavedAnalysisService;
 import com.nato.taxonomy.service.SearchService;
 import com.nato.taxonomy.service.TaxonomyService;
@@ -75,6 +76,7 @@ public class ApiController {
     private final MermaidExportService mermaidExportService;
     private final SavedAnalysisService savedAnalysisService;
     private final AnalysisRelationGenerator analysisRelationGenerator;
+    private final HypothesisService hypothesisService;
 
     @Value("${admin.token:}")
     private String adminPassword;
@@ -93,7 +95,8 @@ public class ApiController {
                          ArchiMateXmlExporter archiMateXmlExporter,
                          MermaidExportService mermaidExportService,
                          SavedAnalysisService savedAnalysisService,
-                         AnalysisRelationGenerator analysisRelationGenerator) {
+                         AnalysisRelationGenerator analysisRelationGenerator,
+                         HypothesisService hypothesisService) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.searchService = searchService;
@@ -112,6 +115,7 @@ public class ApiController {
         this.mermaidExportService = mermaidExportService;
         this.savedAnalysisService = savedAnalysisService;
         this.analysisRelationGenerator = analysisRelationGenerator;
+        this.hypothesisService = hypothesisService;
     }
 
     @Operation(summary = "Get full taxonomy tree", description = "Returns the complete taxonomy hierarchy as a nested tree of nodes", tags = {"Taxonomy"})
@@ -191,6 +195,11 @@ public class ApiController {
         if (result.getScores() != null) {
             result.setProvisionalRelations(
                     analysisRelationGenerator.generate(result.getScores()));
+
+            // Persist hypotheses to database for later accept/reject via API
+            if (!result.getProvisionalRelations().isEmpty()) {
+                hypothesisService.persistFromAnalysis(result.getProvisionalRelations(), null);
+            }
         }
 
         if (request.isIncludeArchitectureView() && result.getScores() != null) {

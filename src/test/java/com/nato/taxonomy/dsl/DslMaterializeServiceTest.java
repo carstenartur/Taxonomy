@@ -1,0 +1,131 @@
+package com.nato.taxonomy.dsl;
+
+import com.nato.taxonomy.dsl.export.DslMaterializeService;
+import com.nato.taxonomy.repository.ArchitectureDslDocumentRepository;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Tests for {@link DslMaterializeService}.
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+class DslMaterializeServiceTest {
+
+    @Autowired
+    private DslMaterializeService materializeService;
+
+    @Autowired
+    private ArchitectureDslDocumentRepository documentRepository;
+
+    @Test
+    void materializeValidDslCreatesDocument() {
+        String dsl = """
+                meta
+                  language "taxdsl"
+                  version "1.0"
+                  namespace "test.materialize"
+                
+                element CP-1 type Capability
+                  title "Test Capability"
+                """;
+
+        DslMaterializeService.MaterializeResult result =
+                materializeService.materialize(dsl, "test.tax", "main", "abc123");
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.documentId()).isNotNull();
+
+        // Verify document was persisted
+        var doc = documentRepository.findById(result.documentId());
+        assertThat(doc).isPresent();
+        assertThat(doc.get().getPath()).isEqualTo("test.tax");
+        assertThat(doc.get().getBranch()).isEqualTo("main");
+        assertThat(doc.get().getCommitId()).isEqualTo("abc123");
+        assertThat(doc.get().getNamespace()).isEqualTo("test.materialize");
+        assertThat(doc.get().getDslVersion()).isEqualTo("1.0");
+    }
+
+    @Test
+    void materializeDslWithDuplicateIdsFails() {
+        String dsl = """
+                element CP-1 type Capability
+                  title "First"
+                
+                element CP-1 type Capability
+                  title "Duplicate"
+                """;
+
+        DslMaterializeService.MaterializeResult result =
+                materializeService.materialize(dsl, null, null, null);
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.errors()).isNotEmpty();
+        assertThat(result.documentId()).isNull();
+    }
+
+    @Test
+    void materializeProvisionalRelationsCreatesHypotheses() {
+        String dsl = """
+                element CP-100 type Capability
+                  title "Cap"
+                
+                element BP-100 type Process
+                  title "Proc"
+                
+                relation BP-100 REALIZES CP-100
+                  status provisional
+                  confidence 0.65
+                """;
+
+        DslMaterializeService.MaterializeResult result =
+                materializeService.materialize(dsl, "provisional.tax", null, null);
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.hypothesesCreated()).isEqualTo(1);
+    }
+
+    @Test
+    void materializeAcceptedRelationsCreatesRelations() {
+        // Use real root-level node codes with a relation type not preloaded from CSV
+        String dsl = """
+                element UA type UserApplication
+                  title "Test App"
+                
+                element CP type Capability
+                  title "Test Capability"
+                
+                relation UA REALIZES CP
+                  status accepted
+                """;
+
+        DslMaterializeService.MaterializeResult result =
+                materializeService.materialize(dsl, "accepted.tax", null, null);
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.relationsCreated()).isEqualTo(1);
+    }
+
+    @Test
+    void materializeWithNullPathUsesInline() {
+        String dsl = """
+                element CP-2 type Capability
+                  title "Inline Test"
+                """;
+
+        DslMaterializeService.MaterializeResult result =
+                materializeService.materialize(dsl, null, null, null);
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.documentId()).isNotNull();
+
+        var doc = documentRepository.findById(result.documentId());
+        assertThat(doc).isPresent();
+        assertThat(doc.get().getPath()).isEqualTo("inline");
+    }
+}
