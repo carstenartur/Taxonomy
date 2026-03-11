@@ -168,16 +168,26 @@ Click **Accept** to add the relation to the knowledge graph, or **Reject** to di
 
 ```bash
 # Generate proposals for a node
-curl -X POST "http://localhost:8080/api/proposals?nodeCode=CR-5"
+curl -X POST http://localhost:8080/api/proposals/propose \
+  -H "Content-Type: application/json" \
+  -d '{"sourceCode": "CR-5", "relationType": "SUPPORTS"}'
 
 # List pending proposals
-curl "http://localhost:8080/api/proposals?status=PENDING"
+curl "http://localhost:8080/api/proposals/pending"
 
 # Accept a proposal
 curl -X POST "http://localhost:8080/api/proposals/42/accept"
 
 # Reject a proposal
 curl -X POST "http://localhost:8080/api/proposals/42/reject"
+
+# Bulk accept/reject
+curl -X POST http://localhost:8080/api/proposals/bulk \
+  -H "Content-Type: application/json" \
+  -d '{"ids": [42, 43, 44], "action": "ACCEPT"}'
+
+# Revert a decision
+curl -X POST "http://localhost:8080/api/proposals/42/revert"
 ```
 
 ---
@@ -220,7 +230,7 @@ curl -X POST http://localhost:8080/api/recommend \
 ### ArchiMate XML
 
 ```bash
-curl -X POST http://localhost:8080/api/export/archimate \
+curl -X POST http://localhost:8080/api/diagram/archimate \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-3": 92, "CO-2": 88, "CR-5": 81}}' \
   -o architecture.xml
@@ -231,7 +241,7 @@ The resulting XML file can be imported into **Archi**, **BiZZdesign**, **MEGA**,
 ### Visio
 
 ```bash
-curl -X POST http://localhost:8080/api/export/visio \
+curl -X POST http://localhost:8080/api/diagram/visio \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-3": 92, "CO-2": 88, "CR-5": 81}}' \
   -o architecture.vsdx
@@ -240,7 +250,7 @@ curl -X POST http://localhost:8080/api/export/visio \
 ### Mermaid
 
 ```bash
-curl -X POST http://localhost:8080/api/export/mermaid \
+curl -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-3": 92, "CO-2": 88, "CR-5": 81}}'
 ```

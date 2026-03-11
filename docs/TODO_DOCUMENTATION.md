@@ -15,7 +15,6 @@ This file tracks known documentation gaps and improvement opportunities. Items m
 
 ### Usability Documentation
 
-- [ ] **No bulk accept/reject for proposals**: reviewers must accept or reject proposals one at a time
 - [ ] **Graph Explorer shows tables, not a visual graph**: a node-link force-directed graph would improve readability
 - [ ] **LLM communication log only visible in interactive mode**: exposing it as a collapsible debug panel would aid troubleshooting
 - [ ] **No internationalisation (i18n)**: all UI text is hard-coded in English

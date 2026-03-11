@@ -422,10 +422,16 @@ The Relation Proposal pipeline suggests new edges to add to the architecture kno
 
 ```
 POST /api/proposals/propose
-Content-Type: application/x-www-form-urlencoded
+Content-Type: application/json
 
-sourceCode=CAP_C2_003&relationType=REALIZES
+{
+  "sourceCode": "CR-5",
+  "relationType": "SUPPORTS",
+  "limit": "10"
+}
 ```
+
+The `sourceCode` and `relationType` fields are required. The optional `limit` field controls the maximum number of proposals (default: 10, range: 1–100).
 
 The pipeline executes:
 1. **`RelationCandidateService`** — finds candidate target nodes.
@@ -441,7 +447,7 @@ The pipeline executes:
 | `ACCEPTED` | Approved; a `TaxonomyRelation` has been created |
 | `REJECTED` | Declined by the reviewer |
 
-> **Note:** The valid status values are `PENDING`, `ACCEPTED`, and `REJECTED`.
+> **Note:** The valid status values are `PENDING`, `ACCEPTED`, and `REJECTED`. The revert endpoint (`POST /api/proposals/{id}/revert`) resets an accepted or rejected proposal back to `PENDING`.
 
 ### 9.3 Listing and Reviewing Proposals
 
@@ -452,6 +458,30 @@ The pipeline executes:
 | `GET` | `/api/node/{code}/proposals` | Proposals for a specific node |
 | `POST` | `/api/proposals/{id}/accept` | Accept a proposal |
 | `POST` | `/api/proposals/{id}/reject` | Reject a proposal |
+| `POST` | `/api/proposals/{id}/revert` | Revert a previous accept/reject decision |
+| `POST` | `/api/proposals/bulk` | Bulk accept or reject multiple proposals |
+
+#### Bulk Action (`POST /api/proposals/bulk`)
+
+Process multiple proposals at once:
+
+```json
+{
+  "ids": [1, 2, 3],
+  "action": "ACCEPT"
+}
+```
+
+The `action` field accepts `ACCEPT` or `REJECT`. The response includes success and failure counts:
+
+```json
+{
+  "action": "ACCEPT",
+  "success": 2,
+  "failed": 1,
+  "total": 3
+}
+```
 
 ### 9.4 Relation Types
 
@@ -889,7 +919,7 @@ GET /api/patterns/detect?nodeCode=CP
 
 ## 16. Diagram Export
 
-The system supports two export formats.  Both endpoints expect the `architectureView` JSON produced by `POST /api/analyze` (with `includeArchitectureView=true`).
+The system supports three diagram export formats (Visio, ArchiMate, Mermaid) and JSON score export/import.  The diagram endpoints expect the `architectureView` JSON produced by `POST /api/analyze` (with `includeArchitectureView=true`).
 
 ### 16.1 Visio Export
 
@@ -909,7 +939,23 @@ Generates an ArchiMate 3.x compliant XML file suitable for import into tools suc
 
 **Response:** XML file download.
 
-### 16.3 Analysis Scores JSON Export
+### 16.3 Mermaid Flowchart Export
+
+**Endpoint:** `POST /api/diagram/mermaid`
+
+Generates a Mermaid flowchart code block from the architecture view. The response is plain text (`text/plain; charset=UTF-8`) suitable for embedding in GitHub, GitLab, Notion, Confluence, and other Markdown-based platforms.
+
+**Request body:**
+
+```json
+{
+  "businessText": "Provide secure voice communications"
+}
+```
+
+**Response:** Plain-text Mermaid flowchart code.
+
+### 16.4 Analysis Scores JSON Export
 
 **Endpoint:** `POST /api/scores/export`
 
@@ -941,7 +987,7 @@ Serialises the current analysis result as a `SavedAnalysis` JSON object, adding 
 
 **Semantic note:** Each root taxonomy is scored **independently** on a 0–100 scale — for example `"CO": 90` means "the Communications Services taxonomy covers 90% of this requirement". Scores across root taxonomies do **not** sum to 100. A score of `0` means the node was _evaluated and found not relevant_. An absent key means the node was _not evaluated_.
 
-### 16.4 Analysis Scores JSON Import
+### 16.5 Analysis Scores JSON Import
 
 **Endpoint:** `POST /api/scores/import`
 
@@ -1026,7 +1072,7 @@ Semantic, hybrid, and graph searches require the embedding subsystem to be enabl
 
 ### How It Works
 
-- The system uses **DJL 0.31.1** with the ONNX Runtime engine.
+- The system uses **DJL 0.36.0** with the ONNX Runtime engine.
 - On first startup, the `all-MiniLM-L6-v2` model (~23 MB) is downloaded and cached in `~/.djl.ai/`.
 - Embeddings are stored in a **Lucene `KnnFloatVectorField`** alongside each `TaxonomyNode`.
 - Set `LLM_PROVIDER=LOCAL_ONNX` to use embedding-based scoring without an external API key.
@@ -1058,6 +1104,7 @@ Complete list of all REST endpoints.
 |---|---|---|---|
 | `GET` | `/api/taxonomy` | Full taxonomy tree | No |
 | `GET` | `/api/ai-status` | LLM provider availability | No |
+| `GET` | `/api/status/startup` | Startup initialization status | No |
 | `POST` | `/api/analyze` | Analyze requirement text | No |
 | `GET` | `/api/analyze-stream` | SSE streaming analysis | No |
 | `GET` | `/api/analyze-node` | Analyze single node | No |
@@ -1067,6 +1114,8 @@ Complete list of all REST endpoints.
 | `POST` | `/api/admin/verify` | Verify admin password | No |
 | `POST` | `/api/diagram/visio` | Export Visio .vsdx | No |
 | `POST` | `/api/diagram/archimate` | Export ArchiMate XML | No |
+| `POST` | `/api/diagram/mermaid` | Export Mermaid flowchart | No |
+| `POST` | `/api/import/archimate` | Import ArchiMate XML file | No |
 | `POST` | `/api/scores/export` | Export analysis scores as JSON | No |
 | `POST` | `/api/scores/import` | Import analysis scores from JSON | No |
 | `GET` | `/api/search` | Full-text search | No |
@@ -1094,6 +1143,8 @@ Complete list of all REST endpoints.
 | `GET` | `/api/node/{code}/proposals` | Proposals for a node | No |
 | `POST` | `/api/proposals/{id}/accept` | Accept proposal | No |
 | `POST` | `/api/proposals/{id}/reject` | Reject proposal | No |
+| `POST` | `/api/proposals/{id}/revert` | Revert proposal decision | No |
+| `POST` | `/api/proposals/bulk` | Bulk accept/reject proposals | No |
 | `POST` | `/api/graph/impact` | Requirement impact analysis | No |
 | `GET` | `/api/graph/node/{code}/upstream` | Upstream neighbourhood | No |
 | `GET` | `/api/graph/node/{code}/downstream` | Downstream neighbourhood | No |
