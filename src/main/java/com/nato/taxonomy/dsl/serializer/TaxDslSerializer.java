@@ -83,6 +83,7 @@ public class TaxDslSerializer {
         }
 
         if (!extensions.isEmpty() && !known.isEmpty()) {
+            // Blank line separates core properties from extensions for clarity in diffs
             sb.append('\n');
         }
 

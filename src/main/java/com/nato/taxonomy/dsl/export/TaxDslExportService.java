@@ -3,7 +3,6 @@ package com.nato.taxonomy.dsl.export;
 import com.nato.taxonomy.dsl.mapper.ModelToAstMapper;
 import com.nato.taxonomy.dsl.model.*;
 import com.nato.taxonomy.dsl.serializer.TaxDslSerializer;
-import com.nato.taxonomy.model.RelationType;
 import com.nato.taxonomy.model.TaxonomyNode;
 import com.nato.taxonomy.model.TaxonomyRelation;
 import com.nato.taxonomy.repository.TaxonomyNodeRepository;
@@ -57,7 +56,7 @@ public class TaxDslExportService {
             if (node.getLevel() > 0) { // Skip virtual root nodes
                 ArchitectureElement el = new ArchitectureElement();
                 el.setId(node.getCode());
-                el.setType(mapTaxonomyRootToType(node.getTaxonomyRoot()));
+                el.setType(TaxonomyRootTypes.typeFor(node.getTaxonomyRoot()));
                 el.setTitle(node.getNameEn());
                 el.setDescription(node.getDescriptionEn());
                 el.setTaxonomy(node.getTaxonomyRoot());
@@ -78,23 +77,5 @@ public class TaxDslExportService {
         }
 
         return model;
-    }
-
-    /**
-     * Map a taxonomy root code to a human-readable element type.
-     */
-    private String mapTaxonomyRootToType(String taxonomyRoot) {
-        if (taxonomyRoot == null) return "Unknown";
-        return switch (taxonomyRoot) {
-            case "CP" -> "Capability";
-            case "BP" -> "Process";
-            case "CR" -> "CoreService";
-            case "CI" -> "COIService";
-            case "CO" -> "CommunicationsService";
-            case "UA" -> "UserApplication";
-            case "IP" -> "InformationProduct";
-            case "BR" -> "BusinessRole";
-            default -> taxonomyRoot;
-        };
     }
 }
