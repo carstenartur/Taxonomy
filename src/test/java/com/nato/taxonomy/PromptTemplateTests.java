@@ -53,6 +53,7 @@ class PromptTemplateTests {
         assertThat(template).contains("{{BUSINESS_TEXT}}");
         assertThat(template).contains("{{NODE_LIST}}");
         assertThat(template).contains("{{PARENT_SCORE}}");
+        assertThat(template).contains("{{EXPECTED_KEYS}}");
     }
 
     @Test
@@ -62,17 +63,20 @@ class PromptTemplateTests {
         assertThat(bpTemplate).contains("{{NODE_LIST}}");
         assertThat(bpTemplate).contains("{{TAXONOMY_NAME}}");
         assertThat(bpTemplate).contains("{{PARENT_SCORE}}");
+        assertThat(bpTemplate).contains("{{EXPECTED_KEYS}}");
     }
 
     @Test
     void renderPromptReplacesAllPlaceholders() {
-        String rendered = promptTemplateService.renderPrompt("default", "test business text", "C1: Capability", 75);
+        String rendered = promptTemplateService.renderPrompt("default", "test business text", "C1: Capability", 75, "C1, C2");
         assertThat(rendered).contains("test business text");
         assertThat(rendered).contains("C1: Capability");
         assertThat(rendered).contains("75");
+        assertThat(rendered).contains("C1, C2");
         assertThat(rendered).doesNotContain("{{BUSINESS_TEXT}}");
         assertThat(rendered).doesNotContain("{{NODE_LIST}}");
         assertThat(rendered).doesNotContain("{{PARENT_SCORE}}");
+        assertThat(rendered).doesNotContain("{{EXPECTED_KEYS}}");
     }
 
     @Test
@@ -83,6 +87,13 @@ class PromptTemplateTests {
         // Verify by checking with the 4-arg variant that produces the same result
         String renderedExplicit = promptTemplateService.renderPrompt("default", "test text", "C1: Node", 100);
         assertThat(rendered).isEqualTo(renderedExplicit);
+    }
+
+    @Test
+    void renderPromptSubstitutesExpectedKeys() {
+        String rendered = promptTemplateService.renderPrompt("BP", "test text", "BP-1000: Process", 100, "BP-1000, BP-2000, BP-3000");
+        assertThat(rendered).contains("BP-1000, BP-2000, BP-3000");
+        assertThat(rendered).doesNotContain("{{EXPECTED_KEYS}}");
     }
 
     @Test

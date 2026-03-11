@@ -10,6 +10,7 @@ Business Requirement: {{BUSINESS_TEXT}}
 {{NODE_LIST}}
 Note: If "Parent hierarchy" context is provided above the nodes, use it to understand
 the taxonomic context of each node, but only score the nodes listed under "Nodes to evaluate".
-Respond ONLY with a valid JSON object where keys are the category codes and values are
-objects with "score" (integer, scores must sum to {{PARENT_SCORE}}) and "reason" (1-2 sentence explanation).
+Respond ONLY with a valid JSON object using EXACTLY these keys: {{EXPECTED_KEYS}}
+Each value must be an object with "score" (integer, scores must sum to {{PARENT_SCORE}}) and "reason" (1-2 sentence explanation).
+Do NOT use any other keys — only the ones listed above.
 Example: {"C1": {"score": 0, "reason": "No relevance to this category."}, "C2": {"score": 80, "reason": "Strong match because the requirement depends on this foundational infrastructure service."}}

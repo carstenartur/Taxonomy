@@ -117,21 +117,38 @@ public class PromptTemplateService {
      * @param businessText the user-entered business requirement text
      * @param nodeList     the formatted list of taxonomy nodes
      * @param parentScore  the parent node's score (100 for root-level nodes); used for distribution
+     * @param expectedKeys comma-separated list of the exact node codes the LLM must use as JSON keys
      * @return the rendered prompt string ready to send to the LLM
      */
-    public String renderPrompt(String taxonomyCode, String businessText, String nodeList, int parentScore) {
+    public String renderPrompt(String taxonomyCode, String businessText, String nodeList,
+                               int parentScore, String expectedKeys) {
         String name = TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode);
         String template = getTemplate(taxonomyCode);
         return template
                 .replace("{{BUSINESS_TEXT}}", businessText)
                 .replace("{{NODE_LIST}}", nodeList)
                 .replace("{{TAXONOMY_NAME}}", name)
-                .replace("{{PARENT_SCORE}}", String.valueOf(parentScore));
+                .replace("{{PARENT_SCORE}}", String.valueOf(parentScore))
+                .replace("{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "");
+    }
+
+    /**
+     * Renders the effective prompt by substituting all {@code {{...}}} placeholders.
+     * Delegates to {@link #renderPrompt(String, String, String, int, String)} with an empty expected-keys string.
+     *
+     * @param taxonomyCode the taxonomy root code (e.g. "BP")
+     * @param businessText the user-entered business requirement text
+     * @param nodeList     the formatted list of taxonomy nodes
+     * @param parentScore  the parent node's score (100 for root-level nodes); used for distribution
+     * @return the rendered prompt string ready to send to the LLM
+     */
+    public String renderPrompt(String taxonomyCode, String businessText, String nodeList, int parentScore) {
+        return renderPrompt(taxonomyCode, businessText, nodeList, parentScore, "");
     }
 
     /**
      * Renders the effective prompt using a parent score of 100 (root-level default).
-     * Delegates to {@link #renderPrompt(String, String, String, int)}.
+     * Delegates to {@link #renderPrompt(String, String, String, int, String)}.
      *
      * @param taxonomyCode the taxonomy root code (e.g. "BP")
      * @param businessText the user-entered business requirement text
@@ -139,7 +156,7 @@ public class PromptTemplateService {
      * @return the rendered prompt string ready to send to the LLM
      */
     public String renderPrompt(String taxonomyCode, String businessText, String nodeList) {
-        return renderPrompt(taxonomyCode, businessText, nodeList, 100);
+        return renderPrompt(taxonomyCode, businessText, nodeList, 100, "");
     }
 
     /**

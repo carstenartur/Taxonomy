@@ -588,7 +588,8 @@ public class LlmService {
 
             String nodeList = buildNodeListWithContext(nodes);
             String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
-            String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore);
+            String expectedKeys = String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList());
+            String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore, expectedKeys);
 
             log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
                     provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));
@@ -651,7 +652,8 @@ public class LlmService {
 
         String nodeList = buildNodeListWithContext(nodes);
         String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
-        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore);
+        String expectedKeys = String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList());
+        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore, expectedKeys);
 
         log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
                 provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));
@@ -718,7 +720,8 @@ public class LlmService {
 
         String nodeList = buildNodeListWithContext(nodes);
         String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
-        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore);
+        String expectedKeys = String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList());
+        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore, expectedKeys);
         detail.setPrompt(prompt);
 
         log.info("LLM Request [{}] — sending prompt for {} nodes: {}",
