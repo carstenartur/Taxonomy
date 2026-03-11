@@ -1,0 +1,486 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureReportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.service</a> &gt; <span class="el_source">ArchitectureReportService.java</span></div><h1>ArchitectureReportService.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.service;
+
+import com.nato.taxonomy.diagram.DiagramModel;
+import com.nato.taxonomy.dto.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Aggregates data from existing services and produces an {@link ArchitectureReport},
+ * which can then be rendered as Markdown, HTML, or DOCX.
+ */
+@Service
+public class ArchitectureReportService {
+
+<span class="fc" id="L23">    private static final Logger log = LoggerFactory.getLogger(ArchitectureReportService.class);</span>
+    private static final int DEFAULT_MIN_SCORE = 20;
+
+    private final RequirementArchitectureViewService architectureViewService;
+    private final ArchitectureGapService gapService;
+    private final ArchitecturePatternService patternService;
+    private final ArchitectureRecommendationService recommendationService;
+    private final DiagramProjectionService diagramProjectionService;
+    private final MermaidExportService mermaidExportService;
+    private final RelationProposalService proposalService;
+
+    public ArchitectureReportService(RequirementArchitectureViewService architectureViewService,
+                                      ArchitectureGapService gapService,
+                                      ArchitecturePatternService patternService,
+                                      ArchitectureRecommendationService recommendationService,
+                                      DiagramProjectionService diagramProjectionService,
+                                      MermaidExportService mermaidExportService,
+<span class="fc" id="L40">                                      RelationProposalService proposalService) {</span>
+<span class="fc" id="L41">        this.architectureViewService = architectureViewService;</span>
+<span class="fc" id="L42">        this.gapService = gapService;</span>
+<span class="fc" id="L43">        this.patternService = patternService;</span>
+<span class="fc" id="L44">        this.recommendationService = recommendationService;</span>
+<span class="fc" id="L45">        this.diagramProjectionService = diagramProjectionService;</span>
+<span class="fc" id="L46">        this.mermaidExportService = mermaidExportService;</span>
+<span class="fc" id="L47">        this.proposalService = proposalService;</span>
+<span class="fc" id="L48">    }</span>
+
+    /**
+     * Generates a full architecture report by calling all existing analysis services.
+     *
+     * @param scores       nodeCode → score map (0–100)
+     * @param businessText the business requirement text
+     * @param minScore     minimum score threshold (0 → default 20)
+     * @return populated {@link ArchitectureReport}
+     */
+    @Transactional(readOnly = true)
+    public ArchitectureReport generateReport(Map&lt;String, Integer&gt; scores,
+                                              String businessText, int minScore) {
+<span class="fc" id="L61">        ArchitectureReport report = new ArchitectureReport();</span>
+<span class="fc" id="L62">        report.setBusinessText(businessText);</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        report.setScores(scores != null ? scores : Map.of());</span>
+<span class="fc" id="L64">        report.setGeneratedAt(Instant.now());</span>
+
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        int threshold = minScore &gt; 0 ? minScore : DEFAULT_MIN_SCORE;</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        Map&lt;String, Integer&gt; safeScores = scores != null ? scores : Map.of();</span>
+
+        // 1. Architecture View
+<span class="fc" id="L70">        RequirementArchitectureView archView = architectureViewService.build(</span>
+                safeScores, businessText, 20);
+<span class="fc" id="L72">        report.setArchitectureView(archView);</span>
+
+        // 2. Gap Analysis
+<span class="fc" id="L75">        GapAnalysisView gaps = gapService.analyze(safeScores, businessText, threshold);</span>
+<span class="fc" id="L76">        report.setGapAnalysis(gaps);</span>
+
+        // 3. Pattern Detection
+<span class="fc" id="L79">        PatternDetectionView patterns = patternService.detectForScores(safeScores, threshold);</span>
+<span class="fc" id="L80">        report.setPatternDetection(patterns);</span>
+
+        // 4. Recommendation
+<span class="fc" id="L83">        ArchitectureRecommendation recommendation = recommendationService.recommend(</span>
+                safeScores, businessText, threshold);
+<span class="fc" id="L85">        report.setRecommendation(recommendation);</span>
+
+        // 5. Pending Proposals
+<span class="fc" id="L88">        List&lt;RelationProposalDto&gt; pending = proposalService.getPendingProposals();</span>
+<span class="fc" id="L89">        report.setPendingProposals(pending);</span>
+
+        // 6. Mermaid Diagram
+<span class="pc bpc" id="L92" title="2 of 4 branches missed.">        String title = businessText != null &amp;&amp; businessText.length() &gt; 60</span>
+<span class="nc" id="L93">                ? businessText.substring(0, 57) + &quot;...&quot;</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">                : (businessText != null ? businessText : &quot;Report&quot;);</span>
+<span class="fc" id="L95">        DiagramModel diagram = diagramProjectionService.project(archView, title);</span>
+<span class="fc" id="L96">        String mermaid = mermaidExportService.export(diagram);</span>
+<span class="fc" id="L97">        report.setMermaidDiagram(mermaid);</span>
+
+<span class="fc" id="L99">        log.info(&quot;Report generated: {} anchors, {} gaps, {} patterns, {} recommendations&quot;,</span>
+<span class="fc" id="L100">                archView.getTotalAnchors(),</span>
+<span class="fc" id="L101">                gaps.getTotalGaps(),</span>
+<span class="fc" id="L102">                patterns.getMatchedPatterns().size(),</span>
+<span class="fc" id="L103">                recommendation.getConfirmedElements().size());</span>
+
+<span class="fc" id="L105">        return report;</span>
+    }
+
+    /**
+     * Renders an {@link ArchitectureReport} as Markdown text.
+     */
+    public String renderMarkdown(ArchitectureReport report) {
+<span class="fc" id="L112">        StringBuilder md = new StringBuilder();</span>
+
+<span class="fc" id="L114">        md.append(&quot;# Architecture Analysis Report\n\n&quot;);</span>
+
+        // Metadata
+<span class="fc" id="L117">        md.append(&quot;**Generated:** &quot;).append(formatTimestamp(report.getGeneratedAt())).append(&quot;  \n&quot;);</span>
+<span class="fc" id="L118">        md.append(&quot;**Business Requirement:** &quot;).append(</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                report.getBusinessText() != null ? report.getBusinessText() : &quot;N/A&quot;).append(&quot;\n\n&quot;);</span>
+
+        // Architecture Summary
+<span class="fc" id="L122">        md.append(&quot;## 1. Architecture Summary\n\n&quot;);</span>
+<span class="fc" id="L123">        RequirementArchitectureView view = report.getArchitectureView();</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        if (view != null) {</span>
+<span class="fc" id="L125">            md.append(&quot;| Metric | Value |\n|---|---|\n&quot;);</span>
+<span class="fc" id="L126">            md.append(&quot;| Anchors | &quot;).append(view.getTotalAnchors()).append(&quot; |\n&quot;);</span>
+<span class="fc" id="L127">            md.append(&quot;| Elements | &quot;).append(view.getTotalElements()).append(&quot; |\n&quot;);</span>
+<span class="fc" id="L128">            md.append(&quot;| Relationships | &quot;).append(view.getTotalRelationships()).append(&quot; |\n&quot;);</span>
+<span class="fc" id="L129">            md.append(&quot;| Max Hop Distance | &quot;).append(view.getMaxHopDistance()).append(&quot; |\n\n&quot;);</span>
+
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">            if (!view.getAnchors().isEmpty()) {</span>
+<span class="fc" id="L132">                md.append(&quot;### Anchor Nodes\n\n&quot;);</span>
+<span class="fc" id="L133">                md.append(&quot;| Node | Score | Reason |\n|---|---|---|\n&quot;);</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">                for (RequirementAnchor anchor : view.getAnchors()) {</span>
+<span class="fc" id="L135">                    md.append(&quot;| `&quot;).append(anchor.getNodeCode()).append(&quot;` | &quot;);</span>
+<span class="fc" id="L136">                    md.append(anchor.getDirectScore()).append(&quot;% | &quot;);</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                    md.append(anchor.getReason() != null ? anchor.getReason() : &quot;—&quot;).append(&quot; |\n&quot;);</span>
+<span class="fc" id="L138">                }</span>
+<span class="fc" id="L139">                md.append(&quot;\n&quot;);</span>
+            }
+        }
+
+        // Gap Analysis
+<span class="fc" id="L144">        md.append(&quot;## 2. Gap Analysis\n\n&quot;);</span>
+<span class="fc" id="L145">        GapAnalysisView gaps = report.getGapAnalysis();</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">        if (gaps != null) {</span>
+<span class="fc" id="L147">            md.append(&quot;**Total Gaps:** &quot;).append(gaps.getTotalGaps()).append(&quot;\n\n&quot;);</span>
+
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">            if (!gaps.getMissingRelations().isEmpty()) {</span>
+<span class="fc" id="L150">                md.append(&quot;### Missing Relations\n\n&quot;);</span>
+<span class="fc" id="L151">                md.append(&quot;| Source | Expected Type | Expected Target Root | Description |\n|---|---|---|---|\n&quot;);</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                for (MissingRelation mr : gaps.getMissingRelations()) {</span>
+<span class="fc" id="L153">                    md.append(&quot;| `&quot;).append(mr.getSourceNodeCode()).append(&quot;` | &quot;);</span>
+<span class="fc" id="L154">                    md.append(mr.getExpectedRelationType()).append(&quot; | &quot;);</span>
+<span class="fc" id="L155">                    md.append(mr.getExpectedTargetRoot()).append(&quot; | &quot;);</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">                    md.append(mr.getDescription() != null ? mr.getDescription() : &quot;—&quot;).append(&quot; |\n&quot;);</span>
+<span class="fc" id="L157">                }</span>
+<span class="fc" id="L158">                md.append(&quot;\n&quot;);</span>
+            }
+
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">            if (!gaps.getIncompletePatterns().isEmpty()) {</span>
+<span class="fc" id="L162">                md.append(&quot;### Incomplete Patterns\n\n&quot;);</span>
+<span class="fc" id="L163">                md.append(&quot;| Node | Pattern | Missing |\n|---|---|---|\n&quot;);</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                for (IncompletePattern ip : gaps.getIncompletePatterns()) {</span>
+<span class="fc" id="L165">                    md.append(&quot;| `&quot;).append(ip.getNodeCode()).append(&quot;` | &quot;);</span>
+<span class="fc" id="L166">                    md.append(ip.getPatternDescription()).append(&quot; | &quot;);</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">                    md.append(ip.getMissingElement() != null ? ip.getMissingElement() : &quot;—&quot;).append(&quot; |\n&quot;);</span>
+<span class="fc" id="L168">                }</span>
+<span class="fc" id="L169">                md.append(&quot;\n&quot;);</span>
+            }
+        }
+
+        // Pattern Detection
+<span class="fc" id="L174">        md.append(&quot;## 3. Detected Patterns\n\n&quot;);</span>
+<span class="fc" id="L175">        PatternDetectionView patterns = report.getPatternDetection();</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">        if (patterns != null) {</span>
+<span class="fc" id="L177">            md.append(&quot;**Pattern Coverage:** &quot;).append(</span>
+<span class="fc" id="L178">                    String.format(&quot;%.1f%%&quot;, patterns.getPatternCoverage() * 100)).append(&quot;\n\n&quot;);</span>
+
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">            if (!patterns.getMatchedPatterns().isEmpty()) {</span>
+<span class="nc" id="L181">                md.append(&quot;### Matched Patterns\n\n&quot;);</span>
+<span class="nc bnc" id="L182" title="All 2 branches missed.">                for (DetectedPattern dp : patterns.getMatchedPatterns()) {</span>
+<span class="nc" id="L183">                    md.append(&quot;- **&quot;).append(dp.getPatternName()).append(&quot;** — &quot;);</span>
+<span class="nc" id="L184">                    md.append(String.format(&quot;%.0f%%&quot;, dp.getCompleteness() * 100)).append(&quot; complete&quot;);</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">                    if (!dp.getPresentSteps().isEmpty()) {</span>
+<span class="nc" id="L186">                        md.append(&quot; (&quot;).append(String.join(&quot;, &quot;, dp.getPresentSteps())).append(&quot;)&quot;);</span>
+                    }
+<span class="nc" id="L188">                    md.append(&quot;\n&quot;);</span>
+<span class="nc" id="L189">                }</span>
+<span class="nc" id="L190">                md.append(&quot;\n&quot;);</span>
+            }
+
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">            if (!patterns.getIncompletePatterns().isEmpty()) {</span>
+<span class="nc" id="L194">                md.append(&quot;### Incomplete Patterns\n\n&quot;);</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">                for (DetectedPattern dp : patterns.getIncompletePatterns()) {</span>
+<span class="nc" id="L196">                    md.append(&quot;- **&quot;).append(dp.getPatternName()).append(&quot;** — &quot;);</span>
+<span class="nc" id="L197">                    md.append(String.format(&quot;%.0f%%&quot;, dp.getCompleteness() * 100)).append(&quot; complete, missing: &quot;);</span>
+<span class="nc" id="L198">                    md.append(String.join(&quot;, &quot;, dp.getMissingSteps()));</span>
+<span class="nc" id="L199">                    md.append(&quot;\n&quot;);</span>
+<span class="nc" id="L200">                }</span>
+<span class="nc" id="L201">                md.append(&quot;\n&quot;);</span>
+            }
+        }
+
+        // Recommendations
+<span class="fc" id="L206">        md.append(&quot;## 4. Recommendations\n\n&quot;);</span>
+<span class="fc" id="L207">        ArchitectureRecommendation rec = report.getRecommendation();</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">        if (rec != null) {</span>
+<span class="fc" id="L209">            md.append(&quot;**Confidence:** &quot;).append(String.format(&quot;%.1f%%&quot;, rec.getConfidence())).append(&quot;\n\n&quot;);</span>
+
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">            if (!rec.getConfirmedElements().isEmpty()) {</span>
+<span class="fc" id="L212">                md.append(&quot;### Confirmed Elements\n\n&quot;);</span>
+<span class="fc" id="L213">                md.append(&quot;| Node | Title | Root | Score | Reasoning |\n|---|---|---|---|---|\n&quot;);</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">                for (RecommendedElement el : rec.getConfirmedElements()) {</span>
+<span class="fc" id="L215">                    md.append(&quot;| `&quot;).append(el.getNodeCode()).append(&quot;` | &quot;);</span>
+<span class="fc" id="L216">                    md.append(el.getTitle()).append(&quot; | &quot;);</span>
+<span class="fc" id="L217">                    md.append(el.getTaxonomyRoot()).append(&quot; | &quot;);</span>
+<span class="fc" id="L218">                    md.append(el.getScore()).append(&quot;% | &quot;);</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">                    md.append(el.getReasoning() != null ? el.getReasoning() : &quot;—&quot;).append(&quot; |\n&quot;);</span>
+<span class="fc" id="L220">                }</span>
+<span class="fc" id="L221">                md.append(&quot;\n&quot;);</span>
+            }
+
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">            if (!rec.getProposedElements().isEmpty()) {</span>
+<span class="fc" id="L225">                md.append(&quot;### Proposed Elements\n\n&quot;);</span>
+<span class="fc" id="L226">                md.append(&quot;| Node | Title | Root | Reasoning |\n|---|---|---|---|\n&quot;);</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">                for (RecommendedElement el : rec.getProposedElements()) {</span>
+<span class="fc" id="L228">                    md.append(&quot;| `&quot;).append(el.getNodeCode()).append(&quot;` | &quot;);</span>
+<span class="fc" id="L229">                    md.append(el.getTitle()).append(&quot; | &quot;);</span>
+<span class="fc" id="L230">                    md.append(el.getTaxonomyRoot()).append(&quot; | &quot;);</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">                    md.append(el.getReasoning() != null ? el.getReasoning() : &quot;—&quot;).append(&quot; |\n&quot;);</span>
+<span class="fc" id="L232">                }</span>
+<span class="fc" id="L233">                md.append(&quot;\n&quot;);</span>
+            }
+
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">            if (!rec.getSuggestedRelations().isEmpty()) {</span>
+<span class="fc" id="L237">                md.append(&quot;### Suggested Relations\n\n&quot;);</span>
+<span class="fc" id="L238">                md.append(&quot;| Source | → | Target | Type | Reasoning |\n|---|---|---|---|---|\n&quot;);</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">                for (SuggestedRelation sr : rec.getSuggestedRelations()) {</span>
+<span class="fc" id="L240">                    md.append(&quot;| `&quot;).append(sr.getSourceCode()).append(&quot;` | → | &quot;);</span>
+<span class="fc" id="L241">                    md.append(&quot;`&quot;).append(sr.getTargetCode()).append(&quot;` | &quot;);</span>
+<span class="fc" id="L242">                    md.append(sr.getRelationType()).append(&quot; | &quot;);</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">                    md.append(sr.getReasoning() != null ? sr.getReasoning() : &quot;—&quot;).append(&quot; |\n&quot;);</span>
+<span class="fc" id="L244">                }</span>
+<span class="fc" id="L245">                md.append(&quot;\n&quot;);</span>
+            }
+        }
+
+        // Pending Proposals
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">        if (!report.getPendingProposals().isEmpty()) {</span>
+<span class="nc" id="L251">            md.append(&quot;## 5. Pending Relation Proposals\n\n&quot;);</span>
+<span class="nc" id="L252">            md.append(&quot;| Source | Target | Type | Confidence | Status |\n|---|---|---|---|---|\n&quot;);</span>
+<span class="nc bnc" id="L253" title="All 2 branches missed.">            for (RelationProposalDto p : report.getPendingProposals()) {</span>
+<span class="nc" id="L254">                md.append(&quot;| `&quot;).append(p.getSourceCode()).append(&quot;` | &quot;);</span>
+<span class="nc" id="L255">                md.append(&quot;`&quot;).append(p.getTargetCode()).append(&quot;` | &quot;);</span>
+<span class="nc" id="L256">                md.append(p.getRelationType()).append(&quot; | &quot;);</span>
+<span class="nc" id="L257">                md.append(String.format(&quot;%.0f%%&quot;, p.getConfidence() * 100)).append(&quot; | &quot;);</span>
+<span class="nc" id="L258">                md.append(p.getStatus()).append(&quot; |\n&quot;);</span>
+<span class="nc" id="L259">            }</span>
+<span class="nc" id="L260">            md.append(&quot;\n&quot;);</span>
+        }
+
+        // Mermaid Diagram
+<span class="pc bpc" id="L264" title="2 of 4 branches missed.">        if (report.getMermaidDiagram() != null &amp;&amp; !report.getMermaidDiagram().isBlank()) {</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">            md.append(&quot;## &quot;).append(report.getPendingProposals().isEmpty() ? &quot;5&quot; : &quot;6&quot;)</span>
+<span class="fc" id="L266">              .append(&quot;. Architecture Diagram\n\n&quot;);</span>
+<span class="fc" id="L267">            md.append(&quot;```mermaid\n&quot;);</span>
+<span class="fc" id="L268">            md.append(report.getMermaidDiagram());</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">            if (!report.getMermaidDiagram().endsWith(&quot;\n&quot;)) {</span>
+<span class="nc" id="L270">                md.append(&quot;\n&quot;);</span>
+            }
+<span class="fc" id="L272">            md.append(&quot;```\n\n&quot;);</span>
+        }
+
+<span class="fc" id="L275">        md.append(&quot;---\n*Generated by Taxonomy Architecture Analyzer*\n&quot;);</span>
+
+<span class="fc" id="L277">        return md.toString();</span>
+    }
+
+    /**
+     * Renders an {@link ArchitectureReport} as a self-contained HTML document.
+     */
+    public String renderHtml(ArchitectureReport report) {
+<span class="fc" id="L284">        String markdown = renderMarkdown(report);</span>
+<span class="fc" id="L285">        StringBuilder html = new StringBuilder();</span>
+
+<span class="fc" id="L287">        html.append(&quot;&lt;!DOCTYPE html&gt;\n&lt;html lang=\&quot;en\&quot;&gt;\n&lt;head&gt;\n&quot;);</span>
+<span class="fc" id="L288">        html.append(&quot;  &lt;meta charset=\&quot;UTF-8\&quot;&gt;\n&quot;);</span>
+<span class="fc" id="L289">        html.append(&quot;  &lt;meta name=\&quot;viewport\&quot; content=\&quot;width=device-width, initial-scale=1.0\&quot;&gt;\n&quot;);</span>
+<span class="fc" id="L290">        html.append(&quot;  &lt;title&gt;Architecture Analysis Report&lt;/title&gt;\n&quot;);</span>
+<span class="fc" id="L291">        html.append(&quot;  &lt;style&gt;\n&quot;);</span>
+<span class="fc" id="L292">        html.append(&quot;    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; &quot;);</span>
+<span class="fc" id="L293">        html.append(&quot;max-width: 960px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; color: #333; }\n&quot;);</span>
+<span class="fc" id="L294">        html.append(&quot;    h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 0.5rem; }\n&quot;);</span>
+<span class="fc" id="L295">        html.append(&quot;    h2 { color: #34495e; margin-top: 2rem; }\n&quot;);</span>
+<span class="fc" id="L296">        html.append(&quot;    h3 { color: #7f8c8d; }\n&quot;);</span>
+<span class="fc" id="L297">        html.append(&quot;    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }\n&quot;);</span>
+<span class="fc" id="L298">        html.append(&quot;    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }\n&quot;);</span>
+<span class="fc" id="L299">        html.append(&quot;    th { background-color: #f8f9fa; font-weight: 600; }\n&quot;);</span>
+<span class="fc" id="L300">        html.append(&quot;    tr:nth-child(even) { background-color: #f2f2f2; }\n&quot;);</span>
+<span class="fc" id="L301">        html.append(&quot;    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }\n&quot;);</span>
+<span class="fc" id="L302">        html.append(&quot;    pre { background: #f8f9fa; padding: 1rem; border-radius: 4px; overflow-x: auto; }\n&quot;);</span>
+<span class="fc" id="L303">        html.append(&quot;    .mermaid { background: #fff; padding: 1rem; border: 1px solid #eee; border-radius: 4px; }\n&quot;);</span>
+<span class="fc" id="L304">        html.append(&quot;    hr { border: none; border-top: 1px solid #eee; margin: 2rem 0; }\n&quot;);</span>
+<span class="fc" id="L305">        html.append(&quot;    strong { color: #2c3e50; }\n&quot;);</span>
+<span class="fc" id="L306">        html.append(&quot;  &lt;/style&gt;\n&quot;);</span>
+<span class="fc" id="L307">        html.append(&quot;&lt;/head&gt;\n&lt;body&gt;\n&quot;);</span>
+
+        // Convert markdown to simple HTML
+<span class="fc" id="L310">        html.append(markdownToHtml(markdown));</span>
+
+<span class="fc" id="L312">        html.append(&quot;\n&lt;/body&gt;\n&lt;/html&gt;\n&quot;);</span>
+
+<span class="fc" id="L314">        return html.toString();</span>
+    }
+
+    /**
+     * Renders an {@link ArchitectureReport} as a DOCX byte array.
+     * Uses Apache POI which is already a project dependency.
+     */
+    public byte[] renderDocx(ArchitectureReport report) {
+<span class="fc" id="L322">        String markdown = renderMarkdown(report);</span>
+
+<span class="fc" id="L324">        try (org.apache.poi.xwpf.usermodel.XWPFDocument doc =</span>
+                     new org.apache.poi.xwpf.usermodel.XWPFDocument()) {
+
+            // Title
+<span class="fc" id="L328">            org.apache.poi.xwpf.usermodel.XWPFParagraph title = doc.createParagraph();</span>
+<span class="fc" id="L329">            title.setStyle(&quot;Title&quot;);</span>
+<span class="fc" id="L330">            org.apache.poi.xwpf.usermodel.XWPFRun titleRun = title.createRun();</span>
+<span class="fc" id="L331">            titleRun.setText(&quot;Architecture Analysis Report&quot;);</span>
+<span class="fc" id="L332">            titleRun.setBold(true);</span>
+<span class="fc" id="L333">            titleRun.setFontSize(18);</span>
+
+            // Parse markdown lines and add as paragraphs
+<span class="fc bfc" id="L336" title="All 2 branches covered.">            for (String line : markdown.split(&quot;\n&quot;)) {</span>
+<span class="pc bpc" id="L337" title="1 of 4 branches missed.">                if (line.startsWith(&quot;# &quot;) &amp;&amp; !line.startsWith(&quot;# Architecture&quot;)) {</span>
+                    // Skip duplicate title
+<span class="nc" id="L339">                    continue;</span>
+                }
+
+<span class="fc" id="L342">                org.apache.poi.xwpf.usermodel.XWPFParagraph para = doc.createParagraph();</span>
+<span class="fc" id="L343">                org.apache.poi.xwpf.usermodel.XWPFRun run = para.createRun();</span>
+
+<span class="fc bfc" id="L345" title="All 2 branches covered.">                if (line.startsWith(&quot;## &quot;)) {</span>
+<span class="fc" id="L346">                    run.setText(line.substring(3));</span>
+<span class="fc" id="L347">                    run.setBold(true);</span>
+<span class="fc" id="L348">                    run.setFontSize(14);</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">                } else if (line.startsWith(&quot;### &quot;)) {</span>
+<span class="fc" id="L350">                    run.setText(line.substring(4));</span>
+<span class="fc" id="L351">                    run.setBold(true);</span>
+<span class="fc" id="L352">                    run.setFontSize(12);</span>
+<span class="pc bpc" id="L353" title="1 of 4 branches missed.">                } else if (line.startsWith(&quot;**&quot;) &amp;&amp; line.contains(&quot;:**&quot;)) {</span>
+                    // Bold label
+<span class="fc" id="L355">                    String text = line.replaceAll(&quot;\\*\\*&quot;, &quot;&quot;);</span>
+<span class="fc" id="L356">                    run.setText(text);</span>
+<span class="fc" id="L357">                    run.setBold(true);</span>
+<span class="pc bpc" id="L358" title="1 of 4 branches missed.">                } else if (line.startsWith(&quot;| &quot;) &amp;&amp; !line.startsWith(&quot;|---&quot;)) {</span>
+                    // Table row rendered as tab-separated line
+<span class="fc" id="L360">                    String text = line.replaceAll(&quot;\\|&quot;, &quot;\t&quot;).replaceAll(&quot;`&quot;, &quot;&quot;).trim();</span>
+<span class="fc" id="L361">                    run.setText(text);</span>
+<span class="fc" id="L362">                    run.setFontSize(9);</span>
+<span class="pc bpc" id="L363" title="1 of 2 branches missed.">                } else if (line.startsWith(&quot;- **&quot;)) {</span>
+<span class="nc" id="L364">                    String text = line.replaceAll(&quot;\\*\\*&quot;, &quot;&quot;).substring(2);</span>
+<span class="nc" id="L365">                    run.setText(text);</span>
+<span class="pc bfc" id="L366" title="All 6 branches covered.">                } else if (line.startsWith(&quot;```&quot;) || line.startsWith(&quot;---&quot;) || line.startsWith(&quot;|---&quot;)) {</span>
+                    // Skip formatting lines
+<span class="fc" id="L368">                    continue;</span>
+                } else {
+<span class="fc" id="L370">                    run.setText(line.replaceAll(&quot;`&quot;, &quot;&quot;).replaceAll(&quot;\\*&quot;, &quot;&quot;));</span>
+                }
+            }
+
+<span class="fc" id="L374">            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();</span>
+<span class="fc" id="L375">            doc.write(baos);</span>
+<span class="fc" id="L376">            return baos.toByteArray();</span>
+<span class="nc" id="L377">        } catch (Exception e) {</span>
+<span class="nc" id="L378">            log.error(&quot;DOCX generation failed: {}&quot;, e.getMessage(), e);</span>
+<span class="nc" id="L379">            throw new RuntimeException(&quot;Failed to generate DOCX report&quot;, e);</span>
+        }
+    }
+
+    // ── Internal helpers ──────────────────────────────────────────────────────
+
+    private String formatTimestamp(Instant instant) {
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">        if (instant == null) return &quot;N/A&quot;;</span>
+<span class="fc" id="L387">        return DateTimeFormatter.ofPattern(&quot;yyyy-MM-dd HH:mm:ss 'UTC'&quot;)</span>
+<span class="fc" id="L388">                .withZone(ZoneOffset.UTC)</span>
+<span class="fc" id="L389">                .format(instant);</span>
+    }
+
+    /**
+     * Simple markdown-to-HTML converter for report rendering.
+     * Handles headings, tables, bold text, code, and lists.
+     */
+    String markdownToHtml(String markdown) {
+<span class="fc" id="L397">        StringBuilder html = new StringBuilder();</span>
+<span class="fc" id="L398">        boolean inTable = false;</span>
+<span class="fc" id="L399">        boolean inCodeBlock = false;</span>
+
+<span class="fc bfc" id="L401" title="All 2 branches covered.">        for (String line : markdown.split(&quot;\n&quot;)) {</span>
+<span class="fc bfc" id="L402" title="All 2 branches covered.">            if (line.startsWith(&quot;```&quot;)) {</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">                if (inCodeBlock) {</span>
+<span class="fc" id="L404">                    html.append(&quot;&lt;/pre&gt;\n&quot;);</span>
+<span class="fc" id="L405">                    inCodeBlock = false;</span>
+                } else {
+<span class="pc bpc" id="L407" title="1 of 2 branches missed.">                    String lang = line.length() &gt; 3 ? line.substring(3) : &quot;&quot;;</span>
+<span class="fc" id="L408">                    html.append(&quot;&lt;pre class=\&quot;&quot;).append(escapeHtml(lang)).append(&quot;\&quot;&gt;\n&quot;);</span>
+<span class="fc" id="L409">                    inCodeBlock = true;</span>
+                }
+<span class="fc" id="L411">                continue;</span>
+            }
+<span class="fc bfc" id="L413" title="All 2 branches covered.">            if (inCodeBlock) {</span>
+<span class="fc" id="L414">                html.append(escapeHtml(line)).append(&quot;\n&quot;);</span>
+<span class="fc" id="L415">                continue;</span>
+            }
+
+            // Close table if no longer in table row
+<span class="fc bfc" id="L419" title="All 4 branches covered.">            if (inTable &amp;&amp; !line.startsWith(&quot;|&quot;)) {</span>
+<span class="fc" id="L420">                html.append(&quot;&lt;/tbody&gt;&lt;/table&gt;\n&quot;);</span>
+<span class="fc" id="L421">                inTable = false;</span>
+            }
+
+<span class="fc bfc" id="L424" title="All 2 branches covered.">            if (line.startsWith(&quot;# &quot;)) {</span>
+<span class="fc" id="L425">                html.append(&quot;&lt;h1&gt;&quot;).append(inlineFormat(line.substring(2))).append(&quot;&lt;/h1&gt;\n&quot;);</span>
+<span class="fc bfc" id="L426" title="All 2 branches covered.">            } else if (line.startsWith(&quot;## &quot;)) {</span>
+<span class="fc" id="L427">                html.append(&quot;&lt;h2&gt;&quot;).append(inlineFormat(line.substring(3))).append(&quot;&lt;/h2&gt;\n&quot;);</span>
+<span class="fc bfc" id="L428" title="All 2 branches covered.">            } else if (line.startsWith(&quot;### &quot;)) {</span>
+<span class="fc" id="L429">                html.append(&quot;&lt;h3&gt;&quot;).append(inlineFormat(line.substring(4))).append(&quot;&lt;/h3&gt;\n&quot;);</span>
+<span class="pc bpc" id="L430" title="1 of 4 branches missed.">            } else if (line.startsWith(&quot;|---&quot;) || line.startsWith(&quot;| ---&quot;)) {</span>
+                // Skip separator row
+<span class="fc bfc" id="L432" title="All 2 branches covered.">            } else if (line.startsWith(&quot;| &quot;)) {</span>
+<span class="fc" id="L433">                String[] cells = line.split(&quot;\\|&quot;);</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">                if (!inTable) {</span>
+<span class="fc" id="L435">                    html.append(&quot;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&quot;);</span>
+<span class="fc bfc" id="L436" title="All 2 branches covered.">                    for (int i = 1; i &lt; cells.length; i++) {</span>
+<span class="fc" id="L437">                        html.append(&quot;&lt;th&gt;&quot;).append(inlineFormat(cells[i].trim())).append(&quot;&lt;/th&gt;&quot;);</span>
+                    }
+<span class="fc" id="L439">                    html.append(&quot;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;\n&quot;);</span>
+<span class="fc" id="L440">                    inTable = true;</span>
+                } else {
+<span class="fc" id="L442">                    html.append(&quot;&lt;tr&gt;&quot;);</span>
+<span class="fc bfc" id="L443" title="All 2 branches covered.">                    for (int i = 1; i &lt; cells.length; i++) {</span>
+<span class="fc" id="L444">                        html.append(&quot;&lt;td&gt;&quot;).append(inlineFormat(cells[i].trim())).append(&quot;&lt;/td&gt;&quot;);</span>
+                    }
+<span class="fc" id="L446">                    html.append(&quot;&lt;/tr&gt;\n&quot;);</span>
+                }
+<span class="pc bpc" id="L448" title="1 of 2 branches missed.">            } else if (line.startsWith(&quot;- &quot;)) {</span>
+<span class="nc" id="L449">                html.append(&quot;&lt;li&gt;&quot;).append(inlineFormat(line.substring(2))).append(&quot;&lt;/li&gt;\n&quot;);</span>
+<span class="fc bfc" id="L450" title="All 2 branches covered.">            } else if (line.startsWith(&quot;---&quot;)) {</span>
+<span class="fc" id="L451">                html.append(&quot;&lt;hr&gt;\n&quot;);</span>
+<span class="fc bfc" id="L452" title="All 4 branches covered.">            } else if (line.startsWith(&quot;*&quot;) &amp;&amp; line.endsWith(&quot;*&quot;)) {</span>
+<span class="fc" id="L453">                html.append(&quot;&lt;p&gt;&lt;em&gt;&quot;).append(inlineFormat(line.substring(1, line.length() - 1)))</span>
+<span class="fc" id="L454">                    .append(&quot;&lt;/em&gt;&lt;/p&gt;\n&quot;);</span>
+<span class="fc bfc" id="L455" title="All 2 branches covered.">            } else if (!line.isBlank()) {</span>
+<span class="fc" id="L456">                html.append(&quot;&lt;p&gt;&quot;).append(inlineFormat(line)).append(&quot;&lt;/p&gt;\n&quot;);</span>
+            }
+        }
+
+<span class="pc bpc" id="L460" title="1 of 2 branches missed.">        if (inTable) {</span>
+<span class="nc" id="L461">            html.append(&quot;&lt;/tbody&gt;&lt;/table&gt;\n&quot;);</span>
+        }
+<span class="pc bpc" id="L463" title="1 of 2 branches missed.">        if (inCodeBlock) {</span>
+<span class="nc" id="L464">            html.append(&quot;&lt;/pre&gt;\n&quot;);</span>
+        }
+
+<span class="fc" id="L467">        return html.toString();</span>
+    }
+
+    private String inlineFormat(String text) {
+        // Bold
+<span class="fc" id="L472">        text = text.replaceAll(&quot;\\*\\*([^*]+)\\*\\*&quot;, &quot;&lt;strong&gt;$1&lt;/strong&gt;&quot;);</span>
+        // Inline code
+<span class="fc" id="L474">        text = text.replaceAll(&quot;`([^`]+)`&quot;, &quot;&lt;code&gt;$1&lt;/code&gt;&quot;);</span>
+<span class="fc" id="L475">        return text;</span>
+    }
+
+    private String escapeHtml(String text) {
+<span class="pc bpc" id="L479" title="1 of 2 branches missed.">        if (text == null) return &quot;&quot;;</span>
+<span class="fc" id="L480">        return text.replace(&quot;&amp;&quot;, &quot;&amp;amp;&quot;)</span>
+<span class="fc" id="L481">                   .replace(&quot;&lt;&quot;, &quot;&amp;lt;&quot;)</span>
+<span class="fc" id="L482">                   .replace(&quot;&gt;&quot;, &quot;&amp;gt;&quot;)</span>
+<span class="fc" id="L483">                   .replace(&quot;\&quot;&quot;, &quot;&amp;quot;&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -20,11 +20,15 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,QualityApiController
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GapAnalysisApiController,0,24,0,2,0,8,0,3,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RecommendationApiController.RecommendationRequest,0,12,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ApiController.new AnalysisEventCallback() {...},55,106,2,2,12,21,4,5,2,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ReportApiController,9,159,6,10,3,32,6,7,0,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ExplanationTraceApiController.ExplainRequest,0,15,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,TaxonomyController,0,19,0,0,0,6,0,2,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ProposalApiController,134,185,23,19,34,51,16,15,1,9
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,PatternDetectionApiController.PatternDetectionRequest,0,9,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ReportApiController.ReportRequest,0,12,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,PatternDetectionApiController,1,29,1,1,0,9,1,3,0,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ArchiMateImportController,20,25,0,2,5,8,0,4,0,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ExplanationTraceApiController,2,43,2,2,0,14,2,3,0,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,CoverageApiController,1,53,1,1,0,15,1,7,0,7
 Taxonomy Architecture Analyzer,com.nato.taxonomy.archimate,ArchiMateViewConnection,0,15,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.archimate,ArchiMateModel,0,18,0,0,0,1,0,1,0,1
@@ -35,12 +39,13 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.archimate,ArchiMateElement,0,15
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,TopRejectedProposal,24,0,0,0,1,0,1,0,1,0
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,TaxonomyDiscrepancy,0,12,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,CoverageGap,19,27,0,0,5,10,5,5,5,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,ExplanationTrace,0,60,0,0,0,16,0,13,0,13
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,ImpactRelationship,15,30,0,0,5,8,5,8,5,8
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,SavedAnalysis,0,48,0,0,0,14,0,13,0,13
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,EnrichedChangeImpactView,4,94,0,0,1,25,1,20,1,20
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,ArchitectureRecommendation,8,69,0,0,2,18,2,13,2,13
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RelationTypeMetrics,18,0,0,0,1,0,1,0,1,0
-Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RecommendedElement,23,33,0,0,6,12,6,6,6,6
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RecommendedElement,23,40,0,0,6,14,6,8,6,8
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,PatternDetectionView,4,49,0,0,1,13,1,10,1,10
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,CoverageStatistics,0,27,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,MissingRelation,23,33,0,0,6,12,6,6,6,6
@@ -52,9 +57,11 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RequirementElementView,0,52
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,DetectedPattern,44,42,0,0,8,13,8,4,8,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RequirementRelationshipView,3,49,0,0,1,14,1,14,1,14
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,TaxonomyRelationDto,0,73,0,0,0,21,0,21,0,21
-Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RequirementAnchor,18,18,0,0,5,7,5,3,5,3
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,ExplanationTrace.ScoreComponent,15,21,0,0,4,8,4,4,4,4
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RequirementAnchor,15,21,0,0,4,8,4,4,4,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,AiStatusResponse,0,15,0,0,0,6,0,3,0,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,ArchiMateImportResult,0,43,0,0,0,12,0,11,0,11
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,ArchitectureReport,0,74,0,0,0,22,0,19,0,19
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RelationHypothesisDto,31,45,0,0,8,16,8,8,8,8
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,TaxonomyNodeDto,0,164,0,0,0,46,0,43,0,43
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,EnrichedImpactElement,12,52,0,0,4,14,4,13,4,13
@@ -105,6 +112,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationTraversalServic
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,GraphSearchService,318,22,19,1,68,7,20,3,10,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RequirementCoverageService,3,247,4,8,0,47,4,19,0,17
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService,2227,1039,273,95,458,222,199,38,21,23
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ExplanationTraceService,65,391,23,27,8,72,21,13,1,8
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,DiagramProjectionService,1,258,3,21,1,46,3,12,0,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationValidationService.ValidationResult,0,35,0,0,0,10,0,6,0,6
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateXmlImporter,105,547,31,45,25,121,27,21,1,9
@@ -114,11 +122,12 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.service,EnrichedImpactService,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureRecommendationService,21,359,7,23,6,80,7,13,0,5
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,AppInitializationStateService.StateSnapshot,0,15,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationCompatibilityMatrix,0,163,1,13,0,34,1,12,0,6
-Taxonomy Architecture Analyzer,com.nato.taxonomy.service,MermaidExportService,14,314,10,21,5,55,10,15,0,7
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,MermaidExportService,13,315,8,23,4,56,8,17,0,7
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureGraphQueryServiceImpl.TraversalResult,0,15,0,0,0,6,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,PromptTemplateService,46,268,6,12,13,59,6,17,1,13
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LocalEmbeddingService,395,138,22,14,84,36,24,13,8,11
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateXmlImporter.ParsedElement,0,15,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureReportService,266,1325,46,110,38,255,42,46,0,10
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitecturePatternService.PatternStep,0,20,0,0,0,2,0,2,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,TaxonomyRelationService,44,231,2,6,6,53,3,13,2,10
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
@@ -135,7 +144,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateXmlExporter,3,
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateXmlImporter.ParsedRelationship,0,15,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureGraphQueryServiceImpl.Direction,0,21,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmRateLimitException,9,0,0,0,4,0,2,0,2,0
-Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RequirementArchitectureViewService,118,665,19,59,24,140,15,34,1,9
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RequirementArchitectureViewService,118,665,18,60,24,140,14,35,1,9
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationReviewService,94,162,6,2,20,35,4,8,0,8
 Taxonomy Architecture Analyzer,com.nato.taxonomy.search,RelationEmbeddingBinder.Bridge,21,83,9,9,6,18,8,4,0,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.search,RelationEmbeddingBinder,0,37,0,0,0,12,0,3,0,3

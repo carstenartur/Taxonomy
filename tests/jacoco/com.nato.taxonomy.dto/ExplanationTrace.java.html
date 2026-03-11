@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExplanationTrace.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dto</a> &gt; <span class="el_source">ExplanationTrace.java</span></div><h1>ExplanationTrace.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dto;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * A structured trace explaining why a specific taxonomy element was
+ * selected or proposed during architecture analysis.
+ *
+ * &lt;p&gt;Unlike free-text reasoning strings, this DTO provides machine-readable
+ * explanation components so the UI can present a detailed score breakdown.&lt;/p&gt;
+ */
+public class ExplanationTrace {
+
+<span class="fc" id="L15">    private List&lt;String&gt; matchedKeywords = new ArrayList&lt;&gt;();</span>
+    private double semanticScore;
+<span class="fc" id="L17">    private List&lt;String&gt; relationPath = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L18">    private List&lt;ScoreComponent&gt; scoreBreakdown = new ArrayList&lt;&gt;();</span>
+    private String taxonomyRoot;
+    private String summaryText;
+
+<span class="fc" id="L22">    public ExplanationTrace() {}</span>
+
+    // ── Getters / Setters ─────────────────────────────────────────────────────
+
+<span class="fc" id="L26">    public List&lt;String&gt; getMatchedKeywords() { return matchedKeywords; }</span>
+<span class="fc" id="L27">    public void setMatchedKeywords(List&lt;String&gt; matchedKeywords) { this.matchedKeywords = matchedKeywords; }</span>
+
+<span class="fc" id="L29">    public double getSemanticScore() { return semanticScore; }</span>
+<span class="fc" id="L30">    public void setSemanticScore(double semanticScore) { this.semanticScore = semanticScore; }</span>
+
+<span class="fc" id="L32">    public List&lt;String&gt; getRelationPath() { return relationPath; }</span>
+<span class="fc" id="L33">    public void setRelationPath(List&lt;String&gt; relationPath) { this.relationPath = relationPath; }</span>
+
+<span class="fc" id="L35">    public List&lt;ScoreComponent&gt; getScoreBreakdown() { return scoreBreakdown; }</span>
+<span class="fc" id="L36">    public void setScoreBreakdown(List&lt;ScoreComponent&gt; scoreBreakdown) { this.scoreBreakdown = scoreBreakdown; }</span>
+
+<span class="fc" id="L38">    public String getTaxonomyRoot() { return taxonomyRoot; }</span>
+<span class="fc" id="L39">    public void setTaxonomyRoot(String taxonomyRoot) { this.taxonomyRoot = taxonomyRoot; }</span>
+
+<span class="fc" id="L41">    public String getSummaryText() { return summaryText; }</span>
+<span class="fc" id="L42">    public void setSummaryText(String summaryText) { this.summaryText = summaryText; }</span>
+
+    /**
+     * A single component contributing to the overall score.
+     */
+    public static class ScoreComponent {
+        private String factor;
+        private double weight;
+        private double value;
+
+<span class="nc" id="L52">        public ScoreComponent() {}</span>
+
+<span class="fc" id="L54">        public ScoreComponent(String factor, double weight, double value) {</span>
+<span class="fc" id="L55">            this.factor = factor;</span>
+<span class="fc" id="L56">            this.weight = weight;</span>
+<span class="fc" id="L57">            this.value = value;</span>
+<span class="fc" id="L58">        }</span>
+
+<span class="fc" id="L60">        public String getFactor() { return factor; }</span>
+<span class="nc" id="L61">        public void setFactor(String factor) { this.factor = factor; }</span>
+
+<span class="fc" id="L63">        public double getWeight() { return weight; }</span>
+<span class="nc" id="L64">        public void setWeight(double weight) { this.weight = weight; }</span>
+
+<span class="fc" id="L66">        public double getValue() { return value; }</span>
+<span class="nc" id="L67">        public void setValue(double value) { this.value = value; }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

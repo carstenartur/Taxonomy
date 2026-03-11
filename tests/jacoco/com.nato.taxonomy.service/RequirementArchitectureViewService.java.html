@@ -236,7 +236,7 @@ public class RequirementArchitectureViewService {
 
             // Look up title and taxonomy sheet from the database
 <span class="fc" id="L238">            Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
-<span class="pc bpc" id="L239" title="1 of 2 branches missed.">            if (nodeOpt.isPresent()) {</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">            if (nodeOpt.isPresent()) {</span>
 <span class="fc" id="L240">                TaxonomyNode node = nodeOpt.get();</span>
 <span class="fc" id="L241">                element.setTitle(node.getNameEn());</span>
 <span class="fc" id="L242">                element.setTaxonomySheet(node.getTaxonomyRoot());</span>

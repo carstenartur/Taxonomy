@@ -101,7 +101,7 @@ import java.util.stream.Collectors;
         // Apply classes to nodes
 <span class="fc bfc" id="L102" title="All 2 branches covered.">        for (DiagramNode node : model.nodes()) {</span>
 <span class="fc" id="L103">            String cls = LAYER_STYLE.getOrDefault(node.type(), &quot;&quot;);</span>
-<span class="pc bpc" id="L104" title="1 of 2 branches missed.">            if (!cls.isEmpty()) {</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">            if (!cls.isEmpty()) {</span>
 <span class="fc" id="L105">                sb.append(&quot;    class &quot;).append(sanitizeId(node.id())).append(&quot; &quot;).append(cls).append('\n');</span>
             }
 <span class="fc" id="L107">        }</span>
@@ -110,14 +110,14 @@ import java.util.stream.Collectors;
     }
 
     private int layerOrder(String type) {
-<span class="pc bpc" id="L113" title="5 of 7 branches missed.">        return switch (type) {</span>
+<span class="pc bpc" id="L113" title="4 of 7 branches missed.">        return switch (type) {</span>
 <span class="fc" id="L114">            case &quot;Capabilities&quot; -&gt; 1;</span>
 <span class="fc" id="L115">            case &quot;Business Processes&quot;, &quot;Business Roles&quot; -&gt; 2;</span>
 <span class="nc" id="L116">            case &quot;Services&quot;, &quot;COI Services&quot;, &quot;Core Services&quot; -&gt; 3;</span>
 <span class="nc" id="L117">            case &quot;Applications&quot;, &quot;User Applications&quot; -&gt; 4;</span>
 <span class="nc" id="L118">            case &quot;Information Products&quot; -&gt; 5;</span>
 <span class="nc" id="L119">            case &quot;Communications Services&quot; -&gt; 6;</span>
-<span class="nc" id="L120">            default -&gt; 99;</span>
+<span class="fc" id="L120">            default -&gt; 99;</span>
         };
     }
 
