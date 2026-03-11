@@ -11,6 +11,7 @@ public class RecommendedElement {
     private String taxonomyRoot;
     private int score;
     private String reasoning;
+    private ExplanationTrace explanationTrace;
 
     public RecommendedElement() {}
 
@@ -37,4 +38,7 @@ public class RecommendedElement {
 
     public String getReasoning() { return reasoning; }
     public void setReasoning(String reasoning) { this.reasoning = reasoning; }
+
+    public ExplanationTrace getExplanationTrace() { return explanationTrace; }
+    public void setExplanationTrace(ExplanationTrace explanationTrace) { this.explanationTrace = explanationTrace; }
 }

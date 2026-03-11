@@ -99,7 +99,8 @@
         }
 
         // Export buttons
-        ['exportSvg', 'exportPng', 'exportPdf', 'exportCsv', 'exportJson', 'exportVisio', 'exportArchiMate', 'exportMermaid'].forEach(function (id) {
+        ['exportSvg', 'exportPng', 'exportPdf', 'exportCsv', 'exportJson', 'exportVisio', 'exportArchiMate', 'exportMermaid',
+         'exportReportMd', 'exportReportHtml', 'exportReportDocx'].forEach(function (id) {
             const btn = document.getElementById(id);
             if (btn) {
                 btn.addEventListener('click', function () { handleExport(id); });
@@ -820,6 +821,35 @@
                 var bt = document.getElementById('businessText');
                 window.TaxonomyExport.exportMermaid(bt ? bt.value : '');
             }
+            return;
+        }
+        if (btnId === 'exportReportMd' || btnId === 'exportReportHtml' || btnId === 'exportReportDocx') {
+            var formatMap = { 'exportReportMd': 'markdown', 'exportReportHtml': 'html', 'exportReportDocx': 'docx' };
+            var extMap = { 'exportReportMd': '.md', 'exportReportHtml': '.html', 'exportReportDocx': '.docx' };
+            var format = formatMap[btnId];
+            var ext = extMap[btnId];
+            var bt = document.getElementById('businessText');
+            var businessText = bt ? bt.value : '';
+            fetch('/api/report/' + format, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scores: currentScores, businessText: businessText, minScore: 20 })
+            })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('Report generation failed');
+                return resp.blob();
+            })
+            .then(function (blob) {
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'architecture-report' + ext;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            })
+            .catch(function (err) { alert('Report export failed: ' + err.message); });
             return;
         }
     }
