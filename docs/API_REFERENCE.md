@@ -919,7 +919,7 @@ GET /api/patterns/detect?nodeCode=CP
 
 ## 16. Diagram Export
 
-The system supports three diagram export formats and JSON score export/import.  The diagram endpoints expect the `architectureView` JSON produced by `POST /api/analyze` (with `includeArchitectureView=true`).
+The system supports three diagram export formats (Visio, ArchiMate, Mermaid) and JSON score export/import.  The diagram endpoints expect the `architectureView` JSON produced by `POST /api/analyze` (with `includeArchitectureView=true`).
 
 ### 16.1 Visio Export
 
@@ -955,7 +955,7 @@ Generates a Mermaid flowchart code block from the architecture view. The respons
 
 **Response:** Plain-text Mermaid flowchart code.
 
-### 16.3 Analysis Scores JSON Export
+### 16.4 Analysis Scores JSON Export
 
 **Endpoint:** `POST /api/scores/export`
 
@@ -987,7 +987,7 @@ Serialises the current analysis result as a `SavedAnalysis` JSON object, adding 
 
 **Semantic note:** Each root taxonomy is scored **independently** on a 0–100 scale — for example `"CO": 90` means "the Communications Services taxonomy covers 90% of this requirement". Scores across root taxonomies do **not** sum to 100. A score of `0` means the node was _evaluated and found not relevant_. An absent key means the node was _not evaluated_.
 
-### 16.4 Analysis Scores JSON Import
+### 16.5 Analysis Scores JSON Import
 
 **Endpoint:** `POST /api/scores/import`
 
