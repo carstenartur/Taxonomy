@@ -15,7 +15,7 @@
     <name>Taxonomy Architecture Analyzer</name>
     <properties>
         <java.version>17</java.version>
-        <djl.version>0.31.1</djl.version>
+        <djl.version>0.36.0</djl.version>
         <excludedGroups></excludedGroups>
     </properties>
     <dependencyManagement>
