@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationHypothesisDto.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dto</a> &gt; <span class="el_source">RelationHypothesisDto.java</span></div><h1>RelationHypothesisDto.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dto;
+
+/**
+ * A provisional (not-yet-persisted) relation hypothesis generated during analysis.
+ * Represents an AI-suggested relationship between two scored taxonomy nodes.
+ */
+public class RelationHypothesisDto {
+
+    private String sourceCode;
+    private String sourceName;
+    private String targetCode;
+    private String targetName;
+    private String relationType;
+    private double confidence;
+    private String reasoning;
+
+<span class="nc" id="L17">    public RelationHypothesisDto() {}</span>
+
+    public RelationHypothesisDto(String sourceCode, String sourceName,
+                                  String targetCode, String targetName,
+                                  String relationType, double confidence,
+<span class="fc" id="L22">                                  String reasoning) {</span>
+<span class="fc" id="L23">        this.sourceCode = sourceCode;</span>
+<span class="fc" id="L24">        this.sourceName = sourceName;</span>
+<span class="fc" id="L25">        this.targetCode = targetCode;</span>
+<span class="fc" id="L26">        this.targetName = targetName;</span>
+<span class="fc" id="L27">        this.relationType = relationType;</span>
+<span class="fc" id="L28">        this.confidence = confidence;</span>
+<span class="fc" id="L29">        this.reasoning = reasoning;</span>
+<span class="fc" id="L30">    }</span>
+
+<span class="fc" id="L32">    public String getSourceCode() { return sourceCode; }</span>
+<span class="nc" id="L33">    public void setSourceCode(String sourceCode) { this.sourceCode = sourceCode; }</span>
+
+<span class="fc" id="L35">    public String getSourceName() { return sourceName; }</span>
+<span class="nc" id="L36">    public void setSourceName(String sourceName) { this.sourceName = sourceName; }</span>
+
+<span class="fc" id="L38">    public String getTargetCode() { return targetCode; }</span>
+<span class="nc" id="L39">    public void setTargetCode(String targetCode) { this.targetCode = targetCode; }</span>
+
+<span class="fc" id="L41">    public String getTargetName() { return targetName; }</span>
+<span class="nc" id="L42">    public void setTargetName(String targetName) { this.targetName = targetName; }</span>
+
+<span class="fc" id="L44">    public String getRelationType() { return relationType; }</span>
+<span class="nc" id="L45">    public void setRelationType(String relationType) { this.relationType = relationType; }</span>
+
+<span class="fc" id="L47">    public double getConfidence() { return confidence; }</span>
+<span class="nc" id="L48">    public void setConfidence(double confidence) { this.confidence = confidence; }</span>
+
+<span class="fc" id="L50">    public String getReasoning() { return reasoning; }</span>
+<span class="nc" id="L51">    public void setReasoning(String reasoning) { this.reasoning = reasoning; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

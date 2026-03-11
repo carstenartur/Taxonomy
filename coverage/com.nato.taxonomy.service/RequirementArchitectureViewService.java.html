@@ -39,7 +39,7 @@ public class RequirementArchitectureViewService {
 <span class="fc" id="L39">    }</span>
 
     /**
-     * Builds the architecture view from analysis scores.
+     * Builds the architecture view from analysis scores (without provisional relations).
      *
      * @param scores               map of nodeCode → integer score (0–100) from the LLM analysis
      * @param businessText         the original business requirement text (for notes)
@@ -49,85 +49,133 @@ public class RequirementArchitectureViewService {
     @Transactional(readOnly = true)
     public RequirementArchitectureView build(Map&lt;String, Integer&gt; scores, String businessText,
                                              int maxArchitectureNodes) {
-<span class="fc" id="L52">        RequirementArchitectureView view = new RequirementArchitectureView();</span>
+<span class="fc" id="L52">        return build(scores, businessText, maxArchitectureNodes, null);</span>
+    }
 
-<span class="fc bfc" id="L54" title="All 4 branches covered.">        if (scores == null || scores.isEmpty()) {</span>
-<span class="fc" id="L55">            view.getNotes().add(&quot;No scores available; architecture view cannot be built.&quot;);</span>
-<span class="fc" id="L56">            return view;</span>
+    /**
+     * Builds the architecture view from analysis scores, optionally using
+     * provisional relation hypotheses as virtual edges for relevance propagation
+     * when no confirmed relations exist.
+     *
+     * @param scores               map of nodeCode → integer score (0–100) from the LLM analysis
+     * @param businessText         the original business requirement text (for notes)
+     * @param maxArchitectureNodes maximum number of elements to include (0 = no limit)
+     * @param provisionalRelations optional list of AI-suggested relation hypotheses
+     * @return the architecture view, or an empty view with a note if no anchors are found
+     */
+    @Transactional(readOnly = true)
+    public RequirementArchitectureView build(Map&lt;String, Integer&gt; scores, String businessText,
+                                             int maxArchitectureNodes,
+                                             List&lt;RelationHypothesisDto&gt; provisionalRelations) {
+<span class="fc" id="L70">        RequirementArchitectureView view = new RequirementArchitectureView();</span>
+
+<span class="fc bfc" id="L72" title="All 4 branches covered.">        if (scores == null || scores.isEmpty()) {</span>
+<span class="fc" id="L73">            view.getNotes().add(&quot;No scores available; architecture view cannot be built.&quot;);</span>
+<span class="fc" id="L74">            return view;</span>
         }
 
         // 1. Select anchors
-<span class="fc" id="L60">        List&lt;RequirementAnchor&gt; anchors = selectAnchors(scores);</span>
-<span class="fc" id="L61">        view.setAnchors(anchors);</span>
+<span class="fc" id="L78">        List&lt;RequirementAnchor&gt; anchors = selectAnchors(scores);</span>
+<span class="fc" id="L79">        view.setAnchors(anchors);</span>
 
-<span class="fc bfc" id="L63" title="All 2 branches covered.">        if (anchors.isEmpty()) {</span>
-<span class="fc" id="L64">            view.getNotes().add(&quot;No nodes met the anchor threshold; architecture view is empty.&quot;);</span>
-<span class="fc" id="L65">            return view;</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (anchors.isEmpty()) {</span>
+<span class="fc" id="L82">            view.getNotes().add(&quot;No nodes met the anchor threshold; architecture view is empty.&quot;);</span>
+<span class="fc" id="L83">            return view;</span>
         }
 
         // 2. Build anchor relevance map
-<span class="fc" id="L69">        Map&lt;String, Double&gt; anchorRelevances = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L70" title="All 2 branches covered.">        for (RequirementAnchor anchor : anchors) {</span>
-<span class="fc" id="L71">            anchorRelevances.put(anchor.getNodeCode(), anchor.getDirectScore() / 100.0);</span>
-<span class="fc" id="L72">        }</span>
+<span class="fc" id="L87">        Map&lt;String, Double&gt; anchorRelevances = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        for (RequirementAnchor anchor : anchors) {</span>
+<span class="fc" id="L89">            anchorRelevances.put(anchor.getNodeCode(), anchor.getDirectScore() / 100.0);</span>
+<span class="fc" id="L90">        }</span>
 
         // 3. Propagate relevance through relations
-<span class="fc" id="L75">        PropagationResult propagation = propagationService.propagate(anchorRelevances);</span>
+<span class="fc" id="L93">        PropagationResult propagation = propagationService.propagate(anchorRelevances);</span>
 
         // 4. Build included elements
-<span class="fc" id="L78">        List&lt;RequirementElementView&gt; elements = buildElements(propagation);</span>
+<span class="fc" id="L96">        List&lt;RequirementElementView&gt; elements = buildElements(propagation);</span>
 
         // 5. Build included relationships
-<span class="fc" id="L81">        List&lt;RequirementRelationshipView&gt; relationships = buildRelationships(propagation);</span>
+<span class="fc" id="L99">        List&lt;RequirementRelationshipView&gt; relationships = buildRelationships(propagation);</span>
 
-        // 6. Truncate to maxArchitectureNodes if requested
-<span class="pc bpc" id="L84" title="1 of 4 branches missed.">        if (maxArchitectureNodes &gt; 0 &amp;&amp; elements.size() &gt; maxArchitectureNodes) {</span>
-<span class="nc" id="L85">            Set&lt;String&gt; keptCodes = elements.subList(0, maxArchitectureNodes).stream()</span>
-<span class="nc" id="L86">                    .map(RequirementElementView::getNodeCode).collect(Collectors.toSet());</span>
-<span class="nc" id="L87">            elements = new ArrayList&lt;&gt;(elements.subList(0, maxArchitectureNodes));</span>
-<span class="nc" id="L88">            relationships = relationships.stream()</span>
-<span class="nc bnc" id="L89" title="All 4 branches missed.">                    .filter(r -&gt; keptCodes.contains(r.getSourceCode()) &amp;&amp; keptCodes.contains(r.getTargetCode()))</span>
-<span class="nc" id="L90">                    .collect(Collectors.toList());</span>
-<span class="nc" id="L91">            view.getNotes().add(&quot;Architecture view limited to &quot; + maxArchitectureNodes + &quot; elements.&quot;);</span>
+        // 5b. If no confirmed relationships were found but provisional relations exist,
+        //     add them as virtual edges so the architecture view is useful from day one.
+<span class="fc" id="L103">        boolean usedProvisional = false;</span>
+<span class="fc bfc" id="L104" title="All 4 branches covered.">        if (relationships.isEmpty()</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">                &amp;&amp; provisionalRelations != null &amp;&amp; !provisionalRelations.isEmpty()) {</span>
+<span class="fc" id="L106">            Set&lt;String&gt; includedCodes = elements.stream()</span>
+<span class="fc" id="L107">                    .map(RequirementElementView::getNodeCode)</span>
+<span class="fc" id="L108">                    .collect(Collectors.toSet());</span>
+
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            for (RelationHypothesisDto hyp : provisionalRelations) {</span>
+                // Ensure both endpoints are in the included elements set
+                // (they may not be if one node scored below the anchor threshold)
+<span class="fc" id="L113">                ensureElement(elements, includedCodes, hyp.getSourceCode(), hyp.getSourceName(), scores);</span>
+<span class="fc" id="L114">                ensureElement(elements, includedCodes, hyp.getTargetCode(), hyp.getTargetName(), scores);</span>
+
+<span class="fc" id="L116">                RequirementRelationshipView rv = new RequirementRelationshipView();</span>
+<span class="fc" id="L117">                rv.setSourceCode(hyp.getSourceCode());</span>
+<span class="fc" id="L118">                rv.setTargetCode(hyp.getTargetCode());</span>
+<span class="fc" id="L119">                rv.setRelationType(hyp.getRelationType());</span>
+<span class="fc" id="L120">                rv.setPropagatedRelevance(hyp.getConfidence());</span>
+<span class="fc" id="L121">                rv.setHopDistance(0);</span>
+<span class="fc" id="L122">                rv.setIncludedBecause(&quot;provisional (AI-suggested, not yet confirmed)&quot;);</span>
+<span class="fc" id="L123">                relationships.add(rv);</span>
+<span class="fc" id="L124">            }</span>
+<span class="fc" id="L125">            usedProvisional = true;</span>
         }
 
-<span class="fc" id="L94">        view.setIncludedElements(elements);</span>
-<span class="fc" id="L95">        view.setIncludedRelationships(relationships);</span>
+        // 6. Truncate to maxArchitectureNodes if requested
+<span class="pc bpc" id="L129" title="1 of 4 branches missed.">        if (maxArchitectureNodes &gt; 0 &amp;&amp; elements.size() &gt; maxArchitectureNodes) {</span>
+<span class="nc" id="L130">            Set&lt;String&gt; keptCodes = elements.subList(0, maxArchitectureNodes).stream()</span>
+<span class="nc" id="L131">                    .map(RequirementElementView::getNodeCode).collect(Collectors.toSet());</span>
+<span class="nc" id="L132">            elements = new ArrayList&lt;&gt;(elements.subList(0, maxArchitectureNodes));</span>
+<span class="nc" id="L133">            relationships = relationships.stream()</span>
+<span class="nc bnc" id="L134" title="All 4 branches missed.">                    .filter(r -&gt; keptCodes.contains(r.getSourceCode()) &amp;&amp; keptCodes.contains(r.getTargetCode()))</span>
+<span class="nc" id="L135">                    .collect(Collectors.toList());</span>
+<span class="nc" id="L136">            view.getNotes().add(&quot;Architecture view limited to &quot; + maxArchitectureNodes + &quot; elements.&quot;);</span>
+        }
+
+<span class="fc" id="L139">        view.setIncludedElements(elements);</span>
+<span class="fc" id="L140">        view.setIncludedRelationships(relationships);</span>
 
         // 7. Add notes
-<span class="pc bpc" id="L98" title="1 of 4 branches missed.">        if (relationships.isEmpty() &amp;&amp; elements.size() == anchors.size()) {</span>
-<span class="fc" id="L99">            view.getNotes().add(&quot;No traversable relations found for anchor nodes; &quot; +</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (usedProvisional) {</span>
+<span class="fc" id="L144">            view.getNotes().add(&quot;Architecture view built using AI-suggested provisional relations &quot; +</span>
+                    &quot;(not yet confirmed).&quot;);
+<span class="pc bpc" id="L146" title="1 of 4 branches missed.">        } else if (relationships.isEmpty() &amp;&amp; elements.size() == anchors.size()) {</span>
+<span class="fc" id="L147">            view.getNotes().add(&quot;No traversable relations found for anchor nodes; &quot; +</span>
                     &quot;only direct matches are included.&quot;);
         }
 
         // 8. Populate summary statistics
-<span class="fc" id="L104">        int maxHop = elements.stream().mapToInt(RequirementElementView::getHopDistance).max().orElse(0);</span>
-<span class="fc" id="L105">        view.setTotalAnchors(anchors.size());</span>
-<span class="fc" id="L106">        view.setTotalElements(elements.size());</span>
-<span class="fc" id="L107">        view.setTotalRelationships(relationships.size());</span>
-<span class="fc" id="L108">        view.setMaxHopDistance(maxHop);</span>
+<span class="fc" id="L152">        int maxHop = elements.stream().mapToInt(RequirementElementView::getHopDistance).max().orElse(0);</span>
+<span class="fc" id="L153">        view.setTotalAnchors(anchors.size());</span>
+<span class="fc" id="L154">        view.setTotalElements(elements.size());</span>
+<span class="fc" id="L155">        view.setTotalRelationships(relationships.size());</span>
+<span class="fc" id="L156">        view.setMaxHopDistance(maxHop);</span>
 
         // 9. Structured logging
-<span class="fc" id="L111">        log.info(&quot;RequirementArchitectureView summary: anchors={}, elements={}, relationships={}, maxHopDistance={}&quot;,</span>
-<span class="fc" id="L112">                anchors.size(), elements.size(), relationships.size(), maxHop);</span>
+<span class="fc" id="L159">        log.info(&quot;RequirementArchitectureView summary: anchors={}, elements={}, relationships={}, maxHopDistance={}&quot;,</span>
+<span class="fc" id="L160">                anchors.size(), elements.size(), relationships.size(), maxHop);</span>
 
-<span class="fc bfc" id="L114" title="All 2 branches covered.">        for (RequirementAnchor anchor : anchors) {</span>
-<span class="fc" id="L115">            List&lt;RequirementElementView&gt; propagated = elements.stream()</span>
-<span class="pc bpc" id="L116" title="1 of 4 branches missed.">                    .filter(e -&gt; !e.isAnchor() &amp;&amp; e.getIncludedBecause() != null</span>
-<span class="fc bfc" id="L117" title="All 2 branches covered.">                            &amp;&amp; e.getIncludedBecause().contains(anchor.getNodeCode()))</span>
-<span class="fc" id="L118">                    .toList();</span>
-<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (!propagated.isEmpty()) {</span>
-<span class="fc" id="L120">                StringBuilder sb = new StringBuilder();</span>
-<span class="fc" id="L121">                sb.append(&quot;anchor &quot;).append(anchor.getNodeCode());</span>
-<span class="fc bfc" id="L122" title="All 2 branches covered.">                for (RequirementElementView e : propagated) {</span>
-<span class="fc" id="L123">                    sb.append(&quot;\n  → &quot;).append(e.getNodeCode())</span>
-<span class="fc" id="L124">                      .append(&quot; (&quot;).append(String.format(&quot;%.2f&quot;, e.getRelevance())).append(&quot;)&quot;);</span>
-<span class="fc" id="L125">                }</span>
-<span class="fc" id="L126">                log.debug(sb.toString());</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        for (RequirementAnchor anchor : anchors) {</span>
+<span class="fc" id="L163">            List&lt;RequirementElementView&gt; propagated = elements.stream()</span>
+<span class="pc bpc" id="L164" title="1 of 4 branches missed.">                    .filter(e -&gt; !e.isAnchor() &amp;&amp; e.getIncludedBecause() != null</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                            &amp;&amp; e.getIncludedBecause().contains(anchor.getNodeCode()))</span>
+<span class="fc" id="L166">                    .toList();</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            if (!propagated.isEmpty()) {</span>
+<span class="fc" id="L168">                StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L169">                sb.append(&quot;anchor &quot;).append(anchor.getNodeCode());</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">                for (RequirementElementView e : propagated) {</span>
+<span class="fc" id="L171">                    sb.append(&quot;\n  → &quot;).append(e.getNodeCode())</span>
+<span class="fc" id="L172">                      .append(&quot; (&quot;).append(String.format(&quot;%.2f&quot;, e.getRelevance())).append(&quot;)&quot;);</span>
+<span class="fc" id="L173">                }</span>
+<span class="fc" id="L174">                log.debug(sb.toString());</span>
             }
-<span class="fc" id="L128">        }</span>
+<span class="fc" id="L176">        }</span>
 
-<span class="fc" id="L130">        return view;</span>
+<span class="fc" id="L178">        return view;</span>
     }
 
     /**
@@ -136,110 +184,140 @@ public class RequirementArchitectureViewService {
      * - If fewer than 3, top-3 with score &gt;= 50
      */
     List&lt;RequirementAnchor&gt; selectAnchors(Map&lt;String, Integer&gt; scores) {
-<span class="fc" id="L139">        List&lt;RequirementAnchor&gt; highAnchors = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L187">        List&lt;RequirementAnchor&gt; highAnchors = new ArrayList&lt;&gt;();</span>
 
         // Collect all nodes &gt;= ANCHOR_THRESHOLD_HIGH
-<span class="fc bfc" id="L142" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
-<span class="fc bfc" id="L143" title="All 2 branches covered.">            if (entry.getValue() &gt;= ANCHOR_THRESHOLD_HIGH) {</span>
-<span class="fc" id="L144">                highAnchors.add(new RequirementAnchor(</span>
-<span class="fc" id="L145">                        entry.getKey(), entry.getValue(), &quot;high direct match&quot;));</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            if (entry.getValue() &gt;= ANCHOR_THRESHOLD_HIGH) {</span>
+<span class="fc" id="L192">                highAnchors.add(new RequirementAnchor(</span>
+<span class="fc" id="L193">                        entry.getKey(), entry.getValue(), &quot;high direct match&quot;));</span>
             }
-<span class="fc" id="L147">        }</span>
+<span class="fc" id="L195">        }</span>
 
-<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (highAnchors.size() &gt;= MIN_ANCHORS) {</span>
-<span class="fc" id="L150">            highAnchors.sort(Comparator.comparingInt(RequirementAnchor::getDirectScore).reversed());</span>
-<span class="fc" id="L151">            return highAnchors;</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (highAnchors.size() &gt;= MIN_ANCHORS) {</span>
+<span class="fc" id="L198">            highAnchors.sort(Comparator.comparingInt(RequirementAnchor::getDirectScore).reversed());</span>
+<span class="fc" id="L199">            return highAnchors;</span>
         }
 
         // Fallback: collect top-3 with score &gt;= ANCHOR_THRESHOLD_LOW
-<span class="fc" id="L155">        List&lt;Map.Entry&lt;String, Integer&gt;&gt; candidates = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L156" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
-<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (entry.getValue() &gt;= ANCHOR_THRESHOLD_LOW) {</span>
-<span class="fc" id="L158">                candidates.add(entry);</span>
+<span class="fc" id="L203">        List&lt;Map.Entry&lt;String, Integer&gt;&gt; candidates = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">            if (entry.getValue() &gt;= ANCHOR_THRESHOLD_LOW) {</span>
+<span class="fc" id="L206">                candidates.add(entry);</span>
             }
-<span class="fc" id="L160">        }</span>
-<span class="fc" id="L161">        candidates.sort(Comparator.&lt;Map.Entry&lt;String, Integer&gt;, Integer&gt;comparing(Map.Entry::getValue).reversed());</span>
+<span class="fc" id="L208">        }</span>
+<span class="fc" id="L209">        candidates.sort(Comparator.&lt;Map.Entry&lt;String, Integer&gt;, Integer&gt;comparing(Map.Entry::getValue).reversed());</span>
 
-<span class="fc" id="L163">        List&lt;RequirementAnchor&gt; anchors = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L164" title="All 2 branches covered.">        for (int i = 0; i &lt; Math.min(MIN_ANCHORS, candidates.size()); i++) {</span>
-<span class="fc" id="L165">            Map.Entry&lt;String, Integer&gt; entry = candidates.get(i);</span>
-<span class="fc" id="L166">            anchors.add(new RequirementAnchor(</span>
-<span class="fc" id="L167">                    entry.getKey(), entry.getValue(), &quot;top candidate (fallback)&quot;));</span>
+<span class="fc" id="L211">        List&lt;RequirementAnchor&gt; anchors = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        for (int i = 0; i &lt; Math.min(MIN_ANCHORS, candidates.size()); i++) {</span>
+<span class="fc" id="L213">            Map.Entry&lt;String, Integer&gt; entry = candidates.get(i);</span>
+<span class="fc" id="L214">            anchors.add(new RequirementAnchor(</span>
+<span class="fc" id="L215">                    entry.getKey(), entry.getValue(), &quot;top candidate (fallback)&quot;));</span>
         }
 
-<span class="fc" id="L170">        return anchors;</span>
+<span class="fc" id="L218">        return anchors;</span>
     }
 
     private List&lt;RequirementElementView&gt; buildElements(PropagationResult propagation) {
-<span class="fc" id="L174">        List&lt;RequirementElementView&gt; elements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L222">        List&lt;RequirementElementView&gt; elements = new ArrayList&lt;&gt;();</span>
 
-<span class="fc bfc" id="L176" title="All 2 branches covered.">        for (Map.Entry&lt;String, Double&gt; entry : propagation.getRelevanceMap().entrySet()) {</span>
-<span class="fc" id="L177">            String nodeCode = entry.getKey();</span>
-<span class="fc" id="L178">            double relevance = entry.getValue();</span>
-<span class="fc" id="L179">            int hopDistance = propagation.getHopDistanceMap().getOrDefault(nodeCode, 0);</span>
-<span class="fc" id="L180">            String reason = propagation.getReasonMap().getOrDefault(nodeCode, &quot;unknown&quot;);</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        for (Map.Entry&lt;String, Double&gt; entry : propagation.getRelevanceMap().entrySet()) {</span>
+<span class="fc" id="L225">            String nodeCode = entry.getKey();</span>
+<span class="fc" id="L226">            double relevance = entry.getValue();</span>
+<span class="fc" id="L227">            int hopDistance = propagation.getHopDistanceMap().getOrDefault(nodeCode, 0);</span>
+<span class="fc" id="L228">            String reason = propagation.getReasonMap().getOrDefault(nodeCode, &quot;unknown&quot;);</span>
 
-<span class="fc" id="L182">            RequirementElementView element = new RequirementElementView();</span>
-<span class="fc" id="L183">            element.setNodeCode(nodeCode);</span>
-<span class="fc" id="L184">            element.setRelevance(relevance);</span>
-<span class="fc" id="L185">            element.setHopDistance(hopDistance);</span>
-<span class="fc bfc" id="L186" title="All 2 branches covered.">            element.setAnchor(hopDistance == 0);</span>
-<span class="fc" id="L187">            element.setIncludedBecause(reason);</span>
+<span class="fc" id="L230">            RequirementElementView element = new RequirementElementView();</span>
+<span class="fc" id="L231">            element.setNodeCode(nodeCode);</span>
+<span class="fc" id="L232">            element.setRelevance(relevance);</span>
+<span class="fc" id="L233">            element.setHopDistance(hopDistance);</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">            element.setAnchor(hopDistance == 0);</span>
+<span class="fc" id="L235">            element.setIncludedBecause(reason);</span>
 
             // Look up title and taxonomy sheet from the database
-<span class="fc" id="L190">            Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
-<span class="pc bpc" id="L191" title="1 of 2 branches missed.">            if (nodeOpt.isPresent()) {</span>
-<span class="fc" id="L192">                TaxonomyNode node = nodeOpt.get();</span>
-<span class="fc" id="L193">                element.setTitle(node.getNameEn());</span>
-<span class="fc" id="L194">                element.setTaxonomySheet(node.getTaxonomyRoot());</span>
+<span class="fc" id="L238">            Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">            if (nodeOpt.isPresent()) {</span>
+<span class="fc" id="L240">                TaxonomyNode node = nodeOpt.get();</span>
+<span class="fc" id="L241">                element.setTitle(node.getNameEn());</span>
+<span class="fc" id="L242">                element.setTaxonomySheet(node.getTaxonomyRoot());</span>
             }
 
-<span class="fc" id="L197">            elements.add(element);</span>
-<span class="fc" id="L198">        }</span>
+<span class="fc" id="L245">            elements.add(element);</span>
+<span class="fc" id="L246">        }</span>
 
         // Sort: anchors first, then by relevance descending
-<span class="fc" id="L201">        elements.sort(Comparator</span>
-<span class="fc" id="L202">                .comparing(RequirementElementView::isAnchor).reversed()</span>
-<span class="fc" id="L203">                .thenComparing(Comparator.comparingDouble(RequirementElementView::getRelevance).reversed()));</span>
+<span class="fc" id="L249">        elements.sort(Comparator</span>
+<span class="fc" id="L250">                .comparing(RequirementElementView::isAnchor).reversed()</span>
+<span class="fc" id="L251">                .thenComparing(Comparator.comparingDouble(RequirementElementView::getRelevance).reversed()));</span>
 
-<span class="fc" id="L205">        return elements;</span>
+<span class="fc" id="L253">        return elements;</span>
     }
 
     private List&lt;RequirementRelationshipView&gt; buildRelationships(PropagationResult propagation) {
-<span class="fc" id="L209">        List&lt;RequirementRelationshipView&gt; relationships = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L210">        Set&lt;String&gt; includedNodeCodes = propagation.getRelevanceMap().keySet();</span>
+<span class="fc" id="L257">        List&lt;RequirementRelationshipView&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L258">        Set&lt;String&gt; includedNodeCodes = propagation.getRelevanceMap().keySet();</span>
 
-<span class="fc bfc" id="L212" title="All 2 branches covered.">        for (PropagationResult.TraversedRelation tr : propagation.getTraversedRelations()) {</span>
-<span class="fc" id="L213">            TaxonomyRelationDto rel = tr.getRelation();</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        for (PropagationResult.TraversedRelation tr : propagation.getTraversedRelations()) {</span>
+<span class="fc" id="L261">            TaxonomyRelationDto rel = tr.getRelation();</span>
 
             // Only include relationships where both endpoints are in the included elements
-<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            if (!includedNodeCodes.contains(rel.getSourceCode()) ||</span>
-<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                    !includedNodeCodes.contains(rel.getTargetCode())) {</span>
-<span class="nc" id="L218">                continue;</span>
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">            if (!includedNodeCodes.contains(rel.getSourceCode()) ||</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">                    !includedNodeCodes.contains(rel.getTargetCode())) {</span>
+<span class="nc" id="L266">                continue;</span>
             }
 
-<span class="fc" id="L221">            RequirementRelationshipView rv = new RequirementRelationshipView();</span>
-<span class="fc" id="L222">            rv.setRelationId(rel.getId());</span>
-<span class="fc" id="L223">            rv.setSourceCode(rel.getSourceCode());</span>
-<span class="fc" id="L224">            rv.setTargetCode(rel.getTargetCode());</span>
-<span class="fc" id="L225">            rv.setRelationType(rel.getRelationType());</span>
-<span class="fc" id="L226">            rv.setPropagatedRelevance(tr.getPropagatedRelevance());</span>
-<span class="fc" id="L227">            rv.setHopDistance(tr.getHopDistance());</span>
-<span class="fc" id="L228">            rv.setIncludedBecause(tr.getReason());</span>
-<span class="fc" id="L229">            relationships.add(rv);</span>
-<span class="fc" id="L230">        }</span>
+<span class="fc" id="L269">            RequirementRelationshipView rv = new RequirementRelationshipView();</span>
+<span class="fc" id="L270">            rv.setRelationId(rel.getId());</span>
+<span class="fc" id="L271">            rv.setSourceCode(rel.getSourceCode());</span>
+<span class="fc" id="L272">            rv.setTargetCode(rel.getTargetCode());</span>
+<span class="fc" id="L273">            rv.setRelationType(rel.getRelationType());</span>
+<span class="fc" id="L274">            rv.setPropagatedRelevance(tr.getPropagatedRelevance());</span>
+<span class="fc" id="L275">            rv.setHopDistance(tr.getHopDistance());</span>
+<span class="fc" id="L276">            rv.setIncludedBecause(tr.getReason());</span>
+<span class="fc" id="L277">            relationships.add(rv);</span>
+<span class="fc" id="L278">        }</span>
 
         // Deduplicate by relationId, keeping the one with highest propagatedRelevance
-<span class="fc" id="L233">        Map&lt;Long, RequirementRelationshipView&gt; deduped = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L234" title="All 2 branches covered.">        for (RequirementRelationshipView rv : relationships) {</span>
-<span class="fc" id="L235">            Long key = rv.getRelationId();</span>
-<span class="fc" id="L236">            RequirementRelationshipView existing = deduped.get(key);</span>
-<span class="pc bpc" id="L237" title="3 of 4 branches missed.">            if (existing == null || rv.getPropagatedRelevance() &gt; existing.getPropagatedRelevance()) {</span>
-<span class="fc" id="L238">                deduped.put(key, rv);</span>
+<span class="fc" id="L281">        Map&lt;Long, RequirementRelationshipView&gt; deduped = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">        for (RequirementRelationshipView rv : relationships) {</span>
+<span class="fc" id="L283">            Long key = rv.getRelationId();</span>
+<span class="fc" id="L284">            RequirementRelationshipView existing = deduped.get(key);</span>
+<span class="pc bpc" id="L285" title="3 of 4 branches missed.">            if (existing == null || rv.getPropagatedRelevance() &gt; existing.getPropagatedRelevance()) {</span>
+<span class="fc" id="L286">                deduped.put(key, rv);</span>
             }
-<span class="fc" id="L240">        }</span>
+<span class="fc" id="L288">        }</span>
 
-<span class="fc" id="L242">        return new ArrayList&lt;&gt;(deduped.values());</span>
+<span class="fc" id="L290">        return new ArrayList&lt;&gt;(deduped.values());</span>
     }
+
+    /**
+     * Ensures a node is present in the included elements set, adding it if missing.
+     * Used when provisional relations reference nodes not already included by propagation.
+     */
+    private void ensureElement(List&lt;RequirementElementView&gt; elements, Set&lt;String&gt; includedCodes,
+                               String nodeCode, String nodeName, Map&lt;String, Integer&gt; scores) {
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">        if (includedCodes.contains(nodeCode)) {</span>
+<span class="fc" id="L300">            return;</span>
+        }
+<span class="nc" id="L302">        RequirementElementView element = new RequirementElementView();</span>
+<span class="nc" id="L303">        element.setNodeCode(nodeCode);</span>
+<span class="nc" id="L304">        element.setRelevance(scores.getOrDefault(nodeCode, 0) / 100.0);</span>
+<span class="nc" id="L305">        element.setHopDistance(0);</span>
+<span class="nc" id="L306">        element.setAnchor(false);</span>
+<span class="nc" id="L307">        element.setIncludedBecause(&quot;provisional relation endpoint&quot;);</span>
+<span class="nc" id="L308">        element.setTitle(nodeName);</span>
+
+<span class="nc" id="L310">        Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">        if (nodeOpt.isPresent()) {</span>
+<span class="nc" id="L312">            TaxonomyNode node = nodeOpt.get();</span>
+<span class="nc bnc" id="L313" title="All 2 branches missed.">            if (element.getTitle() == null) {</span>
+<span class="nc" id="L314">                element.setTitle(node.getNameEn());</span>
+            }
+<span class="nc" id="L316">            element.setTaxonomySheet(node.getTaxonomyRoot());</span>
+        }
+
+<span class="nc" id="L319">        elements.add(element);</span>
+<span class="nc" id="L320">        includedCodes.add(nodeCode);</span>
+<span class="nc" id="L321">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
