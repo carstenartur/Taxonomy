@@ -130,6 +130,47 @@ public class RelationProposalService {
                 .stream().map(this::toDto).toList();
     }
 
+    /**
+     * Creates a proposal directly from a provisional relation hypothesis.
+     * Used to persist an AI-generated hypothesis as a formal proposal for review.
+     *
+     * @param sourceCode   source node code
+     * @param targetCode   target node code
+     * @param relationType the type of relation
+     * @param confidence   confidence score (0.0–1.0)
+     * @param rationale    explanation for the proposal
+     * @return the created proposal DTO, or {@code null} if the proposal already exists
+     */
+    @Transactional
+    public RelationProposalDto createFromHypothesis(String sourceCode, String targetCode,
+                                                     RelationType relationType,
+                                                     double confidence, String rationale) {
+        TaxonomyNode source = nodeRepository.findByCode(sourceCode)
+                .orElseThrow(() -> new IllegalArgumentException("Source node not found: " + sourceCode));
+        TaxonomyNode target = nodeRepository.findByCode(targetCode)
+                .orElseThrow(() -> new IllegalArgumentException("Target node not found: " + targetCode));
+
+        if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationType(
+                sourceCode, targetCode, relationType)) {
+            log.debug("Proposal already exists: {} → {} [{}]", sourceCode, targetCode, relationType);
+            return null;
+        }
+
+        RelationProposal proposal = new RelationProposal();
+        proposal.setSourceNode(source);
+        proposal.setTargetNode(target);
+        proposal.setRelationType(relationType);
+        proposal.setConfidence(confidence);
+        proposal.setRationale(rationale);
+        proposal.setProvenance("analysis-hypothesis");
+        proposal.setStatus(ProposalStatus.PENDING);
+
+        RelationProposal saved = proposalRepository.save(proposal);
+        log.info("Created proposal from hypothesis: {} → {} [{}] confidence={}",
+                sourceCode, targetCode, relationType, confidence);
+        return toDto(saved);
+    }
+
     public RelationProposalDto toDto(RelationProposal proposal) {
         RelationProposalDto dto = new RelationProposalDto();
         dto.setId(proposal.getId());

@@ -138,6 +138,49 @@ public class ProposalApiController {
     }
 
     /**
+     * Create a proposal directly from an analysis hypothesis.
+     * Request body: {@code { "sourceCode": "CP", "targetCode": "CR",
+     *   "relationType": "REALIZES", "confidence": 0.56, "rationale": "..." }}
+     */
+    @Operation(summary = "Create proposal from hypothesis",
+            description = "Creates a proposal from an AI-generated relation hypothesis")
+    @PostMapping("/proposals/from-hypothesis")
+    public ResponseEntity<RelationProposalDto> createFromHypothesis(@RequestBody Map<String, Object> body) {
+        String sourceCode = (String) body.get("sourceCode");
+        String targetCode = (String) body.get("targetCode");
+        String relationTypeStr = (String) body.get("relationType");
+        Number confidenceNum = (Number) body.get("confidence");
+        String rationale = (String) body.get("rationale");
+
+        if (sourceCode == null || sourceCode.isBlank()
+                || targetCode == null || targetCode.isBlank()
+                || relationTypeStr == null || relationTypeStr.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        RelationType relationType;
+        try {
+            relationType = RelationType.valueOf(relationTypeStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        double confidence = confidenceNum != null ? confidenceNum.doubleValue() : 0.5;
+
+        try {
+            RelationProposalDto dto = proposalService.createFromHypothesis(
+                    sourceCode, targetCode, relationType, confidence, rationale);
+            if (dto == null) {
+                // Proposal already exists
+                return ResponseEntity.ok().build();
+            }
+            return ResponseEntity.ok(dto);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
      * Revert a proposal back to PENDING status (undo accept/reject).
      * If the proposal was accepted, the corresponding relation is deleted.
      */
