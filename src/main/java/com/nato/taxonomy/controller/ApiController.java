@@ -134,6 +134,12 @@ public class ApiController {
         status.put("initialized", taxonomyService.isInitialized());
         status.put("status", taxonomyService.getInitStatus());
 
+        // Phase details from AppInitializationStateService
+        com.nato.taxonomy.service.AppInitializationStateService stateService = taxonomyService.getStateService();
+        status.put("phase", stateService.getState().name());
+        status.put("phaseMessage", stateService.getMessage());
+        status.put("phaseUpdatedAt", stateService.getUpdatedAt().toString());
+
         // Memory info
         Runtime rt = Runtime.getRuntime();
         long heapUsed = rt.totalMemory() - rt.freeMemory();

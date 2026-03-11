@@ -649,7 +649,9 @@
                         setStartupBanner(false);
                         loadTaxonomy();
                     } else {
-                        var statusMsg = s && s.status ? ' (status: ' + s.status + ')' : '';
+                        var statusMsg = s && s.phaseMessage
+                            ? ' — ' + s.phaseMessage
+                            : (s && s.status ? ' (status: ' + s.status + ')' : '');
                         setStartupBanner(true, statusMsg.trim());
                         document.getElementById('taxonomyTree').innerHTML =
                             '<div class="alert alert-info">' + LOADING_MSG + statusMsg + '</div>';
