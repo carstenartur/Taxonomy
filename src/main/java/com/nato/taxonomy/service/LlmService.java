@@ -187,25 +187,31 @@ public class LlmService {
     }
 
     /**
-     * Builds mock {@link ScoreParseResult} for the given nodes, respecting the parent budget.
+     * Builds mock {@link ScoreParseResult} for the given nodes.
      *
      * <p>First tries to look up each node's score in the saved analysis JSON loaded from
-     * {@code classpath:mock-scores/secure-voice-comms.json}. If the node code is found,
-     * that score is used. If not found (e.g. a deeper child node not in the JSON), falls
-     * back to the hardcoded root-score + deterministic variation approach.
+     * {@code classpath:mock-scores/secure-voice-comms.json}. The JSON was pre-computed by
+     * {@code MockScoreGeneratorIT} using a hierarchical distribution algorithm that guarantees
+     * children scores sum exactly to their parent's score at every level.
      *
-     * <p>After all raw scores are collected, they are normalized via
-     * {@link #normalizeToParent(Map, int)} so that the children always sum to {@code parentScore},
-     * exactly as the real LLM path does in {@link #parseScoreParseResult}.  Any raw sum that
-     * exceeds {@code parentScore} is recorded as a {@link TaxonomyDiscrepancy}.
+     * <p>When <em>all</em> nodes are found in the JSON the pre-computed scores are returned
+     * as-is, without any re-normalization.  Re-normalizing would distort the carefully computed
+     * values: for example, a root node scored alone against {@code parentScore=100} would be
+     * scaled up to 100, causing all roots to appear equally relevant and breaking the
+     * parent&gt;=child constraint deeper in the tree.
+     *
+     * <p>If any node is missing from the JSON (rare, only for taxonomy nodes that were not
+     * present when the JSON was generated), the fallback scores are capped at {@code parentScore}
+     * and the whole batch is normalized so children sum to the parent budget.
      *
      * @param nodes       the nodes to score
-     * @param parentScore the budget the child scores must sum to (0–100 for root nodes)
+     * @param parentScore the budget the child scores must sum to (used only in the fallback path)
      */
     private ScoreParseResult buildMockScores(List<TaxonomyNode> nodes, int parentScore) {
         SavedAnalysis mockAnalysis = loadMockAnalysis();
         Map<String, Integer> scores = new HashMap<>();
         Map<String, String> reasons = new HashMap<>();
+        boolean allFromJson = true;
         for (TaxonomyNode node : nodes) {
             // Try to look up score from the saved analysis JSON
             if (mockAnalysis != null && mockAnalysis.getScores() != null
@@ -220,12 +226,14 @@ public class LlmService {
                 }
                 reasons.put(node.getCode(), reason);
             } else {
-                // Fallback: use hardcoded root scores with deterministic variation
+                allFromJson = false;
+                // Fallback: use hardcoded root scores with deterministic variation,
+                // capped at parentScore so individual scores never exceed the parent budget.
                 String root = node.getTaxonomyRoot() != null ? node.getTaxonomyRoot() : node.getCode();
                 int baseScore = MOCK_ROOT_SCORES.getOrDefault(root, 30);
                 // Add deterministic variation ±15 based on the node code
                 int variation = Math.floorMod(node.getCode().hashCode(), 31) - 15;
-                int score = Math.max(5, Math.min(100, baseScore + variation));
+                int score = Math.max(0, Math.min(parentScore, baseScore + variation));
                 scores.put(node.getCode(), score);
                 String reason = MOCK_ROOT_REASONS.getOrDefault(root,
                         "Relevant to the secure voice communications requirement.");
@@ -233,9 +241,18 @@ public class LlmService {
             }
         }
 
+        // When every score came from the pre-computed JSON the distribution is already correct:
+        // MockScoreGeneratorIT.distributeScores() guarantees children sum exactly to their parent.
+        // Return the JSON values directly — re-normalizing would distort them.
+        if (allFromJson) {
+            recordSuccess();
+            return new ScoreParseResult(scores, reasons, null);
+        }
+
+        // Fallback path (one or more nodes missing from JSON): normalize so the batch sums to
+        // parentScore, and record a discrepancy if the raw sum already exceeds the budget.
         int rawSum = scores.values().stream().mapToInt(Integer::intValue).sum();
 
-        // Detect discrepancy: raw child sum exceeds parent budget (mirrors parseScoreParseResult)
         TaxonomyDiscrepancy discrepancy = null;
         if (rawSum > parentScore) {
             String parentCode = deriveParentCode(nodes);
@@ -244,9 +261,8 @@ public class LlmService {
                     parentCode, rawSum, parentScore);
         }
 
-        // Normalize so children always sum to parentScore (mirrors the real LLM path)
         Map<String, Integer> finalScores;
-        if (rawSum == parentScore) {
+        if (rawSum == parentScore || rawSum == 0) {
             finalScores = scores;
         } else {
             finalScores = normalizeToParent(scores, parentScore);
