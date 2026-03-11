@@ -1,5 +1,7 @@
 package com.nato.taxonomy.service;
 
+import com.nato.taxonomy.dto.TaxonomyDiscrepancy;
+
 import java.util.List;
 import java.util.Map;
 
@@ -19,9 +21,11 @@ public interface AnalysisEventCallback {
     void onExpanding(String parentCode, List<String> childCodes);
 
     /** Analysis completed successfully. */
-    void onComplete(String status, Map<String, Integer> allScores, List<String> warnings);
+    void onComplete(String status, Map<String, Integer> allScores, List<String> warnings,
+                    List<TaxonomyDiscrepancy> discrepancies);
 
     /** Analysis stopped due to an error (possibly with partial scores). */
     void onError(String status, String errorMessage,
-                 Map<String, Integer> partialScores, List<String> warnings);
+                 Map<String, Integer> partialScores, List<String> warnings,
+                 List<TaxonomyDiscrepancy> discrepancies);
 }

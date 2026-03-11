@@ -21,6 +21,13 @@ public class AnalysisResult {
     /** Optional architecture view built from relation-aware propagation. */
     private RequirementArchitectureView architectureView;
 
+    /**
+     * Scoring discrepancies detected during analysis. Each entry indicates
+     * a case where the LLM's raw child scores exceeded the parent's budget,
+     * signalling a potential taxonomy inconsistency.
+     */
+    private List<TaxonomyDiscrepancy> discrepancies = new ArrayList<>();
+
     public AnalysisResult() {}
 
     public AnalysisResult(Map<String, Integer> scores, List<TaxonomyNodeDto> tree) {
@@ -45,4 +52,7 @@ public class AnalysisResult {
 
     public RequirementArchitectureView getArchitectureView() { return architectureView; }
     public void setArchitectureView(RequirementArchitectureView architectureView) { this.architectureView = architectureView; }
+
+    public List<TaxonomyDiscrepancy> getDiscrepancies() { return discrepancies; }
+    public void setDiscrepancies(List<TaxonomyDiscrepancy> discrepancies) { this.discrepancies = discrepancies; }
 }
