@@ -27,6 +27,12 @@ public class AnalysisRelationGenerator {
     /** Minimum score (0–100) for a node to be considered as a relation endpoint. */
     static final int MIN_SCORE = 50;
 
+    /**
+     * Normalisation factor for computing confidence from two 0–100 scores.
+     * confidence = (scoreA × scoreB) / 10 000 → 0.0–1.0 range.
+     */
+    static final double CONFIDENCE_NORMALIZATION_FACTOR = 10_000.0;
+
     private final RelationCompatibilityMatrix compatibilityMatrix;
     private final TaxonomyNodeRepository nodeRepository;
 
@@ -122,7 +128,7 @@ public class AnalysisRelationGenerator {
                         continue;
                     }
 
-                    double confidence = (bestSource.score * bestTarget.score) / 10000.0;
+                    double confidence = (bestSource.score * bestTarget.score) / CONFIDENCE_NORMALIZATION_FACTOR;
                     String reasoning = String.format(
                             "%s (%s, score %d) %s %s (%s, score %d) — inferred from compatibility matrix",
                             bestSource.name, bestSource.root, bestSource.score,

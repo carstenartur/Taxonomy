@@ -1516,7 +1516,7 @@
         var html = '';
         html += '<div class="d-flex justify-content-between align-items-center mb-2">';
         html += '<small class="text-muted">AI-generated relationship suggestions based on analysis scores</small>';
-        html += '<button class="btn btn-sm btn-outline-success" onclick="window._acceptAllHighConfidence()" title="Accept all suggestions with confidence ≥ 80%">✅ Accept all ≥80%</button>';
+        html += '<button class="btn btn-sm btn-outline-success" onclick="window._acceptAllHighConfidence()" title="Accept all suggestions with confidence ≥ 80%" aria-label="Accept all suggestions with confidence 80% or higher">✅ Accept all ≥80%</button>';
         html += '</div>';
         html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
         html += '<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Confidence</th><th>Reasoning</th><th>Actions</th></tr></thead><tbody>';
@@ -1532,8 +1532,8 @@
                 '<td class="' + confClass + '">' + confPct + '%</td>' +
                 '<td><small>' + escapeHtml(h.reasoning || '') + '</small></td>' +
                 '<td class="text-nowrap">' +
-                '<button class="btn btn-sm btn-outline-success me-1" onclick="window._acceptHypothesis(' + idx + ')" title="Accept">✅</button>' +
-                '<button class="btn btn-sm btn-outline-danger" onclick="window._rejectHypothesis(' + idx + ')" title="Dismiss">❌</button>' +
+                '<button class="btn btn-sm btn-outline-success me-1" onclick="window._acceptHypothesis(' + idx + ')" title="Accept" aria-label="Accept relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">✅</button>' +
+                '<button class="btn btn-sm btn-outline-danger" onclick="window._rejectHypothesis(' + idx + ')" title="Dismiss" aria-label="Dismiss relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">❌</button>' +
                 '</td></tr>';
         });
 
@@ -1566,10 +1566,19 @@
             })
         })
         .then(function (r) {
+            if (r.status === 409) {
+                // Proposal already exists, mark as already processed
+                if (row) { row.classList.add('table-info'); row.style.opacity = '1'; }
+                var actions = row && row.querySelector('td:last-child');
+                if (actions) actions.innerHTML = '<span class="badge bg-info">Already exists</span>';
+                showStatus('info', 'ℹ️ Proposal already exists for ' + h.sourceCode + ' → ' + h.targetCode);
+                return null;
+            }
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
         })
         .then(function (proposal) {
+            if (proposal === null) return; // already handled (409)
             if (proposal && proposal.id) {
                 // Auto-accept the created proposal
                 return fetch('/api/proposals/' + proposal.id + '/accept', { method: 'POST' });

@@ -172,7 +172,9 @@ public class ProposalApiController {
                     sourceCode, targetCode, relationType, confidence, rationale);
             if (dto == null) {
                 // Proposal already exists
-                return ResponseEntity.ok().build();
+                Map<String, Object> msg = new LinkedHashMap<>();
+                msg.put("message", "Proposal already exists for this source, target, and relation type");
+                return ResponseEntity.status(409).body(null);
             }
             return ResponseEntity.ok(dto);
         } catch (IllegalArgumentException e) {
