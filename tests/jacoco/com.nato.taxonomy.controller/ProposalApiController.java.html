@@ -138,6 +138,51 @@ public class ProposalApiController {
     }
 
     /**
+     * Create a proposal directly from an analysis hypothesis.
+     * Request body: {@code { &quot;sourceCode&quot;: &quot;CP&quot;, &quot;targetCode&quot;: &quot;CR&quot;,
+     *   &quot;relationType&quot;: &quot;REALIZES&quot;, &quot;confidence&quot;: 0.56, &quot;rationale&quot;: &quot;...&quot; }}
+     */
+    @Operation(summary = &quot;Create proposal from hypothesis&quot;,
+            description = &quot;Creates a proposal from an AI-generated relation hypothesis&quot;)
+    @PostMapping(&quot;/proposals/from-hypothesis&quot;)
+    public ResponseEntity&lt;RelationProposalDto&gt; createFromHypothesis(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="nc" id="L149">        String sourceCode = (String) body.get(&quot;sourceCode&quot;);</span>
+<span class="nc" id="L150">        String targetCode = (String) body.get(&quot;targetCode&quot;);</span>
+<span class="nc" id="L151">        String relationTypeStr = (String) body.get(&quot;relationType&quot;);</span>
+<span class="nc" id="L152">        Number confidenceNum = (Number) body.get(&quot;confidence&quot;);</span>
+<span class="nc" id="L153">        String rationale = (String) body.get(&quot;rationale&quot;);</span>
+
+<span class="nc bnc" id="L155" title="All 6 branches missed.">        if (sourceCode == null || sourceCode.isBlank()</span>
+<span class="nc bnc" id="L156" title="All 4 branches missed.">                || targetCode == null || targetCode.isBlank()</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">                || relationTypeStr == null || relationTypeStr.isBlank()) {</span>
+<span class="nc" id="L158">            return ResponseEntity.badRequest().build();</span>
+        }
+
+        RelationType relationType;
+        try {
+<span class="nc" id="L163">            relationType = RelationType.valueOf(relationTypeStr.toUpperCase());</span>
+<span class="nc" id="L164">        } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L165">            return ResponseEntity.badRequest().build();</span>
+<span class="nc" id="L166">        }</span>
+
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        double confidence = confidenceNum != null ? confidenceNum.doubleValue() : 0.5;</span>
+
+        try {
+<span class="nc" id="L171">            RelationProposalDto dto = proposalService.createFromHypothesis(</span>
+                    sourceCode, targetCode, relationType, confidence, rationale);
+<span class="nc bnc" id="L173" title="All 2 branches missed.">            if (dto == null) {</span>
+                // Proposal already exists
+<span class="nc" id="L175">                Map&lt;String, Object&gt; msg = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L176">                msg.put(&quot;message&quot;, &quot;Proposal already exists for this source, target, and relation type&quot;);</span>
+<span class="nc" id="L177">                return ResponseEntity.status(409).body(null);</span>
+            }
+<span class="nc" id="L179">            return ResponseEntity.ok(dto);</span>
+<span class="nc" id="L180">        } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L181">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+    /**
      * Revert a proposal back to PENDING status (undo accept/reject).
      * If the proposal was accepted, the corresponding relation is deleted.
      */
@@ -145,10 +190,10 @@ public class ProposalApiController {
     @PostMapping(&quot;/proposals/{id}/revert&quot;)
     public ResponseEntity&lt;RelationProposalDto&gt; revertProposal(@PathVariable Long id) {
         try {
-<span class="nc" id="L148">            RelationProposalDto dto = reviewService.revertProposal(id);</span>
-<span class="nc" id="L149">            return ResponseEntity.ok(dto);</span>
-<span class="fc" id="L150">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
-<span class="fc" id="L151">            return ResponseEntity.badRequest().build();</span>
+<span class="nc" id="L193">            RelationProposalDto dto = reviewService.revertProposal(id);</span>
+<span class="nc" id="L194">            return ResponseEntity.ok(dto);</span>
+<span class="fc" id="L195">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="fc" id="L196">            return ResponseEntity.badRequest().build();</span>
         }
     }
 
@@ -160,38 +205,38 @@ public class ProposalApiController {
     @PostMapping(&quot;/proposals/bulk&quot;)
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; bulkAction(@RequestBody Map&lt;String, Object&gt; body) {
         @SuppressWarnings(&quot;unchecked&quot;)
-<span class="fc" id="L163">        List&lt;Number&gt; ids = (List&lt;Number&gt;) body.get(&quot;ids&quot;);</span>
-<span class="fc" id="L164">        String action = (String) body.get(&quot;action&quot;);</span>
+<span class="fc" id="L208">        List&lt;Number&gt; ids = (List&lt;Number&gt;) body.get(&quot;ids&quot;);</span>
+<span class="fc" id="L209">        String action = (String) body.get(&quot;action&quot;);</span>
 
-<span class="pc bpc" id="L166" title="1 of 8 branches missed.">        if (ids == null || ids.isEmpty() || action == null || action.isBlank()) {</span>
-<span class="fc" id="L167">            return ResponseEntity.badRequest().build();</span>
+<span class="pc bpc" id="L211" title="1 of 8 branches missed.">        if (ids == null || ids.isEmpty() || action == null || action.isBlank()) {</span>
+<span class="fc" id="L212">            return ResponseEntity.badRequest().build();</span>
         }
 
-<span class="fc" id="L170">        int success = 0;</span>
-<span class="fc" id="L171">        int failed = 0;</span>
+<span class="fc" id="L215">        int success = 0;</span>
+<span class="fc" id="L216">        int failed = 0;</span>
 
-<span class="fc bfc" id="L173" title="All 2 branches covered.">        for (Number idNum : ids) {</span>
-<span class="fc" id="L174">            Long id = idNum.longValue();</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        for (Number idNum : ids) {</span>
+<span class="fc" id="L219">            Long id = idNum.longValue();</span>
             try {
-<span class="fc bfc" id="L176" title="All 2 branches covered.">                if (&quot;ACCEPT&quot;.equalsIgnoreCase(action)) {</span>
-<span class="nc" id="L177">                    reviewService.acceptProposal(id);</span>
-<span class="pc bpc" id="L178" title="1 of 2 branches missed.">                } else if (&quot;REJECT&quot;.equalsIgnoreCase(action)) {</span>
-<span class="nc" id="L179">                    reviewService.rejectProposal(id);</span>
+<span class="fc bfc" id="L221" title="All 2 branches covered.">                if (&quot;ACCEPT&quot;.equalsIgnoreCase(action)) {</span>
+<span class="nc" id="L222">                    reviewService.acceptProposal(id);</span>
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">                } else if (&quot;REJECT&quot;.equalsIgnoreCase(action)) {</span>
+<span class="nc" id="L224">                    reviewService.rejectProposal(id);</span>
                 } else {
-<span class="fc" id="L181">                    return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L226">                    return ResponseEntity.badRequest().build();</span>
                 }
-<span class="nc" id="L183">                success++;</span>
-<span class="fc" id="L184">            } catch (IllegalArgumentException | IllegalStateException e) {</span>
-<span class="fc" id="L185">                failed++;</span>
-<span class="nc" id="L186">            }</span>
-<span class="fc" id="L187">        }</span>
+<span class="nc" id="L228">                success++;</span>
+<span class="fc" id="L229">            } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="fc" id="L230">                failed++;</span>
+<span class="nc" id="L231">            }</span>
+<span class="fc" id="L232">        }</span>
 
-<span class="fc" id="L189">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L190">        result.put(&quot;action&quot;, action);</span>
-<span class="fc" id="L191">        result.put(&quot;success&quot;, success);</span>
-<span class="fc" id="L192">        result.put(&quot;failed&quot;, failed);</span>
-<span class="fc" id="L193">        result.put(&quot;total&quot;, ids.size());</span>
-<span class="fc" id="L194">        return ResponseEntity.ok(result);</span>
+<span class="fc" id="L234">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L235">        result.put(&quot;action&quot;, action);</span>
+<span class="fc" id="L236">        result.put(&quot;success&quot;, success);</span>
+<span class="fc" id="L237">        result.put(&quot;failed&quot;, failed);</span>
+<span class="fc" id="L238">        result.put(&quot;total&quot;, ids.size());</span>
+<span class="fc" id="L239">        return ResponseEntity.ok(result);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

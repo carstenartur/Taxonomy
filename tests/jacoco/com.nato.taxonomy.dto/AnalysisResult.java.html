@@ -28,32 +28,38 @@ public class AnalysisResult {
      */
 <span class="fc" id="L29">    private List&lt;TaxonomyDiscrepancy&gt; discrepancies = new ArrayList&lt;&gt;();</span>
 
-<span class="fc" id="L31">    public AnalysisResult() {}</span>
+    /** Provisional (not-yet-persisted) relation hypotheses generated from scores. */
+<span class="fc" id="L32">    private List&lt;RelationHypothesisDto&gt; provisionalRelations = new ArrayList&lt;&gt;();</span>
 
-<span class="fc" id="L33">    public AnalysisResult(Map&lt;String, Integer&gt; scores, List&lt;TaxonomyNodeDto&gt; tree) {</span>
-<span class="fc" id="L34">        this.scores = scores;</span>
-<span class="fc" id="L35">        this.tree = tree;</span>
-<span class="fc" id="L36">    }</span>
+<span class="fc" id="L34">    public AnalysisResult() {}</span>
 
-<span class="fc" id="L38">    public Map&lt;String, Integer&gt; getScores() { return scores; }</span>
-<span class="nc" id="L39">    public void setScores(Map&lt;String, Integer&gt; scores) { this.scores = scores; }</span>
+<span class="fc" id="L36">    public AnalysisResult(Map&lt;String, Integer&gt; scores, List&lt;TaxonomyNodeDto&gt; tree) {</span>
+<span class="fc" id="L37">        this.scores = scores;</span>
+<span class="fc" id="L38">        this.tree = tree;</span>
+<span class="fc" id="L39">    }</span>
 
-<span class="fc" id="L41">    public List&lt;TaxonomyNodeDto&gt; getTree() { return tree; }</span>
-<span class="nc" id="L42">    public void setTree(List&lt;TaxonomyNodeDto&gt; tree) { this.tree = tree; }</span>
+<span class="fc" id="L41">    public Map&lt;String, Integer&gt; getScores() { return scores; }</span>
+<span class="nc" id="L42">    public void setScores(Map&lt;String, Integer&gt; scores) { this.scores = scores; }</span>
 
-<span class="fc" id="L44">    public String getStatus() { return status; }</span>
-<span class="fc" id="L45">    public void setStatus(String status) { this.status = status; }</span>
+<span class="fc" id="L44">    public List&lt;TaxonomyNodeDto&gt; getTree() { return tree; }</span>
+<span class="nc" id="L45">    public void setTree(List&lt;TaxonomyNodeDto&gt; tree) { this.tree = tree; }</span>
 
-<span class="fc" id="L47">    public List&lt;String&gt; getWarnings() { return warnings; }</span>
-<span class="fc" id="L48">    public void setWarnings(List&lt;String&gt; warnings) { this.warnings = warnings; }</span>
+<span class="fc" id="L47">    public String getStatus() { return status; }</span>
+<span class="fc" id="L48">    public void setStatus(String status) { this.status = status; }</span>
 
-<span class="fc" id="L50">    public String getErrorMessage() { return errorMessage; }</span>
-<span class="nc" id="L51">    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }</span>
+<span class="fc" id="L50">    public List&lt;String&gt; getWarnings() { return warnings; }</span>
+<span class="fc" id="L51">    public void setWarnings(List&lt;String&gt; warnings) { this.warnings = warnings; }</span>
 
-<span class="fc" id="L53">    public RequirementArchitectureView getArchitectureView() { return architectureView; }</span>
-<span class="fc" id="L54">    public void setArchitectureView(RequirementArchitectureView architectureView) { this.architectureView = architectureView; }</span>
+<span class="fc" id="L53">    public String getErrorMessage() { return errorMessage; }</span>
+<span class="nc" id="L54">    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }</span>
 
-<span class="fc" id="L56">    public List&lt;TaxonomyDiscrepancy&gt; getDiscrepancies() { return discrepancies; }</span>
-<span class="fc" id="L57">    public void setDiscrepancies(List&lt;TaxonomyDiscrepancy&gt; discrepancies) { this.discrepancies = discrepancies; }</span>
+<span class="fc" id="L56">    public RequirementArchitectureView getArchitectureView() { return architectureView; }</span>
+<span class="fc" id="L57">    public void setArchitectureView(RequirementArchitectureView architectureView) { this.architectureView = architectureView; }</span>
+
+<span class="fc" id="L59">    public List&lt;TaxonomyDiscrepancy&gt; getDiscrepancies() { return discrepancies; }</span>
+<span class="fc" id="L60">    public void setDiscrepancies(List&lt;TaxonomyDiscrepancy&gt; discrepancies) { this.discrepancies = discrepancies; }</span>
+
+<span class="fc" id="L62">    public List&lt;RelationHypothesisDto&gt; getProvisionalRelations() { return provisionalRelations; }</span>
+<span class="fc" id="L63">    public void setProvisionalRelations(List&lt;RelationHypothesisDto&gt; provisionalRelations) { this.provisionalRelations = provisionalRelations; }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

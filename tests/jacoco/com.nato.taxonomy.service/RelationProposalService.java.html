@@ -130,21 +130,62 @@ public class RelationProposalService {
 <span class="fc" id="L130">                .stream().map(this::toDto).toList();</span>
     }
 
+    /**
+     * Creates a proposal directly from a provisional relation hypothesis.
+     * Used to persist an AI-generated hypothesis as a formal proposal for review.
+     *
+     * @param sourceCode   source node code
+     * @param targetCode   target node code
+     * @param relationType the type of relation
+     * @param confidence   confidence score (0.0–1.0)
+     * @param rationale    explanation for the proposal
+     * @return the created proposal DTO, or {@code null} if the proposal already exists
+     */
+    @Transactional
+    public RelationProposalDto createFromHypothesis(String sourceCode, String targetCode,
+                                                     RelationType relationType,
+                                                     double confidence, String rationale) {
+<span class="nc" id="L148">        TaxonomyNode source = nodeRepository.findByCode(sourceCode)</span>
+<span class="nc" id="L149">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Source node not found: &quot; + sourceCode));</span>
+<span class="nc" id="L150">        TaxonomyNode target = nodeRepository.findByCode(targetCode)</span>
+<span class="nc" id="L151">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Target node not found: &quot; + targetCode));</span>
+
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationType(</span>
+                sourceCode, targetCode, relationType)) {
+<span class="nc" id="L155">            log.debug(&quot;Proposal already exists: {} → {} [{}]&quot;, sourceCode, targetCode, relationType);</span>
+<span class="nc" id="L156">            return null;</span>
+        }
+
+<span class="nc" id="L159">        RelationProposal proposal = new RelationProposal();</span>
+<span class="nc" id="L160">        proposal.setSourceNode(source);</span>
+<span class="nc" id="L161">        proposal.setTargetNode(target);</span>
+<span class="nc" id="L162">        proposal.setRelationType(relationType);</span>
+<span class="nc" id="L163">        proposal.setConfidence(confidence);</span>
+<span class="nc" id="L164">        proposal.setRationale(rationale);</span>
+<span class="nc" id="L165">        proposal.setProvenance(&quot;analysis-hypothesis&quot;);</span>
+<span class="nc" id="L166">        proposal.setStatus(ProposalStatus.PENDING);</span>
+
+<span class="nc" id="L168">        RelationProposal saved = proposalRepository.save(proposal);</span>
+<span class="nc" id="L169">        log.info(&quot;Created proposal from hypothesis: {} → {} [{}] confidence={}&quot;,</span>
+<span class="nc" id="L170">                sourceCode, targetCode, relationType, confidence);</span>
+<span class="nc" id="L171">        return toDto(saved);</span>
+    }
+
     public RelationProposalDto toDto(RelationProposal proposal) {
-<span class="fc" id="L134">        RelationProposalDto dto = new RelationProposalDto();</span>
-<span class="fc" id="L135">        dto.setId(proposal.getId());</span>
-<span class="fc" id="L136">        dto.setSourceCode(proposal.getSourceNode().getCode());</span>
-<span class="fc" id="L137">        dto.setSourceName(proposal.getSourceNode().getNameEn());</span>
-<span class="fc" id="L138">        dto.setTargetCode(proposal.getTargetNode().getCode());</span>
-<span class="fc" id="L139">        dto.setTargetName(proposal.getTargetNode().getNameEn());</span>
-<span class="fc" id="L140">        dto.setRelationType(proposal.getRelationType().name());</span>
-<span class="fc" id="L141">        dto.setStatus(proposal.getStatus().name());</span>
-<span class="fc" id="L142">        dto.setConfidence(proposal.getConfidence());</span>
-<span class="fc" id="L143">        dto.setRationale(proposal.getRationale());</span>
-<span class="fc" id="L144">        dto.setProvenance(proposal.getProvenance());</span>
-<span class="fc" id="L145">        dto.setCreatedAt(proposal.getCreatedAt());</span>
-<span class="fc" id="L146">        dto.setReviewedAt(proposal.getReviewedAt());</span>
-<span class="fc" id="L147">        return dto;</span>
+<span class="fc" id="L175">        RelationProposalDto dto = new RelationProposalDto();</span>
+<span class="fc" id="L176">        dto.setId(proposal.getId());</span>
+<span class="fc" id="L177">        dto.setSourceCode(proposal.getSourceNode().getCode());</span>
+<span class="fc" id="L178">        dto.setSourceName(proposal.getSourceNode().getNameEn());</span>
+<span class="fc" id="L179">        dto.setTargetCode(proposal.getTargetNode().getCode());</span>
+<span class="fc" id="L180">        dto.setTargetName(proposal.getTargetNode().getNameEn());</span>
+<span class="fc" id="L181">        dto.setRelationType(proposal.getRelationType().name());</span>
+<span class="fc" id="L182">        dto.setStatus(proposal.getStatus().name());</span>
+<span class="fc" id="L183">        dto.setConfidence(proposal.getConfidence());</span>
+<span class="fc" id="L184">        dto.setRationale(proposal.getRationale());</span>
+<span class="fc" id="L185">        dto.setProvenance(proposal.getProvenance());</span>
+<span class="fc" id="L186">        dto.setCreatedAt(proposal.getCreatedAt());</span>
+<span class="fc" id="L187">        dto.setReviewedAt(proposal.getReviewedAt());</span>
+<span class="fc" id="L188">        return dto;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
