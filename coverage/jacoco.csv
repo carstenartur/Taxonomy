@@ -15,7 +15,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GapAnalysisApiContro
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RelationApiController,4,116,6,10,2,29,6,8,0,6
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GraphQueryApiController,0,114,2,8,0,26,2,9,0,6
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,CoverageApiController.RecordCoverageRequest,0,15,0,0,0,1,0,1,0,1
-Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ApiController,468,938,70,78,96,205,60,46,3,29
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ApiController,391,1039,70,78,83,222,59,47,2,30
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,QualityApiController,0,27,0,0,0,7,0,5,0,5
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,GapAnalysisApiController,0,24,0,2,0,8,0,3,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,RecommendationApiController.RecommendationRequest,0,12,0,0,0,1,0,1,0,1
@@ -87,11 +87,13 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.visio,VisioShape,3,48,0,0,1,17,
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureGraphQueryServiceImpl,62,963,23,84,13,197,19,55,0,20
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationCandidateService,6,138,5,5,0,25,4,7,0,6
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitecturePatternService.PatternTemplate,0,9,0,0,0,1,0,1,0,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,AppInitializationStateService.State,0,33,0,0,0,6,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,PropagationResult,0,27,0,0,0,10,0,5,0,5
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationProposalService,20,268,3,5,3,59,3,9,0,8
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureGapService,20,351,6,32,5,77,6,19,0,6
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitecturePatternService,25,491,12,42,4,92,11,22,0,6
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelevancePropagationService,16,289,8,20,4,53,6,12,0,4
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,AppInitializationStateService,0,77,0,4,0,13,0,10,0,8
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,HybridSearchService,45,28,3,1,7,9,2,3,0,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,SearchService,11,186,2,2,4,37,2,6,0,6
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.ScoreParseResult,6,41,0,2,2,4,1,3,1,2
@@ -107,6 +109,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationQualityService,
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmProvider,0,45,0,0,0,8,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,EnrichedImpactService,26,238,2,8,4,52,2,7,0,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureRecommendationService,21,359,7,23,6,80,7,13,0,5
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,AppInitializationStateService.StateSnapshot,0,15,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationCompatibilityMatrix,1,162,2,12,0,34,2,11,0,6
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,MermaidExportService,14,314,10,21,5,55,10,15,0,7
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureGraphQueryServiceImpl.TraversalResult,0,15,0,0,0,6,0,1,0,1
@@ -120,7 +123,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.new TypeRefe
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateDiagramService,32,607,6,63,1,109,6,54,0,13
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,PropagationResult.TraversedRelation,0,27,0,0,0,10,0,5,0,5
-Taxonomy Architecture Analyzer,com.nato.taxonomy.service,TaxonomyService,364,1126,61,78,94,272,49,47,4,21
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,TaxonomyService,365,1143,64,79,96,276,51,49,3,23
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,VisioDiagramService,1,207,3,11,0,37,3,8,0,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationValidationService,21,138,3,7,4,33,4,6,1,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RankFusionUtil,0,74,0,2,0,16,0,4,0,3
