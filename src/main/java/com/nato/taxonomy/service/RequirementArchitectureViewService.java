@@ -39,7 +39,7 @@ public class RequirementArchitectureViewService {
     }
 
     /**
-     * Builds the architecture view from analysis scores.
+     * Builds the architecture view from analysis scores (without provisional relations).
      *
      * @param scores               map of nodeCode → integer score (0–100) from the LLM analysis
      * @param businessText         the original business requirement text (for notes)
@@ -49,6 +49,24 @@ public class RequirementArchitectureViewService {
     @Transactional(readOnly = true)
     public RequirementArchitectureView build(Map<String, Integer> scores, String businessText,
                                              int maxArchitectureNodes) {
+        return build(scores, businessText, maxArchitectureNodes, null);
+    }
+
+    /**
+     * Builds the architecture view from analysis scores, optionally using
+     * provisional relation hypotheses as virtual edges for relevance propagation
+     * when no confirmed relations exist.
+     *
+     * @param scores               map of nodeCode → integer score (0–100) from the LLM analysis
+     * @param businessText         the original business requirement text (for notes)
+     * @param maxArchitectureNodes maximum number of elements to include (0 = no limit)
+     * @param provisionalRelations optional list of AI-suggested relation hypotheses
+     * @return the architecture view, or an empty view with a note if no anchors are found
+     */
+    @Transactional(readOnly = true)
+    public RequirementArchitectureView build(Map<String, Integer> scores, String businessText,
+                                             int maxArchitectureNodes,
+                                             List<RelationHypothesisDto> provisionalRelations) {
         RequirementArchitectureView view = new RequirementArchitectureView();
 
         if (scores == null || scores.isEmpty()) {
@@ -80,6 +98,33 @@ public class RequirementArchitectureViewService {
         // 5. Build included relationships
         List<RequirementRelationshipView> relationships = buildRelationships(propagation);
 
+        // 5b. If no confirmed relationships were found but provisional relations exist,
+        //     add them as virtual edges so the architecture view is useful from day one.
+        boolean usedProvisional = false;
+        if (relationships.isEmpty()
+                && provisionalRelations != null && !provisionalRelations.isEmpty()) {
+            Set<String> includedCodes = elements.stream()
+                    .map(RequirementElementView::getNodeCode)
+                    .collect(Collectors.toSet());
+
+            for (RelationHypothesisDto hyp : provisionalRelations) {
+                // Ensure both endpoints are in the included elements set
+                // (they may not be if one node scored below the anchor threshold)
+                ensureElement(elements, includedCodes, hyp.getSourceCode(), hyp.getSourceName(), scores);
+                ensureElement(elements, includedCodes, hyp.getTargetCode(), hyp.getTargetName(), scores);
+
+                RequirementRelationshipView rv = new RequirementRelationshipView();
+                rv.setSourceCode(hyp.getSourceCode());
+                rv.setTargetCode(hyp.getTargetCode());
+                rv.setRelationType(hyp.getRelationType());
+                rv.setPropagatedRelevance(hyp.getConfidence());
+                rv.setHopDistance(0);
+                rv.setIncludedBecause("provisional (AI-suggested, not yet confirmed)");
+                relationships.add(rv);
+            }
+            usedProvisional = true;
+        }
+
         // 6. Truncate to maxArchitectureNodes if requested
         if (maxArchitectureNodes > 0 && elements.size() > maxArchitectureNodes) {
             Set<String> keptCodes = elements.subList(0, maxArchitectureNodes).stream()
@@ -95,7 +140,10 @@ public class RequirementArchitectureViewService {
         view.setIncludedRelationships(relationships);
 
         // 7. Add notes
-        if (relationships.isEmpty() && elements.size() == anchors.size()) {
+        if (usedProvisional) {
+            view.getNotes().add("Architecture view built using AI-suggested provisional relations " +
+                    "(not yet confirmed).");
+        } else if (relationships.isEmpty() && elements.size() == anchors.size()) {
             view.getNotes().add("No traversable relations found for anchor nodes; " +
                     "only direct matches are included.");
         }
@@ -240,5 +288,35 @@ public class RequirementArchitectureViewService {
         }
 
         return new ArrayList<>(deduped.values());
+    }
+
+    /**
+     * Ensures a node is present in the included elements set, adding it if missing.
+     * Used when provisional relations reference nodes not already included by propagation.
+     */
+    private void ensureElement(List<RequirementElementView> elements, Set<String> includedCodes,
+                               String nodeCode, String nodeName, Map<String, Integer> scores) {
+        if (includedCodes.contains(nodeCode)) {
+            return;
+        }
+        RequirementElementView element = new RequirementElementView();
+        element.setNodeCode(nodeCode);
+        element.setRelevance(scores.getOrDefault(nodeCode, 0) / 100.0);
+        element.setHopDistance(0);
+        element.setAnchor(false);
+        element.setIncludedBecause("provisional relation endpoint");
+        element.setTitle(nodeName);
+
+        Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(nodeCode);
+        if (nodeOpt.isPresent()) {
+            TaxonomyNode node = nodeOpt.get();
+            if (element.getTitle() == null) {
+                element.setTitle(node.getNameEn());
+            }
+            element.setTaxonomySheet(node.getTaxonomyRoot());
+        }
+
+        elements.add(element);
+        includedCodes.add(nodeCode);
     }
 }

@@ -1365,6 +1365,8 @@
 
                 // Render architecture view if present
                 renderArchitectureView(result.architectureView);
+                // Render suggested relationships from provisional relations
+                renderSuggestedRelations(result.provisionalRelations);
 
                 // Store architecture view and show summary button
                 if (result.architectureView) {
@@ -1410,6 +1412,9 @@
         // Also hide architecture view
         const archPanel = document.getElementById('architectureViewPanel');
         if (archPanel) { archPanel.style.display = 'none'; }
+        // Also hide suggested relations
+        const sugPanel = document.getElementById('suggestedRelationsPanel');
+        if (sugPanel) { sugPanel.style.display = 'none'; }
     }
 
     function renderArchitectureView(view) {
@@ -1491,6 +1496,128 @@
         panel.style.display = '';
         if (placeholder) { placeholder.style.display = 'none'; }
     }
+
+    /**
+     * Renders the Suggested Relationships panel from provisional relation hypotheses.
+     */
+    function renderSuggestedRelations(provisionalRelations) {
+        var panel = document.getElementById('suggestedRelationsPanel');
+        var content = document.getElementById('suggestedRelationsContent');
+        var badge = document.getElementById('suggestedRelationsBadge');
+        if (!panel || !content) return;
+
+        if (!provisionalRelations || provisionalRelations.length === 0) {
+            panel.style.display = 'none';
+            return;
+        }
+
+        if (badge) badge.textContent = provisionalRelations.length;
+
+        var html = '';
+        html += '<div class="d-flex justify-content-between align-items-center mb-2">';
+        html += '<small class="text-muted">AI-generated relationship suggestions based on analysis scores</small>';
+        html += '<button class="btn btn-sm btn-outline-success" onclick="window._acceptAllHighConfidence()" title="Accept all suggestions with confidence ≥ 80%" aria-label="Accept all suggestions with confidence 80% or higher">✅ Accept all ≥80%</button>';
+        html += '</div>';
+        html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
+        html += '<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Confidence</th><th>Reasoning</th><th>Actions</th></tr></thead><tbody>';
+
+        provisionalRelations.forEach(function (h, idx) {
+            var confPct = (h.confidence * 100).toFixed(0);
+            var confClass = h.confidence >= 0.8 ? 'text-success fw-bold' : (h.confidence >= 0.5 ? 'text-warning' : 'text-danger');
+            html += '<tr id="suggested-row-' + idx + '">' +
+                '<td>' + escapeHtml(h.sourceCode) + (h.sourceName ? '<br><small class="text-muted">' + escapeHtml(h.sourceName) + '</small>' : '') + '</td>' +
+                '<td>→</td>' +
+                '<td>' + escapeHtml(h.targetCode) + (h.targetName ? '<br><small class="text-muted">' + escapeHtml(h.targetName) + '</small>' : '') + '</td>' +
+                '<td><span class="badge bg-secondary">' + escapeHtml(h.relationType) + '</span></td>' +
+                '<td class="' + confClass + '">' + confPct + '%</td>' +
+                '<td><small>' + escapeHtml(h.reasoning || '') + '</small></td>' +
+                '<td class="text-nowrap">' +
+                '<button class="btn btn-sm btn-outline-success me-1" onclick="window._acceptHypothesis(' + idx + ')" title="Accept" aria-label="Accept relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">✅</button>' +
+                '<button class="btn btn-sm btn-outline-danger" onclick="window._rejectHypothesis(' + idx + ')" title="Dismiss" aria-label="Dismiss relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">❌</button>' +
+                '</td></tr>';
+        });
+
+        html += '</tbody></table></div>';
+        content.innerHTML = html;
+        panel.style.display = '';
+
+        // Store for action handlers
+        window._currentProvisionalRelations = provisionalRelations;
+    }
+
+    /**
+     * Accept a single hypothesis: create proposal and auto-accept.
+     */
+    window._acceptHypothesis = function (idx) {
+        var h = window._currentProvisionalRelations && window._currentProvisionalRelations[idx];
+        if (!h) return;
+        var row = document.getElementById('suggested-row-' + idx);
+        if (row) row.style.opacity = '0.5';
+
+        fetch('/api/proposals/from-hypothesis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sourceCode: h.sourceCode,
+                targetCode: h.targetCode,
+                relationType: h.relationType,
+                confidence: h.confidence,
+                rationale: h.reasoning
+            })
+        })
+        .then(function (r) {
+            if (r.status === 409) {
+                // Proposal already exists, mark as already processed
+                if (row) { row.classList.add('table-info'); row.style.opacity = '1'; }
+                var actions = row && row.querySelector('td:last-child');
+                if (actions) actions.innerHTML = '<span class="badge bg-info">Already exists</span>';
+                showStatus('info', 'ℹ️ Proposal already exists for ' + h.sourceCode + ' → ' + h.targetCode);
+                return null;
+            }
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function (proposal) {
+            if (proposal === null) return; // already handled (409)
+            if (proposal && proposal.id) {
+                // Auto-accept the created proposal
+                return fetch('/api/proposals/' + proposal.id + '/accept', { method: 'POST' });
+            }
+        })
+        .then(function () {
+            if (row) { row.classList.add('table-success'); row.style.opacity = '1'; }
+            var actions = row && row.querySelector('td:last-child');
+            if (actions) actions.innerHTML = '<span class="badge bg-success">Accepted</span>';
+            showStatus('success', '✅ Relationship accepted: ' + h.sourceCode + ' → ' + h.targetCode);
+        })
+        .catch(function (err) {
+            if (row) row.style.opacity = '1';
+            showStatus('danger', '❌ Failed to accept: ' + err.message);
+        });
+    };
+
+    /**
+     * Dismiss a hypothesis (just hides the row — no server action needed).
+     */
+    window._rejectHypothesis = function (idx) {
+        var row = document.getElementById('suggested-row-' + idx);
+        if (row) { row.classList.add('table-danger'); row.style.opacity = '0.4'; }
+        var actions = row && row.querySelector('td:last-child');
+        if (actions) actions.innerHTML = '<span class="badge bg-secondary">Dismissed</span>';
+    };
+
+    /**
+     * Accept all hypotheses with confidence >= 80%.
+     */
+    window._acceptAllHighConfidence = function () {
+        var relations = window._currentProvisionalRelations;
+        if (!relations) return;
+        relations.forEach(function (h, idx) {
+            if (h.confidence >= 0.8) {
+                window._acceptHypothesis(idx);
+            }
+        });
+    };
 
     // ── Architecture Summary View ─────────────────────────────────────────────
     var LAYER_CONFIG = {
