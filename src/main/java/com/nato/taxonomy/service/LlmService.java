@@ -187,14 +187,22 @@ public class LlmService {
     }
 
     /**
-     * Builds mock {@link ScoreParseResult} for the given nodes.
+     * Builds mock {@link ScoreParseResult} for the given nodes, respecting the parent budget.
      *
      * <p>First tries to look up each node's score in the saved analysis JSON loaded from
      * {@code classpath:mock-scores/secure-voice-comms.json}. If the node code is found,
      * that score is used. If not found (e.g. a deeper child node not in the JSON), falls
      * back to the hardcoded root-score + deterministic variation approach.
+     *
+     * <p>After all raw scores are collected, they are normalized via
+     * {@link #normalizeToParent(Map, int)} so that the children always sum to {@code parentScore},
+     * exactly as the real LLM path does in {@link #parseScoreParseResult}.  Any raw sum that
+     * exceeds {@code parentScore} is recorded as a {@link TaxonomyDiscrepancy}.
+     *
+     * @param nodes       the nodes to score
+     * @param parentScore the budget the child scores must sum to (0–100 for root nodes)
      */
-    private ScoreParseResult buildMockScores(List<TaxonomyNode> nodes) {
+    private ScoreParseResult buildMockScores(List<TaxonomyNode> nodes, int parentScore) {
         SavedAnalysis mockAnalysis = loadMockAnalysis();
         Map<String, Integer> scores = new HashMap<>();
         Map<String, String> reasons = new HashMap<>();
@@ -224,8 +232,28 @@ public class LlmService {
                 reasons.put(node.getCode(), reason);
             }
         }
+
+        int rawSum = scores.values().stream().mapToInt(Integer::intValue).sum();
+
+        // Detect discrepancy: raw child sum exceeds parent budget (mirrors parseScoreParseResult)
+        TaxonomyDiscrepancy discrepancy = null;
+        if (rawSum > parentScore) {
+            String parentCode = deriveParentCode(nodes);
+            discrepancy = new TaxonomyDiscrepancy(parentCode, parentScore, rawSum);
+            log.warn("Mock discrepancy detected: children of '{}' sum to {} but parent score is {}",
+                    parentCode, rawSum, parentScore);
+        }
+
+        // Normalize so children always sum to parentScore (mirrors the real LLM path)
+        Map<String, Integer> finalScores;
+        if (rawSum == parentScore) {
+            finalScores = scores;
+        } else {
+            finalScores = normalizeToParent(scores, parentScore);
+        }
+
         recordSuccess();
-        return new ScoreParseResult(scores, reasons);
+        return new ScoreParseResult(finalScores, reasons, discrepancy);
     }
 
     /**
@@ -521,7 +549,7 @@ public class LlmService {
         try {
             if (llmMock) {
                 log.info("MOCK — returning hardcoded scores for {} nodes", nodes.size());
-                return buildMockScores(nodes);
+                return buildMockScores(nodes, parentScore);
             }
 
             LlmProvider provider = getActiveProvider();
@@ -583,7 +611,7 @@ public class LlmService {
     private Map<String, Integer> callLlmPropagating(String businessText, List<TaxonomyNode> nodes, int parentScore) {
         if (llmMock) {
             log.info("MOCK — returning hardcoded scores for {} nodes", nodes.size());
-            return buildMockScores(nodes).scores();
+            return buildMockScores(nodes, parentScore).scores();
         }
 
         LlmProvider provider = getActiveProvider();
@@ -632,7 +660,7 @@ public class LlmService {
         // ── Mock path ─────────────────────────────────────────────────────────
         if (llmMock) {
             log.info("MOCK — returning hardcoded scores for {} nodes", nodes.size());
-            ScoreParseResult mock = buildMockScores(nodes);
+            ScoreParseResult mock = buildMockScores(nodes, parentScore);
             detail.setScores(mock.scores());
             detail.setReasons(mock.reasons());
             detail.setPrompt("(mock mode – no prompt sent)");
