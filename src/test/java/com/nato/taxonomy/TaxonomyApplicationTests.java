@@ -132,6 +132,34 @@ class TaxonomyApplicationTests {
     }
 
     @Test
+    void startupStatusEndpointReturnsBackwardCompatibleFields() throws Exception {
+        mockMvc.perform(get("/api/status/startup").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.initialized").isBoolean())
+                .andExpect(jsonPath("$.status").isString());
+    }
+
+    @Test
+    void startupStatusEndpointReturnsPhaseFields() throws Exception {
+        mockMvc.perform(get("/api/status/startup").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.phase").isString())
+                .andExpect(jsonPath("$.phaseMessage").isString())
+                .andExpect(jsonPath("$.phaseUpdatedAt").isString());
+    }
+
+    @Test
+    void startupStatusEndpointReturnsReadyAfterInit() throws Exception {
+        // In test context taxonomy is loaded synchronously — so app should be ready
+        mockMvc.perform(get("/api/status/startup").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.initialized").value(true))
+                .andExpect(jsonPath("$.status").value("ready"))
+                .andExpect(jsonPath("$.phase").value("READY"));
+    }
+
+    @Test
     void eachRootNodeHasCorrectTaxonomyRoot() {
         List<TaxonomyNodeDto> tree = taxonomyService.getFullTree();
         for (TaxonomyNodeDto root : tree) {

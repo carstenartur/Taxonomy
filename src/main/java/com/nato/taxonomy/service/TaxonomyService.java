@@ -32,7 +32,6 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 // Eagerly initialized even when spring.main.lazy-initialization=true so that
 // @PostConstruct (sync init) and @EventListener(ApplicationReadyEvent) (async init) both fire.
@@ -61,6 +60,7 @@ public class TaxonomyService {
 
     private final TaxonomyNodeRepository repository;
     private final TaxonomyRelationRepository relationRepository;
+    private final AppInitializationStateService stateService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -75,22 +75,37 @@ public class TaxonomyService {
     // ── Startup readiness tracking ────────────────────────────────────────────
     private final AtomicBoolean initialized  = new AtomicBoolean(false);
     private final AtomicBoolean initializing = new AtomicBoolean(false);
-    private final AtomicReference<String> initStatus = new AtomicReference<>("pending");
 
     public TaxonomyService(TaxonomyNodeRepository repository,
-                           TaxonomyRelationRepository relationRepository) {
+                           TaxonomyRelationRepository relationRepository,
+                           AppInitializationStateService stateService) {
         this.repository = repository;
         this.relationRepository = relationRepository;
+        this.stateService = stateService;
     }
 
     /** Returns {@code true} once the taxonomy has been fully loaded and indexed. */
     public boolean isInitialized() {
-        return initialized.get();
+        return stateService.isReady();
     }
 
-    /** Returns a human-readable initialization status: {@code pending}, {@code loading}, {@code ready}, or {@code error}. */
+    /**
+     * Returns a human-readable initialization status for backward compatibility.
+     * Delegates to {@link AppInitializationStateService} and maps the {@code State} enum
+     * to the legacy string values: {@code pending}, {@code loading}, {@code ready}, or {@code error}.
+     */
     public String getInitStatus() {
-        return initStatus.get();
+        return switch (stateService.getState()) {
+            case READY -> "ready";
+            case FAILED -> "error";
+            case LOADING_TAXONOMY, BUILDING_INDEX -> "loading";
+            case STARTING -> "pending";
+        };
+    }
+
+    /** Returns the centralised initialisation state service. */
+    public AppInitializationStateService getStateService() {
+        return stateService;
     }
 
     /**
@@ -152,7 +167,7 @@ public class TaxonomyService {
             log.info("Taxonomy already initialized — skipping duplicate call.");
             return;
         }
-        initStatus.set("loading");
+        stateService.update(AppInitializationStateService.State.LOADING_TAXONOMY, "Loading taxonomy from Excel\u2026");
         try {
             new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
                 try {
@@ -163,15 +178,16 @@ public class TaxonomyService {
                     throw new RuntimeException(e);
                 }
             });
+            stateService.update(AppInitializationStateService.State.BUILDING_INDEX, "Building search index\u2026");
             initialized.set(true);
-            initStatus.set("ready");
+            stateService.update(AppInitializationStateService.State.READY, "Application is ready");
             if (async) {
                 log.info("Async taxonomy initialization complete.");
             }
         } catch (RuntimeException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            initStatus.set("error");
             String msg = async ? "Async taxonomy initialization failed" : "Failed to load taxonomy from Excel";
+            stateService.fail(msg, cause);
             log.error(msg, cause);
         }
     }

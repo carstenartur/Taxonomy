@@ -792,7 +792,9 @@
                 var mem = data.memory || {};
                 var pct = mem.heapUsagePercent || 0;
                 var icon = pct > 85 ? '🔴' : pct > 70 ? '🟡' : '🟢';
-                var statusText = data.initialized ? 'Ready' : ('Loading (' + (data.status || '…') + ')');
+                var statusText = data.initialized
+                    ? 'Ready'
+                    : (data.phaseMessage || 'Loading (' + (data.status || '…') + ')');
                 bar.textContent = icon + ' ' + statusText +
                     ' | Heap: ' + pct + '% (' + (mem.heapUsedMB || '?') + '/' + (mem.heapMaxMB || '?') + ' MB)' +
                     ' | Threads: ' + (mem.threadCount || '?');
