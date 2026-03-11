@@ -89,9 +89,9 @@ graph TB
     end
 
     subgraph App["Spring Boot 4 Application :8080"]
-        Controllers["REST Controllers<br/>ApiController · GraphQueryApi<br/>ProposalApi · GapAnalysis<br/>PatternDetection · Recommendation"]
-        Services["Service Layer<br/>LlmService · TaxonomyService<br/>SearchService · HybridSearchService<br/>ArchitectureViewService<br/>DiagramProjectionService"]
-        Persistence["Persistence<br/>HSQLDB · Hibernate Search 8<br/>Lucene 9 Index"]
+        Controllers["REST Controllers<br/>ApiController · GraphQueryApi<br/>ProposalApi · CoverageApi<br/>GapAnalysis · PatternDetection<br/>Recommendation · ArchiMateImport"]
+        Services["Service Layer<br/>LlmService · TaxonomyService<br/>SearchService · HybridSearchService<br/>RequirementArchitectureViewService<br/>DiagramProjectionService<br/>RelationProposalService"]
+        Persistence["Persistence<br/>HSQLDB (in-process)<br/>Hibernate Search 8 / Lucene 9"]
     end
 
     subgraph External["External Services"]
