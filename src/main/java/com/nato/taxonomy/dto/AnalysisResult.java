@@ -28,6 +28,9 @@ public class AnalysisResult {
      */
     private List<TaxonomyDiscrepancy> discrepancies = new ArrayList<>();
 
+    /** Provisional (not-yet-persisted) relation hypotheses generated from scores. */
+    private List<RelationHypothesisDto> provisionalRelations = new ArrayList<>();
+
     public AnalysisResult() {}
 
     public AnalysisResult(Map<String, Integer> scores, List<TaxonomyNodeDto> tree) {
@@ -55,4 +58,7 @@ public class AnalysisResult {
 
     public List<TaxonomyDiscrepancy> getDiscrepancies() { return discrepancies; }
     public void setDiscrepancies(List<TaxonomyDiscrepancy> discrepancies) { this.discrepancies = discrepancies; }
+
+    public List<RelationHypothesisDto> getProvisionalRelations() { return provisionalRelations; }
+    public void setProvisionalRelations(List<RelationHypothesisDto> provisionalRelations) { this.provisionalRelations = provisionalRelations; }
 }

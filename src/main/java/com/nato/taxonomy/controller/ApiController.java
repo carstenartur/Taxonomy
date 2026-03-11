@@ -17,6 +17,7 @@ import com.nato.taxonomy.service.LocalEmbeddingService;
 import com.nato.taxonomy.service.LlmService;
 import com.nato.taxonomy.service.PromptTemplateService;
 import com.nato.taxonomy.service.RequirementArchitectureViewService;
+import com.nato.taxonomy.service.AnalysisRelationGenerator;
 import com.nato.taxonomy.service.SavedAnalysisService;
 import com.nato.taxonomy.service.SearchService;
 import com.nato.taxonomy.service.TaxonomyService;
@@ -73,6 +74,7 @@ public class ApiController {
     private final ArchiMateXmlExporter archiMateXmlExporter;
     private final MermaidExportService mermaidExportService;
     private final SavedAnalysisService savedAnalysisService;
+    private final AnalysisRelationGenerator analysisRelationGenerator;
 
     @Value("${admin.token:}")
     private String adminPassword;
@@ -90,7 +92,8 @@ public class ApiController {
                          ArchiMateDiagramService archiMateDiagramService,
                          ArchiMateXmlExporter archiMateXmlExporter,
                          MermaidExportService mermaidExportService,
-                         SavedAnalysisService savedAnalysisService) {
+                         SavedAnalysisService savedAnalysisService,
+                         AnalysisRelationGenerator analysisRelationGenerator) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.searchService = searchService;
@@ -108,6 +111,7 @@ public class ApiController {
         this.archiMateXmlExporter = archiMateXmlExporter;
         this.mermaidExportService = mermaidExportService;
         this.savedAnalysisService = savedAnalysisService;
+        this.analysisRelationGenerator = analysisRelationGenerator;
     }
 
     @Operation(summary = "Get full taxonomy tree", description = "Returns the complete taxonomy hierarchy as a nested tree of nodes", tags = {"Taxonomy"})
@@ -183,10 +187,17 @@ public class ApiController {
 
         AnalysisResult result = llmService.analyzeWithBudget(request.getBusinessText());
 
+        // Generate provisional relation hypotheses from scored nodes
+        if (result.getScores() != null) {
+            result.setProvisionalRelations(
+                    analysisRelationGenerator.generate(result.getScores()));
+        }
+
         if (request.isIncludeArchitectureView() && result.getScores() != null) {
             result.setArchitectureView(
                     architectureViewService.build(result.getScores(), request.getBusinessText(),
-                            request.getMaxArchitectureNodes()));
+                            request.getMaxArchitectureNodes(),
+                            result.getProvisionalRelations()));
         }
 
         return ResponseEntity.ok(result);
