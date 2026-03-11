@@ -157,17 +157,16 @@ Interactive documentation is available at [`/swagger-ui.html`](http://localhost:
 
 | Category | Key Endpoints | Description |
 |---|---|---|
-| **Analysis** | `POST /api/analyze`, `POST /api/analyze-stream` | Score taxonomy nodes against a requirement |
-| **Node Analysis** | `POST /api/analyze-node` | Analyse a single node and its children |
+| **Analysis** | `POST /api/analyze`, `GET /api/analyze-stream` | Score taxonomy nodes against a requirement |
+| **Node Analysis** | `GET /api/analyze-node` | Analyse a single node and its children |
 | **Justification** | `POST /api/justify-leaf` | Natural-language explanation for a leaf score |
-| **Architecture** | `POST /api/architecture-view` | Generate an architecture view from scores |
-| **Search** | `GET /api/search` | Full-text, semantic, hybrid, and graph search |
+| **Search** | `GET /api/search`, `/search/semantic`, `/search/hybrid`, `/search/graph` | Full-text, semantic, hybrid, and graph search |
 | **Graph** | `GET /api/graph/node/{code}/upstream`, `/downstream`, `/failure-impact` | Graph neighbourhood queries |
-| **Proposals** | `GET/POST /api/proposals` | Relation proposals with review workflow |
+| **Proposals** | `POST /api/proposals/propose`, `GET /api/proposals`, `POST /api/proposals/bulk` | Relation proposals with review workflow |
 | **Gap Analysis** | `POST /api/gap/analyze` | Identify missing relations and coverage gaps |
 | **Recommendations** | `POST /api/recommend` | Architecture element and relation recommendations |
 | **Patterns** | `POST /api/patterns/detect` | Detect standard architecture patterns |
-| **Export** | `POST /api/export/archimate`, `/visio`, `/mermaid` | Diagram export in multiple formats |
+| **Export** | `POST /api/diagram/archimate`, `/diagram/visio`, `/diagram/mermaid` | Diagram export in multiple formats |
 | **Admin** | `GET /api/diagnostics`, `GET /api/ai-status` | LLM diagnostics and system status |
 
 > Full API reference with request/response schemas: [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
@@ -221,7 +220,7 @@ docker run -p 8080:8080 -e GEMINI_API_KEY=your-key ghcr.io/carstenartur/taxonomy
 
 ```bash
 mvn compile           # Compile only
-mvn test              # Unit + Spring context tests (~370 tests, no Docker needed)
+mvn test              # Unit + Spring context tests (~500 tests, no Docker needed)
 mvn verify            # Unit + integration tests (requires Docker for container tests)
 ```
 
