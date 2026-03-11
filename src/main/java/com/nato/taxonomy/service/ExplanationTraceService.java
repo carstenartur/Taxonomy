@@ -27,6 +27,9 @@ public class ExplanationTraceService {
 
     private static final Logger log = LoggerFactory.getLogger(ExplanationTraceService.class);
 
+    /** Maximum depth when walking the taxonomy hierarchy to prevent infinite loops. */
+    private static final int MAX_HIERARCHY_DEPTH = 10;
+
     private final TaxonomyNodeRepository nodeRepository;
     private final TaxonomyRelationRepository relationRepository;
 
@@ -145,7 +148,7 @@ public class ExplanationTraceService {
         Set<String> visited = new HashSet<>();
         visited.add(currentCode);
 
-        for (int i = 0; i < 10; i++) { // Safety limit
+        for (int i = 0; i < MAX_HIERARCHY_DEPTH; i++) { // Safety limit
             List<TaxonomyRelation> incoming = relationRepository.findByTargetNodeCode(currentCode);
             if (incoming.isEmpty()) break;
 
