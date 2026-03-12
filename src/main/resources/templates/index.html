@@ -39,6 +39,9 @@
             <li class="nav-item">
                 <a class="nav-link" data-page="export" href="#export">&#128229; Export</a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link" data-page="dsl-editor" href="#dsl-editor">&#128221; DSL</a>
+            </li>
             <li id="adminNavTab" class="nav-item admin-only">
                 <a class="nav-link text-warning" data-page="admin" href="#admin">&#9881;&#65039; Admin</a>
             </li>
@@ -469,6 +472,104 @@
             </div><!-- /tab-export -->
 
             <!-- ============================================================
+                 TAB: DSL EDITOR
+                 ============================================================ -->
+            <div id="tab-dsl-editor" class="tab-pane-content d-none">
+
+                <div class="row g-3">
+                    <!-- Left: Editor -->
+                    <div class="col-lg-7">
+                        <div class="card shadow-sm mb-3">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span class="fw-semibold">&#128221; Architecture DSL Editor</span>
+                                <div class="d-flex gap-1">
+                                    <button id="dslLoadCurrentBtn" class="btn btn-sm btn-outline-secondary" title="Load current architecture as DSL">&#128260; Load Current</button>
+                                    <button id="dslParseBtn" class="btn btn-sm btn-outline-primary" title="Parse DSL and show structure">&#128269; Parse</button>
+                                    <button id="dslValidateBtn" class="btn btn-sm btn-outline-info" title="Validate DSL for errors">&#9989; Validate</button>
+                                </div>
+                            </div>
+                            <div class="card-body p-0">
+                                <textarea id="dslEditorTextarea" class="form-control font-monospace border-0" rows="20"
+                                          placeholder="// Architecture DSL — type or load from current state&#10;&#10;meta&#10;  language &quot;taxdsl&quot;&#10;  version &quot;1.0&quot;&#10;  namespace &quot;my-architecture&quot;&#10;&#10;element CP-1001 type Capability&#10;  title &quot;Secure Voice&quot;&#10;&#10;relation CP-1001 REALIZES BP-1040&#10;  status accepted"
+                                          style="resize:vertical; min-height:300px; font-size:0.82rem; line-height:1.4; tab-size:2;"></textarea>
+                            </div>
+                            <div class="card-footer">
+                                <div id="dslValidationOutput" class="small"></div>
+                            </div>
+                        </div>
+
+                        <!-- Diff output -->
+                        <div class="card shadow-sm">
+                            <div class="card-header fw-semibold">&#128269; Diff Viewer</div>
+                            <div class="card-body">
+                                <div id="dslDiffOutput" class="small text-muted">Select two commits from the history to compare.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Version Control -->
+                    <div class="col-lg-5">
+
+                        <!-- Status -->
+                        <div id="dslStatusArea" class="alert alert-info py-2 small mb-2 d-none"></div>
+
+                        <!-- Commit panel -->
+                        <div class="card shadow-sm mb-3">
+                            <div class="card-header fw-semibold">&#128230; Commit &amp; Materialize</div>
+                            <div class="card-body">
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Branch</label>
+                                    <div class="d-flex gap-1">
+                                        <select id="dslBranchSelect" class="form-select form-select-sm">
+                                            <option value="draft">draft</option>
+                                        </select>
+                                        <button id="dslNewBranchBtn" class="btn btn-sm btn-outline-secondary" title="Create new branch">&#10010;</button>
+                                    </div>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Author <small class="text-muted">(optional)</small></label>
+                                    <input id="dslAuthorInput" type="text" class="form-control form-control-sm" placeholder="user@example.com">
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small mb-1">Commit message</label>
+                                    <input id="dslMessageInput" type="text" class="form-control form-control-sm" placeholder="Describe your changes…">
+                                </div>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <button id="dslCommitBtn" class="btn btn-sm btn-primary" title="Commit DSL to selected branch (no materialization)">&#128230; Commit</button>
+                                    <button id="dslMaterializeBtn" class="btn btn-sm btn-success" title="Materialize DSL into taxonomy database">&#9889; Materialize</button>
+                                    <button id="dslMaterializeIncrBtn" class="btn btn-sm btn-outline-success" title="Incremental materialization (delta only)">&#916; Incremental</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Commit history -->
+                        <div class="card shadow-sm">
+                            <div class="card-header fw-semibold">&#128337; Commit History</div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive" style="max-height:350px; overflow-y:auto;">
+                                    <table class="table table-sm table-hover mb-0">
+                                        <thead class="table-light">
+                                        <tr>
+                                            <th class="small">Commit</th>
+                                            <th class="small">Branch</th>
+                                            <th class="small">Time</th>
+                                            <th class="small">Actions</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody id="dslHistoryBody">
+                                        <tr><td colspan="4" class="text-muted small">No commits yet</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div><!-- /tab-dsl-editor -->
+
+            <!-- ============================================================
                  TAB: ADMIN
                  ============================================================ -->
             <div id="tab-admin" class="tab-pane-content d-none">
@@ -712,7 +813,7 @@
 <script>
 (function () {
     'use strict';
-    var PAGES = ['analyze', 'architecture', 'graph', 'relations', 'export', 'admin'];
+    var PAGES = ['analyze', 'architecture', 'graph', 'relations', 'export', 'dsl-editor', 'admin'];
     var FULL_WIDTH_PAGES = ['relations', 'export', 'admin'];
 
     function activatePage(pageName) {
