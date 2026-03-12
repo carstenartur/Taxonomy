@@ -110,6 +110,7 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 | — | `spring.application.name` | String | `taxonomy-analyzer` | Application name (used in logs). |
 | `TAXONOMY_THYMELEAF_CACHE` | `spring.thymeleaf.cache` | Boolean | `true` | Cache compiled Thymeleaf templates. Defaults to `true` (production). Set `TAXONOMY_THYMELEAF_CACHE=false` for local development to pick up template changes without restart. |
 | `TAXONOMY_LAZY_INIT` | `spring.main.lazy-initialization` | Boolean | `true` | Lazy bean initialization — beans are created only on first access. Reduces Spring context startup time significantly (typical saving: 30–50 s). `TaxonomyService` is annotated `@Lazy(false)` and is always eagerly initialized regardless of this setting. |
+| `TAXONOMY_INIT_ASYNC` | `taxonomy.init.async` | Boolean | `false` | When `true`, taxonomy data is loaded in a background thread **after** the server starts accepting connections. Recommended for Render and similar PaaS platforms to avoid "No open ports detected" deploy timeouts. Defaults to `false` for backward compatibility (synchronous loading). |
 
 ---
 
@@ -138,21 +139,30 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 
 ---
 
+## Rate Limiting
+
+| Variable | Property | Type | Default | Description |
+|---|---|---|---|---|
+| `TAXONOMY_RATE_LIMIT_PER_MINUTE` | `taxonomy.rate-limit.per-minute` | Integer | `10` | Maximum LLM-backed API requests per IP per minute. Protects against Gemini/OpenAI quota exhaustion. Set to `0` to disable rate limiting. |
+
+Protected endpoints: `POST /api/analyze`, `GET /api/analyze-stream`, `GET /api/analyze-node`, `POST /api/justify-leaf`.
+
+When the limit is exceeded, the server returns HTTP `429 Too Many Requests`. The client IP is extracted from the `X-Forwarded-For` header (with `X-Real-IP` fallback).
+
+---
+
 ## OpenAPI / Swagger UI
 
 The application exposes interactive API documentation via [springdoc-openapi](https://springdoc.org/).
+
+| Variable | Property | Type | Default | Description |
+|---|---|---|---|---|
+| `TAXONOMY_SPRINGDOC_ENABLED` | `springdoc.api-docs.enabled` / `springdoc.swagger-ui.enabled` | Boolean | `true` | Enable or disable the `/swagger-ui.html` and `/v3/api-docs` endpoints. Set to `false` in production to save memory and reduce attack surface. |
 
 | URL | Description |
 |---|---|
 | `/swagger-ui.html` | Interactive Swagger UI |
 | `/v3/api-docs` | OpenAPI 3.0 JSON specification |
-
-To disable in production (optional):
-
-```properties
-springdoc.api-docs.enabled=false
-springdoc.swagger-ui.enabled=false
-```
 
 ---
 

@@ -33,13 +33,13 @@ The application is a single Spring Boot 4 / Java 17 web application with the fol
 ```mermaid
 graph TB
     subgraph Client["Browser / REST Client"]
-        UI["Bootstrap 5 SPA<br/>(Thymeleaf + 10 JS modules)"]
+        UI["Bootstrap 5 SPA<br/>(Thymeleaf + 11 JS modules)"]
     end
 
     subgraph App["Spring Boot 4 Application :8080"]
         direction TB
-        Controllers["Controllers<br/>ApiController · GraphQueryApi<br/>ProposalApi · CoverageApi<br/>GapAnalysis · PatternDetection<br/>Recommendation · ArchiMateImport"]
-        Services["Service Layer<br/>LlmService · TaxonomyService<br/>SearchService · HybridSearchService<br/>RequirementArchitectureViewService<br/>DiagramProjectionService<br/>RelationProposalService"]
+        Controllers["Controllers (14)<br/>ApiController · GraphQueryApi<br/>ProposalApi · CoverageApi<br/>GapAnalysis · PatternDetection<br/>Recommendation · ArchiMateImport<br/>DslApi · ReportApi · RelationApi<br/>QualityApi · ExplanationTrace"]
+        Services["Service Layer (38 classes)<br/>LlmService · TaxonomyService<br/>SearchService · HybridSearchService<br/>RequirementArchitectureViewService<br/>DiagramProjectionService<br/>RelationProposalService<br/>DslGitRepository · CommitIndexService<br/>ArchitectureReportService"]
         Persistence["Persistence<br/>HSQLDB (in-process)<br/>Hibernate Search 8 / Lucene 9"]
     end
 
@@ -75,6 +75,14 @@ graph TB
 | `SearchService` / `HybridSearchService` | Full-text (Lucene), semantic (embedding KNN), hybrid (Reciprocal Rank Fusion), and graph-based search across taxonomy nodes. |
 | `LocalEmbeddingService` | Manages the local `all-MiniLM-L6-v2` embedding model via DJL/ONNX Runtime for semantic search and local scoring. |
 | `RelationProposalService` | AI-assisted relation proposal pipeline: generates candidate relations and manages the human review workflow. |
+| `ArchitectureReportService` | Generates analysis reports in Markdown, standalone HTML, DOCX, and structured JSON formats. |
+| `ExplanationTraceService` | Builds explanation traces that describe why a node received a given score, including the LLM reasoning chain. |
+| `DslGitRepository` | Versioned DSL document storage backed by JGit DFS, with all Git objects persisted in HSQLDB (no filesystem). Supports branches, commits, cherry-pick, and merge. |
+| `CommitIndexService` | Indexes DSL commit history into Hibernate Search / Lucene for full-text search across commit messages and change content. |
+| `HypothesisService` | Manages relation hypotheses generated during analysis. Hypotheses can be accepted (creating `TaxonomyRelation`), rejected, or applied for the current session only. |
+| `LlmResponseParser` | Stateless parser for LLM responses. Handles Gemini and OpenAI response formats, score extraction (integer and score+reason), score normalisation (largest-remainder method), and JSON extraction. |
+| `RateLimitFilter` | In-memory per-IP rate limiter for LLM-backed endpoints (`/api/analyze`, `/api/analyze-stream`, `/api/analyze-node`, `/api/justify-leaf`). Configurable via `TAXONOMY_RATE_LIMIT_PER_MINUTE`. |
+| `RelationCompatibilityMatrix` | Defines which relation types are valid between which taxonomy root categories (e.g., `REALIZES` requires CP → CR). Used by the validator and proposal generator. |
 
 ---
 
@@ -105,6 +113,52 @@ flowchart TD
    - `ArchiMateDiagramService` → ArchiMate 3.x XML (`.archimate` / `.xml`)
    - `VisioDiagramService` → Visio `.vsdx`
    - `MermaidExportService` → Mermaid flowchart (`.md`)
+
+---
+
+## Module Architecture
+
+The project is a multi-module Maven build with four modules:
+
+```
+taxonomy-domain/       Pure domain types (DTOs, enums) — no framework dependencies
+taxonomy-dsl/          Architecture DSL (parser, model, validator, differ) — no framework dependencies
+taxonomy-export/       Export services (ArchiMate, Visio, Mermaid, Diagram) — no framework dependencies
+taxonomy-app/          Spring Boot application (controllers, services, JPA, search, storage)
+```
+
+Dependency graph:
+
+```
+taxonomy-app  →  taxonomy-domain
+taxonomy-app  →  taxonomy-dsl
+taxonomy-app  →  taxonomy-export
+taxonomy-export  →  taxonomy-domain
+```
+
+`taxonomy-domain`, `taxonomy-dsl`, and `taxonomy-export` have **no Spring dependencies** and can be tested and used independently.
+
+---
+
+## DSL Storage Architecture
+
+The application includes a versioned Architecture DSL subsystem backed by JGit DFS (Distributed File System), with all Git objects persisted in the HSQLDB database — no filesystem is used.
+
+```
+DSL Text  →  JGit commit  →  HibernateRepository  →  HSQLDB (git_packs & git_reflog tables)
+```
+
+| Component | Class | Role |
+|---|---|---|
+| Repository facade | `DslGitRepository` | High-level API for commit, read, branch, diff operations |
+| Git object storage | `HibernateObjDatabase` | Stores blobs, trees, and pack data as BLOBs in `git_packs` table |
+| Git ref storage | `HibernateRefDatabase` | Stores refs and reftables in `git_packs` table (as pack extensions) |
+| Repository wrapper | `HibernateRepository` | Extends JGit `DfsRepository` with database-backed object and ref databases |
+| Pack entity | `GitPackEntity` | JPA entity for the `git_packs` table |
+| Reflog entity | `GitReflogEntity` | JPA entity for the `git_reflog` table |
+| Configuration | `DslStorageConfig` | Spring `@Configuration` that wires the `DslGitRepository` bean |
+
+DSL documents are stored under the filename `architecture.taxdsl`. The `DslApiController` provides endpoints for commit, history, diff, branching, merge, and cherry-pick operations.
 
 ---
 
@@ -161,6 +215,17 @@ All entity classes are annotated for correct behaviour on Microsoft SQL Server:
   little-endian IEEE 754 serialisation.
 
 The application continues to use HSQLDB by default (no MSSQL setup required).
+
+## Rate Limiting
+
+The `RateLimitFilter` enforces per-IP rate limits on LLM-backed endpoints to prevent quota exhaustion on Gemini, OpenAI, and other providers. Protected endpoints:
+
+- `POST /api/analyze`
+- `GET /api/analyze-stream`
+- `GET /api/analyze-node`
+- `POST /api/justify-leaf`
+
+Default: **10 requests per IP per minute** (configurable via `TAXONOMY_RATE_LIMIT_PER_MINUTE`; set to `0` to disable). When the limit is exceeded, the filter returns HTTP 429 Too Many Requests.
 
 ## Export Formats
 
