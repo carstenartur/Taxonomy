@@ -54,7 +54,17 @@ public class HibernateObjDatabase extends DfsObjDatabase {
 
     private final String repositoryName;
 
-    private static final AtomicInteger PACK_ID_COUNTER = new AtomicInteger();
+    /**
+     * Per-instance counter for unique pack names. Uses a high initial offset
+     * derived from the current time to avoid collisions with the JVM-global
+     * {@link org.eclipse.jgit.internal.storage.dfs.DfsBlockCache} singleton,
+     * which caches pack data keyed by (repository description + pack file name).
+     * Without unique names, a second {@code HibernateObjDatabase} instance in
+     * the same JVM (e.g., after a Spring context restart in tests) would hit
+     * stale cached data from a previous instance.
+     */
+    private final AtomicInteger packIdCounter = new AtomicInteger(
+            (int) (System.nanoTime() & 0x7FFF_FFFF));
 
     private Set<ObjectId> shallowCommits = Collections.emptySet();
 
@@ -101,7 +111,7 @@ public class HibernateObjDatabase extends DfsObjDatabase {
     protected List<DfsPackDescription> listPacks() throws IOException {
         try (Session session = sessionFactory.openSession()) {
             List<Object[]> rows = session.createQuery(
-                            "SELECT p.packName, p.packExtension FROM GitPackEntity p WHERE p.repositoryName = :repo",
+                            "SELECT p.packName, p.packExtension, p.fileSize FROM GitPackEntity p WHERE p.repositoryName = :repo",
                             Object[].class)
                     .setParameter("repo", repositoryName)
                     .getResultList();
@@ -109,6 +119,7 @@ public class HibernateObjDatabase extends DfsObjDatabase {
             for (Object[] row : rows) {
                 String name = (String) row[0];
                 String ext = (String) row[1];
+                long size = (Long) row[2];
                 DfsPackDescription desc = descMap.computeIfAbsent(name,
                         n -> new DfsPackDescription(
                                 getRepository().getDescription(), n,
@@ -116,6 +127,7 @@ public class HibernateObjDatabase extends DfsObjDatabase {
                 for (PackExt pe : PackExt.values()) {
                     if (pe.getExtension().equals(ext)) {
                         desc.addFileExt(pe);
+                        desc.setFileSize(pe, size);
                         break;
                     }
                 }
@@ -126,7 +138,7 @@ public class HibernateObjDatabase extends DfsObjDatabase {
 
     @Override
     protected DfsPackDescription newPack(PackSource source) {
-        int id = PACK_ID_COUNTER.incrementAndGet();
+        int id = packIdCounter.incrementAndGet();
         String name = "pack-" + id + "-" + source.name();
         return new DfsPackDescription(getRepository().getDescription(), name, source);
     }
@@ -170,13 +182,15 @@ public class HibernateObjDatabase extends DfsObjDatabase {
     @Override
     protected ReadableChannel openFile(DfsPackDescription desc, PackExt ext)
             throws FileNotFoundException, IOException {
+        String queryName = baseName(desc);
+        String queryExt = ext.getExtension();
         try (Session session = sessionFactory.openSession()) {
             GitPackEntity entity = session.createQuery(
                             "FROM GitPackEntity p WHERE p.repositoryName = :repo AND p.packName = :name AND p.packExtension = :ext",
                             GitPackEntity.class)
                     .setParameter("repo", repositoryName)
-                    .setParameter("name", baseName(desc))
-                    .setParameter("ext", ext.getExtension()).uniqueResult();
+                    .setParameter("name", queryName)
+                    .setParameter("ext", queryExt).uniqueResult();
             if (entity == null) {
                 throw new FileNotFoundException(desc.getFileName(ext));
             }

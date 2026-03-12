@@ -46,9 +46,6 @@ public class HibernateRepository extends DfsRepository {
     /**
      * Create a new database-backed repository.
      *
-     * <p>Clears any stale pack data from a previous JVM or test context
-     * to ensure a clean reftable state on startup.
-     *
      * @param sessionFactory  Hibernate session factory for database access
      * @param repositoryName  logical name to partition data in the database
      */
@@ -59,12 +56,6 @@ public class HibernateRepository extends DfsRepository {
         this.objdb = new HibernateObjDatabase(this, new DfsReaderOptions(),
                 sessionFactory, repositoryName);
         this.refdb = new HibernateRefDatabase(this);
-        // Clear any stale reftable/pack data from previous sessions to avoid
-        // "Invalid reftable file" errors when the JVM or Spring context restarts.
-        // Must clear BOTH the object database (pack data) AND the ref database
-        // (cached reftable stack) to keep them in sync.
-        this.objdb.clearAll();
-        this.refdb.close();
     }
 
     @Override
