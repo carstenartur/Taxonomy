@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TaxDslSerializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dsl.serializer</a> &gt; <span class="el_source">TaxDslSerializer.java</span></div><h1>TaxDslSerializer.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dsl.serializer;
+
+import com.nato.taxonomy.dsl.ast.*;
+
+import java.util.*;
+
+/**
+ * Deterministic serializer for the TaxDSL v1 language.
+ *
+ * &lt;p&gt;Produces stable, Git-diff-friendly output:
+ * &lt;ul&gt;
+ *   &lt;li&gt;Blocks are separated by a single blank line.&lt;/li&gt;
+ *   &lt;li&gt;Properties are indented with two spaces.&lt;/li&gt;
+ *   &lt;li&gt;String values are quoted; bare values (numbers, identifiers) are not.&lt;/li&gt;
+ *   &lt;li&gt;Properties appear in a stable, deterministic order.&lt;/li&gt;
+ *   &lt;li&gt;Extension attributes ({@code x-*}) are serialized after known attributes.&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+<span class="fc" id="L19">public class TaxDslSerializer {</span>
+
+<span class="fc" id="L21">    private static final Set&lt;String&gt; BARE_VALUE_KEYS = Set.of(</span>
+            &quot;score&quot;, &quot;confidence&quot;, &quot;status&quot;, &quot;layout&quot;, &quot;type&quot;);
+
+    /**
+     * Serialize a {@link DocumentAst} to DSL text.
+     */
+    public String serialize(DocumentAst document) {
+<span class="fc" id="L28">        StringBuilder sb = new StringBuilder();</span>
+
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        if (document.getMeta() != null) {</span>
+<span class="fc" id="L31">            serializeMeta(document.getMeta(), sb);</span>
+        }
+
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        for (BlockAst block : document.getBlocks()) {</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if (!sb.isEmpty()) {</span>
+<span class="fc" id="L36">                sb.append('\n');</span>
+            }
+<span class="fc" id="L38">            serializeBlock(block, sb);</span>
+<span class="fc" id="L39">        }</span>
+
+        // Ensure trailing newline
+<span class="pc bpc" id="L42" title="1 of 4 branches missed.">        if (!sb.isEmpty() &amp;&amp; sb.charAt(sb.length() - 1) != '\n') {</span>
+<span class="nc" id="L43">            sb.append('\n');</span>
+        }
+
+<span class="fc" id="L46">        return sb.toString();</span>
+    }
+
+    private void serializeMeta(MetaAst meta, StringBuilder sb) {
+<span class="fc" id="L50">        sb.append(&quot;meta\n&quot;);</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if (meta.language() != null) {</span>
+<span class="fc" id="L52">            sb.append(&quot;  language \&quot;&quot;).append(meta.language()).append(&quot;\&quot;\n&quot;);</span>
+        }
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        if (meta.version() != null) {</span>
+<span class="fc" id="L55">            sb.append(&quot;  version \&quot;&quot;).append(meta.version()).append(&quot;\&quot;\n&quot;);</span>
+        }
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (meta.namespace() != null) {</span>
+<span class="fc" id="L58">            sb.append(&quot;  namespace \&quot;&quot;).append(meta.namespace()).append(&quot;\&quot;\n&quot;);</span>
+        }
+<span class="fc" id="L60">    }</span>
+
+    private void serializeBlock(BlockAst block, StringBuilder sb) {
+        // Header line
+<span class="fc" id="L64">        sb.append(block.getKind());</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        for (String token : block.getHeaderTokens()) {</span>
+<span class="fc" id="L66">            sb.append(' ').append(token);</span>
+<span class="fc" id="L67">        }</span>
+<span class="fc" id="L68">        sb.append('\n');</span>
+
+        // Properties: known first, then extensions
+<span class="fc" id="L71">        List&lt;PropertyAst&gt; known = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L72">        List&lt;PropertyAst&gt; extensions = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (PropertyAst prop : block.getProperties()) {</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            if (prop.isExtension()) {</span>
+<span class="fc" id="L75">                extensions.add(prop);</span>
+            } else {
+<span class="fc" id="L77">                known.add(prop);</span>
+            }
+<span class="fc" id="L79">        }</span>
+
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        for (PropertyAst prop : known) {</span>
+<span class="fc" id="L82">            serializeProperty(prop, sb);</span>
+<span class="fc" id="L83">        }</span>
+
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">        if (!extensions.isEmpty() &amp;&amp; !known.isEmpty()) {</span>
+            // Blank line separates core properties from extensions for clarity in diffs
+<span class="fc" id="L87">            sb.append('\n');</span>
+        }
+
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        for (PropertyAst prop : extensions) {</span>
+<span class="fc" id="L91">            serializeProperty(prop, sb);</span>
+<span class="fc" id="L92">        }</span>
+<span class="fc" id="L93">    }</span>
+
+    private void serializeProperty(PropertyAst prop, StringBuilder sb) {
+<span class="fc" id="L96">        sb.append(&quot;  &quot;).append(prop.key()).append(' ');</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (shouldQuote(prop.key(), prop.value())) {</span>
+<span class="fc" id="L98">            sb.append('&quot;').append(prop.value()).append('&quot;');</span>
+        } else {
+<span class="fc" id="L100">            sb.append(prop.value());</span>
+        }
+<span class="fc" id="L102">        sb.append('\n');</span>
+<span class="fc" id="L103">    }</span>
+
+    /**
+     * Determine whether a property value should be quoted.
+     * Bare values are used for numeric values and specific known keys.
+     */
+    private boolean shouldQuote(String key, String value) {
+<span class="pc bpc" id="L110" title="2 of 4 branches missed.">        if (value == null || value.isEmpty()) return true;</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (BARE_VALUE_KEYS.contains(key)) return false;</span>
+        // Check if value is numeric
+        try {
+<span class="nc" id="L114">            Double.parseDouble(value);</span>
+<span class="nc" id="L115">            return false;</span>
+<span class="fc" id="L116">        } catch (NumberFormatException e) {</span>
+<span class="fc" id="L117">            return true;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

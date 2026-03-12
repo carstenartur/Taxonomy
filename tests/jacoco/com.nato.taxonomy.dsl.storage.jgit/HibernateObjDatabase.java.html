@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HibernateObjDatabase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dsl.storage.jgit</a> &gt; <span class="el_source">HibernateObjDatabase.java</span></div><h1>HibernateObjDatabase.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2026 Carsten Hammer.
+ *
+ * This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License 2.0
+ * which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-2.0/
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Contributors:
+ *     Carsten Hammer
+ *******************************************************************************/
+package com.nato.taxonomy.dsl.storage.jgit;
+
+import java.io.ByteArrayOutputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.eclipse.jgit.internal.storage.dfs.DfsObjDatabase;
+import org.eclipse.jgit.internal.storage.dfs.DfsOutputStream;
+import org.eclipse.jgit.internal.storage.dfs.DfsPackDescription;
+import org.eclipse.jgit.internal.storage.dfs.DfsReaderOptions;
+import org.eclipse.jgit.internal.storage.dfs.DfsRepository;
+import org.eclipse.jgit.internal.storage.dfs.ReadableChannel;
+import org.eclipse.jgit.internal.storage.pack.PackExt;
+import org.eclipse.jgit.lib.ObjectId;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+
+/**
+ * A {@link DfsObjDatabase} implementation backed by Hibernate/JPA for
+ * database-based Git object storage.
+ * &lt;p&gt;
+ * Pack data is stored in the {@code git_packs} table as BLOBs. Each pack
+ * extension (PACK, IDX, REFTABLE, etc.) is stored as a separate row, keyed
+ * by the pack base name and the extension name.
+ * &lt;p&gt;
+ * Adapted from {@code sandbox-jgit-storage-hibernate} module
+ * in the {@code carstenartur/sandbox} repository.
+ */
+public class HibernateObjDatabase extends DfsObjDatabase {
+
+    private final SessionFactory sessionFactory;
+
+    private final String repositoryName;
+
+    /**
+     * Per-instance counter for unique pack names. Uses a high initial offset
+     * derived from the current time to avoid collisions with the JVM-global
+     * {@link org.eclipse.jgit.internal.storage.dfs.DfsBlockCache} singleton,
+     * which caches pack data keyed by (repository description + pack file name).
+     * Without unique names, a second {@code HibernateObjDatabase} instance in
+     * the same JVM (e.g., after a Spring context restart in tests) would hit
+     * stale cached data from a previous instance.
+     */
+<span class="fc" id="L66">    private final AtomicInteger packIdCounter = new AtomicInteger(</span>
+<span class="fc" id="L67">            (int) (System.nanoTime() &amp; 0x7FFF_FFFF));</span>
+
+<span class="fc" id="L69">    private Set&lt;ObjectId&gt; shallowCommits = Collections.emptySet();</span>
+
+    /**
+     * Create a new Hibernate-backed object database.
+     *
+     * @param repo            the repository
+     * @param options         reader options
+     * @param sessionFactory  Hibernate session factory
+     * @param repositoryName  name of the repository in the database
+     */
+    public HibernateObjDatabase(DfsRepository repo, DfsReaderOptions options,
+                                SessionFactory sessionFactory, String repositoryName) {
+<span class="fc" id="L81">        super(repo, options);</span>
+<span class="fc" id="L82">        this.sessionFactory = sessionFactory;</span>
+<span class="fc" id="L83">        this.repositoryName = repositoryName;</span>
+<span class="fc" id="L84">    }</span>
+
+    /**
+     * Clear all pack data for this repository from the database.
+     * &lt;p&gt;
+     * This is useful on startup to ensure a clean state, avoiding
+     * stale reftable data from a previous JVM or test context.
+     */
+    public void clearAll() {
+<span class="nc" id="L93">        try (Session session = sessionFactory.openSession()) {</span>
+<span class="nc" id="L94">            session.beginTransaction();</span>
+<span class="nc" id="L95">            session.createMutationQuery(</span>
+                            &quot;DELETE FROM GitPackEntity p WHERE p.repositoryName = :repo&quot;)
+<span class="nc" id="L97">                    .setParameter(&quot;repo&quot;, repositoryName)</span>
+<span class="nc" id="L98">                    .executeUpdate();</span>
+<span class="nc" id="L99">            session.getTransaction().commit();</span>
+        }
+<span class="nc" id="L101">        clearCache();</span>
+<span class="nc" id="L102">    }</span>
+
+    private static String baseName(DfsPackDescription desc) {
+<span class="fc" id="L105">        String fn = desc.getFileName(PackExt.PACK);</span>
+<span class="fc" id="L106">        int dot = fn.lastIndexOf('.');</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        return dot &gt; 0 ? fn.substring(0, dot) : fn;</span>
+    }
+
+    @Override
+    protected List&lt;DfsPackDescription&gt; listPacks() throws IOException {
+<span class="fc" id="L112">        try (Session session = sessionFactory.openSession()) {</span>
+<span class="fc" id="L113">            List&lt;Object[]&gt; rows = session.createQuery(</span>
+                            &quot;SELECT p.packName, p.packExtension, p.fileSize FROM GitPackEntity p WHERE p.repositoryName = :repo&quot;,
+                            Object[].class)
+<span class="fc" id="L116">                    .setParameter(&quot;repo&quot;, repositoryName)</span>
+<span class="fc" id="L117">                    .getResultList();</span>
+<span class="fc" id="L118">            LinkedHashMap&lt;String, DfsPackDescription&gt; descMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            for (Object[] row : rows) {</span>
+<span class="fc" id="L120">                String name = (String) row[0];</span>
+<span class="fc" id="L121">                String ext = (String) row[1];</span>
+<span class="fc" id="L122">                long size = (Long) row[2];</span>
+<span class="fc" id="L123">                DfsPackDescription desc = descMap.computeIfAbsent(name,</span>
+<span class="fc" id="L124">                        n -&gt; new DfsPackDescription(</span>
+<span class="fc" id="L125">                                getRepository().getDescription(), n,</span>
+                                PackSource.INSERT));
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">                for (PackExt pe : PackExt.values()) {</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                    if (pe.getExtension().equals(ext)) {</span>
+<span class="fc" id="L129">                        desc.addFileExt(pe);</span>
+<span class="fc" id="L130">                        desc.setFileSize(pe, size);</span>
+<span class="fc" id="L131">                        break;</span>
+                    }
+                }
+<span class="fc" id="L134">            }</span>
+<span class="fc" id="L135">            return new ArrayList&lt;&gt;(descMap.values());</span>
+        }
+    }
+
+    @Override
+    protected DfsPackDescription newPack(PackSource source) {
+<span class="fc" id="L141">        int id = packIdCounter.incrementAndGet();</span>
+<span class="fc" id="L142">        String name = &quot;pack-&quot; + id + &quot;-&quot; + source.name();</span>
+<span class="fc" id="L143">        return new DfsPackDescription(getRepository().getDescription(), name, source);</span>
+    }
+
+    @Override
+    protected void commitPackImpl(Collection&lt;DfsPackDescription&gt; desc,
+                                  Collection&lt;DfsPackDescription&gt; replace) throws IOException {
+<span class="fc" id="L149">        try (Session session = sessionFactory.openSession()) {</span>
+<span class="fc" id="L150">            session.beginTransaction();</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            if (replace != null) {</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                for (DfsPackDescription d : replace) {</span>
+<span class="fc" id="L153">                    session.createMutationQuery(</span>
+                                    &quot;DELETE FROM GitPackEntity p WHERE p.repositoryName = :repo AND p.packName = :name&quot;)
+<span class="fc" id="L155">                            .setParameter(&quot;repo&quot;, repositoryName)</span>
+<span class="fc" id="L156">                            .setParameter(&quot;name&quot;, baseName(d))</span>
+<span class="fc" id="L157">                            .executeUpdate();</span>
+<span class="fc" id="L158">                }</span>
+            }
+<span class="fc" id="L160">            session.getTransaction().commit();</span>
+        }
+<span class="fc" id="L162">        clearCache();</span>
+<span class="fc" id="L163">    }</span>
+
+    @Override
+    protected void rollbackPack(Collection&lt;DfsPackDescription&gt; desc) {
+<span class="nc" id="L167">        try (Session session = sessionFactory.openSession()) {</span>
+<span class="nc" id="L168">            session.beginTransaction();</span>
+<span class="nc bnc" id="L169" title="All 2 branches missed.">            for (DfsPackDescription d : desc) {</span>
+<span class="nc" id="L170">                session.createMutationQuery(</span>
+                                &quot;DELETE FROM GitPackEntity p WHERE p.repositoryName = :repo AND p.packName = :name&quot;)
+<span class="nc" id="L172">                        .setParameter(&quot;repo&quot;, repositoryName)</span>
+<span class="nc" id="L173">                        .setParameter(&quot;name&quot;, baseName(d))</span>
+<span class="nc" id="L174">                        .executeUpdate();</span>
+<span class="nc" id="L175">            }</span>
+<span class="nc" id="L176">            session.getTransaction().commit();</span>
+<span class="nc" id="L177">        } catch (Exception e) {</span>
+            // Rollback should not throw
+<span class="nc" id="L179">        }</span>
+<span class="nc" id="L180">    }</span>
+
+    @Override
+    protected ReadableChannel openFile(DfsPackDescription desc, PackExt ext)
+            throws FileNotFoundException, IOException {
+<span class="fc" id="L185">        String queryName = baseName(desc);</span>
+<span class="fc" id="L186">        String queryExt = ext.getExtension();</span>
+<span class="fc" id="L187">        try (Session session = sessionFactory.openSession()) {</span>
+<span class="fc" id="L188">            GitPackEntity entity = session.createQuery(</span>
+                            &quot;FROM GitPackEntity p WHERE p.repositoryName = :repo AND p.packName = :name AND p.packExtension = :ext&quot;,
+                            GitPackEntity.class)
+<span class="fc" id="L191">                    .setParameter(&quot;repo&quot;, repositoryName)</span>
+<span class="fc" id="L192">                    .setParameter(&quot;name&quot;, queryName)</span>
+<span class="fc" id="L193">                    .setParameter(&quot;ext&quot;, queryExt).uniqueResult();</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">            if (entity == null) {</span>
+<span class="nc" id="L195">                throw new FileNotFoundException(desc.getFileName(ext));</span>
+            }
+<span class="fc" id="L197">            return new ByteArrayReadableChannel(entity.getData());</span>
+        }
+    }
+
+    @Override
+    protected DfsOutputStream writeFile(DfsPackDescription desc, PackExt ext)
+            throws IOException {
+<span class="fc" id="L204">        return new HibernatePackOutputStream(sessionFactory, repositoryName,</span>
+<span class="fc" id="L205">                baseName(desc), ext.getExtension());</span>
+    }
+
+    @Override
+    public Set&lt;ObjectId&gt; getShallowCommits() throws IOException {
+<span class="nc" id="L210">        return shallowCommits;</span>
+    }
+
+    @Override
+    public void setShallowCommits(Set&lt;ObjectId&gt; shallowCommits) {
+<span class="nc" id="L215">        this.shallowCommits = shallowCommits;</span>
+<span class="nc" id="L216">    }</span>
+
+    @Override
+    public long getApproximateObjectCount() {
+<span class="nc" id="L220">        return 0; // Simplified; full version queries GitObjectEntity</span>
+    }
+
+    /** DfsOutputStream that writes pack data to the database. */
+    static class HibernatePackOutputStream extends DfsOutputStream {
+<span class="fc" id="L225">        private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();</span>
+        private final SessionFactory sessionFactory;
+        private final String repositoryName;
+        private final String packName;
+        private final String packExtension;
+        private byte[] data;
+        private boolean flushed;
+
+        HibernatePackOutputStream(SessionFactory sessionFactory,
+<span class="fc" id="L234">                                  String repositoryName, String packName, String packExtension) {</span>
+<span class="fc" id="L235">            this.sessionFactory = sessionFactory;</span>
+<span class="fc" id="L236">            this.repositoryName = repositoryName;</span>
+<span class="fc" id="L237">            this.packName = packName;</span>
+<span class="fc" id="L238">            this.packExtension = packExtension;</span>
+<span class="fc" id="L239">        }</span>
+
+        @Override
+        public void write(byte[] buf, int off, int len) {
+<span class="fc" id="L243">            data = null;</span>
+<span class="fc" id="L244">            buffer.write(buf, off, len);</span>
+<span class="fc" id="L245">        }</span>
+
+        @Override
+        public int read(long position, ByteBuffer buf) {
+<span class="nc" id="L249">            byte[] d = getData();</span>
+<span class="nc" id="L250">            int n = Math.min(buf.remaining(), d.length - (int) position);</span>
+<span class="nc bnc" id="L251" title="All 2 branches missed.">            if (n == 0) return -1;</span>
+<span class="nc" id="L252">            buf.put(d, (int) position, n);</span>
+<span class="nc" id="L253">            return n;</span>
+        }
+
+        byte[] getData() {
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">            if (data == null) data = buffer.toByteArray();</span>
+<span class="fc" id="L258">            return data;</span>
+        }
+
+        @Override
+        public void flush() {
+<span class="fc bfc" id="L263" title="All 2 branches covered.">            if (flushed) return;</span>
+<span class="fc" id="L264">            flushed = true;</span>
+<span class="fc" id="L265">            byte[] d = getData();</span>
+<span class="fc" id="L266">            try (Session session = sessionFactory.openSession()) {</span>
+<span class="fc" id="L267">                session.beginTransaction();</span>
+<span class="fc" id="L268">                GitPackEntity entity = new GitPackEntity();</span>
+<span class="fc" id="L269">                entity.setRepositoryName(repositoryName);</span>
+<span class="fc" id="L270">                entity.setPackName(packName);</span>
+<span class="fc" id="L271">                entity.setPackExtension(packExtension);</span>
+<span class="fc" id="L272">                entity.setData(d);</span>
+<span class="fc" id="L273">                entity.setFileSize(d.length);</span>
+<span class="fc" id="L274">                entity.setCreatedAt(Instant.now());</span>
+<span class="fc" id="L275">                session.persist(entity);</span>
+<span class="fc" id="L276">                session.getTransaction().commit();</span>
+            }
+<span class="fc" id="L278">        }</span>
+
+        @Override
+        public void close() {
+<span class="fc" id="L282">            flush();</span>
+<span class="fc" id="L283">        }</span>
+    }
+
+    /** ReadableChannel backed by a byte array. */
+    static class ByteArrayReadableChannel implements ReadableChannel {
+        private final byte[] data;
+        private int position;
+<span class="fc" id="L290">        private boolean open = true;</span>
+
+<span class="fc" id="L292">        ByteArrayReadableChannel(byte[] buf) { data = buf; }</span>
+
+        @Override public int read(ByteBuffer dst) {
+<span class="fc" id="L295">            int n = Math.min(dst.remaining(), data.length - position);</span>
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">            if (n == 0) return -1;</span>
+<span class="fc" id="L297">            dst.put(data, position, n);</span>
+<span class="fc" id="L298">            position += n;</span>
+<span class="fc" id="L299">            return n;</span>
+        }
+
+<span class="fc" id="L302">        @Override public void close() { open = false; }</span>
+<span class="nc" id="L303">        @Override public boolean isOpen() { return open; }</span>
+<span class="nc" id="L304">        @Override public long position() { return position; }</span>
+<span class="fc" id="L305">        @Override public void position(long newPosition) { position = (int) newPosition; }</span>
+<span class="nc" id="L306">        @Override public long size() { return data.length; }</span>
+<span class="fc" id="L307">        @Override public int blockSize() { return 0; }</span>
+<span class="nc" id="L308">        @Override public void setReadAheadBytes(int b) { /* no-op */ }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
