@@ -141,8 +141,9 @@ public class ArchitectureSummaryService {
         }
 
         if (hypotheses > 0) {
+            String noun = hypotheses == 1 ? "hypothesis" : "hypotheses";
             steps.add(new NextStep("Evaluate Hypotheses",
-                    hypotheses + " hypothesis/hypotheses waiting for review.",
+                    hypotheses + " " + noun + " waiting for review.",
                     "/api/dsl/hypotheses"));
         }
 
