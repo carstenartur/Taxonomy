@@ -24,11 +24,14 @@
 16. [Diagram Export](#16-diagram-export)
 17. [Administration](#17-administration)
 18. [Embedding Configuration](#18-embedding-configuration)
-19. [API Reference](#19-api-reference)
-20. [Error Response Schema](#20-error-response-schema)
-21. [OpenAPI / Swagger UI](#21-openapi--swagger-ui)
-22. [Best Practices](#22-best-practices)
-23. [Glossary](#23-glossary)
+19. [Explanation Trace](#19-explanation-trace)
+20. [Report Export](#20-report-export)
+21. [Architecture DSL](#21-architecture-dsl)
+22. [API Reference](#22-api-reference)
+23. [Error Response Schema](#23-error-response-schema)
+24. [OpenAPI / Swagger UI](#24-openapi--swagger-ui)
+25. [Best Practices](#25-best-practices)
+26. [Glossary](#26-glossary)
 
 ---
 
@@ -83,7 +86,7 @@ Key capabilities:
 │  └──────┬──────┘  └───────┬──────────┘  └───────┬────────┘  │
 │         │                 │                      │           │
 │  ┌──────▼─────────────────▼──────────────────────▼────────┐  │
-│  │            Service Layer (32 services)                  │  │
+│  │            Service Layer (38 services)                  │  │
 │  │  AnalysisService · RequirementArchitectureViewService   │  │
 │  │  HybridSearchService · GraphSearchService               │  │
 │  │  ArchitectureGraphQueryService                          │  │
@@ -1096,7 +1099,105 @@ GET /api/embedding/status
 
 ---
 
-## 19. API Reference
+## 19. Explanation Trace
+
+The Explanation Trace API provides structured reasoning chains that explain why nodes received their scores.
+
+### Single Node Trace (`POST /api/explain/{nodeCode}`)
+
+Returns an explanation trace for one node, given the analysis scores and requirement text.
+
+**Request body:** `{ "businessText": "...", "scores": { "CP-3": 92, "CO-2": 88, ... } }`
+
+**Response:** An `ExplanationTrace` object with the node code, score, reasoning chain, and contributing factors.
+
+### All Nodes Trace (`POST /api/explain`)
+
+Returns explanation traces for all scored nodes in a single call.
+
+**Request body:** Same as above.
+
+---
+
+## 20. Report Export
+
+The Report API generates formatted analysis reports from scored results.
+
+### Endpoints
+
+| Method | Path | Content-Type | Description |
+|---|---|---|---|
+| `POST` | `/api/report/markdown` | `text/markdown` | Markdown report (.md) |
+| `POST` | `/api/report/html` | `text/html` | Standalone HTML page |
+| `POST` | `/api/report/docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | Word document (.docx) |
+| `POST` | `/api/report/json` | `application/json` | Structured JSON report |
+
+**Request body (all endpoints):** `{ "businessText": "...", "scores": { "CP-3": 92, ... } }`
+
+Reports include the requirement text, scored nodes, architecture view elements, and relation summary.
+
+---
+
+## 21. Architecture DSL
+
+The Architecture DSL subsystem provides a text-based domain-specific language for describing architecture models. DSL documents are version-controlled using JGit with all Git objects stored in the database.
+
+### DSL Text Format
+
+DSL documents use the `.taxdsl` format with `STRUCT:`, `REL:`, and `DOM:` prefixed blocks for elements, relations, and domain metadata respectively.
+
+### Core Operations
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/dsl/export` | Export current architecture as DSL text |
+| `GET` | `/api/dsl/current` | Get current architecture state as JSON (canonical model) |
+| `POST` | `/api/dsl/parse` | Parse DSL text → canonical model JSON |
+| `POST` | `/api/dsl/validate` | Validate DSL text → errors and warnings |
+| `POST` | `/api/dsl/materialize` | Parse, validate, and materialize into database (creates `TaxonomyRelation` entities) |
+| `POST` | `/api/dsl/materialize-incremental` | Incrementally materialize only the delta between two versions |
+
+### Version Control (JGit-Backed)
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/dsl/commit` | Commit DSL text to a branch |
+| `GET` | `/api/dsl/history` | Get commit history for a branch (`?branch=main`) |
+| `GET` | `/api/dsl/diff/{beforeId}/{afterId}` | Semantic diff between two commits |
+| `GET` | `/api/dsl/diff/text/{beforeId}/{afterId}` | JGit-native unified text diff |
+| `GET` | `/api/dsl/branches` | List all branches |
+| `POST` | `/api/dsl/branches` | Create a new branch |
+| `POST` | `/api/dsl/cherry-pick` | Cherry-pick a commit onto a target branch |
+| `POST` | `/api/dsl/merge` | Merge one branch into another (3-way) |
+| `GET` | `/api/dsl/git/head` | Read DSL from HEAD of a branch |
+| `GET` | `/api/dsl/git/commit/{commitId}` | Read DSL from a specific commit |
+
+### Hypothesis Management
+
+Hypotheses are provisional relations generated during LLM analysis. They follow a lifecycle: `PENDING` → `ACCEPTED` (creates `TaxonomyRelation`) or `REJECTED`, or `APPLIED` (session-only).
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/dsl/hypotheses` | List hypotheses (`?status=PENDING`) |
+| `POST` | `/api/dsl/hypotheses/{id}/accept` | Accept → creates a `TaxonomyRelation` |
+| `POST` | `/api/dsl/hypotheses/{id}/reject` | Reject → marks as rejected |
+| `POST` | `/api/dsl/hypotheses/{id}/apply-session` | Apply for current session only |
+| `GET` | `/api/dsl/hypotheses/{id}/evidence` | Get evidence records |
+
+### Commit History Search
+
+Commit history is indexed into Hibernate Search / Lucene for full-text search.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/dsl/history/index` | Index commits on a branch |
+| `GET` | `/api/dsl/history/search` | Full-text search across commits (`?q=...&branch=main`) |
+| `GET` | `/api/dsl/history/element/{elementId}` | Find commits affecting an element |
+| `GET` | `/api/dsl/history/relation` | Find commits affecting a relation |
+
+---
+
+## 22. API Reference
 
 Complete list of all REST endpoints.
 
@@ -1160,10 +1261,47 @@ Complete list of all REST endpoints.
 | `GET` | `/api/coverage/statistics` | Coverage statistics | No |
 | `GET` | `/api/coverage/density` | Requirement density map | No |
 | `DELETE` | `/api/coverage/requirement/{id}` | Remove coverage for a requirement | No |
+| | | **Explanation Trace** | |
+| `POST` | `/api/explain/{nodeCode}` | Explanation trace for a single scored node | No |
+| `POST` | `/api/explain` | Explanation traces for all scored nodes | No |
+| | | **Report Export** | |
+| `POST` | `/api/report/markdown` | Export analysis report as Markdown | No |
+| `POST` | `/api/report/html` | Export analysis report as standalone HTML | No |
+| `POST` | `/api/report/docx` | Export analysis report as Word document (.docx) | No |
+| `POST` | `/api/report/json` | Export analysis report as structured JSON | No |
+| | | **Architecture DSL** | |
+| `GET` | `/api/dsl/export` | Export current architecture as DSL text | No |
+| `GET` | `/api/dsl/current` | Get current architecture state as JSON | No |
+| `POST` | `/api/dsl/parse` | Parse DSL text, return canonical model as JSON | No |
+| `POST` | `/api/dsl/validate` | Validate DSL text, return errors and warnings | No |
+| `POST` | `/api/dsl/materialize` | Parse, validate, and materialize DSL into database | No |
+| `POST` | `/api/dsl/materialize-incremental` | Incrementally materialize delta between versions | No |
+| `POST` | `/api/dsl/commit` | Commit DSL text as versioned document to JGit | No |
+| `GET` | `/api/dsl/history` | Get commit history for a branch | No |
+| `GET` | `/api/dsl/diff/{beforeId}/{afterId}` | Semantic diff between two commits | No |
+| `GET` | `/api/dsl/diff/text/{beforeId}/{afterId}` | JGit-native text diff (unified patch) | No |
+| `GET` | `/api/dsl/branches` | List all branches | No |
+| `POST` | `/api/dsl/branches` | Create a new branch by forking | No |
+| `POST` | `/api/dsl/cherry-pick` | Cherry-pick a commit onto a target branch | No |
+| `POST` | `/api/dsl/merge` | Merge one branch into another (3-way merge) | No |
+| `GET` | `/api/dsl/git/head` | Read DSL from HEAD of a branch | No |
+| `GET` | `/api/dsl/git/commit/{commitId}` | Read DSL from a specific commit | No |
+| `GET` | `/api/dsl/hypotheses` | List relation hypotheses (optional status filter) | No |
+| `POST` | `/api/dsl/hypotheses/{id}/accept` | Accept hypothesis as TaxonomyRelation | No |
+| `POST` | `/api/dsl/hypotheses/{id}/reject` | Reject hypothesis | No |
+| `POST` | `/api/dsl/hypotheses/{id}/apply-session` | Apply hypothesis for current session only | No |
+| `GET` | `/api/dsl/hypotheses/{id}/evidence` | Get evidence records for a hypothesis | No |
+| `GET` | `/api/dsl/documents` | List stored DSL documents | No |
+| `POST` | `/api/dsl/history/index` | Index commits on a branch for full-text search | No |
+| `GET` | `/api/dsl/history/search` | Full-text search across commit history | No |
+| `GET` | `/api/dsl/history/element/{elementId}` | Find commits affecting an element | No |
+| `GET` | `/api/dsl/history/relation` | Find commits affecting a relation | No |
+| | | **Proposals (additional)** | |
+| `POST` | `/api/proposals/from-hypothesis` | Create a proposal from a hypothesis | No |
 
 ---
 
-## 20. Error Response Schema
+## 23. Error Response Schema
 
 The API uses standard HTTP status codes and returns structured error information.
 
@@ -1226,7 +1364,7 @@ When the LLM provider experiences an error, the application handles it gracefull
 
 ---
 
-## 21. OpenAPI / Swagger UI
+## 24. OpenAPI / Swagger UI
 
 The application includes auto-generated interactive API documentation via
 [springdoc-openapi](https://springdoc.org/).
@@ -1242,7 +1380,7 @@ Proposals, Graph Queries, Quality Metrics, Export, Administration, Embedding).
 
 ---
 
-## 22. Best Practices
+## 25. Best Practices
 
 ### Requirement Text Quality
 
@@ -1274,7 +1412,7 @@ Proposals, Graph Queries, Quality Metrics, Export, Administration, Embedding).
 
 ---
 
-## 23. Glossary
+## 26. Glossary
 
 | Term | Definition |
 |---|---|

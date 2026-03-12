@@ -22,6 +22,12 @@ This document explains the key terms used throughout the Taxonomy Architecture A
 - [Relation Proposal](#relation-proposal)
 - [Leaf Justification](#leaf-justification)
 - [View Modes](#view-modes)
+- [Relation Type](#relation-type)
+- [Architecture DSL](#architecture-dsl)
+- [Relation Hypothesis](#relation-hypothesis)
+- [Relation Evidence](#relation-evidence)
+- [Explanation Trace](#explanation-trace)
+- [Canonical Architecture Model](#canonical-architecture-model)
 
 ---
 
@@ -169,3 +175,65 @@ The taxonomy tree can be displayed in five different visual layouts:
 | **Sunburst** | Radial hierarchical chart showing the full tree at a glance |
 | **Tree** | Horizontal dendrogram layout |
 | **Decision Map** | Treemap-style layout for comparing node sizes and scores |
+
+---
+
+## Relation Type
+
+Each relation has a type that defines the nature of the connection between two taxonomy nodes. The system defines 10 relation types, each corresponding to a standard architecture framework concept:
+
+| Type | Source → Target | Standard |
+|---|---|---|
+| **REALIZES** | Capability → Core Service | NAF NCV-2 |
+| **SUPPORTS** | Core Service → Business Process | TOGAF Business Architecture |
+| **CONSUMES** | Business Process → Information Product | TOGAF Data Architecture |
+| **USES** | User Application → Core Service | NAF NSV-1 |
+| **FULFILLS** | COI Service → Capability | NAF NCV-5 |
+| **ASSIGNED_TO** | Business Role → Business Process | TOGAF Org mapping |
+| **DEPENDS_ON** | Core Service → Core Service | Technical dependency |
+| **PRODUCES** | Business Process → Information Product | Data flow |
+| **COMMUNICATES_WITH** | Communications Service → Core Service | NAF NSOV |
+| **RELATED_TO** | Any → Any | Generic fallback |
+
+The `RelationCompatibilityMatrix` enforces which source and target root categories are valid for each type.
+
+---
+
+## Architecture DSL
+
+A text-based domain-specific language for describing architecture models. DSL documents use the `.taxdsl` format with `STRUCT:`, `REL:`, and `DOM:` prefixed blocks for elements, relations, and domain metadata respectively.
+
+DSL documents are version-controlled using JGit with all Git objects stored in the database (not the filesystem). The system supports branching, merging, cherry-picking, and semantic diffs between versions.
+
+---
+
+## Relation Hypothesis
+
+A provisional relation generated during LLM analysis. Unlike [Relation Proposals](#relation-proposal) (which are generated on demand), hypotheses are created automatically as part of the analysis pipeline.
+
+Hypotheses follow a lifecycle: **PENDING** → **ACCEPTED** (creates a confirmed `TaxonomyRelation`), **REJECTED** (discarded), or **APPLIED** (applied for the current session only, without persisting).
+
+---
+
+## Relation Evidence
+
+Supporting data for a relation hypothesis or proposal. Evidence records capture why a relation was suggested, including the LLM response text, the analysis context, and any confidence scores.
+
+---
+
+## Explanation Trace
+
+A structured reasoning chain that explains why a taxonomy node received a particular score for a given requirement. Traces include the LLM's reasoning, contributing factors, and confidence level.
+
+---
+
+## Canonical Architecture Model
+
+The internal representation of an architecture described in DSL. It contains:
+
+- **Elements** — architecture building blocks (capabilities, services, applications, etc.)
+- **Relations** — directed connections between elements
+- **Requirements** — the business requirements that motivated the architecture
+- **Mappings** — links between requirements and architecture elements
+- **Views** — named subsets of elements and relations
+- **Evidence** — justification data for relations
