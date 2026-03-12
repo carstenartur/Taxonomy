@@ -24,7 +24,7 @@ This file tracks known documentation gaps and improvement opportunities. Items m
 
 - [ ] **Curl examples**: examples in API_REFERENCE.md should be kept in sync with actual endpoints
 - [ ] **No versioning strategy documented**: the API is currently unversioned (`/api/...`)
-- [ ] **No rate-limiting documentation**: ✅ Rate limiting is now documented in CONFIGURATION_REFERENCE.md and ARCHITECTURE.md
+- [x] **Rate-limiting documentation**: Rate limiting is now documented in CONFIGURATION_REFERENCE.md and ARCHITECTURE.md
 
 ---
 
@@ -64,7 +64,7 @@ This file tracks known documentation gaps and improvement opportunities. Items m
 ### API Documentation (completed)
 - [x] OpenAPI / Swagger integration — springdoc-openapi at `/swagger-ui.html`
 - [x] Standalone API reference — API_REFERENCE.md
-- [x] Error response schema — API_REFERENCE.md §23
+- [x] Error response schema — API_REFERENCE.md §Error Response Schema
 - [x] DSL API endpoints — API_REFERENCE.md §21
 - [x] Report export endpoints — API_REFERENCE.md §20
 - [x] Explanation trace endpoints — API_REFERENCE.md §19

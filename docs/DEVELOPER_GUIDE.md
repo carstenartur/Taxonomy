@@ -30,7 +30,7 @@ cd Taxonomy
 # Compile all 4 modules (~5 seconds)
 mvn compile
 
-# Run all tests (~60 seconds, 667 tests, no Docker needed)
+# Run all tests (~60 seconds, no Docker needed)
 mvn test
 
 # Run including integration tests (requires Docker)
@@ -112,7 +112,7 @@ The main Spring Boot application:
 
 | Directory | Contents |
 |---|---|
-| `controller/` | 14 REST controllers (~74 endpoints) |
+| `controller/` | 14 REST controllers |
 | `service/` | 38 service classes — LLM, search, architecture, graph, proposals, reports, etc. |
 | `model/` | 9 JPA entities — `TaxonomyNode`, `TaxonomyRelation`, `RelationProposal`, `RelationHypothesis`, etc. |
 | `repository/` | 8 Spring Data JPA repositories |
