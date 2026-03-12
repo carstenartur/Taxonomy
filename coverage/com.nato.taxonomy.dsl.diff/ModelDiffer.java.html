@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ModelDiffer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dsl.diff</a> &gt; <span class="el_source">ModelDiffer.java</span></div><h1>ModelDiffer.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dsl.diff;
+
+import com.nato.taxonomy.dsl.model.ArchitectureElement;
+import com.nato.taxonomy.dsl.model.ArchitectureRelation;
+import com.nato.taxonomy.dsl.model.CanonicalArchitectureModel;
+
+import java.util.*;
+
+/**
+ * Computes a semantic diff between two {@link CanonicalArchitectureModel} instances.
+ *
+ * &lt;p&gt;The differ compares elements by their {@code id} and relations by
+ * their composite key {@code (sourceId, relationType, targetId)}. This
+ * produces a {@link ModelDiff} containing added, removed, and changed
+ * items that can be used for incremental materialization.
+ *
+ * &lt;p&gt;This class is a pure library component — no Spring, no JPA, no
+ * external dependencies beyond JDK 17.
+ */
+<span class="fc" id="L20">public class ModelDiffer {</span>
+
+    /**
+     * Compute the diff between two canonical architecture models.
+     *
+     * @param before the &quot;old&quot; model (may be {@code null} to represent an empty baseline)
+     * @param after  the &quot;new&quot; model (may be {@code null} to represent deletion of everything)
+     * @return the diff result
+     */
+    public ModelDiff diff(CanonicalArchitectureModel before, CanonicalArchitectureModel after) {
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        CanonicalArchitectureModel effectiveBefore = before != null ? before : new CanonicalArchitectureModel();</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        CanonicalArchitectureModel effectiveAfter = after != null ? after : new CanonicalArchitectureModel();</span>
+
+<span class="fc" id="L33">        return new ModelDiff(</span>
+<span class="fc" id="L34">                diffAddedElements(effectiveBefore, effectiveAfter),</span>
+<span class="fc" id="L35">                diffRemovedElements(effectiveBefore, effectiveAfter),</span>
+<span class="fc" id="L36">                diffChangedElements(effectiveBefore, effectiveAfter),</span>
+<span class="fc" id="L37">                diffAddedRelations(effectiveBefore, effectiveAfter),</span>
+<span class="fc" id="L38">                diffRemovedRelations(effectiveBefore, effectiveAfter),</span>
+<span class="fc" id="L39">                diffChangedRelations(effectiveBefore, effectiveAfter)</span>
+        );
+    }
+
+    // ── Element diffing ──────────────────────────────────────────────
+
+    private List&lt;ArchitectureElement&gt; diffAddedElements(CanonicalArchitectureModel before,
+                                                         CanonicalArchitectureModel after) {
+<span class="fc" id="L47">        Set&lt;String&gt; beforeIds = before.allElementIds();</span>
+<span class="fc" id="L48">        List&lt;ArchitectureElement&gt; added = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        for (ArchitectureElement e : after.getElements()) {</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (!beforeIds.contains(e.getId())) {</span>
+<span class="fc" id="L51">                added.add(e);</span>
+            }
+<span class="fc" id="L53">        }</span>
+<span class="fc" id="L54">        return added;</span>
+    }
+
+    private List&lt;ArchitectureElement&gt; diffRemovedElements(CanonicalArchitectureModel before,
+                                                           CanonicalArchitectureModel after) {
+<span class="fc" id="L59">        Set&lt;String&gt; afterIds = after.allElementIds();</span>
+<span class="fc" id="L60">        List&lt;ArchitectureElement&gt; removed = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        for (ArchitectureElement e : before.getElements()) {</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            if (!afterIds.contains(e.getId())) {</span>
+<span class="fc" id="L63">                removed.add(e);</span>
+            }
+<span class="fc" id="L65">        }</span>
+<span class="fc" id="L66">        return removed;</span>
+    }
+
+    private List&lt;ModelDiff.ElementChange&gt; diffChangedElements(CanonicalArchitectureModel before,
+                                                               CanonicalArchitectureModel after) {
+<span class="fc" id="L71">        Map&lt;String, ArchitectureElement&gt; beforeMap = indexElementsById(before);</span>
+<span class="fc" id="L72">        List&lt;ModelDiff.ElementChange&gt; changed = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (ArchitectureElement afterElem : after.getElements()) {</span>
+<span class="fc" id="L74">            ArchitectureElement beforeElem = beforeMap.get(afterElem.getId());</span>
+<span class="fc bfc" id="L75" title="All 4 branches covered.">            if (beforeElem != null &amp;&amp; !elementsEqual(beforeElem, afterElem)) {</span>
+<span class="fc" id="L76">                changed.add(new ModelDiff.ElementChange(beforeElem, afterElem));</span>
+            }
+<span class="fc" id="L78">        }</span>
+<span class="fc" id="L79">        return changed;</span>
+    }
+
+    // ── Relation diffing ─────────────────────────────────────────────
+
+    private List&lt;ArchitectureRelation&gt; diffAddedRelations(CanonicalArchitectureModel before,
+                                                           CanonicalArchitectureModel after) {
+<span class="fc" id="L86">        Set&lt;String&gt; beforeKeys = indexRelationKeys(before);</span>
+<span class="fc" id="L87">        List&lt;ArchitectureRelation&gt; added = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        for (ArchitectureRelation r : after.getRelations()) {</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">            if (!beforeKeys.contains(relationKey(r))) {</span>
+<span class="fc" id="L90">                added.add(r);</span>
+            }
+<span class="fc" id="L92">        }</span>
+<span class="fc" id="L93">        return added;</span>
+    }
+
+    private List&lt;ArchitectureRelation&gt; diffRemovedRelations(CanonicalArchitectureModel before,
+                                                             CanonicalArchitectureModel after) {
+<span class="fc" id="L98">        Set&lt;String&gt; afterKeys = indexRelationKeys(after);</span>
+<span class="fc" id="L99">        List&lt;ArchitectureRelation&gt; removed = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        for (ArchitectureRelation r : before.getRelations()) {</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            if (!afterKeys.contains(relationKey(r))) {</span>
+<span class="fc" id="L102">                removed.add(r);</span>
+            }
+<span class="fc" id="L104">        }</span>
+<span class="fc" id="L105">        return removed;</span>
+    }
+
+    private List&lt;ModelDiff.RelationChange&gt; diffChangedRelations(CanonicalArchitectureModel before,
+                                                                 CanonicalArchitectureModel after) {
+<span class="fc" id="L110">        Map&lt;String, ArchitectureRelation&gt; beforeMap = indexRelationsByKey(before);</span>
+<span class="fc" id="L111">        List&lt;ModelDiff.RelationChange&gt; changed = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        for (ArchitectureRelation afterRel : after.getRelations()) {</span>
+<span class="fc" id="L113">            ArchitectureRelation beforeRel = beforeMap.get(relationKey(afterRel));</span>
+<span class="fc bfc" id="L114" title="All 4 branches covered.">            if (beforeRel != null &amp;&amp; !relationsEqual(beforeRel, afterRel)) {</span>
+<span class="fc" id="L115">                changed.add(new ModelDiff.RelationChange(beforeRel, afterRel));</span>
+            }
+<span class="fc" id="L117">        }</span>
+<span class="fc" id="L118">        return changed;</span>
+    }
+
+    // ── Equality helpers ─────────────────────────────────────────────
+
+    private boolean elementsEqual(ArchitectureElement a, ArchitectureElement b) {
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        return Objects.equals(a.getId(), b.getId())</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                &amp;&amp; Objects.equals(a.getType(), b.getType())</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                &amp;&amp; Objects.equals(a.getTitle(), b.getTitle())</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(a.getDescription(), b.getDescription())</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(a.getTaxonomy(), b.getTaxonomy())</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(a.getExtensions(), b.getExtensions());</span>
+    }
+
+    private boolean relationsEqual(ArchitectureRelation a, ArchitectureRelation b) {
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        return Objects.equals(a.getSourceId(), b.getSourceId())</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(a.getRelationType(), b.getRelationType())</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(a.getTargetId(), b.getTargetId())</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">                &amp;&amp; Objects.equals(a.getStatus(), b.getStatus())</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                &amp;&amp; Objects.equals(a.getConfidence(), b.getConfidence())</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(a.getProvenance(), b.getProvenance())</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">                &amp;&amp; Objects.equals(a.getExtensions(), b.getExtensions());</span>
+    }
+
+    // ── Indexing helpers ─────────────────────────────────────────────
+
+    private Map&lt;String, ArchitectureElement&gt; indexElementsById(CanonicalArchitectureModel model) {
+<span class="fc" id="L145">        Map&lt;String, ArchitectureElement&gt; map = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        for (ArchitectureElement e : model.getElements()) {</span>
+<span class="fc" id="L147">            map.put(e.getId(), e);</span>
+<span class="fc" id="L148">        }</span>
+<span class="fc" id="L149">        return map;</span>
+    }
+
+    /**
+     * Composite key for a relation: {@code sourceId|relationType|targetId}.
+     */
+    private String relationKey(ArchitectureRelation r) {
+<span class="fc" id="L156">        return r.getSourceId() + &quot;|&quot; + r.getRelationType() + &quot;|&quot; + r.getTargetId();</span>
+    }
+
+    private Set&lt;String&gt; indexRelationKeys(CanonicalArchitectureModel model) {
+<span class="fc" id="L160">        Set&lt;String&gt; keys = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        for (ArchitectureRelation r : model.getRelations()) {</span>
+<span class="fc" id="L162">            keys.add(relationKey(r));</span>
+<span class="fc" id="L163">        }</span>
+<span class="fc" id="L164">        return keys;</span>
+    }
+
+    private Map&lt;String, ArchitectureRelation&gt; indexRelationsByKey(CanonicalArchitectureModel model) {
+<span class="fc" id="L168">        Map&lt;String, ArchitectureRelation&gt; map = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        for (ArchitectureRelation r : model.getRelations()) {</span>
+<span class="fc" id="L170">            map.put(relationKey(r), r);</span>
+<span class="fc" id="L171">        }</span>
+<span class="fc" id="L172">        return map;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

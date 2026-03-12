@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DslValidator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dsl.validation</a> &gt; <span class="el_source">DslValidator.java</span></div><h1>DslValidator.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dsl.validation;
+
+import com.nato.taxonomy.dsl.model.*;
+
+import java.util.*;
+
+/**
+ * Validates a {@link CanonicalArchitectureModel} for structural and semantic correctness.
+ *
+ * &lt;p&gt;Checks include:
+ * &lt;ul&gt;
+ *   &lt;li&gt;Duplicate element/requirement/view/evidence IDs&lt;/li&gt;
+ *   &lt;li&gt;Relations referencing unknown element IDs&lt;/li&gt;
+ *   &lt;li&gt;Mappings referencing unknown requirement or element IDs&lt;/li&gt;
+ *   &lt;li&gt;Invalid relation types against the type matrix&lt;/li&gt;
+ *   &lt;li&gt;Invalid status values on relations&lt;/li&gt;
+ *   &lt;li&gt;Missing required fields&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+<span class="fc" id="L20">public class DslValidator {</span>
+
+    /** Recognized relation types from the type matrix. */
+<span class="fc" id="L23">    private static final Set&lt;String&gt; VALID_RELATION_TYPES = Set.of(</span>
+            &quot;REALIZES&quot;, &quot;SUPPORTS&quot;, &quot;CONSUMES&quot;, &quot;USES&quot;, &quot;FULFILLS&quot;,
+            &quot;ASSIGNED_TO&quot;, &quot;DEPENDS_ON&quot;, &quot;PRODUCES&quot;, &quot;COMMUNICATES_WITH&quot;, &quot;RELATED_TO&quot;);
+
+    /** Recognized relation statuses. */
+<span class="fc" id="L28">    private static final Set&lt;String&gt; VALID_STATUSES = Set.of(</span>
+            &quot;proposed&quot;, &quot;provisional&quot;, &quot;accepted&quot;, &quot;rejected&quot;);
+
+    /**
+     * Validate a canonical architecture model.
+     */
+    public DslValidationResult validate(CanonicalArchitectureModel model) {
+<span class="fc" id="L35">        DslValidationResult result = new DslValidationResult();</span>
+
+<span class="fc" id="L37">        Set&lt;String&gt; elementIds = checkDuplicateIds(model.getElements(), &quot;element&quot;, result);</span>
+<span class="fc" id="L38">        Set&lt;String&gt; requirementIds = checkDuplicateRequirementIds(model.getRequirements(), result);</span>
+<span class="fc" id="L39">        checkDuplicateViewIds(model.getViews(), result);</span>
+<span class="fc" id="L40">        checkDuplicateEvidenceIds(model.getEvidence(), result);</span>
+
+        // Combine all known IDs for reference resolution
+<span class="fc" id="L43">        Set&lt;String&gt; allIds = new HashSet&lt;&gt;(elementIds);</span>
+<span class="fc" id="L44">        allIds.addAll(requirementIds);</span>
+
+<span class="fc" id="L46">        validateRelations(model.getRelations(), allIds, result);</span>
+<span class="fc" id="L47">        validateMappings(model.getMappings(), requirementIds, elementIds, result);</span>
+<span class="fc" id="L48">        validateElements(model.getElements(), result);</span>
+
+<span class="fc" id="L50">        return result;</span>
+    }
+
+    private Set&lt;String&gt; checkDuplicateIds(List&lt;ArchitectureElement&gt; elements, String kind,
+                                          DslValidationResult result) {
+<span class="fc" id="L55">        Set&lt;String&gt; seen = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        for (ArchitectureElement el : elements) {</span>
+<span class="pc bpc" id="L57" title="1 of 4 branches missed.">            if (el.getId() == null || el.getId().isBlank()) {</span>
+<span class="fc" id="L58">                result.addError(&quot;Element is missing an ID&quot;);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">            } else if (!seen.add(el.getId())) {</span>
+<span class="fc" id="L60">                result.addError(&quot;Duplicate &quot; + kind + &quot; ID: &quot; + el.getId());</span>
+            }
+<span class="fc" id="L62">        }</span>
+<span class="fc" id="L63">        return seen;</span>
+    }
+
+    private Set&lt;String&gt; checkDuplicateRequirementIds(List&lt;ArchitectureRequirement&gt; requirements,
+                                                     DslValidationResult result) {
+<span class="fc" id="L68">        Set&lt;String&gt; seen = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (ArchitectureRequirement req : requirements) {</span>
+<span class="pc bpc" id="L70" title="2 of 4 branches missed.">            if (req.getId() == null || req.getId().isBlank()) {</span>
+<span class="nc" id="L71">                result.addError(&quot;Requirement is missing an ID&quot;);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            } else if (!seen.add(req.getId())) {</span>
+<span class="fc" id="L73">                result.addError(&quot;Duplicate requirement ID: &quot; + req.getId());</span>
+            }
+<span class="fc" id="L75">        }</span>
+<span class="fc" id="L76">        return seen;</span>
+    }
+
+    private void checkDuplicateViewIds(List&lt;ArchitectureView&gt; views, DslValidationResult result) {
+<span class="fc" id="L80">        Set&lt;String&gt; seen = new HashSet&lt;&gt;();</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">        for (ArchitectureView view : views) {</span>
+<span class="nc bnc" id="L82" title="All 4 branches missed.">            if (view.getId() == null || view.getId().isBlank()) {</span>
+<span class="nc" id="L83">                result.addError(&quot;View is missing an ID&quot;);</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">            } else if (!seen.add(view.getId())) {</span>
+<span class="nc" id="L85">                result.addError(&quot;Duplicate view ID: &quot; + view.getId());</span>
+            }
+<span class="nc" id="L87">        }</span>
+<span class="fc" id="L88">    }</span>
+
+    private void checkDuplicateEvidenceIds(List&lt;ArchitectureEvidence&gt; evidence, DslValidationResult result) {
+<span class="fc" id="L91">        Set&lt;String&gt; seen = new HashSet&lt;&gt;();</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        for (ArchitectureEvidence ev : evidence) {</span>
+<span class="nc bnc" id="L93" title="All 4 branches missed.">            if (ev.getId() == null || ev.getId().isBlank()) {</span>
+<span class="nc" id="L94">                result.addError(&quot;Evidence is missing an ID&quot;);</span>
+<span class="nc bnc" id="L95" title="All 2 branches missed.">            } else if (!seen.add(ev.getId())) {</span>
+<span class="nc" id="L96">                result.addError(&quot;Duplicate evidence ID: &quot; + ev.getId());</span>
+            }
+<span class="nc" id="L98">        }</span>
+<span class="fc" id="L99">    }</span>
+
+    private void validateRelations(List&lt;ArchitectureRelation&gt; relations, Set&lt;String&gt; allIds,
+                                   DslValidationResult result) {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        for (ArchitectureRelation rel : relations) {</span>
+<span class="pc bpc" id="L104" title="2 of 4 branches missed.">            if (rel.getSourceId() == null || rel.getSourceId().isBlank()) {</span>
+<span class="nc" id="L105">                result.addError(&quot;Relation is missing a source ID&quot;);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            } else if (!allIds.contains(rel.getSourceId())) {</span>
+<span class="fc" id="L107">                result.addWarning(&quot;Relation references unknown source ID: &quot; + rel.getSourceId());</span>
+            }
+
+<span class="pc bpc" id="L110" title="2 of 4 branches missed.">            if (rel.getTargetId() == null || rel.getTargetId().isBlank()) {</span>
+<span class="nc" id="L111">                result.addError(&quot;Relation is missing a target ID&quot;);</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            } else if (!allIds.contains(rel.getTargetId())) {</span>
+<span class="fc" id="L113">                result.addWarning(&quot;Relation references unknown target ID: &quot; + rel.getTargetId());</span>
+            }
+
+<span class="pc bpc" id="L116" title="1 of 4 branches missed.">            if (rel.getRelationType() != null &amp;&amp; !VALID_RELATION_TYPES.contains(rel.getRelationType())) {</span>
+<span class="fc" id="L117">                result.addWarning(&quot;Unknown relation type: &quot; + rel.getRelationType());</span>
+            }
+
+<span class="fc bfc" id="L120" title="All 4 branches covered.">            if (rel.getStatus() != null &amp;&amp; !VALID_STATUSES.contains(rel.getStatus())) {</span>
+<span class="fc" id="L121">                result.addError(&quot;Invalid relation status: &quot; + rel.getStatus()</span>
+                        + &quot; (valid: &quot; + VALID_STATUSES + &quot;)&quot;);
+            }
+<span class="fc" id="L124">        }</span>
+<span class="fc" id="L125">    }</span>
+
+    private void validateMappings(List&lt;RequirementMapping&gt; mappings,
+                                  Set&lt;String&gt; requirementIds,
+                                  Set&lt;String&gt; elementIds,
+                                  DslValidationResult result) {
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        for (RequirementMapping m : mappings) {</span>
+<span class="pc bpc" id="L132" title="2 of 4 branches missed.">            if (m.getRequirementId() == null || m.getRequirementId().isBlank()) {</span>
+<span class="nc" id="L133">                result.addError(&quot;Mapping is missing a requirement ID&quot;);</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            } else if (!requirementIds.contains(m.getRequirementId())) {</span>
+<span class="fc" id="L135">                result.addWarning(&quot;Mapping references unknown requirement ID: &quot; + m.getRequirementId());</span>
+            }
+
+<span class="pc bpc" id="L138" title="2 of 4 branches missed.">            if (m.getElementId() == null || m.getElementId().isBlank()) {</span>
+<span class="nc" id="L139">                result.addError(&quot;Mapping is missing an element ID&quot;);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">            } else if (!elementIds.contains(m.getElementId())) {</span>
+<span class="fc" id="L141">                result.addWarning(&quot;Mapping references unknown element ID: &quot; + m.getElementId());</span>
+            }
+<span class="fc" id="L143">        }</span>
+<span class="fc" id="L144">    }</span>
+
+    private void validateElements(List&lt;ArchitectureElement&gt; elements, DslValidationResult result) {
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for (ArchitectureElement el : elements) {</span>
+<span class="pc bpc" id="L148" title="1 of 4 branches missed.">            if (el.getTitle() == null || el.getTitle().isBlank()) {</span>
+<span class="fc" id="L149">                result.addWarning(&quot;Element &quot; + el.getId() + &quot; is missing a title&quot;);</span>
+            }
+<span class="fc" id="L151">        }</span>
+<span class="fc" id="L152">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

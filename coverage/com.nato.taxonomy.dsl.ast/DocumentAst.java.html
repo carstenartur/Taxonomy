@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocumentAst.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dsl.ast</a> &gt; <span class="el_source">DocumentAst.java</span></div><h1>DocumentAst.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dsl.ast;
+
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * Root node of a parsed DSL document.
+ *
+ * &lt;p&gt;A document consists of an optional {@link MetaAst} header followed by
+ * zero or more {@link BlockAst} entries. Unknown block types are preserved
+ * in the block list so that round-trips are lossless.
+ */
+public final class DocumentAst {
+
+    private final MetaAst meta;
+    private final List&lt;BlockAst&gt; blocks;
+
+<span class="fc" id="L18">    public DocumentAst(MetaAst meta, List&lt;BlockAst&gt; blocks) {</span>
+<span class="fc" id="L19">        this.meta = meta;</span>
+<span class="fc" id="L20">        this.blocks = List.copyOf(Objects.requireNonNull(blocks));</span>
+<span class="fc" id="L21">    }</span>
+
+<span class="fc" id="L23">    public MetaAst getMeta() { return meta; }</span>
+<span class="fc" id="L24">    public List&lt;BlockAst&gt; getBlocks() { return blocks; }</span>
+
+    /** Returns all blocks of a given kind (e.g. {@code &quot;element&quot;}, {@code &quot;relation&quot;}). */
+    public List&lt;BlockAst&gt; blocksOfKind(String kind) {
+<span class="fc" id="L28">        return blocks.stream().filter(b -&gt; b.getKind().equals(kind)).toList();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

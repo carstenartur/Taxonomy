@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ModelToAstMapper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dsl.mapper</a> &gt; <span class="el_source">ModelToAstMapper.java</span></div><h1>ModelToAstMapper.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dsl.mapper;
+
+import com.nato.taxonomy.dsl.ast.*;
+import com.nato.taxonomy.dsl.model.*;
+
+import java.util.*;
+
+/**
+ * Maps canonical architecture model objects back to {@link BlockAst} nodes
+ * for serialization to DSL text.
+ */
+<span class="fc" id="L12">public class ModelToAstMapper {</span>
+
+    /**
+     * Map a complete canonical model to a document AST including meta header.
+     */
+    public DocumentAst toDocument(CanonicalArchitectureModel model, String namespace) {
+<span class="fc" id="L18">        MetaAst meta = new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION, namespace, null);</span>
+<span class="fc" id="L19">        List&lt;BlockAst&gt; blocks = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        for (ArchitectureElement el : model.getElements()) {</span>
+<span class="fc" id="L22">            blocks.add(elementToBlock(el));</span>
+<span class="fc" id="L23">        }</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        for (ArchitectureRelation rel : model.getRelations()) {</span>
+<span class="fc" id="L25">            blocks.add(relationToBlock(rel));</span>
+<span class="fc" id="L26">        }</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        for (ArchitectureRequirement req : model.getRequirements()) {</span>
+<span class="fc" id="L28">            blocks.add(requirementToBlock(req));</span>
+<span class="fc" id="L29">        }</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        for (RequirementMapping mapping : model.getMappings()) {</span>
+<span class="fc" id="L31">            blocks.add(mappingToBlock(mapping));</span>
+<span class="fc" id="L32">        }</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        for (ArchitectureView view : model.getViews()) {</span>
+<span class="fc" id="L34">            blocks.add(viewToBlock(view));</span>
+<span class="fc" id="L35">        }</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        for (ArchitectureEvidence ev : model.getEvidence()) {</span>
+<span class="fc" id="L37">            blocks.add(evidenceToBlock(ev));</span>
+<span class="fc" id="L38">        }</span>
+
+<span class="fc" id="L40">        return new DocumentAst(meta, blocks);</span>
+    }
+
+    private BlockAst elementToBlock(ArchitectureElement el) {
+<span class="fc" id="L44">        List&lt;String&gt; headerTokens = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">        if (el.getId() != null) headerTokens.add(el.getId());</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">        if (el.getType() != null) {</span>
+<span class="fc" id="L47">            headerTokens.add(&quot;type&quot;);</span>
+<span class="fc" id="L48">            headerTokens.add(el.getType());</span>
+        }
+
+<span class="fc" id="L51">        List&lt;PropertyAst&gt; props = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L52">        addProperty(props, &quot;title&quot;, el.getTitle());</span>
+<span class="fc" id="L53">        addProperty(props, &quot;description&quot;, el.getDescription());</span>
+<span class="fc" id="L54">        addProperty(props, &quot;taxonomy&quot;, el.getTaxonomy());</span>
+<span class="fc" id="L55">        addExtensions(props, el.getExtensions());</span>
+
+<span class="fc" id="L57">        return new BlockAst(&quot;element&quot;, headerTokens, props, List.of(), el.getExtensions(), null);</span>
+    }
+
+    private BlockAst relationToBlock(ArchitectureRelation rel) {
+<span class="fc" id="L61">        List&lt;String&gt; headerTokens = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">        if (rel.getSourceId() != null) headerTokens.add(rel.getSourceId());</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        if (rel.getRelationType() != null) headerTokens.add(rel.getRelationType());</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (rel.getTargetId() != null) headerTokens.add(rel.getTargetId());</span>
+
+<span class="fc" id="L66">        List&lt;PropertyAst&gt; props = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L67">        addProperty(props, &quot;status&quot;, rel.getStatus());</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (rel.getConfidence() != null) {</span>
+<span class="fc" id="L69">            addProperty(props, &quot;confidence&quot;, String.valueOf(rel.getConfidence()));</span>
+        }
+<span class="fc" id="L71">        addProperty(props, &quot;provenance&quot;, rel.getProvenance());</span>
+<span class="fc" id="L72">        addExtensions(props, rel.getExtensions());</span>
+
+<span class="fc" id="L74">        return new BlockAst(&quot;relation&quot;, headerTokens, props, List.of(), rel.getExtensions(), null);</span>
+    }
+
+    private BlockAst requirementToBlock(ArchitectureRequirement req) {
+<span class="fc" id="L78">        List&lt;String&gt; headerTokens = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (req.getId() != null) headerTokens.add(req.getId());</span>
+
+<span class="fc" id="L81">        List&lt;PropertyAst&gt; props = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L82">        addProperty(props, &quot;title&quot;, req.getTitle());</span>
+<span class="fc" id="L83">        addProperty(props, &quot;text&quot;, req.getText());</span>
+<span class="fc" id="L84">        addExtensions(props, req.getExtensions());</span>
+
+<span class="fc" id="L86">        return new BlockAst(&quot;requirement&quot;, headerTokens, props, List.of(), req.getExtensions(), null);</span>
+    }
+
+    private BlockAst mappingToBlock(RequirementMapping mapping) {
+<span class="fc" id="L90">        List&lt;String&gt; headerTokens = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (mapping.getRequirementId() != null) headerTokens.add(mapping.getRequirementId());</span>
+<span class="fc" id="L92">        headerTokens.add(&quot;-&gt;&quot;);</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (mapping.getElementId() != null) headerTokens.add(mapping.getElementId());</span>
+
+<span class="fc" id="L95">        List&lt;PropertyAst&gt; props = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (mapping.getScore() != null) {</span>
+<span class="fc" id="L97">            addProperty(props, &quot;score&quot;, String.valueOf(mapping.getScore()));</span>
+        }
+<span class="fc" id="L99">        addProperty(props, &quot;source&quot;, mapping.getSource());</span>
+<span class="fc" id="L100">        addExtensions(props, mapping.getExtensions());</span>
+
+<span class="fc" id="L102">        return new BlockAst(&quot;mapping&quot;, headerTokens, props, List.of(), mapping.getExtensions(), null);</span>
+    }
+
+    private BlockAst viewToBlock(ArchitectureView view) {
+<span class="fc" id="L106">        List&lt;String&gt; headerTokens = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (view.getId() != null) headerTokens.add(view.getId());</span>
+
+<span class="fc" id="L109">        List&lt;PropertyAst&gt; props = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L110">        addProperty(props, &quot;title&quot;, view.getTitle());</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (String inc : view.getIncludes()) {</span>
+<span class="fc" id="L112">            addProperty(props, &quot;include&quot;, inc);</span>
+<span class="fc" id="L113">        }</span>
+<span class="fc" id="L114">        addProperty(props, &quot;layout&quot;, view.getLayout());</span>
+<span class="fc" id="L115">        addExtensions(props, view.getExtensions());</span>
+
+<span class="fc" id="L117">        return new BlockAst(&quot;view&quot;, headerTokens, props, List.of(), view.getExtensions(), null);</span>
+    }
+
+    private BlockAst evidenceToBlock(ArchitectureEvidence ev) {
+<span class="fc" id="L121">        List&lt;String&gt; headerTokens = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">        if (ev.getId() != null) headerTokens.add(ev.getId());</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if (ev.getForRelationSource() != null) {</span>
+<span class="fc" id="L124">            headerTokens.add(&quot;for&quot;);</span>
+<span class="fc" id="L125">            headerTokens.add(&quot;relation&quot;);</span>
+<span class="fc" id="L126">            headerTokens.add(ev.getForRelationSource());</span>
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">            if (ev.getForRelationType() != null) headerTokens.add(ev.getForRelationType());</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">            if (ev.getForRelationTarget() != null) headerTokens.add(ev.getForRelationTarget());</span>
+        }
+
+<span class="fc" id="L131">        List&lt;PropertyAst&gt; props = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L132">        addProperty(props, &quot;type&quot;, ev.getEvidenceType());</span>
+<span class="fc" id="L133">        addProperty(props, &quot;model&quot;, ev.getModel());</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        if (ev.getConfidence() != null) {</span>
+<span class="fc" id="L135">            addProperty(props, &quot;confidence&quot;, String.valueOf(ev.getConfidence()));</span>
+        }
+<span class="fc" id="L137">        addProperty(props, &quot;summary&quot;, ev.getSummary());</span>
+<span class="fc" id="L138">        addExtensions(props, ev.getExtensions());</span>
+
+<span class="fc" id="L140">        return new BlockAst(&quot;evidence&quot;, headerTokens, props, List.of(), ev.getExtensions(), null);</span>
+    }
+
+    private void addProperty(List&lt;PropertyAst&gt; props, String key, String value) {
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        if (value != null) {</span>
+<span class="fc" id="L145">            props.add(new PropertyAst(key, value, null));</span>
+        }
+<span class="fc" id="L147">    }</span>
+
+    private void addExtensions(List&lt;PropertyAst&gt; props, Map&lt;String, String&gt; extensions) {
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (extensions != null) {</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            for (Map.Entry&lt;String, String&gt; entry : extensions.entrySet()) {</span>
+<span class="fc" id="L152">                props.add(new PropertyAst(entry.getKey(), entry.getValue(), null));</span>
+<span class="fc" id="L153">            }</span>
+        }
+<span class="fc" id="L155">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

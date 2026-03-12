@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ModelDiff.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dsl.diff</a> &gt; <span class="el_source">ModelDiff.java</span></div><h1>ModelDiff.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dsl.diff;
+
+import com.nato.taxonomy.dsl.model.ArchitectureElement;
+import com.nato.taxonomy.dsl.model.ArchitectureRelation;
+
+import java.util.List;
+
+/**
+ * Result of diffing two {@link com.nato.taxonomy.dsl.model.CanonicalArchitectureModel} instances.
+ *
+ * &lt;p&gt;Contains the sets of added, removed, and changed elements and relations
+ * between the &quot;before&quot; and &quot;after&quot; models. Used for incremental
+ * materialization — only the delta needs to be applied to the database.
+ *
+ * @param addedElements    elements present in &quot;after&quot; but not in &quot;before&quot;
+ * @param removedElements  elements present in &quot;before&quot; but not in &quot;after&quot;
+ * @param changedElements  elements present in both but with different properties
+ * @param addedRelations   relations present in &quot;after&quot; but not in &quot;before&quot;
+ * @param removedRelations relations present in &quot;before&quot; but not in &quot;after&quot;
+ * @param changedRelations relations present in both but with different properties
+ */
+<span class="fc" id="L22">public record ModelDiff(</span>
+        List&lt;ArchitectureElement&gt; addedElements,
+        List&lt;ArchitectureElement&gt; removedElements,
+        List&lt;ElementChange&gt; changedElements,
+        List&lt;ArchitectureRelation&gt; addedRelations,
+        List&lt;ArchitectureRelation&gt; removedRelations,
+        List&lt;RelationChange&gt; changedRelations
+) {
+
+    /** True when nothing changed between the two models. */
+    public boolean isEmpty() {
+<span class="pc bpc" id="L33" title="2 of 6 branches missed.">        return addedElements.isEmpty() &amp;&amp; removedElements.isEmpty() &amp;&amp; changedElements.isEmpty()</span>
+<span class="pc bpc" id="L34" title="3 of 6 branches missed.">                &amp;&amp; addedRelations.isEmpty() &amp;&amp; removedRelations.isEmpty() &amp;&amp; changedRelations.isEmpty();</span>
+    }
+
+    /** Total number of changes (useful for summary display). */
+    public int totalChanges() {
+<span class="fc" id="L39">        return addedElements.size() + removedElements.size() + changedElements.size()</span>
+<span class="fc" id="L40">                + addedRelations.size() + removedRelations.size() + changedRelations.size();</span>
+    }
+
+    /**
+     * An element that exists in both models but has different properties.
+     *
+     * @param before the element in the &quot;before&quot; model
+     * @param after  the element in the &quot;after&quot; model
+     */
+<span class="fc" id="L49">    public record ElementChange(ArchitectureElement before, ArchitectureElement after) {}</span>
+
+    /**
+     * A relation that exists in both models but has different properties.
+     *
+     * @param before the relation in the &quot;before&quot; model
+     * @param after  the relation in the &quot;after&quot; model
+     */
+<span class="fc" id="L57">    public record RelationChange(ArchitectureRelation before, ArchitectureRelation after) {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

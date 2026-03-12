@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AstToModelMapper.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dsl.mapper</a> &gt; <span class="el_source">AstToModelMapper.java</span></div><h1>AstToModelMapper.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dsl.mapper;
+
+import com.nato.taxonomy.dsl.ast.*;
+import com.nato.taxonomy.dsl.model.*;
+
+import java.util.*;
+
+/**
+ * Maps a {@link DocumentAst} (generic AST) into the {@link CanonicalArchitectureModel}.
+ *
+ * &lt;p&gt;Known block types are mapped to typed canonical objects. Unknown block types
+ * are silently skipped (they remain accessible in the AST for lossless round-trips).
+ */
+<span class="fc" id="L14">public class AstToModelMapper {</span>
+
+    /**
+     * Map a parsed document AST to a canonical architecture model.
+     */
+    public CanonicalArchitectureModel map(DocumentAst document) {
+<span class="fc" id="L20">        CanonicalArchitectureModel model = new CanonicalArchitectureModel();</span>
+
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        for (BlockAst block : document.getBlocks()) {</span>
+<span class="fc bfc" id="L23" title="All 7 branches covered.">            switch (block.getKind()) {</span>
+<span class="fc" id="L24">                case &quot;element&quot; -&gt; mapElement(block, model);</span>
+<span class="fc" id="L25">                case &quot;relation&quot; -&gt; mapRelation(block, model);</span>
+<span class="fc" id="L26">                case &quot;requirement&quot; -&gt; mapRequirement(block, model);</span>
+<span class="fc" id="L27">                case &quot;mapping&quot; -&gt; mapMapping(block, model);</span>
+<span class="fc" id="L28">                case &quot;view&quot; -&gt; mapView(block, model);</span>
+<span class="fc" id="L29">                case &quot;evidence&quot; -&gt; mapEvidence(block, model);</span>
+                default -&gt; { /* unknown block type — preserved in AST */ }
+            }
+<span class="fc" id="L32">        }</span>
+
+<span class="fc" id="L34">        return model;</span>
+    }
+
+    private void mapElement(BlockAst block, CanonicalArchitectureModel model) {
+<span class="fc" id="L38">        List&lt;String&gt; tokens = block.getHeaderTokens();</span>
+<span class="fc" id="L39">        ArchitectureElement el = new ArchitectureElement();</span>
+
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if (!tokens.isEmpty()) {</span>
+<span class="fc" id="L42">            el.setId(tokens.get(0));</span>
+        }
+        // Parse &quot;type &lt;TypeName&gt;&quot; from header tokens
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        for (int i = 1; i &lt; tokens.size() - 1; i++) {</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">            if (&quot;type&quot;.equals(tokens.get(i))) {</span>
+<span class="fc" id="L47">                el.setType(tokens.get(i + 1));</span>
+            }
+        }
+
+<span class="fc" id="L51">        el.setTitle(block.property(&quot;title&quot;));</span>
+<span class="fc" id="L52">        el.setDescription(block.property(&quot;description&quot;));</span>
+<span class="fc" id="L53">        el.setTaxonomy(block.property(&quot;taxonomy&quot;));</span>
+<span class="fc" id="L54">        el.setExtensions(block.getExtensions());</span>
+
+<span class="fc" id="L56">        model.getElements().add(el);</span>
+<span class="fc" id="L57">    }</span>
+
+    private void mapRelation(BlockAst block, CanonicalArchitectureModel model) {
+        // Header: sourceId RELATION_TYPE targetId
+<span class="fc" id="L61">        List&lt;String&gt; tokens = block.getHeaderTokens();</span>
+<span class="fc" id="L62">        ArchitectureRelation rel = new ArchitectureRelation();</span>
+
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (tokens.size() &gt;= 3) {</span>
+<span class="fc" id="L65">            rel.setSourceId(tokens.get(0));</span>
+<span class="fc" id="L66">            rel.setRelationType(tokens.get(1));</span>
+<span class="fc" id="L67">            rel.setTargetId(tokens.get(2));</span>
+        }
+
+<span class="fc" id="L70">        rel.setStatus(block.property(&quot;status&quot;));</span>
+<span class="fc" id="L71">        String conf = block.property(&quot;confidence&quot;);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (conf != null) {</span>
+<span class="fc" id="L73">            try { rel.setConfidence(Double.parseDouble(conf)); }</span>
+<span class="pc" id="L74">            catch (NumberFormatException ignored) { /* keep null */ }</span>
+        }
+<span class="fc" id="L76">        rel.setProvenance(block.property(&quot;provenance&quot;));</span>
+<span class="fc" id="L77">        rel.setExtensions(block.getExtensions());</span>
+
+<span class="fc" id="L79">        model.getRelations().add(rel);</span>
+<span class="fc" id="L80">    }</span>
+
+    private void mapRequirement(BlockAst block, CanonicalArchitectureModel model) {
+<span class="fc" id="L83">        List&lt;String&gt; tokens = block.getHeaderTokens();</span>
+<span class="fc" id="L84">        ArchitectureRequirement req = new ArchitectureRequirement();</span>
+
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        if (!tokens.isEmpty()) {</span>
+<span class="fc" id="L87">            req.setId(tokens.get(0));</span>
+        }
+<span class="fc" id="L89">        req.setTitle(block.property(&quot;title&quot;));</span>
+<span class="fc" id="L90">        req.setText(block.property(&quot;text&quot;));</span>
+<span class="fc" id="L91">        req.setExtensions(block.getExtensions());</span>
+
+<span class="fc" id="L93">        model.getRequirements().add(req);</span>
+<span class="fc" id="L94">    }</span>
+
+    private void mapMapping(BlockAst block, CanonicalArchitectureModel model) {
+        // Header: REQ-ID -&gt; ELEMENT-ID
+<span class="fc" id="L98">        List&lt;String&gt; tokens = block.getHeaderTokens();</span>
+<span class="fc" id="L99">        RequirementMapping mapping = new RequirementMapping();</span>
+
+<span class="pc bpc" id="L101" title="2 of 4 branches missed.">        if (tokens.size() &gt;= 3 &amp;&amp; &quot;-&gt;&quot;.equals(tokens.get(1))) {</span>
+<span class="fc" id="L102">            mapping.setRequirementId(tokens.get(0));</span>
+<span class="fc" id="L103">            mapping.setElementId(tokens.get(2));</span>
+        }
+
+<span class="fc" id="L106">        String score = block.property(&quot;score&quot;);</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (score != null) {</span>
+<span class="fc" id="L108">            try { mapping.setScore(Double.parseDouble(score)); }</span>
+<span class="pc" id="L109">            catch (NumberFormatException ignored) { /* keep null */ }</span>
+        }
+<span class="fc" id="L111">        mapping.setSource(block.property(&quot;source&quot;));</span>
+<span class="fc" id="L112">        mapping.setExtensions(block.getExtensions());</span>
+
+<span class="fc" id="L114">        model.getMappings().add(mapping);</span>
+<span class="fc" id="L115">    }</span>
+
+    private void mapView(BlockAst block, CanonicalArchitectureModel model) {
+<span class="fc" id="L118">        List&lt;String&gt; tokens = block.getHeaderTokens();</span>
+<span class="fc" id="L119">        ArchitectureView view = new ArchitectureView();</span>
+
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (!tokens.isEmpty()) {</span>
+<span class="fc" id="L122">            view.setId(tokens.get(0));</span>
+        }
+<span class="fc" id="L124">        view.setTitle(block.property(&quot;title&quot;));</span>
+<span class="fc" id="L125">        view.setIncludes(block.propertyValues(&quot;include&quot;));</span>
+<span class="fc" id="L126">        view.setLayout(block.property(&quot;layout&quot;));</span>
+<span class="fc" id="L127">        view.setExtensions(block.getExtensions());</span>
+
+<span class="fc" id="L129">        model.getViews().add(view);</span>
+<span class="fc" id="L130">    }</span>
+
+    private void mapEvidence(BlockAst block, CanonicalArchitectureModel model) {
+<span class="fc" id="L133">        List&lt;String&gt; tokens = block.getHeaderTokens();</span>
+<span class="fc" id="L134">        ArchitectureEvidence ev = new ArchitectureEvidence();</span>
+
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (!tokens.isEmpty()) {</span>
+<span class="fc" id="L137">            ev.setId(tokens.get(0));</span>
+        }
+        // Parse &quot;for relation SOURCE TYPE TARGET&quot; from header tokens
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        for (int i = 1; i &lt; tokens.size(); i++) {</span>
+<span class="pc bpc" id="L141" title="1 of 4 branches missed.">            if (&quot;for&quot;.equals(tokens.get(i)) &amp;&amp; i + 4 &lt; tokens.size()</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">                    &amp;&amp; &quot;relation&quot;.equals(tokens.get(i + 1))) {</span>
+<span class="fc" id="L143">                ev.setForRelationSource(tokens.get(i + 2));</span>
+<span class="fc" id="L144">                ev.setForRelationType(tokens.get(i + 3));</span>
+<span class="fc" id="L145">                ev.setForRelationTarget(tokens.get(i + 4));</span>
+            }
+        }
+
+<span class="fc" id="L149">        ev.setEvidenceType(block.property(&quot;type&quot;));</span>
+<span class="fc" id="L150">        ev.setModel(block.property(&quot;model&quot;));</span>
+<span class="fc" id="L151">        String conf = block.property(&quot;confidence&quot;);</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if (conf != null) {</span>
+<span class="fc" id="L153">            try { ev.setConfidence(Double.parseDouble(conf)); }</span>
+<span class="pc" id="L154">            catch (NumberFormatException ignored) { /* keep null */ }</span>
+        }
+<span class="fc" id="L156">        ev.setSummary(block.property(&quot;summary&quot;));</span>
+<span class="fc" id="L157">        ev.setExtensions(block.getExtensions());</span>
+
+<span class="fc" id="L159">        model.getEvidence().add(ev);</span>
+<span class="fc" id="L160">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

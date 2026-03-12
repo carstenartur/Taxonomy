@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BlockAst.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dsl.ast</a> &gt; <span class="el_source">BlockAst.java</span></div><h1>BlockAst.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dsl.ast;
+
+import java.util.*;
+
+/**
+ * A generic block in the DSL AST.
+ *
+ * &lt;p&gt;Every top-level construct ({@code element}, {@code relation}, {@code requirement},
+ * {@code mapping}, {@code view}, {@code evidence}, and future block types) is first
+ * parsed into a {@code BlockAst}. The {@link #kind} field carries the keyword
+ * (e.g. {@code &quot;element&quot;}), while {@link #headerTokens} contains the remaining
+ * tokens on the header line (e.g. {@code [&quot;CP-1001&quot;, &quot;type&quot;, &quot;Capability&quot;]}).
+ *
+ * &lt;p&gt;Unknown block types and unknown properties are preserved so that
+ * round-trips through parse → serialize are lossless.
+ */
+public final class BlockAst {
+
+    private final String kind;
+    private final List&lt;String&gt; headerTokens;
+    private final List&lt;PropertyAst&gt; properties;
+    private final List&lt;BlockAst&gt; children;
+    private final Map&lt;String, String&gt; extensions;
+    private final SourceLocation sourceLocation;
+
+    public BlockAst(String kind,
+                    List&lt;String&gt; headerTokens,
+                    List&lt;PropertyAst&gt; properties,
+                    List&lt;BlockAst&gt; children,
+                    Map&lt;String, String&gt; extensions,
+<span class="fc" id="L31">                    SourceLocation sourceLocation) {</span>
+<span class="fc" id="L32">        this.kind = Objects.requireNonNull(kind);</span>
+<span class="fc" id="L33">        this.headerTokens = List.copyOf(headerTokens);</span>
+<span class="fc" id="L34">        this.properties = List.copyOf(properties);</span>
+<span class="fc" id="L35">        this.children = List.copyOf(children);</span>
+<span class="fc" id="L36">        this.extensions = Map.copyOf(extensions);</span>
+<span class="fc" id="L37">        this.sourceLocation = sourceLocation;</span>
+<span class="fc" id="L38">    }</span>
+
+<span class="fc" id="L40">    public String getKind() { return kind; }</span>
+<span class="fc" id="L41">    public List&lt;String&gt; getHeaderTokens() { return headerTokens; }</span>
+<span class="fc" id="L42">    public List&lt;PropertyAst&gt; getProperties() { return properties; }</span>
+<span class="nc" id="L43">    public List&lt;BlockAst&gt; getChildren() { return children; }</span>
+<span class="fc" id="L44">    public Map&lt;String, String&gt; getExtensions() { return extensions; }</span>
+<span class="fc" id="L45">    public SourceLocation getSourceLocation() { return sourceLocation; }</span>
+
+    /** Convenience: look up a property value by key, or {@code null}. */
+    public String property(String key) {
+<span class="fc" id="L49">        return properties.stream()</span>
+<span class="fc" id="L50">                .filter(p -&gt; p.key().equals(key))</span>
+<span class="fc" id="L51">                .map(PropertyAst::value)</span>
+<span class="fc" id="L52">                .findFirst()</span>
+<span class="fc" id="L53">                .orElse(null);</span>
+    }
+
+    /** Convenience: look up all property values for a given key (for repeated keys like {@code include}). */
+    public List&lt;String&gt; propertyValues(String key) {
+<span class="fc" id="L58">        return properties.stream()</span>
+<span class="fc" id="L59">                .filter(p -&gt; p.key().equals(key))</span>
+<span class="fc" id="L60">                .map(PropertyAst::value)</span>
+<span class="fc" id="L61">                .toList();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
