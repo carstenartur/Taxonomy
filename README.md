@@ -52,6 +52,8 @@ The system scores every node, selects the most relevant elements, propagates rel
 - **Architecture impact analysis** — upstream, downstream, and failure-impact neighbourhood queries
 - **Relation proposals and review** — AI-generated relation proposals with human accept/reject workflow
 - **Architecture graph exploration** — trace dependencies and discover gaps and patterns
+- **Architecture DSL with versioning** — text-based domain-specific language backed by JGit for branching, merging, and history
+- **Report generation** — export analysis reports in Markdown, HTML, DOCX, and JSON formats
 - **Export to Visio, ArchiMate, Mermaid and JSON** — industry-standard diagram formats for downstream tools
 
 ---
@@ -89,7 +91,7 @@ graph TB
     end
 
     subgraph App["Spring Boot 4 Application :8080"]
-        Controllers["REST Controllers<br/>ApiController · GraphQueryApi<br/>ProposalApi · CoverageApi<br/>GapAnalysis · PatternDetection<br/>Recommendation · ArchiMateImport"]
+        Controllers["REST Controllers (14)<br/>ApiController · GraphQueryApi<br/>ProposalApi · CoverageApi<br/>GapAnalysis · PatternDetection<br/>Recommendation · ArchiMateImport<br/>DslApi · ReportApi · RelationApi<br/>QualityApi · ExplanationTrace"]
         Services["Service Layer<br/>LlmService · TaxonomyService<br/>SearchService · HybridSearchService<br/>RequirementArchitectureViewService<br/>DiagramProjectionService<br/>RelationProposalService"]
         Persistence["Persistence<br/>HSQLDB (in-process)<br/>Hibernate Search 8 / Lucene 9"]
     end
@@ -163,10 +165,16 @@ Interactive documentation is available at [`/swagger-ui.html`](http://localhost:
 | **Search** | `GET /api/search`, `/search/semantic`, `/search/hybrid`, `/search/graph` | Full-text, semantic, hybrid, and graph search |
 | **Graph** | `GET /api/graph/node/{code}/upstream`, `/downstream`, `/failure-impact` | Graph neighbourhood queries |
 | **Proposals** | `POST /api/proposals/propose`, `GET /api/proposals`, `POST /api/proposals/bulk` | Relation proposals with review workflow |
+| **Relations** | `GET /api/relations`, `POST /api/relations`, `DELETE /api/relations/{id}` | Relation CRUD and browsing |
 | **Gap Analysis** | `POST /api/gap/analyze` | Identify missing relations and coverage gaps |
 | **Recommendations** | `POST /api/recommend` | Architecture element and relation recommendations |
 | **Patterns** | `POST /api/patterns/detect` | Detect standard architecture patterns |
+| **Coverage** | `POST /api/coverage/record`, `GET /api/coverage/statistics` | Requirement coverage tracking |
 | **Export** | `POST /api/diagram/archimate`, `/diagram/visio`, `/diagram/mermaid` | Diagram export in multiple formats |
+| **Reports** | `POST /api/report/markdown`, `/report/html`, `/report/docx`, `/report/json` | Analysis reports in Markdown, HTML, DOCX, JSON |
+| **Explanation** | `POST /api/explain/{nodeCode}`, `POST /api/explain` | Explanation traces for scored nodes |
+| **Architecture DSL** | `POST /api/dsl/commit`, `GET /api/dsl/history`, `POST /api/dsl/merge` | Versioned DSL documents with JGit-backed branching and merge |
+| **Quality** | `GET /api/relations/metrics`, `/metrics/by-type` | Relation quality dashboard metrics |
 | **Admin** | `GET /api/diagnostics`, `GET /api/ai-status` | LLM diagnostics and system status |
 
 > Full API reference with request/response schemas: [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
@@ -220,7 +228,7 @@ docker run -p 8080:8080 -e GEMINI_API_KEY=your-key ghcr.io/carstenartur/taxonomy
 
 ```bash
 mvn compile           # Compile only
-mvn test              # Unit + Spring context tests (~500 tests, no Docker needed)
+mvn test              # Unit + Spring context tests (~667 tests, no Docker needed)
 mvn verify            # Unit + integration tests (requires Docker for container tests)
 ```
 
@@ -280,10 +288,11 @@ Taxonomy/
 | **[User Guide](docs/USER_GUIDE.md)** | End-user guide with screenshots |
 | **[Concepts & Glossary](docs/CONCEPTS.md)** | Key terms and definitions |
 | **[Examples](docs/EXAMPLES.md)** | Worked examples for analysis, impact, gap analysis, proposals |
-| **[Architecture](docs/ARCHITECTURE.md)** | System design, pipeline, CI/CD |
-| **[API Reference](docs/API_REFERENCE.md)** | Full REST API documentation |
+| **[Architecture](docs/ARCHITECTURE.md)** | System design, pipeline, module structure, DSL storage |
+| **[API Reference](docs/API_REFERENCE.md)** | Full REST API documentation (74 endpoints) |
 | **[Configuration](docs/CONFIGURATION_REFERENCE.md)** | Environment variables and settings |
 | **[Deployment](docs/DEPLOYMENT_GUIDE.md)** | Docker, Render.com, health checks |
+| **[Developer Guide](docs/DEVELOPER_GUIDE.md)** | Module architecture, testing, how to extend the system |
 
 ## Contributing
 
