@@ -704,4 +704,64 @@ class DslApiControllerTest {
                 .andExpect(jsonPath("$.commitId").value(commitId))
                 .andExpect(jsonPath("$.dslText").isNotEmpty());
     }
+
+    // --- History index + search endpoints ---
+
+    @Test
+    void indexAndSearchHistory() throws Exception {
+        String dsl = """
+                element CP-9401 type Capability
+                  title "Indexable Cap"
+                relation CP-9401 REALIZES CR-9402
+                  status proposed
+                element CR-9402 type CoreService
+                  title "Indexable Svc"
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl)
+                        .param("branch", "index-test"))
+                .andExpect(status().isOk());
+
+        // Index the branch
+        mockMvc.perform(post("/api/dsl/history/index")
+                        .param("branch", "index-test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.indexed").value(1));
+
+        // Search by element ID
+        mockMvc.perform(get("/api/dsl/history/element/CP-9401"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+
+        // Full-text search
+        mockMvc.perform(get("/api/dsl/history/search")
+                        .param("query", "CP-9401"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+    }
+
+    @Test
+    void applyHypothesisForSession() throws Exception {
+        // Create a hypothesis
+        RelationHypothesis h = new RelationHypothesis();
+        h.setSourceNodeId("BP");
+        h.setTargetNodeId("CP");
+        h.setRelationType(RelationType.SUPPORTS);
+        h.setStatus(HypothesisStatus.PROVISIONAL);
+        h.setConfidence(0.80);
+        h.setAnalysisSessionId("session-apply-test");
+        h = hypothesisRepository.save(h);
+
+        mockMvc.perform(post("/api/dsl/hypotheses/" + h.getId() + "/apply-session"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.appliedInCurrentAnalysis").value(true))
+                .andExpect(jsonPath("$.status").value("PROVISIONAL"));
+    }
+
+    @Test
+    void applyHypothesisForSessionNotFound() throws Exception {
+        mockMvc.perform(post("/api/dsl/hypotheses/999999/apply-session"))
+                .andExpect(status().isNotFound());
+    }
 }

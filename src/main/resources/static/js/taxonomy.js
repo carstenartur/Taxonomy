@@ -1562,7 +1562,8 @@
                 '<td class="' + confClass + '">' + confPct + '%</td>' +
                 '<td><small>' + escapeHtml(h.reasoning || '') + '</small></td>' +
                 '<td class="text-nowrap">' +
-                '<button class="btn btn-sm btn-outline-success me-1" onclick="window._acceptHypothesis(' + idx + ')" title="Accept" aria-label="Accept relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">✅</button>' +
+                '<button class="btn btn-sm btn-outline-success me-1" onclick="window._acceptHypothesis(' + idx + ')" title="Accept permanently" aria-label="Accept relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">✅</button>' +
+                '<button class="btn btn-sm btn-outline-info me-1" onclick="window._applyForSession(' + idx + ')" title="Apply for this analysis only" aria-label="Apply relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + ' for this session">📌</button>' +
                 '<button class="btn btn-sm btn-outline-danger" onclick="window._rejectHypothesis(' + idx + ')" title="Dismiss" aria-label="Dismiss relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">❌</button>' +
                 '</td></tr>';
         });
@@ -1634,6 +1635,31 @@
         if (row) { row.classList.add('table-danger'); row.style.opacity = '0.4'; }
         var actions = row && row.querySelector('td:last-child');
         if (actions) actions.innerHTML = '<span class="badge bg-secondary">Dismissed</span>';
+    };
+
+    /**
+     * Apply a hypothesis for the current analysis session only.
+     * Marks the hypothesis as "applied in current analysis" without permanently
+     * accepting it. The relationship is used in the current Architecture View
+     * and exports but is not persisted as a TaxonomyRelation.
+     */
+    window._applyForSession = function (idx) {
+        var h = window._currentProvisionalRelations && window._currentProvisionalRelations[idx];
+        if (!h) return;
+        var row = document.getElementById('suggested-row-' + idx);
+
+        // Mark as applied in current analysis via API
+        if (h.hypothesisId) {
+            fetch('/api/dsl/hypotheses/' + h.hypothesisId + '/apply-session', { method: 'POST' })
+                .catch(function () { /* best effort */ });
+        }
+
+        // Mark in UI
+        if (row) { row.classList.add('table-info'); }
+        var actions = row && row.querySelector('td:last-child');
+        if (actions) actions.innerHTML = '<span class="badge bg-info">📌 Session only</span>';
+        h.appliedInCurrentAnalysis = true;
+        showStatus('info', '📌 Applied for this session: ' + h.sourceCode + ' → ' + h.targetCode);
     };
 
     /**
