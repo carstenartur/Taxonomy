@@ -127,7 +127,6 @@ class DslTokenizerTest {
                 """;
         String tokens = tokenizer.tokenize(dsl);
         // CP-1001 should appear only once
-        long count = tokens.chars().filter(c -> c == ' ').count() + 1;
         String[] parts = tokens.split(" ");
         long cpCount = java.util.Arrays.stream(parts).filter(t -> t.equals("CP-1001")).count();
         assertThat(cpCount).isEqualTo(1);

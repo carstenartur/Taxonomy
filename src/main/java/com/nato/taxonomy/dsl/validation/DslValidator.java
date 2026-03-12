@@ -172,8 +172,8 @@ public class DslValidator {
             return; // No type matrix rule (e.g., RELATED_TO or unknown type)
         }
 
-        String sourceRoot = resolveRoot(rel.getSourceId(), elementTypeMap);
-        String targetRoot = resolveRoot(rel.getTargetId(), elementTypeMap);
+        String sourceRoot = resolveTaxonomyRootCode(rel.getSourceId(), elementTypeMap);
+        String targetRoot = resolveTaxonomyRootCode(rel.getTargetId(), elementTypeMap);
 
         if (sourceRoot == null || targetRoot == null) {
             return; // Can't determine type — skip validation
@@ -195,7 +195,7 @@ public class DslValidator {
      * Resolve the taxonomy root code for an element ID, using either the
      * element type map (from DSL) or the ID prefix (e.g., CP-1001 → CP).
      */
-    private String resolveRoot(String elementId, Map<String, String> elementTypeMap) {
+    private String resolveTaxonomyRootCode(String elementId, Map<String, String> elementTypeMap) {
         // Try element type from DSL model first
         String typeName = elementTypeMap.get(elementId);
         if (typeName != null) {

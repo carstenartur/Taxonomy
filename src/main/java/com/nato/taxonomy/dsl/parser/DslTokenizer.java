@@ -43,7 +43,7 @@ public class DslTokenizer {
     }
 
     /** Pattern for taxonomy-style identifiers: 2-letter prefix + dash + digits. */
-    private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("\\b([A-Z]{2,3}-\\d{1,5})\\b");
+    private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("\\b([A-Z]{2}-\\d{1,5})\\b");
 
     /** Pattern for requirement-style identifiers: REQ-NNN or EV-NNN. */
     private static final Pattern REQ_PATTERN = Pattern.compile("\\b(REQ-\\d{1,5}|EV-\\d{1,5})\\b");
@@ -122,7 +122,7 @@ public class DslTokenizer {
         if (dslText == null) return Collections.emptySet();
         Set<String> keys = new LinkedHashSet<>();
         Pattern relPattern = Pattern.compile(
-                "^\\s*relation\\s+([A-Z]{2,3}-\\d{1,5})\\s+(\\w+)\\s+([A-Z]{2,3}-\\d{1,5})",
+                "^\\s*relation\\s+([A-Z]{2}-\\d{1,5})\\s+(\\w+)\\s+([A-Z]{2}-\\d{1,5})",
                 Pattern.MULTILINE);
         Matcher matcher = relPattern.matcher(dslText);
         while (matcher.find()) {
