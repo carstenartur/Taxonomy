@@ -3,15 +3,22 @@ FROM eclipse-temurin:17-jdk-alpine AS build
 WORKDIR /workspace
 RUN apk add --no-cache maven
 COPY pom.xml .
+COPY taxonomy-domain/pom.xml taxonomy-domain/pom.xml
+COPY taxonomy-dsl/pom.xml taxonomy-dsl/pom.xml
+COPY taxonomy-export/pom.xml taxonomy-export/pom.xml
+COPY taxonomy-app/pom.xml taxonomy-app/pom.xml
 # Pre-fetch dependencies so they are cached in a separate layer
 RUN mvn -q dependency:go-offline -B
-COPY src ./src
+COPY taxonomy-domain/src taxonomy-domain/src
+COPY taxonomy-dsl/src taxonomy-dsl/src
+COPY taxonomy-export/src taxonomy-export/src
+COPY taxonomy-app/src taxonomy-app/src
 RUN mvn -q -DskipTests package
 
 # ---- runtime stage ----
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
-COPY --from=build /workspace/target/taxonomy-*.jar app.jar
+COPY --from=build /workspace/taxonomy-app/target/taxonomy-app-*.jar app.jar
 RUN mkdir -p /app/data
 EXPOSE 8080
 # -XX:+UseSerialGC        : lower GC memory overhead than G1 for small (≤1 GB) heaps
