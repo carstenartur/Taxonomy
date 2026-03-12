@@ -230,30 +230,44 @@ mvn verify            # Unit + integration tests (requires Docker for container 
 
 ```
 Taxonomy/
-├── src/
-│   ├── main/
-│   │   ├── java/com/taxonomy/
-│   │   │   ├── controller/       # REST API controllers
-│   │   │   ├── service/          # Business logic (LLM, search, architecture, export)
-│   │   │   ├── model/            # JPA entities (TaxonomyNode, TaxonomyRelation, ...)
-│   │   │   ├── dto/              # Data transfer objects
-│   │   │   ├── archimate/        # ArchiMate model classes
-│   │   │   ├── diagram/          # Diagram projection models
-│   │   │   ├── visio/            # Visio document model
-│   │   │   ├── repository/       # Spring Data JPA repositories
-│   │   │   ├── search/           # Hibernate Search configuration
-│   │   │   └── config/           # Application configuration
-│   │   └── resources/
-│   │       ├── data/             # Excel workbook + CSV fallback + JSON taxonomy
-│   │       ├── prompts/          # LLM prompt templates
-│   │       ├── static/           # CSS and JavaScript (Bootstrap 5 UI)
-│   │       ├── templates/        # Thymeleaf HTML templates
-│   │       └── application.properties
-│   └── test/                     # Unit tests + integration tests (*IT.java)
-├── docs/                         # Documentation and auto-generated screenshots
-├── Dockerfile                    # Multi-stage Docker build
-├── render.yaml                   # Render.com deployment blueprint
-├── pom.xml                       # Maven project descriptor (Spring Boot 4, Java 17)
+├── taxonomy-domain/               # Pure domain types (DTOs, enums) — no framework dependencies
+│   └── src/main/java/com/taxonomy/
+│       ├── dto/                   # Data transfer objects (40 DTOs)
+│       └── model/                 # Domain enums (RelationType, HypothesisStatus, ProposalStatus)
+├── taxonomy-dsl/                  # Architecture DSL core — no framework dependencies
+│   └── src/main/java/com/taxonomy/dsl/
+│       ├── ast/                   # Abstract syntax tree
+│       ├── model/                 # Canonical architecture model
+│       ├── parser/                # TaxDSL parser + tokenizer
+│       ├── serializer/            # TaxDSL serializer
+│       ├── mapper/                # AST ↔ Model mappers
+│       ├── validation/            # DSL validator
+│       └── diff/                  # Model differ
+├── taxonomy-export/               # Export formats — framework-free
+│   └── src/main/java/com/taxonomy/
+│       ├── archimate/             # ArchiMate model classes
+│       ├── diagram/               # Diagram projection models
+│       ├── visio/                 # Visio document model + XStream converters
+│       └── export/                # Export services (Mermaid, Visio, ArchiMate, Diagram)
+├── taxonomy-app/                  # Spring Boot application
+│   └── src/main/java/com/taxonomy/
+│       ├── controller/            # REST API controllers
+│       ├── service/               # Business logic (LLM, search, architecture, graph)
+│       ├── model/                 # JPA entities (TaxonomyNode, TaxonomyRelation, ...)
+│       ├── repository/            # Spring Data JPA repositories
+│       ├── search/                # Hibernate Search configuration
+│       ├── config/                # Application configuration
+│       └── dsl/                   # DSL storage (JGit) + materialization
+│   └── src/main/resources/
+│       ├── data/                  # Excel workbook + CSV fallback + JSON taxonomy
+│       ├── prompts/               # LLM prompt templates
+│       ├── static/                # CSS and JavaScript (Bootstrap 5 UI)
+│       ├── templates/             # Thymeleaf HTML templates
+│       └── application.properties
+├── docs/                          # Documentation and auto-generated screenshots
+├── Dockerfile                     # Multi-stage Docker build
+├── render.yaml                    # Render.com deployment blueprint
+├── pom.xml                        # Parent POM (4 modules, Spring Boot 4, Java 17)
 └── README.md
 ```
 

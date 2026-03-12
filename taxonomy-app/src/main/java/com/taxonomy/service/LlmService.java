@@ -1,6 +1,5 @@
 package com.taxonomy.service;
 
-import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
@@ -20,8 +19,6 @@ import com.taxonomy.dto.SavedAnalysis;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Provider-agnostic LLM service for taxonomy analysis.
@@ -67,8 +64,6 @@ public class LlmService {
     /** Maximum number of cross-reference nodes included in a leaf justification prompt. */
     private static final int MAX_CROSS_REFERENCES = 5;
 
-    private static final Pattern JSON_OBJECT_PATTERN =
-            Pattern.compile("\\{[^{}]*(?:\\{[^{}]*\\}[^{}]*)*\\}", Pattern.DOTALL);
     private static final String OPENAI_URL   = "https://api.openai.com/v1/chat/completions";
     private static final String DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
     private static final String QWEN_URL     = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
@@ -117,6 +112,7 @@ public class LlmService {
     private final PromptTemplateService promptTemplateService;
     private final LocalEmbeddingService localEmbeddingService;
     private final SavedAnalysisService savedAnalysisService;
+    private final LlmResponseParser responseParser;
 
     // ── Cached mock data loaded from classpath ────────────────────────────────
     private volatile SavedAnalysis cachedMockAnalysis = null;
@@ -166,6 +162,7 @@ public class LlmService {
         this.promptTemplateService = promptTemplateService;
         this.localEmbeddingService = localEmbeddingService;
         this.savedAnalysisService = savedAnalysisService;
+        this.responseParser = new LlmResponseParser(objectMapper);
     }
 
     // ── Mock-mode helpers ─────────────────────────────────────────────────────
@@ -255,7 +252,7 @@ public class LlmService {
 
         TaxonomyDiscrepancy discrepancy = null;
         if (rawSum > parentScore) {
-            String parentCode = deriveParentCode(nodes);
+            String parentCode = responseParser.deriveParentCode(nodes);
             discrepancy = new TaxonomyDiscrepancy(parentCode, parentScore, rawSum);
             log.warn("Mock discrepancy detected: children of '{}' sum to {} but parent score is {}",
                     parentCode, rawSum, parentScore);
@@ -536,7 +533,7 @@ public class LlmService {
         } catch (Exception e) {
             log.error("Error in detailed LLM call", e);
             com.taxonomy.dto.LlmCallDetail detail = new com.taxonomy.dto.LlmCallDetail();
-            detail.setScores(zeroScores(nodes));
+            detail.setScores(responseParser.zeroScores(nodes));
             detail.setProvider(getActiveProviderName());
             detail.setPrompt("");
             detail.setRawResponse("");
@@ -553,7 +550,7 @@ public class LlmService {
             return callLlmPropagating(businessText, nodes, parentScore);
         } catch (Exception e) {
             log.error("Error calling LLM API", e);
-            return zeroScores(nodes);
+            return responseParser.zeroScores(nodes);
         }
     }
 
@@ -598,17 +595,17 @@ public class LlmService {
             String rawText;
             if (provider == LlmProvider.GEMINI) {
                 String body = callGeminiHttpBody(prompt, apiKey);
-                rawText = body != null ? extractGeminiText(body) : null;
+                rawText = body != null ? responseParser.extractGeminiText(body) : null;
             } else {
                 String body = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
-                rawText = body != null ? extractOpenAiText(body) : null;
+                rawText = body != null ? responseParser.extractOpenAiText(body) : null;
             }
 
             if (rawText == null) {
                 return ScoreParseResult.empty(nodes);
             }
             try {
-                ScoreParseResult result = parseScoreParseResult(rawText, nodes, parentScore);
+                ScoreParseResult result = responseParser.parseScoreParseResult(rawText, nodes, parentScore);
                 recordSuccess();
                 return result;
             } catch (Exception e) {
@@ -647,7 +644,7 @@ public class LlmService {
             log.warn("⚠️ LLM analysis skipped: No API key configured for provider {}. "
                     + "Set environment variable {}_API_KEY to enable AI analysis.",
                     provider, provider.name());
-            return zeroScores(nodes);
+            return responseParser.zeroScores(nodes);
         }
 
         String nodeList = buildNodeListWithContext(nodes);
@@ -709,7 +706,7 @@ public class LlmService {
             String errorMsg = "No API key configured for provider " + provider
                     + ". Set environment variable " + provider.name() + "_API_KEY.";
             log.warn("⚠️ LLM analysis skipped: {}", errorMsg);
-            detail.setScores(zeroScores(nodes));
+            detail.setScores(responseParser.zeroScores(nodes));
             detail.setPrompt("");
             detail.setRawResponse("");
             detail.setDurationMs(0);
@@ -739,7 +736,7 @@ public class LlmService {
 
         if (apiResponseBody == null) {
             String errorMsg = "LLM API call returned no response (possible network error or invalid key).";
-            detail.setScores(zeroScores(nodes));
+            detail.setScores(responseParser.zeroScores(nodes));
             detail.setRawResponse("");
             detail.setError(errorMsg);
             recordFailure(errorMsg);
@@ -747,25 +744,25 @@ public class LlmService {
         }
 
         String rawText = (provider == LlmProvider.GEMINI)
-                ? extractGeminiText(apiResponseBody)
-                : extractOpenAiText(apiResponseBody);
+                ? responseParser.extractGeminiText(apiResponseBody)
+                : responseParser.extractOpenAiText(apiResponseBody);
         detail.setRawResponse(rawText != null ? rawText : "");
 
         if (rawText != null) {
             try {
-                ScoreParseResult parsed = parseScoreParseResult(rawText, nodes, parentScore);
+                ScoreParseResult parsed = responseParser.parseScoreParseResult(rawText, nodes, parentScore);
                 detail.setScores(parsed.scores());
                 detail.setReasons(parsed.reasons());
                 recordSuccess();
             } catch (Exception e) {
                 log.error("Failed to parse scores in detailed LLM call", e);
-                detail.setScores(zeroScores(nodes));
+                detail.setScores(responseParser.zeroScores(nodes));
                 String errorMsg = "Failed to parse LLM response: " + e.getMessage();
                 detail.setError(errorMsg);
                 recordFailure(errorMsg);
             }
         } else {
-            detail.setScores(zeroScores(nodes));
+            detail.setScores(responseParser.zeroScores(nodes));
             String errorMsg = "LLM response contained no usable text.";
             detail.setError(errorMsg);
             recordFailure(errorMsg);
@@ -834,8 +831,8 @@ public class LlmService {
     private Map<String, Integer> callGemini(String prompt, String apiKey,
                                              List<TaxonomyNode> nodes, int parentScore) {
         String responseBody = callGeminiHttpBody(prompt, apiKey);
-        if (responseBody == null) return zeroScores(nodes);
-        return parseGeminiResponse(responseBody, nodes, parentScore);
+        if (responseBody == null) return responseParser.zeroScores(nodes);
+        return responseParser.parseGeminiResponse(responseBody, nodes, parentScore);
     }
 
     /**
@@ -908,164 +905,11 @@ public class LlmService {
                                                        LlmProvider provider,
                                                        List<TaxonomyNode> nodes, int parentScore) {
         String responseBody = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
-        if (responseBody == null) return zeroScores(nodes);
-        return parseOpenAiResponse(responseBody, nodes, parentScore);
+        if (responseBody == null) return responseParser.zeroScores(nodes);
+        return responseParser.parseOpenAiResponse(responseBody, nodes, parentScore);
     }
 
-    // ── Response parsers ──────────────────────────────────────────────────────
-
-    /** Extracts the raw LLM text from a Gemini API JSON response body, or {@code null} on failure. */
-    private String extractGeminiText(String responseBody) {
-        try {
-            Map<String, Object> responseMap = objectMapper.readValue(responseBody,
-                    new TypeReference<>() {});
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> candidates =
-                    (List<Map<String, Object>>) responseMap.get("candidates");
-            if (candidates == null || candidates.isEmpty()) return null;
-            @SuppressWarnings("unchecked")
-            Map<String, Object> content =
-                    (Map<String, Object>) candidates.get(0).get("content");
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> parts =
-                    (List<Map<String, Object>>) content.get("parts");
-            if (parts == null || parts.isEmpty()) return null;
-            return (String) parts.get(0).get("text");
-        } catch (Exception e) {
-            log.debug("Failed to extract text from Gemini response", e);
-            return null;
-        }
-    }
-
-    /** Extracts the raw LLM text from an OpenAI-compatible API JSON response body, or {@code null}. */
-    private String extractOpenAiText(String responseBody) {
-        try {
-            Map<String, Object> responseMap = objectMapper.readValue(responseBody,
-                    new TypeReference<>() {});
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> choices =
-                    (List<Map<String, Object>>) responseMap.get("choices");
-            if (choices == null || choices.isEmpty()) return null;
-            @SuppressWarnings("unchecked")
-            Map<String, Object> message =
-                    (Map<String, Object>) choices.get(0).get("message");
-            return (String) message.get("content");
-        } catch (Exception e) {
-            log.debug("Failed to extract text from OpenAI-compatible response", e);
-            return null;
-        }
-    }
-
-    private Map<String, Integer> parseGeminiResponse(String responseBody,
-                                                      List<TaxonomyNode> nodes, int parentScore) {
-        String text = extractGeminiText(responseBody);
-        if (text == null) {
-            log.error("Failed to parse Gemini response: {}", responseBody);
-            return zeroScores(nodes);
-        }
-        try {
-            return parseScoreParseResult(text, nodes, parentScore).scores();
-        } catch (Exception e) {
-            log.error("Failed to parse scores from Gemini response: {}", responseBody, e);
-            return zeroScores(nodes);
-        }
-    }
-
-    private Map<String, Integer> parseOpenAiResponse(String responseBody,
-                                                      List<TaxonomyNode> nodes, int parentScore) {
-        String text = extractOpenAiText(responseBody);
-        if (text == null) {
-            log.error("Failed to parse OpenAI-compatible response: {}", responseBody);
-            return zeroScores(nodes);
-        }
-        try {
-            return parseScoreParseResult(text, nodes, parentScore).scores();
-        } catch (Exception e) {
-            log.error("Failed to parse scores from OpenAI-compatible response: {}", responseBody, e);
-            return zeroScores(nodes);
-        }
-    }
-
-    /**
-     * Parses both scores and reasons from LLM response text.
-     * Supports two formats (backward-compatible):
-     * <ul>
-     *   <li>Old format: {@code {"C1": 80, "C2": 0}} — integer values, no reasons</li>
-     *   <li>New format: {@code {"C1": {"score": 80, "reason": "..."}, "C2": {"score": 0, "reason": "..."}}}
-     * </ul>
-     * <p>The LLM is asked to distribute exactly {@code parentScore} across child categories.
-     * If the raw sum already matches, scores are passed through without normalization.
-     * If the raw sum differs, scores are normalized as a fallback.
-     * If the raw sum <em>exceeds</em> the parent score, a {@link TaxonomyDiscrepancy} is
-     * recorded — this signals that the LLM considers the children collectively more relevant
-     * than the parent budget allows, which is a useful taxonomy inconsistency indicator.
-     */
-    private ScoreParseResult parseScoreParseResult(String text,
-                                                    List<TaxonomyNode> nodes, int parentScore) throws Exception {
-        String jsonText = extractJson(text);
-        Map<String, Object> raw = objectMapper.readValue(jsonText, new TypeReference<>() {});
-
-        Map<String, Integer> scores = new HashMap<>();
-        Map<String, String> reasons = new HashMap<>();
-
-        for (Map.Entry<String, Object> entry : raw.entrySet()) {
-            String code = entry.getKey();
-            Object value = entry.getValue();
-            if (value instanceof Number num) {
-                // Old format: integer value
-                scores.put(code, num.intValue());
-            } else if (value instanceof Map<?, ?> obj) {
-                // New format: object with "score" and "reason"
-                Object scoreVal = obj.get("score");
-                int score = scoreVal instanceof Number n ? n.intValue() : 0;
-                scores.put(code, score);
-                Object reasonVal = obj.get("reason");
-                if (reasonVal instanceof String reasonStr && !reasonStr.isBlank()) {
-                    reasons.put(code, reasonStr);
-                }
-            }
-        }
-
-        for (TaxonomyNode n : nodes) {
-            scores.putIfAbsent(n.getCode(), 0);
-        }
-
-        int rawSum = scores.values().stream().mapToInt(Integer::intValue).sum();
-
-        // Detect discrepancy: raw child sum exceeds parent budget
-        TaxonomyDiscrepancy discrepancy = null;
-        if (rawSum > parentScore) {
-            String parentCode = deriveParentCode(nodes);
-            discrepancy = new TaxonomyDiscrepancy(parentCode, parentScore, rawSum);
-            log.warn("Discrepancy detected: children of '{}' sum to {} but parent score is {}",
-                    parentCode, rawSum, parentScore);
-        }
-
-        // Only normalize if sum doesn't match parent (fallback); trust the LLM otherwise
-        Map<String, Integer> finalScores;
-        if (rawSum == parentScore) {
-            finalScores = scores;
-        } else {
-            finalScores = normalizeToParent(scores, parentScore);
-        }
-
-        log.info("LLM Scores parsed (target {}, raw sum {}): {}", parentScore, rawSum, finalScores);
-        return new ScoreParseResult(finalScores, reasons, discrepancy);
-    }
-
-    /**
-     * Derives the parent code from a batch of sibling nodes.
-     * All nodes in the batch should share the same parent.
-     * Returns {@code "unknown"} if no parent code can be determined.
-     */
-    private String deriveParentCode(List<TaxonomyNode> nodes) {
-        if (nodes.isEmpty()) return "unknown";
-        String parentCode = nodes.get(0).getParentCode();
-        if (parentCode != null && !parentCode.isBlank()) return parentCode;
-        // For root-level nodes, use their taxonomy root
-        String root = nodes.get(0).getTaxonomyRoot();
-        return root != null ? root : "unknown";
-    }
+    // ── Score normalization (public API) ─────────────────────────────────────
 
     /**
      * Normalizes a set of scores proportionally so that their sum equals {@code target}.
@@ -1076,29 +920,7 @@ public class LlmService {
      * @param target the target sum (e.g. parent node's score, or 100 for root-level nodes)
      */
     public Map<String, Integer> normalizeToParent(Map<String, Integer> scores, int target) {
-        int total = scores.values().stream().mapToInt(Integer::intValue).sum();
-        if (total == 0) return scores;
-
-        Map<String, Integer> normalized = new LinkedHashMap<>();
-        List<Map.Entry<String, Double>> fractionals = new ArrayList<>();
-        int runningSum = 0;
-
-        for (Map.Entry<String, Integer> e : scores.entrySet()) {
-            double scaled = (double) e.getValue() * target / total;
-            int floor = (int) scaled;
-            normalized.put(e.getKey(), floor);
-            fractionals.add(Map.entry(e.getKey(), scaled - floor));
-            runningSum += floor;
-        }
-
-        // Distribute the remaining points to entries with the largest fractional parts
-        int remaining = target - runningSum;
-        fractionals.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
-        for (int i = 0; i < remaining && i < fractionals.size(); i++) {
-            normalized.merge(fractionals.get(i).getKey(), 1, Integer::sum);
-        }
-
-        return normalized;
+        return responseParser.normalizeToParent(scores, target);
     }
 
     /**
@@ -1107,7 +929,7 @@ public class LlmService {
      * Preserved for backward compatibility.
      */
     public Map<String, Integer> normalizeToHundred(Map<String, Integer> scores) {
-        return normalizeToParent(scores, 100);
+        return responseParser.normalizeToHundred(scores);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1188,22 +1010,6 @@ public class LlmService {
                 "Respond ONLY with a valid JSON object where keys are the category codes " +
                 "and values are integer percentages (0-100). " +
                 "Example: {\"C1\": 0, \"C2\": 15, \"C3\": 80}";
-    }
-
-    /** Strip markdown code fences and locate the outermost JSON object. */
-    private String extractJson(String text) {
-        String stripped = text.replaceAll("```json", "").replaceAll("```", "").trim();
-        Matcher m = JSON_OBJECT_PATTERN.matcher(stripped);
-        if (m.find()) {
-            return m.group();
-        }
-        return stripped;
-    }
-
-    private Map<String, Integer> zeroScores(List<TaxonomyNode> nodes) {
-        Map<String, Integer> zeros = new HashMap<>();
-        for (TaxonomyNode n : nodes) zeros.put(n.getCode(), 0);
-        return zeros;
     }
 
     // ── Diagnostics helpers ───────────────────────────────────────────────────
@@ -1332,10 +1138,10 @@ public class LlmService {
             String rawText;
             if (provider == LlmProvider.GEMINI) {
                 String body = callGeminiHttpBody(prompt, apiKey);
-                rawText = body != null ? extractGeminiText(body) : null;
+                rawText = body != null ? responseParser.extractGeminiText(body) : null;
             } else {
                 String body = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
-                rawText = body != null ? extractOpenAiText(body) : null;
+                rawText = body != null ? responseParser.extractOpenAiText(body) : null;
             }
             if (rawText == null || rawText.isBlank()) {
                 return "The LLM did not return a justification. Please try again.";
