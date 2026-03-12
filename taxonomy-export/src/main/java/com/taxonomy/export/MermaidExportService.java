@@ -1,9 +1,8 @@
-package com.taxonomy.service;
+package com.taxonomy.export;
 
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
-import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -17,7 +16,6 @@ import java.util.stream.Collectors;
  * <p>The generated output is suitable for embedding in GitHub READMEs, Confluence pages,
  * and any Markdown renderer that supports Mermaid diagrams.</p>
  */
-@Service
 public class MermaidExportService {
 
     private static final Map<String, String> LAYER_STYLE = Map.of(

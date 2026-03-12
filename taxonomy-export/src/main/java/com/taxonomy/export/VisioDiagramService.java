@@ -1,4 +1,4 @@
-package com.taxonomy.service;
+package com.taxonomy.export;
 
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramModel;
@@ -9,7 +9,6 @@ import com.taxonomy.visio.VisioPage;
 import com.taxonomy.visio.VisioShape;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -20,7 +19,6 @@ import java.util.Map;
  * Converts a neutral {@link DiagramModel} into a {@link VisioDocument} by laying
  * out shapes on a single page using layer-based positioning.
  */
-@Service
 public class VisioDiagramService {
 
     private static final Logger log = LoggerFactory.getLogger(VisioDiagramService.class);

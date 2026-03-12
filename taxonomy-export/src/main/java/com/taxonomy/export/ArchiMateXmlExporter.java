@@ -1,4 +1,4 @@
-package com.taxonomy.service;
+package com.taxonomy.export;
 
 import com.taxonomy.archimate.ArchiMateElement;
 import com.taxonomy.archimate.ArchiMateModel;
@@ -8,7 +8,6 @@ import com.taxonomy.archimate.ArchiMateViewConnection;
 import com.taxonomy.archimate.ArchiMateViewNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -23,7 +22,6 @@ import java.util.Map;
  * No external XML libraries are used – XML is assembled with a {@link StringBuilder}
  * and all text content is properly escaped.
  */
-@Service
 public class ArchiMateXmlExporter {
 
     private static final Logger log = LoggerFactory.getLogger(ArchiMateXmlExporter.class);

@@ -4,7 +4,7 @@ import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramLayout;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
-import com.taxonomy.service.MermaidExportService;
+import com.taxonomy.export.MermaidExportService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;

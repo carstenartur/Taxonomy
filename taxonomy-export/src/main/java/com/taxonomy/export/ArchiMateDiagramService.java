@@ -1,4 +1,4 @@
-package com.taxonomy.service;
+package com.taxonomy.export;
 
 import com.taxonomy.archimate.ArchiMateElement;
 import com.taxonomy.archimate.ArchiMateModel;
@@ -11,7 +11,6 @@ import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -26,7 +25,6 @@ import java.util.stream.Collectors;
  * taxonomy types to ArchiMate element types, relationship types to ArchiMate relationship
  * types, and computing pixel-based layout positions for the diagram view.
  */
-@Service
 public class ArchiMateDiagramService {
 
     private static final Logger log = LoggerFactory.getLogger(ArchiMateDiagramService.class);

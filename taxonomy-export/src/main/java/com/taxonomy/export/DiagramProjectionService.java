@@ -1,4 +1,4 @@
-package com.taxonomy.service;
+package com.taxonomy.export;
 
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramLayout;
@@ -9,7 +9,6 @@ import com.taxonomy.dto.RequirementElementView;
 import com.taxonomy.dto.RequirementRelationshipView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -20,7 +19,6 @@ import java.util.Map;
  * Projects a {@link RequirementArchitectureView} into a neutral {@link DiagramModel}
  * suitable for rendering to various diagram formats (Visio, Mermaid, GraphViz, etc.).
  */
-@Service
 public class DiagramProjectionService {
 
     private static final Logger log = LoggerFactory.getLogger(DiagramProjectionService.class);

@@ -1,4 +1,4 @@
-package com.taxonomy.service;
+package com.taxonomy.export;
 
 import com.taxonomy.visio.VisioDocument;
 import com.taxonomy.visio.VisioPage;
@@ -9,7 +9,6 @@ import com.thoughtworks.xstream.XStream;
 import com.thoughtworks.xstream.io.xml.XppDriver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -23,7 +22,6 @@ import java.util.zip.ZipOutputStream;
  * The .vsdx format is an Open Packaging Convention (OPC) ZIP archive containing
  * XML parts that describe the Visio document structure.
  */
-@Service
 public class VisioPackageBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(VisioPackageBuilder.class);

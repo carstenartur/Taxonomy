@@ -2,6 +2,8 @@ package com.taxonomy.service;
 
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.dto.*;
+import com.taxonomy.export.DiagramProjectionService;
+import com.taxonomy.export.MermaidExportService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

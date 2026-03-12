@@ -17,6 +17,7 @@
     <modules>
         <module>taxonomy-domain</module>
         <module>taxonomy-dsl</module>
+        <module>taxonomy-export</module>
         <module>taxonomy-app</module>
     </modules>
     <properties>

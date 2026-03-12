@@ -23,6 +23,11 @@
             <artifactId>taxonomy-dsl</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-export</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <!-- Spring Boot starters -->
         <dependency>
@@ -90,12 +95,6 @@
             <artifactId>onnxruntime-engine</artifactId>
             <version>${djl.version}</version>
             <scope>runtime</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>com.thoughtworks.xstream</groupId>
-            <artifactId>xstream</artifactId>
-            <version>1.4.21</version>
         </dependency>
 
         <!-- JGit — Git object storage in-process (DFS-based, database-backed) -->
