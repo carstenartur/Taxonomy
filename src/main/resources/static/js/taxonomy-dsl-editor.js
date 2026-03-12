@@ -287,7 +287,7 @@
                 renderHistory(docs);
             })
             .catch(function () {
-                historyBody.innerHTML = '<tr><td colspan="4" class="text-muted">No history available</td></tr>';
+                historyBody.innerHTML = '<tr><td colspan="4" class="text-muted">Failed to load history</td></tr>';
             });
     }
 

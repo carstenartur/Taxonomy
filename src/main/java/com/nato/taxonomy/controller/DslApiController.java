@@ -385,7 +385,7 @@ public class DslApiController {
                 seen.add(gb.name());
             }
         } catch (IOException e) {
-            log.warn("Failed to list JGit branches: {}", e.getMessage());
+            log.warn("Failed to list JGit branches", e);
         }
 
         // 2. JPA branches (fallback / additional)

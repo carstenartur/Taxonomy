@@ -266,12 +266,19 @@ public class HypothesisService {
         sb.append("  version \"1.0\"\n");
         sb.append("  namespace \"hypothesis-auto\"\n\n");
 
+        // Track declared elements to avoid duplicates
+        java.util.Set<String> declaredElements = new java.util.LinkedHashSet<>();
+
         for (RelationHypothesis h : hypotheses) {
-            // Element declarations for source and target
-            sb.append("element ").append(h.getSourceNodeId()).append(" type Node\n");
-            sb.append("  title \"").append(h.getSourceNodeId()).append("\"\n\n");
-            sb.append("element ").append(h.getTargetNodeId()).append(" type Node\n");
-            sb.append("  title \"").append(h.getTargetNodeId()).append("\"\n\n");
+            // Element declarations for source and target (avoid duplicates)
+            if (declaredElements.add(h.getSourceNodeId())) {
+                sb.append("element ").append(h.getSourceNodeId()).append(" type Node\n");
+                sb.append("  title \"").append(h.getSourceNodeId()).append("\"\n\n");
+            }
+            if (declaredElements.add(h.getTargetNodeId())) {
+                sb.append("element ").append(h.getTargetNodeId()).append(" type Node\n");
+                sb.append("  title \"").append(h.getTargetNodeId()).append("\"\n\n");
+            }
 
             // Relation declaration
             sb.append("relation ").append(h.getSourceNodeId()).append(" ")
