@@ -397,54 +397,48 @@ public class DslGitRepository {
 <span class="fc" id="L397">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
 <span class="fc" id="L398">            RevCommit pickCommit = walk.parseCommit(pickOid);</span>
 
-            // The commit to cherry-pick must have exactly one parent
-<span class="pc bpc" id="L401" title="1 of 2 branches missed.">            if (pickCommit.getParentCount() == 0) {</span>
-<span class="nc" id="L402">                log.warn(&quot;Cannot cherry-pick initial commit {}&quot;, commitId);</span>
-<span class="nc" id="L403">                return null;</span>
+<span class="fc" id="L400">            String targetRefName = Constants.R_HEADS + targetBranch;</span>
+<span class="fc" id="L401">            Ref targetRef = gitRepo.getRefDatabase().exactRef(targetRefName);</span>
+
+<span class="fc bfc" id="L403" title="All 2 branches covered.">            if (targetRef == null) {</span>
+<span class="fc" id="L404">                log.warn(&quot;Target branch '{}' not found for cherry-pick&quot;, targetBranch);</span>
+<span class="fc" id="L405">                return null;</span>
             }
 
-<span class="fc" id="L406">            RevCommit parentCommit = walk.parseCommit(pickCommit.getParent(0));</span>
-<span class="fc" id="L407">            String targetRefName = Constants.R_HEADS + targetBranch;</span>
-<span class="fc" id="L408">            Ref targetRef = gitRepo.getRefDatabase().exactRef(targetRefName);</span>
+<span class="fc" id="L408">            RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());</span>
 
-<span class="fc bfc" id="L410" title="All 2 branches covered.">            if (targetRef == null) {</span>
-<span class="fc" id="L411">                log.warn(&quot;Target branch '{}' not found for cherry-pick&quot;, targetBranch);</span>
-<span class="fc" id="L412">                return null;</span>
-            }
+            // Three-way merge: base=parent (or auto-detected for initial commit),
+            // ours=targetHead, theirs=pickCommit
+<span class="fc" id="L412">            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);</span>
+<span class="fc" id="L413">            boolean success = merger.merge(targetHead, pickCommit);</span>
 
-<span class="fc" id="L415">            RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());</span>
-
-            // Three-way merge: parent → pick, applied onto targetHead
-<span class="fc" id="L418">            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);</span>
-<span class="fc" id="L419">            boolean success = merger.merge(targetHead, pickCommit);</span>
-
-<span class="pc bpc" id="L421" title="1 of 2 branches missed.">            if (!success) {</span>
-<span class="nc" id="L422">                log.warn(&quot;Cherry-pick merge conflict for {} onto '{}'&quot;, commitId, targetBranch);</span>
-<span class="nc" id="L423">                return null;</span>
+<span class="pc bpc" id="L415" title="1 of 2 branches missed.">            if (!success) {</span>
+<span class="nc" id="L416">                log.warn(&quot;Cherry-pick merge conflict for {} onto '{}'&quot;, commitId, targetBranch);</span>
+<span class="nc" id="L417">                return null;</span>
             }
 
             // Create the new commit on the target branch
-<span class="fc" id="L427">            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
-<span class="fc" id="L428">                CommitBuilder newCommit = new CommitBuilder();</span>
-<span class="fc" id="L429">                newCommit.setTreeId(merger.getResultTreeId());</span>
-<span class="fc" id="L430">                newCommit.setParentId(targetHead);</span>
-<span class="fc" id="L431">                newCommit.setAuthor(pickCommit.getAuthorIdent());</span>
-<span class="fc" id="L432">                newCommit.setCommitter(new PersonIdent(&quot;taxonomy&quot;, &quot;taxonomy@system&quot;));</span>
-<span class="fc" id="L433">                newCommit.setMessage(&quot;Cherry-pick: &quot; + pickCommit.getShortMessage());</span>
+<span class="fc" id="L421">            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
+<span class="fc" id="L422">                CommitBuilder newCommit = new CommitBuilder();</span>
+<span class="fc" id="L423">                newCommit.setTreeId(merger.getResultTreeId());</span>
+<span class="fc" id="L424">                newCommit.setParentId(targetHead);</span>
+<span class="fc" id="L425">                newCommit.setAuthor(pickCommit.getAuthorIdent());</span>
+<span class="fc" id="L426">                newCommit.setCommitter(new PersonIdent(&quot;taxonomy&quot;, &quot;taxonomy@system&quot;));</span>
+<span class="fc" id="L427">                newCommit.setMessage(&quot;Cherry-pick: &quot; + pickCommit.getShortMessage());</span>
 
-<span class="fc" id="L435">                ObjectId newCommitId = inserter.insert(newCommit);</span>
-<span class="fc" id="L436">                inserter.flush();</span>
+<span class="fc" id="L429">                ObjectId newCommitId = inserter.insert(newCommit);</span>
+<span class="fc" id="L430">                inserter.flush();</span>
 
                 // Update target branch ref
-<span class="fc" id="L439">                RefUpdate ru = gitRepo.updateRef(targetRefName);</span>
-<span class="fc" id="L440">                ru.setNewObjectId(newCommitId);</span>
-<span class="fc" id="L441">                ru.setForceUpdate(true);</span>
-<span class="fc" id="L442">                ru.update();</span>
+<span class="fc" id="L433">                RefUpdate ru = gitRepo.updateRef(targetRefName);</span>
+<span class="fc" id="L434">                ru.setNewObjectId(newCommitId);</span>
+<span class="fc" id="L435">                ru.setForceUpdate(true);</span>
+<span class="fc" id="L436">                ru.update();</span>
 
-<span class="fc" id="L444">                log.info(&quot;Cherry-picked {} onto '{}': {}&quot;, commitId, targetBranch, newCommitId.name());</span>
-<span class="fc" id="L445">                return newCommitId.name();</span>
+<span class="fc" id="L438">                log.info(&quot;Cherry-picked {} onto '{}': {}&quot;, commitId, targetBranch, newCommitId.name());</span>
+<span class="fc" id="L439">                return newCommitId.name();</span>
             }
-<span class="pc" id="L447">        }</span>
+<span class="pc" id="L441">        }</span>
     }
 
     /**
@@ -459,85 +453,85 @@ public class DslGitRepository {
      * @throws IOException on JGit errors
      */
     public String merge(String fromBranch, String intoBranch) throws IOException {
-<span class="fc" id="L462">        String fromRefName = Constants.R_HEADS + fromBranch;</span>
-<span class="fc" id="L463">        String intoRefName = Constants.R_HEADS + intoBranch;</span>
+<span class="fc" id="L456">        String fromRefName = Constants.R_HEADS + fromBranch;</span>
+<span class="fc" id="L457">        String intoRefName = Constants.R_HEADS + intoBranch;</span>
 
-<span class="fc" id="L465">        Ref fromRef = gitRepo.getRefDatabase().exactRef(fromRefName);</span>
-<span class="fc" id="L466">        Ref intoRef = gitRepo.getRefDatabase().exactRef(intoRefName);</span>
+<span class="fc" id="L459">        Ref fromRef = gitRepo.getRefDatabase().exactRef(fromRefName);</span>
+<span class="fc" id="L460">        Ref intoRef = gitRepo.getRefDatabase().exactRef(intoRefName);</span>
 
-<span class="pc bpc" id="L468" title="1 of 4 branches missed.">        if (fromRef == null || intoRef == null) {</span>
-<span class="fc" id="L469">            log.warn(&quot;Cannot merge: branch not found (from={}, into={})&quot;, fromBranch, intoBranch);</span>
-<span class="fc" id="L470">            return null;</span>
+<span class="pc bpc" id="L462" title="1 of 4 branches missed.">        if (fromRef == null || intoRef == null) {</span>
+<span class="fc" id="L463">            log.warn(&quot;Cannot merge: branch not found (from={}, into={})&quot;, fromBranch, intoBranch);</span>
+<span class="fc" id="L464">            return null;</span>
         }
 
-<span class="fc" id="L473">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
-<span class="fc" id="L474">            RevCommit fromCommit = walk.parseCommit(fromRef.getObjectId());</span>
-<span class="fc" id="L475">            RevCommit intoCommit = walk.parseCommit(intoRef.getObjectId());</span>
+<span class="fc" id="L467">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L468">            RevCommit fromCommit = walk.parseCommit(fromRef.getObjectId());</span>
+<span class="fc" id="L469">            RevCommit intoCommit = walk.parseCommit(intoRef.getObjectId());</span>
 
             // Fast-forward check
-<span class="pc bpc" id="L478" title="1 of 2 branches missed.">            if (walk.isMergedInto(fromCommit, intoCommit)) {</span>
-<span class="nc" id="L479">                log.info(&quot;Already merged: '{}' is ancestor of '{}'&quot;, fromBranch, intoBranch);</span>
-<span class="nc" id="L480">                return intoCommit.name();</span>
+<span class="pc bpc" id="L472" title="1 of 2 branches missed.">            if (walk.isMergedInto(fromCommit, intoCommit)) {</span>
+<span class="nc" id="L473">                log.info(&quot;Already merged: '{}' is ancestor of '{}'&quot;, fromBranch, intoBranch);</span>
+<span class="nc" id="L474">                return intoCommit.name();</span>
             }
 
             // Can we fast-forward?
-<span class="pc bpc" id="L484" title="1 of 2 branches missed.">            if (walk.isMergedInto(intoCommit, fromCommit)) {</span>
+<span class="pc bpc" id="L478" title="1 of 2 branches missed.">            if (walk.isMergedInto(intoCommit, fromCommit)) {</span>
                 // Fast-forward: just move the target ref
-<span class="fc" id="L486">                RefUpdate ru = gitRepo.updateRef(intoRefName);</span>
-<span class="fc" id="L487">                ru.setNewObjectId(fromCommit);</span>
-<span class="fc" id="L488">                ru.setForceUpdate(true);</span>
-<span class="fc" id="L489">                ru.update();</span>
-<span class="fc" id="L490">                log.info(&quot;Fast-forward merge '{}' into '{}': {}&quot;, fromBranch, intoBranch, fromCommit.name());</span>
-<span class="fc" id="L491">                return fromCommit.name();</span>
+<span class="fc" id="L480">                RefUpdate ru = gitRepo.updateRef(intoRefName);</span>
+<span class="fc" id="L481">                ru.setNewObjectId(fromCommit);</span>
+<span class="fc" id="L482">                ru.setForceUpdate(true);</span>
+<span class="fc" id="L483">                ru.update();</span>
+<span class="fc" id="L484">                log.info(&quot;Fast-forward merge '{}' into '{}': {}&quot;, fromBranch, intoBranch, fromCommit.name());</span>
+<span class="fc" id="L485">                return fromCommit.name();</span>
             }
 
             // Three-way merge
-<span class="nc" id="L495">            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);</span>
-<span class="nc" id="L496">            boolean success = merger.merge(intoCommit, fromCommit);</span>
+<span class="nc" id="L489">            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);</span>
+<span class="nc" id="L490">            boolean success = merger.merge(intoCommit, fromCommit);</span>
 
-<span class="nc bnc" id="L498" title="All 2 branches missed.">            if (!success) {</span>
-<span class="nc" id="L499">                log.warn(&quot;Merge conflict: '{}' into '{}'&quot;, fromBranch, intoBranch);</span>
-<span class="nc" id="L500">                return null;</span>
+<span class="nc bnc" id="L492" title="All 2 branches missed.">            if (!success) {</span>
+<span class="nc" id="L493">                log.warn(&quot;Merge conflict: '{}' into '{}'&quot;, fromBranch, intoBranch);</span>
+<span class="nc" id="L494">                return null;</span>
             }
 
             // Create merge commit with two parents
-<span class="nc" id="L504">            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
-<span class="nc" id="L505">                CommitBuilder mergeCommit = new CommitBuilder();</span>
-<span class="nc" id="L506">                mergeCommit.setTreeId(merger.getResultTreeId());</span>
-<span class="nc" id="L507">                mergeCommit.setParentIds(intoCommit, fromCommit);</span>
-<span class="nc" id="L508">                PersonIdent ident = new PersonIdent(&quot;taxonomy&quot;, &quot;taxonomy@system&quot;);</span>
-<span class="nc" id="L509">                mergeCommit.setAuthor(ident);</span>
-<span class="nc" id="L510">                mergeCommit.setCommitter(ident);</span>
-<span class="nc" id="L511">                mergeCommit.setMessage(&quot;Merge branch '&quot; + fromBranch + &quot;' into &quot; + intoBranch);</span>
+<span class="nc" id="L498">            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
+<span class="nc" id="L499">                CommitBuilder mergeCommit = new CommitBuilder();</span>
+<span class="nc" id="L500">                mergeCommit.setTreeId(merger.getResultTreeId());</span>
+<span class="nc" id="L501">                mergeCommit.setParentIds(intoCommit, fromCommit);</span>
+<span class="nc" id="L502">                PersonIdent ident = new PersonIdent(&quot;taxonomy&quot;, &quot;taxonomy@system&quot;);</span>
+<span class="nc" id="L503">                mergeCommit.setAuthor(ident);</span>
+<span class="nc" id="L504">                mergeCommit.setCommitter(ident);</span>
+<span class="nc" id="L505">                mergeCommit.setMessage(&quot;Merge branch '&quot; + fromBranch + &quot;' into &quot; + intoBranch);</span>
 
-<span class="nc" id="L513">                ObjectId mergeCommitId = inserter.insert(mergeCommit);</span>
-<span class="nc" id="L514">                inserter.flush();</span>
+<span class="nc" id="L507">                ObjectId mergeCommitId = inserter.insert(mergeCommit);</span>
+<span class="nc" id="L508">                inserter.flush();</span>
 
-<span class="nc" id="L516">                RefUpdate ru = gitRepo.updateRef(intoRefName);</span>
-<span class="nc" id="L517">                ru.setNewObjectId(mergeCommitId);</span>
-<span class="nc" id="L518">                ru.setForceUpdate(true);</span>
-<span class="nc" id="L519">                ru.update();</span>
+<span class="nc" id="L510">                RefUpdate ru = gitRepo.updateRef(intoRefName);</span>
+<span class="nc" id="L511">                ru.setNewObjectId(mergeCommitId);</span>
+<span class="nc" id="L512">                ru.setForceUpdate(true);</span>
+<span class="nc" id="L513">                ru.update();</span>
 
-<span class="nc" id="L521">                log.info(&quot;Merged '{}' into '{}': {}&quot;, fromBranch, intoBranch, mergeCommitId.name());</span>
-<span class="nc" id="L522">                return mergeCommitId.name();</span>
+<span class="nc" id="L515">                log.info(&quot;Merged '{}' into '{}': {}&quot;, fromBranch, intoBranch, mergeCommitId.name());</span>
+<span class="nc" id="L516">                return mergeCommitId.name();</span>
             }
-<span class="pc" id="L524">        }</span>
+<span class="pc" id="L518">        }</span>
     }
 
     // ── Internal helpers ────────────────────────────────────────────
 
     private String readDslFromTree(RevTree tree) throws IOException {
-<span class="fc" id="L530">        try (TreeWalk tw = TreeWalk.forPath(gitRepo, DSL_FILENAME, tree)) {</span>
-<span class="pc bpc" id="L531" title="1 of 2 branches missed.">            if (tw == null) return null;</span>
-<span class="fc" id="L532">            ObjectId blobId = tw.getObjectId(0);</span>
-<span class="fc" id="L533">            ObjectLoader loader = gitRepo.open(blobId, Constants.OBJ_BLOB);</span>
-<span class="fc" id="L534">            return new String(loader.getBytes(), StandardCharsets.UTF_8);</span>
-<span class="nc bnc" id="L535" title="All 2 branches missed.">        }</span>
+<span class="fc" id="L524">        try (TreeWalk tw = TreeWalk.forPath(gitRepo, DSL_FILENAME, tree)) {</span>
+<span class="pc bpc" id="L525" title="1 of 2 branches missed.">            if (tw == null) return null;</span>
+<span class="fc" id="L526">            ObjectId blobId = tw.getObjectId(0);</span>
+<span class="fc" id="L527">            ObjectLoader loader = gitRepo.open(blobId, Constants.OBJ_BLOB);</span>
+<span class="fc" id="L528">            return new String(loader.getBytes(), StandardCharsets.UTF_8);</span>
+<span class="nc bnc" id="L529" title="All 2 branches missed.">        }</span>
     }
 
     /** Expose the underlying JGit repository (for advanced operations). */
     public Repository getGitRepository() {
-<span class="nc" id="L540">        return gitRepo;</span>
+<span class="nc" id="L534">        return gitRepo;</span>
     }
 
     /**
@@ -546,7 +540,7 @@ public class DslGitRepository {
      * @return true if backed by HibernateRepository (persistent)
      */
     public boolean isDatabaseBacked() {
-<span class="fc" id="L549">        return gitRepo instanceof HibernateRepository;</span>
+<span class="fc" id="L543">        return gitRepo instanceof HibernateRepository;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

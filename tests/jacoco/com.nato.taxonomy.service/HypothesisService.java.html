@@ -206,11 +206,32 @@ public class HypothesisService {
     }
 
     /**
+     * Mark a hypothesis as &quot;applied for this session only&quot;.
+     *
+     * &lt;p&gt;The relationship is used in the current Architecture View and exports
+     * but is not permanently persisted as a {@link TaxonomyRelation}.
+     */
+    @Transactional
+    public RelationHypothesis applyForSession(Long hypothesisId) {
+<span class="fc" id="L216">        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)</span>
+<span class="fc" id="L217">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Hypothesis not found: &quot; + hypothesisId));</span>
+
+<span class="fc" id="L219">        hypothesis.setAppliedInCurrentAnalysis(true);</span>
+<span class="fc" id="L220">        hypothesisRepository.save(hypothesis);</span>
+
+<span class="fc" id="L222">        log.info(&quot;Applied hypothesis {} for current session: {} --[{}]--&gt; {}&quot;,</span>
+<span class="fc" id="L223">                hypothesisId, hypothesis.getSourceNodeId(),</span>
+<span class="fc" id="L224">                hypothesis.getRelationType(), hypothesis.getTargetNodeId());</span>
+
+<span class="fc" id="L226">        return hypothesis;</span>
+    }
+
+    /**
      * List hypotheses by status.
      */
     @Transactional(readOnly = true)
     public List&lt;RelationHypothesis&gt; findByStatus(HypothesisStatus status) {
-<span class="fc" id="L213">        return hypothesisRepository.findByStatus(status);</span>
+<span class="fc" id="L234">        return hypothesisRepository.findByStatus(status);</span>
     }
 
     /**
@@ -218,7 +239,7 @@ public class HypothesisService {
      */
     @Transactional(readOnly = true)
     public List&lt;RelationHypothesis&gt; findAll() {
-<span class="fc" id="L221">        return hypothesisRepository.findAll();</span>
+<span class="fc" id="L242">        return hypothesisRepository.findAll();</span>
     }
 
     /**
@@ -226,7 +247,7 @@ public class HypothesisService {
      */
     @Transactional(readOnly = true)
     public List&lt;RelationEvidence&gt; findEvidence(Long hypothesisId) {
-<span class="fc" id="L229">        return evidenceRepository.findByHypothesisId(hypothesisId);</span>
+<span class="fc" id="L250">        return evidenceRepository.findByHypothesisId(hypothesisId);</span>
     }
 
     // ── DSL generation + Git commit ─────────────────────────────────
@@ -238,60 +259,60 @@ public class HypothesisService {
      */
     private void commitHypothesesAsDsl(List&lt;RelationHypothesis&gt; hypotheses, String sessionId) {
         try {
-<span class="fc" id="L241">            String dslText = generateDsl(hypotheses);</span>
-<span class="fc" id="L242">            String branch = hypotheses.stream()</span>
-<span class="fc bfc" id="L243" title="All 4 branches covered.">                    .anyMatch(h -&gt; h.getStatus() == HypothesisStatus.ACCEPTED)</span>
-<span class="fc" id="L244">                    ? &quot;accepted&quot; : &quot;draft&quot;;</span>
+<span class="fc" id="L262">            String dslText = generateDsl(hypotheses);</span>
+<span class="fc" id="L263">            String branch = hypotheses.stream()</span>
+<span class="fc bfc" id="L264" title="All 4 branches covered.">                    .anyMatch(h -&gt; h.getStatus() == HypothesisStatus.ACCEPTED)</span>
+<span class="fc" id="L265">                    ? &quot;accepted&quot; : &quot;draft&quot;;</span>
 
-<span class="fc" id="L246">            String commitId = gitRepository.commitDsl(</span>
+<span class="fc" id="L267">            String commitId = gitRepository.commitDsl(</span>
                     branch, dslText,
                     &quot;hypothesis-service&quot;,
                     &quot;Auto-generated from analysis session &quot; + sessionId);
 
-<span class="fc" id="L251">            log.info(&quot;Committed {} hypotheses as DSL to branch '{}': {}&quot;,</span>
-<span class="fc" id="L252">                    hypotheses.size(), branch, commitId);</span>
-<span class="nc" id="L253">        } catch (IOException e) {</span>
-<span class="nc" id="L254">            log.warn(&quot;Failed to commit hypotheses as DSL to Git: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L272">            log.info(&quot;Committed {} hypotheses as DSL to branch '{}': {}&quot;,</span>
+<span class="fc" id="L273">                    hypotheses.size(), branch, commitId);</span>
+<span class="nc" id="L274">        } catch (IOException e) {</span>
+<span class="nc" id="L275">            log.warn(&quot;Failed to commit hypotheses as DSL to Git: {}&quot;, e.getMessage());</span>
             // Non-fatal: DB persistence already succeeded
-<span class="fc" id="L256">        }</span>
-<span class="fc" id="L257">    }</span>
+<span class="fc" id="L277">        }</span>
+<span class="fc" id="L278">    }</span>
 
     /**
      * Generate DSL text from a list of hypotheses.
      */
     private String generateDsl(List&lt;RelationHypothesis&gt; hypotheses) {
-<span class="fc" id="L263">        StringBuilder sb = new StringBuilder();</span>
-<span class="fc" id="L264">        sb.append(&quot;meta\n&quot;);</span>
-<span class="fc" id="L265">        sb.append(&quot;  language \&quot;taxdsl\&quot;\n&quot;);</span>
-<span class="fc" id="L266">        sb.append(&quot;  version \&quot;1.0\&quot;\n&quot;);</span>
-<span class="fc" id="L267">        sb.append(&quot;  namespace \&quot;hypothesis-auto\&quot;\n\n&quot;);</span>
+<span class="fc" id="L284">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L285">        sb.append(&quot;meta\n&quot;);</span>
+<span class="fc" id="L286">        sb.append(&quot;  language \&quot;taxdsl\&quot;\n&quot;);</span>
+<span class="fc" id="L287">        sb.append(&quot;  version \&quot;1.0\&quot;\n&quot;);</span>
+<span class="fc" id="L288">        sb.append(&quot;  namespace \&quot;hypothesis-auto\&quot;\n\n&quot;);</span>
 
         // Track declared elements to avoid duplicates
-<span class="fc" id="L270">        java.util.Set&lt;String&gt; declaredElements = new java.util.LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L291">        java.util.Set&lt;String&gt; declaredElements = new java.util.LinkedHashSet&lt;&gt;();</span>
 
-<span class="fc bfc" id="L272" title="All 2 branches covered.">        for (RelationHypothesis h : hypotheses) {</span>
+<span class="fc bfc" id="L293" title="All 2 branches covered.">        for (RelationHypothesis h : hypotheses) {</span>
             // Element declarations for source and target (avoid duplicates)
-<span class="pc bpc" id="L274" title="1 of 2 branches missed.">            if (declaredElements.add(h.getSourceNodeId())) {</span>
-<span class="fc" id="L275">                sb.append(&quot;element &quot;).append(h.getSourceNodeId()).append(&quot; type Node\n&quot;);</span>
-<span class="fc" id="L276">                sb.append(&quot;  title \&quot;&quot;).append(h.getSourceNodeId()).append(&quot;\&quot;\n\n&quot;);</span>
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">            if (declaredElements.add(h.getSourceNodeId())) {</span>
+<span class="fc" id="L296">                sb.append(&quot;element &quot;).append(h.getSourceNodeId()).append(&quot; type Node\n&quot;);</span>
+<span class="fc" id="L297">                sb.append(&quot;  title \&quot;&quot;).append(h.getSourceNodeId()).append(&quot;\&quot;\n\n&quot;);</span>
             }
-<span class="pc bpc" id="L278" title="1 of 2 branches missed.">            if (declaredElements.add(h.getTargetNodeId())) {</span>
-<span class="fc" id="L279">                sb.append(&quot;element &quot;).append(h.getTargetNodeId()).append(&quot; type Node\n&quot;);</span>
-<span class="fc" id="L280">                sb.append(&quot;  title \&quot;&quot;).append(h.getTargetNodeId()).append(&quot;\&quot;\n\n&quot;);</span>
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">            if (declaredElements.add(h.getTargetNodeId())) {</span>
+<span class="fc" id="L300">                sb.append(&quot;element &quot;).append(h.getTargetNodeId()).append(&quot; type Node\n&quot;);</span>
+<span class="fc" id="L301">                sb.append(&quot;  title \&quot;&quot;).append(h.getTargetNodeId()).append(&quot;\&quot;\n\n&quot;);</span>
             }
 
             // Relation declaration
-<span class="fc" id="L284">            sb.append(&quot;relation &quot;).append(h.getSourceNodeId()).append(&quot; &quot;)</span>
-<span class="fc" id="L285">                    .append(h.getRelationType().name()).append(&quot; &quot;)</span>
-<span class="fc" id="L286">                    .append(h.getTargetNodeId()).append(&quot;\n&quot;);</span>
-<span class="fc" id="L287">            sb.append(&quot;  status &quot;).append(h.getStatus().name().toLowerCase()).append(&quot;\n&quot;);</span>
-<span class="pc bpc" id="L288" title="1 of 2 branches missed.">            if (h.getConfidence() &gt; 0) {</span>
-<span class="fc" id="L289">                sb.append(&quot;  confidence &quot;).append(String.format(&quot;%.2f&quot;, h.getConfidence())).append(&quot;\n&quot;);</span>
+<span class="fc" id="L305">            sb.append(&quot;relation &quot;).append(h.getSourceNodeId()).append(&quot; &quot;)</span>
+<span class="fc" id="L306">                    .append(h.getRelationType().name()).append(&quot; &quot;)</span>
+<span class="fc" id="L307">                    .append(h.getTargetNodeId()).append(&quot;\n&quot;);</span>
+<span class="fc" id="L308">            sb.append(&quot;  status &quot;).append(h.getStatus().name().toLowerCase()).append(&quot;\n&quot;);</span>
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">            if (h.getConfidence() &gt; 0) {</span>
+<span class="fc" id="L310">                sb.append(&quot;  confidence &quot;).append(String.format(&quot;%.2f&quot;, h.getConfidence())).append(&quot;\n&quot;);</span>
             }
-<span class="fc" id="L291">            sb.append(&quot;\n&quot;);</span>
-<span class="fc" id="L292">        }</span>
+<span class="fc" id="L312">            sb.append(&quot;\n&quot;);</span>
+<span class="fc" id="L313">        }</span>
 
-<span class="fc" id="L294">        return sb.toString();</span>
+<span class="fc" id="L315">        return sb.toString();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

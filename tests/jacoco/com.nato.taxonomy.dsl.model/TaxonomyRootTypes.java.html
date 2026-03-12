@@ -24,13 +24,45 @@ public final class TaxonomyRootTypes {
             &quot;BR&quot;, &quot;BusinessRole&quot;
     );
 
+    /** Reverse mapping: DSL element type name → taxonomy root code. */
+    public static final Map&lt;String, String&gt; TYPE_TO_ROOT;
+
+    static {
+<span class="fc" id="L31">        var reverse = new java.util.LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L32">        ROOT_TO_TYPE.forEach((root, type) -&gt; reverse.put(type, root));</span>
+<span class="fc" id="L33">        TYPE_TO_ROOT = java.util.Collections.unmodifiableMap(reverse);</span>
+<span class="fc" id="L34">    }</span>
+
     /**
      * Get the DSL element type name for a taxonomy root code.
      * Returns the root code itself if no mapping is defined.
      */
     public static String typeFor(String taxonomyRoot) {
-<span class="pc bpc" id="L32" title="1 of 2 branches missed.">        if (taxonomyRoot == null) return &quot;Unknown&quot;;</span>
-<span class="fc" id="L33">        return ROOT_TO_TYPE.getOrDefault(taxonomyRoot, taxonomyRoot);</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if (taxonomyRoot == null) return &quot;Unknown&quot;;</span>
+<span class="fc" id="L42">        return ROOT_TO_TYPE.getOrDefault(taxonomyRoot, taxonomyRoot);</span>
+    }
+
+    /**
+     * Get the taxonomy root code for a DSL element type name.
+     * Returns {@code null} if no mapping is defined.
+     */
+    public static String rootFor(String typeName) {
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">        if (typeName == null) return null;</span>
+        // Check if it's already a root code
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (ROOT_TO_TYPE.containsKey(typeName)) return typeName;</span>
+<span class="fc" id="L53">        return TYPE_TO_ROOT.get(typeName);</span>
+    }
+
+    /**
+     * Extract the root code prefix from an element ID (e.g., &quot;CP&quot; from &quot;CP-1001&quot;).
+     * Returns {@code null} if the ID doesn't match the expected pattern.
+     */
+    public static String rootFromId(String elementId) {
+<span class="pc bpc" id="L61" title="2 of 4 branches missed.">        if (elementId == null || elementId.length() &lt; 2) return null;</span>
+<span class="fc" id="L62">        int dash = elementId.indexOf('-');</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        if (dash &lt; 2) return null;</span>
+<span class="fc" id="L64">        String prefix = elementId.substring(0, dash);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        return ROOT_TO_TYPE.containsKey(prefix) ? prefix : null;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

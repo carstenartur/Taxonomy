@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DslAnalyzer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.config</a> &gt; <span class="el_source">DslAnalyzer.java</span></div><h1>DslAnalyzer.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.config;
+
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.LowerCaseFilter;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.core.WhitespaceTokenizer;
+
+/**
+ * Custom Lucene {@link Analyzer} for DSL-tokenized text.
+ *
+ * &lt;p&gt;The {@link com.nato.taxonomy.dsl.parser.DslTokenizer} produces space-separated
+ * tokens with category prefixes ({@code STRUCT:element}, {@code REL:REALIZES},
+ * {@code DOM:Capability}) and raw identifiers ({@code CP-1001}). This analyzer:
+ * &lt;ol&gt;
+ *   &lt;li&gt;Splits on whitespace (tokens are already pre-tokenized)&lt;/li&gt;
+ *   &lt;li&gt;Lowercases for case-insensitive matching&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;p&gt;Prefixed tokens remain intact so that queries like {@code &quot;rel:realizes&quot;}
+ * perform precise faceted searches.
+ */
+<span class="fc" id="L23">public class DslAnalyzer extends Analyzer {</span>
+
+    @Override
+    protected TokenStreamComponents createComponents(String fieldName) {
+<span class="fc" id="L27">        Tokenizer tokenizer = new WhitespaceTokenizer();</span>
+<span class="fc" id="L28">        TokenStream filter = new LowerCaseFilter(tokenizer);</span>
+<span class="fc" id="L29">        return new TokenStreamComponents(tokenizer, filter);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
