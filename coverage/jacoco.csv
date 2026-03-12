@@ -22,7 +22,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ApiController.new An
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ReportApiController,9,159,6,10,3,32,6,7,0,5
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ExplanationTraceApiController.ExplainRequest,0,15,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,TaxonomyController,0,19,0,0,0,6,0,2,0,2
-Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,DslApiController,363,881,13,27,90,175,14,30,5,19
+Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,DslApiController,194,1147,7,33,49,237,8,41,1,28
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,ExplanationTraceApiController,2,43,2,2,0,14,2,3,0,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.controller,CoverageApiController,1,53,1,1,0,15,1,7,0,7
 Taxonomy Architecture Analyzer,com.nato.taxonomy.archimate,ArchiMateViewConnection,0,15,0,0,0,1,0,1,0,1
@@ -38,7 +38,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.search,NodeEmbeddingBinder.Brid
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.model,ArchitectureEvidence,0,82,0,0,0,23,0,20,0,20
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.model,ArchitectureView,0,67,0,0,0,17,0,12,0,12
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.model,ArchitectureRelation,0,74,0,0,0,21,0,16,0,16
-Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.model,TaxonomyRootTypes,2,27,1,1,0,3,1,2,0,2
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.model,TaxonomyRootTypes,10,81,6,8,0,15,6,6,0,5
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.model,RequirementMapping,0,57,0,0,0,16,0,12,0,12
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.model,ArchitectureRequirement,0,53,0,0,0,15,0,10,0,10
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.model,CanonicalArchitectureModel,13,68,0,0,1,16,2,9,2,9
@@ -49,19 +49,21 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.export,DslMaterializeServic
 Taxonomy Architecture Analyzer,com.nato.taxonomy.visio.converter,VisioPagesConverter,0,66,0,2,0,16,0,5,0,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.visio.converter,VisioPageContentsConverter,0,243,0,8,0,59,0,9,0,5
 Taxonomy Architecture Analyzer,com.nato.taxonomy.visio.converter,VisioDocumentConverter,0,61,0,0,0,21,0,4,0,4
-Taxonomy Architecture Analyzer,com.nato.taxonomy.config,HibernateSearchAnalysisConfigurer,0,28,0,0,0,5,0,2,0,2
+Taxonomy Architecture Analyzer,com.nato.taxonomy.config,HibernateSearchAnalysisConfigurer,0,44,0,0,0,7,0,2,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,RateLimitFilter.WindowCounter,25,30,3,3,6,6,2,3,0,2
+Taxonomy Architecture Analyzer,com.nato.taxonomy.config,CsvKeywordAnalyzer,0,24,0,0,0,5,0,3,0,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0,4,0,2,0
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,TaxonomyHealthIndicator,68,6,2,0,12,3,2,1,1,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,RateLimitFilter,15,90,5,13,3,22,4,10,0,5
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,OpenApiConfig,0,114,0,0,0,25,0,2,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,SpringContextHolder,13,4,1,1,6,1,3,1,2,1
+Taxonomy Architecture Analyzer,com.nato.taxonomy.config,DslAnalyzer,0,18,0,0,0,4,0,2,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,ActuatorSecurityFilter,54,15,13,1,15,5,7,2,0,2
 Taxonomy Architecture Analyzer,com.nato.taxonomy.config,GlobalExceptionHandler,104,71,2,2,13,13,5,3,3,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy,AppConfig,0,53,0,0,0,15,0,4,0,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy,TaxonomyApplication,8,0,0,0,3,0,2,0,2,0
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.validation,DslValidationResult,71,37,10,0,11,8,9,6,4,6
-Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.validation,DslValidator,72,317,27,47,15,62,21,26,0,10
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.validation,DslValidator,72,516,31,69,15,102,25,37,0,12
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,TopRejectedProposal,24,0,0,0,1,0,1,0,1,0
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,TaxonomyDiscrepancy,0,12,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,EnrichedChangeImpactView,4,94,0,0,1,25,1,20,1,20
@@ -105,7 +107,7 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,IncompletePattern,19,27,0,0
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dto,RelationQualityMetrics,0,30,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.storage,DslStorageConfig,0,15,0,0,0,4,0,3,0,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.storage,DslCommit,0,15,0,0,0,1,0,1,0,1
-Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.storage,DslGitRepository,187,844,20,36,33,179,20,27,2,17
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.storage,DslGitRepository,177,835,19,35,31,177,19,27,2,17
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.storage,DslBranch,0,12,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.diagram,DiagramLayout,0,9,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.diagram,DiagramModel,0,15,0,0,0,1,0,1,0,1
@@ -116,12 +118,13 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.model,HypothesisStatus,0,27,0,0
 Taxonomy Architecture Analyzer,com.nato.taxonomy.model,RelationProposal,8,75,1,1,2,23,3,20,2,20
 Taxonomy Architecture Analyzer,com.nato.taxonomy.model,FloatArrayConverter,0,68,0,8,0,13,0,7,0,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.model,RequirementCoverage,0,39,0,0,0,15,0,8,0,8
+Taxonomy Architecture Analyzer,com.nato.taxonomy.model,ArchitectureCommitIndex,8,79,1,1,2,24,3,22,2,22
 Taxonomy Architecture Analyzer,com.nato.taxonomy.model,RelationType,0,63,0,0,0,11,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.model,TaxonomyNode,51,134,2,0,14,38,13,35,12,35
 Taxonomy Architecture Analyzer,com.nato.taxonomy.model,RelationEvidence,55,32,1,1,16,10,17,8,16,8
 Taxonomy Architecture Analyzer,com.nato.taxonomy.model,ArchitectureDslDocument,8,58,1,1,2,18,3,16,2,16
 Taxonomy Architecture Analyzer,com.nato.taxonomy.model,ProposalStatus,0,21,0,0,0,4,0,1,0,1
-Taxonomy Architecture Analyzer,com.nato.taxonomy.model,RelationHypothesis,12,64,1,1,3,20,4,17,3,17
+Taxonomy Architecture Analyzer,com.nato.taxonomy.model,RelationHypothesis,8,68,1,1,2,21,3,18,2,18
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.storage.jgit,HibernateObjDatabase.ByteArrayReadableChannel,15,48,1,1,4,10,5,5,4,5
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.storage.jgit,HibernateRepository,8,36,0,0,3,8,3,3,3,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.storage.jgit,HibernateObjDatabase,76,244,5,11,25,55,9,12,5,8
@@ -165,10 +168,11 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.new TypeRefe
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmService.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,PropagationResult.TraversedRelation,0,27,0,0,0,10,0,5,0,5
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,TaxonomyService,365,1143,64,79,96,276,51,49,3,23
-Taxonomy Architecture Analyzer,com.nato.taxonomy.service,HypothesisService,24,534,10,30,5,108,10,24,0,14
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,HypothesisService,24,583,10,30,5,116,10,26,0,16
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RelationValidationService,21,138,3,7,4,33,4,6,1,4
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,RankFusionUtil,0,74,0,2,0,16,0,4,0,3
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateXmlExporter,3,502,5,23,1,105,5,18,0,9
+Taxonomy Architecture Analyzer,com.nato.taxonomy.service,CommitIndexService,37,313,3,17,14,86,3,20,0,13
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchiMateXmlImporter.ParsedRelationship,0,15,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,ArchitectureGraphQueryServiceImpl.Direction,0,21,0,0,0,1,0,1,0,1
 Taxonomy Architecture Analyzer,com.nato.taxonomy.service,LlmRateLimitException,9,0,0,0,4,0,2,0,2,0
@@ -196,4 +200,5 @@ Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.diff,ModelDiff.RelationChan
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.diff,ModelDiffer,0,425,9,55,0,83,9,37,0,14
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.mapper,AstToModelMapper,3,424,12,29,0,92,12,19,0,8
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.mapper,ModelToAstMapper,0,558,16,36,0,95,16,20,0,10
+Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.parser,DslTokenizer,12,225,4,24,1,46,4,15,0,5
 Taxonomy Architecture Analyzer,com.nato.taxonomy.dsl.parser,TaxDslParser,6,337,5,43,3,69,5,29,0,10

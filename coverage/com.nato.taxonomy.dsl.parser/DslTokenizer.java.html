@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DslTokenizer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Architecture Analyzer</a> &gt; <a href="index.source.html" class="el_package">com.nato.taxonomy.dsl.parser</a> &gt; <span class="el_source">DslTokenizer.java</span></div><h1>DslTokenizer.java</h1><pre class="source lang-java linenums">package com.nato.taxonomy.dsl.parser;
+
+import com.nato.taxonomy.dsl.model.TaxonomyRootTypes;
+
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * DSL-specific tokenizer for indexing architecture commit changes.
+ *
+ * &lt;p&gt;Extracts structured tokens from DSL text or diffs, categorized into:
+ * &lt;ul&gt;
+ *   &lt;li&gt;&lt;b&gt;Structure tokens&lt;/b&gt;: element, relation, mapping, view, evidence, requirement&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Domain tokens&lt;/b&gt;: Capability, Process, Service, Application, InformationProduct, etc.&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Identifier tokens&lt;/b&gt;: CP-1001, BP-1040, REQ-001, etc.&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Relation tokens&lt;/b&gt;: REALIZES, SUPPORTS, USES, PRODUCES, CONSUMES, etc.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;The tokenized output is a space-separated string suitable for full-text search indexing.
+ */
+<span class="fc" id="L22">public class DslTokenizer {</span>
+
+    /** DSL block keywords. */
+<span class="fc" id="L25">    private static final Set&lt;String&gt; STRUCTURE_TOKENS = Set.of(</span>
+            &quot;element&quot;, &quot;relation&quot;, &quot;mapping&quot;, &quot;view&quot;, &quot;evidence&quot;,
+            &quot;requirement&quot;, &quot;meta&quot;, &quot;constraint&quot;, &quot;decision&quot;, &quot;pattern&quot;);
+
+    /** Recognized relation types. */
+<span class="fc" id="L30">    private static final Set&lt;String&gt; RELATION_TOKENS = Set.of(</span>
+            &quot;REALIZES&quot;, &quot;SUPPORTS&quot;, &quot;CONSUMES&quot;, &quot;USES&quot;, &quot;FULFILLS&quot;,
+            &quot;ASSIGNED_TO&quot;, &quot;DEPENDS_ON&quot;, &quot;PRODUCES&quot;, &quot;COMMUNICATES_WITH&quot;, &quot;RELATED_TO&quot;);
+
+    /** Domain type names (values from TaxonomyRootTypes). */
+    private static final Set&lt;String&gt; DOMAIN_TOKENS;
+
+    static {
+<span class="fc" id="L38">        Set&lt;String&gt; types = new LinkedHashSet&lt;&gt;(TaxonomyRootTypes.ROOT_TO_TYPE.values());</span>
+<span class="fc" id="L39">        types.add(&quot;Capability&quot;);</span>
+<span class="fc" id="L40">        types.add(&quot;Process&quot;);</span>
+<span class="fc" id="L41">        types.add(&quot;Service&quot;);</span>
+<span class="fc" id="L42">        DOMAIN_TOKENS = Collections.unmodifiableSet(types);</span>
+    }
+
+    /** Pattern for taxonomy-style identifiers: 2-letter prefix + dash + digits. */
+<span class="fc" id="L46">    private static final Pattern IDENTIFIER_PATTERN = Pattern.compile(&quot;\\b([A-Z]{2}-\\d{1,5})\\b&quot;);</span>
+
+    /** Pattern for requirement-style identifiers: REQ-NNN or EV-NNN. */
+<span class="fc" id="L49">    private static final Pattern REQ_PATTERN = Pattern.compile(&quot;\\b(REQ-\\d{1,5}|EV-\\d{1,5})\\b&quot;);</span>
+
+    /**
+     * Tokenize DSL text into a space-separated string of categorized tokens.
+     *
+     * @param dslText the raw DSL text (or diff text)
+     * @return space-separated tokens suitable for full-text search indexing
+     */
+    public String tokenize(String dslText) {
+<span class="fc bfc" id="L58" title="All 4 branches covered.">        if (dslText == null || dslText.isBlank()) {</span>
+<span class="fc" id="L59">            return &quot;&quot;;</span>
+        }
+
+<span class="fc" id="L62">        List&lt;String&gt; tokens = new ArrayList&lt;&gt;();</span>
+
+        // Extract identifiers (CP-1001, BP-1040, REQ-001, etc.)
+<span class="fc" id="L65">        Matcher idMatcher = IDENTIFIER_PATTERN.matcher(dslText);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        while (idMatcher.find()) {</span>
+<span class="fc" id="L67">            tokens.add(idMatcher.group(1));</span>
+        }
+<span class="fc" id="L69">        Matcher reqMatcher = REQ_PATTERN.matcher(dslText);</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        while (reqMatcher.find()) {</span>
+<span class="nc" id="L71">            tokens.add(reqMatcher.group(1));</span>
+        }
+
+        // Extract word tokens
+<span class="fc" id="L75">        String[] words = dslText.split(&quot;\\s+&quot;);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        for (String word : words) {</span>
+<span class="fc" id="L77">            String clean = word.replaceAll(&quot;[\&quot;',;(){}\\[\\]]&quot;, &quot;&quot;).trim();</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">            if (clean.isEmpty()) continue;</span>
+
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (STRUCTURE_TOKENS.contains(clean.toLowerCase())) {</span>
+<span class="fc" id="L81">                tokens.add(&quot;STRUCT:&quot; + clean.toLowerCase());</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            } else if (RELATION_TOKENS.contains(clean)) {</span>
+<span class="fc" id="L83">                tokens.add(&quot;REL:&quot; + clean);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            } else if (DOMAIN_TOKENS.contains(clean)) {</span>
+<span class="fc" id="L85">                tokens.add(&quot;DOM:&quot; + clean);</span>
+            }
+        }
+
+        // Deduplicate while preserving order
+<span class="fc" id="L90">        Set&lt;String&gt; seen = new LinkedHashSet&lt;&gt;(tokens);</span>
+<span class="fc" id="L91">        return String.join(&quot; &quot;, seen);</span>
+    }
+
+    /**
+     * Extract all architecture element IDs from DSL text.
+     *
+     * @param dslText the raw DSL text
+     * @return set of element IDs found (e.g., CP-1001, BP-1040)
+     */
+    public Set&lt;String&gt; extractElementIds(String dslText) {
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (dslText == null) return Collections.emptySet();</span>
+<span class="fc" id="L102">        Set&lt;String&gt; ids = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L103">        Matcher matcher = IDENTIFIER_PATTERN.matcher(dslText);</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        while (matcher.find()) {</span>
+<span class="fc" id="L105">            ids.add(matcher.group(1));</span>
+        }
+<span class="fc" id="L107">        Matcher reqMatcher = REQ_PATTERN.matcher(dslText);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        while (reqMatcher.find()) {</span>
+<span class="fc" id="L109">            ids.add(reqMatcher.group(1));</span>
+        }
+<span class="fc" id="L111">        return ids;</span>
+    }
+
+    /**
+     * Extract all relation keys from DSL text.
+     * A relation key is &quot;{sourceId} {relationType} {targetId}&quot;.
+     *
+     * @param dslText the raw DSL text
+     * @return set of relation keys found
+     */
+    public Set&lt;String&gt; extractRelationKeys(String dslText) {
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">        if (dslText == null) return Collections.emptySet();</span>
+<span class="fc" id="L123">        Set&lt;String&gt; keys = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L124">        Pattern relPattern = Pattern.compile(</span>
+                &quot;^\\s*relation\\s+([A-Z]{2}-\\d{1,5})\\s+(\\w+)\\s+([A-Z]{2}-\\d{1,5})&quot;,
+                Pattern.MULTILINE);
+<span class="fc" id="L127">        Matcher matcher = relPattern.matcher(dslText);</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        while (matcher.find()) {</span>
+<span class="fc" id="L129">            keys.add(matcher.group(1) + &quot; &quot; + matcher.group(2) + &quot; &quot; + matcher.group(3));</span>
+        }
+<span class="fc" id="L131">        return keys;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
