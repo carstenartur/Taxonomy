@@ -23,7 +23,7 @@
     <properties>
         <java.version>17</java.version>
         <djl.version>0.36.0</djl.version>
-        <excludedGroups></excludedGroups>
+        <excludedGroups>external-db</excludedGroups>
     </properties>
     <dependencyManagement>
         <dependencies>

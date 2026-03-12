@@ -165,12 +165,38 @@ mvn package -DskipTests
 mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
 ```
 
+### External Database Integration Tests
+
+The project includes integration tests that verify the application works correctly against PostgreSQL, Microsoft SQL Server, and Oracle databases. These tests are **opt-in** — they are tagged with `external-db` and excluded from the default `mvn verify` run to keep the build fast.
+
+```bash
+# Include all external-database tests (requires Docker)
+mvn verify -DexcludedGroups=
+
+# Run only PostgreSQL integration tests
+mvn verify -DexcludedGroups= -Dit.test=DiagnosticsPostgresContainerIT
+
+# Run only MSSQL integration tests
+mvn verify -DexcludedGroups= -Dit.test=DiagnosticsMssqlContainerIT
+
+# Run only Oracle integration tests
+mvn verify -DexcludedGroups= -Dit.test=DiagnosticsOracleContainerIT
+
+# Run all Selenium + external-db tests
+mvn verify -DexcludedGroups= -Dit.test="Selenium*ContainerIT"
+```
+
+**Architecture:** Each external-database test class inherits from `AbstractDatabaseContainerIT` (REST/diagnostics tests) or `AbstractSeleniumContainerIT` (Selenium UI tests). The base classes hold all test logic; DB-specific subclasses are ~30 lines of configuration that specify the database container and the JDBC env vars to pass to the app container.
+
+**How it works:** The application JAR is built once and runs in a Docker container (`eclipse-temurin:17-jre-alpine`). A database container (PostgreSQL, MSSQL, or Oracle) runs on the same Docker network. The app container receives env vars like `TAXONOMY_DATASOURCE_URL`, `SPRING_DATASOURCE_DRIVER_CLASS_NAME`, `SPRING_JPA_DATABASE_PLATFORM`, etc. to override the default HSQLDB configuration.
+
 Test file naming conventions:
 
 | Pattern | Runner | Description |
 |---|---|---|
 | `*Test.java`, `*Tests.java` | maven-surefire-plugin | Unit and Spring context tests |
 | `*IT.java` | maven-failsafe-plugin | Integration tests (require Docker) |
+| `@Tag("external-db")` | maven-failsafe-plugin | External database tests (excluded by default) |
 
 ---
 
