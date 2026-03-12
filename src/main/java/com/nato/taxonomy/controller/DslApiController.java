@@ -600,19 +600,27 @@ public class DslApiController {
 
     @GetMapping("/history/search")
     @Operation(summary = "Search architecture commit history",
-            description = "Full-text search across tokenized DSL changes.")
-    public ResponseEntity<?> searchHistory(@RequestParam String query) {
-        return ResponseEntity.ok(commitIndexService.search(query));
+            description = "Full-text search across tokenized DSL changes, commit messages, " +
+                    "and affected element/relation IDs using Hibernate Search (Lucene backend). " +
+                    "Results are ranked by relevance score.")
+    public ResponseEntity<?> searchHistory(
+            @RequestParam String query,
+            @RequestParam(defaultValue = "50") int maxResults) {
+        return ResponseEntity.ok(commitIndexService.search(query, maxResults));
     }
 
     @GetMapping("/history/element/{elementId}")
-    @Operation(summary = "Find commits that affected a specific element")
+    @Operation(summary = "Find commits that affected a specific element",
+            description = "Searches affectedElementIds and tokenized DSL text for the given " +
+                    "element ID using Hibernate Search.")
     public ResponseEntity<?> findHistoryByElement(@PathVariable String elementId) {
         return ResponseEntity.ok(commitIndexService.findByElement(elementId));
     }
 
     @GetMapping("/history/relation")
-    @Operation(summary = "Find commits that affected a specific relation")
+    @Operation(summary = "Find commits that affected a specific relation",
+            description = "Searches affectedRelationIds and tokenized DSL text for the given " +
+                    "relation key (e.g., 'CP-1001 REALIZES CR-2001') using Hibernate Search.")
     public ResponseEntity<?> findHistoryByRelation(@RequestParam String key) {
         return ResponseEntity.ok(commitIndexService.findByRelation(key));
     }

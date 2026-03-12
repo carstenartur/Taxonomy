@@ -2,6 +2,8 @@ package com.nato.taxonomy.model;
 
 import jakarta.persistence.*;
 import org.hibernate.annotations.Nationalized;
+import org.hibernate.search.engine.backend.types.Sortable;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.*;
 
 import java.time.Instant;
 
@@ -11,8 +13,19 @@ import java.time.Instant;
  * <p>Each row corresponds to a single JGit commit on a DSL branch.
  * The tokenized fields allow Hibernate Search / full-text queries over
  * the architecture evolution timeline.
+ *
+ * <p>Hibernate Search annotations enable Lucene-backed full-text search:
+ * <ul>
+ *   <li>{@code tokenizedChangeText} — DSL-aware full-text search via custom {@code "dsl"} analyzer</li>
+ *   <li>{@code message} — commit message full-text search via {@code "english"} analyzer</li>
+ *   <li>{@code affectedElementIds} — comma-separated IDs searchable via {@code "csv-keyword"} analyzer</li>
+ *   <li>{@code affectedRelationIds} — semicolon-separated keys searchable via {@code "csv-keyword"} analyzer</li>
+ *   <li>{@code branch}, {@code commitId}, {@code author} — exact keyword filters</li>
+ *   <li>{@code commitTimestamp} — sortable date field</li>
+ * </ul>
  */
 @Entity
+@Indexed
 @Table(name = "architecture_commit_index",
        uniqueConstraints = @UniqueConstraint(columnNames = "commit_id"))
 public class ArchitectureCommitIndex {
@@ -23,17 +36,21 @@ public class ArchitectureCommitIndex {
 
     @Nationalized
     @Column(name = "commit_id", nullable = false, length = 40)
+    @KeywordField
     private String commitId;
 
     @Nationalized
     @Column
+    @KeywordField
     private String author;
 
     @Column(name = "commit_timestamp", nullable = false)
+    @GenericField(sortable = Sortable.YES)
     private Instant commitTimestamp;
 
     @Nationalized
     @Column(length = 500)
+    @FullTextField(analyzer = "english")
     private String message;
 
     @Nationalized
@@ -42,18 +59,22 @@ public class ArchitectureCommitIndex {
 
     @Nationalized
     @Column(name = "tokenized_change_text", length = 10000)
+    @FullTextField(analyzer = "dsl")
     private String tokenizedChangeText;
 
     @Nationalized
     @Column(name = "affected_element_ids", length = 2000)
+    @FullTextField(analyzer = "csv-keyword")
     private String affectedElementIds;
 
     @Nationalized
     @Column(name = "affected_relation_ids", length = 2000)
+    @FullTextField(analyzer = "csv-keyword")
     private String affectedRelationIds;
 
     @Nationalized
     @Column
+    @KeywordField
     private String branch;
 
     @Column(name = "indexed_at", nullable = false)

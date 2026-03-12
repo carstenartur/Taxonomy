@@ -23,5 +23,7 @@ public class HibernateSearchAnalysisConfigurer implements LuceneAnalysisConfigur
         context.analyzer("english").instance(new EnglishAnalyzer());
         context.analyzer("german").instance(new GermanAnalyzer());
         context.analyzer("standard").instance(new StandardAnalyzer());
+        context.analyzer("dsl").instance(new DslAnalyzer());
+        context.analyzer("csv-keyword").instance(new CsvKeywordAnalyzer());
     }
 }
