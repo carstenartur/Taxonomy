@@ -266,4 +266,231 @@ class DslApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
     }
+
+    // --- Commit / History / Diff / Branch endpoints ---
+
+    @Test
+    void commitDslStoresVersionedDocument() throws Exception {
+        String dsl = """
+                meta
+                  language "taxdsl"
+                  version "1.0"
+                  namespace "test.commit"
+                
+                element CP-2001 type Capability
+                  title "Commit Test"
+                """;
+
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl)
+                        .param("branch", "draft")
+                        .param("author", "test-user")
+                        .param("message", "initial commit"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentId").isNotEmpty())
+                .andExpect(jsonPath("$.commitId").isNotEmpty())
+                .andExpect(jsonPath("$.branch").value("draft"))
+                .andExpect(jsonPath("$.author").value("test-user"))
+                .andExpect(jsonPath("$.valid").value(true));
+    }
+
+    @Test
+    void commitInvalidDslReturnsBadRequest() throws Exception {
+        String dsl = """
+                element CP-1001 type Capability
+                  title "First"
+                
+                element CP-1001 type Capability
+                  title "Duplicate"
+                """;
+
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl)
+                        .param("branch", "draft"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.valid").value(false));
+    }
+
+    @Test
+    void commitDefaultsToDraftBranch() throws Exception {
+        String dsl = """
+                element CP-3001 type Capability
+                  title "Default Branch Test"
+                """;
+
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.branch").value("draft"));
+    }
+
+    @Test
+    void getHistoryReturnsDocumentsForBranch() throws Exception {
+        // First commit
+        String dsl1 = """
+                element CP-4001 type Capability
+                  title "History V1"
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl1)
+                        .param("branch", "history-test"));
+
+        // Second commit
+        String dsl2 = """
+                element CP-4001 type Capability
+                  title "History V2"
+                element CP-4002 type Capability
+                  title "Added"
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl2)
+                        .param("branch", "history-test"));
+
+        mockMvc.perform(get("/api/dsl/history").param("branch", "history-test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    void getHistoryEmptyBranchReturnsEmptyList() throws Exception {
+        mockMvc.perform(get("/api/dsl/history").param("branch", "nonexistent-branch"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void diffBetweenTwoDocuments() throws Exception {
+        // Commit two different versions and then diff them
+        String dsl1 = """
+                element CP-5001 type Capability
+                  title "V1"
+                """;
+        String dsl2 = """
+                element CP-5001 type Capability
+                  title "V2 Changed"
+                element CP-5002 type Capability
+                  title "V2 Added"
+                """;
+
+        // Materialize both to get document IDs
+        var result1 = mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl1)
+                        .param("branch", "diff-test"))
+                .andReturn();
+        Long docId1 = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(result1.getResponse().getContentAsString())
+                .get("documentId").asLong();
+
+        var result2 = mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl2)
+                        .param("branch", "diff-test"))
+                .andReturn();
+        Long docId2 = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(result2.getResponse().getContentAsString())
+                .get("documentId").asLong();
+
+        mockMvc.perform(get("/api/dsl/diff/" + docId1 + "/" + docId2))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalChanges").isNumber())
+                .andExpect(jsonPath("$.isEmpty").value(false))
+                .andExpect(jsonPath("$.addedElements").value(1))
+                .andExpect(jsonPath("$.changedElements").value(1));
+    }
+
+    @Test
+    void diffWithNonExistentDocReturnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/dsl/diff/99999/99998"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isNotEmpty());
+    }
+
+    @Test
+    void listBranchesReturnsArray() throws Exception {
+        mockMvc.perform(get("/api/dsl/branches"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
+    void createBranchForksDocument() throws Exception {
+        // First create a document on draft branch
+        String dsl = """
+                element CP-6001 type Capability
+                  title "Branch Source"
+                """;
+        var commitResult = mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl)
+                        .param("branch", "branch-source"))
+                .andReturn();
+        Long sourceDocId = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(commitResult.getResponse().getContentAsString())
+                .get("documentId").asLong();
+
+        // Create a new branch from that document
+        mockMvc.perform(post("/api/dsl/branches")
+                        .param("name", "review-branch")
+                        .param("fromDocumentId", sourceDocId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.branch").value("review-branch"))
+                .andExpect(jsonPath("$.documentId").isNotEmpty())
+                .andExpect(jsonPath("$.forkedFrom").value(sourceDocId));
+    }
+
+    @Test
+    void createBranchFromNonExistentDocReturnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/dsl/branches")
+                        .param("name", "bad-branch")
+                        .param("fromDocumentId", "99999"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isNotEmpty());
+    }
+
+    @Test
+    void incrementalMaterializationEndpoint() throws Exception {
+        // Create two document versions
+        String dsl1 = """
+                element CP-7001 type Capability
+                  title "Incr V1"
+                """;
+        String dsl2 = """
+                element CP-7001 type Capability
+                  title "Incr V1"
+                element CP-7002 type Capability
+                  title "Incr Added"
+                """;
+
+        var result1 = mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl1)
+                        .param("branch", "incr-test"))
+                .andReturn();
+        Long docId1 = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(result1.getResponse().getContentAsString())
+                .get("documentId").asLong();
+
+        var result2 = mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl2)
+                        .param("branch", "incr-test"))
+                .andReturn();
+        Long docId2 = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(result2.getResponse().getContentAsString())
+                .get("documentId").asLong();
+
+        mockMvc.perform(post("/api/dsl/materialize-incremental")
+                        .param("beforeDocId", docId1.toString())
+                        .param("afterDocId", docId2.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(true));
+    }
 }

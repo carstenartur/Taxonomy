@@ -1,5 +1,7 @@
 package com.nato.taxonomy.dsl.export;
 
+import com.nato.taxonomy.dsl.diff.ModelDiff;
+import com.nato.taxonomy.dsl.diff.ModelDiffer;
 import com.nato.taxonomy.dsl.mapper.AstToModelMapper;
 import com.nato.taxonomy.dsl.model.*;
 import com.nato.taxonomy.dsl.parser.TaxDslParser;
@@ -32,6 +34,9 @@ import java.util.*;
  *   </li>
  *   <li>Store the DSL document as {@link ArchitectureDslDocument}</li>
  * </ol>
+ *
+ * <p>Supports incremental materialization via {@link ModelDiffer}: only the delta
+ * between two models is applied to the database.
  */
 @Service
 public class DslMaterializeService {
@@ -45,6 +50,7 @@ public class DslMaterializeService {
     private final TaxDslParser parser = new TaxDslParser();
     private final AstToModelMapper astMapper = new AstToModelMapper();
     private final DslValidator validator = new DslValidator();
+    private final ModelDiffer differ = new ModelDiffer();
 
     public DslMaterializeService(TaxonomyRelationService relationService,
                                   RelationHypothesisRepository hypothesisRepository,
@@ -146,5 +152,112 @@ public class DslMaterializeService {
 
         return new MaterializeResult(true, List.of(), validation.getWarnings(),
                 relationsCreated, hypothesesCreated, saved.getId());
+    }
+
+    /**
+     * Compute a diff between two stored DSL documents by their IDs.
+     *
+     * @param beforeDocId the ID of the "before" document (may be {@code null} for initial commit)
+     * @param afterDocId  the ID of the "after" document
+     * @return the model diff
+     * @throws IllegalArgumentException if a document ID is not found
+     */
+    public ModelDiff diffDocuments(Long beforeDocId, Long afterDocId) {
+        CanonicalArchitectureModel before = null;
+        if (beforeDocId != null) {
+            ArchitectureDslDocument beforeDoc = documentRepository.findById(beforeDocId)
+                    .orElseThrow(() -> new IllegalArgumentException("Before document not found: " + beforeDocId));
+            before = parseToModel(beforeDoc.getRawContent(), beforeDoc.getPath());
+        }
+
+        ArchitectureDslDocument afterDoc = documentRepository.findById(afterDocId)
+                .orElseThrow(() -> new IllegalArgumentException("After document not found: " + afterDocId));
+        CanonicalArchitectureModel after = parseToModel(afterDoc.getRawContent(), afterDoc.getPath());
+
+        return differ.diff(before, after);
+    }
+
+    /**
+     * Incrementally materialize only the delta between two DSL document versions.
+     *
+     * <p>Instead of materializing the full model, this method computes a
+     * {@link ModelDiff} and only creates/removes the changed relations.
+     *
+     * @param beforeDocId the "before" document ID (may be {@code null} for initial)
+     * @param afterDocId  the "after" document ID
+     * @return the materialization result
+     */
+    @Transactional
+    public MaterializeResult materializeIncremental(Long beforeDocId, Long afterDocId) {
+        ModelDiff diff = diffDocuments(beforeDocId, afterDocId);
+
+        int relationsCreated = 0;
+        int hypothesesCreated = 0;
+        List<String> warnings = new ArrayList<>();
+
+        // Process added relations
+        for (ArchitectureRelation rel : diff.addedRelations()) {
+            String status = rel.getStatus() != null ? rel.getStatus().toLowerCase() : "accepted";
+            if ("accepted".equals(status)) {
+                try {
+                    RelationType type = RelationType.valueOf(rel.getRelationType());
+                    relationService.createRelation(
+                            rel.getSourceId(), rel.getTargetId(), type,
+                            "Materialized incrementally from DSL", "dsl-incremental");
+                    relationsCreated++;
+                } catch (IllegalArgumentException e) {
+                    warnings.add("Skipped relation " + rel.getSourceId() + " → " + rel.getTargetId() + ": " + e.getMessage());
+                }
+            } else if ("proposed".equals(status) || "provisional".equals(status)) {
+                try {
+                    RelationType type = RelationType.valueOf(rel.getRelationType());
+                    HypothesisStatus hStatus = "proposed".equals(status)
+                            ? HypothesisStatus.PROPOSED : HypothesisStatus.PROVISIONAL;
+
+                    RelationHypothesis hypothesis = new RelationHypothesis();
+                    hypothesis.setSourceNodeId(rel.getSourceId());
+                    hypothesis.setTargetNodeId(rel.getTargetId());
+                    hypothesis.setRelationType(type);
+                    hypothesis.setStatus(hStatus);
+                    hypothesis.setConfidence(rel.getConfidence());
+                    hypothesis.setAnalysisSessionId("dsl-incremental");
+
+                    hypothesisRepository.save(hypothesis);
+                    hypothesesCreated++;
+                } catch (IllegalArgumentException e) {
+                    warnings.add("Skipped hypothesis " + rel.getSourceId() + " → " + rel.getTargetId() + ": " + e.getMessage());
+                }
+            }
+        }
+
+        // Process changed relations (status changes, e.g. provisional → accepted)
+        for (ModelDiff.RelationChange change : diff.changedRelations()) {
+            String newStatus = change.after().getStatus() != null ? change.after().getStatus().toLowerCase() : "accepted";
+            String oldStatus = change.before().getStatus() != null ? change.before().getStatus().toLowerCase() : "accepted";
+
+            // If status changed from provisional/proposed to accepted, create relation
+            if ("accepted".equals(newStatus) && !newStatus.equals(oldStatus)) {
+                try {
+                    RelationType type = RelationType.valueOf(change.after().getRelationType());
+                    relationService.createRelation(
+                            change.after().getSourceId(), change.after().getTargetId(), type,
+                            "Promoted from " + oldStatus + " via DSL", "dsl-incremental");
+                    relationsCreated++;
+                } catch (IllegalArgumentException e) {
+                    warnings.add("Skipped promotion " + change.after().getSourceId() + " → " + change.after().getTargetId() + ": " + e.getMessage());
+                }
+            }
+        }
+
+        log.info("Incremental materialization: {} relations created, {} hypotheses created, {} changes total",
+                relationsCreated, hypothesesCreated, diff.totalChanges());
+
+        return new MaterializeResult(true, List.of(), warnings,
+                relationsCreated, hypothesesCreated, afterDocId);
+    }
+
+    private CanonicalArchitectureModel parseToModel(String dslText, String path) {
+        var doc = parser.parse(dslText, path);
+        return astMapper.map(doc);
     }
 }

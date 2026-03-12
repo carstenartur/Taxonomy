@@ -1,5 +1,6 @@
 package com.nato.taxonomy.controller;
 
+import com.nato.taxonomy.dsl.diff.ModelDiff;
 import com.nato.taxonomy.dsl.export.DslMaterializeService;
 import com.nato.taxonomy.dsl.export.TaxDslExportService;
 import com.nato.taxonomy.dsl.mapper.AstToModelMapper;
@@ -25,7 +26,7 @@ import java.util.*;
  * REST API for the Architecture DSL subsystem.
  *
  * <p>Endpoints cover DSL parsing, validation, export, materialization,
- * and hypothesis management.
+ * versioning (commit/history/diff/branches), and hypothesis management.
  */
 @RestController
 @RequestMapping("/api/dsl")
@@ -52,6 +53,8 @@ public class DslApiController {
         this.hypothesisService = hypothesisService;
     }
 
+    // ── Export & current state ────────────────────────────────────────
+
     @GetMapping("/export")
     @Operation(summary = "Export current architecture as DSL text")
     public ResponseEntity<String> exportCurrentArchitecture(
@@ -75,6 +78,8 @@ public class DslApiController {
         result.put("evidence", model.getEvidence());
         return ResponseEntity.ok(result);
     }
+
+    // ── Parse & validate ─────────────────────────────────────────────
 
     @PostMapping("/parse")
     @Operation(summary = "Parse DSL text and return the canonical model as JSON")
@@ -110,6 +115,8 @@ public class DslApiController {
         return ResponseEntity.ok(result);
     }
 
+    // ── Materialization ──────────────────────────────────────────────
+
     @PostMapping("/materialize")
     @Operation(summary = "Parse, validate, and materialize DSL into the database",
             description = "Relations with status=accepted become TaxonomyRelation entities. " +
@@ -136,6 +143,220 @@ public class DslApiController {
         }
         return ResponseEntity.ok(result);
     }
+
+    @PostMapping("/materialize-incremental")
+    @Operation(summary = "Incrementally materialize only the delta between two DSL versions",
+            description = "Computes a diff between the before and after documents, then only " +
+                    "creates/updates the changed relations. More efficient than full materialization.")
+    public ResponseEntity<Map<String, Object>> materializeIncremental(
+            @RequestParam(required = false) Long beforeDocId,
+            @RequestParam Long afterDocId) {
+        try {
+            DslMaterializeService.MaterializeResult matResult =
+                    materializeService.materializeIncremental(beforeDocId, afterDocId);
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("valid", matResult.valid());
+            result.put("warnings", matResult.warnings());
+            result.put("relationsCreated", matResult.relationsCreated());
+            result.put("hypothesesCreated", matResult.hypothesesCreated());
+            result.put("documentId", matResult.documentId());
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    // ── Commit & versioning ──────────────────────────────────────────
+
+    @PostMapping("/commit")
+    @Operation(summary = "Commit DSL text as a versioned document",
+            description = "Stores the DSL text as a new document version on the specified branch. " +
+                    "Does not materialize — use POST /api/dsl/materialize or " +
+                    "POST /api/dsl/materialize-incremental for that.")
+    public ResponseEntity<Map<String, Object>> commitDsl(
+            @RequestBody String dslText,
+            @RequestParam(defaultValue = "draft") String branch,
+            @RequestParam(required = false) String author,
+            @RequestParam(required = false) String message) {
+
+        // Validate DSL text before committing
+        var doc = parser.parse(dslText != null ? dslText : "");
+        CanonicalArchitectureModel model = astMapper.map(doc);
+        DslValidationResult validation = validator.validate(model);
+
+        if (!validation.isValid()) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("valid", false);
+            result.put("errors", validation.getErrors());
+            result.put("warnings", validation.getWarnings());
+            return ResponseEntity.badRequest().body(result);
+        }
+
+        // Generate a commit ID from content hash
+        String commitId = UUID.randomUUID().toString().substring(0, 8);
+
+        String namespace = doc.getMeta() != null ? doc.getMeta().namespace() : null;
+        String dslVersion = doc.getMeta() != null ? doc.getMeta().version() : null;
+
+        ArchitectureDslDocument document = new ArchitectureDslDocument();
+        document.setPath("architecture.taxdsl");
+        document.setBranch(branch);
+        document.setCommitId(commitId);
+        document.setNamespace(namespace);
+        document.setDslVersion(dslVersion);
+        document.setRawContent(dslText);
+
+        ArchitectureDslDocument saved = documentRepository.save(document);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("documentId", saved.getId());
+        result.put("commitId", commitId);
+        result.put("branch", branch);
+        result.put("author", author);
+        result.put("message", message);
+        result.put("timestamp", saved.getParsedAt());
+        result.put("valid", true);
+        result.put("warnings", validation.getWarnings());
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/history")
+    @Operation(summary = "Get commit history for a branch",
+            description = "Returns all DSL document versions on the specified branch, newest first.")
+    public ResponseEntity<List<Map<String, Object>>> getHistory(
+            @RequestParam(defaultValue = "draft") String branch) {
+
+        List<ArchitectureDslDocument> documents = documentRepository.findByBranchOrderByParsedAtDesc(branch);
+        List<Map<String, Object>> history = new ArrayList<>();
+
+        for (ArchitectureDslDocument doc : documents) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("documentId", doc.getId());
+            entry.put("commitId", doc.getCommitId());
+            entry.put("branch", doc.getBranch());
+            entry.put("namespace", doc.getNamespace());
+            entry.put("dslVersion", doc.getDslVersion());
+            entry.put("path", doc.getPath());
+            entry.put("timestamp", doc.getParsedAt());
+            history.add(entry);
+        }
+
+        return ResponseEntity.ok(history);
+    }
+
+    @GetMapping("/diff/{beforeId}/{afterId}")
+    @Operation(summary = "Compute diff between two DSL document versions",
+            description = "Returns the added, removed, and changed elements and relations " +
+                    "between two stored DSL documents.")
+    public ResponseEntity<?> diffDocuments(
+            @PathVariable Long beforeId,
+            @PathVariable Long afterId) {
+        try {
+            ModelDiff diff = materializeService.diffDocuments(beforeId, afterId);
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("totalChanges", diff.totalChanges());
+            result.put("isEmpty", diff.isEmpty());
+            result.put("addedElements", diff.addedElements().size());
+            result.put("removedElements", diff.removedElements().size());
+            result.put("changedElements", diff.changedElements().size());
+            result.put("addedRelations", diff.addedRelations().size());
+            result.put("removedRelations", diff.removedRelations().size());
+            result.put("changedRelations", diff.changedRelations().size());
+
+            // Include details
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("addedElements", diff.addedElements());
+            details.put("removedElements", diff.removedElements());
+            details.put("changedElements", diff.changedElements());
+            details.put("addedRelations", diff.addedRelations());
+            details.put("removedRelations", diff.removedRelations());
+            details.put("changedRelations", diff.changedRelations());
+            result.put("details", details);
+
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    // ── Branches ─────────────────────────────────────────────────────
+
+    @GetMapping("/branches")
+    @Operation(summary = "List all branches with DSL documents")
+    public ResponseEntity<List<Map<String, Object>>> listBranches() {
+        List<String> branchNames = documentRepository.findDistinctBranches();
+        List<Map<String, Object>> branches = new ArrayList<>();
+
+        for (String name : branchNames) {
+            Map<String, Object> branch = new LinkedHashMap<>();
+            branch.put("name", name);
+
+            // Find the latest document on this branch for metadata
+            documentRepository.findFirstByBranchOrderByParsedAtDesc(name)
+                    .ifPresent(doc -> {
+                        branch.put("headCommitId", doc.getCommitId());
+                        branch.put("headDocumentId", doc.getId());
+                        branch.put("lastUpdated", doc.getParsedAt());
+                    });
+
+            branches.add(branch);
+        }
+
+        return ResponseEntity.ok(branches);
+    }
+
+    @PostMapping("/branches")
+    @Operation(summary = "Create a new branch by forking from an existing document",
+            description = "Creates a new branch by copying the specified document " +
+                    "(or the latest from the source branch) to the new branch.")
+    public ResponseEntity<Map<String, Object>> createBranch(
+            @RequestParam String name,
+            @RequestParam(required = false) Long fromDocumentId,
+            @RequestParam(required = false, defaultValue = "draft") String fromBranch) {
+
+        // Find the source document
+        ArchitectureDslDocument sourceDoc;
+        if (fromDocumentId != null) {
+            sourceDoc = documentRepository.findById(fromDocumentId).orElse(null);
+        } else {
+            sourceDoc = documentRepository.findFirstByBranchOrderByParsedAtDesc(fromBranch).orElse(null);
+        }
+
+        if (sourceDoc == null) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Source document not found");
+            return ResponseEntity.badRequest().body(error);
+        }
+
+        // Create a new document on the new branch
+        String commitId = UUID.randomUUID().toString().substring(0, 8);
+
+        ArchitectureDslDocument newDoc = new ArchitectureDslDocument();
+        newDoc.setPath(sourceDoc.getPath());
+        newDoc.setBranch(name);
+        newDoc.setCommitId(commitId);
+        newDoc.setNamespace(sourceDoc.getNamespace());
+        newDoc.setDslVersion(sourceDoc.getDslVersion());
+        newDoc.setRawContent(sourceDoc.getRawContent());
+
+        ArchitectureDslDocument saved = documentRepository.save(newDoc);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("branch", name);
+        result.put("documentId", saved.getId());
+        result.put("commitId", commitId);
+        result.put("forkedFrom", sourceDoc.getId());
+        result.put("timestamp", saved.getParsedAt());
+        return ResponseEntity.ok(result);
+    }
+
+    // ── Hypothesis management ────────────────────────────────────────
 
     @GetMapping("/hypotheses")
     @Operation(summary = "List relation hypotheses, optionally filtered by status")
@@ -199,6 +420,8 @@ public class DslApiController {
             return ResponseEntity.notFound().build();
         }
     }
+
+    // ── Documents ────────────────────────────────────────────────────
 
     @GetMapping("/documents")
     @Operation(summary = "List stored DSL documents")
