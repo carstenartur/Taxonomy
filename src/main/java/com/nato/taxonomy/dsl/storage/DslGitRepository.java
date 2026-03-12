@@ -5,16 +5,27 @@ import com.nato.taxonomy.dsl.diff.ModelDiffer;
 import com.nato.taxonomy.dsl.mapper.AstToModelMapper;
 import com.nato.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.nato.taxonomy.dsl.parser.TaxDslParser;
+import com.nato.taxonomy.dsl.storage.jgit.HibernateRepository;
+import org.eclipse.jgit.diff.DiffEntry;
+import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
 import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
 import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.merge.MergeStrategy;
+import org.eclipse.jgit.merge.Merger;
+import org.eclipse.jgit.merge.ThreeWayMerger;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.AbstractTreeIterator;
+import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.jgit.util.io.DisabledOutputStream;
+import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -24,23 +35,23 @@ import java.util.List;
 /**
  * Facade around a JGit DFS repository that stores DSL documents as Git objects.
  *
- * <p>This is the equivalent of the {@code sandbox-jgit-storage-hibernate}
- * pattern: DSL text is stored as Git blobs, organised in trees, and
- * committed with full history — all inside the database (via DFS) rather
- * than the filesystem.
- *
- * <p>Currently backed by {@link InMemoryRepository}. When
- * {@code sandbox-jgit-storage-hibernate} is available as a Maven artifact,
- * the constructor can be changed to accept a {@code HibernateRepository}
- * instead, and all objects will be persisted in the HSQLDB
- * {@code git_packs} table.
+ * <p>Implements the {@code sandbox-jgit-storage-hibernate} pattern: DSL text is
+ * stored as Git blobs, organised in trees, and committed with full history — all
+ * inside the database (via {@link HibernateRepository}) rather than the filesystem.
  *
  * <pre>
- * DSL Text → JGit commit → InMemoryRepository (→ later HibernateRepository → HSQLDB)
+ * DSL Text → JGit commit → HibernateRepository → HSQLDB (git_packs table)
  *                                ↕
- *              DfsObjDatabase (blobs, trees, commits)
- *              DfsRefDatabase (refs/heads/draft, refs/heads/accepted, …)
+ *              HibernateObjDatabase (blobs, trees, commits as pack data)
+ *              HibernateRefDatabase (reftable stored as pack extension)
  * </pre>
+ *
+ * <p>All Git objects (blobs, trees, commits) and refs are persisted in the
+ * {@code git_packs} and {@code git_reflog} database tables. No filesystem is
+ * used; everything lives in the existing HSQLDB instance.
+ *
+ * <p>For tests, a no-arg constructor creates an {@link InMemoryRepository} as
+ * a volatile fallback.
  */
 public class DslGitRepository {
 
@@ -55,28 +66,35 @@ public class DslGitRepository {
     private final ModelDiffer differ = new ModelDiffer();
 
     /**
+     * Create a DslGitRepository backed by a database via Hibernate.
+     *
+     * <p>This is the primary constructor for production use. All Git objects
+     * are stored in the {@code git_packs} table, refs in reftable format
+     * persisted as pack extensions — exactly as the
+     * {@code sandbox-jgit-storage-hibernate} module does.
+     *
+     * @param sessionFactory the Hibernate SessionFactory (shared with the
+     *                       existing HSQLDB in the Spring Boot app)
+     */
+    public DslGitRepository(SessionFactory sessionFactory) {
+        this.gitRepo = new HibernateRepository(sessionFactory, "taxonomy-dsl");
+        log.info("Initialised DslGitRepository (HibernateRepository → database)");
+    }
+
+    /**
      * Create a DslGitRepository backed by an in-memory DFS repository.
      *
-     * <p>This is suitable for testing and single-JVM deployments. For
-     * production with database persistence, replace with
-     * {@code HibernateRepository} from {@code sandbox-jgit-storage-hibernate}.
+     * <p>This is suitable for testing only. Data is lost on JVM restart.
      */
     public DslGitRepository() {
-        try {
-            this.gitRepo = new InMemoryRepository(new DfsRepositoryDescription("taxonomy-dsl"));
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to create in-memory Git repository", e);
-        }
-        log.info("Initialised DslGitRepository (InMemoryRepository)");
+        this.gitRepo = new InMemoryRepository(new DfsRepositoryDescription("taxonomy-dsl"));
+        log.info("Initialised DslGitRepository (InMemoryRepository — volatile)");
     }
 
     /**
      * Create a DslGitRepository backed by a provided JGit repository.
      *
-     * <p>Use this constructor when wiring a {@code HibernateRepository}
-     * from {@code sandbox-jgit-storage-hibernate}.
-     *
-     * @param gitRepo the JGit repository to use (DFS or filesystem)
+     * @param gitRepo the JGit repository to use (any DFS implementation)
      */
     public DslGitRepository(Repository gitRepo) {
         this.gitRepo = gitRepo;
@@ -265,11 +283,10 @@ public class DslGitRepository {
     // ── Diff operations ─────────────────────────────────────────────
 
     /**
-     * Compute a semantic diff between two commits.
+     * Compute a semantic diff between two commits using {@link ModelDiffer}.
      *
      * <p>Reads the DSL text from both commits, parses them into
-     * {@link CanonicalArchitectureModel} instances, and uses
-     * {@link ModelDiffer} to compute the delta.
+     * {@link CanonicalArchitectureModel} instances, and computes the delta.
      *
      * @param fromCommitId the "before" commit SHA
      * @param toCommitId   the "after" commit SHA
@@ -308,6 +325,205 @@ public class DslGitRepository {
         return differ.diff(beforeModel, afterModel);
     }
 
+    /**
+     * Compute a JGit-native text diff between two commits.
+     *
+     * <p>Uses JGit's {@link DiffFormatter} to produce a unified-diff patch
+     * of the DSL file changes, plus a list of {@link DiffEntry} metadata.
+     * This is what a real Git diff would produce.
+     *
+     * @param fromCommitId the "before" commit SHA
+     * @param toCommitId   the "after" commit SHA
+     * @return the unified diff as a string
+     * @throws IOException on JGit errors
+     */
+    public String textDiff(String fromCommitId, String toCommitId) throws IOException {
+        ObjectId fromOid = ObjectId.fromString(fromCommitId);
+        ObjectId toOid = ObjectId.fromString(toCommitId);
+
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            RevCommit fromCommit = walk.parseCommit(fromOid);
+            RevCommit toCommit = walk.parseCommit(toOid);
+
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            try (DiffFormatter df = new DiffFormatter(out)) {
+                df.setRepository(gitRepo);
+                df.format(fromCommit.getTree(), toCommit.getTree());
+                df.flush();
+            }
+            return out.toString(StandardCharsets.UTF_8);
+        }
+    }
+
+    /**
+     * Get the list of changed files between two commits using JGit DiffFormatter.
+     *
+     * @param fromCommitId the "before" commit SHA
+     * @param toCommitId   the "after" commit SHA
+     * @return list of DiffEntry objects describing what changed
+     * @throws IOException on JGit errors
+     */
+    public List<DiffEntry> jgitDiffEntries(String fromCommitId, String toCommitId) throws IOException {
+        ObjectId fromOid = ObjectId.fromString(fromCommitId);
+        ObjectId toOid = ObjectId.fromString(toCommitId);
+
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            RevCommit fromCommit = walk.parseCommit(fromOid);
+            RevCommit toCommit = walk.parseCommit(toOid);
+
+            try (DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
+                df.setRepository(gitRepo);
+                return df.scan(fromCommit.getTree(), toCommit.getTree());
+            }
+        }
+    }
+
+    // ── Cherry-pick & merge operations ──────────────────────────────
+
+    /**
+     * Cherry-pick a commit onto a target branch.
+     *
+     * <p>Applies the changes from the specified commit to the HEAD of the
+     * target branch, creating a new commit.
+     *
+     * @param commitId     the commit to cherry-pick
+     * @param targetBranch the branch to apply the commit to
+     * @return the new commit SHA, or {@code null} if cherry-pick failed
+     * @throws IOException on JGit errors
+     */
+    public String cherryPick(String commitId, String targetBranch) throws IOException {
+        ObjectId pickOid = ObjectId.fromString(commitId);
+
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            RevCommit pickCommit = walk.parseCommit(pickOid);
+
+            // The commit to cherry-pick must have exactly one parent
+            if (pickCommit.getParentCount() == 0) {
+                log.warn("Cannot cherry-pick initial commit {}", commitId);
+                return null;
+            }
+
+            RevCommit parentCommit = walk.parseCommit(pickCommit.getParent(0));
+            String targetRefName = Constants.R_HEADS + targetBranch;
+            Ref targetRef = gitRepo.getRefDatabase().exactRef(targetRefName);
+
+            if (targetRef == null) {
+                log.warn("Target branch '{}' not found for cherry-pick", targetBranch);
+                return null;
+            }
+
+            RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());
+
+            // Three-way merge: parent → pick, applied onto targetHead
+            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);
+            boolean success = merger.merge(targetHead, pickCommit);
+
+            if (!success) {
+                log.warn("Cherry-pick merge conflict for {} onto '{}'", commitId, targetBranch);
+                return null;
+            }
+
+            // Create the new commit on the target branch
+            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {
+                CommitBuilder newCommit = new CommitBuilder();
+                newCommit.setTreeId(merger.getResultTreeId());
+                newCommit.setParentId(targetHead);
+                newCommit.setAuthor(pickCommit.getAuthorIdent());
+                newCommit.setCommitter(new PersonIdent("taxonomy", "taxonomy@system"));
+                newCommit.setMessage("Cherry-pick: " + pickCommit.getShortMessage());
+
+                ObjectId newCommitId = inserter.insert(newCommit);
+                inserter.flush();
+
+                // Update target branch ref
+                RefUpdate ru = gitRepo.updateRef(targetRefName);
+                ru.setNewObjectId(newCommitId);
+                ru.setForceUpdate(true);
+                ru.update();
+
+                log.info("Cherry-picked {} onto '{}': {}", commitId, targetBranch, newCommitId.name());
+                return newCommitId.name();
+            }
+        }
+    }
+
+    /**
+     * Merge one branch into another.
+     *
+     * <p>Performs a three-way merge of {@code fromBranch} into {@code intoBranch}.
+     * On success, creates a merge commit on the target branch with two parents.
+     *
+     * @param fromBranch the branch to merge from (source)
+     * @param intoBranch the branch to merge into (target)
+     * @return the merge commit SHA, or {@code null} if merge failed
+     * @throws IOException on JGit errors
+     */
+    public String merge(String fromBranch, String intoBranch) throws IOException {
+        String fromRefName = Constants.R_HEADS + fromBranch;
+        String intoRefName = Constants.R_HEADS + intoBranch;
+
+        Ref fromRef = gitRepo.getRefDatabase().exactRef(fromRefName);
+        Ref intoRef = gitRepo.getRefDatabase().exactRef(intoRefName);
+
+        if (fromRef == null || intoRef == null) {
+            log.warn("Cannot merge: branch not found (from={}, into={})", fromBranch, intoBranch);
+            return null;
+        }
+
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            RevCommit fromCommit = walk.parseCommit(fromRef.getObjectId());
+            RevCommit intoCommit = walk.parseCommit(intoRef.getObjectId());
+
+            // Fast-forward check
+            if (walk.isMergedInto(fromCommit, intoCommit)) {
+                log.info("Already merged: '{}' is ancestor of '{}'", fromBranch, intoBranch);
+                return intoCommit.name();
+            }
+
+            // Can we fast-forward?
+            if (walk.isMergedInto(intoCommit, fromCommit)) {
+                // Fast-forward: just move the target ref
+                RefUpdate ru = gitRepo.updateRef(intoRefName);
+                ru.setNewObjectId(fromCommit);
+                ru.setForceUpdate(true);
+                ru.update();
+                log.info("Fast-forward merge '{}' into '{}': {}", fromBranch, intoBranch, fromCommit.name());
+                return fromCommit.name();
+            }
+
+            // Three-way merge
+            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);
+            boolean success = merger.merge(intoCommit, fromCommit);
+
+            if (!success) {
+                log.warn("Merge conflict: '{}' into '{}'", fromBranch, intoBranch);
+                return null;
+            }
+
+            // Create merge commit with two parents
+            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {
+                CommitBuilder mergeCommit = new CommitBuilder();
+                mergeCommit.setTreeId(merger.getResultTreeId());
+                mergeCommit.setParentIds(intoCommit, fromCommit);
+                PersonIdent ident = new PersonIdent("taxonomy", "taxonomy@system");
+                mergeCommit.setAuthor(ident);
+                mergeCommit.setCommitter(ident);
+                mergeCommit.setMessage("Merge branch '" + fromBranch + "' into " + intoBranch);
+
+                ObjectId mergeCommitId = inserter.insert(mergeCommit);
+                inserter.flush();
+
+                RefUpdate ru = gitRepo.updateRef(intoRefName);
+                ru.setNewObjectId(mergeCommitId);
+                ru.setForceUpdate(true);
+                ru.update();
+
+                log.info("Merged '{}' into '{}': {}", fromBranch, intoBranch, mergeCommitId.name());
+                return mergeCommitId.name();
+            }
+        }
+    }
+
     // ── Internal helpers ────────────────────────────────────────────
 
     private String readDslFromTree(RevTree tree) throws IOException {
@@ -322,5 +538,14 @@ public class DslGitRepository {
     /** Expose the underlying JGit repository (for advanced operations). */
     public Repository getGitRepository() {
         return gitRepo;
+    }
+
+    /**
+     * Check if this repository is backed by a database (Hibernate) or in-memory.
+     *
+     * @return true if backed by HibernateRepository (persistent)
+     */
+    public boolean isDatabaseBacked() {
+        return gitRepo instanceof HibernateRepository;
     }
 }

@@ -288,7 +288,6 @@ class DslApiControllerTest {
                         .param("author", "test-user")
                         .param("message", "initial commit"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.documentId").isNotEmpty())
                 .andExpect(jsonPath("$.commitId").isNotEmpty())
                 .andExpect(jsonPath("$.branch").value("draft"))
                 .andExpect(jsonPath("$.author").value("test-user"))
@@ -367,7 +366,7 @@ class DslApiControllerTest {
 
     @Test
     void diffBetweenTwoDocuments() throws Exception {
-        // Commit two different versions and then diff them
+        // Commit two different versions and then diff them using Git SHAs
         String dsl1 = """
                 element CP-5001 type Capability
                   title "V1"
@@ -379,26 +378,26 @@ class DslApiControllerTest {
                   title "V2 Added"
                 """;
 
-        // Materialize both to get document IDs
+        // Commit both to get Git SHAs
         var result1 = mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(dsl1)
                         .param("branch", "diff-test"))
                 .andReturn();
-        Long docId1 = tools.jackson.databind.json.JsonMapper.builder().build()
+        String commitId1 = tools.jackson.databind.json.JsonMapper.builder().build()
                 .readTree(result1.getResponse().getContentAsString())
-                .get("documentId").asLong();
+                .get("commitId").asText();
 
         var result2 = mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(dsl2)
                         .param("branch", "diff-test"))
                 .andReturn();
-        Long docId2 = tools.jackson.databind.json.JsonMapper.builder().build()
+        String commitId2 = tools.jackson.databind.json.JsonMapper.builder().build()
                 .readTree(result2.getResponse().getContentAsString())
-                .get("documentId").asLong();
+                .get("commitId").asText();
 
-        mockMvc.perform(get("/api/dsl/diff/" + docId1 + "/" + docId2))
+        mockMvc.perform(get("/api/dsl/diff/" + commitId1 + "/" + commitId2))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalChanges").isNumber())
                 .andExpect(jsonPath("$.isEmpty").value(false))
@@ -422,42 +421,40 @@ class DslApiControllerTest {
 
     @Test
     void createBranchForksDocument() throws Exception {
-        // First create a document on draft branch
+        // First create a commit on the source branch
         String dsl = """
                 element CP-6001 type Capability
                   title "Branch Source"
                 """;
-        var commitResult = mockMvc.perform(post("/api/dsl/commit")
+        mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(dsl)
                         .param("branch", "branch-source"))
-                .andReturn();
-        Long sourceDocId = tools.jackson.databind.json.JsonMapper.builder().build()
-                .readTree(commitResult.getResponse().getContentAsString())
-                .get("documentId").asLong();
+                .andExpect(status().isOk());
 
-        // Create a new branch from that document
+        // Create a new branch forked from that branch
         mockMvc.perform(post("/api/dsl/branches")
                         .param("name", "review-branch")
-                        .param("fromDocumentId", sourceDocId.toString()))
+                        .param("fromBranch", "branch-source"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.branch").value("review-branch"))
-                .andExpect(jsonPath("$.documentId").isNotEmpty())
-                .andExpect(jsonPath("$.forkedFrom").value(sourceDocId));
+                .andExpect(jsonPath("$.commitId").isNotEmpty())
+                .andExpect(jsonPath("$.forkedFrom").value("branch-source"));
     }
 
     @Test
-    void createBranchFromNonExistentDocReturnsBadRequest() throws Exception {
+    void createBranchFromNonExistentBranchReturnsBadRequest() throws Exception {
         mockMvc.perform(post("/api/dsl/branches")
                         .param("name", "bad-branch")
-                        .param("fromDocumentId", "99999"))
+                        .param("fromBranch", "nonexistent-branch"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").isNotEmpty());
     }
 
     @Test
     void incrementalMaterializationEndpoint() throws Exception {
-        // Create two document versions
+        // Use materialize endpoint (not commit) to get document IDs,
+        // since materialize stores ArchitectureDslDocument in JPA
         String dsl1 = """
                 element CP-7001 type Capability
                   title "Incr V1"
@@ -469,19 +466,17 @@ class DslApiControllerTest {
                   title "Incr Added"
                 """;
 
-        var result1 = mockMvc.perform(post("/api/dsl/commit")
+        var result1 = mockMvc.perform(post("/api/dsl/materialize")
                         .contentType(MediaType.TEXT_PLAIN)
-                        .content(dsl1)
-                        .param("branch", "incr-test"))
+                        .content(dsl1))
                 .andReturn();
         Long docId1 = tools.jackson.databind.json.JsonMapper.builder().build()
                 .readTree(result1.getResponse().getContentAsString())
                 .get("documentId").asLong();
 
-        var result2 = mockMvc.perform(post("/api/dsl/commit")
+        var result2 = mockMvc.perform(post("/api/dsl/materialize")
                         .contentType(MediaType.TEXT_PLAIN)
-                        .content(dsl2)
-                        .param("branch", "incr-test"))
+                        .content(dsl2))
                 .andReturn();
         Long docId2 = tools.jackson.databind.json.JsonMapper.builder().build()
                 .readTree(result2.getResponse().getContentAsString())

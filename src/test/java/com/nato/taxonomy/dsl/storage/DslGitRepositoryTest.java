@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import org.eclipse.jgit.diff.DiffEntry;
 
 /**
  * Unit tests for {@link DslGitRepository} — the JGit-based DSL storage layer.
@@ -234,5 +235,140 @@ class DslGitRepositoryTest {
         // Verify history
         assertEquals(1, repo.getDslHistory("draft").size());
         assertEquals(2, repo.getDslHistory("review").size());  // forked commit + refinement
+    }
+
+    // ── JGit-native text diff ───────────────────────────────────────
+
+    @Test
+    void textDiffProducesUnifiedPatch() throws IOException {
+        String c1 = repo.commitDsl("draft", SAMPLE_DSL, "tester", "v1");
+        String c2 = repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "v2");
+
+        String textDiff = repo.textDiff(c1, c2);
+        assertNotNull(textDiff);
+        assertFalse(textDiff.isEmpty());
+        // Should contain diff markers
+        assertTrue(textDiff.contains("---") || textDiff.contains("+++") || textDiff.contains("@@"),
+                "Text diff should contain unified diff markers");
+    }
+
+    @Test
+    void textDiffIdenticalCommitsIsEmpty() throws IOException {
+        String c1 = repo.commitDsl("draft", SAMPLE_DSL, "tester", "same");
+        // Same content, different branch — identical tree
+        String c2 = repo.commitDsl("review", SAMPLE_DSL, "tester", "same copy");
+
+        String textDiff = repo.textDiff(c1, c2);
+        assertNotNull(textDiff);
+        assertTrue(textDiff.isEmpty(), "Same content should produce empty diff");
+    }
+
+    @Test
+    void jgitDiffEntriesDetectsModification() throws IOException {
+        String c1 = repo.commitDsl("draft", SAMPLE_DSL, "tester", "v1");
+        String c2 = repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "v2");
+
+        var entries = repo.jgitDiffEntries(c1, c2);
+        assertNotNull(entries);
+        assertEquals(1, entries.size(), "Only one file (architecture.taxdsl) should be modified");
+        assertEquals("architecture.taxdsl", entries.get(0).getNewPath());
+    }
+
+    // ── Cherry-pick ─────────────────────────────────────────────────
+
+    @Test
+    void cherryPickAppliesCommitToTargetBranch() throws IOException {
+        // Setup: draft has v1
+        repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+
+        // Create review branch from draft
+        repo.createBranch("review", "draft");
+
+        // Add v2 to draft
+        String v2CommitId = repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "add BP-3001");
+
+        // Cherry-pick the v2 commit onto review
+        String newCommitId = repo.cherryPick(v2CommitId, "review");
+        assertNotNull(newCommitId, "Cherry-pick should succeed");
+        assertNotEquals(v2CommitId, newCommitId, "Cherry-pick creates a new commit");
+
+        // Review branch should now have the v2 content
+        String reviewDsl = repo.getDslAtHead("review");
+        assertEquals(SAMPLE_DSL_V2, reviewDsl);
+    }
+
+    @Test
+    void cherryPickToNonexistentBranchReturnsNull() throws IOException {
+        repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        String c2 = repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "v2");
+
+        String result = repo.cherryPick(c2, "nonexistent");
+        assertNull(result, "Cherry-pick to non-existent branch should return null");
+    }
+
+    // ── Merge ───────────────────────────────────────────────────────
+
+    @Test
+    void mergeBranchFastForward() throws IOException {
+        // Setup: draft has two commits
+        repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        repo.createBranch("accepted", "draft");
+
+        // Add a commit to draft
+        repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "add BP-3001");
+
+        // Merge draft into accepted (should fast-forward)
+        String mergeId = repo.merge("draft", "accepted");
+        assertNotNull(mergeId, "Merge should succeed");
+
+        // accepted should now have the same content as draft
+        assertEquals(SAMPLE_DSL_V2, repo.getDslAtHead("accepted"));
+    }
+
+    @Test
+    void mergeNonexistentBranchReturnsNull() throws IOException {
+        repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        String result = repo.merge("nonexistent", "draft");
+        assertNull(result, "Merge from non-existent branch should return null");
+    }
+
+    // ── isDatabaseBacked ────────────────────────────────────────────
+
+    @Test
+    void inMemoryRepoIsNotDatabaseBacked() {
+        assertFalse(repo.isDatabaseBacked(), "InMemory repo should not be database-backed");
+    }
+
+    // ── Full draft → cherry-pick → review → merge → accepted ────────
+
+    @Test
+    void fullGitWorkflowWithCherryPickAndMerge() throws IOException {
+        // 1. Auto-analysis commits to draft
+        repo.commitDsl("draft", SAMPLE_DSL, "hypothesis-service", "auto-analysis");
+
+        // 2. Create review and accepted branches
+        repo.createBranch("review", "draft");
+        repo.createBranch("accepted", "draft");
+
+        // 3. New analysis result on draft
+        String draftV2 = repo.commitDsl("draft", SAMPLE_DSL_V2, "hypothesis-service", "refined");
+
+        // 4. Cherry-pick the refined commit to review
+        String reviewCommit = repo.cherryPick(draftV2, "review");
+        assertNotNull(reviewCommit);
+
+        // 5. Merge review into accepted
+        String acceptedMerge = repo.merge("review", "accepted");
+        assertNotNull(acceptedMerge);
+
+        // Verify final state
+        assertEquals(SAMPLE_DSL_V2, repo.getDslAtHead("draft"));
+        assertEquals(SAMPLE_DSL_V2, repo.getDslAtHead("review"));
+        assertEquals(SAMPLE_DSL_V2, repo.getDslAtHead("accepted"));
+
+        // Verify history lengths
+        assertEquals(2, repo.getDslHistory("draft").size());
+        assertTrue(repo.getDslHistory("review").size() >= 2);
+        assertTrue(repo.getDslHistory("accepted").size() >= 2);
     }
 }

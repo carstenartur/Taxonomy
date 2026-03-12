@@ -35,9 +35,9 @@ import java.util.*;
  * versioning (commit/history/diff/branches), and hypothesis management.
  *
  * <p>Versioning is backed by a JGit DFS repository ({@link DslGitRepository})
- * which stores DSL documents as Git objects (blobs → trees → commits).
- * The JPA {@link ArchitectureDslDocumentRepository} is used in parallel
- * for queryability and backward compatibility.
+ * which stores DSL documents as Git objects (blobs → trees → commits)
+ * in the HSQLDB database via the {@code sandbox-jgit-storage-hibernate}
+ * pattern. JGit is the <b>single source of truth</b> for versioned DSL content.
  */
 @RestController
 @RequestMapping("/api/dsl")
@@ -189,11 +189,10 @@ public class DslApiController {
 
     @PostMapping("/commit")
     @Operation(summary = "Commit DSL text as a versioned document",
-            description = "Stores the DSL text as a new document version on the specified branch. " +
-                    "The commit is stored as a Git object in the JGit DFS repository AND " +
-                    "as a JPA entity for queryability. " +
-                    "Does not materialize — use POST /api/dsl/materialize or " +
-                    "POST /api/dsl/materialize-incremental for that.")
+            description = "Stores the DSL text as a new commit in the JGit repository " +
+                    "(database-backed via HibernateRepository). JGit is the single " +
+                    "source of truth. Does not materialize — use POST /api/dsl/materialize " +
+                    "or POST /api/dsl/materialize-incremental for that.")
     public ResponseEntity<Map<String, Object>> commitDsl(
             @RequestBody String dslText,
             @RequestParam(defaultValue = "draft") String branch,
@@ -213,7 +212,9 @@ public class DslApiController {
             return ResponseEntity.badRequest().body(result);
         }
 
-        // 1. Commit to JGit repository (real Git objects in DFS)
+        // Commit to JGit repository — the single source of truth
+        // All Git objects are stored in the database (git_packs table)
+        // via HibernateRepository/HibernateObjDatabase
         String gitCommitId;
         try {
             gitCommitId = gitRepository.commitDsl(branch, dslText,
@@ -227,92 +228,47 @@ public class DslApiController {
             return ResponseEntity.internalServerError().body(error);
         }
 
-        // 2. Also persist in JPA for queryability
-        String namespace = doc.getMeta() != null ? doc.getMeta().namespace() : null;
-        String dslVersion = doc.getMeta() != null ? doc.getMeta().version() : null;
-
-        ArchitectureDslDocument document = new ArchitectureDslDocument();
-        document.setPath("architecture.taxdsl");
-        document.setBranch(branch);
-        document.setCommitId(gitCommitId);
-        document.setNamespace(namespace);
-        document.setDslVersion(dslVersion);
-        document.setRawContent(dslText);
-
-        ArchitectureDslDocument saved = documentRepository.save(document);
-
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("documentId", saved.getId());
         result.put("commitId", gitCommitId);
         result.put("branch", branch);
         result.put("author", author);
         result.put("message", message);
-        result.put("timestamp", saved.getParsedAt());
         result.put("valid", true);
         result.put("warnings", validation.getWarnings());
-        result.put("gitBacked", true);
+        result.put("databaseBacked", gitRepository.isDatabaseBacked());
         return ResponseEntity.ok(result);
     }
 
     @GetMapping("/history")
     @Operation(summary = "Get commit history for a branch",
-            description = "Returns all DSL commits on the specified branch from the JGit repository, " +
-                    "newest first. Falls back to JPA-based history if Git history is empty.")
+            description = "Returns all DSL commits on the specified branch from the JGit " +
+                    "repository (database-backed), newest first.")
     public ResponseEntity<List<Map<String, Object>>> getHistory(
             @RequestParam(defaultValue = "draft") String branch) {
 
-        // Try JGit history first
         try {
             List<DslCommit> gitHistory = gitRepository.getDslHistory(branch);
-            if (!gitHistory.isEmpty()) {
-                List<Map<String, Object>> history = new ArrayList<>();
-                for (DslCommit c : gitHistory) {
-                    Map<String, Object> entry = new LinkedHashMap<>();
-                    entry.put("commitId", c.commitId());
-                    entry.put("branch", branch);
-                    entry.put("author", c.author());
-                    entry.put("message", c.message());
-                    entry.put("timestamp", c.timestamp());
-                    entry.put("gitBacked", true);
-
-                    // Link to JPA document if exists
-                    documentRepository.findByBranch(branch).stream()
-                            .filter(d -> c.commitId().equals(d.getCommitId()))
-                            .findFirst()
-                            .ifPresent(d -> entry.put("documentId", d.getId()));
-
-                    history.add(entry);
-                }
-                return ResponseEntity.ok(history);
+            List<Map<String, Object>> history = new ArrayList<>();
+            for (DslCommit c : gitHistory) {
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("commitId", c.commitId());
+                entry.put("branch", branch);
+                entry.put("author", c.author());
+                entry.put("message", c.message());
+                entry.put("timestamp", c.timestamp());
+                history.add(entry);
             }
+            return ResponseEntity.ok(history);
         } catch (IOException e) {
-            log.warn("JGit history lookup failed for branch '{}': {}", branch, e.getMessage());
+            log.error("Failed to read history for branch '{}'", branch, e);
+            return ResponseEntity.internalServerError().build();
         }
-
-        // Fallback to JPA-based history
-        List<ArchitectureDslDocument> documents = documentRepository.findByBranchOrderByParsedAtDesc(branch);
-        List<Map<String, Object>> history = new ArrayList<>();
-
-        for (ArchitectureDslDocument doc : documents) {
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("documentId", doc.getId());
-            entry.put("commitId", doc.getCommitId());
-            entry.put("branch", doc.getBranch());
-            entry.put("namespace", doc.getNamespace());
-            entry.put("dslVersion", doc.getDslVersion());
-            entry.put("path", doc.getPath());
-            entry.put("timestamp", doc.getParsedAt());
-            entry.put("gitBacked", false);
-            history.add(entry);
-        }
-
-        return ResponseEntity.ok(history);
     }
 
     @GetMapping("/diff/{beforeId}/{afterId}")
-    @Operation(summary = "Compute diff between two DSL document versions",
-            description = "Returns the added, removed, and changed elements and relations. " +
-                    "Accepts either JPA document IDs (numeric) or Git commit SHAs (hex strings).")
+    @Operation(summary = "Compute semantic diff between two DSL commits",
+            description = "Returns the added, removed, and changed elements and relations " +
+                    "between two Git commit SHAs.")
     public ResponseEntity<?> diffDocuments(
             @PathVariable String beforeId,
             @PathVariable String afterId) {
@@ -321,14 +277,9 @@ public class DslApiController {
 
             // Try as Git commit SHAs first (40-char hex)
             if (looksLikeGitSha(beforeId) && looksLikeGitSha(afterId)) {
-                try {
-                    diff = gitRepository.diffBetween(beforeId, afterId);
-                } catch (IOException e) {
-                    log.warn("JGit diff failed, falling back to JPA: {}", e.getMessage());
-                    diff = materializeService.diffDocuments(Long.valueOf(beforeId), Long.valueOf(afterId));
-                }
+                diff = gitRepository.diffBetween(beforeId, afterId);
             } else {
-                // Fall back to JPA document IDs
+                // Fall back to JPA document IDs for backward compatibility
                 diff = materializeService.diffDocuments(Long.valueOf(beforeId), Long.valueOf(afterId));
             }
 
@@ -360,6 +311,24 @@ public class DslApiController {
         }
     }
 
+    @GetMapping("/diff/text/{beforeId}/{afterId}")
+    @Operation(summary = "Compute JGit-native text diff between two commits",
+            description = "Returns a unified diff patch produced by JGit DiffFormatter.")
+    public ResponseEntity<?> textDiff(
+            @PathVariable String beforeId,
+            @PathVariable String afterId) {
+        try {
+            String diff = gitRepository.textDiff(beforeId, afterId);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.TEXT_PLAIN)
+                    .body(diff);
+        } catch (Exception e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
     private static boolean looksLikeGitSha(String s) {
         return s != null && s.length() == 40 && s.matches("[0-9a-f]+");
     }
@@ -367,40 +336,22 @@ public class DslApiController {
     // ── Branches ─────────────────────────────────────────────────────
 
     @GetMapping("/branches")
-    @Operation(summary = "List all branches with DSL documents",
-            description = "Returns branches from the JGit repository and merges with JPA-tracked branches.")
+    @Operation(summary = "List all branches",
+            description = "Returns branches from the JGit repository (database-backed).")
     public ResponseEntity<List<Map<String, Object>>> listBranches() {
         List<Map<String, Object>> branches = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
 
-        // 1. JGit branches (primary source)
         try {
             for (DslBranch gb : gitRepository.listBranches()) {
                 Map<String, Object> branch = new LinkedHashMap<>();
                 branch.put("name", gb.name());
                 branch.put("headCommitId", gb.headCommitId());
                 branch.put("created", gb.created());
-                branch.put("gitBacked", true);
                 branches.add(branch);
-                seen.add(gb.name());
             }
         } catch (IOException e) {
-            log.warn("Failed to list JGit branches", e);
-        }
-
-        // 2. JPA branches (fallback / additional)
-        for (String name : documentRepository.findDistinctBranches()) {
-            if (seen.contains(name)) continue;
-            Map<String, Object> branch = new LinkedHashMap<>();
-            branch.put("name", name);
-            documentRepository.findFirstByBranchOrderByParsedAtDesc(name)
-                    .ifPresent(doc -> {
-                        branch.put("headCommitId", doc.getCommitId());
-                        branch.put("headDocumentId", doc.getId());
-                        branch.put("lastUpdated", doc.getParsedAt());
-                    });
-            branch.put("gitBacked", false);
-            branches.add(branch);
+            log.error("Failed to list branches", e);
+            return ResponseEntity.internalServerError().build();
         }
 
         return ResponseEntity.ok(branches);
@@ -408,96 +359,84 @@ public class DslApiController {
 
     @PostMapping("/branches")
     @Operation(summary = "Create a new branch by forking from an existing branch",
-            description = "Creates a new Git branch pointing at the HEAD of the source branch. " +
-                    "Also creates a JPA document copy for queryability.")
+            description = "Creates a new Git branch pointing at the HEAD of the source branch.")
     public ResponseEntity<Map<String, Object>> createBranch(
             @RequestParam String name,
-            @RequestParam(required = false) Long fromDocumentId,
             @RequestParam(required = false, defaultValue = "draft") String fromBranch) {
 
-        // When an explicit document ID is provided, it must exist
-        if (fromDocumentId != null) {
-            ArchitectureDslDocument sourceDoc = documentRepository.findById(fromDocumentId).orElse(null);
-            if (sourceDoc == null) {
-                Map<String, Object> error = new LinkedHashMap<>();
-                error.put("error", "Source document not found: " + fromDocumentId);
-                return ResponseEntity.badRequest().body(error);
-            }
-
-            // Fork from the source document's branch in Git
-            String gitHeadId = null;
-            try {
-                gitHeadId = gitRepository.createBranch(name, sourceDoc.getBranch());
-            } catch (IOException e) {
-                log.warn("JGit branch creation failed: {}", e.getMessage());
-            }
-
-            String commitId = gitHeadId != null ? gitHeadId : UUID.randomUUID().toString().substring(0, 8);
-
-            ArchitectureDslDocument newDoc = new ArchitectureDslDocument();
-            newDoc.setPath(sourceDoc.getPath());
-            newDoc.setBranch(name);
-            newDoc.setCommitId(commitId);
-            newDoc.setNamespace(sourceDoc.getNamespace());
-            newDoc.setDslVersion(sourceDoc.getDslVersion());
-            newDoc.setRawContent(sourceDoc.getRawContent());
-
-            ArchitectureDslDocument saved = documentRepository.save(newDoc);
-
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("branch", name);
-            result.put("documentId", saved.getId());
-            result.put("commitId", commitId);
-            result.put("forkedFrom", sourceDoc.getId());
-            result.put("timestamp", saved.getParsedAt());
-            result.put("gitBacked", gitHeadId != null);
-            return ResponseEntity.ok(result);
-        }
-
-        // Fork from branch name
-        // 1. Try creating Git branch
-        String gitHeadId = null;
+        String gitHeadId;
         try {
             gitHeadId = gitRepository.createBranch(name, fromBranch);
         } catch (IOException e) {
-            log.warn("JGit branch creation failed: {}", e.getMessage());
+            log.error("Branch creation failed", e);
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Branch creation failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
         }
 
-        // 2. Also create JPA copy from latest doc on source branch
-        ArchitectureDslDocument sourceDoc = documentRepository
-                .findFirstByBranchOrderByParsedAtDesc(fromBranch).orElse(null);
-
-        if (sourceDoc == null && gitHeadId == null) {
+        if (gitHeadId == null) {
             Map<String, Object> error = new LinkedHashMap<>();
-            error.put("error", "Source branch/document not found");
+            error.put("error", "Source branch '" + fromBranch + "' not found");
             return ResponseEntity.badRequest().body(error);
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("branch", name);
-
-        if (sourceDoc != null) {
-            String commitId = gitHeadId != null ? gitHeadId : UUID.randomUUID().toString().substring(0, 8);
-
-            ArchitectureDslDocument newDoc = new ArchitectureDslDocument();
-            newDoc.setPath(sourceDoc.getPath());
-            newDoc.setBranch(name);
-            newDoc.setCommitId(commitId);
-            newDoc.setNamespace(sourceDoc.getNamespace());
-            newDoc.setDslVersion(sourceDoc.getDslVersion());
-            newDoc.setRawContent(sourceDoc.getRawContent());
-
-            ArchitectureDslDocument saved = documentRepository.save(newDoc);
-            result.put("documentId", saved.getId());
-            result.put("commitId", commitId);
-            result.put("forkedFrom", sourceDoc.getId());
-            result.put("timestamp", saved.getParsedAt());
-        } else {
-            result.put("commitId", gitHeadId);
-        }
-
-        result.put("gitBacked", gitHeadId != null);
+        result.put("commitId", gitHeadId);
+        result.put("forkedFrom", fromBranch);
         return ResponseEntity.ok(result);
+    }
+
+    // ── Cherry-pick & merge ─────────────────────────────────────────
+
+    @PostMapping("/cherry-pick")
+    @Operation(summary = "Cherry-pick a commit onto a target branch",
+            description = "Applies the changes from a specific commit to the HEAD of the target branch.")
+    public ResponseEntity<Map<String, Object>> cherryPick(
+            @RequestParam String commitId,
+            @RequestParam(defaultValue = "review") String targetBranch) {
+        try {
+            String newCommitId = gitRepository.cherryPick(commitId, targetBranch);
+            if (newCommitId == null) {
+                Map<String, Object> error = new LinkedHashMap<>();
+                error.put("error", "Cherry-pick failed (conflict or invalid commit)");
+                return ResponseEntity.badRequest().body(error);
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("commitId", newCommitId);
+            result.put("targetBranch", targetBranch);
+            result.put("cherryPickedFrom", commitId);
+            return ResponseEntity.ok(result);
+        } catch (IOException e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Cherry-pick failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    @PostMapping("/merge")
+    @Operation(summary = "Merge one branch into another",
+            description = "Performs a three-way merge of the source branch into the target branch.")
+    public ResponseEntity<Map<String, Object>> merge(
+            @RequestParam String fromBranch,
+            @RequestParam(defaultValue = "accepted") String intoBranch) {
+        try {
+            String mergeCommitId = gitRepository.merge(fromBranch, intoBranch);
+            if (mergeCommitId == null) {
+                Map<String, Object> error = new LinkedHashMap<>();
+                error.put("error", "Merge failed (conflict or branches not found)");
+                return ResponseEntity.badRequest().body(error);
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("commitId", mergeCommitId);
+            result.put("fromBranch", fromBranch);
+            result.put("intoBranch", intoBranch);
+            return ResponseEntity.ok(result);
+        } catch (IOException e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Merge failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
+        }
     }
 
     // ── Git-backed read operations ──────────────────────────────────
