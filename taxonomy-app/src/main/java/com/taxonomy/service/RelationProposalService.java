@@ -183,8 +183,24 @@ public class RelationProposalService {
         dto.setConfidence(proposal.getConfidence());
         dto.setRationale(proposal.getRationale());
         dto.setProvenance(proposal.getProvenance());
+        dto.setExplanationBasis(deriveExplanationBasis(proposal));
         dto.setCreatedAt(proposal.getCreatedAt());
         dto.setReviewedAt(proposal.getReviewedAt());
         return dto;
+    }
+
+    /**
+     * Derives a human-readable explanation of how and why a proposal was created.
+     */
+    private String deriveExplanationBasis(RelationProposal proposal) {
+        String provenance = proposal.getProvenance();
+        if (provenance == null) return "unknown source";
+
+        return switch (provenance) {
+            case "hybrid-search" -> "Discovered via hybrid search (semantic + keyword) "
+                    + "and validated against the relation compatibility matrix";
+            case "analysis-hypothesis" -> "Derived from LLM analysis of a business requirement";
+            default -> "Source: " + provenance;
+        };
     }
 }

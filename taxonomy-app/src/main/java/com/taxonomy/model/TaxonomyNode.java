@@ -96,6 +96,24 @@ public class TaxonomyNode {
     @Column(name = "has_embedding")
     private boolean hasEmbedding;
 
+    // ── Derived graph metadata ───────────────────────────────────────
+
+    @GenericField(sortable = org.hibernate.search.engine.backend.types.Sortable.YES)
+    @Column(name = "incoming_relation_count")
+    private int incomingRelationCount;
+
+    @GenericField(sortable = org.hibernate.search.engine.backend.types.Sortable.YES)
+    @Column(name = "outgoing_relation_count")
+    private int outgoingRelationCount;
+
+    @GenericField(sortable = org.hibernate.search.engine.backend.types.Sortable.YES)
+    @Column(name = "requirement_coverage_count")
+    private int requirementCoverageCount;
+
+    @KeywordField
+    @Column(name = "graph_role")
+    private String graphRole;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
     private TaxonomyNode parent;
@@ -175,6 +193,21 @@ public class TaxonomyNode {
 
     public boolean isHasEmbedding() { return hasEmbedding; }
     private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }
+
+    public int getIncomingRelationCount() { return incomingRelationCount; }
+    public void setIncomingRelationCount(int incomingRelationCount) { this.incomingRelationCount = incomingRelationCount; }
+
+    public int getOutgoingRelationCount() { return outgoingRelationCount; }
+    public void setOutgoingRelationCount(int outgoingRelationCount) { this.outgoingRelationCount = outgoingRelationCount; }
+
+    public int getRequirementCoverageCount() { return requirementCoverageCount; }
+    public void setRequirementCoverageCount(int requirementCoverageCount) { this.requirementCoverageCount = requirementCoverageCount; }
+
+    public String getGraphRole() { return graphRole; }
+    public void setGraphRole(String graphRole) { this.graphRole = graphRole; }
+
+    /** Total number of relations (incoming + outgoing). */
+    public int getTotalRelationCount() { return incomingRelationCount + outgoingRelationCount; }
 
     public TaxonomyNode getParent() { return parent; }
     public void setParent(TaxonomyNode parent) { this.parent = parent; }
