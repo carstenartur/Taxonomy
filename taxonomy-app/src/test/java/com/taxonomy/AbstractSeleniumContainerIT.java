@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
@@ -38,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * and optionally {@link #createDbContainer(Network)} to provide the database
  * and application containers for each database backend.
  */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 abstract class AbstractSeleniumContainerIT {
 
@@ -45,11 +47,11 @@ abstract class AbstractSeleniumContainerIT {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5)).build();
 
-    private static Network network;
-    private static GenericContainer<?> dbContainer;
-    private static GenericContainer<?> appContainer;
-    private static BrowserWebDriverContainer<?> chrome;
-    private static WebDriver driver;
+    private Network network;
+    private GenericContainer<?> dbContainer;
+    private GenericContainer<?> appContainer;
+    private BrowserWebDriverContainer<?> chrome;
+    private WebDriver driver;
 
     /** Create the Docker network for inter-container communication. */
     protected Network createNetwork() {
