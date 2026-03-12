@@ -5,9 +5,9 @@ on:
   push:
     branches: [main, 'copilot/**']
     paths:
-      - 'src/main/resources/templates/**'
-      - 'src/main/resources/static/**'
-      - 'src/test/java/**/ScreenshotGeneratorIT.java'
+      - 'taxonomy-app/src/main/resources/templates/**'
+      - 'taxonomy-app/src/main/resources/static/**'
+      - 'taxonomy-app/src/test/java/**/ScreenshotGeneratorIT.java'
 
 jobs:
   screenshots:

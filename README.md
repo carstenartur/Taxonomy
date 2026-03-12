@@ -232,7 +232,7 @@ mvn verify            # Unit + integration tests (requires Docker for container 
 Taxonomy/
 ├── src/
 │   ├── main/
-│   │   ├── java/com/nato/taxonomy/
+│   │   ├── java/com/taxonomy/
 │   │   │   ├── controller/       # REST API controllers
 │   │   │   ├── service/          # Business logic (LLM, search, architecture, export)
 │   │   │   ├── model/            # JPA entities (TaxonomyNode, TaxonomyRelation, ...)

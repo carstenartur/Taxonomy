@@ -37,7 +37,7 @@ jobs:
         if: always()
         with:
           name: Maven Tests
-          path: 'target/surefire-reports/TEST-*.xml,target/failsafe-reports/TEST-*.xml'
+          path: '**/target/surefire-reports/TEST-*.xml,**/target/failsafe-reports/TEST-*.xml'
           reporter: java-junit
           fail-on-error: false
 
@@ -57,13 +57,14 @@ jobs:
 
           # --- Coverage badge ---
           try:
-              tree = ET.parse('target/site/jacoco/jacoco.xml')
-              root = tree.getroot()
               covered, missed = 0, 0
-              for counter in root.iter('counter'):
-                  if counter.get('type') == 'INSTRUCTION':
-                      covered += int(counter.get('covered', 0))
-                      missed  += int(counter.get('missed', 0))
+              for jacoco_file in glob.glob('**/target/site/jacoco/jacoco.xml', recursive=True):
+                  tree = ET.parse(jacoco_file)
+                  root = tree.getroot()
+                  for counter in root.iter('counter'):
+                      if counter.get('type') == 'INSTRUCTION':
+                          covered += int(counter.get('covered', 0))
+                          missed  += int(counter.get('missed', 0))
               total = covered + missed
               pct   = round(covered / total * 100) if total > 0 else 0
               if pct >= COVERAGE_GREEN_THRESHOLD:
@@ -82,7 +83,7 @@ jobs:
 
           # --- Tests badge ---
           try:
-              files = glob.glob('target/surefire-reports/TEST-*.xml')
+              files = glob.glob('**/target/surefire-reports/TEST-*.xml', recursive=True)
               total_tests = total_failures = total_errors = 0
               for path in files:
                   root = ET.parse(path).getroot()
@@ -109,7 +110,7 @@ jobs:
         if: always() && github.ref == 'refs/heads/main'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: target/site
+          publish_dir: taxonomy-app/target/site
           destination_dir: tests
           keep_files: true
           user_name: 'github-actions[bot]'
@@ -121,7 +122,7 @@ jobs:
         if: always() && github.ref == 'refs/heads/main'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: target/site/jacoco
+          publish_dir: taxonomy-app/target/site/jacoco
           destination_dir: coverage
           keep_files: true
           user_name: 'github-actions[bot]'
@@ -140,7 +141,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-jar
-          path: target/taxonomy-*.jar
+          path: taxonomy-app/target/taxonomy-app-*.jar
           retention-days: 1
 
   publish-image:

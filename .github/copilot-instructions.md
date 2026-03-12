@@ -18,7 +18,7 @@ Integration test classes follow the `**/*IT.java` naming pattern and are run by 
 
 ### How screenshots are generated
 
-Screenshots are captured by `src/test/java/com/nato/taxonomy/ScreenshotGeneratorIT.java`.  
+Screenshots are captured by `src/test/java/com/taxonomy/ScreenshotGeneratorIT.java`.  
 The test class is **opt-in** — it only runs when the `generateScreenshots` system property is set:
 
 ```bash
