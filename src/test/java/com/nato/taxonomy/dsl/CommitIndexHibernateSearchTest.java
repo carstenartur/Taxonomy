@@ -123,10 +123,10 @@ class CommitIndexHibernateSearchTest {
 
     @Test
     void searchWithMaxResultsLimitsOutput() {
-        // Create multiple entries
+        // Create multiple entries with valid 40-char hex commit IDs
         for (int i = 0; i < 5; i++) {
             ArchitectureCommitIndex entry = createEntry(
-                    String.format("c%039d", i),
+                    String.format("a%039d", i),
                     "author", "commit " + i,
                     "CP-7777 STRUCT:element DOM:Capability",
                     "CP-7777", "");
