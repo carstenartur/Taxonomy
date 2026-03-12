@@ -407,6 +407,10 @@ public class DslApiController {
             result.put("targetBranch", targetBranch);
             result.put("cherryPickedFrom", commitId);
             return ResponseEntity.ok(result);
+        } catch (org.eclipse.jgit.errors.MissingObjectException e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Cherry-pick failed: commit not found — " + e.getMessage());
+            return ResponseEntity.badRequest().body(error);
         } catch (IOException e) {
             Map<String, Object> error = new LinkedHashMap<>();
             error.put("error", "Cherry-pick failed: " + e.getMessage());
