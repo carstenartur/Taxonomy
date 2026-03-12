@@ -1,6 +1,7 @@
 package com.nato.taxonomy.service;
 
 import com.nato.taxonomy.dto.RelationHypothesisDto;
+import com.nato.taxonomy.dsl.storage.DslGitRepository;
 import com.nato.taxonomy.model.*;
 import com.nato.taxonomy.repository.RelationEvidenceRepository;
 import com.nato.taxonomy.repository.RelationHypothesisRepository;
@@ -10,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -22,7 +24,11 @@ import java.util.UUID;
  *   <li>{@link AnalysisRelationGenerator} which produces in-memory DTOs</li>
  *   <li>{@link RelationHypothesis} entities persisted in the database</li>
  *   <li>{@link TaxonomyRelation} entities created when hypotheses are accepted</li>
+ *   <li>{@link DslGitRepository} for versioned DSL commits on the "draft" branch</li>
  * </ul>
+ *
+ * <p>When hypotheses are persisted from analysis, a DSL representation is
+ * automatically generated and committed to the "draft" Git branch.
  */
 @Service
 public class HypothesisService {
@@ -33,23 +39,30 @@ public class HypothesisService {
     private final RelationEvidenceRepository evidenceRepository;
     private final TaxonomyRelationService relationService;
     private final TaxonomyNodeRepository nodeRepository;
+    private final DslGitRepository gitRepository;
 
     public HypothesisService(RelationHypothesisRepository hypothesisRepository,
                              RelationEvidenceRepository evidenceRepository,
                              TaxonomyRelationService relationService,
-                             TaxonomyNodeRepository nodeRepository) {
+                             TaxonomyNodeRepository nodeRepository,
+                             DslGitRepository gitRepository) {
         this.hypothesisRepository = hypothesisRepository;
         this.evidenceRepository = evidenceRepository;
         this.relationService = relationService;
         this.nodeRepository = nodeRepository;
+        this.gitRepository = gitRepository;
     }
 
     /**
-     * Persist provisional relation hypothesis DTOs (from analysis) to the database.
+     * Persist provisional relation hypothesis DTOs (from analysis) to the database
+     * and commit a DSL representation to the "draft" Git branch.
      *
      * <p>Each DTO is saved as a {@link RelationHypothesis} entity with status
      * {@link HypothesisStatus#PROVISIONAL}. Duplicates (same source+target+type
      * within the same session) are skipped.
+     *
+     * <p>After persisting, a DSL document is generated from the hypotheses and
+     * committed to the "draft" branch in the JGit repository.
      *
      * @param hypotheses  the provisional hypotheses from analysis
      * @param sessionId   unique identifier for the analysis session
@@ -99,6 +112,12 @@ public class HypothesisService {
         }
 
         log.info("Persisted {} hypotheses for session {}", persisted.size(), effectiveSessionId);
+
+        // Generate DSL and commit to "draft" branch
+        if (!persisted.isEmpty()) {
+            commitHypothesesAsDsl(persisted, effectiveSessionId);
+        }
+
         return persisted;
     }
 
@@ -108,6 +127,8 @@ public class HypothesisService {
      *
      * <p>If the source or target nodes no longer exist in the taxonomy, the hypothesis
      * is still marked as accepted but no relation is created.
+     *
+     * <p>After acceptance, a DSL commit is created on the "accepted" branch.
      *
      * @param hypothesisId the ID of the hypothesis to accept
      * @return the accepted hypothesis entity
@@ -149,6 +170,9 @@ public class HypothesisService {
                 hypothesisId, hypothesis.getSourceNodeId(),
                 hypothesis.getRelationType(), hypothesis.getTargetNodeId(),
                 relationCreated);
+
+        // Commit accepted relation as DSL to "accepted" branch
+        commitHypothesesAsDsl(List.of(hypothesis), "accepted-" + hypothesisId);
 
         return hypothesis;
     }
@@ -203,5 +227,63 @@ public class HypothesisService {
     @Transactional(readOnly = true)
     public List<RelationEvidence> findEvidence(Long hypothesisId) {
         return evidenceRepository.findByHypothesisId(hypothesisId);
+    }
+
+    // ── DSL generation + Git commit ─────────────────────────────────
+
+    /**
+     * Generate DSL text from hypotheses and commit to the appropriate Git branch.
+     *
+     * <p>Provisional hypotheses go to "draft", accepted hypotheses go to "accepted".
+     */
+    private void commitHypothesesAsDsl(List<RelationHypothesis> hypotheses, String sessionId) {
+        try {
+            String dslText = generateDsl(hypotheses);
+            String branch = hypotheses.stream()
+                    .anyMatch(h -> h.getStatus() == HypothesisStatus.ACCEPTED)
+                    ? "accepted" : "draft";
+
+            String commitId = gitRepository.commitDsl(
+                    branch, dslText,
+                    "hypothesis-service",
+                    "Auto-generated from analysis session " + sessionId);
+
+            log.info("Committed {} hypotheses as DSL to branch '{}': {}",
+                    hypotheses.size(), branch, commitId);
+        } catch (IOException e) {
+            log.warn("Failed to commit hypotheses as DSL to Git: {}", e.getMessage());
+            // Non-fatal: DB persistence already succeeded
+        }
+    }
+
+    /**
+     * Generate DSL text from a list of hypotheses.
+     */
+    private String generateDsl(List<RelationHypothesis> hypotheses) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("meta\n");
+        sb.append("  language \"taxdsl\"\n");
+        sb.append("  version \"1.0\"\n");
+        sb.append("  namespace \"hypothesis-auto\"\n\n");
+
+        for (RelationHypothesis h : hypotheses) {
+            // Element declarations for source and target
+            sb.append("element ").append(h.getSourceNodeId()).append(" type Node\n");
+            sb.append("  title \"").append(h.getSourceNodeId()).append("\"\n\n");
+            sb.append("element ").append(h.getTargetNodeId()).append(" type Node\n");
+            sb.append("  title \"").append(h.getTargetNodeId()).append("\"\n\n");
+
+            // Relation declaration
+            sb.append("relation ").append(h.getSourceNodeId()).append(" ")
+                    .append(h.getRelationType().name()).append(" ")
+                    .append(h.getTargetNodeId()).append("\n");
+            sb.append("  status ").append(h.getStatus().name().toLowerCase()).append("\n");
+            if (h.getConfidence() > 0) {
+                sb.append("  confidence ").append(String.format("%.2f", h.getConfidence())).append("\n");
+            }
+            sb.append("\n");
+        }
+
+        return sb.toString();
     }
 }
