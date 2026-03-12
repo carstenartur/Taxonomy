@@ -13,6 +13,7 @@ import java.util.*;
  *   <li>Relations referencing unknown element IDs</li>
  *   <li>Mappings referencing unknown requirement or element IDs</li>
  *   <li>Invalid relation types against the type matrix</li>
+ *   <li>Invalid type combinations for relation source/target</li>
  *   <li>Invalid status values on relations</li>
  *   <li>Missing required fields</li>
  * </ul>
@@ -29,6 +30,27 @@ public class DslValidator {
             "proposed", "provisional", "accepted", "rejected");
 
     /**
+     * Type compatibility matrix: relation type → allowed (sourceRoot → targetRoots).
+     * Mirrors {@code RelationCompatibilityMatrix} but usable without Spring.
+     */
+    private static final Map<String, Map<String, Set<String>>> TYPE_MATRIX;
+
+    static {
+        Map<String, Map<String, Set<String>>> m = new LinkedHashMap<>();
+        m.put("REALIZES",          Map.of("CP", Set.of("CR")));
+        m.put("SUPPORTS",          Map.of("CR", Set.of("BP")));
+        m.put("CONSUMES",          Map.of("BP", Set.of("IP")));
+        m.put("USES",              Map.of("UA", Set.of("CR")));
+        m.put("FULFILLS",          Map.of("CI", Set.of("CP")));
+        m.put("ASSIGNED_TO",       Map.of("BR", Set.of("BP")));
+        m.put("DEPENDS_ON",        Map.of("CR", Set.of("CR")));
+        m.put("PRODUCES",          Map.of("BP", Set.of("IP")));
+        m.put("COMMUNICATES_WITH", Map.of("CO", Set.of("CR")));
+        // RELATED_TO has no restrictions
+        TYPE_MATRIX = Collections.unmodifiableMap(m);
+    }
+
+    /**
      * Validate a canonical architecture model.
      */
     public DslValidationResult validate(CanonicalArchitectureModel model) {
@@ -43,7 +65,15 @@ public class DslValidator {
         Set<String> allIds = new HashSet<>(elementIds);
         allIds.addAll(requirementIds);
 
-        validateRelations(model.getRelations(), allIds, result);
+        // Build element type lookup for type-combination validation
+        Map<String, String> elementTypeMap = new HashMap<>();
+        for (ArchitectureElement el : model.getElements()) {
+            if (el.getId() != null && el.getType() != null) {
+                elementTypeMap.put(el.getId(), el.getType());
+            }
+        }
+
+        validateRelations(model.getRelations(), allIds, elementTypeMap, result);
         validateMappings(model.getMappings(), requirementIds, elementIds, result);
         validateElements(model.getElements(), result);
 
@@ -99,6 +129,7 @@ public class DslValidator {
     }
 
     private void validateRelations(List<ArchitectureRelation> relations, Set<String> allIds,
+                                   Map<String, String> elementTypeMap,
                                    DslValidationResult result) {
         for (ArchitectureRelation rel : relations) {
             if (rel.getSourceId() == null || rel.getSourceId().isBlank()) {
@@ -121,7 +152,58 @@ public class DslValidator {
                 result.addError("Invalid relation status: " + rel.getStatus()
                         + " (valid: " + VALID_STATUSES + ")");
             }
+
+            // Type-combination validation using the type matrix
+            if (rel.getRelationType() != null && rel.getSourceId() != null && rel.getTargetId() != null) {
+                validateTypeCombination(rel, elementTypeMap, result);
+            }
         }
+    }
+
+    /**
+     * Check that the source and target element types are compatible with the relation type,
+     * using the type matrix (e.g., REALIZES requires CP→CR).
+     */
+    private void validateTypeCombination(ArchitectureRelation rel,
+                                         Map<String, String> elementTypeMap,
+                                         DslValidationResult result) {
+        Map<String, Set<String>> rules = TYPE_MATRIX.get(rel.getRelationType());
+        if (rules == null) {
+            return; // No type matrix rule (e.g., RELATED_TO or unknown type)
+        }
+
+        String sourceRoot = resolveTaxonomyRootCode(rel.getSourceId(), elementTypeMap);
+        String targetRoot = resolveTaxonomyRootCode(rel.getTargetId(), elementTypeMap);
+
+        if (sourceRoot == null || targetRoot == null) {
+            return; // Can't determine type — skip validation
+        }
+
+        Set<String> allowedTargets = rules.get(sourceRoot);
+        if (allowedTargets == null) {
+            result.addWarning("Relation " + rel.getRelationType() + ": source "
+                    + rel.getSourceId() + " (root " + sourceRoot
+                    + ") is not a valid source type for " + rel.getRelationType());
+        } else if (!allowedTargets.contains(targetRoot)) {
+            result.addWarning("Relation " + rel.getRelationType() + ": target "
+                    + rel.getTargetId() + " (root " + targetRoot
+                    + ") is not a valid target type; expected one of " + allowedTargets);
+        }
+    }
+
+    /**
+     * Resolve the taxonomy root code for an element ID, using either the
+     * element type map (from DSL) or the ID prefix (e.g., CP-1001 → CP).
+     */
+    private String resolveTaxonomyRootCode(String elementId, Map<String, String> elementTypeMap) {
+        // Try element type from DSL model first
+        String typeName = elementTypeMap.get(elementId);
+        if (typeName != null) {
+            String root = TaxonomyRootTypes.rootFor(typeName);
+            if (root != null) return root;
+        }
+        // Fall back to ID prefix
+        return TaxonomyRootTypes.rootFromId(elementId);
     }
 
     private void validateMappings(List<RequirementMapping> mappings,

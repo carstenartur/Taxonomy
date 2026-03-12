@@ -164,4 +164,75 @@ class DslValidatorTest {
         assertThat(result.getErrors()).isEmpty();
         assertThat(result.getWarnings()).isEmpty();
     }
+
+    // --- Type-combination validation tests (type matrix) ---
+
+    @Test
+    void validTypeCombinationRealizes() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Test Cap", null, null));
+        model.getElements().add(new ArchitectureElement("CR-2001", "CoreService", "Test Svc", null, null));
+
+        ArchitectureRelation rel = new ArchitectureRelation("CP-1001", "REALIZES", "CR-2001");
+        model.getRelations().add(rel);
+
+        DslValidationResult result = validator.validate(model);
+        assertThat(result.getWarnings()).noneMatch(w -> w.contains("not a valid source type") || w.contains("not a valid target type"));
+    }
+
+    @Test
+    void invalidSourceTypeForRelation() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        // BP (Process) should not be source for REALIZES (requires CP)
+        model.getElements().add(new ArchitectureElement("BP-1040", "Process", "Test Proc", null, null));
+        model.getElements().add(new ArchitectureElement("CR-2001", "CoreService", "Test Svc", null, null));
+
+        ArchitectureRelation rel = new ArchitectureRelation("BP-1040", "REALIZES", "CR-2001");
+        model.getRelations().add(rel);
+
+        DslValidationResult result = validator.validate(model);
+        assertThat(result.getWarnings()).anyMatch(w -> w.contains("not a valid source type for REALIZES"));
+    }
+
+    @Test
+    void invalidTargetTypeForRelation() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        // CP→BP is wrong for REALIZES; REALIZES requires CP→CR
+        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Test Cap", null, null));
+        model.getElements().add(new ArchitectureElement("BP-1040", "Process", "Test Proc", null, null));
+
+        ArchitectureRelation rel = new ArchitectureRelation("CP-1001", "REALIZES", "BP-1040");
+        model.getRelations().add(rel);
+
+        DslValidationResult result = validator.validate(model);
+        assertThat(result.getWarnings()).anyMatch(w -> w.contains("not a valid target type"));
+    }
+
+    @Test
+    void relatedToHasNoTypeRestrictions() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Test", null, null));
+        model.getElements().add(new ArchitectureElement("BP-1040", "Process", "Test", null, null));
+
+        ArchitectureRelation rel = new ArchitectureRelation("CP-1001", "RELATED_TO", "BP-1040");
+        model.getRelations().add(rel);
+
+        DslValidationResult result = validator.validate(model);
+        assertThat(result.getWarnings()).noneMatch(w -> w.contains("not a valid source type") || w.contains("not a valid target type"));
+    }
+
+    @Test
+    void typeCombinationByIdPrefix() {
+        // When no explicit type is provided, use ID prefix to resolve root
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        model.getElements().add(new ArchitectureElement("CR-2001", null, "Service", null, null));
+        model.getElements().add(new ArchitectureElement("BP-1040", null, "Process", null, null));
+
+        // CR→BP for SUPPORTS is valid
+        ArchitectureRelation rel = new ArchitectureRelation("CR-2001", "SUPPORTS", "BP-1040");
+        model.getRelations().add(rel);
+
+        DslValidationResult result = validator.validate(model);
+        assertThat(result.getWarnings()).noneMatch(w -> w.contains("not a valid source type") || w.contains("not a valid target type"));
+    }
 }

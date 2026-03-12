@@ -397,13 +397,6 @@ public class DslGitRepository {
         try (RevWalk walk = new RevWalk(gitRepo)) {
             RevCommit pickCommit = walk.parseCommit(pickOid);
 
-            // The commit to cherry-pick must have exactly one parent
-            if (pickCommit.getParentCount() == 0) {
-                log.warn("Cannot cherry-pick initial commit {}", commitId);
-                return null;
-            }
-
-            RevCommit parentCommit = walk.parseCommit(pickCommit.getParent(0));
             String targetRefName = Constants.R_HEADS + targetBranch;
             Ref targetRef = gitRepo.getRefDatabase().exactRef(targetRefName);
 
@@ -414,7 +407,8 @@ public class DslGitRepository {
 
             RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());
 
-            // Three-way merge: parent → pick, applied onto targetHead
+            // Three-way merge: base=parent (or auto-detected for initial commit),
+            // ours=targetHead, theirs=pickCommit
             ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);
             boolean success = merger.merge(targetHead, pickCommit);
 

@@ -16,6 +16,7 @@ import com.nato.taxonomy.model.ArchitectureDslDocument;
 import com.nato.taxonomy.model.HypothesisStatus;
 import com.nato.taxonomy.model.RelationHypothesis;
 import com.nato.taxonomy.repository.ArchitectureDslDocumentRepository;
+import com.nato.taxonomy.service.CommitIndexService;
 import com.nato.taxonomy.service.HypothesisService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -51,6 +52,7 @@ public class DslApiController {
     private final ArchitectureDslDocumentRepository documentRepository;
     private final HypothesisService hypothesisService;
     private final DslGitRepository gitRepository;
+    private final CommitIndexService commitIndexService;
 
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
@@ -61,12 +63,14 @@ public class DslApiController {
                             DslMaterializeService materializeService,
                             ArchitectureDslDocumentRepository documentRepository,
                             HypothesisService hypothesisService,
-                            DslGitRepository gitRepository) {
+                            DslGitRepository gitRepository,
+                            CommitIndexService commitIndexService) {
         this.exportService = exportService;
         this.materializeService = materializeService;
         this.documentRepository = documentRepository;
         this.hypothesisService = hypothesisService;
         this.gitRepository = gitRepository;
+        this.commitIndexService = commitIndexService;
     }
 
     // ── Export & current state ────────────────────────────────────────
@@ -407,6 +411,10 @@ public class DslApiController {
             result.put("targetBranch", targetBranch);
             result.put("cherryPickedFrom", commitId);
             return ResponseEntity.ok(result);
+        } catch (org.eclipse.jgit.errors.MissingObjectException e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Cherry-pick failed: commit not found — " + e.getMessage());
+            return ResponseEntity.badRequest().body(error);
         } catch (IOException e) {
             Map<String, Object> error = new LinkedHashMap<>();
             error.put("error", "Cherry-pick failed: " + e.getMessage());
@@ -541,6 +549,23 @@ public class DslApiController {
         }
     }
 
+    @PostMapping("/hypotheses/{id}/apply-session")
+    @Operation(summary = "Mark hypothesis as applied for current analysis session only",
+            description = "The relationship is used in the current Architecture View and exports " +
+                    "but is not permanently persisted as a TaxonomyRelation.")
+    public ResponseEntity<Map<String, Object>> applyHypothesisForSession(@PathVariable Long id) {
+        try {
+            RelationHypothesis hypothesis = hypothesisService.applyForSession(id);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("id", hypothesis.getId());
+            result.put("appliedInCurrentAnalysis", hypothesis.isAppliedInCurrentAnalysis());
+            result.put("status", hypothesis.getStatus().name());
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     @GetMapping("/hypotheses/{id}/evidence")
     @Operation(summary = "Get evidence records for a hypothesis")
     public ResponseEntity<?> getHypothesisEvidence(@PathVariable Long id) {
@@ -557,5 +582,46 @@ public class DslApiController {
     @Operation(summary = "List stored DSL documents")
     public ResponseEntity<List<ArchitectureDslDocument>> listDocuments() {
         return ResponseEntity.ok(documentRepository.findAll());
+    }
+
+    // ── History Search ──────────────────────────────────────────────
+
+    @PostMapping("/history/index")
+    @Operation(summary = "Index commits on a branch for history search",
+            description = "Parses and tokenizes all unindexed commits on the given branch.")
+    public ResponseEntity<Map<String, Object>> indexHistory(
+            @RequestParam(defaultValue = "draft") String branch) {
+        int indexed = commitIndexService.indexBranch(branch);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("branch", branch);
+        result.put("indexed", indexed);
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/history/search")
+    @Operation(summary = "Search architecture commit history",
+            description = "Full-text search across tokenized DSL changes, commit messages, " +
+                    "and affected element/relation IDs using Hibernate Search (Lucene backend). " +
+                    "Results are ranked by relevance score.")
+    public ResponseEntity<?> searchHistory(
+            @RequestParam String query,
+            @RequestParam(defaultValue = "50") int maxResults) {
+        return ResponseEntity.ok(commitIndexService.search(query, maxResults));
+    }
+
+    @GetMapping("/history/element/{elementId}")
+    @Operation(summary = "Find commits that affected a specific element",
+            description = "Searches affectedElementIds and tokenized DSL text for the given " +
+                    "element ID using Hibernate Search.")
+    public ResponseEntity<?> findHistoryByElement(@PathVariable String elementId) {
+        return ResponseEntity.ok(commitIndexService.findByElement(elementId));
+    }
+
+    @GetMapping("/history/relation")
+    @Operation(summary = "Find commits that affected a specific relation",
+            description = "Searches affectedRelationIds and tokenized DSL text for the given " +
+                    "relation key (e.g., 'CP-1001 REALIZES CR-2001') using Hibernate Search.")
+    public ResponseEntity<?> findHistoryByRelation(@RequestParam String key) {
+        return ResponseEntity.ok(commitIndexService.findByRelation(key));
     }
 }

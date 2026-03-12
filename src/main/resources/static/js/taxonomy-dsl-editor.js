@@ -15,7 +15,7 @@
     var editor, parseBtn, validateBtn, commitBtn, materializeBtn, loadCurrentBtn;
     var branchSelect, newBranchBtn, authorInput, messageInput;
     var validationOutput, historyBody, diffOutput, statusArea;
-    var materializeIncrBtn;
+    var materializeIncrBtn, mergeBtn;
 
     document.addEventListener('DOMContentLoaded', init);
 
@@ -29,6 +29,7 @@
         loadCurrentBtn    = document.getElementById('dslLoadCurrentBtn');
         branchSelect      = document.getElementById('dslBranchSelect');
         newBranchBtn      = document.getElementById('dslNewBranchBtn');
+        mergeBtn          = document.getElementById('dslMergeBtn');
         authorInput       = document.getElementById('dslAuthorInput');
         messageInput      = document.getElementById('dslMessageInput');
         validationOutput  = document.getElementById('dslValidationOutput');
@@ -46,6 +47,7 @@
         if (materializeIncrBtn) materializeIncrBtn.addEventListener('click', materializeIncremental);
         if (loadCurrentBtn)    loadCurrentBtn.addEventListener('click', loadCurrent);
         if (newBranchBtn)      newBranchBtn.addEventListener('click', createBranch);
+        if (mergeBtn)          mergeBtn.addEventListener('click', mergeBranch);
         if (branchSelect)      branchSelect.addEventListener('change', onBranchChange);
 
         // Initial load
@@ -300,29 +302,32 @@
         var html = '';
         docs.forEach(function (d, i) {
             var ts = d.timestamp ? new Date(d.timestamp).toLocaleString() : '—';
-            var commitShort = d.commitId ? d.commitId.substring(0, 8) : '#' + d.documentId;
+            var commitShort = d.commitId ? d.commitId.substring(0, 8) : '—';
             html += '<tr>';
             html += '<td><code class="small">' + escapeHtml(commitShort) + '</code></td>';
             html += '<td class="small">' + escapeHtml(d.branch || '') + '</td>';
             html += '<td class="small">' + escapeHtml(ts) + '</td>';
             html += '<td>';
-            html += '<button class="btn btn-sm btn-outline-secondary me-1 dsl-load-commit" data-doc-id="' + d.documentId + '" title="Load this version">📂</button>';
-            if (i < docs.length - 1) {
-                html += '<button class="btn btn-sm btn-outline-info dsl-diff-btn" data-before="' + docs[i + 1].documentId + '" data-after="' + d.documentId + '" title="Diff with previous">🔍</button>';
+            if (d.commitId) {
+                html += '<button class="btn btn-sm btn-outline-secondary me-1 dsl-load-commit" data-commit-id="' + escapeHtml(d.commitId) + '" title="Load this version">📂</button>';
+                html += '<button class="btn btn-sm btn-outline-warning me-1 dsl-cherry-pick-btn" data-commit-id="' + escapeHtml(d.commitId) + '" title="Cherry-pick this commit onto another branch">🍒</button>';
+            }
+            if (i < docs.length - 1 && d.commitId && docs[i + 1].commitId) {
+                html += '<button class="btn btn-sm btn-outline-info dsl-diff-btn" data-before="' + escapeHtml(docs[i + 1].commitId) + '" data-after="' + escapeHtml(d.commitId) + '" title="Diff with previous">🔍</button>';
             }
             html += '</td>';
             html += '</tr>';
         });
         historyBody.innerHTML = html;
 
-        // Bind load-commit buttons
+        // Bind load-commit buttons (reads from JGit)
         historyBody.querySelectorAll('.dsl-load-commit').forEach(function (btn) {
             btn.addEventListener('click', function () {
-                loadDocumentById(this.getAttribute('data-doc-id'));
+                loadCommitById(this.getAttribute('data-commit-id'));
             });
         });
 
-        // Bind diff buttons
+        // Bind diff buttons (uses Git commit SHAs)
         historyBody.querySelectorAll('.dsl-diff-btn').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var before = this.getAttribute('data-before');
@@ -330,19 +335,28 @@
                 loadDiff(before, after);
             });
         });
+
+        // Bind cherry-pick buttons
+        historyBody.querySelectorAll('.dsl-cherry-pick-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                cherryPickCommit(this.getAttribute('data-commit-id'));
+            });
+        });
     }
 
-    function loadDocumentById(docId) {
-        showStatus('Loading document #' + docId + '…', 'info');
-        fetch('/api/dsl/documents')
-            .then(function (r) { return r.json(); })
-            .then(function (docs) {
-                var doc = docs.find(function (d) { return String(d.id) === String(docId); });
-                if (doc && doc.rawContent && editor) {
-                    editor.value = doc.rawContent;
-                    showStatus('Loaded document #' + docId, 'success');
+    function loadCommitById(commitId) {
+        showStatus('Loading commit ' + commitId.substring(0, 8) + '…', 'info');
+        fetch('/api/dsl/git/commit/' + encodeURIComponent(commitId))
+            .then(function (r) {
+                if (!r.ok) throw new Error('Commit not found');
+                return r.json();
+            })
+            .then(function (data) {
+                if (data.dslText && editor) {
+                    editor.value = data.dslText;
+                    showStatus('Loaded commit ' + commitId.substring(0, 8), 'success');
                 } else {
-                    showStatus('Document #' + docId + ' not found or empty', 'error');
+                    showStatus('Commit ' + commitId.substring(0, 8) + ' has no DSL content', 'error');
                 }
             })
             .catch(function (e) { showStatus('Load error: ' + e.message, 'error'); });
@@ -352,10 +366,10 @@
     function loadDiff(beforeId, afterId) {
         if (!diffOutput) return;
         showStatus('Computing diff…', 'info');
-        fetch('/api/dsl/diff/' + beforeId + '/' + afterId)
+        fetch('/api/dsl/diff/' + encodeURIComponent(beforeId) + '/' + encodeURIComponent(afterId))
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                renderDiff(data);
+                renderDiff(data, beforeId, afterId);
                 showStatus('Diff: ' + data.totalChanges + ' changes', 'success');
             })
             .catch(function (e) {
@@ -364,14 +378,49 @@
             });
     }
 
-    function renderDiff(data) {
+    function loadTextDiff(beforeId, afterId) {
+        if (!diffOutput) return;
+        showStatus('Computing text diff…', 'info');
+        fetch('/api/dsl/diff/text/' + encodeURIComponent(beforeId) + '/' + encodeURIComponent(afterId))
+            .then(function (r) {
+                if (!r.ok) throw new Error('Text diff failed');
+                return r.text();
+            })
+            .then(function (patch) {
+                var html = '<div class="d-flex justify-content-between align-items-center mb-2">';
+                html += '<strong class="small">Unified Diff</strong>';
+                html += '<button class="btn btn-sm btn-outline-info dsl-semantic-diff-toggle" data-before="' + escapeHtml(beforeId) + '" data-after="' + escapeHtml(afterId) + '">Semantic Diff</button>';
+                html += '</div>';
+                html += '<pre class="small bg-light p-2 rounded" style="max-height:400px; overflow:auto; white-space:pre-wrap;">' + escapeHtml(patch || '(no changes)') + '</pre>';
+                diffOutput.innerHTML = html;
+                diffOutput.querySelector('.dsl-semantic-diff-toggle').addEventListener('click', function () {
+                    loadDiff(this.getAttribute('data-before'), this.getAttribute('data-after'));
+                });
+                showStatus('Text diff loaded', 'success');
+            })
+            .catch(function (e) {
+                diffOutput.innerHTML = '<span class="text-danger">Text diff failed: ' + escapeHtml(e.message) + '</span>';
+                showStatus('Text diff error: ' + e.message, 'error');
+            });
+    }
+
+    function renderDiff(data, beforeId, afterId) {
         if (!diffOutput) return;
         if (data.isEmpty) {
             diffOutput.innerHTML = '<span class="text-muted">No changes</span>';
             return;
         }
         var html = '<div class="small">';
-        html += '<strong>' + data.totalChanges + ' change(s)</strong><br>';
+
+        // Toggle button for text diff view
+        if (beforeId && afterId) {
+            html += '<div class="d-flex justify-content-between align-items-center mb-2">';
+            html += '<strong>' + data.totalChanges + ' change(s)</strong>';
+            html += '<button class="btn btn-sm btn-outline-secondary dsl-text-diff-toggle" data-before="' + escapeHtml(beforeId) + '" data-after="' + escapeHtml(afterId) + '">Text Diff</button>';
+            html += '</div>';
+        } else {
+            html += '<strong>' + data.totalChanges + ' change(s)</strong><br>';
+        }
 
         if (data.addedElements > 0) html += '<span class="text-success">+ ' + data.addedElements + ' element(s) added</span><br>';
         if (data.removedElements > 0) html += '<span class="text-danger">− ' + data.removedElements + ' element(s) removed</span><br>';
@@ -414,6 +463,57 @@
         }
         html += '</div>';
         diffOutput.innerHTML = html;
+
+        // Bind text diff toggle
+        var toggleBtn = diffOutput.querySelector('.dsl-text-diff-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', function () {
+                loadTextDiff(this.getAttribute('data-before'), this.getAttribute('data-after'));
+            });
+        }
+    }
+
+    // ── Cherry-pick ───────────────────────────────────────────────
+    function cherryPickCommit(commitId) {
+        var targetBranch = prompt('Cherry-pick commit ' + commitId.substring(0, 8) + ' onto which branch?', 'review');
+        if (!targetBranch || !targetBranch.trim()) return;
+        targetBranch = targetBranch.trim();
+        showStatus('Cherry-picking ' + commitId.substring(0, 8) + ' onto "' + targetBranch + '"…', 'info');
+        fetch('/api/dsl/cherry-pick?commitId=' + encodeURIComponent(commitId) + '&targetBranch=' + encodeURIComponent(targetBranch), {
+            method: 'POST'
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.error) {
+                    showStatus('Cherry-pick failed: ' + data.error, 'error');
+                    return;
+                }
+                showStatus('✅ Cherry-picked onto "' + data.targetBranch + '" → ' + data.commitId.substring(0, 8), 'success');
+                loadBranches();
+            })
+            .catch(function (e) { showStatus('Cherry-pick error: ' + e.message, 'error'); });
+    }
+
+    // ── Merge ───────────────────────────────────────────────────────
+    function mergeBranch() {
+        var fromBranch = branchSelect ? branchSelect.value : 'draft';
+        var intoBranch = prompt('Merge branch "' + fromBranch + '" into which branch?', 'accepted');
+        if (!intoBranch || !intoBranch.trim()) return;
+        intoBranch = intoBranch.trim();
+        showStatus('Merging "' + fromBranch + '" into "' + intoBranch + '"…', 'info');
+        fetch('/api/dsl/merge?fromBranch=' + encodeURIComponent(fromBranch) + '&intoBranch=' + encodeURIComponent(intoBranch), {
+            method: 'POST'
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.error) {
+                    showStatus('Merge failed: ' + data.error, 'error');
+                    return;
+                }
+                showStatus('✅ Merged "' + data.fromBranch + '" into "' + data.intoBranch + '" → ' + data.commitId.substring(0, 8), 'success');
+                loadBranches();
+            })
+            .catch(function (e) { showStatus('Merge error: ' + e.message, 'error'); });
     }
 
     // ── Util ────────────────────────────────────────────────────────

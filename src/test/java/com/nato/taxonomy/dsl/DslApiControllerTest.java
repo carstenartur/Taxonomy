@@ -488,4 +488,280 @@ class DslApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(true));
     }
+
+    // --- Cherry-pick, merge, and text diff endpoints ---
+
+    @Test
+    void textDiffBetweenTwoCommits() throws Exception {
+        String dsl1 = """
+                element CP-8001 type Capability
+                  title "TextDiff V1"
+                """;
+        String dsl2 = """
+                element CP-8001 type Capability
+                  title "TextDiff V2 Changed"
+                element CP-8002 type Capability
+                  title "TextDiff Added"
+                """;
+
+        var result1 = mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl1)
+                        .param("branch", "textdiff-test"))
+                .andReturn();
+        String commitId1 = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(result1.getResponse().getContentAsString())
+                .get("commitId").asText();
+
+        var result2 = mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl2)
+                        .param("branch", "textdiff-test"))
+                .andReturn();
+        String commitId2 = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(result2.getResponse().getContentAsString())
+                .get("commitId").asText();
+
+        mockMvc.perform(get("/api/dsl/diff/text/" + commitId1 + "/" + commitId2))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_PLAIN));
+    }
+
+    @Test
+    void textDiffWithInvalidCommitReturnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/dsl/diff/text/0000000000000000000000000000000000000000/0000000000000000000000000000000000000001"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isNotEmpty());
+    }
+
+    @Test
+    void cherryPickCommitOntoNewBranch() throws Exception {
+        // Create a common base commit
+        String baseDsl = """
+                element CP-9000 type Capability
+                  title "Cherry Base"
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(baseDsl)
+                        .param("branch", "cherry-source"))
+                .andExpect(status().isOk());
+
+        // Fork cherry-target from cherry-source (they share the base)
+        mockMvc.perform(post("/api/dsl/branches")
+                        .param("name", "cherry-target")
+                        .param("fromBranch", "cherry-source"))
+                .andExpect(status().isOk());
+
+        // Add a second commit on cherry-source (this is the one we'll cherry-pick)
+        String dsl2 = """
+                element CP-9000 type Capability
+                  title "Cherry Base"
+                element CP-9001 type Capability
+                  title "Cherry Source Added"
+                """;
+        var commitResult = mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl2)
+                        .param("branch", "cherry-source"))
+                .andReturn();
+        String commitId = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(commitResult.getResponse().getContentAsString())
+                .get("commitId").asText();
+
+        // Cherry-pick the second commit onto cherry-target
+        mockMvc.perform(post("/api/dsl/cherry-pick")
+                        .param("commitId", commitId)
+                        .param("targetBranch", "cherry-target"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.commitId").isNotEmpty())
+                .andExpect(jsonPath("$.targetBranch").value("cherry-target"))
+                .andExpect(jsonPath("$.cherryPickedFrom").value(commitId));
+    }
+
+    @Test
+    void cherryPickInvalidCommitReturnsBadRequest() throws Exception {
+        // Target branch must exist first
+        String dsl = """
+                element CP-9010 type Capability
+                  title "Target for bad cherry-pick"
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl)
+                        .param("branch", "cherry-bad-target"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/dsl/cherry-pick")
+                        .param("commitId", "0000000000000000000000000000000000000000")
+                        .param("targetBranch", "cherry-bad-target"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isNotEmpty());
+    }
+
+    @Test
+    void mergeBranchesSucceeds() throws Exception {
+        // Create a common base commit
+        String baseDsl = """
+                element CP-9100 type Capability
+                  title "Merge Base"
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(baseDsl)
+                        .param("branch", "merge-from"))
+                .andExpect(status().isOk());
+
+        // Fork merge-into from merge-from (they share the base)
+        mockMvc.perform(post("/api/dsl/branches")
+                        .param("name", "merge-into")
+                        .param("fromBranch", "merge-from"))
+                .andExpect(status().isOk());
+
+        // Add a second commit on merge-from
+        String dsl2 = """
+                element CP-9100 type Capability
+                  title "Merge Base"
+                element CP-9101 type Capability
+                  title "From Branch Added"
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl2)
+                        .param("branch", "merge-from"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/dsl/merge")
+                        .param("fromBranch", "merge-from")
+                        .param("intoBranch", "merge-into"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.commitId").isNotEmpty())
+                .andExpect(jsonPath("$.fromBranch").value("merge-from"))
+                .andExpect(jsonPath("$.intoBranch").value("merge-into"));
+    }
+
+    @Test
+    void mergeNonExistentBranchReturnsBadRequest() throws Exception {
+        // Create target branch
+        String dsl = """
+                element CP-9110 type Capability
+                  title "Merge target"
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl)
+                        .param("branch", "merge-existing"));
+
+        mockMvc.perform(post("/api/dsl/merge")
+                        .param("fromBranch", "nonexistent-merge-branch")
+                        .param("intoBranch", "merge-existing"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isNotEmpty());
+    }
+
+    @Test
+    void getGitHeadReturnsDslContent() throws Exception {
+        String dsl = """
+                element CP-9201 type Capability
+                  title "Git Head Test"
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl)
+                        .param("branch", "git-head-test"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/dsl/git/head").param("branch", "git-head-test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.branch").value("git-head-test"))
+                .andExpect(jsonPath("$.dslText").isNotEmpty())
+                .andExpect(jsonPath("$.length").isNumber());
+    }
+
+    @Test
+    void getGitHeadNonExistentBranchReturns404() throws Exception {
+        mockMvc.perform(get("/api/dsl/git/head").param("branch", "nonexistent-git-branch"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getGitCommitReturnsDslContent() throws Exception {
+        String dsl = """
+                element CP-9301 type Capability
+                  title "Git Commit Test"
+                """;
+        var result = mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl)
+                        .param("branch", "git-commit-test"))
+                .andReturn();
+        String commitId = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(result.getResponse().getContentAsString())
+                .get("commitId").asText();
+
+        mockMvc.perform(get("/api/dsl/git/commit/" + commitId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.commitId").value(commitId))
+                .andExpect(jsonPath("$.dslText").isNotEmpty());
+    }
+
+    // --- History index + search endpoints ---
+
+    @Test
+    void indexAndSearchHistory() throws Exception {
+        String dsl = """
+                element CP-9401 type Capability
+                  title "Indexable Cap"
+                relation CP-9401 REALIZES CR-9402
+                  status proposed
+                element CR-9402 type CoreService
+                  title "Indexable Svc"
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl)
+                        .param("branch", "index-test"))
+                .andExpect(status().isOk());
+
+        // Index the branch
+        mockMvc.perform(post("/api/dsl/history/index")
+                        .param("branch", "index-test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.indexed").value(1));
+
+        // Search by element ID
+        mockMvc.perform(get("/api/dsl/history/element/CP-9401"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+
+        // Full-text search
+        mockMvc.perform(get("/api/dsl/history/search")
+                        .param("query", "CP-9401"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+    }
+
+    @Test
+    void applyHypothesisForSession() throws Exception {
+        // Create a hypothesis
+        RelationHypothesis h = new RelationHypothesis();
+        h.setSourceNodeId("BP");
+        h.setTargetNodeId("CP");
+        h.setRelationType(RelationType.SUPPORTS);
+        h.setStatus(HypothesisStatus.PROVISIONAL);
+        h.setConfidence(0.80);
+        h.setAnalysisSessionId("session-apply-test");
+        h = hypothesisRepository.save(h);
+
+        mockMvc.perform(post("/api/dsl/hypotheses/" + h.getId() + "/apply-session"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.appliedInCurrentAnalysis").value(true))
+                .andExpect(jsonPath("$.status").value("PROVISIONAL"));
+    }
+
+    @Test
+    void applyHypothesisForSessionNotFound() throws Exception {
+        mockMvc.perform(post("/api/dsl/hypotheses/999999/apply-session"))
+                .andExpect(status().isNotFound());
+    }
 }

@@ -206,6 +206,27 @@ public class HypothesisService {
     }
 
     /**
+     * Mark a hypothesis as "applied for this session only".
+     *
+     * <p>The relationship is used in the current Architecture View and exports
+     * but is not permanently persisted as a {@link TaxonomyRelation}.
+     */
+    @Transactional
+    public RelationHypothesis applyForSession(Long hypothesisId) {
+        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)
+                .orElseThrow(() -> new IllegalArgumentException("Hypothesis not found: " + hypothesisId));
+
+        hypothesis.setAppliedInCurrentAnalysis(true);
+        hypothesisRepository.save(hypothesis);
+
+        log.info("Applied hypothesis {} for current session: {} --[{}]--> {}",
+                hypothesisId, hypothesis.getSourceNodeId(),
+                hypothesis.getRelationType(), hypothesis.getTargetNodeId());
+
+        return hypothesis;
+    }
+
+    /**
      * List hypotheses by status.
      */
     @Transactional(readOnly = true)
