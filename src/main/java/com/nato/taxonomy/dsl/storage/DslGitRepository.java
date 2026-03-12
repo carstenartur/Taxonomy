@@ -407,16 +407,10 @@ public class DslGitRepository {
 
             RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());
 
-            // Three-way merge: base=parent (or empty tree for initial commit),
+            // Three-way merge: base=parent (or auto-detected for initial commit),
             // ours=targetHead, theirs=pickCommit
             ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);
-            boolean success;
-            if (pickCommit.getParentCount() == 0) {
-                // Initial commit: use empty tree as base
-                success = merger.merge(targetHead, pickCommit);
-            } else {
-                success = merger.merge(targetHead, pickCommit);
-            }
+            boolean success = merger.merge(targetHead, pickCommit);
 
             if (!success) {
                 log.warn("Cherry-pick merge conflict for {} onto '{}'", commitId, targetBranch);

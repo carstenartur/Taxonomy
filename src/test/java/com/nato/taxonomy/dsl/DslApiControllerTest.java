@@ -589,7 +589,8 @@ class DslApiControllerTest {
         mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(dsl)
-                        .param("branch", "cherry-bad-target"));
+                        .param("branch", "cherry-bad-target"))
+                .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/dsl/cherry-pick")
                         .param("commitId", "0000000000000000000000000000000000000000")
