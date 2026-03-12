@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyRelation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.model</a> &gt; <span class="el_source">TaxonomyRelation.java</span></div><h1>TaxonomyRelation.java</h1><pre class="source lang-java linenums">package com.taxonomy.model;
+
+import com.taxonomy.search.RelationEmbeddingBinder;
+import jakarta.persistence.*;
+import org.hibernate.annotations.Nationalized;
+import org.hibernate.search.mapper.pojo.bridge.mapping.annotation.TypeBinderRef;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.*;
+
+@Entity
+@Table(name = &quot;taxonomy_relation&quot;,
+        uniqueConstraints = @UniqueConstraint(
+                columnNames = {&quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relation_type&quot;}))
+@Indexed
+@TypeBinding(binder = @TypeBinderRef(type = RelationEmbeddingBinder.class))
+<span class="fc" id="L15">public class TaxonomyRelation {</span>
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;source_node_id&quot;, nullable = false)
+    @IndexedEmbedded(includePaths = {&quot;code&quot;, &quot;nameEn&quot;})
+    private TaxonomyNode sourceNode;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;target_node_id&quot;, nullable = false)
+    @IndexedEmbedded(includePaths = {&quot;code&quot;, &quot;nameEn&quot;})
+    private TaxonomyNode targetNode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;relation_type&quot;, nullable = false)
+    @KeywordField
+    private RelationType relationType;
+
+    @Nationalized
+    @Column(length = 2000)
+    @FullTextField(analyzer = &quot;english&quot;)
+    private String description;
+
+    @Nationalized
+    private String provenance;
+
+    private Integer weight;
+
+<span class="fc" id="L46">    private boolean bidirectional = false;</span>
+
+    @Lob
+    @Convert(converter = FloatArrayConverter.class)
+    @Column(name = &quot;semantic_embedding&quot;)
+    private float[] semanticEmbedding;
+
+    @GenericField
+    @Column(name = &quot;has_embedding&quot;)
+    private boolean hasEmbedding;
+
+<span class="fc" id="L57">    public Long getId() { return id; }</span>
+<span class="nc" id="L58">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L60">    public TaxonomyNode getSourceNode() { return sourceNode; }</span>
+<span class="fc" id="L61">    public void setSourceNode(TaxonomyNode sourceNode) { this.sourceNode = sourceNode; }</span>
+
+<span class="fc" id="L63">    public TaxonomyNode getTargetNode() { return targetNode; }</span>
+<span class="fc" id="L64">    public void setTargetNode(TaxonomyNode targetNode) { this.targetNode = targetNode; }</span>
+
+<span class="fc" id="L66">    public RelationType getRelationType() { return relationType; }</span>
+<span class="fc" id="L67">    public void setRelationType(RelationType relationType) { this.relationType = relationType; }</span>
+
+<span class="fc" id="L69">    public String getDescription() { return description; }</span>
+<span class="fc" id="L70">    public void setDescription(String description) { this.description = description; }</span>
+
+<span class="fc" id="L72">    public String getProvenance() { return provenance; }</span>
+<span class="fc" id="L73">    public void setProvenance(String provenance) { this.provenance = provenance; }</span>
+
+<span class="fc" id="L75">    public Integer getWeight() { return weight; }</span>
+<span class="nc" id="L76">    public void setWeight(Integer weight) { this.weight = weight; }</span>
+
+<span class="fc" id="L78">    public boolean isBidirectional() { return bidirectional; }</span>
+<span class="nc" id="L79">    public void setBidirectional(boolean bidirectional) { this.bidirectional = bidirectional; }</span>
+
+<span class="nc" id="L81">    public float[] getSemanticEmbedding() { return semanticEmbedding; }</span>
+    public void setSemanticEmbedding(float[] semanticEmbedding) {
+<span class="nc" id="L83">        this.semanticEmbedding = semanticEmbedding;</span>
+<span class="nc bnc" id="L84" title="All 2 branches missed.">        this.hasEmbedding = (semanticEmbedding != null);</span>
+<span class="nc" id="L85">    }</span>
+
+<span class="nc" id="L87">    public boolean isHasEmbedding() { return hasEmbedding; }</span>
+<span class="nc" id="L88">    private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

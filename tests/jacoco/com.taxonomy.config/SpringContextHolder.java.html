@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SpringContextHolder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.config</a> &gt; <span class="el_source">SpringContextHolder.java</span></div><h1>SpringContextHolder.java</h1><pre class="source lang-java linenums">package com.taxonomy.config;
+
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.lang.NonNull;
+import org.springframework.stereotype.Component;
+
+/**
+ * Static holder for the Spring {@link ApplicationContext}.
+ * Allows non-Spring-managed code (such as Hibernate Search bridges) to access
+ * Spring beans by type without requiring constructor injection.
+ */
+@Component
+<span class="nc" id="L14">public class SpringContextHolder implements ApplicationContextAware {</span>
+
+    private static ApplicationContext context;
+
+    @Override
+    public void setApplicationContext(@NonNull ApplicationContext ctx) {
+<span class="nc" id="L20">        context = ctx;</span>
+<span class="nc" id="L21">    }</span>
+
+    public static &lt;T&gt; T getBean(Class&lt;T&gt; beanType) {
+<span class="pc bpc" id="L24" title="1 of 2 branches missed.">        if (context == null) return null;</span>
+        try {
+<span class="nc" id="L26">            return context.getBean(beanType);</span>
+<span class="nc" id="L27">        } catch (Exception e) {</span>
+<span class="nc" id="L28">            return null;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

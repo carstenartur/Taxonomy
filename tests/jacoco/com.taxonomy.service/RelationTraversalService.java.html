@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationTraversalService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">RelationTraversalService.java</span></div><h1>RelationTraversalService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.model.TaxonomyRelation;
+import com.taxonomy.repository.TaxonomyRelationRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Loads and filters traversable relations for the architecture view.
+ * Only whitelisted relation types are returned.
+ */
+@Service
+public class RelationTraversalService {
+
+    /** Relation types allowed for v1 propagation. */
+<span class="fc" id="L21">    static final List&lt;RelationType&gt; WHITELISTED_TYPES = List.of(</span>
+            RelationType.SUPPORTS,
+            RelationType.REALIZES,
+            RelationType.USES
+    );
+
+    private final TaxonomyRelationRepository relationRepository;
+    private final TaxonomyRelationService relationService;
+
+    public RelationTraversalService(TaxonomyRelationRepository relationRepository,
+<span class="fc" id="L31">                                    TaxonomyRelationService relationService) {</span>
+<span class="fc" id="L32">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L33">        this.relationService = relationService;</span>
+<span class="fc" id="L34">    }</span>
+
+    /**
+     * Returns all traversable relations for a given node code,
+     * considering both outgoing and incoming (for bidirectional) relations
+     * filtered to the whitelisted types.
+     */
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getTraversableRelations(String nodeCode) {
+<span class="fc" id="L43">        List&lt;TaxonomyRelationDto&gt; result = new ArrayList&lt;&gt;();</span>
+
+        // Outgoing relations of whitelisted types
+<span class="fc" id="L46">        List&lt;TaxonomyRelation&gt; outgoing =</span>
+<span class="fc" id="L47">                relationRepository.findBySourceNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        for (TaxonomyRelation r : outgoing) {</span>
+<span class="fc" id="L49">            result.add(relationService.toDto(r));</span>
+<span class="fc" id="L50">        }</span>
+
+        // Incoming relations of whitelisted types where the relation is bidirectional
+<span class="fc" id="L53">        List&lt;TaxonomyRelation&gt; incoming =</span>
+<span class="fc" id="L54">                relationRepository.findByTargetNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        for (TaxonomyRelation r : incoming) {</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">            if (r.isBidirectional()) {</span>
+<span class="nc" id="L57">                result.add(relationService.toDto(r));</span>
+            }
+<span class="fc" id="L59">        }</span>
+
+<span class="fc" id="L61">        return result;</span>
+    }
+
+    /**
+     * Returns all relations of the whitelisted types.
+     */
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getAllTraversableRelations() {
+<span class="nc" id="L69">        List&lt;TaxonomyRelation&gt; relations = relationRepository.findByRelationTypeIn(WHITELISTED_TYPES);</span>
+<span class="nc" id="L70">        List&lt;TaxonomyRelationDto&gt; dtos = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">        for (TaxonomyRelation r : relations) {</span>
+<span class="nc" id="L72">            dtos.add(relationService.toDto(r));</span>
+<span class="nc" id="L73">        }</span>
+<span class="nc" id="L74">        return dtos;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

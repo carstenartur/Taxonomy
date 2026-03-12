@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureDslDocument.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.model</a> &gt; <span class="el_source">ArchitectureDslDocument.java</span></div><h1>ArchitectureDslDocument.java</h1><pre class="source lang-java linenums">package com.taxonomy.model;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.Nationalized;
+
+import java.time.Instant;
+
+/**
+ * Tracks a parsed/loaded DSL document with its Git commit context.
+ */
+@Entity
+@Table(name = &quot;architecture_dsl_document&quot;)
+<span class="fc" id="L13">public class ArchitectureDslDocument {</span>
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Nationalized
+    @Column(nullable = false)
+    private String path;
+
+    @Nationalized
+    @Column(name = &quot;commit_id&quot;)
+    private String commitId;
+
+    @Nationalized
+    @Column
+    private String branch;
+
+    @Nationalized
+    @Column
+    private String namespace;
+
+    @Nationalized
+    @Column(name = &quot;dsl_version&quot;)
+    private String dslVersion;
+
+    @Nationalized
+    @Lob
+    @Column(name = &quot;raw_content&quot;, nullable = false, length = 100000)
+    private String rawContent;
+
+    @Column(name = &quot;parsed_at&quot;, nullable = false)
+    private Instant parsedAt;
+
+    @PrePersist
+    protected void onCreate() {
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (parsedAt == null) {</span>
+<span class="fc" id="L50">            parsedAt = Instant.now();</span>
+        }
+<span class="fc" id="L52">    }</span>
+
+<span class="fc" id="L54">    public Long getId() { return id; }</span>
+<span class="nc" id="L55">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L57">    public String getPath() { return path; }</span>
+<span class="fc" id="L58">    public void setPath(String path) { this.path = path; }</span>
+
+<span class="fc" id="L60">    public String getCommitId() { return commitId; }</span>
+<span class="fc" id="L61">    public void setCommitId(String commitId) { this.commitId = commitId; }</span>
+
+<span class="fc" id="L63">    public String getBranch() { return branch; }</span>
+<span class="fc" id="L64">    public void setBranch(String branch) { this.branch = branch; }</span>
+
+<span class="fc" id="L66">    public String getNamespace() { return namespace; }</span>
+<span class="fc" id="L67">    public void setNamespace(String namespace) { this.namespace = namespace; }</span>
+
+<span class="fc" id="L69">    public String getDslVersion() { return dslVersion; }</span>
+<span class="fc" id="L70">    public void setDslVersion(String dslVersion) { this.dslVersion = dslVersion; }</span>
+
+<span class="fc" id="L72">    public String getRawContent() { return rawContent; }</span>
+<span class="fc" id="L73">    public void setRawContent(String rawContent) { this.rawContent = rawContent; }</span>
+
+<span class="fc" id="L75">    public Instant getParsedAt() { return parsedAt; }</span>
+<span class="nc" id="L76">    public void setParsedAt(Instant parsedAt) { this.parsedAt = parsedAt; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

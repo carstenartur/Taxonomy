@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CoverageApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.controller</a> &gt; <span class="el_source">CoverageApiController.java</span></div><h1>CoverageApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.controller;
+
+import com.taxonomy.dto.CoverageStatistics;
+import com.taxonomy.model.RequirementCoverage;
+import com.taxonomy.service.RequirementCoverageService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * REST API for the Requirement Coverage feature.
+ *
+ * &lt;p&gt;Endpoints:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code POST /api/coverage/record} — record coverage from an analysis result&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/coverage/node/{code}} — requirements covering a specific node&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/coverage/requirement/{id}} — nodes covered by a requirement&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/coverage/statistics} — overall coverage statistics&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/coverage/density} — requirement density map&lt;/li&gt;
+ *   &lt;li&gt;{@code DELETE /api/coverage/requirement/{id}} — remove coverage for a requirement&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/coverage&quot;)
+@Tag(name = &quot;Requirement Coverage&quot;)
+public class CoverageApiController {
+
+    private final RequirementCoverageService coverageService;
+
+<span class="fc" id="L35">    public CoverageApiController(RequirementCoverageService coverageService) {</span>
+<span class="fc" id="L36">        this.coverageService = coverageService;</span>
+<span class="fc" id="L37">    }</span>
+
+    /**
+     * Request body for recording coverage from an analysis result.
+     *
+     * @param requirementId   identifier for the requirement (e.g. &quot;REQ-101&quot;)
+     * @param requirementText original business text
+     * @param scores          map of nodeCode → score (0–100)
+     * @param minScore        minimum score threshold (inclusive); 0 means use the default (50)
+     */
+<span class="fc" id="L47">    public record RecordCoverageRequest(</span>
+            String requirementId,
+            String requirementText,
+            Map&lt;String, Integer&gt; scores,
+            int minScore) {
+    }
+
+    /**
+     * Records coverage from an analysis result. Scores below {@code minScore} are discarded.
+     */
+    @Operation(summary = &quot;Record coverage&quot;,
+               description = &quot;Stores nodeCode→score mappings above the threshold for a requirement&quot;)
+    @PostMapping(&quot;/record&quot;)
+    public ResponseEntity&lt;Void&gt; recordCoverage(@RequestBody RecordCoverageRequest request) {
+<span class="fc" id="L61">        coverageService.analyzeCoverage(</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">                request.scores() != null ? request.scores() : Map.of(),</span>
+<span class="fc" id="L63">                request.requirementId(),</span>
+<span class="fc" id="L64">                request.requirementText(),</span>
+<span class="fc" id="L65">                request.minScore());</span>
+<span class="fc" id="L66">        return ResponseEntity.ok().build();</span>
+    }
+
+    /**
+     * Returns all requirements that cover a given taxonomy node code.
+     */
+    @Operation(summary = &quot;Coverage for node&quot;,
+               description = &quot;Returns all requirements covering a specific node code&quot;)
+    @GetMapping(&quot;/node/{code}&quot;)
+    public ResponseEntity&lt;List&lt;RequirementCoverage&gt;&gt; getCoverageForNode(
+            @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code) {
+<span class="fc" id="L77">        return ResponseEntity.ok(coverageService.getCoverageForNode(code));</span>
+    }
+
+    /**
+     * Returns all nodes covered by a specific requirement.
+     */
+    @Operation(summary = &quot;Coverage for requirement&quot;,
+               description = &quot;Returns all nodes covered by a specific requirement ID&quot;)
+    @GetMapping(&quot;/requirement/{id}&quot;)
+    public ResponseEntity&lt;List&lt;RequirementCoverage&gt;&gt; getCoverageForRequirement(
+            @Parameter(description = &quot;Requirement identifier&quot;) @PathVariable String id) {
+<span class="fc" id="L88">        return ResponseEntity.ok(coverageService.getCoverageForRequirement(id));</span>
+    }
+
+    /**
+     * Returns overall coverage statistics for the taxonomy.
+     */
+    @Operation(summary = &quot;Coverage statistics&quot;,
+               description = &quot;Returns overall coverage statistics: totals, percentages, top-covered, and gap candidates&quot;)
+    @GetMapping(&quot;/statistics&quot;)
+    public ResponseEntity&lt;CoverageStatistics&gt; getCoverageStatistics() {
+<span class="fc" id="L98">        return ResponseEntity.ok(coverageService.getCoverageStatistics());</span>
+    }
+
+    /**
+     * Returns the requirement density map (nodeCode → requirementCount).
+     */
+    @Operation(summary = &quot;Density map&quot;,
+               description = &quot;Returns a map of nodeCode → requirementCount for heatmap visualisation&quot;)
+    @GetMapping(&quot;/density&quot;)
+    public ResponseEntity&lt;Map&lt;String, Integer&gt;&gt; getDensityMap() {
+<span class="fc" id="L108">        return ResponseEntity.ok(coverageService.getRequirementDensityMap());</span>
+    }
+
+    /**
+     * Removes all coverage records for the given requirement ID.
+     */
+    @Operation(summary = &quot;Delete coverage&quot;,
+               description = &quot;Removes all coverage records for a given requirement ID&quot;)
+    @DeleteMapping(&quot;/requirement/{id}&quot;)
+    public ResponseEntity&lt;Void&gt; deleteCoverage(
+            @Parameter(description = &quot;Requirement identifier&quot;) @PathVariable String id) {
+<span class="fc" id="L119">        coverageService.deleteCoverageForRequirement(id);</span>
+<span class="fc" id="L120">        return ResponseEntity.noContent().build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

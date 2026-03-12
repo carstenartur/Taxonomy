@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RateLimitFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.config</a> &gt; <span class="el_source">RateLimitFilter.java</span></div><h1>RateLimitFilter.java</h1><pre class="source lang-java linenums">package com.taxonomy.config;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * Simple in-memory rate limiter for LLM-backed API endpoints.
+ * Limits requests per IP address per minute to prevent quota exhaustion.
+ *
+ * &lt;p&gt;Protected endpoints:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code POST /api/analyze}&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/analyze-stream}&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/analyze-node}&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/justify-leaf}&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;Configure via {@code TAXONOMY_RATE_LIMIT_PER_MINUTE} (default: 10).
+ * Set to 0 to disable rate limiting.
+ */
+@Component
+<span class="fc" id="L32">public class RateLimitFilter extends OncePerRequestFilter {</span>
+
+    @Value(&quot;${taxonomy.rate-limit.per-minute:10}&quot;)
+    private int maxRequestsPerMinute;
+
+<span class="fc" id="L37">    private final Map&lt;String, WindowCounter&gt; counters = new ConcurrentHashMap&lt;&gt;();</span>
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                      FilterChain filterChain) throws ServletException, IOException {
+<span class="fc" id="L42">        String path = request.getRequestURI();</span>
+
+        // Only rate-limit LLM-backed endpoints
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if (!isRateLimitedPath(path)) {</span>
+<span class="fc" id="L46">            filterChain.doFilter(request, response);</span>
+<span class="fc" id="L47">            return;</span>
+        }
+
+        // Disabled if set to 0
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if (maxRequestsPerMinute &lt;= 0) {</span>
+<span class="nc" id="L52">            filterChain.doFilter(request, response);</span>
+<span class="nc" id="L53">            return;</span>
+        }
+
+<span class="fc" id="L56">        String clientIp = getClientIp(request);</span>
+<span class="fc" id="L57">        WindowCounter counter = counters.computeIfAbsent(clientIp, k -&gt; new WindowCounter());</span>
+
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (counter.incrementAndCheck(maxRequestsPerMinute)) {</span>
+<span class="fc" id="L60">            filterChain.doFilter(request, response);</span>
+        } else {
+<span class="fc" id="L62">            response.setStatus(429);</span>
+<span class="fc" id="L63">            response.setContentType(&quot;application/json&quot;);</span>
+<span class="fc" id="L64">            response.getWriter().write(</span>
+                    &quot;{\&quot;error\&quot;:\&quot;Rate limit exceeded. Maximum &quot; + maxRequestsPerMinute
+                    + &quot; LLM requests per minute. Please wait.\&quot;,&quot;
+                    + &quot;\&quot;status\&quot;:429}&quot;);
+        }
+<span class="fc" id="L69">    }</span>
+
+    private boolean isRateLimitedPath(String path) {
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        return path.equals(&quot;/api/analyze&quot;)</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            || path.equals(&quot;/api/analyze-stream&quot;)</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            || path.equals(&quot;/api/analyze-node&quot;)</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">            || path.equals(&quot;/api/justify-leaf&quot;);</span>
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+<span class="fc" id="L79">        String xff = request.getHeader(&quot;X-Forwarded-For&quot;);</span>
+<span class="pc bpc" id="L80" title="3 of 4 branches missed.">        if (xff != null &amp;&amp; !xff.isBlank()) {</span>
+<span class="nc" id="L81">            return xff.split(&quot;,&quot;)[0].trim();</span>
+        }
+<span class="fc" id="L83">        return request.getRemoteAddr();</span>
+    }
+
+    /**
+     * Sliding window counter per minute.
+     */
+<span class="fc" id="L89">    static class WindowCounter {</span>
+<span class="fc" id="L90">        private final AtomicInteger count = new AtomicInteger(0);</span>
+<span class="fc" id="L91">        private volatile long windowStart = System.currentTimeMillis();</span>
+
+        boolean incrementAndCheck(int max) {
+<span class="fc" id="L94">            long now = System.currentTimeMillis();</span>
+            // Reset window every 60 seconds — synchronized to prevent a race between
+            // the reset check and the increment that would count against the new window
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">            if (now - windowStart &gt; 60_000) {</span>
+<span class="nc" id="L98">                synchronized (this) {</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">                    if (now - windowStart &gt; 60_000) {</span>
+<span class="nc" id="L100">                        count.set(1);</span>
+<span class="nc" id="L101">                        windowStart = now;</span>
+<span class="nc" id="L102">                        return true;</span>
+                    }
+<span class="nc" id="L104">                }</span>
+            }
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            return count.incrementAndGet() &lt;= max;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

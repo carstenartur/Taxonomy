@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationValidationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">RelationValidationService.java</span></div><h1>RelationValidationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.model.TaxonomyNode;
+import com.taxonomy.repository.TaxonomyRelationRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+/**
+ * Validates a candidate relation and computes a confidence score.
+ *
+ * &lt;p&gt;Validation rules:
+ * &lt;ol&gt;
+ *   &lt;li&gt;Compatibility — source/target roots must be allowed for the relation type.&lt;/li&gt;
+ *   &lt;li&gt;Duplicate check — relation must not already exist.&lt;/li&gt;
+ *   &lt;li&gt;Self-relation check — source must differ from target.&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;p&gt;Confidence is derived from the candidate's search rank position
+ * (higher rank → higher confidence).
+ */
+@Service
+public class RelationValidationService {
+
+<span class="fc" id="L27">    private static final Logger log = LoggerFactory.getLogger(RelationValidationService.class);</span>
+
+    private final RelationCompatibilityMatrix compatibilityMatrix;
+    private final TaxonomyRelationRepository relationRepository;
+    private final RelationQualityService qualityService;
+
+    public RelationValidationService(RelationCompatibilityMatrix compatibilityMatrix,
+                                     TaxonomyRelationRepository relationRepository,
+<span class="fc" id="L35">                                     RelationQualityService qualityService) {</span>
+<span class="fc" id="L36">        this.compatibilityMatrix = compatibilityMatrix;</span>
+<span class="fc" id="L37">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L38">        this.qualityService = qualityService;</span>
+<span class="fc" id="L39">    }</span>
+
+    /**
+     * Validates a candidate relation.
+     *
+     * @return a {@link ValidationResult} with pass/fail and confidence
+     */
+    public ValidationResult validate(TaxonomyNode source,
+                                     TaxonomyNodeDto candidateTarget,
+                                     RelationType relationType,
+                                     int rank,
+                                     int totalCandidates) {
+        // Self-relation
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (source.getCode().equals(candidateTarget.getCode())) {</span>
+<span class="fc" id="L53">            return ValidationResult.fail(&quot;Self-relation not allowed&quot;);</span>
+        }
+
+        // Compatibility check
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (!compatibilityMatrix.isCompatible(</span>
+<span class="fc" id="L58">                source.getTaxonomyRoot(),</span>
+<span class="fc" id="L59">                candidateTarget.getTaxonomyRoot(),</span>
+                relationType)) {
+<span class="nc" id="L61">            return ValidationResult.fail(</span>
+<span class="nc" id="L62">                    &quot;Incompatible roots: &quot; + source.getTaxonomyRoot()</span>
+<span class="nc" id="L63">                    + &quot; → &quot; + candidateTarget.getTaxonomyRoot()</span>
+                    + &quot; for &quot; + relationType);
+        }
+
+        // Duplicate check (already exists as a persisted relation)
+<span class="fc" id="L68">        boolean exists = !relationRepository</span>
+<span class="fc" id="L69">                .findBySourceNodeCodeAndRelationTypeIn(</span>
+<span class="fc" id="L70">                        source.getCode(),</span>
+<span class="fc" id="L71">                        java.util.List.of(relationType))</span>
+<span class="fc" id="L72">                .stream()</span>
+<span class="pc" id="L73">                .filter(r -&gt; r.getTargetNode().getCode().equals(candidateTarget.getCode()))</span>
+<span class="fc" id="L74">                .toList()</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">                .isEmpty();</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        if (exists) {</span>
+<span class="nc" id="L77">            return ValidationResult.fail(&quot;Relation already exists&quot;);</span>
+        }
+
+        // Confidence: 80% rank-based + 20% acceptance history feedback
+<span class="fc" id="L81">        double rankConfidence = computeConfidence(rank, totalCandidates);</span>
+<span class="fc" id="L82">        double historyWeight = qualityService.acceptanceHistoryWeight(</span>
+<span class="fc" id="L83">                source.getTaxonomyRoot(),</span>
+<span class="fc" id="L84">                candidateTarget.getTaxonomyRoot(),</span>
+                relationType);
+<span class="fc" id="L86">        double confidence = 0.80 * rankConfidence + 0.20 * historyWeight;</span>
+
+<span class="fc" id="L88">        String rationale = String.format(</span>
+                &quot;%s [%s] → %s [%s] (%s), rank %d/%d&quot;,
+<span class="fc" id="L90">                source.getCode(), source.getTaxonomyRoot(),</span>
+<span class="fc" id="L91">                candidateTarget.getCode(), candidateTarget.getTaxonomyRoot(),</span>
+<span class="fc" id="L92">                relationType, rank + 1, totalCandidates);</span>
+
+<span class="fc" id="L94">        return ValidationResult.pass(confidence, rationale);</span>
+    }
+
+    /**
+     * Computes confidence from the rank position.
+     * Rank 0 → highest confidence (0.95), higher ranks → lower confidence (min 0.3).
+     */
+    public double computeConfidence(int rank, int totalCandidates) {
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (totalCandidates &lt;= 1) return 0.9;</span>
+        // Linear decay from 0.95 to 0.3
+<span class="fc" id="L104">        double ratio = (double) rank / (totalCandidates - 1);</span>
+<span class="fc" id="L105">        return 0.95 - (0.65 * ratio);</span>
+    }
+
+    // ── Inner result record ───────────────────────────────────────────────────
+
+    public static class ValidationResult {
+        private final boolean valid;
+        private final double confidence;
+        private final String rationale;
+
+<span class="fc" id="L115">        private ValidationResult(boolean valid, double confidence, String rationale) {</span>
+<span class="fc" id="L116">            this.valid = valid;</span>
+<span class="fc" id="L117">            this.confidence = confidence;</span>
+<span class="fc" id="L118">            this.rationale = rationale;</span>
+<span class="fc" id="L119">        }</span>
+
+        public static ValidationResult pass(double confidence, String rationale) {
+<span class="fc" id="L122">            return new ValidationResult(true, confidence, rationale);</span>
+        }
+
+        public static ValidationResult fail(String reason) {
+<span class="fc" id="L126">            return new ValidationResult(false, 0.0, reason);</span>
+        }
+
+<span class="fc" id="L129">        public boolean isValid() { return valid; }</span>
+<span class="fc" id="L130">        public double getConfidence() { return confidence; }</span>
+<span class="fc" id="L131">        public String getRationale() { return rationale; }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

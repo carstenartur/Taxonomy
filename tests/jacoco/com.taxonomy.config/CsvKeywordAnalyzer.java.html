@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CsvKeywordAnalyzer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.config</a> &gt; <span class="el_source">CsvKeywordAnalyzer.java</span></div><h1>CsvKeywordAnalyzer.java</h1><pre class="source lang-java linenums">package com.taxonomy.config;
+
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.LowerCaseFilter;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.pattern.PatternTokenizer;
+
+import java.util.regex.Pattern;
+
+/**
+ * Custom Lucene {@link Analyzer} for comma/semicolon-separated keyword fields.
+ *
+ * &lt;p&gt;Used for {@code affectedElementIds} (comma-separated) and
+ * {@code affectedRelationIds} (semicolon-separated) fields in
+ * {@link com.taxonomy.model.ArchitectureCommitIndex}.
+ *
+ * &lt;p&gt;Splits on commas and semicolons, trims whitespace, and lowercases
+ * so that individual IDs like {@code &quot;CP-1001&quot;} become searchable tokens.
+ */
+<span class="fc" id="L21">public class CsvKeywordAnalyzer extends Analyzer {</span>
+
+    /** Split on commas or semicolons, optionally surrounded by whitespace. */
+<span class="fc" id="L24">    private static final Pattern DELIMITER = Pattern.compile(&quot;[,;]\\s*&quot;);</span>
+
+    @Override
+    protected TokenStreamComponents createComponents(String fieldName) {
+<span class="fc" id="L28">        Tokenizer tokenizer = new PatternTokenizer(DELIMITER, -1);</span>
+<span class="fc" id="L29">        TokenStream filter = new LowerCaseFilter(tokenizer);</span>
+<span class="fc" id="L30">        return new TokenStreamComponents(tokenizer, filter);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

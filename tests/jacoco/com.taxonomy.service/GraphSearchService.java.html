@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GraphSearchService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">GraphSearchService.java</span></div><h1>GraphSearchService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dto.GraphSearchResult;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.model.TaxonomyNode;
+import com.taxonomy.model.TaxonomyRelation;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.hibernate.search.mapper.orm.Search;
+import org.hibernate.search.mapper.orm.session.SearchSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Graph-semantic search service that combines node and relation KNN queries to answer
+ * graph-structural questions (e.g. &quot;which Business Processes are supported the most?&quot;).
+ *
+ * &lt;h2&gt;Algorithm&lt;/h2&gt;
+ * &lt;ol&gt;
+ *   &lt;li&gt;Embed the query text with DJL / all-MiniLM-L6-v2.&lt;/li&gt;
+ *   &lt;li&gt;Search {@link TaxonomyNode} index with {@code f.knn()} — finds conceptually
+ *       similar nodes.&lt;/li&gt;
+ *   &lt;li&gt;Search {@link TaxonomyRelation} index with {@code f.knn()} — finds relations
+ *       whose enriched text matches the query.&lt;/li&gt;
+ *   &lt;li&gt;Aggregate relation hits by taxonomy root and relation type.&lt;/li&gt;
+ *   &lt;li&gt;Build a summary describing which taxonomy root has the most matching relations.&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;p&gt;Graceful degradation: when the DJL model is unavailable, falls back to an empty result.
+ */
+@Service
+public class GraphSearchService {
+
+<span class="fc" id="L39">    private static final Logger log = LoggerFactory.getLogger(GraphSearchService.class);</span>
+
+    private final LocalEmbeddingService embeddingService;
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+<span class="fc" id="L46">    public GraphSearchService(LocalEmbeddingService embeddingService) {</span>
+<span class="fc" id="L47">        this.embeddingService = embeddingService;</span>
+<span class="fc" id="L48">    }</span>
+
+    /**
+     * Perform a graph-semantic search combining node and relation KNN queries.
+     *
+     * @param queryText  natural-language query (e.g. &quot;which Business Processes are most supported?&quot;)
+     * @param maxResults maximum number of node results to return (default 20)
+     * @return {@link GraphSearchResult} with matched nodes, graph statistics, and summary
+     */
+    @Transactional(readOnly = true)
+    public GraphSearchResult graphSearch(String queryText, int maxResults) {
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (!embeddingService.isAvailable()) {</span>
+<span class="fc" id="L60">            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),</span>
+<span class="fc" id="L61">                    Collections.emptyMap(), &quot;Semantic search is not available (embedding model not loaded).&quot;);</span>
+        }
+
+        try {
+<span class="nc" id="L65">            float[] queryVector = embeddingService.embed(queryText);</span>
+<span class="nc" id="L66">            SearchSession session = Search.session(entityManager);</span>
+
+            // 1. Search TaxonomyNode index by KNN
+<span class="nc" id="L69">            List&lt;TaxonomyNode&gt; nodeHits = session.search(TaxonomyNode.class)</span>
+<span class="nc" id="L70">                    .where(f -&gt; f.knn(maxResults).field(&quot;embedding&quot;).matching(queryVector))</span>
+<span class="nc" id="L71">                    .fetchHits(maxResults);</span>
+
+<span class="nc" id="L73">            List&lt;TaxonomyNodeDto&gt; matchedNodes = nodeHits.stream()</span>
+<span class="nc" id="L74">                    .map(this::toFlatDto)</span>
+<span class="nc" id="L75">                    .collect(Collectors.toList());</span>
+
+            // 2. Search TaxonomyRelation index by KNN
+<span class="nc" id="L78">            List&lt;TaxonomyRelation&gt; relationHits = session.search(TaxonomyRelation.class)</span>
+<span class="nc" id="L79">                    .where(f -&gt; f.knn(maxResults * 2).field(&quot;embedding&quot;).matching(queryVector))</span>
+<span class="nc" id="L80">                    .fetchHits(maxResults * 2);</span>
+
+            // 3. Aggregate relation hits by taxonomy root (via sourceNode.taxonomyRoot)
+<span class="nc" id="L83">            Map&lt;String, Long&gt; relationCountByRoot = relationHits.stream()</span>
+<span class="nc bnc" id="L84" title="All 4 branches missed.">                    .filter(r -&gt; r.getSourceNode() != null &amp;&amp; r.getSourceNode().getTaxonomyRoot() != null)</span>
+<span class="nc" id="L85">                    .collect(Collectors.groupingBy(</span>
+<span class="nc" id="L86">                            r -&gt; r.getSourceNode().getTaxonomyRoot(),</span>
+<span class="nc" id="L87">                            Collectors.counting()));</span>
+
+            // 4. Aggregate by relation type
+<span class="nc" id="L90">            Map&lt;String, Long&gt; topRelationTypes = relationHits.stream()</span>
+<span class="nc bnc" id="L91" title="All 2 branches missed.">                    .filter(r -&gt; r.getRelationType() != null)</span>
+<span class="nc" id="L92">                    .collect(Collectors.groupingBy(</span>
+<span class="nc" id="L93">                            r -&gt; r.getRelationType().name(),</span>
+<span class="nc" id="L94">                            Collectors.counting()));</span>
+
+            // 5. Build summary
+<span class="nc" id="L97">            String summary = buildSummary(relationCountByRoot, topRelationTypes, queryText);</span>
+
+<span class="nc" id="L99">            log.debug(&quot;Graph search for '{}': {} node hits, {} relation hits&quot;,</span>
+<span class="nc" id="L100">                    queryText, nodeHits.size(), relationHits.size());</span>
+
+<span class="nc" id="L102">            return new GraphSearchResult(matchedNodes, relationCountByRoot, topRelationTypes, summary);</span>
+
+<span class="nc" id="L104">        } catch (Exception e) {</span>
+<span class="nc" id="L105">            log.error(&quot;Graph search failed for query '{}': {}&quot;, queryText, e.getMessage());</span>
+<span class="nc" id="L106">            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),</span>
+<span class="nc" id="L107">                    Collections.emptyMap(), &quot;Graph search failed: &quot; + e.getMessage());</span>
+        }
+    }
+
+    private String buildSummary(Map&lt;String, Long&gt; byRoot, Map&lt;String, Long&gt; byType, String query) {
+<span class="nc bnc" id="L112" title="All 4 branches missed.">        if (byRoot.isEmpty() &amp;&amp; byType.isEmpty()) {</span>
+<span class="nc" id="L113">            return &quot;No graph relationships matched for: &quot; + query;</span>
+        }
+
+<span class="nc" id="L116">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L117" title="All 2 branches missed.">        if (!byRoot.isEmpty()) {</span>
+<span class="nc" id="L118">            Optional&lt;Map.Entry&lt;String, Long&gt;&gt; topRoot = byRoot.entrySet().stream()</span>
+<span class="nc" id="L119">                    .max(Map.Entry.comparingByValue());</span>
+<span class="nc" id="L120">            topRoot.ifPresent(e -&gt; sb.append(e.getKey())</span>
+<span class="nc" id="L121">                    .append(&quot; has the most matching relationships (&quot;)</span>
+<span class="nc" id="L122">                    .append(e.getValue()).append(&quot;)&quot;));</span>
+        }
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        if (!byType.isEmpty()) {</span>
+<span class="nc" id="L125">            Optional&lt;Map.Entry&lt;String, Long&gt;&gt; topType = byType.entrySet().stream()</span>
+<span class="nc" id="L126">                    .max(Map.Entry.comparingByValue());</span>
+<span class="nc" id="L127">            topType.ifPresent(e -&gt; {</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">                if (sb.length() &gt; 0) sb.append(&quot;. &quot;);</span>
+<span class="nc bnc" id="L129" title="All 2 branches missed.">                String typeName = e.getKey() != null</span>
+<span class="nc" id="L130">                        ? e.getKey().toLowerCase().replace('_', ' ') : &quot;unknown&quot;;</span>
+<span class="nc" id="L131">                sb.append(&quot;Most common relation type: &quot;)</span>
+<span class="nc" id="L132">                        .append(typeName)</span>
+<span class="nc" id="L133">                        .append(&quot; (&quot;).append(e.getValue()).append(&quot;)&quot;);</span>
+<span class="nc" id="L134">            });</span>
+        }
+<span class="nc" id="L136">        return sb.toString();</span>
+    }
+
+    private TaxonomyNodeDto toFlatDto(TaxonomyNode node) {
+<span class="nc" id="L140">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
+<span class="nc" id="L141">        dto.setId(node.getId());</span>
+<span class="nc" id="L142">        dto.setCode(node.getCode());</span>
+<span class="nc" id="L143">        dto.setUuid(node.getUuid());</span>
+<span class="nc" id="L144">        dto.setNameEn(node.getNameEn());</span>
+<span class="nc" id="L145">        dto.setNameDe(node.getNameDe());</span>
+<span class="nc" id="L146">        dto.setDescriptionEn(node.getDescriptionEn());</span>
+<span class="nc" id="L147">        dto.setDescriptionDe(node.getDescriptionDe());</span>
+<span class="nc" id="L148">        dto.setParentCode(node.getParentCode());</span>
+<span class="nc" id="L149">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
+<span class="nc" id="L150">        dto.setLevel(node.getLevel());</span>
+<span class="nc" id="L151">        dto.setDataset(node.getDataset());</span>
+<span class="nc" id="L152">        dto.setExternalId(node.getExternalId());</span>
+<span class="nc" id="L153">        dto.setSource(node.getSource());</span>
+<span class="nc" id="L154">        dto.setReference(node.getReference());</span>
+<span class="nc" id="L155">        dto.setSortOrder(node.getSortOrder());</span>
+<span class="nc" id="L156">        dto.setState(node.getState());</span>
+<span class="nc" id="L157">        return dto;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
