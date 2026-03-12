@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureCommitIndex.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.model</a> &gt; <span class="el_source">ArchitectureCommitIndex.java</span></div><h1>ArchitectureCommitIndex.java</h1><pre class="source lang-java linenums">package com.taxonomy.model;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.Nationalized;
+import org.hibernate.search.engine.backend.types.Sortable;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.*;
+
+import java.time.Instant;
+
+/**
+ * Index entry for a DSL architecture commit, enabling history search.
+ *
+ * &lt;p&gt;Each row corresponds to a single JGit commit on a DSL branch.
+ * The tokenized fields allow Hibernate Search / full-text queries over
+ * the architecture evolution timeline.
+ *
+ * &lt;p&gt;Hibernate Search annotations enable Lucene-backed full-text search:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code tokenizedChangeText} — DSL-aware full-text search via custom {@code &quot;dsl&quot;} analyzer&lt;/li&gt;
+ *   &lt;li&gt;{@code message} — commit message full-text search via {@code &quot;english&quot;} analyzer&lt;/li&gt;
+ *   &lt;li&gt;{@code affectedElementIds} — comma-separated IDs searchable via {@code &quot;csv-keyword&quot;} analyzer&lt;/li&gt;
+ *   &lt;li&gt;{@code affectedRelationIds} — semicolon-separated keys searchable via {@code &quot;csv-keyword&quot;} analyzer&lt;/li&gt;
+ *   &lt;li&gt;{@code branch}, {@code commitId}, {@code author} — exact keyword filters&lt;/li&gt;
+ *   &lt;li&gt;{@code commitTimestamp} — sortable date field&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@Entity
+@Indexed
+@Table(name = &quot;architecture_commit_index&quot;,
+       uniqueConstraints = @UniqueConstraint(columnNames = &quot;commit_id&quot;))
+<span class="fc" id="L31">public class ArchitectureCommitIndex {</span>
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Nationalized
+    @Column(name = &quot;commit_id&quot;, nullable = false, length = 40)
+    @KeywordField
+    private String commitId;
+
+    @Nationalized
+    @Column
+    @KeywordField
+    private String author;
+
+    @Column(name = &quot;commit_timestamp&quot;, nullable = false)
+    @GenericField(sortable = Sortable.YES)
+    private Instant commitTimestamp;
+
+    @Nationalized
+    @Column(length = 500)
+    @FullTextField(analyzer = &quot;english&quot;)
+    private String message;
+
+    @Nationalized
+    @Column(name = &quot;changed_files&quot;, length = 2000)
+    private String changedFiles;
+
+    @Nationalized
+    @Column(name = &quot;tokenized_change_text&quot;, length = 10000)
+    @FullTextField(analyzer = &quot;dsl&quot;)
+    private String tokenizedChangeText;
+
+    @Nationalized
+    @Column(name = &quot;affected_element_ids&quot;, length = 2000)
+    @FullTextField(analyzer = &quot;csv-keyword&quot;)
+    private String affectedElementIds;
+
+    @Nationalized
+    @Column(name = &quot;affected_relation_ids&quot;, length = 2000)
+    @FullTextField(analyzer = &quot;csv-keyword&quot;)
+    private String affectedRelationIds;
+
+    @Nationalized
+    @Column
+    @KeywordField
+    private String branch;
+
+    @Column(name = &quot;indexed_at&quot;, nullable = false)
+    private Instant indexedAt;
+
+    @PrePersist
+    protected void onCreate() {
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (indexedAt == null) {</span>
+<span class="fc" id="L86">            indexedAt = Instant.now();</span>
+        }
+<span class="fc" id="L88">    }</span>
+
+<span class="fc" id="L90">    public Long getId() { return id; }</span>
+<span class="nc" id="L91">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L93">    public String getCommitId() { return commitId; }</span>
+<span class="fc" id="L94">    public void setCommitId(String commitId) { this.commitId = commitId; }</span>
+
+<span class="fc" id="L96">    public String getAuthor() { return author; }</span>
+<span class="fc" id="L97">    public void setAuthor(String author) { this.author = author; }</span>
+
+<span class="fc" id="L99">    public Instant getCommitTimestamp() { return commitTimestamp; }</span>
+<span class="fc" id="L100">    public void setCommitTimestamp(Instant commitTimestamp) { this.commitTimestamp = commitTimestamp; }</span>
+
+<span class="fc" id="L102">    public String getMessage() { return message; }</span>
+<span class="fc" id="L103">    public void setMessage(String message) { this.message = message; }</span>
+
+<span class="fc" id="L105">    public String getChangedFiles() { return changedFiles; }</span>
+<span class="fc" id="L106">    public void setChangedFiles(String changedFiles) { this.changedFiles = changedFiles; }</span>
+
+<span class="fc" id="L108">    public String getTokenizedChangeText() { return tokenizedChangeText; }</span>
+<span class="fc" id="L109">    public void setTokenizedChangeText(String tokenizedChangeText) { this.tokenizedChangeText = tokenizedChangeText; }</span>
+
+<span class="fc" id="L111">    public String getAffectedElementIds() { return affectedElementIds; }</span>
+<span class="fc" id="L112">    public void setAffectedElementIds(String affectedElementIds) { this.affectedElementIds = affectedElementIds; }</span>
+
+<span class="fc" id="L114">    public String getAffectedRelationIds() { return affectedRelationIds; }</span>
+<span class="fc" id="L115">    public void setAffectedRelationIds(String affectedRelationIds) { this.affectedRelationIds = affectedRelationIds; }</span>
+
+<span class="fc" id="L117">    public String getBranch() { return branch; }</span>
+<span class="fc" id="L118">    public void setBranch(String branch) { this.branch = branch; }</span>
+
+<span class="fc" id="L120">    public Instant getIndexedAt() { return indexedAt; }</span>
+<span class="nc" id="L121">    public void setIndexedAt(Instant indexedAt) { this.indexedAt = indexedAt; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

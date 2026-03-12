@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisRelationGenerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">AnalysisRelationGenerator.java</span></div><h1>AnalysisRelationGenerator.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dto.RelationHypothesisDto;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.model.TaxonomyNode;
+import com.taxonomy.repository.TaxonomyNodeRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+
+/**
+ * Generates provisional (not-yet-persisted) relation hypotheses from analysis
+ * scores, using the {@link RelationCompatibilityMatrix} rules.
+ *
+ * &lt;p&gt;This service runs after LLM scoring and produces a list of
+ * {@link RelationHypothesisDto} that can be shown in the UI and optionally
+ * accepted into the knowledge graph by the user.
+ */
+@Service
+public class AnalysisRelationGenerator {
+
+<span class="fc" id="L25">    private static final Logger log = LoggerFactory.getLogger(AnalysisRelationGenerator.class);</span>
+
+    /** Minimum score (0–100) for a node to be considered as a relation endpoint. */
+    static final int MIN_SCORE = 50;
+
+    /**
+     * Normalisation factor for computing confidence from two 0–100 scores.
+     * confidence = (scoreA × scoreB) / 10 000 → 0.0–1.0 range.
+     */
+    static final double CONFIDENCE_NORMALIZATION_FACTOR = 10_000.0;
+
+    private final RelationCompatibilityMatrix compatibilityMatrix;
+    private final TaxonomyNodeRepository nodeRepository;
+
+    public AnalysisRelationGenerator(RelationCompatibilityMatrix compatibilityMatrix,
+<span class="fc" id="L40">                                     TaxonomyNodeRepository nodeRepository) {</span>
+<span class="fc" id="L41">        this.compatibilityMatrix = compatibilityMatrix;</span>
+<span class="fc" id="L42">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L43">    }</span>
+
+    /**
+     * Generates provisional relations from scored nodes.
+     *
+     * &lt;p&gt;Algorithm:
+     * &lt;ol&gt;
+     *   &lt;li&gt;Select all nodes with score &amp;ge; {@value #MIN_SCORE}&lt;/li&gt;
+     *   &lt;li&gt;Group them by taxonomy root&lt;/li&gt;
+     *   &lt;li&gt;For each pair of roots that have a compatible relation type in the
+     *       {@link RelationCompatibilityMatrix}, generate candidate relations&lt;/li&gt;
+     *   &lt;li&gt;Compute confidence from {@code (scoreA &amp;times; scoreB) / 10000}&lt;/li&gt;
+     *   &lt;li&gt;Return as DTOs sorted by confidence descending&lt;/li&gt;
+     * &lt;/ol&gt;
+     *
+     * @param scores map of nodeCode → integer score (0–100) from LLM analysis
+     * @return list of provisional relation hypotheses, sorted by confidence descending
+     */
+    @Transactional(readOnly = true)
+    public List&lt;RelationHypothesisDto&gt; generate(Map&lt;String, Integer&gt; scores) {
+<span class="fc bfc" id="L63" title="All 4 branches covered.">        if (scores == null || scores.isEmpty()) {</span>
+<span class="fc" id="L64">            return Collections.emptyList();</span>
+        }
+
+        // 1. Collect qualifying nodes (score &gt;= MIN_SCORE), grouped by taxonomy root
+<span class="fc" id="L68">        Map&lt;String, List&lt;ScoredNode&gt;&gt; nodesByRoot = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            if (entry.getValue() &lt; MIN_SCORE) {</span>
+<span class="fc" id="L71">                continue;</span>
+            }
+<span class="fc" id="L73">            String code = entry.getKey();</span>
+<span class="fc" id="L74">            Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(code);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (nodeOpt.isEmpty()) {</span>
+<span class="fc" id="L76">                continue;</span>
+            }
+<span class="fc" id="L78">            TaxonomyNode node = nodeOpt.get();</span>
+<span class="fc" id="L79">            String root = node.getTaxonomyRoot();</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">            if (root == null) {</span>
+<span class="nc" id="L81">                continue;</span>
+            }
+<span class="fc" id="L83">            nodesByRoot.computeIfAbsent(root, k -&gt; new ArrayList&lt;&gt;())</span>
+<span class="fc" id="L84">                    .add(new ScoredNode(code, node.getNameEn(), root, entry.getValue()));</span>
+<span class="fc" id="L85">        }</span>
+
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (nodesByRoot.size() &lt; 2) {</span>
+<span class="fc" id="L88">            log.debug(&quot;Fewer than 2 taxonomy roots with qualifying nodes; no provisional relations generated.&quot;);</span>
+<span class="fc" id="L89">            return Collections.emptyList();</span>
+        }
+
+        // 2. Generate candidates using compatibility matrix
+<span class="fc" id="L93">        List&lt;RelationHypothesisDto&gt; hypotheses = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L94">        List&lt;String&gt; roots = new ArrayList&lt;&gt;(nodesByRoot.keySet());</span>
+
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        for (int i = 0; i &lt; roots.size(); i++) {</span>
+<span class="fc" id="L97">            String sourceRoot = roots.get(i);</span>
+<span class="fc" id="L98">            List&lt;ScoredNode&gt; sourceNodes = nodesByRoot.get(sourceRoot);</span>
+
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            for (RelationType relationType : RelationType.values()) {</span>
+<span class="fc" id="L101">                Set&lt;String&gt; allowedTargets = compatibilityMatrix.allowedTargetRoots(sourceRoot, relationType);</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                if (allowedTargets.isEmpty()) {</span>
+                    // Either no restrictions or no rules — skip for auto-generation
+                    // to avoid noise from RELATED_TO
+<span class="fc" id="L105">                    continue;</span>
+                }
+
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                for (String targetRoot : allowedTargets) {</span>
+<span class="fc" id="L109">                    List&lt;ScoredNode&gt; targetNodes = nodesByRoot.get(targetRoot);</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">                    if (targetNodes == null) {</span>
+<span class="fc" id="L111">                        continue;</span>
+                    }
+
+                    // Generate pairings: pick the top-scoring source × top-scoring target
+<span class="fc" id="L115">                    ScoredNode bestSource = sourceNodes.stream()</span>
+<span class="pc" id="L116">                            .max(Comparator.comparingInt(n -&gt; n.score))</span>
+<span class="fc" id="L117">                            .orElse(null);</span>
+<span class="fc" id="L118">                    ScoredNode bestTarget = targetNodes.stream()</span>
+<span class="pc" id="L119">                            .max(Comparator.comparingInt(n -&gt; n.score))</span>
+<span class="fc" id="L120">                            .orElse(null);</span>
+
+<span class="pc bpc" id="L122" title="2 of 4 branches missed.">                    if (bestSource == null || bestTarget == null) {</span>
+<span class="nc" id="L123">                        continue;</span>
+                    }
+
+                    // Avoid self-relations
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                    if (bestSource.code.equals(bestTarget.code)) {</span>
+<span class="fc" id="L128">                        continue;</span>
+                    }
+
+<span class="fc" id="L131">                    double confidence = (bestSource.score * bestTarget.score) / CONFIDENCE_NORMALIZATION_FACTOR;</span>
+<span class="fc" id="L132">                    String reasoning = String.format(</span>
+                            &quot;%s (%s, score %d) %s %s (%s, score %d) — inferred from compatibility matrix&quot;,
+<span class="fc" id="L134">                            bestSource.name, bestSource.root, bestSource.score,</span>
+<span class="fc" id="L135">                            relationType.name(),</span>
+<span class="fc" id="L136">                            bestTarget.name, bestTarget.root, bestTarget.score);</span>
+
+<span class="fc" id="L138">                    hypotheses.add(new RelationHypothesisDto(</span>
+                            bestSource.code, bestSource.name,
+                            bestTarget.code, bestTarget.name,
+<span class="fc" id="L141">                            relationType.name(),</span>
+                            confidence,
+                            reasoning));
+<span class="fc" id="L144">                }</span>
+            }
+        }
+
+        // 3. Deduplicate: keep highest confidence per source+target+type triple
+<span class="fc" id="L149">        Map&lt;String, RelationHypothesisDto&gt; deduped = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        for (RelationHypothesisDto h : hypotheses) {</span>
+<span class="fc" id="L151">            String key = h.getSourceCode() + &quot;→&quot; + h.getTargetCode() + &quot;:&quot; + h.getRelationType();</span>
+<span class="fc" id="L152">            RelationHypothesisDto existing = deduped.get(key);</span>
+<span class="pc bpc" id="L153" title="3 of 4 branches missed.">            if (existing == null || h.getConfidence() &gt; existing.getConfidence()) {</span>
+<span class="fc" id="L154">                deduped.put(key, h);</span>
+            }
+<span class="fc" id="L156">        }</span>
+
+        // 4. Sort by confidence descending
+<span class="fc" id="L159">        List&lt;RelationHypothesisDto&gt; result = new ArrayList&lt;&gt;(deduped.values());</span>
+<span class="fc" id="L160">        result.sort(Comparator.comparingDouble(RelationHypothesisDto::getConfidence).reversed());</span>
+
+<span class="fc" id="L162">        log.info(&quot;Generated {} provisional relation hypotheses from {} qualifying nodes across {} roots&quot;,</span>
+<span class="fc" id="L163">                result.size(), nodesByRoot.values().stream().mapToInt(List::size).sum(), nodesByRoot.size());</span>
+
+<span class="fc" id="L165">        return result;</span>
+    }
+
+    /** Internal holder for a scored node with its metadata. */
+<span class="fc" id="L169">    private record ScoredNode(String code, String name, String root, int score) {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

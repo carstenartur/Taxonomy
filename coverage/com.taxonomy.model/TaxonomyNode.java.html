@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyNode.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.model</a> &gt; <span class="el_source">TaxonomyNode.java</span></div><h1>TaxonomyNode.java</h1><pre class="source lang-java linenums">package com.taxonomy.model;
+
+import com.taxonomy.search.NodeEmbeddingBinder;
+import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
+import org.hibernate.annotations.Nationalized;
+import org.hibernate.search.mapper.pojo.bridge.mapping.annotation.TypeBinderRef;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.*;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = &quot;taxonomy_node&quot;)
+@Indexed
+@TypeBinding(binder = @TypeBinderRef(type = NodeEmbeddingBinder.class))
+<span class="fc" id="L17">public class TaxonomyNode {</span>
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Nationalized
+    @Column(unique = true, nullable = false)
+    @KeywordField
+    private String code;
+
+    @Nationalized
+    @Column(nullable = true)
+    @KeywordField
+    private String uuid;
+
+    @Nationalized
+    @Column(nullable = false)
+    @FullTextField(analyzer = &quot;english&quot;)
+    private String nameEn;
+
+    @Nationalized
+    @Column(nullable = true)
+    @FullTextField(analyzer = &quot;german&quot;)
+    private String nameDe;
+
+    @Nationalized
+    @Lob
+    @Column(length = 5000)
+    @FullTextField(analyzer = &quot;english&quot;)
+    private String descriptionEn;
+
+    @Nationalized
+    @Lob
+    @Column(length = 5000)
+    @FullTextField(analyzer = &quot;german&quot;)
+    private String descriptionDe;
+
+    @Nationalized
+    @Column(name = &quot;parent_code&quot;)
+    @GenericField
+    private String parentCode;
+
+    @Nationalized
+    @Column(name = &quot;taxonomy_root&quot;)
+    @KeywordField
+    private String taxonomyRoot;
+
+    @GenericField
+    private int level;
+
+    @Nationalized
+    private String dataset;
+
+    @Nationalized
+    @Column(name = &quot;external_id&quot;)
+    @KeywordField
+    private String externalId;
+
+    @Nationalized
+    private String source;
+
+    @Nationalized
+    @Lob
+    @Column(length = 5000)
+    private String reference;
+
+    @Column(name = &quot;sort_order&quot;)
+    private Integer sortOrder;
+
+    @Nationalized
+    private String state;
+
+    @Lob
+    @Convert(converter = FloatArrayConverter.class)
+    @Column(name = &quot;semantic_embedding&quot;)
+    private float[] semanticEmbedding;
+
+    @GenericField
+    @Column(name = &quot;has_embedding&quot;)
+    private boolean hasEmbedding;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;parent_id&quot;)
+    private TaxonomyNode parent;
+
+<span class="fc" id="L103">    @OneToMany(mappedBy = &quot;parent&quot;, cascade = CascadeType.ALL)</span>
+    @OrderBy(&quot;nameEn ASC&quot;)
+    @BatchSize(size = 50)
+    private List&lt;TaxonomyNode&gt; children = new ArrayList&lt;&gt;();
+
+<span class="fc" id="L108">    @OneToMany(mappedBy = &quot;sourceNode&quot;, cascade = CascadeType.ALL, orphanRemoval = true)</span>
+    @BatchSize(size = 50)
+    private List&lt;TaxonomyRelation&gt; outgoingRelations = new ArrayList&lt;&gt;();
+
+<span class="fc" id="L112">    @OneToMany(mappedBy = &quot;targetNode&quot;, cascade = CascadeType.ALL, orphanRemoval = true)</span>
+    @BatchSize(size = 50)
+    private List&lt;TaxonomyRelation&gt; incomingRelations = new ArrayList&lt;&gt;();
+
+<span class="fc" id="L116">    public Long getId() { return id; }</span>
+<span class="nc" id="L117">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L119">    public String getCode() { return code; }</span>
+<span class="fc" id="L120">    public void setCode(String code) { this.code = code; }</span>
+
+<span class="fc" id="L122">    public String getUuid() { return uuid; }</span>
+<span class="fc" id="L123">    public void setUuid(String uuid) { this.uuid = uuid; }</span>
+
+<span class="fc" id="L125">    public String getNameEn() { return nameEn; }</span>
+<span class="fc" id="L126">    public void setNameEn(String nameEn) { this.nameEn = nameEn; }</span>
+
+<span class="fc" id="L128">    public String getNameDe() { return nameDe; }</span>
+<span class="nc" id="L129">    public void setNameDe(String nameDe) { this.nameDe = nameDe; }</span>
+
+    /** Backward-compatible getter; returns the English name. */
+<span class="fc" id="L132">    public String getName() { return nameEn; }</span>
+
+<span class="fc" id="L134">    public String getDescriptionEn() { return descriptionEn; }</span>
+<span class="fc" id="L135">    public void setDescriptionEn(String descriptionEn) { this.descriptionEn = descriptionEn; }</span>
+
+<span class="fc" id="L137">    public String getDescriptionDe() { return descriptionDe; }</span>
+<span class="nc" id="L138">    public void setDescriptionDe(String descriptionDe) { this.descriptionDe = descriptionDe; }</span>
+
+    /** Backward-compatible getter; returns the English description. */
+<span class="nc" id="L141">    public String getDescription() { return descriptionEn; }</span>
+
+<span class="fc" id="L143">    public String getParentCode() { return parentCode; }</span>
+<span class="fc" id="L144">    public void setParentCode(String parentCode) { this.parentCode = parentCode; }</span>
+
+<span class="fc" id="L146">    public String getTaxonomyRoot() { return taxonomyRoot; }</span>
+<span class="fc" id="L147">    public void setTaxonomyRoot(String taxonomyRoot) { this.taxonomyRoot = taxonomyRoot; }</span>
+
+<span class="fc" id="L149">    public int getLevel() { return level; }</span>
+<span class="fc" id="L150">    public void setLevel(int level) { this.level = level; }</span>
+
+<span class="fc" id="L152">    public String getDataset() { return dataset; }</span>
+<span class="fc" id="L153">    public void setDataset(String dataset) { this.dataset = dataset; }</span>
+
+<span class="fc" id="L155">    public String getExternalId() { return externalId; }</span>
+<span class="fc" id="L156">    public void setExternalId(String externalId) { this.externalId = externalId; }</span>
+
+<span class="fc" id="L158">    public String getSource() { return source; }</span>
+<span class="fc" id="L159">    public void setSource(String source) { this.source = source; }</span>
+
+<span class="fc" id="L161">    public String getReference() { return reference; }</span>
+<span class="fc" id="L162">    public void setReference(String reference) { this.reference = reference; }</span>
+
+<span class="fc" id="L164">    public Integer getSortOrder() { return sortOrder; }</span>
+<span class="fc" id="L165">    public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }</span>
+
+<span class="fc" id="L167">    public String getState() { return state; }</span>
+<span class="fc" id="L168">    public void setState(String state) { this.state = state; }</span>
+
+<span class="nc" id="L170">    public float[] getSemanticEmbedding() { return semanticEmbedding; }</span>
+    public void setSemanticEmbedding(float[] semanticEmbedding) {
+<span class="nc" id="L172">        this.semanticEmbedding = semanticEmbedding;</span>
+<span class="nc bnc" id="L173" title="All 2 branches missed.">        this.hasEmbedding = (semanticEmbedding != null);</span>
+<span class="nc" id="L174">    }</span>
+
+<span class="nc" id="L176">    public boolean isHasEmbedding() { return hasEmbedding; }</span>
+<span class="nc" id="L177">    private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }</span>
+
+<span class="nc" id="L179">    public TaxonomyNode getParent() { return parent; }</span>
+<span class="fc" id="L180">    public void setParent(TaxonomyNode parent) { this.parent = parent; }</span>
+
+<span class="fc" id="L182">    public List&lt;TaxonomyNode&gt; getChildren() { return children; }</span>
+<span class="nc" id="L183">    public void setChildren(List&lt;TaxonomyNode&gt; children) { this.children = children; }</span>
+
+<span class="fc" id="L185">    public List&lt;TaxonomyRelation&gt; getOutgoingRelations() { return outgoingRelations; }</span>
+<span class="nc" id="L186">    public void setOutgoingRelations(List&lt;TaxonomyRelation&gt; outgoingRelations) { this.outgoingRelations = outgoingRelations; }</span>
+
+<span class="fc" id="L188">    public List&lt;TaxonomyRelation&gt; getIncomingRelations() { return incomingRelations; }</span>
+<span class="nc" id="L189">    public void setIncomingRelations(List&lt;TaxonomyRelation&gt; incomingRelations) { this.incomingRelations = incomingRelations; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

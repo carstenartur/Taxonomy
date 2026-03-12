@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArchitecturePatternService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">ArchitecturePatternService.java</span></div><h1>ArchitecturePatternService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dto.DetectedPattern;
+import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.model.TaxonomyNode;
+import com.taxonomy.model.TaxonomyRelation;
+import com.taxonomy.repository.TaxonomyNodeRepository;
+import com.taxonomy.repository.TaxonomyRelationRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Detects standard architecture patterns by checking whether defined
+ * relation chains exist from a given starting node.
+ *
+ * &lt;p&gt;Pattern templates define expected chains of
+ * {@code sourceRoot → relationType → targetRoot} steps. The service
+ * traverses the graph from a starting node and checks whether each step
+ * in a pattern can be fulfilled.
+ */
+@Service
+public class ArchitecturePatternService {
+
+<span class="fc" id="L29">    private static final Logger log = LoggerFactory.getLogger(ArchitecturePatternService.class);</span>
+
+    private static final int DEFAULT_MIN_SCORE = 50;
+
+    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyRelationRepository relationRepository;
+
+    /** Pre-defined pattern templates. */
+    private final List&lt;PatternTemplate&gt; patterns;
+
+    public ArchitecturePatternService(TaxonomyNodeRepository nodeRepository,
+<span class="fc" id="L40">                                       TaxonomyRelationRepository relationRepository) {</span>
+<span class="fc" id="L41">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L42">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L43">        this.patterns = initPatterns();</span>
+<span class="fc" id="L44">    }</span>
+
+    // ── Pattern Templates ──────────────────────────────────────────────────
+
+    /**
+     * A single step in a pattern: source root → relation type → target root.
+     */
+<span class="fc" id="L51">    record PatternStep(String sourceRoot, String relationType, String targetRoot) {</span>
+        @Override
+        public String toString() {
+<span class="fc" id="L54">            return sourceRoot + &quot; → &quot; + relationType + &quot; → &quot; + targetRoot;</span>
+        }
+    }
+
+    /**
+     * A named sequence of steps.
+     */
+<span class="fc" id="L61">    record PatternTemplate(String name, List&lt;PatternStep&gt; steps) {}</span>
+
+    private List&lt;PatternTemplate&gt; initPatterns() {
+<span class="fc" id="L64">        return List.of(</span>
+<span class="fc" id="L65">                new PatternTemplate(&quot;Full Stack&quot;, List.of(</span>
+                        new PatternStep(&quot;CP&quot;, &quot;REALIZES&quot;, &quot;CR&quot;),
+                        new PatternStep(&quot;CR&quot;, &quot;SUPPORTS&quot;, &quot;BP&quot;),
+                        new PatternStep(&quot;BP&quot;, &quot;CONSUMES&quot;, &quot;IP&quot;)
+                )),
+<span class="fc" id="L70">                new PatternTemplate(&quot;App Chain&quot;, List.of(</span>
+                        new PatternStep(&quot;UA&quot;, &quot;USES&quot;, &quot;CR&quot;),
+                        new PatternStep(&quot;CR&quot;, &quot;SUPPORTS&quot;, &quot;BP&quot;)
+                )),
+<span class="fc" id="L74">                new PatternTemplate(&quot;Role Chain&quot;, List.of(</span>
+                        new PatternStep(&quot;BR&quot;, &quot;ASSIGNED_TO&quot;, &quot;BP&quot;),
+                        new PatternStep(&quot;BP&quot;, &quot;CONSUMES&quot;, &quot;IP&quot;)
+                ))
+        );
+    }
+
+    // ── Public API ─────────────────────────────────────────────────────────
+
+    /**
+     * Detects patterns starting from a specific node.
+     *
+     * @param nodeCode the starting node code
+     * @return pattern detection view
+     */
+    @Transactional(readOnly = true)
+    public PatternDetectionView detectForNode(String nodeCode) {
+<span class="fc" id="L91">        PatternDetectionView view = new PatternDetectionView();</span>
+<span class="fc" id="L92">        view.setNodeCode(nodeCode);</span>
+
+<span class="fc" id="L94">        Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (nodeOpt.isEmpty()) {</span>
+<span class="fc" id="L96">            view.getNotes().add(&quot;Node not found: &quot; + nodeCode);</span>
+<span class="fc" id="L97">            return view;</span>
+        }
+
+<span class="fc" id="L100">        TaxonomyNode node = nodeOpt.get();</span>
+<span class="fc" id="L101">        String nodeRoot = node.getTaxonomyRoot();</span>
+
+<span class="fc" id="L103">        List&lt;DetectedPattern&gt; matched = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L104">        List&lt;DetectedPattern&gt; incomplete = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        for (PatternTemplate pattern : patterns) {</span>
+            // Only check patterns whose first step starts from this node's root
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            if (!pattern.steps().isEmpty()</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                    &amp;&amp; pattern.steps().get(0).sourceRoot().equals(nodeRoot)) {</span>
+<span class="fc" id="L110">                DetectedPattern detected = checkPattern(nodeCode, pattern);</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">                if (detected.getCompleteness() &gt;= 100.0) {</span>
+<span class="fc" id="L112">                    matched.add(detected);</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                } else if (detected.getCompleteness() &gt; 0.0) {</span>
+<span class="fc" id="L114">                    incomplete.add(detected);</span>
+                }
+            }
+<span class="fc" id="L117">        }</span>
+
+<span class="fc" id="L119">        view.setMatchedPatterns(matched);</span>
+<span class="fc" id="L120">        view.setIncompletePatterns(incomplete);</span>
+
+<span class="fc" id="L122">        int totalPatterns = matched.size() + incomplete.size();</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        view.setPatternCoverage(totalPatterns &gt; 0</span>
+<span class="fc" id="L124">                ? matched.size() * 100.0 / totalPatterns</span>
+<span class="fc" id="L125">                : 0.0);</span>
+
+<span class="fc" id="L127">        log.info(&quot;Pattern detection for {}: {} matched, {} incomplete&quot;,</span>
+<span class="fc" id="L128">                nodeCode, matched.size(), incomplete.size());</span>
+
+<span class="fc" id="L130">        return view;</span>
+    }
+
+    /**
+     * Detects patterns across all anchor nodes from scored results.
+     *
+     * @param scores       map of nodeCode → score (0–100)
+     * @param minScore     minimum score threshold
+     * @return pattern detection view aggregated across all anchors
+     */
+    @Transactional(readOnly = true)
+    public PatternDetectionView detectForScores(Map&lt;String, Integer&gt; scores, int minScore) {
+<span class="fc" id="L142">        PatternDetectionView view = new PatternDetectionView();</span>
+
+<span class="fc bfc" id="L144" title="All 4 branches covered.">        if (scores == null || scores.isEmpty()) {</span>
+<span class="fc" id="L145">            view.getNotes().add(&quot;No scores provided; pattern detection cannot be performed.&quot;);</span>
+<span class="fc" id="L146">            return view;</span>
+        }
+
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">        int threshold = minScore &gt; 0 ? minScore : DEFAULT_MIN_SCORE;</span>
+
+<span class="fc" id="L151">        List&lt;DetectedPattern&gt; allMatched = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L152">        List&lt;DetectedPattern&gt; allIncomplete = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L153">        Set&lt;String&gt; seenPatterns = new HashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
+<span class="pc bpc" id="L156" title="2 of 4 branches missed.">            if (entry.getValue() == null || entry.getValue() &lt; threshold) continue;</span>
+
+<span class="fc" id="L158">            PatternDetectionView nodeView = detectForNode(entry.getKey());</span>
+
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">            for (DetectedPattern p : nodeView.getMatchedPatterns()) {</span>
+<span class="nc" id="L161">                String key = p.getPatternName() + &quot;|&quot; + String.join(&quot;,&quot;, p.getPresentSteps());</span>
+<span class="nc bnc" id="L162" title="All 2 branches missed.">                if (seenPatterns.add(key)) {</span>
+<span class="nc" id="L163">                    allMatched.add(p);</span>
+                }
+<span class="nc" id="L165">            }</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            for (DetectedPattern p : nodeView.getIncompletePatterns()) {</span>
+<span class="fc" id="L167">                String key = p.getPatternName() + &quot;|&quot; + String.join(&quot;,&quot;, p.getPresentSteps());</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                if (seenPatterns.add(key)) {</span>
+<span class="fc" id="L169">                    allIncomplete.add(p);</span>
+                }
+<span class="fc" id="L171">            }</span>
+<span class="fc" id="L172">        }</span>
+
+<span class="fc" id="L174">        view.setMatchedPatterns(allMatched);</span>
+<span class="fc" id="L175">        view.setIncompletePatterns(allIncomplete);</span>
+
+<span class="fc" id="L177">        int totalPatterns = allMatched.size() + allIncomplete.size();</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        view.setPatternCoverage(totalPatterns &gt; 0</span>
+<span class="fc" id="L179">                ? allMatched.size() * 100.0 / totalPatterns</span>
+<span class="fc" id="L180">                : 0.0);</span>
+
+<span class="fc" id="L182">        log.info(&quot;Pattern detection for scores: {} matched, {} incomplete across {} anchors&quot;,</span>
+<span class="fc" id="L183">                allMatched.size(), allIncomplete.size(), scores.size());</span>
+
+<span class="fc" id="L185">        return view;</span>
+    }
+
+    // ── Internal ───────────────────────────────────────────────────────────
+
+    private DetectedPattern checkPattern(String startNodeCode, PatternTemplate pattern) {
+<span class="fc" id="L191">        List&lt;String&gt; expectedSteps = pattern.steps().stream()</span>
+<span class="fc" id="L192">                .map(PatternStep::toString)</span>
+<span class="fc" id="L193">                .collect(Collectors.toList());</span>
+
+<span class="fc" id="L195">        List&lt;String&gt; presentSteps = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L196">        List&lt;String&gt; missingSteps = new ArrayList&lt;&gt;();</span>
+
+        // Track current set of node codes at each traversal step
+<span class="fc" id="L199">        Set&lt;String&gt; currentNodes = Set.of(startNodeCode);</span>
+
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        for (PatternStep step : pattern.steps()) {</span>
+<span class="fc" id="L202">            Set&lt;String&gt; nextNodes = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L203">            boolean stepFound = false;</span>
+
+<span class="fc bfc" id="L205" title="All 2 branches covered.">            for (String nodeCode : currentNodes) {</span>
+<span class="fc" id="L206">                List&lt;TaxonomyRelation&gt; outgoing = relationRepository.findBySourceNodeCode(nodeCode);</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">                for (TaxonomyRelation rel : outgoing) {</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">                    if (rel.getRelationType().name().equals(step.relationType())</span>
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">                            &amp;&amp; rel.getTargetNode() != null</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">                            &amp;&amp; step.targetRoot().equals(rel.getTargetNode().getTaxonomyRoot())) {</span>
+<span class="fc" id="L211">                        nextNodes.add(rel.getTargetNode().getCode());</span>
+<span class="fc" id="L212">                        stepFound = true;</span>
+                    }
+<span class="fc" id="L214">                }</span>
+<span class="fc" id="L215">            }</span>
+
+<span class="fc bfc" id="L217" title="All 2 branches covered.">            if (stepFound) {</span>
+<span class="fc" id="L218">                presentSteps.add(step.toString());</span>
+            } else {
+<span class="fc" id="L220">                missingSteps.add(step.toString());</span>
+            }
+
+<span class="fc bfc" id="L223" title="All 2 branches covered.">            currentNodes = nextNodes.isEmpty() ? currentNodes : nextNodes;</span>
+<span class="fc" id="L224">        }</span>
+
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">        double completeness = expectedSteps.isEmpty() ? 0.0</span>
+<span class="fc" id="L227">                : (double) presentSteps.size() / expectedSteps.size() * 100.0;</span>
+
+<span class="fc" id="L229">        return new DetectedPattern(pattern.name(), expectedSteps,</span>
+                presentSteps, missingSteps, completeness);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

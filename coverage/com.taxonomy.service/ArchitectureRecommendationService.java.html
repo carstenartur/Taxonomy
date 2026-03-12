@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureRecommendationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">ArchitectureRecommendationService.java</span></div><h1>ArchitectureRecommendationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dto.*;
+import com.taxonomy.model.TaxonomyNode;
+import com.taxonomy.repository.TaxonomyNodeRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Combines requirement scoring, gap analysis, and semantic search
+ * to produce architecture recommendations for a business requirement.
+ *
+ * &lt;p&gt;Pipeline:
+ * &lt;ol&gt;
+ *   &lt;li&gt;Identify confirmed elements from high scores&lt;/li&gt;
+ *   &lt;li&gt;Run gap analysis to find missing architectural links&lt;/li&gt;
+ *   &lt;li&gt;For each gap, propose candidate nodes from the missing taxonomy root&lt;/li&gt;
+ *   &lt;li&gt;Suggest relations to fill the gaps&lt;/li&gt;
+ * &lt;/ol&gt;
+ */
+@Service
+public class ArchitectureRecommendationService {
+
+<span class="fc" id="L29">    private static final Logger log = LoggerFactory.getLogger(ArchitectureRecommendationService.class);</span>
+
+    private static final int HIGH_SCORE_THRESHOLD = 70;
+    private static final int DEFAULT_MIN_SCORE = 50;
+    private static final int MAX_PROPOSALS_PER_GAP = 3;
+
+    private final ArchitectureGapService gapService;
+    private final TaxonomyNodeRepository nodeRepository;
+    private final LocalEmbeddingService embeddingService;
+
+    public ArchitectureRecommendationService(ArchitectureGapService gapService,
+                                              TaxonomyNodeRepository nodeRepository,
+<span class="fc" id="L41">                                              LocalEmbeddingService embeddingService) {</span>
+<span class="fc" id="L42">        this.gapService = gapService;</span>
+<span class="fc" id="L43">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L44">        this.embeddingService = embeddingService;</span>
+<span class="fc" id="L45">    }</span>
+
+    /**
+     * Produces architecture recommendations for a business requirement.
+     *
+     * @param scores       map of nodeCode → score (0–100)
+     * @param businessText the original business requirement text
+     * @param minScore     minimum score threshold; 0 means default (50)
+     * @return architecture recommendation with confirmed, proposed elements, and suggested relations
+     */
+    @Transactional(readOnly = true)
+    public ArchitectureRecommendation recommend(Map&lt;String, Integer&gt; scores,
+                                                 String businessText, int minScore) {
+<span class="fc" id="L58">        ArchitectureRecommendation rec = new ArchitectureRecommendation();</span>
+<span class="fc" id="L59">        rec.setBusinessText(businessText);</span>
+
+<span class="fc bfc" id="L61" title="All 4 branches covered.">        if (scores == null || scores.isEmpty()) {</span>
+<span class="fc" id="L62">            rec.getNotes().add(&quot;No scores provided; recommendations cannot be generated.&quot;);</span>
+<span class="fc" id="L63">            return rec;</span>
+        }
+
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        int threshold = minScore &gt; 0 ? minScore : DEFAULT_MIN_SCORE;</span>
+
+        // Step 1: Identify confirmed elements (high score)
+<span class="fc" id="L69">        List&lt;RecommendedElement&gt; confirmed = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
+<span class="pc bpc" id="L71" title="2 of 4 branches missed.">            if (entry.getValue() != null &amp;&amp; entry.getValue() &gt;= HIGH_SCORE_THRESHOLD) {</span>
+<span class="fc" id="L72">                Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(entry.getKey());</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                if (nodeOpt.isPresent()) {</span>
+<span class="fc" id="L74">                    TaxonomyNode node = nodeOpt.get();</span>
+<span class="fc" id="L75">                    confirmed.add(new RecommendedElement(</span>
+<span class="fc" id="L76">                            node.getCode(),</span>
+<span class="fc" id="L77">                            node.getNameEn(),</span>
+<span class="fc" id="L78">                            node.getTaxonomyRoot(),</span>
+<span class="fc" id="L79">                            entry.getValue(),</span>
+<span class="fc" id="L80">                            &quot;High-confidence match (score &quot; + entry.getValue() + &quot;)&quot;));</span>
+                }
+            }
+<span class="fc" id="L83">        }</span>
+<span class="fc" id="L84">        rec.setConfirmedElements(confirmed);</span>
+<span class="fc" id="L85">        rec.getReasoning().add(&quot;Identified &quot; + confirmed.size()</span>
+                + &quot; confirmed elements with score &gt;= &quot; + HIGH_SCORE_THRESHOLD);
+
+        // Step 2: Run gap analysis
+<span class="fc" id="L89">        GapAnalysisView gaps = gapService.analyze(scores, businessText, threshold);</span>
+<span class="fc" id="L90">        rec.getReasoning().add(&quot;Gap analysis found &quot; + gaps.getMissingRelations().size()</span>
+                + &quot; missing relations&quot;);
+
+        // Step 3: For each missing relation, propose candidates
+<span class="fc" id="L94">        List&lt;RecommendedElement&gt; proposed = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L95">        List&lt;SuggestedRelation&gt; suggestedRelations = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L96">        Set&lt;String&gt; proposedCodes = new HashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        for (MissingRelation missing : gaps.getMissingRelations()) {</span>
+<span class="fc" id="L99">            String targetRoot = missing.getExpectedTargetRoot();</span>
+<span class="fc" id="L100">            String sourceCode = missing.getSourceNodeCode();</span>
+
+            // Find candidate nodes from the target taxonomy root
+<span class="fc" id="L103">            List&lt;TaxonomyNode&gt; candidates = nodeRepository.findByTaxonomyRootOrderByLevelAscNameEnAsc(targetRoot);</span>
+
+            // If embedding service is available, score candidates semantically
+            List&lt;TaxonomyNode&gt; ranked;
+<span class="pc bpc" id="L107" title="2 of 6 branches missed.">            if (embeddingService.isAvailable() &amp;&amp; businessText != null &amp;&amp; !businessText.isBlank()) {</span>
+<span class="fc" id="L108">                ranked = rankByEmbeddingSimilarity(candidates, businessText);</span>
+            } else {
+                // Fallback: use first N candidates sorted by level (leaf nodes are more specific)
+<span class="fc" id="L111">                ranked = candidates.stream()</span>
+<span class="fc" id="L112">                        .sorted(Comparator.comparingInt(TaxonomyNode::getLevel).reversed())</span>
+<span class="fc" id="L113">                        .limit(MAX_PROPOSALS_PER_GAP)</span>
+<span class="fc" id="L114">                        .collect(Collectors.toList());</span>
+            }
+
+<span class="fc" id="L117">            int added = 0;</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            for (TaxonomyNode candidate : ranked) {</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                if (added &gt;= MAX_PROPOSALS_PER_GAP) break;</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                if (proposedCodes.contains(candidate.getCode())) continue;</span>
+
+<span class="fc" id="L122">                proposedCodes.add(candidate.getCode());</span>
+<span class="fc" id="L123">                proposed.add(new RecommendedElement(</span>
+<span class="fc" id="L124">                        candidate.getCode(),</span>
+<span class="fc" id="L125">                        candidate.getNameEn(),</span>
+<span class="fc" id="L126">                        candidate.getTaxonomyRoot(),</span>
+                        0, // No score — this is a proposal
+<span class="fc" id="L128">                        &quot;Proposed to fill gap: &quot; + missing.getDescription()));</span>
+
+<span class="fc" id="L130">                suggestedRelations.add(new SuggestedRelation(</span>
+                        sourceCode,
+<span class="fc" id="L132">                        candidate.getCode(),</span>
+<span class="fc" id="L133">                        missing.getExpectedRelationType(),</span>
+<span class="fc" id="L134">                        &quot;Would complete &quot; + missing.getSourceRoot() + &quot; → &quot;</span>
+<span class="fc" id="L135">                                + missing.getExpectedRelationType() + &quot; → &quot; + targetRoot));</span>
+<span class="fc" id="L136">                added++;</span>
+<span class="fc" id="L137">            }</span>
+<span class="fc" id="L138">        }</span>
+
+<span class="fc" id="L140">        rec.setProposedElements(proposed);</span>
+<span class="fc" id="L141">        rec.setSuggestedRelations(suggestedRelations);</span>
+<span class="fc" id="L142">        rec.getReasoning().add(&quot;Proposed &quot; + proposed.size() + &quot; elements and &quot;</span>
+<span class="fc" id="L143">                + suggestedRelations.size() + &quot; relations to fill gaps&quot;);</span>
+
+        // Step 4: Compute confidence
+<span class="fc" id="L146">        int totalExpected = confirmed.size() + gaps.getMissingRelations().size();</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">        double confidence = totalExpected &gt; 0</span>
+<span class="fc" id="L148">                ? (double) confirmed.size() / totalExpected * 100.0</span>
+<span class="pc" id="L149">                : 0.0;</span>
+<span class="fc" id="L150">        rec.setConfidence(Math.round(confidence * 100.0) / 100.0);</span>
+<span class="fc" id="L151">        rec.getReasoning().add(&quot;Overall confidence: &quot; + rec.getConfidence()</span>
+<span class="fc" id="L152">                + &quot;% (&quot; + confirmed.size() + &quot; confirmed / &quot; + totalExpected + &quot; expected)&quot;);</span>
+
+<span class="fc" id="L154">        log.info(&quot;Recommendation: {} confirmed, {} proposed, {} suggested relations, confidence={}%&quot;,</span>
+<span class="fc" id="L155">                confirmed.size(), proposed.size(), suggestedRelations.size(), rec.getConfidence());</span>
+
+<span class="fc" id="L157">        return rec;</span>
+    }
+
+    /**
+     * Ranks candidate nodes by semantic similarity to the business text
+     * using the local embedding service.
+     */
+    private List&lt;TaxonomyNode&gt; rankByEmbeddingSimilarity(List&lt;TaxonomyNode&gt; candidates,
+                                                          String businessText) {
+        try {
+<span class="fc" id="L167">            Map&lt;String, Integer&gt; candidateScores = embeddingService.scoreNodes(</span>
+                    businessText, candidates);
+
+<span class="fc" id="L170">            return candidates.stream()</span>
+<span class="fc" id="L171">                    .sorted(Comparator.comparingInt(</span>
+<span class="fc" id="L172">                            (TaxonomyNode n) -&gt; candidateScores.getOrDefault(n.getCode(), 0)).reversed())</span>
+<span class="fc" id="L173">                    .limit(MAX_PROPOSALS_PER_GAP)</span>
+<span class="fc" id="L174">                    .collect(Collectors.toList());</span>
+<span class="nc" id="L175">        } catch (Exception e) {</span>
+<span class="nc" id="L176">            log.warn(&quot;Embedding ranking failed, using fallback: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L177">            return candidates.stream()</span>
+<span class="nc" id="L178">                    .sorted(Comparator.comparingInt(TaxonomyNode::getLevel).reversed())</span>
+<span class="nc" id="L179">                    .limit(MAX_PROPOSALS_PER_GAP)</span>
+<span class="nc" id="L180">                    .collect(Collectors.toList());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

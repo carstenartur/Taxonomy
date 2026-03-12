@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExplanationTraceService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">ExplanationTraceService.java</span></div><h1>ExplanationTraceService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dto.ExplanationTrace;
+import com.taxonomy.dto.ExplanationTrace.ScoreComponent;
+import com.taxonomy.model.TaxonomyNode;
+import com.taxonomy.model.TaxonomyRelation;
+import com.taxonomy.repository.TaxonomyNodeRepository;
+import com.taxonomy.repository.TaxonomyRelationRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Builds structured {@link ExplanationTrace}s that explain why a specific
+ * taxonomy node was selected during architecture analysis.
+ *
+ * &lt;p&gt;Unlike LLM-based free-text justifications, this service produces
+ * machine-readable explanation components derived entirely from the
+ * scoring data and taxonomy structure — no LLM calls required.&lt;/p&gt;
+ */
+@Service
+public class ExplanationTraceService {
+
+<span class="fc" id="L28">    private static final Logger log = LoggerFactory.getLogger(ExplanationTraceService.class);</span>
+
+    /** Maximum depth when walking the taxonomy hierarchy to prevent infinite loops. */
+    private static final int MAX_HIERARCHY_DEPTH = 10;
+
+    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyRelationRepository relationRepository;
+
+    public ExplanationTraceService(TaxonomyNodeRepository nodeRepository,
+<span class="fc" id="L37">                                    TaxonomyRelationRepository relationRepository) {</span>
+<span class="fc" id="L38">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L39">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L40">    }</span>
+
+    /**
+     * Builds an explanation trace for a single node given the analysis context.
+     *
+     * @param nodeCode     the node to explain
+     * @param scores       full score map from the analysis
+     * @param reasons      optional map of nodeCode → reason strings from the LLM
+     * @param businessText the original business requirement
+     * @return structured explanation trace, or empty trace if node not found
+     */
+    @Transactional(readOnly = true)
+    public ExplanationTrace buildTrace(String nodeCode,
+                                        Map&lt;String, Integer&gt; scores,
+                                        Map&lt;String, String&gt; reasons,
+                                        String businessText) {
+<span class="fc" id="L56">        ExplanationTrace trace = new ExplanationTrace();</span>
+
+<span class="fc" id="L58">        Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (nodeOpt.isEmpty()) {</span>
+<span class="fc" id="L60">            trace.setSummaryText(&quot;Node not found: &quot; + nodeCode);</span>
+<span class="fc" id="L61">            return trace;</span>
+        }
+
+<span class="fc" id="L64">        TaxonomyNode node = nodeOpt.get();</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        int score = scores != null ? scores.getOrDefault(nodeCode, 0) : 0;</span>
+
+<span class="fc" id="L67">        trace.setTaxonomyRoot(node.getTaxonomyRoot());</span>
+
+        // 1. Extract matched keywords from the business text and node name
+<span class="pc bpc" id="L70" title="2 of 4 branches missed.">        if (businessText != null &amp;&amp; !businessText.isBlank()) {</span>
+<span class="fc" id="L71">            List&lt;String&gt; keywords = extractMatchedKeywords(businessText, node);</span>
+<span class="fc" id="L72">            trace.setMatchedKeywords(keywords);</span>
+        }
+
+        // 2. Compute semantic score component (normalised score)
+<span class="fc" id="L76">        trace.setSemanticScore(score / 100.0);</span>
+
+        // 3. Build relation path from node to its root
+<span class="fc" id="L79">        List&lt;String&gt; path = buildRelationPath(node);</span>
+<span class="fc" id="L80">        trace.setRelationPath(path);</span>
+
+        // 4. Build score breakdown
+<span class="fc" id="L83">        List&lt;ScoreComponent&gt; breakdown = buildScoreBreakdown(node, scores, reasons, businessText);</span>
+<span class="fc" id="L84">        trace.setScoreBreakdown(breakdown);</span>
+
+        // 5. Generate summary text
+<span class="fc" id="L87">        trace.setSummaryText(buildSummary(node, score, trace));</span>
+
+<span class="fc" id="L89">        return trace;</span>
+    }
+
+    /**
+     * Builds explanation traces for all scored nodes above a threshold.
+     */
+    @Transactional(readOnly = true)
+    public Map&lt;String, ExplanationTrace&gt; buildTraces(Map&lt;String, Integer&gt; scores,
+                                                      Map&lt;String, String&gt; reasons,
+                                                      String businessText,
+                                                      int minScore) {
+<span class="pc bpc" id="L100" title="1 of 4 branches missed.">        if (scores == null || scores.isEmpty()) {</span>
+<span class="fc" id="L101">            return Map.of();</span>
+        }
+
+<span class="fc" id="L104">        Map&lt;String, ExplanationTrace&gt; traces = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
+<span class="pc bpc" id="L106" title="2 of 4 branches missed.">            if (entry.getValue() != null &amp;&amp; entry.getValue() &gt;= minScore) {</span>
+<span class="fc" id="L107">                traces.put(entry.getKey(),</span>
+<span class="fc" id="L108">                        buildTrace(entry.getKey(), scores, reasons, businessText));</span>
+            }
+<span class="fc" id="L110">        }</span>
+<span class="fc" id="L111">        return traces;</span>
+    }
+
+    // ── Internal helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Extracts keywords from the business text that appear in the node's name or description.
+     */
+    List&lt;String&gt; extractMatchedKeywords(String businessText, TaxonomyNode node) {
+<span class="fc" id="L120">        Set&lt;String&gt; nodeTokens = new HashSet&lt;&gt;();</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (node.getNameEn() != null) {</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            for (String token : node.getNameEn().toLowerCase(Locale.ROOT).split(&quot;\\W+&quot;)) {</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">                if (token.length() &gt; 2) {</span>
+<span class="fc" id="L124">                    nodeTokens.add(token);</span>
+                }
+            }
+        }
+
+<span class="fc" id="L129">        Set&lt;String&gt; matched = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        for (String token : businessText.toLowerCase(Locale.ROOT).split(&quot;\\W+&quot;)) {</span>
+<span class="pc bpc" id="L131" title="2 of 4 branches missed.">            if (token.length() &gt; 2 &amp;&amp; nodeTokens.contains(token)) {</span>
+<span class="nc" id="L132">                matched.add(token);</span>
+            }
+        }
+
+<span class="fc" id="L136">        return new ArrayList&lt;&gt;(matched);</span>
+    }
+
+    /**
+     * Builds the path from root to this node by walking up the taxonomy hierarchy.
+     */
+    List&lt;String&gt; buildRelationPath(TaxonomyNode node) {
+<span class="fc" id="L143">        List&lt;String&gt; path = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L144">        path.add(node.getCode());</span>
+
+        // Walk up to parent(s) using relations
+<span class="fc" id="L147">        String currentCode = node.getCode();</span>
+<span class="fc" id="L148">        Set&lt;String&gt; visited = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L149">        visited.add(currentCode);</span>
+
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        for (int i = 0; i &lt; MAX_HIERARCHY_DEPTH; i++) { // Safety limit</span>
+<span class="fc" id="L152">            List&lt;TaxonomyRelation&gt; incoming = relationRepository.findByTargetNodeCode(currentCode);</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">            if (incoming.isEmpty()) break;</span>
+
+            // Pick the first parent relation
+<span class="nc" id="L156">            String parentCode = incoming.get(0).getSourceNode().getCode();</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">            if (visited.contains(parentCode)) break;</span>
+<span class="nc" id="L158">            visited.add(parentCode);</span>
+
+<span class="nc" id="L160">            path.add(0, parentCode);</span>
+<span class="nc" id="L161">            currentCode = parentCode;</span>
+        }
+
+<span class="fc" id="L164">        return path;</span>
+    }
+
+    /**
+     * Builds a score breakdown showing which factors contribute to the node's score.
+     */
+    List&lt;ScoreComponent&gt; buildScoreBreakdown(TaxonomyNode node,
+                                              Map&lt;String, Integer&gt; scores,
+                                              Map&lt;String, String&gt; reasons,
+                                              String businessText) {
+<span class="fc" id="L174">        List&lt;ScoreComponent&gt; components = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        int score = scores != null ? scores.getOrDefault(node.getCode(), 0) : 0;</span>
+
+        // Direct match component
+<span class="fc" id="L178">        components.add(new ScoreComponent(&quot;Direct LLM Score&quot;, 1.0, score / 100.0));</span>
+
+        // Keyword overlap component
+<span class="pc bpc" id="L181" title="2 of 4 branches missed.">        if (businessText != null &amp;&amp; !businessText.isBlank()) {</span>
+<span class="fc" id="L182">            List&lt;String&gt; keywords = extractMatchedKeywords(businessText, node);</span>
+<span class="fc" id="L183">            double keywordScore = Math.min(keywords.size() * 0.2, 1.0);</span>
+<span class="fc" id="L184">            components.add(new ScoreComponent(&quot;Keyword Overlap&quot;, 0.3, keywordScore));</span>
+        }
+
+        // Hierarchy depth component (leaf nodes get more specific scores)
+<span class="fc" id="L188">        double depthFactor = Math.min(node.getLevel() / 5.0, 1.0);</span>
+<span class="fc" id="L189">        components.add(new ScoreComponent(&quot;Hierarchy Depth&quot;, 0.2, depthFactor));</span>
+
+        // Connected nodes component (nodes with many high-scoring neighbours score higher)
+<span class="fc" id="L192">        List&lt;TaxonomyRelation&gt; relations = relationRepository.findBySourceNodeCode(node.getCode());</span>
+<span class="fc" id="L193">        long highScoringNeighbours = relations.stream()</span>
+<span class="pc bnc" id="L194" title="All 4 branches missed.">                .filter(r -&gt; scores != null &amp;&amp; scores.getOrDefault(r.getTargetNode().getCode(), 0) &gt;= 50)</span>
+<span class="fc" id="L195">                .count();</span>
+<span class="fc" id="L196">        double contextScore = Math.min(highScoringNeighbours * 0.25, 1.0);</span>
+<span class="fc" id="L197">        components.add(new ScoreComponent(&quot;Neighbourhood Context&quot;, 0.2, contextScore));</span>
+
+<span class="fc" id="L199">        return components;</span>
+    }
+
+    /**
+     * Generates a human-readable summary from the structured trace components.
+     */
+    private String buildSummary(TaxonomyNode node, int score, ExplanationTrace trace) {
+<span class="fc" id="L206">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L207">        sb.append(node.getCode()).append(&quot; (&quot;).append(node.getNameEn()).append(&quot;) &quot;);</span>
+<span class="fc" id="L208">        sb.append(&quot;scored &quot;).append(score).append(&quot;% &quot;);</span>
+
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">        if (!trace.getMatchedKeywords().isEmpty()) {</span>
+<span class="nc" id="L211">            sb.append(&quot;— matched keywords: &quot;).append(String.join(&quot;, &quot;, trace.getMatchedKeywords()));</span>
+        }
+
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">        if (trace.getRelationPath().size() &gt; 1) {</span>
+<span class="nc" id="L215">            sb.append(&quot;; path: &quot;).append(String.join(&quot; → &quot;, trace.getRelationPath()));</span>
+        }
+
+<span class="fc" id="L218">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationQualityService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">RelationQualityService.java</span></div><h1>RelationQualityService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dto.ProvenanceMetrics;
+import com.taxonomy.dto.RelationQualityMetrics;
+import com.taxonomy.dto.RelationTypeMetrics;
+import com.taxonomy.dto.TopRejectedProposal;
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.repository.RelationProposalRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+
+/**
+ * Service for computing quality metrics over {@link com.taxonomy.model.RelationProposal}
+ * entities and providing a feedback signal for confidence scoring.
+ */
+@Service
+public class RelationQualityService {
+
+    private final RelationProposalRepository proposalRepository;
+
+<span class="fc" id="L24">    public RelationQualityService(RelationProposalRepository proposalRepository) {</span>
+<span class="fc" id="L25">        this.proposalRepository = proposalRepository;</span>
+<span class="fc" id="L26">    }</span>
+
+    /**
+     * Computes the full quality dashboard metrics.
+     */
+    @Transactional(readOnly = true)
+    public RelationQualityMetrics calculateMetrics() {
+<span class="fc" id="L33">        long accepted = proposalRepository.countByStatus(ProposalStatus.ACCEPTED);</span>
+<span class="fc" id="L34">        long rejected = proposalRepository.countByStatus(ProposalStatus.REJECTED);</span>
+<span class="fc" id="L35">        long pending  = proposalRepository.countByStatus(ProposalStatus.PENDING);</span>
+<span class="fc" id="L36">        long total    = accepted + rejected + pending;</span>
+
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        double acceptanceRate = (accepted + rejected) &gt; 0</span>
+<span class="pc" id="L39">                ? (double) accepted / (accepted + rejected) : 0.0;</span>
+
+<span class="fc" id="L41">        Double avgAccepted = proposalRepository.avgConfidenceByStatus(ProposalStatus.ACCEPTED);</span>
+<span class="fc" id="L42">        Double avgRejected = proposalRepository.avgConfidenceByStatus(ProposalStatus.REJECTED);</span>
+
+<span class="fc" id="L44">        return new RelationQualityMetrics(</span>
+                (int) total,
+                (int) accepted,
+                (int) rejected,
+                (int) pending,
+                acceptanceRate,
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">                avgAccepted != null ? avgAccepted : 0.0,</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                avgRejected != null ? avgRejected : 0.0,</span>
+<span class="fc" id="L52">                metricsByRelationType(),</span>
+<span class="fc" id="L53">                metricsByProvenance()</span>
+        );
+    }
+
+    /**
+     * Aggregates metrics broken down by relation type.
+     */
+    @Transactional(readOnly = true)
+    public List&lt;RelationTypeMetrics&gt; metricsByRelationType() {
+<span class="fc" id="L62">        return proposalRepository.findDistinctRelationTypes().stream()</span>
+<span class="fc" id="L63">                .map(rt -&gt; {</span>
+<span class="nc" id="L64">                    long accepted = proposalRepository.countByRelationTypeAndStatus(rt, ProposalStatus.ACCEPTED);</span>
+<span class="nc" id="L65">                    long rejected = proposalRepository.countByRelationTypeAndStatus(rt, ProposalStatus.REJECTED);</span>
+<span class="nc" id="L66">                    long pending  = proposalRepository.countByRelationTypeAndStatus(rt, ProposalStatus.PENDING);</span>
+<span class="nc" id="L67">                    long proposed = accepted + rejected + pending;</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">                    double rate   = (accepted + rejected) &gt; 0</span>
+<span class="nc" id="L69">                            ? (double) accepted / (accepted + rejected) : 0.0;</span>
+<span class="nc" id="L70">                    return new RelationTypeMetrics(rt.name(), (int) proposed, (int) accepted, (int) rejected, rate);</span>
+                })
+<span class="fc" id="L72">                .toList();</span>
+    }
+
+    /**
+     * Aggregates metrics broken down by provenance string.
+     */
+    @Transactional(readOnly = true)
+    public List&lt;ProvenanceMetrics&gt; metricsByProvenance() {
+<span class="fc" id="L80">        return proposalRepository.findDistinctProvenances().stream()</span>
+<span class="fc" id="L81">                .map(prov -&gt; {</span>
+<span class="nc" id="L82">                    long accepted = proposalRepository.countByProvenanceAndStatus(prov, ProposalStatus.ACCEPTED);</span>
+<span class="nc" id="L83">                    long rejected = proposalRepository.countByProvenanceAndStatus(prov, ProposalStatus.REJECTED);</span>
+<span class="nc" id="L84">                    long pending  = proposalRepository.countByProvenanceAndStatus(prov, ProposalStatus.PENDING);</span>
+<span class="nc" id="L85">                    long proposed = accepted + rejected + pending;</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">                    double rate   = (accepted + rejected) &gt; 0</span>
+<span class="nc" id="L87">                            ? (double) accepted / (accepted + rejected) : 0.0;</span>
+<span class="nc" id="L88">                    return new ProvenanceMetrics(prov, (int) proposed, (int) accepted, rate);</span>
+                })
+<span class="fc" id="L90">                .toList();</span>
+    }
+
+    /**
+     * Returns the top rejected proposals ordered by confidence descending (worst false positives first).
+     */
+    @Transactional(readOnly = true)
+    public List&lt;TopRejectedProposal&gt; topRejected(int limit) {
+<span class="fc" id="L98">        return proposalRepository.findByStatusOrderByConfidenceDesc(ProposalStatus.REJECTED)</span>
+<span class="fc" id="L99">                .stream()</span>
+<span class="fc" id="L100">                .limit(limit)</span>
+<span class="pc" id="L101">                .map(p -&gt; new TopRejectedProposal(</span>
+<span class="nc" id="L102">                        p.getSourceNode().getCode(),</span>
+<span class="nc" id="L103">                        p.getSourceNode().getNameEn(),</span>
+<span class="nc" id="L104">                        p.getTargetNode().getCode(),</span>
+<span class="nc" id="L105">                        p.getTargetNode().getNameEn(),</span>
+<span class="nc" id="L106">                        p.getRelationType().name(),</span>
+<span class="nc" id="L107">                        p.getConfidence(),</span>
+<span class="nc" id="L108">                        p.getRationale()</span>
+                ))
+<span class="fc" id="L110">                .toList();</span>
+    }
+
+    /**
+     * Returns a feedback weight [0.0, 1.0] derived from the acceptance history
+     * for the given source root, target root, and relation type.
+     *
+     * &lt;p&gt;Returns 0.5 (neutral) when no history exists.
+     */
+    public double acceptanceHistoryWeight(String sourceRoot, String targetRoot, RelationType relationType) {
+<span class="fc" id="L120">        long accepted = proposalRepository</span>
+<span class="fc" id="L121">                .countBySourceNodeTaxonomyRootAndTargetNodeTaxonomyRootAndRelationTypeAndStatus(</span>
+                        sourceRoot, targetRoot, relationType, ProposalStatus.ACCEPTED);
+<span class="fc" id="L123">        long rejected = proposalRepository</span>
+<span class="fc" id="L124">                .countBySourceNodeTaxonomyRootAndTargetNodeTaxonomyRootAndRelationTypeAndStatus(</span>
+                        sourceRoot, targetRoot, relationType, ProposalStatus.REJECTED);
+
+<span class="pc bpc" id="L127" title="1 of 2 branches missed.">        if ((accepted + rejected) == 0) {</span>
+<span class="fc" id="L128">            return 0.5;</span>
+        }
+<span class="nc" id="L130">        return (double) accepted / (accepted + rejected);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

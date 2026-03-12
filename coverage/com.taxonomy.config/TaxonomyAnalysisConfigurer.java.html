@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyAnalysisConfigurer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.config</a> &gt; <span class="el_source">TaxonomyAnalysisConfigurer.java</span></div><h1>TaxonomyAnalysisConfigurer.java</h1><pre class="source lang-java linenums">package com.taxonomy.config;
+
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.de.GermanAnalyzer;
+import org.apache.lucene.analysis.en.EnglishAnalyzer;
+import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Provides Lucene analyzers for English and German full-text fields.
+ * Used by {@link com.taxonomy.service.SearchService} to configure per-field analysis.
+ */
+<span class="nc" id="L16">public class TaxonomyAnalysisConfigurer {</span>
+
+    public static final String ANALYZER_ENGLISH = &quot;english&quot;;
+    public static final String ANALYZER_GERMAN  = &quot;german&quot;;
+
+    /**
+     * Build a per-field {@link Analyzer} that applies:
+     * &lt;ul&gt;
+     *   &lt;li&gt;{@link EnglishAnalyzer} for fields whose name ends with &quot;En&quot;&lt;/li&gt;
+     *   &lt;li&gt;{@link GermanAnalyzer} for fields whose name ends with &quot;De&quot;&lt;/li&gt;
+     *   &lt;li&gt;{@link StandardAnalyzer} for all other fields&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param enFields field names that should use the English analyzer
+     * @param deFields field names that should use the German analyzer
+     * @return configured {@link PerFieldAnalyzerWrapper}
+     */
+    public static Analyzer buildPerFieldAnalyzer(String[] enFields, String[] deFields) {
+<span class="nc" id="L34">        Map&lt;String, Analyzer&gt; fieldAnalyzers = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L35" title="All 2 branches missed.">        for (String f : enFields) {</span>
+<span class="nc" id="L36">            fieldAnalyzers.put(f, new EnglishAnalyzer());</span>
+        }
+<span class="nc bnc" id="L38" title="All 2 branches missed.">        for (String f : deFields) {</span>
+<span class="nc" id="L39">            fieldAnalyzers.put(f, new GermanAnalyzer());</span>
+        }
+<span class="nc" id="L41">        return new PerFieldAnalyzerWrapper(new StandardAnalyzer(), fieldAnalyzers);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,318 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HypothesisService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">HypothesisService.java</span></div><h1>HypothesisService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dto.RelationHypothesisDto;
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.model.*;
+import com.taxonomy.repository.RelationEvidenceRepository;
+import com.taxonomy.repository.RelationHypothesisRepository;
+import com.taxonomy.repository.TaxonomyNodeRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Manages the lifecycle of relation hypotheses: persistence, acceptance, and rejection.
+ *
+ * &lt;p&gt;Bridges the gap between:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@link AnalysisRelationGenerator} which produces in-memory DTOs&lt;/li&gt;
+ *   &lt;li&gt;{@link RelationHypothesis} entities persisted in the database&lt;/li&gt;
+ *   &lt;li&gt;{@link TaxonomyRelation} entities created when hypotheses are accepted&lt;/li&gt;
+ *   &lt;li&gt;{@link DslGitRepository} for versioned DSL commits on the &quot;draft&quot; branch&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;When hypotheses are persisted from analysis, a DSL representation is
+ * automatically generated and committed to the &quot;draft&quot; Git branch.
+ */
+@Service
+public class HypothesisService {
+
+<span class="fc" id="L36">    private static final Logger log = LoggerFactory.getLogger(HypothesisService.class);</span>
+
+    private final RelationHypothesisRepository hypothesisRepository;
+    private final RelationEvidenceRepository evidenceRepository;
+    private final TaxonomyRelationService relationService;
+    private final TaxonomyNodeRepository nodeRepository;
+    private final DslGitRepository gitRepository;
+
+    public HypothesisService(RelationHypothesisRepository hypothesisRepository,
+                             RelationEvidenceRepository evidenceRepository,
+                             TaxonomyRelationService relationService,
+                             TaxonomyNodeRepository nodeRepository,
+<span class="fc" id="L48">                             DslGitRepository gitRepository) {</span>
+<span class="fc" id="L49">        this.hypothesisRepository = hypothesisRepository;</span>
+<span class="fc" id="L50">        this.evidenceRepository = evidenceRepository;</span>
+<span class="fc" id="L51">        this.relationService = relationService;</span>
+<span class="fc" id="L52">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L53">        this.gitRepository = gitRepository;</span>
+<span class="fc" id="L54">    }</span>
+
+    /**
+     * Persist provisional relation hypothesis DTOs (from analysis) to the database
+     * and commit a DSL representation to the &quot;draft&quot; Git branch.
+     *
+     * &lt;p&gt;Each DTO is saved as a {@link RelationHypothesis} entity with status
+     * {@link HypothesisStatus#PROVISIONAL}. Duplicates (same source+target+type
+     * within the same session) are skipped.
+     *
+     * &lt;p&gt;After persisting, a DSL document is generated from the hypotheses and
+     * committed to the &quot;draft&quot; branch in the JGit repository.
+     *
+     * @param hypotheses  the provisional hypotheses from analysis
+     * @param sessionId   unique identifier for the analysis session
+     * @return the persisted entities
+     */
+    @Transactional
+    public List&lt;RelationHypothesis&gt; persistFromAnalysis(List&lt;RelationHypothesisDto&gt; hypotheses,
+                                                         String sessionId) {
+<span class="fc bfc" id="L74" title="All 4 branches covered.">        if (hypotheses == null || hypotheses.isEmpty()) {</span>
+<span class="fc" id="L75">            return List.of();</span>
+        }
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">        final String effectiveSessionId = sessionId != null ? sessionId : UUID.randomUUID().toString();</span>
+
+<span class="fc" id="L79">        List&lt;RelationHypothesis&gt; persisted = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        for (RelationHypothesisDto dto : hypotheses) {</span>
+            // Skip duplicates in the same session
+<span class="fc" id="L82">            List&lt;RelationHypothesis&gt; existing = hypothesisRepository</span>
+<span class="fc" id="L83">                    .findBySourceNodeIdAndTargetNodeIdAndRelationType(</span>
+<span class="fc" id="L84">                            dto.getSourceCode(), dto.getTargetCode(),</span>
+<span class="fc" id="L85">                            RelationType.valueOf(dto.getRelationType()));</span>
+<span class="fc" id="L86">            boolean alreadyExists = existing.stream()</span>
+<span class="fc" id="L87">                    .anyMatch(h -&gt; effectiveSessionId.equals(h.getAnalysisSessionId()));</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (alreadyExists) {</span>
+<span class="fc" id="L89">                continue;</span>
+            }
+
+<span class="fc" id="L92">            RelationHypothesis entity = new RelationHypothesis();</span>
+<span class="fc" id="L93">            entity.setSourceNodeId(dto.getSourceCode());</span>
+<span class="fc" id="L94">            entity.setTargetNodeId(dto.getTargetCode());</span>
+<span class="fc" id="L95">            entity.setRelationType(RelationType.valueOf(dto.getRelationType()));</span>
+<span class="fc" id="L96">            entity.setConfidence(dto.getConfidence());</span>
+<span class="fc" id="L97">            entity.setStatus(HypothesisStatus.PROVISIONAL);</span>
+<span class="fc" id="L98">            entity.setAnalysisSessionId(effectiveSessionId);</span>
+
+<span class="fc" id="L100">            RelationHypothesis saved = hypothesisRepository.save(entity);</span>
+<span class="fc" id="L101">            persisted.add(saved);</span>
+
+            // Create evidence record from reasoning
+<span class="pc bpc" id="L104" title="2 of 4 branches missed.">            if (dto.getReasoning() != null &amp;&amp; !dto.getReasoning().isBlank()) {</span>
+<span class="fc" id="L105">                RelationEvidence evidence = new RelationEvidence();</span>
+<span class="fc" id="L106">                evidence.setHypothesis(saved);</span>
+<span class="fc" id="L107">                evidence.setEvidenceType(&quot;analysis-rule&quot;);</span>
+<span class="fc" id="L108">                evidence.setSummary(dto.getReasoning());</span>
+<span class="fc" id="L109">                evidence.setConfidence(dto.getConfidence());</span>
+<span class="fc" id="L110">                evidenceRepository.save(evidence);</span>
+            }
+<span class="fc" id="L112">        }</span>
+
+<span class="fc" id="L114">        log.info(&quot;Persisted {} hypotheses for session {}&quot;, persisted.size(), effectiveSessionId);</span>
+
+        // Generate DSL and commit to &quot;draft&quot; branch
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (!persisted.isEmpty()) {</span>
+<span class="fc" id="L118">            commitHypothesesAsDsl(persisted, effectiveSessionId);</span>
+        }
+
+<span class="fc" id="L121">        return persisted;</span>
+    }
+
+    /**
+     * Accept a hypothesis: creates a real {@link TaxonomyRelation} and marks the
+     * hypothesis as {@link HypothesisStatus#ACCEPTED}.
+     *
+     * &lt;p&gt;If the source or target nodes no longer exist in the taxonomy, the hypothesis
+     * is still marked as accepted but no relation is created.
+     *
+     * &lt;p&gt;After acceptance, a DSL commit is created on the &quot;accepted&quot; branch.
+     *
+     * @param hypothesisId the ID of the hypothesis to accept
+     * @return the accepted hypothesis entity
+     * @throws IllegalArgumentException if the hypothesis is not found
+     * @throws IllegalStateException if the hypothesis is not in PROVISIONAL or PROPOSED status
+     */
+    @Transactional
+    public RelationHypothesis accept(Long hypothesisId) {
+<span class="fc" id="L140">        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)</span>
+<span class="fc" id="L141">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Hypothesis not found: &quot; + hypothesisId));</span>
+
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (hypothesis.getStatus() == HypothesisStatus.ACCEPTED) {</span>
+<span class="fc" id="L144">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already ACCEPTED&quot;);</span>
+        }
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">        if (hypothesis.getStatus() == HypothesisStatus.REJECTED) {</span>
+<span class="nc" id="L147">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already REJECTED&quot;);</span>
+        }
+
+        // Create real TaxonomyRelation if both nodes exist
+<span class="fc" id="L151">        boolean relationCreated = false;</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if (nodeRepository.findByCode(hypothesis.getSourceNodeId()).isPresent()</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">                &amp;&amp; nodeRepository.findByCode(hypothesis.getTargetNodeId()).isPresent()) {</span>
+<span class="fc" id="L154">            relationService.createRelation(</span>
+<span class="fc" id="L155">                    hypothesis.getSourceNodeId(),</span>
+<span class="fc" id="L156">                    hypothesis.getTargetNodeId(),</span>
+<span class="fc" id="L157">                    hypothesis.getRelationType(),</span>
+                    &quot;Accepted from hypothesis &quot; + hypothesisId,
+                    &quot;hypothesis-accepted&quot;);
+<span class="fc" id="L160">            relationCreated = true;</span>
+        } else {
+<span class="nc" id="L162">            log.warn(&quot;Could not create relation for hypothesis {}: source or target node not found&quot;,</span>
+                    hypothesisId);
+        }
+
+<span class="fc" id="L166">        hypothesis.setStatus(HypothesisStatus.ACCEPTED);</span>
+<span class="fc" id="L167">        hypothesisRepository.save(hypothesis);</span>
+
+<span class="fc" id="L169">        log.info(&quot;Accepted hypothesis {}: {} --[{}]--&gt; {} (relation created: {})&quot;,</span>
+<span class="fc" id="L170">                hypothesisId, hypothesis.getSourceNodeId(),</span>
+<span class="fc" id="L171">                hypothesis.getRelationType(), hypothesis.getTargetNodeId(),</span>
+<span class="fc" id="L172">                relationCreated);</span>
+
+        // Commit accepted relation as DSL to &quot;accepted&quot; branch
+<span class="fc" id="L175">        commitHypothesesAsDsl(List.of(hypothesis), &quot;accepted-&quot; + hypothesisId);</span>
+
+<span class="fc" id="L177">        return hypothesis;</span>
+    }
+
+    /**
+     * Reject a hypothesis.
+     *
+     * @param hypothesisId the ID of the hypothesis to reject
+     * @return the rejected hypothesis entity
+     */
+    @Transactional
+    public RelationHypothesis reject(Long hypothesisId) {
+<span class="fc" id="L188">        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)</span>
+<span class="fc" id="L189">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Hypothesis not found: &quot; + hypothesisId));</span>
+
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">        if (hypothesis.getStatus() == HypothesisStatus.ACCEPTED) {</span>
+<span class="nc" id="L192">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already ACCEPTED&quot;);</span>
+        }
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (hypothesis.getStatus() == HypothesisStatus.REJECTED) {</span>
+<span class="fc" id="L195">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already REJECTED&quot;);</span>
+        }
+
+<span class="fc" id="L198">        hypothesis.setStatus(HypothesisStatus.REJECTED);</span>
+<span class="fc" id="L199">        hypothesisRepository.save(hypothesis);</span>
+
+<span class="fc" id="L201">        log.info(&quot;Rejected hypothesis {}: {} --[{}]--&gt; {}&quot;,</span>
+<span class="fc" id="L202">                hypothesisId, hypothesis.getSourceNodeId(),</span>
+<span class="fc" id="L203">                hypothesis.getRelationType(), hypothesis.getTargetNodeId());</span>
+
+<span class="fc" id="L205">        return hypothesis;</span>
+    }
+
+    /**
+     * Mark a hypothesis as &quot;applied for this session only&quot;.
+     *
+     * &lt;p&gt;The relationship is used in the current Architecture View and exports
+     * but is not permanently persisted as a {@link TaxonomyRelation}.
+     */
+    @Transactional
+    public RelationHypothesis applyForSession(Long hypothesisId) {
+<span class="fc" id="L216">        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)</span>
+<span class="fc" id="L217">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Hypothesis not found: &quot; + hypothesisId));</span>
+
+<span class="fc" id="L219">        hypothesis.setAppliedInCurrentAnalysis(true);</span>
+<span class="fc" id="L220">        hypothesisRepository.save(hypothesis);</span>
+
+<span class="fc" id="L222">        log.info(&quot;Applied hypothesis {} for current session: {} --[{}]--&gt; {}&quot;,</span>
+<span class="fc" id="L223">                hypothesisId, hypothesis.getSourceNodeId(),</span>
+<span class="fc" id="L224">                hypothesis.getRelationType(), hypothesis.getTargetNodeId());</span>
+
+<span class="fc" id="L226">        return hypothesis;</span>
+    }
+
+    /**
+     * List hypotheses by status.
+     */
+    @Transactional(readOnly = true)
+    public List&lt;RelationHypothesis&gt; findByStatus(HypothesisStatus status) {
+<span class="fc" id="L234">        return hypothesisRepository.findByStatus(status);</span>
+    }
+
+    /**
+     * List all hypotheses.
+     */
+    @Transactional(readOnly = true)
+    public List&lt;RelationHypothesis&gt; findAll() {
+<span class="fc" id="L242">        return hypothesisRepository.findAll();</span>
+    }
+
+    /**
+     * Find evidence records for a hypothesis.
+     */
+    @Transactional(readOnly = true)
+    public List&lt;RelationEvidence&gt; findEvidence(Long hypothesisId) {
+<span class="fc" id="L250">        return evidenceRepository.findByHypothesisId(hypothesisId);</span>
+    }
+
+    // ── DSL generation + Git commit ─────────────────────────────────
+
+    /**
+     * Generate DSL text from hypotheses and commit to the appropriate Git branch.
+     *
+     * &lt;p&gt;Provisional hypotheses go to &quot;draft&quot;, accepted hypotheses go to &quot;accepted&quot;.
+     */
+    private void commitHypothesesAsDsl(List&lt;RelationHypothesis&gt; hypotheses, String sessionId) {
+        try {
+<span class="fc" id="L262">            String dslText = generateDsl(hypotheses);</span>
+<span class="fc" id="L263">            String branch = hypotheses.stream()</span>
+<span class="fc bfc" id="L264" title="All 4 branches covered.">                    .anyMatch(h -&gt; h.getStatus() == HypothesisStatus.ACCEPTED)</span>
+<span class="fc" id="L265">                    ? &quot;accepted&quot; : &quot;draft&quot;;</span>
+
+<span class="fc" id="L267">            String commitId = gitRepository.commitDsl(</span>
+                    branch, dslText,
+                    &quot;hypothesis-service&quot;,
+                    &quot;Auto-generated from analysis session &quot; + sessionId);
+
+<span class="fc" id="L272">            log.info(&quot;Committed {} hypotheses as DSL to branch '{}': {}&quot;,</span>
+<span class="fc" id="L273">                    hypotheses.size(), branch, commitId);</span>
+<span class="nc" id="L274">        } catch (IOException e) {</span>
+<span class="nc" id="L275">            log.warn(&quot;Failed to commit hypotheses as DSL to Git: {}&quot;, e.getMessage());</span>
+            // Non-fatal: DB persistence already succeeded
+<span class="fc" id="L277">        }</span>
+<span class="fc" id="L278">    }</span>
+
+    /**
+     * Generate DSL text from a list of hypotheses.
+     */
+    private String generateDsl(List&lt;RelationHypothesis&gt; hypotheses) {
+<span class="fc" id="L284">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L285">        sb.append(&quot;meta\n&quot;);</span>
+<span class="fc" id="L286">        sb.append(&quot;  language \&quot;taxdsl\&quot;\n&quot;);</span>
+<span class="fc" id="L287">        sb.append(&quot;  version \&quot;1.0\&quot;\n&quot;);</span>
+<span class="fc" id="L288">        sb.append(&quot;  namespace \&quot;hypothesis-auto\&quot;\n\n&quot;);</span>
+
+        // Track declared elements to avoid duplicates
+<span class="fc" id="L291">        java.util.Set&lt;String&gt; declaredElements = new java.util.LinkedHashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L293" title="All 2 branches covered.">        for (RelationHypothesis h : hypotheses) {</span>
+            // Element declarations for source and target (avoid duplicates)
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">            if (declaredElements.add(h.getSourceNodeId())) {</span>
+<span class="fc" id="L296">                sb.append(&quot;element &quot;).append(h.getSourceNodeId()).append(&quot; type Node\n&quot;);</span>
+<span class="fc" id="L297">                sb.append(&quot;  title \&quot;&quot;).append(h.getSourceNodeId()).append(&quot;\&quot;\n\n&quot;);</span>
+            }
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">            if (declaredElements.add(h.getTargetNodeId())) {</span>
+<span class="fc" id="L300">                sb.append(&quot;element &quot;).append(h.getTargetNodeId()).append(&quot; type Node\n&quot;);</span>
+<span class="fc" id="L301">                sb.append(&quot;  title \&quot;&quot;).append(h.getTargetNodeId()).append(&quot;\&quot;\n\n&quot;);</span>
+            }
+
+            // Relation declaration
+<span class="fc" id="L305">            sb.append(&quot;relation &quot;).append(h.getSourceNodeId()).append(&quot; &quot;)</span>
+<span class="fc" id="L306">                    .append(h.getRelationType().name()).append(&quot; &quot;)</span>
+<span class="fc" id="L307">                    .append(h.getTargetNodeId()).append(&quot;\n&quot;);</span>
+<span class="fc" id="L308">            sb.append(&quot;  status &quot;).append(h.getStatus().name().toLowerCase()).append(&quot;\n&quot;);</span>
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">            if (h.getConfidence() &gt; 0) {</span>
+<span class="fc" id="L310">                sb.append(&quot;  confidence &quot;).append(String.format(&quot;%.2f&quot;, h.getConfidence())).append(&quot;\n&quot;);</span>
+            }
+<span class="fc" id="L312">            sb.append(&quot;\n&quot;);</span>
+<span class="fc" id="L313">        }</span>
+
+<span class="fc" id="L315">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationEvidence.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.model</a> &gt; <span class="el_source">RelationEvidence.java</span></div><h1>RelationEvidence.java</h1><pre class="source lang-java linenums">package com.taxonomy.model;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.Nationalized;
+
+import java.time.Instant;
+
+/**
+ * Evidence supporting or challenging a {@link RelationHypothesis}.
+ *
+ * &lt;p&gt;Stores LLM, semantic, or rule-based justifications for relation hypotheses
+ * to enable audit trails and re-validation.
+ */
+@Entity
+@Table(name = &quot;relation_evidence&quot;)
+<span class="fc" id="L16">public class RelationEvidence {</span>
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;hypothesis_id&quot;, nullable = false)
+    private RelationHypothesis hypothesis;
+
+    @Nationalized
+    @Column(name = &quot;evidence_type&quot;, nullable = false)
+    private String evidenceType;
+
+    @Nationalized
+    @Lob
+    @Column(length = 2000)
+    private String summary;
+
+    @Nationalized
+    @Lob
+    @Column(name = &quot;full_text&quot;, length = 10000)
+    private String fullText;
+
+    @Column
+    private Double confidence;
+
+    @Nationalized
+    @Column(name = &quot;model_name&quot;)
+    private String modelName;
+
+    @Nationalized
+    @Column(name = &quot;model_version&quot;)
+    private String modelVersion;
+
+    @Nationalized
+    @Column(name = &quot;prompt_version&quot;)
+    private String promptVersion;
+
+    @Nationalized
+    @Lob
+    @Column(name = &quot;input_snapshot&quot;, length = 10000)
+    private String inputSnapshot;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @PrePersist
+    protected void onCreate() {
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (createdAt == null) {</span>
+<span class="fc" id="L66">            createdAt = Instant.now();</span>
+        }
+<span class="fc" id="L68">    }</span>
+
+<span class="nc" id="L70">    public Long getId() { return id; }</span>
+<span class="nc" id="L71">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="nc" id="L73">    public RelationHypothesis getHypothesis() { return hypothesis; }</span>
+<span class="fc" id="L74">    public void setHypothesis(RelationHypothesis hypothesis) { this.hypothesis = hypothesis; }</span>
+
+<span class="fc" id="L76">    public String getEvidenceType() { return evidenceType; }</span>
+<span class="fc" id="L77">    public void setEvidenceType(String evidenceType) { this.evidenceType = evidenceType; }</span>
+
+<span class="fc" id="L79">    public String getSummary() { return summary; }</span>
+<span class="fc" id="L80">    public void setSummary(String summary) { this.summary = summary; }</span>
+
+<span class="nc" id="L82">    public String getFullText() { return fullText; }</span>
+<span class="nc" id="L83">    public void setFullText(String fullText) { this.fullText = fullText; }</span>
+
+<span class="nc" id="L85">    public Double getConfidence() { return confidence; }</span>
+<span class="fc" id="L86">    public void setConfidence(Double confidence) { this.confidence = confidence; }</span>
+
+<span class="nc" id="L88">    public String getModelName() { return modelName; }</span>
+<span class="nc" id="L89">    public void setModelName(String modelName) { this.modelName = modelName; }</span>
+
+<span class="nc" id="L91">    public String getModelVersion() { return modelVersion; }</span>
+<span class="nc" id="L92">    public void setModelVersion(String modelVersion) { this.modelVersion = modelVersion; }</span>
+
+<span class="nc" id="L94">    public String getPromptVersion() { return promptVersion; }</span>
+<span class="nc" id="L95">    public void setPromptVersion(String promptVersion) { this.promptVersion = promptVersion; }</span>
+
+<span class="nc" id="L97">    public String getInputSnapshot() { return inputSnapshot; }</span>
+<span class="nc" id="L98">    public void setInputSnapshot(String inputSnapshot) { this.inputSnapshot = inputSnapshot; }</span>
+
+<span class="nc" id="L100">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="nc" id="L101">    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

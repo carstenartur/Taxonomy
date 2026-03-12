@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GitReflogEntity.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.storage.jgit</a> &gt; <span class="el_source">GitReflogEntity.java</span></div><h1>GitReflogEntity.java</h1><pre class="source lang-java linenums">/*******************************************************************************
+ * Copyright (c) 2026 Carsten Hammer.
+ *
+ * This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License 2.0
+ * which accompanies this distribution, and is available at
+ * https://www.eclipse.org/legal/epl-2.0/
+ *
+ * SPDX-License-Identifier: EPL-2.0
+ *
+ * Contributors:
+ *     Carsten Hammer
+ *******************************************************************************/
+package com.taxonomy.dsl.storage.jgit;
+
+import java.time.Instant;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+
+/**
+ * Entity representing a Git reflog entry stored in the database.
+ * &lt;p&gt;
+ * Adapted from {@code sandbox-jgit-storage-hibernate} module
+ * in the {@code carstenartur/sandbox} repository.
+ */
+@Entity
+@Table(name = &quot;git_reflog&quot;, indexes = {
+        @Index(name = &quot;idx_reflog_repo&quot;, columnList = &quot;repository_name&quot;),
+        @Index(name = &quot;idx_reflog_repo_ref&quot;, columnList = &quot;repository_name, ref_name&quot;) })
+public class GitReflogEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Version
+    @Column(name = &quot;version&quot;)
+    private Long version;
+
+    @Column(name = &quot;repository_name&quot;, nullable = false)
+    private String repositoryName;
+
+    @Column(name = &quot;ref_name&quot;, nullable = false)
+    private String refName;
+
+    @Column(name = &quot;old_id&quot;, length = 40)
+    private String oldId;
+
+    @Column(name = &quot;new_id&quot;, length = 40)
+    private String newId;
+
+    @Column(name = &quot;who_name&quot;)
+    private String whoName;
+
+    @Column(name = &quot;who_email&quot;)
+    private String whoEmail;
+
+    @Column(name = &quot;who_when&quot;, nullable = false)
+    private Instant when;
+
+    @Column(name = &quot;message&quot;, length = 2048)
+    private String message;
+
+<span class="fc" id="L71">    public GitReflogEntity() {</span>
+<span class="fc" id="L72">    }</span>
+
+<span class="nc" id="L74">    public Long getId() { return id; }</span>
+<span class="nc" id="L75">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="nc" id="L77">    public Long getVersion() { return version; }</span>
+<span class="nc" id="L78">    public void setVersion(Long version) { this.version = version; }</span>
+
+<span class="nc" id="L80">    public String getRepositoryName() { return repositoryName; }</span>
+<span class="nc" id="L81">    public void setRepositoryName(String repositoryName) { this.repositoryName = repositoryName; }</span>
+
+<span class="nc" id="L83">    public String getRefName() { return refName; }</span>
+<span class="nc" id="L84">    public void setRefName(String refName) { this.refName = refName; }</span>
+
+<span class="nc" id="L86">    public String getOldId() { return oldId; }</span>
+<span class="nc" id="L87">    public void setOldId(String oldId) { this.oldId = oldId; }</span>
+
+<span class="nc" id="L89">    public String getNewId() { return newId; }</span>
+<span class="nc" id="L90">    public void setNewId(String newId) { this.newId = newId; }</span>
+
+<span class="nc" id="L92">    public String getWhoName() { return whoName; }</span>
+<span class="nc" id="L93">    public void setWhoName(String whoName) { this.whoName = whoName; }</span>
+
+<span class="nc" id="L95">    public String getWhoEmail() { return whoEmail; }</span>
+<span class="nc" id="L96">    public void setWhoEmail(String whoEmail) { this.whoEmail = whoEmail; }</span>
+
+<span class="nc" id="L98">    public Instant getWhen() { return when; }</span>
+<span class="nc" id="L99">    public void setWhen(Instant when) { this.when = when; }</span>
+
+<span class="nc" id="L101">    public String getMessage() { return message; }</span>
+<span class="nc" id="L102">    public void setMessage(String message) { this.message = message; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

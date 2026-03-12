@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HybridSearchService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">HybridSearchService.java</span></div><h1>HybridSearchService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dto.TaxonomyNodeDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+/**
+ * Hybrid search service that combines full-text Lucene search with semantic KNN
+ * embedding search using Reciprocal Rank Fusion (RRF).
+ *
+ * &lt;h2&gt;Architecture&lt;/h2&gt;
+ * &lt;p&gt;Mirrors the {@code hybridSearch()} approach described in the sandbox project's
+ * {@code GitDatabaseQueryService} plan:
+ * &lt;ol&gt;
+ *   &lt;li&gt;Run semantic KNN search ({@link LocalEmbeddingService#semanticSearch}) — finds
+ *       conceptually similar nodes even with no lexical overlap.&lt;/li&gt;
+ *   &lt;li&gt;Run full-text Lucene search ({@link SearchService#search}) — finds exact keyword
+ *       matches in node names and descriptions.&lt;/li&gt;
+ *   &lt;li&gt;Merge both lists via {@link RankFusionUtil#fuse} (RRF) — produces a single
+ *       re-ranked list without requiring score calibration.&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;h2&gt;Graceful degradation&lt;/h2&gt;
+ * &lt;p&gt;When the embedding model is not available ({@link LocalEmbeddingService#isAvailable()}
+ * returns {@code false}), hybrid search transparently falls back to full-text only.
+ */
+@Service
+public class HybridSearchService {
+
+<span class="fc" id="L33">    private static final Logger log = LoggerFactory.getLogger(HybridSearchService.class);</span>
+
+    private final SearchService searchService;
+    private final LocalEmbeddingService embeddingService;
+
+    public HybridSearchService(SearchService searchService,
+<span class="fc" id="L39">                                LocalEmbeddingService embeddingService) {</span>
+<span class="fc" id="L40">        this.searchService = searchService;</span>
+<span class="fc" id="L41">        this.embeddingService = embeddingService;</span>
+<span class="fc" id="L42">    }</span>
+
+    /**
+     * Performs hybrid search: combines full-text Lucene results with semantic KNN results
+     * using Reciprocal Rank Fusion.
+     *
+     * &lt;p&gt;When embedding is unavailable, transparently falls back to full-text search only.
+     *
+     * @param queryText  natural-language query or keyword (e.g. &quot;satellite communications&quot;)
+     * @param maxResults maximum number of results to return
+     * @return merged and re-ranked list of taxonomy node DTOs
+     */
+    public List&lt;TaxonomyNodeDto&gt; hybridSearch(String queryText, int maxResults) {
+<span class="fc" id="L55">        List&lt;TaxonomyNodeDto&gt; fullText = searchService.search(queryText, maxResults);</span>
+
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (!embeddingService.isAvailable()) {</span>
+<span class="fc" id="L58">            log.debug(&quot;Embedding unavailable; hybrid search returning full-text only results&quot;);</span>
+<span class="fc" id="L59">            return fullText;</span>
+        }
+
+<span class="nc" id="L62">        List&lt;TaxonomyNodeDto&gt; semantic = embeddingService.semanticSearch(queryText, maxResults);</span>
+
+<span class="nc bnc" id="L64" title="All 2 branches missed.">        if (semantic.isEmpty()) {</span>
+<span class="nc" id="L65">            return fullText;</span>
+        }
+
+<span class="nc" id="L68">        List&lt;TaxonomyNodeDto&gt; fused = RankFusionUtil.fuse(semantic, fullText, maxResults);</span>
+<span class="nc" id="L69">        log.debug(&quot;Hybrid search for '{}': semantic={}, fullText={}, fused={}&quot;,</span>
+<span class="nc" id="L70">                queryText, semantic.size(), fullText.size(), fused.size());</span>
+<span class="nc" id="L71">        return fused;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
