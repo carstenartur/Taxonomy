@@ -183,9 +183,25 @@ public class RelationProposalService {
 <span class="fc" id="L183">        dto.setConfidence(proposal.getConfidence());</span>
 <span class="fc" id="L184">        dto.setRationale(proposal.getRationale());</span>
 <span class="fc" id="L185">        dto.setProvenance(proposal.getProvenance());</span>
-<span class="fc" id="L186">        dto.setCreatedAt(proposal.getCreatedAt());</span>
-<span class="fc" id="L187">        dto.setReviewedAt(proposal.getReviewedAt());</span>
-<span class="fc" id="L188">        return dto;</span>
+<span class="fc" id="L186">        dto.setExplanationBasis(deriveExplanationBasis(proposal));</span>
+<span class="fc" id="L187">        dto.setCreatedAt(proposal.getCreatedAt());</span>
+<span class="fc" id="L188">        dto.setReviewedAt(proposal.getReviewedAt());</span>
+<span class="fc" id="L189">        return dto;</span>
+    }
+
+    /**
+     * Derives a human-readable explanation of how and why a proposal was created.
+     */
+    private String deriveExplanationBasis(RelationProposal proposal) {
+<span class="fc" id="L196">        String provenance = proposal.getProvenance();</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">        if (provenance == null) return &quot;unknown source&quot;;</span>
+
+<span class="pc bpc" id="L199" title="2 of 3 branches missed.">        return switch (provenance) {</span>
+<span class="fc" id="L200">            case &quot;hybrid-search&quot; -&gt; &quot;Discovered via hybrid search (semantic + keyword) &quot;</span>
+                    + &quot;and validated against the relation compatibility matrix&quot;;
+<span class="nc" id="L202">            case &quot;analysis-hypothesis&quot; -&gt; &quot;Derived from LLM analysis of a business requirement&quot;;</span>
+<span class="nc" id="L203">            default -&gt; &quot;Source: &quot; + provenance;</span>
+        };
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
