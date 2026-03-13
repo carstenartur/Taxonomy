@@ -13,8 +13,9 @@ import org.springframework.security.web.SecurityFilterChain;
 /**
  * Central Spring Security configuration.
  * <p>
- * Protects GUI (form login + session) and REST API (same session from browser).
- * CSRF protection is kept enabled for browser-based sessions.
+ * Protects GUI (form login + session) and REST API (HTTP Basic for programmatic clients).
+ * CSRF protection is enabled for browser sessions but disabled for {@code /api/**} paths
+ * so that stateless REST clients authenticated via HTTP Basic can POST without a CSRF token.
  */
 @Configuration
 @EnableMethodSecurity
@@ -61,11 +62,17 @@ public class SecurityConfig {
                 // GUI — any authenticated user
                 .requestMatchers("/**").authenticated()
             )
+            .csrf(csrf -> csrf
+                // Disable CSRF for REST API paths — stateless HTTP Basic clients cannot
+                // participate in CSRF token exchange.  Browser-based sessions that call
+                // /api/** via fetch() still include the CSRF token from the meta tags,
+                // but it is simply ignored for these paths.
+                .ignoringRequestMatchers("/api/**")
+            )
             .formLogin(Customizer.withDefaults())
             .httpBasic(Customizer.withDefaults())
             .logout(Customizer.withDefaults());
 
-        // CSRF protection is enabled by default (important for browser sessions).
         return http.build();
     }
 
