@@ -63,7 +63,7 @@ Taxonomy Application,com.taxonomy.service,ArchitecturePatternService,25,491,12,4
 Taxonomy Application,com.taxonomy.service,AnalysisRelationGenerator.ScoredNode,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.service,DerivedMetadataService,42,164,3,17,9,39,5,11,2,4
 Taxonomy Application,com.taxonomy.service,SearchService,11,186,2,2,4,37,2,6,0,6
-Taxonomy Application,com.taxonomy.service,LocalEmbeddingService,395,138,22,14,84,36,24,13,8,11
+Taxonomy Application,com.taxonomy.service,LocalEmbeddingService,414,150,23,15,90,41,25,14,8,12
 Taxonomy Application,com.taxonomy.service,RequirementArchitectureViewService,118,665,18,60,24,140,14,35,1,9
 Taxonomy Application,com.taxonomy.service,AppInitializationStateService,0,77,0,4,0,13,0,10,0,8
 Taxonomy Application,com.taxonomy.service,AppInitializationStateService.StateSnapshot,0,15,0,0,0,1,0,1,0,1
