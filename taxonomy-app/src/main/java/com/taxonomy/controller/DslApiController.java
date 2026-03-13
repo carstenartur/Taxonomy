@@ -1,6 +1,8 @@
 package com.taxonomy.controller;
 
+import com.taxonomy.dsl.diff.DiffSummary;
 import com.taxonomy.dsl.diff.ModelDiff;
+import com.taxonomy.dsl.diff.SemanticDiffDescriber;
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.mapper.AstToModelMapper;
@@ -297,7 +299,7 @@ public class DslApiController {
             result.put("removedRelations", diff.removedRelations().size());
             result.put("changedRelations", diff.changedRelations().size());
 
-            // Include details
+            // Include structural details
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("addedElements", diff.addedElements());
             details.put("removedElements", diff.removedElements());
@@ -307,7 +309,36 @@ public class DslApiController {
             details.put("changedRelations", diff.changedRelations());
             result.put("details", details);
 
+            // Include semantic changes for better reviewability
+            SemanticDiffDescriber describer = new SemanticDiffDescriber();
+            result.put("semanticChanges", describer.describe(diff));
+            result.put("semanticSummary", describer.summarize(diff));
+
             return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    @GetMapping("/diff/semantic/{beforeId}/{afterId}")
+    @Operation(summary = "Compute semantic diff between two DSL commits",
+            description = "Returns human-readable semantic change descriptions " +
+                    "(e.g. 'Title changed', 'Relation added') together with statistics " +
+                    "and before/after values—designed for reviews and change documentation.")
+    public ResponseEntity<?> semanticDiff(
+            @PathVariable String beforeId,
+            @PathVariable String afterId) {
+        try {
+            ModelDiff diff;
+            if (looksLikeGitSha(beforeId) && looksLikeGitSha(afterId)) {
+                diff = gitRepository.diffBetween(beforeId, afterId);
+            } else {
+                diff = materializeService.diffDocuments(Long.valueOf(beforeId), Long.valueOf(afterId));
+            }
+            DiffSummary summary = DiffSummary.fromDiff(diff);
+            return ResponseEntity.ok(summary);
         } catch (Exception e) {
             Map<String, Object> error = new LinkedHashMap<>();
             error.put("error", e.getMessage());
@@ -623,5 +654,20 @@ public class DslApiController {
                     "relation key (e.g., 'CP-1001 REALIZES CR-2001') using Hibernate Search.")
     public ResponseEntity<?> findHistoryByRelation(@RequestParam String key) {
         return ResponseEntity.ok(commitIndexService.findByRelation(key));
+    }
+
+    @GetMapping("/history/element/{elementId}/aggregation")
+    @Operation(summary = "Get aggregated history for an element",
+            description = "Returns firstSeen, lastSeen, occurrence count, volatility, " +
+                    "and recent commit messages for the given element ID.")
+    public ResponseEntity<?> elementHistoryAggregation(@PathVariable String elementId) {
+        var aggregation = commitIndexService.aggregateElementHistory(elementId);
+        if (aggregation == null) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("elementId", elementId);
+            result.put("message", "No history found for element " + elementId);
+            return ResponseEntity.ok(result);
+        }
+        return ResponseEntity.ok(aggregation);
     }
 }

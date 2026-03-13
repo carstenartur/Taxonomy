@@ -17,6 +17,7 @@ public class RelationProposalDto {
     private double confidence;
     private String rationale;
     private String provenance;
+    private String explanationBasis;
     private Instant createdAt;
     private Instant reviewedAt;
 
@@ -53,6 +54,10 @@ public class RelationProposalDto {
 
     public String getProvenance() { return provenance; }
     public void setProvenance(String provenance) { this.provenance = provenance; }
+
+    /** Human-readable explanation of how this proposal was derived. */
+    public String getExplanationBasis() { return explanationBasis; }
+    public void setExplanationBasis(String explanationBasis) { this.explanationBasis = explanationBasis; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

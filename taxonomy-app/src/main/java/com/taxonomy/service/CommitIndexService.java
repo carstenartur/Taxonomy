@@ -3,6 +3,7 @@ package com.taxonomy.service;
 import com.taxonomy.dsl.parser.DslTokenizer;
 import com.taxonomy.dsl.storage.DslCommit;
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dto.ElementHistoryAggregation;
 import com.taxonomy.model.ArchitectureCommitIndex;
 import com.taxonomy.repository.ArchitectureCommitIndexRepository;
 import jakarta.persistence.EntityManager;
@@ -15,7 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -219,5 +222,46 @@ public class CommitIndexService {
             log.error("Hibernate Search relation search failed for '{}': {}", relationKey, e.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * Build an aggregated history view for a specific element.
+     *
+     * <p>Computes firstSeen, lastSeen, occurrence count, volatility,
+     * and recent commit messages — useful for understanding how
+     * an element has evolved over time.
+     *
+     * @param elementId the element ID (e.g., "CP-1001")
+     * @return the aggregation, or {@code null} if no history found
+     */
+    @Transactional(readOnly = true)
+    public ElementHistoryAggregation aggregateElementHistory(String elementId) {
+        List<ArchitectureCommitIndex> commits = findByElement(elementId);
+        if (commits.isEmpty()) {
+            return null;
+        }
+
+        long totalCommits = indexRepository.count();
+
+        Instant firstSeen = commits.stream()
+                .map(ArchitectureCommitIndex::getCommitTimestamp)
+                .min(Comparator.naturalOrder())
+                .orElse(null);
+        Instant lastSeen = commits.stream()
+                .map(ArchitectureCommitIndex::getCommitTimestamp)
+                .max(Comparator.naturalOrder())
+                .orElse(null);
+
+        List<String> recentMessages = commits.stream()
+                .sorted(Comparator.comparing(ArchitectureCommitIndex::getCommitTimestamp).reversed())
+                .limit(5)
+                .map(ArchitectureCommitIndex::getMessage)
+                .toList();
+
+        double volatility = ElementHistoryAggregation.computeVolatility(commits.size(), (int) totalCommits);
+
+        return new ElementHistoryAggregation(
+                elementId, firstSeen, lastSeen,
+                commits.size(), volatility, recentMessages);
     }
 }
