@@ -30,13 +30,14 @@ class TaxDslSerializerTest {
 
     @Test
     void serializeMetaOnly() {
-        MetaAst meta = new MetaAst("taxdsl", "1.0", "test.ns", null);
+        MetaAst meta = new MetaAst("taxdsl", "2.0", "test.ns", null);
         DocumentAst doc = new DocumentAst(meta, List.of());
         String result = serializer.serialize(doc);
-        assertThat(result).contains("meta");
-        assertThat(result).contains("language \"taxdsl\"");
-        assertThat(result).contains("version \"1.0\"");
-        assertThat(result).contains("namespace \"test.ns\"");
+        assertThat(result).contains("meta {");
+        assertThat(result).contains("language: \"taxdsl\";");
+        assertThat(result).contains("version: \"2.0\";");
+        assertThat(result).contains("namespace: \"test.ns\";");
+        assertThat(result).contains("}");
     }
 
     @Test
@@ -52,9 +53,10 @@ class TaxDslSerializerTest {
         DocumentAst doc = new DocumentAst(null, List.of(block));
         String result = serializer.serialize(doc);
 
-        assertThat(result).contains("element CP-1023 type Capability");
-        assertThat(result).contains("  title \"Secure Communications\"");
-        assertThat(result).contains("  description \"Ability to communicate securely\"");
+        assertThat(result).contains("element CP-1023 type Capability {");
+        assertThat(result).contains("  title: \"Secure Communications\";");
+        assertThat(result).contains("  description: \"Ability to communicate securely\";");
+        assertThat(result).contains("}");
     }
 
     @Test
@@ -71,10 +73,10 @@ class TaxDslSerializerTest {
         DocumentAst doc = new DocumentAst(null, List.of(block));
         String result = serializer.serialize(doc);
 
-        assertThat(result).contains("relation CR-1011 SUPPORTS BP-1327");
-        assertThat(result).contains("  status proposed");
-        assertThat(result).contains("  confidence 0.76");
-        assertThat(result).contains("  provenance \"analysis\"");
+        assertThat(result).contains("relation CR-1011 SUPPORTS BP-1327 {");
+        assertThat(result).contains("  status: proposed;");
+        assertThat(result).contains("  confidence: 0.76;");
+        assertThat(result).contains("  provenance: \"analysis\";");
     }
 
     @Test
@@ -95,9 +97,9 @@ class TaxDslSerializerTest {
         DocumentAst doc = new DocumentAst(null, List.of(block));
         String result = serializer.serialize(doc);
 
-        assertThat(result).contains("  title \"Test\"");
-        assertThat(result).contains("  x-owner \"CIS\"");
-        assertThat(result).contains("  x-lifecycle \"target\"");
+        assertThat(result).contains("  title: \"Test\";");
+        assertThat(result).contains("  x-owner: \"CIS\";");
+        assertThat(result).contains("  x-lifecycle: \"target\";");
     }
 
     @Test
@@ -115,10 +117,10 @@ class TaxDslSerializerTest {
         DocumentAst doc = new DocumentAst(null, List.of(block));
         String result = serializer.serialize(doc);
 
-        assertThat(result).contains("view overview");
-        assertThat(result).contains("  include \"CP-1023\"");
-        assertThat(result).contains("  include \"BP-1327\"");
-        assertThat(result).contains("  layout layered");
+        assertThat(result).contains("view overview {");
+        assertThat(result).contains("  include: \"CP-1023\";");
+        assertThat(result).contains("  include: \"BP-1327\";");
+        assertThat(result).contains("  layout: layered;");
     }
 
     @Test
@@ -149,12 +151,12 @@ class TaxDslSerializerTest {
         String result = serializer.serialize(doc);
 
         // Blocks should be separated by a blank line
-        assertThat(result).contains("element CP-1023\n  title \"One\"\n\nelement CP-1027\n  title \"Two\"\n");
+        assertThat(result).contains("}\n\nelement CP-1027");
     }
 
     @Test
     void serializeDeterministicOutput() {
-        MetaAst meta = new MetaAst("taxdsl", "1.0", "test", null);
+        MetaAst meta = new MetaAst("taxdsl", "2.0", "test", null);
         BlockAst block = new BlockAst("element",
                 List.of("CP-1023", "type", "Capability"),
                 List.of(new PropertyAst("title", "Test", null)),
@@ -180,8 +182,8 @@ class TaxDslSerializerTest {
         DocumentAst doc = new DocumentAst(null, List.of(block));
         String result = serializer.serialize(doc);
 
-        assertThat(result).contains("  title \"He said \\\"hello\\\"\"");
-        assertThat(result).contains("  description \"Path: C:\\\\Users\\\\test\"");
+        assertThat(result).contains("  title: \"He said \\\"hello\\\"\";");
+        assertThat(result).contains("  description: \"Path: C:\\\\Users\\\\test\";");
     }
 
     @Test
@@ -228,9 +230,9 @@ class TaxDslSerializerTest {
         String result = serializer.serialize(doc);
 
         // Canonical order for element: title, description, taxonomy
-        int titlePos = result.indexOf("  title ");
-        int descPos = result.indexOf("  description ");
-        int taxPos = result.indexOf("  taxonomy ");
+        int titlePos = result.indexOf("  title: ");
+        int descPos = result.indexOf("  description: ");
+        int taxPos = result.indexOf("  taxonomy: ");
 
         assertThat(titlePos).isLessThan(descPos);
         assertThat(descPos).isLessThan(taxPos);

@@ -136,13 +136,15 @@ public class AstToModelMapper {
         if (!tokens.isEmpty()) {
             ev.setId(tokens.get(0));
         }
-        // Parse "for relation SOURCE TYPE TARGET" from header tokens
-        for (int i = 1; i < tokens.size(); i++) {
-            if ("for".equals(tokens.get(i)) && i + 4 < tokens.size()
-                    && "relation".equals(tokens.get(i + 1))) {
-                ev.setForRelationSource(tokens.get(i + 2));
-                ev.setForRelationType(tokens.get(i + 3));
-                ev.setForRelationTarget(tokens.get(i + 4));
+
+        // Parse "for-relation" property: "SOURCE TYPE TARGET"
+        String forRelation = block.property("for-relation");
+        if (forRelation != null) {
+            String[] parts = forRelation.strip().split("\\s+");
+            if (parts.length >= 3) {
+                ev.setForRelationSource(parts[0]);
+                ev.setForRelationType(parts[1]);
+                ev.setForRelationTarget(parts[2]);
             }
         }
 

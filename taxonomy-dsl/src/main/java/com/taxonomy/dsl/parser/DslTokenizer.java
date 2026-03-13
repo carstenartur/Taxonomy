@@ -122,7 +122,7 @@ public class DslTokenizer {
         if (dslText == null) return Collections.emptySet();
         Set<String> keys = new LinkedHashSet<>();
         Pattern relPattern = Pattern.compile(
-                "^\\s*relation\\s+([A-Z]{2}-\\d{1,5})\\s+(\\w+)\\s+([A-Z]{2}-\\d{1,5})",
+                "^\\s*relation\\s+([A-Z]{2}-\\d{1,5})\\s+(\\w+)\\s+([A-Z]{2}-\\d{1,5})\\s*\\{?",
                 Pattern.MULTILINE);
         Matcher matcher = relPattern.matcher(dslText);
         while (matcher.find()) {
