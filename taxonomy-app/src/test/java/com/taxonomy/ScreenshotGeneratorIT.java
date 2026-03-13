@@ -51,10 +51,10 @@ class ScreenshotGeneratorIT {
             "Provide secure voice communications between HQ and deployed forces";
 
     private static final String FALLBACK_DSL_TEXT =
-            "meta\\n  language \"taxdsl\"\\n  version \"1.0\"\\n  namespace \"default\"\\n\\n" +
-            "element CP type Capability\\n  title \"Capability Packages\"\\n\\n" +
-            "element CR type CoreService\\n  title \"Core Services\"\\n\\n" +
-            "relation CP REALIZES CR\\n  status accepted\\n";
+            "meta {\\n  language: \"taxdsl\";\\n  version: \"2.0\";\\n  namespace: \"default\";\\n}\\n\\n" +
+            "element CP type Capability {\\n  title: \"Capability Packages\";\\n}\\n\\n" +
+            "element CR type CoreService {\\n  title: \"Core Services\";\\n}\\n\\n" +
+            "relation CP REALIZES CR {\\n  status: accepted;\\n}\\n";
 
     private static final Path OUTPUT_DIR = resolveOutputDir();
 

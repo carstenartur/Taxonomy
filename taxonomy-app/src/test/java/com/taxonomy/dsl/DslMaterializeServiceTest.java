@@ -25,13 +25,15 @@ class DslMaterializeServiceTest {
     @Test
     void materializeValidDslCreatesDocument() {
         String dsl = """
-                meta
-                  language "taxdsl"
-                  version "1.0"
-                  namespace "test.materialize"
+                meta {
+                  language: "taxdsl";
+                  version: "2.0";
+                  namespace: "test.materialize";
+                }
                 
-                element CP-1010 type Capability
-                  title "Test Capability"
+                element CP-1010 type Capability {
+                  title: "Test Capability";
+                }
                 """;
 
         DslMaterializeService.MaterializeResult result =
@@ -54,11 +56,13 @@ class DslMaterializeServiceTest {
     @Test
     void materializeDslWithDuplicateIdsFails() {
         String dsl = """
-                element CP-1010 type Capability
-                  title "First"
+                element CP-1010 type Capability {
+                  title: "First";
+                }
                 
-                element CP-1010 type Capability
-                  title "Duplicate"
+                element CP-1010 type Capability {
+                  title: "Duplicate";
+                }
                 """;
 
         DslMaterializeService.MaterializeResult result =
@@ -72,15 +76,18 @@ class DslMaterializeServiceTest {
     @Test
     void materializeProvisionalRelationsCreatesHypotheses() {
         String dsl = """
-                element CP-100 type Capability
-                  title "Cap"
+                element CP-100 type Capability {
+                  title: "Cap";
+                }
                 
-                element BP-100 type Process
-                  title "Proc"
+                element BP-100 type Process {
+                  title: "Proc";
+                }
                 
-                relation BP-100 REALIZES CP-100
-                  status provisional
-                  confidence 0.65
+                relation BP-100 REALIZES CP-100 {
+                  status: provisional;
+                  confidence: 0.65;
+                }
                 """;
 
         DslMaterializeService.MaterializeResult result =
@@ -94,14 +101,17 @@ class DslMaterializeServiceTest {
     void materializeAcceptedRelationsCreatesRelations() {
         // Use real root-level node codes with a relation type not preloaded from CSV
         String dsl = """
-                element UA type UserApplication
-                  title "Test App"
+                element UA type UserApplication {
+                  title: "Test App";
+                }
                 
-                element CP type Capability
-                  title "Test Capability"
+                element CP type Capability {
+                  title: "Test Capability";
+                }
                 
-                relation UA REALIZES CP
-                  status accepted
+                relation UA REALIZES CP {
+                  status: accepted;
+                }
                 """;
 
         DslMaterializeService.MaterializeResult result =
@@ -114,8 +124,9 @@ class DslMaterializeServiceTest {
     @Test
     void materializeWithNullPathUsesInline() {
         String dsl = """
-                element CP-1022 type Capability
-                  title "Inline Test"
+                element CP-1022 type Capability {
+                  title: "Inline Test";
+                }
                 """;
 
         DslMaterializeService.MaterializeResult result =

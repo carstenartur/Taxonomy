@@ -114,8 +114,9 @@ class LocalOnnxPipelineIT {
     @Order(4)
     void dslCommitAndHistoryWork() throws Exception {
         String dsl = """
-                element TEST-001 type Capability
-                  title "Pipeline Test Element"
+                element TEST-001 type Capability {
+                  title: "Pipeline Test Element";
+                }
                 """;
         HttpResponse<String> commitResp = httpPost("/api/dsl/commit", dsl, "text/plain");
         assertThat(commitResp.statusCode()).isEqualTo(200);

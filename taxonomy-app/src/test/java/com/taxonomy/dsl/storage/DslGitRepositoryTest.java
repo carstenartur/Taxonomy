@@ -20,41 +20,51 @@ class DslGitRepositoryTest {
     private DslGitRepository repo;
 
     private static final String SAMPLE_DSL = """
-            meta
-              language "taxdsl"
-              version "1.0"
-              namespace "test"
+            meta {
+              language: "taxdsl";
+              version: "2.0";
+              namespace: "test";
+            }
 
-            element CP-1023 type Capability
-              title "Secure Voice"
+            element CP-1023 type Capability {
+              title: "Secure Voice";
+            }
 
-            element CR-1047 type CoreService
-              title "Voice Core"
+            element CR-1047 type CoreService {
+              title: "Voice Core";
+            }
 
-            relation CP-1023 REALIZES CR-1047
-              status accepted
+            relation CP-1023 REALIZES CR-1047 {
+              status: accepted;
+            }
             """;
 
     private static final String SAMPLE_DSL_V2 = """
-            meta
-              language "taxdsl"
-              version "1.0"
-              namespace "test"
+            meta {
+              language: "taxdsl";
+              version: "2.0";
+              namespace: "test";
+            }
 
-            element CP-1023 type Capability
-              title "Secure Voice"
+            element CP-1023 type Capability {
+              title: "Secure Voice";
+            }
 
-            element CR-1047 type CoreService
-              title "Voice Core"
+            element CR-1047 type CoreService {
+              title: "Voice Core";
+            }
 
-            element BP-1481 type BuildingBlock
-              title "SIP Gateway"
+            element BP-1481 type BuildingBlock {
+              title: "SIP Gateway";
+            }
 
-            relation CP-1023 REALIZES CR-1047
-              status accepted
+            relation CP-1023 REALIZES CR-1047 {
+              status: accepted;
+            }
 
-            relation CR-1047 REALIZES BP-1481
-              status provisional
+            relation CR-1047 REALIZES BP-1481 {
+              status: provisional;
+            }
             """;
 
     @BeforeEach
@@ -200,7 +210,7 @@ class DslGitRepositoryTest {
 
     @Test
     void multipleCommitsFormChain() throws IOException {
-        repo.commitDsl("draft", "meta\n  language \"taxdsl\"\n  version \"1.0\"\n  namespace \"x\"\n", "a", "c1");
+        repo.commitDsl("draft", "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"x\";\n}\n", "a", "c1");
         repo.commitDsl("draft", SAMPLE_DSL, "b", "c2");
         repo.commitDsl("draft", SAMPLE_DSL_V2, "c", "c3");
 
