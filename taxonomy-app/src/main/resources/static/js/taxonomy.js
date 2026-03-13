@@ -100,6 +100,7 @@
 
         // Export buttons
         ['exportSvg', 'exportPng', 'exportPdf', 'exportCsv', 'exportJson', 'exportVisio', 'exportArchiMate', 'exportMermaid',
+         'exportDot', 'exportMermaidTree',
          'exportReportMd', 'exportReportHtml', 'exportReportDocx'].forEach(function (id) {
             const btn = document.getElementById(id);
             if (btn) {
@@ -740,8 +741,15 @@
             case 'tree':
                 if (window.TaxonomyViews) {
                     const treeRoot = data.find(r => r.code === currentTreeRoot) || data[0];
-                    window.TaxonomyViews.renderTreeDiagram(
-                        document.getElementById('taxonomyTree'), [treeRoot], scores);
+                    const treeContainer = document.getElementById('taxonomyTree');
+                    const canUseCanvas = window.TaxonomyViews.countNodes
+                        && window.TaxonomyViews.renderTreeCanvas
+                        && window.TaxonomyViews.countNodes(treeRoot) > 500;
+                    if (canUseCanvas) {
+                        window.TaxonomyViews.renderTreeCanvas(treeContainer, [treeRoot], scores);
+                    } else {
+                        window.TaxonomyViews.renderTreeDiagram(treeContainer, [treeRoot], scores);
+                    }
                 }
                 break;
             case 'decision':
@@ -780,7 +788,11 @@
             return;
         }
         if (btnId === 'exportPdf') {
-            window.print();
+            if (window.TaxonomyExport && window.TaxonomyExport.exportPdf) {
+                window.TaxonomyExport.exportPdf();
+            } else {
+                window.print();
+            }
             return;
         }
         if (btnId === 'exportSvg') {
@@ -820,6 +832,18 @@
             if (window.TaxonomyExport) {
                 var bt = document.getElementById('businessText');
                 window.TaxonomyExport.exportMermaid(bt ? bt.value : '');
+            }
+            return;
+        }
+        if (btnId === 'exportDot') {
+            if (window.TaxonomyExport) {
+                window.TaxonomyExport.exportDot(currentScores, taxonomyData);
+            }
+            return;
+        }
+        if (btnId === 'exportMermaidTree') {
+            if (window.TaxonomyExport) {
+                window.TaxonomyExport.exportMermaidTree(currentScores, taxonomyData);
             }
             return;
         }

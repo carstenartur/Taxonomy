@@ -6,12 +6,23 @@
     /**
      * Export the current SVG from the given container as a standalone SVG file.
      * Inlines essential CSS so the SVG renders correctly without external stylesheets.
+     * If the container uses a Canvas renderer, generates SVG on-the-fly via buildExportSVG.
      * @param {string} containerId - ID of the element that contains the SVG.
      */
     function exportSvg(containerId) {
         var container = document.getElementById(containerId || 'taxonomyTree');
         if (!container) { return; }
         var svgEl = container.querySelector('svg');
+
+        // Phase 2: If Canvas view is active, generate SVG on-the-fly
+        if (!svgEl && container._canvasRenderer && window.TaxonomyViews && window.TaxonomyViews.buildExportSVG) {
+            svgEl = window.TaxonomyViews.buildExportSVG(
+                container._canvasData || [],
+                container._canvasScores || null,
+                { expandAll: true }
+            );
+        }
+
         if (!svgEl) {
             alert('No SVG found in current view. Switch to Sunburst, Tree, or Decision view.');
             return;
@@ -37,13 +48,25 @@
     }
 
     /**
-     * Export the current SVG as a PNG file at 2× resolution.
+     * Export the current SVG as a PNG file at configurable resolution.
+     * Falls back to generating SVG via buildExportSVG when Canvas renderer is active.
      * @param {string} containerId - ID of the element that contains the SVG.
+     * @param {number} [scaleFactor] - Resolution scale (1, 2, or 4). Defaults to value from UI or 2.
      */
-    function exportPng(containerId) {
+    function exportPng(containerId, scaleFactor) {
         var container = document.getElementById(containerId || 'taxonomyTree');
         if (!container) { return; }
         var svgEl = container.querySelector('svg');
+
+        // Phase 2: If Canvas view is active, generate SVG on-the-fly
+        if (!svgEl && container._canvasRenderer && window.TaxonomyViews && window.TaxonomyViews.buildExportSVG) {
+            svgEl = window.TaxonomyViews.buildExportSVG(
+                container._canvasData || [],
+                container._canvasScores || null,
+                { expandAll: true }
+            );
+        }
+
         if (!svgEl) {
             alert('No SVG found in current view. Switch to Sunburst, Tree, or Decision view.');
             return;
@@ -51,7 +74,10 @@
 
         var w = parseFloat(svgEl.getAttribute('width')) || svgEl.clientWidth || 800;
         var h = parseFloat(svgEl.getAttribute('height')) || svgEl.clientHeight || 400;
-        var scale = 2;
+
+        // Phase 3: support configurable resolution
+        var scaleEl = document.getElementById('pngResolution');
+        var scale = scaleFactor || (scaleEl ? parseInt(scaleEl.value, 10) : 2) || 2;
 
         var clone = svgEl.cloneNode(true);
         clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
@@ -262,6 +288,76 @@
         });
     }
 
+    /**
+     * Export the taxonomy tree as a DOT (Graphviz) file.
+     * @param {Object} scores       - Map of node code → match percentage.
+     * @param {Array}  taxonomyData - Array of root taxonomy nodes.
+     */
+    function exportDot(scores, taxonomyData) {
+        if (!taxonomyData || !window.TaxonomyViews || !window.TaxonomyViews.buildDotExport) {
+            alert('DOT export requires taxonomy data. Please load the taxonomy first.');
+            return;
+        }
+        var dot = window.TaxonomyViews.buildDotExport(taxonomyData, scores || {});
+        var blob = new Blob([dot], { type: 'text/vnd.graphviz;charset=utf-8' });
+        downloadBlob(blob, 'taxonomy-tree.dot');
+    }
+
+    /**
+     * Export the taxonomy tree as a Mermaid diagram file.
+     * This exports the full taxonomy hierarchy (not the architecture view).
+     * @param {Object} scores       - Map of node code → match percentage.
+     * @param {Array}  taxonomyData - Array of root taxonomy nodes.
+     */
+    function exportMermaidTree(scores, taxonomyData) {
+        if (!taxonomyData || !window.TaxonomyViews || !window.TaxonomyViews.buildMermaidTreeExport) {
+            alert('Mermaid tree export requires taxonomy data. Please load the taxonomy first.');
+            return;
+        }
+        var mmd = window.TaxonomyViews.buildMermaidTreeExport(taxonomyData, scores || {});
+        var blob = new Blob([mmd], { type: 'text/plain;charset=utf-8' });
+        downloadBlob(blob, 'taxonomy-tree.mmd');
+    }
+
+    /**
+     * Export the current view as a vector PDF using jsPDF + svg2pdf.js.
+     * Falls back to window.print() if the libraries are not loaded.
+     */
+    function exportPdf() {
+        // Try vector PDF if jsPDF and svg2pdf.js are available
+        // svg2pdf.js registers itself on jsPDF prototype as the .svg() method
+        if (typeof window.jspdf !== 'undefined') {
+            var container = document.getElementById('taxonomyTree');
+            var svgEl = container ? container.querySelector('svg') : null;
+
+            // Generate SVG on-the-fly if Canvas renderer is active
+            if (!svgEl && container && container._canvasRenderer && window.TaxonomyViews && window.TaxonomyViews.buildExportSVG) {
+                svgEl = window.TaxonomyViews.buildExportSVG(
+                    container._canvasData || [],
+                    container._canvasScores || null,
+                    { expandAll: true }
+                );
+            }
+
+            if (svgEl) {
+                var w = parseFloat(svgEl.getAttribute('width')) || 800;
+                var h = parseFloat(svgEl.getAttribute('height')) || 400;
+                // Determine page orientation: landscape if wider than tall
+                var orientation = w > h ? 'landscape' : 'portrait';
+                var jsPDF = window.jspdf.jsPDF;
+                var doc = new jsPDF({ orientation: orientation, unit: 'pt', format: [w, h] });
+                if (typeof doc.svg === 'function') {
+                    doc.svg(svgEl, { x: 0, y: 0, width: w, height: h }).then(function () {
+                        doc.save('taxonomy-view.pdf');
+                    });
+                    return;
+                }
+            }
+        }
+        // Fallback to browser print
+        window.print();
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     function csvField(val) {
@@ -288,11 +384,14 @@
     window.TaxonomyExport = {
         exportSvg: exportSvg,
         exportPng: exportPng,
+        exportPdf: exportPdf,
         exportCsv: exportCsv,
         exportVisio: exportVisio,
         exportArchiMate: exportArchiMate,
         exportMermaid: exportMermaid,
-        exportJson: exportJson
+        exportJson: exportJson,
+        exportDot: exportDot,
+        exportMermaidTree: exportMermaidTree
     };
 
 })();

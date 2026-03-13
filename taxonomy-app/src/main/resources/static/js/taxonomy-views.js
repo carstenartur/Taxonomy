@@ -851,11 +851,513 @@
         if (minScoreInput) { minScoreInput.addEventListener('input', onFilterChange); }
     }
 
+    // ── Canvas Tree Renderer (Phase 1) ────────────────────────────────────────
+    /**
+     * Count all descendant nodes in a taxonomy data tree.
+     * @param {Object} node - A taxonomy node with optional `children` array.
+     * @returns {number} Total node count including the node itself.
+     */
+    function countNodes(node) {
+        if (!node) { return 0; }
+        var count = 1;
+        if (node.children) {
+            for (var i = 0; i < node.children.length; i++) {
+                count += countNodes(node.children[i]);
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Render a collapsible tree diagram using Canvas 2D for high-performance
+     * rendering with large node counts (> 500). Uses the same D3 layout logic
+     * as renderTreeDiagram but draws to a <canvas> element instead of SVG DOM.
+     *
+     * @param {HTMLElement} container - The DOM element to render into (cleared first).
+     * @param {Array}       data      - Array of root taxonomy nodes (each with `children`).
+     * @param {Object|null} scores    - Map of node code → match percentage, or null.
+     */
+    function renderTreeCanvas(container, data, scores) {
+        if (typeof d3 === 'undefined') {
+            container.innerHTML = '<div class="alert alert-warning mt-2">D3.js is required for this view. Please check your internet connection.</div>';
+            return;
+        }
+        if (container._taxObserver) {
+            container._taxObserver.disconnect();
+            container._taxObserver = null;
+        }
+        container.innerHTML = '';
+
+        var colorMap = buildColorMap(data);
+        var marginLeft = 40;
+        var marginRight = 300;
+        var marginTop = 20;
+        var marginBottom = 20;
+        var NODE_RADIUS = 7;
+
+        // Synthetic root
+        var rootData = { code: '__root__', name: '', children: data };
+        var root = d3.hierarchy(rootData);
+
+        // Collapse depth >= TREE_INITIAL_DEPTH
+        root.each(function (d) {
+            if (d.depth >= TREE_INITIAL_DEPTH && d.children) {
+                d._children = d.children;
+                d.children = null;
+            }
+        });
+
+        var treeLayout = d3.tree().nodeSize([28, 220]);
+        var containerWidth = container.clientWidth || 800;
+
+        // Create canvas element
+        var canvas = document.createElement('canvas');
+        canvas.width = containerWidth;
+        canvas.height = 400;
+        canvas.style.display = 'block';
+        canvas.style.width = '100%';
+        container.appendChild(canvas);
+        // Mark container as using canvas renderer for export detection
+        container._canvasRenderer = true;
+        container._canvasData = data;
+        container._canvasScores = scores;
+
+        var ctx = canvas.getContext('2d');
+
+        // Transform state for zoom/pan
+        var transform = { x: 0, y: 0, k: 1 };
+
+        // Store laid-out nodes for hit testing
+        var layoutNodes = [];
+        var layoutLinks = [];
+
+        function performLayout() {
+            treeLayout(root);
+            layoutNodes = root.descendants();
+            layoutLinks = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
+
+            var xMin = Infinity, xMax = -Infinity, yMax = 0;
+            layoutNodes.forEach(function (d) {
+                if (d.x < xMin) { xMin = d.x; }
+                if (d.x > xMax) { xMax = d.x; }
+                if (d.y > yMax) { yMax = d.y; }
+            });
+
+            var svgW = Math.max(containerWidth, yMax + marginLeft + marginRight);
+            var svgH = Math.max(400, xMax - xMin + marginTop + marginBottom);
+
+            canvas.width = svgW * window.devicePixelRatio;
+            canvas.height = svgH * window.devicePixelRatio;
+            canvas.style.width = svgW + 'px';
+            canvas.style.height = svgH + 'px';
+
+            // Store offset for translating coordinates
+            canvas._offsetX = marginLeft;
+            canvas._offsetY = marginTop - xMin;
+
+            draw();
+        }
+
+        function draw() {
+            var dpr = window.devicePixelRatio || 1;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+
+            ctx.save();
+            ctx.translate(transform.x, transform.y);
+            ctx.scale(transform.k, transform.k);
+
+            var ox = canvas._offsetX || 0;
+            var oy = canvas._offsetY || 0;
+
+            // Draw links
+            ctx.strokeStyle = '#ccc';
+            ctx.lineWidth = 1.5;
+            layoutLinks.forEach(function (l) {
+                var sx = l.source.y + ox;
+                var sy = l.source.x + oy;
+                var tx = l.target.y + ox;
+                var ty = l.target.x + oy;
+                ctx.beginPath();
+                ctx.moveTo(sx, sy);
+                ctx.bezierCurveTo((sx + tx) / 2, sy, (sx + tx) / 2, ty, tx, ty);
+                ctx.stroke();
+            });
+
+            // Draw nodes
+            ctx.font = '12px Arial, Helvetica, sans-serif';
+            layoutNodes.forEach(function (d) {
+                if (d.data.code === '__root__') { return; }
+                var nx = d.y + ox;
+                var ny = d.x + oy;
+
+                // Circle
+                var fill = nodeColor(d.data.code, colorMap, scores);
+                ctx.beginPath();
+                ctx.arc(nx, ny, NODE_RADIUS, 0, 2 * Math.PI);
+                ctx.fillStyle = fill;
+                ctx.fill();
+                ctx.strokeStyle = '#555';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // Collapse indicator (+ inside circle for collapsed nodes)
+                if (d._children && d._children.length) {
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('+', nx, ny);
+                    ctx.font = '12px Arial, Helvetica, sans-serif';
+                }
+
+                // Label
+                var label = d.data.name ? d.data.code + ' \u2013 ' + d.data.name : d.data.code;
+                ctx.fillStyle = '#333';
+                if (d.children || d._children) {
+                    ctx.textAlign = 'right';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(label, nx - 10, ny);
+                } else {
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(label, nx + 10, ny);
+                }
+
+                // Score badge
+                if (scores && scores[d.data.code] > 0) {
+                    var pct = scores[d.data.code];
+                    var badgeText = pct + '%';
+                    var badgeX = (d.children || d._children) ? nx - 10 - ctx.measureText(label).width - 4 : nx + 10 + ctx.measureText(label).width + 4;
+                    ctx.fillStyle = 'rgba(0,128,0,0.75)';
+                    var bw = ctx.measureText(badgeText).width + 6;
+                    ctx.fillRect(badgeX - 1, ny - 7, bw, 14);
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '10px Arial';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(badgeText, badgeX + 2, ny + 3);
+                    ctx.font = '12px Arial, Helvetica, sans-serif';
+                }
+            });
+
+            ctx.restore();
+        }
+
+        // Hit testing: find the node under mouse coordinates
+        function hitTest(mx, my) {
+            var ox = canvas._offsetX || 0;
+            var oy = canvas._offsetY || 0;
+            // Invert the transform
+            var ix = (mx - transform.x) / transform.k;
+            var iy = (my - transform.y) / transform.k;
+
+            for (var i = 0; i < layoutNodes.length; i++) {
+                var d = layoutNodes[i];
+                if (d.data.code === '__root__') { continue; }
+                var nx = d.y + ox;
+                var ny = d.x + oy;
+                var dx = ix - nx;
+                var dy = iy - ny;
+                if (dx * dx + dy * dy <= (NODE_RADIUS + 4) * (NODE_RADIUS + 4)) {
+                    return d;
+                }
+            }
+            return null;
+        }
+
+        // Click handler: toggle expand/collapse
+        canvas.addEventListener('click', function (event) {
+            var rect = canvas.getBoundingClientRect();
+            var mx = event.clientX - rect.left;
+            var my = event.clientY - rect.top;
+            var hit = hitTest(mx, my);
+            if (hit) {
+                if (hit.children) {
+                    hit._children = hit.children;
+                    hit.children = null;
+                } else if (hit._children) {
+                    hit.children = hit._children;
+                    hit._children = null;
+                }
+                performLayout();
+            }
+        });
+
+        // Mousemove handler: show tooltip
+        canvas.addEventListener('mousemove', function (event) {
+            var rect = canvas.getBoundingClientRect();
+            var mx = event.clientX - rect.left;
+            var my = event.clientY - rect.top;
+            var hit = hitTest(mx, my);
+            if (hit) {
+                canvas.style.cursor = (hit.children || hit._children) ? 'pointer' : 'default';
+                showTooltip(event, hit.data, scores);
+            } else {
+                canvas.style.cursor = 'default';
+                hideTooltip();
+            }
+        });
+
+        canvas.addEventListener('mouseleave', hideTooltip);
+
+        // d3.zoom() on canvas for pan/zoom
+        d3.select(canvas).call(
+            d3.zoom()
+                .scaleExtent([0.1, 20])
+                .on('zoom', function (event) {
+                    transform = { x: event.transform.x, y: event.transform.y, k: event.transform.k };
+                    draw();
+                })
+        );
+
+        // Initial layout and draw
+        root.x0 = 0;
+        root.y0 = 0;
+        performLayout();
+
+        // Responsive resize
+        var obs = new ResizeObserver(function () {
+            var newW = container.clientWidth || 800;
+            if (newW > containerWidth) {
+                performLayout();
+            }
+        });
+        obs.observe(container);
+        container._taxObserver = obs;
+    }
+
+    // ── SVG-on-Demand Export (Phase 2) ─────────────────────────────────────────
+    /**
+     * Build an off-screen SVG DOM element from taxonomy data using the same
+     * D3 tree layout. Used for clean vector export when the Canvas renderer
+     * is active. Also works as a standalone export generator.
+     *
+     * @param {Array}       data    - Array of root taxonomy nodes.
+     * @param {Object|null} scores  - Map of node code → match percentage, or null.
+     * @param {Object}      options - { expandAll: boolean }
+     * @returns {SVGSVGElement} The generated SVG element (not attached to DOM).
+     */
+    function buildExportSVG(data, scores, options) {
+        options = options || {};
+        var colorMap = buildColorMap(data);
+        var marginLeft = 40;
+        var marginRight = 300;
+        var marginTop = 20;
+        var marginBottom = 20;
+        var CHAR_WIDTH_ESTIMATE = 7;  // approx px per character for 12px Arial
+        var BADGE_OFFSET = 20;        // extra px gap between label end and badge
+
+        var rootData = { code: '__root__', name: '', children: data };
+        var root = d3.hierarchy(rootData);
+
+        // If expandAll is not set, apply the same initial collapse
+        if (!options.expandAll) {
+            root.each(function (d) {
+                if (d.depth >= TREE_INITIAL_DEPTH && d.children) {
+                    d._children = d.children;
+                    d.children = null;
+                }
+            });
+        }
+
+        var treeLayout = d3.tree().nodeSize([28, 220]);
+        treeLayout(root);
+
+        var nodes = root.descendants();
+        var links = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
+
+        var xMin = Infinity, xMax = -Infinity, yMax = 0;
+        nodes.forEach(function (d) {
+            if (d.x < xMin) { xMin = d.x; }
+            if (d.x > xMax) { xMax = d.x; }
+            if (d.y > yMax) { yMax = d.y; }
+        });
+
+        var svgW = Math.max(800, yMax + marginLeft + marginRight);
+        var svgH = Math.max(400, xMax - xMin + marginTop + marginBottom);
+
+        // Create off-screen SVG
+        var svgNS = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('xmlns', svgNS);
+        svg.setAttribute('width', svgW);
+        svg.setAttribute('height', svgH);
+        svg.setAttribute('viewBox', '0 0 ' + svgW + ' ' + svgH);
+
+        // Background
+        var bg = document.createElementNS(svgNS, 'rect');
+        bg.setAttribute('width', svgW);
+        bg.setAttribute('height', svgH);
+        bg.setAttribute('fill', '#ffffff');
+        svg.appendChild(bg);
+
+        // Style
+        var style = document.createElementNS(svgNS, 'style');
+        style.textContent = [
+            'text { font-family: Arial, Helvetica, sans-serif; font-size: 12px; }',
+            '.tv-link { fill: none; stroke: #ccc; stroke-width: 1.5; }'
+        ].join('\n');
+        svg.appendChild(style);
+
+        var g = document.createElementNS(svgNS, 'g');
+        g.setAttribute('transform', 'translate(' + marginLeft + ',' + (marginTop - xMin) + ')');
+        svg.appendChild(g);
+
+        // Draw links using cubic Bézier curves (same as d3.linkHorizontal)
+        links.forEach(function (l) {
+            var path = document.createElementNS(svgNS, 'path');
+            var sx = l.source.y, sy = l.source.x;
+            var tx = l.target.y, ty = l.target.x;
+            var mx = (sx + tx) / 2;
+            path.setAttribute('d', 'M' + sx + ',' + sy + ' C' + mx + ',' + sy + ' ' + mx + ',' + ty + ' ' + tx + ',' + ty);
+            path.setAttribute('class', 'tv-link');
+            g.appendChild(path);
+        });
+
+        // Draw nodes
+        nodes.forEach(function (d) {
+            if (d.data.code === '__root__') { return; }
+            var nodeG = document.createElementNS(svgNS, 'g');
+            nodeG.setAttribute('transform', 'translate(' + d.y + ',' + d.x + ')');
+
+            var circle = document.createElementNS(svgNS, 'circle');
+            circle.setAttribute('r', '7');
+            circle.setAttribute('fill', nodeColor(d.data.code, colorMap, scores));
+            circle.setAttribute('stroke', '#555');
+            circle.setAttribute('stroke-width', '1.5');
+            nodeG.appendChild(circle);
+
+            var text = document.createElementNS(svgNS, 'text');
+            text.setAttribute('dy', '0.31em');
+            var label = d.data.name ? d.data.code + ' \u2013 ' + d.data.name : d.data.code;
+            text.textContent = label;
+            if (d.children || d._children) {
+                text.setAttribute('x', '-10');
+                text.setAttribute('text-anchor', 'end');
+            } else {
+                text.setAttribute('x', '10');
+                text.setAttribute('text-anchor', 'start');
+            }
+            nodeG.appendChild(text);
+
+            // Score badge
+            if (scores && scores[d.data.code] > 0) {
+                var badge = document.createElementNS(svgNS, 'text');
+                badge.setAttribute('dy', '0.31em');
+                badge.setAttribute('x', (d.children || d._children) ? '-10' : '10');
+                badge.setAttribute('dx', (d.children || d._children) ? ('-' + (label.length * CHAR_WIDTH_ESTIMATE + BADGE_OFFSET)) : '' + (label.length * CHAR_WIDTH_ESTIMATE + BADGE_OFFSET));
+                badge.setAttribute('text-anchor', 'start');
+                badge.setAttribute('fill', 'green');
+                badge.setAttribute('font-size', '10px');
+                badge.setAttribute('font-weight', 'bold');
+                badge.textContent = scores[d.data.code] + '%';
+                nodeG.appendChild(badge);
+            }
+
+            g.appendChild(nodeG);
+        });
+
+        return svg;
+    }
+
+    // ── DOT (Graphviz) Export (Phase 4) ────────────────────────────────────────
+    /**
+     * Generate a DOT (Graphviz) representation of the taxonomy tree.
+     * @param {Array}       data   - Array of root taxonomy nodes.
+     * @param {Object|null} scores - Map of node code → match percentage, or null.
+     * @returns {string} DOT source code.
+     */
+    function buildDotExport(data, scores) {
+        var lines = ['digraph Taxonomy {'];
+        lines.push('    rankdir=LR;');
+        lines.push('    node [shape=box, style="rounded,filled", fontname="Arial", fontsize=11];');
+        lines.push('    edge [color="#999999"];');
+        lines.push('');
+
+        function dotId(code) {
+            return '"' + code.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+        }
+
+        function dotEscape(text) {
+            return text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        }
+
+        function walk(node) {
+            var label = node.name ? dotEscape(node.code) + '\\n' + dotEscape(node.name) : dotEscape(node.code);
+            var fillColor = '#e8e8e8';
+            if (scores && scores[node.code] > 0) {
+                var pct = Math.min(scores[node.code] / 100, 1);
+                var r = Math.round(255 * (1 - pct));
+                var g = Math.round(200 + 55 * pct);
+                var b = Math.round(255 * (1 - pct));
+                fillColor = '#' + ('0' + r.toString(16)).slice(-2) + ('0' + g.toString(16)).slice(-2) + ('0' + b.toString(16)).slice(-2);
+            }
+            lines.push('    ' + dotId(node.code) + ' [label="' + label + '", fillcolor="' + fillColor + '"];');
+            if (node.children) {
+                node.children.forEach(function (child) {
+                    lines.push('    ' + dotId(node.code) + ' -> ' + dotId(child.code) + ';');
+                    walk(child);
+                });
+            }
+        }
+
+        data.forEach(function (root) { walk(root); });
+        lines.push('}');
+        return lines.join('\n');
+    }
+
+    /**
+     * Generate a Mermaid tree diagram of the taxonomy hierarchy.
+     * This generates the full parent-child tree (not the architecture view).
+     * @param {Array}       data   - Array of root taxonomy nodes.
+     * @param {Object|null} scores - Map of node code → match percentage, or null.
+     * @returns {string} Mermaid diagram source.
+     */
+    function buildMermaidTreeExport(data, scores) {
+        var lines = ['graph LR'];
+
+        function mermaidId(code) {
+            return code.replace(/[^a-zA-Z0-9_]/g, '_');
+        }
+
+        function mermaidLabel(node) {
+            var label = node.name ? node.code + ' ' + node.name : node.code;
+            if (scores && scores[node.code] > 0) {
+                label += ' [' + scores[node.code] + '%]';
+            }
+            return label.replace(/"/g, '&quot;');
+        }
+
+        function walk(node) {
+            if (node.children) {
+                node.children.forEach(function (child) {
+                    lines.push('    ' + mermaidId(node.code) + '["' + mermaidLabel(node) + '"] --> ' + mermaidId(child.code) + '["' + mermaidLabel(child) + '"]');
+                    walk(child);
+                });
+            }
+        }
+
+        data.forEach(function (root) {
+            // If root has no children, render it as a standalone node
+            if (!root.children || root.children.length === 0) {
+                lines.push('    ' + mermaidId(root.code) + '["' + mermaidLabel(root) + '"]');
+            }
+            walk(root);
+        });
+
+        return lines.join('\n');
+    }
+
     // ── Export ─────────────────────────────────────────────────────────────────
     window.TaxonomyViews = {
         renderSunburst: renderSunburst,
         renderTreeDiagram: renderTreeDiagram,
-        renderDecisionMap: renderDecisionMap
+        renderTreeCanvas: renderTreeCanvas,
+        renderDecisionMap: renderDecisionMap,
+        countNodes: countNodes,
+        buildExportSVG: buildExportSVG,
+        buildDotExport: buildDotExport,
+        buildMermaidTreeExport: buildMermaidTreeExport
     };
 
 })();
