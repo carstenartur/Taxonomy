@@ -91,9 +91,9 @@ The `mssql` profile configures HikariCP (the default Spring Boot pool):
 |---|---|---|
 | `maximum-pool-size` | 10 | Max simultaneous connections |
 | `minimum-idle` | 2 | Minimum idle connections |
-| `connection-timeout` | 30 000 ms | Max wait for a connection from the pool |
-| `idle-timeout` | 600 000 ms | Max idle time before a connection is retired |
-| `initialization-fail-timeout` | 60 000 ms | How long to retry initial connection on startup |
+| `connection-timeout` | 30000 ms | Max wait for a connection from the pool |
+| `idle-timeout` | 600000 ms | Max idle time before a connection is retired |
+| `initialization-fail-timeout` | 60000 ms | How long to retry initial connection on startup |
 
 Override any of these via environment variables, e.g.:
 ```bash
