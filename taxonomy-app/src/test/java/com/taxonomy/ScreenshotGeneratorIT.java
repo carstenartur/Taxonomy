@@ -1003,10 +1003,16 @@ class ScreenshotGeneratorIT {
         // Switch to list view and expand all nodes
         driver.findElement(By.id("viewList")).click();
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewList"), "class", "btn-primary"));
+        // Turn descriptions OFF so each node shows only code + name + score bar (much more compact)
+        js("var cb = document.getElementById('showDescriptions'); if (cb && cb.checked) { cb.click(); }");
+        wait(2).until(d -> true); // brief settle after toggling descriptions
         js("document.getElementById('expandAll').click();");
         wait(5).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-toggle")));
-        // Increase viewport height to capture more of the tree
-        driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 2000));
+        // Remove the max-height CSS constraint so the full expanded tree renders without clipping
+        js("var cardBody = document.querySelector('#taxonomyTree').closest('.card-body');" +
+           " if (cardBody) { cardBody.style.maxHeight = 'none'; cardBody.style.overflow = 'visible'; }");
+        // Increase viewport height dramatically to capture hundreds of nodes
+        driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 20000));
         wait(2).until(d -> true); // brief settle
         // Scroll to the taxonomy tree and capture an element screenshot
         WebElement tree = driver.findElement(By.id("taxonomyTree"));
@@ -1014,6 +1020,10 @@ class ScreenshotGeneratorIT {
         saveElementScreenshot(tree, "35-scored-bp-tree-expanded.png");
         // Reset viewport
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
+        // Restore max-height constraint and descriptions
+        js("var cardBody = document.querySelector('#taxonomyTree').closest('.card-body');" +
+           " if (cardBody) { cardBody.style.maxHeight = '82vh'; cardBody.style.overflow = 'auto'; }");
+        js("var cb = document.getElementById('showDescriptions'); if (cb && !cb.checked) { cb.click(); }");
     }
 
     @Test
