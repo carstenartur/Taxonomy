@@ -43,14 +43,14 @@ class RequirementCoverageTests {
         Map<String, Integer> scores = Map.of("CP-1010", 85, "BP-1481", 72, "BP-1486", 30);
         coverageService.analyzeCoverage(scores, "REQ-001", "Some requirement text", 50);
 
-        var forCp1 = coverageService.getCoverageForNode("CP-1010");
+        var forCp = coverageService.getCoverageForNode("CP-1010");
         var forBp = coverageService.getCoverageForNode("BP-1481");
-        var forBp5 = coverageService.getCoverageForNode("BP-1486");
+        var forBpBelow = coverageService.getCoverageForNode("BP-1486");
 
-        assertThat(forCp1).hasSize(1);
-        assertThat(forCp1.get(0).getScore()).isEqualTo(85);
+        assertThat(forCp).hasSize(1);
+        assertThat(forCp.get(0).getScore()).isEqualTo(85);
         assertThat(forBp).hasSize(1);
-        assertThat(forBp5).isEmpty(); // below threshold
+        assertThat(forBpBelow).isEmpty(); // below threshold
     }
 
     @Test
