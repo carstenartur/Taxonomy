@@ -228,6 +228,23 @@ The `RateLimitFilter` enforces per-IP rate limits on LLM-backed endpoints to pre
 
 Default: **10 requests per IP per minute** (configurable via `TAXONOMY_RATE_LIMIT_PER_MINUTE`; set to `0` to disable). When the limit is exceeded, the filter returns HTTP 429 Too Many Requests.
 
+## API Versioning
+
+The API is currently **unversioned** — all endpoints use the `/api/` prefix without a version number (e.g., `/api/taxonomy`, `/api/analyze`).
+
+| Aspect | Decision |
+|---|---|
+| URL scheme | `/api/{resource}` (no version segment) |
+| Backwards compatibility | Maintained within each release; breaking changes are documented in the release notes |
+| Deprecation policy | Deprecated endpoints return a `Deprecation` header before removal in the next major release |
+| Content negotiation | Not used for versioning |
+
+The application is designed for **single-tenant, self-hosted deployment** where the browser UI is always co-deployed with the server, eliminating the multi-client version-skew problem that typically motivates API versioning. The **OpenAPI specification** (`/v3/api-docs`) serves as the machine-readable contract for any external integrations.
+
+If the API needs to support multiple concurrent versions in future, the recommended path is URL-based versioning (`/api/v2/...`) with separate OpenAPI groups per version.
+
+---
+
 ## Export Formats
 
 | Format | Description |
