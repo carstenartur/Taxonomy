@@ -93,7 +93,7 @@
             clearLlmLogBtn.addEventListener('click', function () {
                 const content = document.getElementById('llmCommLogContent');
                 if (content) {
-                    content.innerHTML = '<div class="text-muted p-2">No LLM calls yet. Use Interactive Mode and expand nodes to see communication.</div>';
+                    content.innerHTML = '<div class="text-muted p-2">No LLM calls yet. Run an analysis to see LLM communication details.</div>';
                 }
             });
         }
@@ -2142,7 +2142,7 @@
         if (businessTextEl) { businessTextEl.classList.remove('stale-results'); }
         const content = document.getElementById('llmCommLogContent');
         if (content) {
-            content.innerHTML = '<div class="text-muted p-2">No LLM calls yet. Use Interactive Mode and expand nodes to see communication.</div>';
+            content.innerHTML = '<div class="text-muted p-2">No LLM calls yet. Run an analysis to see LLM communication details.</div>';
         }
     }
 

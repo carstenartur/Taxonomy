@@ -489,6 +489,10 @@ The proposals table shows:
 
 ![Relation Proposals panel](images/12-relation-proposals-panel.png)
 
+The Proposal Review Queue shows all proposals with filtering by status. Use the **Pending**, **All**, **Accepted**, and **Rejected** filter buttons to focus on specific proposal states:
+
+![Proposal Review Queue — all proposals](images/28-proposal-review-queue.png)
+
 ### Accepting or Rejecting a Proposal
 
 For each row in the proposals table:
@@ -518,6 +522,10 @@ The **Confidence** column shows how strongly the AI believes the proposed relati
 After a successful analysis, export buttons appear at the top of the left panel. These buttons are only visible when analysis scores are present.
 
 ![Export buttons](images/23-export-buttons.png)
+
+The Export tab provides a dedicated panel with all available export formats organised by category (diagrams, data, reports) and import options:
+
+![Export tab — full view](images/33-export-tab.png)
 
 ### SVG Export
 
@@ -610,6 +618,16 @@ The **Search Taxonomy** panel (right column, collapsible) provides four search m
 3. Choose the **max results** count (10, 20, or 50).
 4. Click **🔍 Search** or press Enter.
 5. Results appear as a clickable list. Click any result to highlight the node in the taxonomy tree.
+
+Screenshots of each search mode in action:
+
+![Full-text search results](images/29-search-fulltext.png)
+
+![Semantic search results](images/30-search-semantic.png)
+
+![Hybrid search results](images/31-search-hybrid.png)
+
+![Graph search results](images/32-search-graph.png)
 
 ### Embedding Status
 

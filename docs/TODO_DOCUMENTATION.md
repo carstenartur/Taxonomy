@@ -8,23 +8,37 @@ This file tracks known documentation gaps and improvement opportunities. Items m
 
 ### Screenshots / Visuals
 
-- [ ] Screenshot of the Proposal Review queue (pending proposals list, accept/reject buttons)
-- [ ] Screenshots of all search modes (full-text, semantic, hybrid, similar, graph)
-- [ ] Screenshot of the export dialog and a sample Visio / ArchiMate output file
-- [ ] Annotated diagram of the high-level system architecture (beyond Mermaid in ARCHITECTURE.md)
-- [ ] Screenshot of the DSL Editor panel
+- [x] Screenshot of the Proposal Review queue (pending proposals list, accept/reject buttons) — added to ScreenshotGeneratorIT (test 28)
+- [x] Screenshots of all search modes (full-text, semantic, hybrid, similar, graph) — added to ScreenshotGeneratorIT (tests 29–32)
+- [x] Screenshot of the export dialog and a sample Visio / ArchiMate output file — added to ScreenshotGeneratorIT (test 33)
+- [x] Annotated diagram of the high-level system architecture (beyond Mermaid in ARCHITECTURE.md) — added detailed data-flow and request-lifecycle diagrams to ARCHITECTURE.md §Detailed Architecture Diagrams
+- [x] Screenshot of the DSL Editor panel — added to ScreenshotGeneratorIT (test 34)
 
 ### Usability Documentation
 
-- [ ] **Graph Explorer shows tables, not a visual graph**: a node-link force-directed graph would improve readability
-- [ ] **LLM communication log only visible in interactive mode**: exposing it as a collapsible debug panel would aid troubleshooting
-- [ ] **No internationalisation (i18n)**: all UI text is hard-coded in English
+- [x] **Graph Explorer shows tables, not a visual graph**: D3 force-directed graph implemented in `taxonomy-graph.js` with Graph/Table toggle (since initial implementation). Tables are preserved as an alternative view.
+- [x] **LLM communication log only visible in interactive mode**: Moved from admin-only tab to a collapsible debug panel on the Analyze tab, visible to all users without admin mode.
+- [ ] **No internationalisation (i18n)**: all UI text is hard-coded in English. Recommended approach: Spring `MessageSource` with `messages.properties` bundles + Thymeleaf `#{…}` expressions. See §Internationalisation Roadmap below.
 
 ### API Documentation
 
-- [ ] **Curl examples**: examples in API_REFERENCE.md should be kept in sync with actual endpoints
-- [ ] **No versioning strategy documented**: the API is currently unversioned (`/api/...`)
+- [x] **Curl examples**: comprehensive curl examples added to API_REFERENCE.md for all major endpoint categories
+- [x] **No versioning strategy documented**: API versioning strategy documented in API_REFERENCE.md §API Versioning
 - [x] **Rate-limiting documentation**: Rate limiting is now documented in CONFIGURATION_REFERENCE.md and ARCHITECTURE.md
+
+---
+
+## Internationalisation (i18n) Roadmap
+
+The application currently has all UI text hard-coded in English. Full i18n would require:
+
+1. **Backend**: Add Spring `MessageSource` bean with `messages.properties` (English default), `messages_de.properties`, etc.
+2. **Templates**: Replace hard-coded strings in `index.html` with Thymeleaf `#{…}` expressions (e.g., `th:text="#{nav.analyze}"`).
+3. **JavaScript**: Create a `taxonomy-i18n.js` module that loads locale strings from a `/api/i18n/{locale}` endpoint and exposes a `t('key')` function. Replace all string literals in JS modules.
+4. **Locale detection**: Use `Accept-Language` header or a UI language selector stored in `localStorage`.
+5. **LLM prompts**: Prompt templates are already customisable via the Prompt Template Editor — they can be translated per deployment without code changes.
+
+This is a significant effort (~200+ translatable strings across HTML and 11 JS modules) and is tracked as a separate initiative.
 
 ---
 
