@@ -9,14 +9,14 @@ import org.testcontainers.mssqlserver.MSSQLServerContainer;
 /**
  * Selenium UI + REST tests against <strong>Microsoft SQL Server</strong>.
  * <p>
- * Tagged with {@code external-db} — excluded from the default {@code mvn verify}.
+ * Tagged with {@code db-mssql} — excluded from the default {@code mvn verify}.
  * Execute explicitly with:
  * <pre>
- * mvn verify -DexcludedGroups= -Dit.test=SeleniumMssqlContainerIT
+ * mvn verify -DexcludedGroups=real-llm -Dit.test=SeleniumMssqlContainerIT
  * </pre>
  */
 @Testcontainers
-@Tag("external-db")
+@Tag("db-mssql")
 class SeleniumMssqlContainerIT extends AbstractSeleniumContainerIT {
 
     private static final String MSSQL_PASSWORD = "A_Str0ng_Required_Password";

@@ -167,23 +167,23 @@ mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGen
 
 ### External Database Integration Tests
 
-The project includes integration tests that verify the application works correctly against PostgreSQL, Microsoft SQL Server, and Oracle databases. These tests are **opt-in** — they are tagged with `external-db` and excluded from the default `mvn verify` run to keep the build fast.
+The project includes integration tests that verify the application works correctly against PostgreSQL, Microsoft SQL Server, and Oracle databases. These tests are **opt-in** — they are tagged with database-specific tags (`db-postgres`, `db-mssql`, `db-oracle`) and excluded from the default `mvn verify` run to keep the build fast.
 
 ```bash
-# Include all external-database tests (requires Docker)
-mvn verify -DexcludedGroups=
-
 # Run only PostgreSQL integration tests
-mvn verify -DexcludedGroups= -Dit.test=DiagnosticsPostgresContainerIT
+mvn verify -DexcludedGroups=real-llm -Dit.test="*Postgres*IT"
 
 # Run only MSSQL integration tests
-mvn verify -DexcludedGroups= -Dit.test=DiagnosticsMssqlContainerIT
+mvn verify -DexcludedGroups=real-llm -Dit.test="*Mssql*IT"
 
 # Run only Oracle integration tests
-mvn verify -DexcludedGroups= -Dit.test=DiagnosticsOracleContainerIT
+mvn verify -DexcludedGroups=real-llm -Dit.test="*Oracle*IT"
+
+# Run ALL external database tests
+mvn verify -DexcludedGroups=real-llm
 
 # Run all Selenium + external-db tests
-mvn verify -DexcludedGroups= -Dit.test="Selenium*ContainerIT"
+mvn verify -DexcludedGroups=real-llm -Dit.test="Selenium*ContainerIT"
 ```
 
 **Architecture:** Each external-database test class inherits from `AbstractDatabaseContainerIT` (REST/diagnostics tests) or `AbstractSeleniumContainerIT` (Selenium UI tests). The base classes hold all test logic; DB-specific subclasses are ~30 lines of configuration that specify the database container and the JDBC env vars to pass to the app container.
@@ -196,7 +196,9 @@ Test file naming conventions:
 |---|---|---|
 | `*Test.java`, `*Tests.java` | maven-surefire-plugin | Unit and Spring context tests |
 | `*IT.java` | maven-failsafe-plugin | Integration tests (require Docker) |
-| `@Tag("external-db")` | maven-failsafe-plugin | External database tests (excluded by default) |
+| `@Tag("db-postgres")` | maven-failsafe-plugin | PostgreSQL tests (excluded by default) |
+| `@Tag("db-mssql")` | maven-failsafe-plugin | MSSQL tests (excluded by default) |
+| `@Tag("db-oracle")` | maven-failsafe-plugin | Oracle tests (excluded by default) |
 
 ---
 

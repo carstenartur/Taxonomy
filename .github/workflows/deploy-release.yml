@@ -212,7 +212,7 @@ jobs:
           else
             TEST_FLAG=""
           fi
-          mvn clean verify -DexcludedGroups=real-llm $TEST_FLAG
+          mvn clean verify $TEST_FLAG
 
       # 9. Push release commit to remote
       - name: Push release commit to remote

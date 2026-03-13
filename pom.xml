@@ -23,7 +23,7 @@
     <properties>
         <java.version>17</java.version>
         <djl.version>0.36.0</djl.version>
-        <excludedGroups>external-db,real-llm</excludedGroups>
+        <excludedGroups>db-postgres,db-mssql,db-oracle,real-llm</excludedGroups>
     </properties>
     <dependencyManagement>
         <dependencies>

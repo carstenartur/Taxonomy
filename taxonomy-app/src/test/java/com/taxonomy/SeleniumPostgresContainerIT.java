@@ -9,14 +9,14 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /**
  * Selenium UI + REST tests against <strong>PostgreSQL</strong>.
  * <p>
- * Tagged with {@code external-db} — excluded from the default {@code mvn verify}.
+ * Tagged with {@code db-postgres} — excluded from the default {@code mvn verify}.
  * Execute explicitly with:
  * <pre>
- * mvn verify -DexcludedGroups= -Dit.test=SeleniumPostgresContainerIT
+ * mvn verify -DexcludedGroups=real-llm -Dit.test=SeleniumPostgresContainerIT
  * </pre>
  */
 @Testcontainers
-@Tag("external-db")
+@Tag("db-postgres")
 class SeleniumPostgresContainerIT extends AbstractSeleniumContainerIT {
 
     @Override

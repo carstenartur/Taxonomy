@@ -11,14 +11,14 @@ import org.testcontainers.oracle.OracleContainer;
  * Runs the same diagnostics + API tests as {@link DiagnosticsContainerIT}
  * but against an <strong>Oracle Database Free</strong> backend.
  * <p>
- * Tagged with {@code external-db} — excluded from the default {@code mvn verify}
+ * Tagged with {@code db-oracle} — excluded from the default {@code mvn verify}
  * run. Execute explicitly with:
  * <pre>
- * mvn verify -DexcludedGroups= -Dit.test=DiagnosticsOracleContainerIT
+ * mvn verify -DexcludedGroups=real-llm -Dit.test=DiagnosticsOracleContainerIT
  * </pre>
  */
 @Testcontainers
-@Tag("external-db")
+@Tag("db-oracle")
 class DiagnosticsOracleContainerIT extends AbstractDatabaseContainerIT {
 
     static Network network = Network.newNetwork();
