@@ -25,11 +25,11 @@ import java.util.List;
 <span class="fc" id="L25">                .info(new Info()</span>
 <span class="fc" id="L26">                        .title(&quot;Taxonomy Architecture Analyzer API&quot;)</span>
 <span class="fc" id="L27">                        .description(&quot;&quot;&quot;</span>
-                                REST API for the Taxonomy Architecture Analyzer.
-                                Analyse business requirements against the C3 Taxonomy catalogue,
-                                manage taxonomy relations, run graph-based architecture queries,
-                                and export results as Visio or ArchiMate diagrams.&quot;&quot;&quot;)
-<span class="fc" id="L32">                        .version(&quot;1.0.0&quot;)</span>
+                                REST API for the Taxonomy Architecture Analyzer — maps free-text business \
+                                requirements to structured C3 Taxonomy elements using LLM-powered scoring.
+                                Manage taxonomy relations, run graph-based architecture queries, \
+                                and export results as Visio, ArchiMate, or Mermaid diagrams.&quot;&quot;&quot;)
+<span class="fc" id="L32">                        .version(&quot;1.1.1-SNAPSHOT&quot;)</span>
 <span class="fc" id="L33">                        .contact(new Contact()</span>
 <span class="fc" id="L34">                                .name(&quot;Taxonomy Architecture Analyzer&quot;)</span>
 <span class="fc" id="L35">                                .url(&quot;https://github.com/carstenartur/Taxonomy&quot;))</span>
@@ -46,9 +46,19 @@ import java.util.List;
 <span class="fc" id="L46">                        new Tag().name(&quot;Proposals&quot;).description(&quot;Relation proposal pipeline — propose, review, accept/reject&quot;),</span>
 <span class="fc" id="L47">                        new Tag().name(&quot;Graph Queries&quot;).description(&quot;Graph-based architecture impact and neighbourhood queries&quot;),</span>
 <span class="fc" id="L48">                        new Tag().name(&quot;Quality Metrics&quot;).description(&quot;Relation quality dashboard and provenance metrics&quot;),</span>
-<span class="fc" id="L49">                        new Tag().name(&quot;Export&quot;).description(&quot;Visio (.vsdx) and ArchiMate XML diagram export&quot;),</span>
-<span class="fc" id="L50">                        new Tag().name(&quot;Administration&quot;).description(&quot;Admin status, diagnostics, and prompt template management&quot;),</span>
-<span class="fc" id="L51">                        new Tag().name(&quot;Embedding&quot;).description(&quot;Embedding model status and configuration&quot;)));</span>
+<span class="fc" id="L49">                        new Tag().name(&quot;Requirement Coverage&quot;).description(&quot;Track which taxonomy nodes are covered by recorded requirements&quot;),</span>
+<span class="fc" id="L50">                        new Tag().name(&quot;Gap Analysis&quot;).description(&quot;Identify missing relations and incomplete architecture patterns&quot;),</span>
+<span class="fc" id="L51">                        new Tag().name(&quot;Architecture Recommendation&quot;).description(&quot;AI-generated architecture improvement suggestions&quot;),</span>
+<span class="fc" id="L52">                        new Tag().name(&quot;Pattern Detection&quot;).description(&quot;Detect predefined architecture patterns in the relation graph&quot;),</span>
+<span class="fc" id="L53">                        new Tag().name(&quot;Export&quot;).description(&quot;Visio (.vsdx), ArchiMate XML, and Mermaid diagram export&quot;),</span>
+<span class="fc" id="L54">                        new Tag().name(&quot;Report Export&quot;).description(&quot;Export architecture analysis as Markdown, HTML, DOCX, or JSON reports&quot;),</span>
+<span class="fc" id="L55">                        new Tag().name(&quot;Architecture DSL&quot;).description(&quot;Architecture DSL parsing, validation, versioning (JGit), and materialisation&quot;),</span>
+<span class="fc" id="L56">                        new Tag().name(&quot;Architecture Intelligence&quot;).description(&quot;Architecture summary, derived metadata, and next-step guidance&quot;),</span>
+<span class="fc" id="L57">                        new Tag().name(&quot;Explainable Reasoning&quot;).description(&quot;Structured explanation traces for scored taxonomy nodes&quot;),</span>
+<span class="fc" id="L58">                        new Tag().name(&quot;ArchiMate Import&quot;).description(&quot;Import ArchiMate 3.x XML models into the taxonomy knowledge base&quot;),</span>
+<span class="fc" id="L59">                        new Tag().name(&quot;Administration&quot;).description(&quot;Admin status, diagnostics, and prompt template management&quot;),</span>
+<span class="fc" id="L60">                        new Tag().name(&quot;Embedding&quot;).description(&quot;Embedding model status and configuration&quot;),</span>
+<span class="fc" id="L61">                        new Tag().name(&quot;Status&quot;).description(&quot;Application startup and initialisation status&quot;)));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

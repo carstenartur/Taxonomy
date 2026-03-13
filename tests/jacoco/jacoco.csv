@@ -51,7 +51,7 @@ Taxonomy Application,com.taxonomy.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0
 Taxonomy Application,com.taxonomy.config,GlobalExceptionHandler,104,71,2,2,13,13,5,3,3,3
 Taxonomy Application,com.taxonomy.config,CsvKeywordAnalyzer,0,24,0,0,0,5,0,3,0,3
 Taxonomy Application,com.taxonomy.config,RateLimitFilter.WindowCounter,25,30,3,3,6,6,2,3,0,2
-Taxonomy Application,com.taxonomy.config,OpenApiConfig,0,114,0,0,0,25,0,2,0,2
+Taxonomy Application,com.taxonomy.config,OpenApiConfig,0,246,0,0,0,35,0,2,0,2
 Taxonomy Application,com.taxonomy.config,ActuatorSecurityFilter,54,15,13,1,15,5,7,2,0,2
 Taxonomy Application,com.taxonomy.config,DslAnalyzer,0,18,0,0,0,4,0,2,0,2
 Taxonomy Application,com.taxonomy.config,TaxonomyHealthIndicator,68,6,2,0,12,3,2,1,1,1
