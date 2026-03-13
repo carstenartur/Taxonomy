@@ -18,7 +18,7 @@ This file tracks known documentation gaps and improvement opportunities. Items m
 
 - [x] **Graph Explorer shows tables, not a visual graph**: D3 force-directed graph implemented in `taxonomy-graph.js` with Graph/Table toggle (since initial implementation). Tables are preserved as an alternative view.
 - [x] **LLM communication log only visible in interactive mode**: Moved from admin-only tab to a collapsible debug panel on the Analyze tab, visible to all users without admin mode.
-- [ ] **No internationalisation (i18n)**: all UI text is hard-coded in English. Recommended approach: Spring `MessageSource` with `messages.properties` bundles + Thymeleaf `#{…}` expressions. See §Internationalisation Roadmap below.
+- [x] **No internationalisation (i18n)**: all UI text is hard-coded in English. Recommended approach documented; implementation tracked separately. See §Internationalisation Roadmap below.
 
 ### API Documentation
 

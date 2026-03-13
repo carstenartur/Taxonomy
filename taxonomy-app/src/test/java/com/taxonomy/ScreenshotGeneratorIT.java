@@ -821,10 +821,10 @@ class ScreenshotGeneratorIT {
         WebElement allFilter = driver.findElement(By.id("filterAll"));
         js("arguments[0].click();", allFilter);
         wait(10).until(d -> {
-            String html = (String) ((JavascriptExecutor) d).executeScript(
-                    "var el = document.getElementById('proposalsTableContainer');" +
-                    "return el ? el.innerHTML : '';");
-            return html != null && !html.contains("Loading");
+            WebElement container = d.findElement(By.id("proposalsTableContainer"));
+            String text = container.getText();
+            // Positive condition: either proposals are shown (table rows) or a "no proposals" message
+            return text != null && !text.isEmpty() && !text.contains("Loading");
         });
         saveElementScreenshot(panel, "28-proposal-review-queue.png");
     }
