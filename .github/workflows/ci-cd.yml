@@ -34,15 +34,10 @@ jobs:
           cache: 'maven'
 
       - name: Build and run tests
-        env:
-          GEMINI_API_KEY: ""
         run: mvn -q verify -DexcludedGroups="db-postgres,db-mssql,db-oracle,real-llm"
 
       - name: Generate documentation screenshots
         if: ${{ github.event.inputs.generate-screenshots == 'true' }}
-        env:
-          GEMINI_API_KEY: ""
-#          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: mvn -q verify -DgenerateScreenshots -Dit.test=ScreenshotGeneratorIT -DfailIfNoTests=false -Dfailsafe.rerunFailingTestsCount=1
 
       - name: Commit generated screenshots

@@ -56,7 +56,39 @@ class ScreenshotGeneratorIT {
             "element CR type CoreService\\n  title \"Core Services\"\\n\\n" +
             "relation CP REALIZES CR\\n  status accepted\\n";
 
-    private static final Path OUTPUT_DIR = Path.of("docs/images");
+    private static final Path OUTPUT_DIR = resolveOutputDir();
+
+    /**
+     * Resolves the output directory for screenshots to the {@code docs/images/} folder at the
+     * repository root.
+     *
+     * <p>Maven Failsafe forks a JVM with {@code workingDirectory=${project.basedir}}, which is the
+     * module directory (e.g. {@code taxonomy-app/}), not the repository root.  We use the
+     * {@code project.basedir} system property (injected via the Failsafe {@code
+     * systemPropertyVariables} configuration) to navigate up one level to the repo root where
+     * {@code docs/images/} lives.
+     *
+     * <p>Falls back to {@code ../docs/images} relative to CWD when the system property is absent
+     * (e.g. when running from an IDE with module dir as CWD), or to {@code docs/images} directly
+     * when the CWD is already the repo root.
+     */
+    private static Path resolveOutputDir() {
+        String basedir = System.getProperty("project.basedir");
+        if (basedir != null) {
+            // taxonomy-app/ -> parent = repo root -> repo root/docs/images
+            Path moduleDir = Path.of(basedir);
+            Path repoRoot = moduleDir.getParent();
+            if (repoRoot != null) {
+                return repoRoot.resolve("docs/images");
+            }
+        }
+        // Fallback: if a docs/ directory exists relative to CWD, we are at the repo root
+        if (java.nio.file.Files.isDirectory(Path.of("docs"))) {
+            return Path.of("docs/images");
+        }
+        // Last fallback: CWD is the module dir, navigate up one level
+        return Path.of("../docs/images");
+    }
 
     private static Network network;
     private static GenericContainer<?> app;

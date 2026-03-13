@@ -227,6 +227,13 @@
                         <include>**/*IT.java</include>
                     </includes>
                     <excludedGroups>${excludedGroups}</excludedGroups>
+                    <systemPropertyVariables>
+                        <!-- Pass the module basedir so tests can resolve paths relative to the repo root.
+                             ScreenshotGeneratorIT uses this to write docs/images/ at the repo root
+                             instead of inside the module directory (Failsafe forks with
+                             workingDirectory=${project.basedir}). -->
+                        <project.basedir>${project.basedir}</project.basedir>
+                    </systemPropertyVariables>
                 </configuration>
                 <executions>
                     <execution>
