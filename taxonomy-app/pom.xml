@@ -127,6 +127,12 @@
             <version>3.0.2</version>
         </dependency>
 
+        <!-- Spring Security: form login, session, role-based access -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
         <!-- Spring Boot Actuator for health, metrics, and monitoring endpoints -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -146,6 +152,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
