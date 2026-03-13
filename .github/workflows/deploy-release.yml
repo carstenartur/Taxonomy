@@ -38,7 +38,7 @@ jobs:
       suggested_next: ${{ steps.version.outputs.suggested_next }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -147,7 +147,7 @@ jobs:
     steps:
       # 1. Checkout with full history
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
