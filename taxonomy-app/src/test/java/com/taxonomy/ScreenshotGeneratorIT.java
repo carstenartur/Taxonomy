@@ -931,13 +931,37 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(34)
     void captureDslEditorPanel() throws IOException {
+        // Ensure a completed analysis exists so /api/dsl/export returns actual architecture content
+        navigateToTab("analyze");
+        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
+        if (!statusText.contains("complete")) {
+            forceNonInteractiveMode();
+            runAnalysis();
+        }
+        // Navigate to DSL editor and load the current architecture
         navigateToTab("dsl-editor");
-        // Load the current architecture into the DSL editor
         js("var btn = document.getElementById('dslLoadCurrentBtn'); if (btn) btn.click();");
-        wait(10).until(d -> {
+        wait(30).until(d -> {
             WebElement textarea = d.findElement(By.id("dslEditorTextarea"));
             String val = textarea.getAttribute("value");
             return val != null && !val.isEmpty();
+        });
+        // Commit the loaded DSL so the version control panel shows meaningful content
+        js("window._dslCommitted = false;" +
+           "var ta = document.getElementById('dslEditorTextarea');" +
+           "fetch('/api/dsl/commit?branch=draft&message=Documentation-snapshot', {" +
+           "  method: 'POST'," +
+           "  headers: {'Content-Type': 'text/plain'}," +
+           "  body: ta ? ta.value : ''" +
+           "}).then(function() { window._dslCommitted = true; });");
+        wait(30).until(d ->
+                (Boolean) ((JavascriptExecutor) d).executeScript("return window._dslCommitted === true;"));
+        // Reload history by triggering a change event on the branch select
+        js("var sel = document.getElementById('dslBranchSelect'); if (sel) sel.dispatchEvent(new Event('change'));");
+        wait(10).until(d -> {
+            WebElement historyBody = d.findElement(By.id("dslHistoryBody"));
+            String text = historyBody.getText();
+            return text != null && !text.isEmpty() && !text.contains("No commits");
         });
         saveScreenshot("34-dsl-editor-panel.png");
     }
