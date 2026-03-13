@@ -180,7 +180,7 @@ The 8 taxonomy root categories are:
 | **IP** | Information Products |
 | **UA** | User Applications |
 
-Children are identified by hierarchical codes (e.g., `BP-1`, `CP-2`, `CR-3-1`).
+Children are identified by hierarchical codes defined in the workbook (use `GET /api/taxonomy` to discover them).
 
 ## CI / CD
 

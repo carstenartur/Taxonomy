@@ -430,7 +430,7 @@ POST /api/proposals/propose
 Content-Type: application/json
 
 {
-  "sourceCode": "CR-5",
+  "sourceCode": "‹node-code›",
   "relationType": "SUPPORTS",
   "limit": "10"
 }
@@ -1109,7 +1109,7 @@ The Explanation Trace API provides structured reasoning chains that explain why 
 
 Returns an explanation trace for one node, given the analysis scores and requirement text.
 
-**Request body:** `{ "businessText": "...", "scores": { "CP-3": 92, "CO-2": 88, ... } }`
+**Request body:** `{ "businessText": "...", "scores": { "‹node-code›": 92, "‹node-code›": 88, ... } }`
 
 **Response:** An `ExplanationTrace` object with the node code, score, reasoning chain, and contributing factors.
 
@@ -1134,7 +1134,7 @@ The Report API generates formatted analysis reports from scored results.
 | `POST` | `/api/report/docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | Word document (.docx) |
 | `POST` | `/api/report/json` | `application/json` | Structured JSON report |
 
-**Request body (all endpoints):** `{ "businessText": "...", "scores": { "CP-3": 92, ... } }`
+**Request body (all endpoints):** `{ "businessText": "...", "scores": { "‹node-code›": 92, ... } }`
 
 Reports include the requirement text, scored nodes, architecture view elements, and relation summary.
 
@@ -1530,21 +1530,21 @@ curl http://localhost:8080/api/relations
 # List relations filtered by type
 curl "http://localhost:8080/api/relations?type=REALIZES"
 
-# Relations for a specific node
-curl http://localhost:8080/api/node/CP-1/relations
+# Relations for a specific node (use a real code from /api/taxonomy)
+curl http://localhost:8080/api/node/‹node-code›/relations
 
 # Get relation count
 curl http://localhost:8080/api/relations/count
 
-# Create a relation manually
+# Create a relation manually (use real codes from /api/taxonomy)
 curl -X POST http://localhost:8080/api/relations \
   -H "Content-Type: application/json" \
-  -d '{"sourceCode":"CP-1","targetCode":"CR-5","relationType":"REALIZES","provenance":"MANUAL"}'
+  -d '{"sourceCode":"‹CP child›","targetCode":"‹CR child›","relationType":"REALIZES","provenance":"MANUAL"}'
 
 # Trigger relation proposals
 curl -X POST http://localhost:8080/api/proposals/propose \
   -H "Content-Type: application/json" \
-  -d '{"sourceCode":"CR-5","relationType":"SUPPORTS","limit":"10"}'
+  -d '{"sourceCode":"‹node-code›","relationType":"SUPPORTS","limit":"10"}'
 
 # List all proposals
 curl http://localhost:8080/api/proposals
@@ -1582,10 +1582,10 @@ curl http://localhost:8080/api/relations/metrics/by-provenance
 # Top rejected proposals
 curl "http://localhost:8080/api/relations/metrics/top-rejected?limit=10"
 
-# Record requirement coverage
+# Record requirement coverage (use real codes from your analysis results)
 curl -X POST http://localhost:8080/api/coverage/record \
   -H "Content-Type: application/json" \
-  -d '{"requirementId":"REQ-101","requirementText":"Secure comms","scores":{"CP-1":85,"BP-3":72},"minScore":50}'
+  -d '{"requirementId":"REQ-101","requirementText":"Secure comms","scores":{"‹node-code-1›":85,"‹node-code-2›":72},"minScore":50}'
 
 # Coverage statistics
 curl http://localhost:8080/api/coverage/statistics
@@ -1593,8 +1593,8 @@ curl http://localhost:8080/api/coverage/statistics
 # Coverage density map
 curl http://localhost:8080/api/coverage/density
 
-# Coverage for a specific node
-curl http://localhost:8080/api/coverage/node/CP-1
+# Coverage for a specific node (use a real code from /api/taxonomy)
+curl http://localhost:8080/api/coverage/node/‹node-code›
 ```
 
 ### Gap Analysis, Recommendations & Patterns
@@ -1647,14 +1647,14 @@ curl -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
   -d '{"businessText":"Secure voice"}'
 
-# Export report (Markdown, HTML, DOCX, JSON)
+# Export report (Markdown, HTML, DOCX, JSON) — use real codes from your analysis
 curl -X POST http://localhost:8080/api/report/markdown \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice","scores":{"CP-3":92}}' --output report.md
+  -d '{"businessText":"Secure voice","scores":{"‹node-code›":92}}' --output report.md
 
 curl -X POST http://localhost:8080/api/report/html \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice","scores":{"CP-3":92}}' --output report.html
+  -d '{"businessText":"Secure voice","scores":{"‹node-code›":92}}' --output report.html
 
 # Import ArchiMate XML model
 curl -X POST http://localhost:8080/api/import/archimate \
@@ -1718,15 +1718,15 @@ curl http://localhost:8080/api/diagnostics \
 curl http://localhost:8080/api/prompts \
   -H "X-Admin-Token: your_admin_password"
 
-# Explanation trace for a single node
-curl -X POST http://localhost:8080/api/explain/CP-3 \
+# Explanation trace for a single node (use a real code from /api/taxonomy)
+curl -X POST http://localhost:8080/api/explain/‹node-code› \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice","scores":{"CP-3":92}}'
+  -d '{"businessText":"Secure voice","scores":{"‹node-code›":92}}'
 
 # Explanation traces for all scored nodes
 curl -X POST http://localhost:8080/api/explain \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice","scores":{"CP-3":92,"CO-2":88}}'
+  -d '{"businessText":"Secure voice","scores":{"‹node-code-1›":92,"‹node-code-2›":88}}'
 ```
 
 ---

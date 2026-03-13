@@ -987,24 +987,48 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(36)
     void captureProposalAccepted() throws IOException {
-        // Create a proposal via the REST API, then accept it.
-        // CP-3 (Capability) → CR-5 (Core Service) is chosen because these are common
-        // taxonomy codes present in the test data and form a natural REALIZES relation.
-        js("window._proposalCreated = false;" +
-           "fetch('/api/proposals/from-hypothesis', {" +
-           "  method: 'POST'," +
-           "  headers: {'Content-Type': 'application/json'}," +
-           "  body: JSON.stringify({" +
-           "    sourceCode: 'CP-3', targetCode: 'CR-5'," +
-           "    relationType: 'REALIZES', confidence: 0.85," +
-           "    rationale: 'CP-3 provides the capability that CR-5 implements as a core service'" +
-           "  })" +
-           "}).then(r => r.json()).then(data => {" +
+        // Discover real taxonomy codes at runtime — never hardcode codes that may not exist.
+        // Fetch /api/taxonomy, walk the tree to find the first child under the CP root and
+        // the first child under the CR root.  Store them in window globals for later tests.
+        js("window._proposalCreated = false; window._proposalError = null;" +
+           "fetch('/api/taxonomy').then(r => r.json()).then(function(roots) {" +
+           "  function firstChild(roots, prefix) {" +
+           "    for (var i = 0; i < roots.length; i++) {" +
+           "      if (roots[i].code === prefix && roots[i].children && roots[i].children.length > 0)" +
+           "        return roots[i].children[0].code;" +
+           "    }" +
+           "    return null;" +
+           "  }" +
+           "  var src = firstChild(roots, 'CP');" +
+           "  var tgt = firstChild(roots, 'CR');" +
+           "  if (!src || !tgt) throw new Error('Cannot find CP or CR child nodes in taxonomy');" +
+           "  window._acceptedSourceCode = src;" +
+           "  window._acceptedTargetCode = tgt;" +
+           "  return fetch('/api/proposals/from-hypothesis', {" +
+           "    method: 'POST'," +
+           "    headers: {'Content-Type': 'application/json'}," +
+           "    body: JSON.stringify({" +
+           "      sourceCode: src, targetCode: tgt," +
+           "      relationType: 'REALIZES', confidence: 0.85," +
+           "      rationale: src + ' provides the capability that ' + tgt + ' implements as a core service'" +
+           "    })" +
+           "  });" +
+           "}).then(r => { if (!r.ok) throw new Error('Proposal creation failed: ' + r.status); return r.json(); })" +
+           ".then(function(data) {" +
            "  window._createdProposalId = data.id;" +
            "  return fetch('/api/proposals/' + data.id + '/accept', {method: 'POST'});" +
-           "}).then(r => r.json()).then(() => { window._proposalCreated = true; });");
-        wait(15).until(d -> (Boolean) ((JavascriptExecutor) d).executeScript(
-                "return window._proposalCreated === true;"));
+           "}).then(r => { if (!r.ok) throw new Error('Proposal accept failed: ' + r.status); return r.json(); })" +
+           ".then(function() { window._proposalCreated = true; })" +
+           ".catch(function(err) { window._proposalError = err.message || String(err); });");
+        wait(30).until(d -> {
+            Boolean done = (Boolean) ((JavascriptExecutor) d).executeScript(
+                    "return window._proposalCreated === true;");
+            if (Boolean.TRUE.equals(done)) return true;
+            String err = (String) ((JavascriptExecutor) d).executeScript(
+                    "return window._proposalError;");
+            if (err != null) throw new RuntimeException("Proposal creation/accept failed: " + err);
+            return false;
+        });
 
         // Navigate to the relations tab and filter to show all proposals
         navigateToTab("relations");
@@ -1023,15 +1047,17 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(37)
     void captureGraphWithAcceptedRelation() throws IOException {
-        // Navigate to the graph tab and query for CP-3 (the source node of the proposal
-        // accepted in test 36) to show that the accepted relation is visible as a graph edge.
+        // Read the source code stored by test 36 (discovered from live taxonomy data).
+        String sourceCode = (String) ((JavascriptExecutor) driver).executeScript(
+                "return window._acceptedSourceCode || 'CP';");
         navigateToTab("graph");
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
-        js("arguments[0].value = 'CP-3'; arguments[0].dispatchEvent(new Event('input'));", input);
+        js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
+                input, sourceCode);
 
-        // Click Downstream to show the accepted relation CP-3 → CR-5
+        // Click Downstream to show the accepted relation
         WebElement downstreamBtn = driver.findElement(By.id("graphDownstreamBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", downstreamBtn);
         js("arguments[0].click();", downstreamBtn);
