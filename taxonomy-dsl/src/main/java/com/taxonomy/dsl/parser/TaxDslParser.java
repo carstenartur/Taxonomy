@@ -7,12 +7,23 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Line-oriented parser for the TaxDSL v1 language.
+ * Block-structured parser for the TaxDSL v2 language.
+ *
+ * <p>DSL v2 uses explicit block delimiters ({@code &#123;} / {@code &#125;}) and
+ * semicolon-terminated {@code key: value;} properties:
+ * <pre>
+ * element CP-1023 type Capability {
+ *   title: "Secure Communications";
+ *   description: "Ability to provide secure communications";
+ * }
+ * </pre>
  *
  * <p>The parser is intentionally simple and tolerant:
  * <ul>
- *   <li>Blocks start with an unindented keyword line.</li>
- *   <li>Properties are indented lines within a block.</li>
+ *   <li>Blocks start with a keyword line ending in {@code &#123;}.</li>
+ *   <li>Properties use {@code key: value;} syntax inside the block.</li>
+ *   <li>Blocks end with a line containing {@code &#125;}.</li>
+ *   <li>Indentation is ignored — only {@code &#123;} and {@code &#125;} are structural.</li>
  *   <li>Unknown block types and unknown properties are preserved.</li>
  *   <li>Quoted string values are unquoted; unquoted values are kept as-is.</li>
  * </ul>
@@ -48,36 +59,37 @@ public class TaxDslParser {
         int i = 0;
 
         while (i < lines.size()) {
-            String line = lines.get(i);
+            String stripped = lines.get(i).strip();
 
             // Skip blank lines and comments
-            if (line.isBlank() || line.stripLeading().startsWith("#")) {
+            if (stripped.isEmpty() || stripped.startsWith("#")) {
                 i++;
                 continue;
             }
 
-            // Non-indented line starts a new block
-            if (!isIndented(line)) {
-                String trimmed = line.strip();
-                String keyword = firstToken(trimmed);
-                List<String> headerTokens = parseHeaderTokens(trimmed);
+            // Look for a block opening: keyword ... {
+            if (stripped.endsWith("{")) {
+                String headerPart = stripped.substring(0, stripped.length() - 1).strip();
+                String keyword = firstToken(headerPart);
+                List<String> headerTokens = parseHeaderTokens(headerPart);
 
-                // Collect indented body lines
+                // Collect body lines until closing }
                 int bodyStart = i + 1;
                 int bodyEnd = bodyStart;
-                while (bodyEnd < lines.size() && (isIndented(lines.get(bodyEnd)) || lines.get(bodyEnd).isBlank())) {
-                    bodyEnd++;
-                }
-                // Trim trailing blank lines from body
-                while (bodyEnd > bodyStart && lines.get(bodyEnd - 1).isBlank()) {
-                    bodyEnd--;
+                int depth = 1;
+                while (bodyEnd < lines.size() && depth > 0) {
+                    String bodyStripped = lines.get(bodyEnd).strip();
+                    if (bodyStripped.endsWith("{")) depth++;
+                    if (bodyStripped.equals("}") || bodyStripped.startsWith("}")) depth--;
+                    if (depth > 0) bodyEnd++;
+                    else break;
                 }
 
                 List<PropertyAst> properties = new ArrayList<>();
                 Map<String, String> extensions = new LinkedHashMap<>();
                 for (int j = bodyStart; j < bodyEnd; j++) {
                     String bodyLine = lines.get(j).strip();
-                    if (bodyLine.isBlank() || bodyLine.startsWith("#")) continue;
+                    if (bodyLine.isEmpty() || bodyLine.startsWith("#")) continue;
                     PropertyAst prop = parseProperty(bodyLine, fileName, j + 1);
                     if (prop != null) {
                         properties.add(prop);
@@ -100,7 +112,7 @@ public class TaxDslParser {
                     blocks.add(block);
                 }
 
-                i = bodyEnd;
+                i = bodyEnd + 1; // skip past closing }
             } else {
                 i++;
             }
@@ -114,11 +126,8 @@ public class TaxDslParser {
         return parse(text, null);
     }
 
-    private boolean isIndented(String line) {
-        return !line.isEmpty() && (line.charAt(0) == ' ' || line.charAt(0) == '\t');
-    }
-
     private String firstToken(String line) {
+        if (line.isEmpty()) return "";
         int space = line.indexOf(' ');
         return space < 0 ? line : line.substring(0, space);
     }
@@ -134,27 +143,53 @@ public class TaxDslParser {
     }
 
     /**
-     * Parse a single property line like {@code title "Some Title"} or {@code score 0.92}.
+     * Parse a single property line in v2 format: {@code key: "value";} or {@code key: 0.92;}.
+     *
+     * <p>The colon after the key and the trailing semicolon are stripped.
      */
     private PropertyAst parseProperty(String line, String fileName, int lineNumber) {
-        String key;
-        String value;
+        // Strip trailing semicolon
+        if (line.endsWith(";")) {
+            line = line.substring(0, line.length() - 1).stripTrailing();
+        }
 
-        // Check for quoted value
+        // Split on first colon
+        int colonIdx = line.indexOf(':');
+        if (colonIdx < 0) {
+            // Fallback: try space-separated (for tolerance)
+            return parseSpaceSeparatedProperty(line, fileName, lineNumber);
+        }
+
+        String key = line.substring(0, colonIdx).strip();
+        String rest = line.substring(colonIdx + 1).strip();
+
+        String value;
+        Matcher m = QUOTED_VALUE.matcher(rest);
+        if (m.find()) {
+            value = unescapeQuotedValue(m.group(1));
+        } else {
+            value = rest;
+        }
+
+        return new PropertyAst(key, value, new SourceLocation(fileName, lineNumber, 1));
+    }
+
+    /**
+     * Fallback parser for space-separated properties (tolerance for edge cases).
+     */
+    private PropertyAst parseSpaceSeparatedProperty(String line, String fileName, int lineNumber) {
         int firstSpace = line.indexOf(' ');
         if (firstSpace < 0) {
-            // Key-only property (rare, but support it)
-            key = line;
-            value = "";
+            return new PropertyAst(line, "", new SourceLocation(fileName, lineNumber, 1));
+        }
+        String key = line.substring(0, firstSpace);
+        String rest = line.substring(firstSpace).strip();
+        Matcher m = QUOTED_VALUE.matcher(rest);
+        String value;
+        if (m.find()) {
+            value = unescapeQuotedValue(m.group(1));
         } else {
-            key = line.substring(0, firstSpace);
-            String rest = line.substring(firstSpace).strip();
-            Matcher m = QUOTED_VALUE.matcher(rest);
-            if (m.find()) {
-                value = unescapeQuotedValue(m.group(1));
-            } else {
-                value = rest;
-            }
+            value = rest;
         }
         return new PropertyAst(key, value, new SourceLocation(fileName, lineNumber, 1));
     }

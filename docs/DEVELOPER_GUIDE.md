@@ -241,7 +241,7 @@ The Architecture DSL subsystem uses JGit DFS (Distributed File System) with all 
 
 | Package | Role |
 |---|---|
-| `dsl.parser` | Line-oriented parser: DSL text → `DocumentAst` |
+| `dsl.parser` | Brace-delimited parser: DSL text → `DocumentAst` |
 | `dsl.serializer` | Deterministic serializer: `DocumentAst` → DSL text (sorted blocks, canonical property order, escape sequences) |
 | `dsl.ast` | AST node types: `DocumentAst`, `BlockAst`, `PropertyAst`, `MetaAst` |
 | `dsl.model` | Canonical model: `CanonicalArchitectureModel`, `ArchitectureElement`, `ArchitectureRelation`, etc. |
@@ -280,7 +280,7 @@ The application uses Hibernate Search 8 with a Lucene 9 backend for full-text an
 
 | Analyser | Purpose |
 |---|---|
-| `dsl` | WhitespaceTokenizer + LowerCaseFilter — for `STRUCT:` / `REL:` / `DOM:` prefixed DSL tokens |
+| `dsl` | WhitespaceTokenizer + LowerCaseFilter — for DSL block keywords and property tokens |
 | `csv-keyword` | PatternTokenizer splitting on comma/semicolon — for element and relation ID fields |
 | `english` | Standard English analyser for commit messages |
 | `german` | Standard German analyser for German-language fields |

@@ -5,13 +5,15 @@ import com.taxonomy.dsl.ast.*;
 import java.util.*;
 
 /**
- * Deterministic serializer for the TaxDSL v1 language.
+ * Deterministic serializer for the TaxDSL v2 language.
  *
- * <p>Produces stable, Git-diff-friendly output:
+ * <p>Produces stable, Git-diff-friendly output using explicit block delimiters
+ * and semicolon-terminated properties:
  * <ul>
  *   <li>Blocks are grouped by kind and sorted by primary identifier for deterministic ordering.</li>
  *   <li>Blocks are separated by a single blank line.</li>
- *   <li>Properties are indented with two spaces.</li>
+ *   <li>Blocks use {@code &#123;} and {@code &#125;} delimiters — indentation is not semantically significant.</li>
+ *   <li>Properties use {@code key: value;} syntax, indented with two spaces for readability.</li>
  *   <li>Properties within a block follow a canonical order (known properties first, then extensions).</li>
  *   <li>String values are quoted; bare values (numbers, identifiers) are not.</li>
  *   <li>Extension attributes ({@code x-*}) are serialized after known attributes.</li>
@@ -41,11 +43,11 @@ public class TaxDslSerializer {
             "requirement", List.of("title", "text"),
             "mapping", List.of("score", "source"),
             "view", List.of("title", "include", "layout"),
-            "evidence", List.of("type", "model", "confidence", "summary")
+            "evidence", List.of("for-relation", "type", "model", "confidence", "summary")
     );
 
     /**
-     * Serialize a {@link DocumentAst} to DSL text.
+     * Serialize a {@link DocumentAst} to DSL v2 text.
      * Blocks are sorted by kind (element → relation → requirement → mapping → view → evidence → unknown)
      * and within each kind by primary identifier for deterministic, diff-friendly output.
      */
@@ -109,25 +111,26 @@ public class TaxDslSerializer {
     }
 
     private void serializeMeta(MetaAst meta, StringBuilder sb) {
-        sb.append("meta\n");
+        sb.append("meta {\n");
         if (meta.language() != null) {
-            sb.append("  language \"").append(meta.language()).append("\"\n");
+            sb.append("  language: \"").append(meta.language()).append("\";\n");
         }
         if (meta.version() != null) {
-            sb.append("  version \"").append(meta.version()).append("\"\n");
+            sb.append("  version: \"").append(meta.version()).append("\";\n");
         }
         if (meta.namespace() != null) {
-            sb.append("  namespace \"").append(meta.namespace()).append("\"\n");
+            sb.append("  namespace: \"").append(meta.namespace()).append("\";\n");
         }
+        sb.append("}\n");
     }
 
     private void serializeBlock(BlockAst block, StringBuilder sb) {
-        // Header line
+        // Header line with opening brace
         sb.append(block.getKind());
         for (String token : block.getHeaderTokens()) {
             sb.append(' ').append(token);
         }
-        sb.append('\n');
+        sb.append(" {\n");
 
         // Properties: known first (in canonical order), then extensions (sorted alphabetically)
         List<PropertyAst> known = new ArrayList<>();
@@ -154,24 +157,22 @@ public class TaxDslSerializer {
         // Sort extensions alphabetically for stable output
         extensions.sort(Comparator.comparing(PropertyAst::key));
 
-        if (!extensions.isEmpty() && !known.isEmpty()) {
-            // Blank line separates core properties from extensions for clarity in diffs
-            sb.append('\n');
-        }
-
         for (PropertyAst prop : extensions) {
             serializeProperty(prop, sb);
         }
+
+        // Closing brace
+        sb.append("}\n");
     }
 
     private void serializeProperty(PropertyAst prop, StringBuilder sb) {
-        sb.append("  ").append(prop.key()).append(' ');
+        sb.append("  ").append(prop.key()).append(": ");
         if (shouldQuote(prop.key(), prop.value())) {
             sb.append('"').append(escapeForQuoting(prop.value())).append('"');
         } else {
             sb.append(prop.value());
         }
-        sb.append('\n');
+        sb.append(";\n");
     }
 
     /**

@@ -120,15 +120,15 @@ public class ModelToAstMapper {
     private BlockAst evidenceToBlock(ArchitectureEvidence ev) {
         List<String> headerTokens = new ArrayList<>();
         if (ev.getId() != null) headerTokens.add(ev.getId());
-        if (ev.getForRelationSource() != null) {
-            headerTokens.add("for");
-            headerTokens.add("relation");
-            headerTokens.add(ev.getForRelationSource());
-            if (ev.getForRelationType() != null) headerTokens.add(ev.getForRelationType());
-            if (ev.getForRelationTarget() != null) headerTokens.add(ev.getForRelationTarget());
-        }
 
         List<PropertyAst> props = new ArrayList<>();
+        // Serialize for-relation as a property: "SOURCE TYPE TARGET"
+        if (ev.getForRelationSource() != null) {
+            StringBuilder forRel = new StringBuilder(ev.getForRelationSource());
+            if (ev.getForRelationType() != null) forRel.append(' ').append(ev.getForRelationType());
+            if (ev.getForRelationTarget() != null) forRel.append(' ').append(ev.getForRelationTarget());
+            addProperty(props, "for-relation", forRel.toString());
+        }
         addProperty(props, "type", ev.getEvidenceType());
         addProperty(props, "model", ev.getModel());
         if (ev.getConfidence() != null) {

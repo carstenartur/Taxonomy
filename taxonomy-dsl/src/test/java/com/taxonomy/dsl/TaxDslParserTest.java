@@ -38,25 +38,27 @@ class TaxDslParserTest {
     @Test
     void parseMetaBlock() {
         String dsl = """
-                meta
-                  language "taxdsl"
-                  version "1.0"
-                  namespace "mission.secure-voice"
+                meta {
+                  language: "taxdsl";
+                  version: "2.0";
+                  namespace: "mission.secure-voice";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         assertThat(doc.getMeta()).isNotNull();
         assertThat(doc.getMeta().language()).isEqualTo("taxdsl");
-        assertThat(doc.getMeta().version()).isEqualTo("1.0");
+        assertThat(doc.getMeta().version()).isEqualTo("2.0");
         assertThat(doc.getMeta().namespace()).isEqualTo("mission.secure-voice");
     }
 
     @Test
     void parseElementBlock() {
         String dsl = """
-                element CP-1023 type Capability
-                  title "Secure Communications Capability"
-                  description "Ability to provide secure communications"
-                  taxonomy "Capabilities"
+                element CP-1023 type Capability {
+                  title: "Secure Communications Capability";
+                  description: "Ability to provide secure communications";
+                  taxonomy: "Capabilities";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         assertThat(doc.getBlocks()).hasSize(1);
@@ -72,10 +74,11 @@ class TaxDslParserTest {
     @Test
     void parseRelationBlock() {
         String dsl = """
-                relation CR-1011 SUPPORTS BP-1327
-                  status proposed
-                  confidence 0.76
-                  provenance "analysis"
+                relation CR-1011 SUPPORTS BP-1327 {
+                  status: proposed;
+                  confidence: 0.76;
+                  provenance: "analysis";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         assertThat(doc.getBlocks()).hasSize(1);
@@ -91,9 +94,10 @@ class TaxDslParserTest {
     @Test
     void parseRequirementBlock() {
         String dsl = """
-                requirement REQ-001
-                  title "Secure voice communications for deployed forces"
-                  text "Provide secure voice communications for deployed joint forces"
+                requirement REQ-001 {
+                  title: "Secure voice communications for deployed forces";
+                  text: "Provide secure voice communications for deployed joint forces";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         assertThat(doc.getBlocks()).hasSize(1);
@@ -108,9 +112,10 @@ class TaxDslParserTest {
     @Test
     void parseMappingBlock() {
         String dsl = """
-                mapping REQ-001 -> CP-1023
-                  score 0.92
-                  source "llm"
+                mapping REQ-001 -> CP-1023 {
+                  score: 0.92;
+                  source: "llm";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         assertThat(doc.getBlocks()).hasSize(1);
@@ -125,12 +130,13 @@ class TaxDslParserTest {
     @Test
     void parseViewBlock() {
         String dsl = """
-                view secure-voice-overview
-                  title "Secure Voice Architecture Overview"
-                  include REQ-001
-                  include CP-1023
-                  include BP-1327
-                  layout layered
+                view secure-voice-overview {
+                  title: "Secure Voice Architecture Overview";
+                  include: REQ-001;
+                  include: CP-1023;
+                  include: BP-1327;
+                  layout: layered;
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         assertThat(doc.getBlocks()).hasSize(1);
@@ -146,27 +152,31 @@ class TaxDslParserTest {
     @Test
     void parseEvidenceBlock() {
         String dsl = """
-                evidence EV-001 for relation CR-1011 SUPPORTS BP-1327
-                  type LLM
-                  model "gpt-4.1-mini"
-                  confidence 0.76
-                  summary "The service appears to provide direct support to the process."
+                evidence EV-001 {
+                  for-relation: CR-1011 SUPPORTS BP-1327;
+                  type: LLM;
+                  model: "gpt-4.1-mini";
+                  confidence: 0.76;
+                  summary: "The service appears to provide direct support to the process.";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         assertThat(doc.getBlocks()).hasSize(1);
 
         BlockAst block = doc.getBlocks().get(0);
         assertThat(block.getKind()).isEqualTo("evidence");
-        assertThat(block.getHeaderTokens()).contains("EV-001", "for", "relation", "CR-1011", "SUPPORTS", "BP-1327");
+        assertThat(block.getHeaderTokens()).containsExactly("EV-001");
+        assertThat(block.property("for-relation")).isEqualTo("CR-1011 SUPPORTS BP-1327");
     }
 
     @Test
     void parseUnknownAttributes() {
         String dsl = """
-                element CP-1023 type Capability
-                  title "Secure Communications"
-                  x-owner "CIS"
-                  x-lifecycle "target"
+                element CP-1023 type Capability {
+                  title: "Secure Communications";
+                  x-owner: "CIS";
+                  x-lifecycle: "target";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         BlockAst block = doc.getBlocks().get(0);
@@ -178,9 +188,10 @@ class TaxDslParserTest {
     @Test
     void parseUnknownBlockType() {
         String dsl = """
-                constraint CON-001
-                  title "Max latency"
-                  value "200ms"
+                constraint CON-001 {
+                  title: "Max latency";
+                  value: "200ms";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         assertThat(doc.getBlocks()).hasSize(1);
@@ -194,19 +205,23 @@ class TaxDslParserTest {
     @Test
     void parseMultipleBlocks() {
         String dsl = """
-                meta
-                  language "taxdsl"
-                  version "1.0"
-                  namespace "test"
-                
-                element CP-1023 type Capability
-                  title "Cap One"
-                
-                element BP-1327 type Process
-                  title "Process One"
-                
-                relation CP-1023 REALIZES BP-1327
-                  status accepted
+                meta {
+                  language: "taxdsl";
+                  version: "2.0";
+                  namespace: "test";
+                }
+
+                element CP-1023 type Capability {
+                  title: "Cap One";
+                }
+
+                element BP-1327 type Process {
+                  title: "Process One";
+                }
+
+                relation CP-1023 REALIZES BP-1327 {
+                  status: accepted;
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         assertThat(doc.getMeta()).isNotNull();
@@ -220,10 +235,11 @@ class TaxDslParserTest {
     void parseCommentsAreIgnored() {
         String dsl = """
                 # This is a comment
-                element CP-1023 type Capability
-                  title "Cap One"
+                element CP-1023 type Capability {
+                  title: "Cap One";
                   # This is also a comment
-                  description "Desc"
+                  description: "Desc";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         assertThat(doc.getBlocks()).hasSize(1);
@@ -234,11 +250,13 @@ class TaxDslParserTest {
     @Test
     void parseSourceLocationsTracked() {
         String dsl = """
-                meta
-                  language "taxdsl"
-                
-                element CP-1023 type Capability
-                  title "Test"
+                meta {
+                  language: "taxdsl";
+                }
+
+                element CP-1023 type Capability {
+                  title: "Test";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl, "test.tax");
         assertThat(doc.getMeta().sourceLocation()).isNotNull();
@@ -247,16 +265,17 @@ class TaxDslParserTest {
 
         BlockAst block = doc.getBlocks().get(0);
         assertThat(block.getSourceLocation().file()).isEqualTo("test.tax");
-        assertThat(block.getSourceLocation().line()).isEqualTo(4);
+        assertThat(block.getSourceLocation().line()).isEqualTo(5);
     }
 
     @Test
     void parseVersionedMetaBlock() {
         String dsl = """
-                meta
-                  language "taxdsl"
-                  version "1.0"
-                  namespace "mission.secure-voice"
+                meta {
+                  language: "taxdsl";
+                  version: "2.0";
+                  namespace: "mission.secure-voice";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         assertThat(doc.getMeta()).isNotNull();
@@ -267,9 +286,10 @@ class TaxDslParserTest {
     @Test
     void parseEscapedQuotesInValues() {
         String dsl = """
-                element CP-1023 type Capability
-                  title "He said \\"hello\\""
-                  description "Path: C:\\\\Users\\\\test"
+                element CP-1023 type Capability {
+                  title: "He said \\"hello\\"";
+                  description: "Path: C:\\\\Users\\\\test";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         assertThat(doc.getBlocks()).hasSize(1);

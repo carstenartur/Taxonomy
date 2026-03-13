@@ -23,10 +23,12 @@ class DslTokenizerTest {
     @Test
     void tokenizeExtractsIdentifiers() {
         String dsl = """
-                element CP-1023 type Capability
-                  title "Secure Communications"
-                element BP-1327 type Process
-                  title "Conduct Operations"
+                element CP-1023 type Capability {
+                  title: "Secure Communications";
+                }
+                element BP-1327 type Process {
+                  title: "Conduct Operations";
+                }
                 """;
         String tokens = tokenizer.tokenize(dsl);
         assertThat(tokens).contains("CP-1023");
@@ -36,10 +38,12 @@ class DslTokenizerTest {
     @Test
     void tokenizeExtractsStructureTokens() {
         String dsl = """
-                element CP-1023 type Capability
-                  title "Test"
-                relation CP-1023 REALIZES CR-1047
-                  status accepted
+                element CP-1023 type Capability {
+                  title: "Test";
+                }
+                relation CP-1023 REALIZES CR-1047 {
+                  status: accepted;
+                }
                 """;
         String tokens = tokenizer.tokenize(dsl);
         assertThat(tokens).contains("STRUCT:element");
@@ -49,10 +53,12 @@ class DslTokenizerTest {
     @Test
     void tokenizeExtractsRelationTokens() {
         String dsl = """
-                relation CP-1023 REALIZES CR-1047
-                  status accepted
-                relation CR-1047 SUPPORTS BP-1327
-                  status proposed
+                relation CP-1023 REALIZES CR-1047 {
+                  status: accepted;
+                }
+                relation CR-1047 SUPPORTS BP-1327 {
+                  status: proposed;
+                }
                 """;
         String tokens = tokenizer.tokenize(dsl);
         assertThat(tokens).contains("REL:REALIZES");
@@ -62,9 +68,12 @@ class DslTokenizerTest {
     @Test
     void tokenizeExtractsDomainTokens() {
         String dsl = """
-                element CP-1023 type Capability
-                element BP-1327 type Process
-                element CR-1047 type CoreService
+                element CP-1023 type Capability {
+                }
+                element BP-1327 type Process {
+                }
+                element CR-1047 type CoreService {
+                }
                 """;
         String tokens = tokenizer.tokenize(dsl);
         assertThat(tokens).contains("DOM:Capability");
@@ -82,11 +91,14 @@ class DslTokenizerTest {
     @Test
     void extractElementIdsFindsAllIds() {
         String dsl = """
-                element CP-1023 type Capability
-                  title "Test"
-                relation CP-1023 REALIZES CR-1047
-                requirement REQ-001
-                  title "Test Req"
+                element CP-1023 type Capability {
+                  title: "Test";
+                }
+                relation CP-1023 REALIZES CR-1047 {
+                }
+                requirement REQ-001 {
+                  title: "Test Req";
+                }
                 """;
         Set<String> ids = tokenizer.extractElementIds(dsl);
         assertThat(ids).containsExactlyInAnyOrder("CP-1023", "CR-1047", "REQ-001");
@@ -95,10 +107,12 @@ class DslTokenizerTest {
     @Test
     void extractRelationKeysFindsRelations() {
         String dsl = """
-                relation CP-1023 REALIZES CR-1047
-                  status accepted
-                relation CR-1047 SUPPORTS BP-1327
-                  status proposed
+                relation CP-1023 REALIZES CR-1047 {
+                  status: accepted;
+                }
+                relation CR-1047 SUPPORTS BP-1327 {
+                  status: proposed;
+                }
                 """;
         Set<String> keys = tokenizer.extractRelationKeys(dsl);
         assertThat(keys).containsExactlyInAnyOrder(
@@ -110,8 +124,9 @@ class DslTokenizerTest {
     @Test
     void extractRelationKeysReturnsEmptyForNoRelations() {
         String dsl = """
-                element CP-1023 type Capability
-                  title "No relations here"
+                element CP-1023 type Capability {
+                  title: "No relations here";
+                }
                 """;
         Set<String> keys = tokenizer.extractRelationKeys(dsl);
         assertThat(keys).isEmpty();
@@ -120,10 +135,12 @@ class DslTokenizerTest {
     @Test
     void tokenizeDeduplicates() {
         String dsl = """
-                element CP-1023 type Capability
-                  title "First"
-                element CP-1023 type Capability
-                  title "Duplicate ID"
+                element CP-1023 type Capability {
+                  title: "First";
+                }
+                element CP-1023 type Capability {
+                  title: "Duplicate ID";
+                }
                 """;
         String tokens = tokenizer.tokenize(dsl);
         // CP-1023 should appear only once

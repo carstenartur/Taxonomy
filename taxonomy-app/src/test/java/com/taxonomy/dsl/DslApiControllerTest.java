@@ -38,17 +38,19 @@ class DslApiControllerTest {
     void exportWithCustomNamespace() throws Exception {
         mockMvc.perform(get("/api/dsl/export").param("namespace", "test.namespace"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("namespace \"test.namespace\"")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("namespace: \"test.namespace\";")));
     }
 
     @Test
     void parseValidDslReturnsJsonResult() throws Exception {
         String dsl = """
-                element CP-1023 type Capability
-                  title "Test"
+                element CP-1023 type Capability {
+                  title: "Test";
+                }
                 
-                relation CP-1023 REALIZES BP-1327
-                  status accepted
+                relation CP-1023 REALIZES BP-1327 {
+                  status: accepted;
+                }
                 """;
 
         mockMvc.perform(post("/api/dsl/parse")
@@ -72,8 +74,9 @@ class DslApiControllerTest {
     @Test
     void validateValidDslReturnsNoErrors() throws Exception {
         String dsl = """
-                element CP-1023 type Capability
-                  title "Test"
+                element CP-1023 type Capability {
+                  title: "Test";
+                }
                 """;
 
         mockMvc.perform(post("/api/dsl/validate")
@@ -87,11 +90,13 @@ class DslApiControllerTest {
     @Test
     void validateDslWithDuplicateIdsReturnsErrors() throws Exception {
         String dsl = """
-                element CP-1023 type Capability
-                  title "First"
+                element CP-1023 type Capability {
+                  title: "First";
+                }
                 
-                element CP-1023 type Capability
-                  title "Duplicate"
+                element CP-1023 type Capability {
+                  title: "Duplicate";
+                }
                 """;
 
         mockMvc.perform(post("/api/dsl/validate")
@@ -145,11 +150,13 @@ class DslApiControllerTest {
     @Test
     void materializeDslWithInvalidContentReturnsBadRequest() throws Exception {
         String dsl = """
-                element CP-1023 type Capability
-                  title "First"
+                element CP-1023 type Capability {
+                  title: "First";
+                }
                 
-                element CP-1023 type Capability
-                  title "Duplicate"
+                element CP-1023 type Capability {
+                  title: "Duplicate";
+                }
                 """;
 
         mockMvc.perform(post("/api/dsl/materialize")
@@ -164,16 +171,19 @@ class DslApiControllerTest {
     void materializeValidDslReturnsSuccess() throws Exception {
         // Use real taxonomy node codes that exist in the test database
         String dsl = """
-                meta
-                  language "taxdsl"
-                  version "1.0"
-                  namespace "test"
+                meta {
+                  language: "taxdsl";
+                  version: "2.0";
+                  namespace: "test";
+                }
                 
-                element CP-1010 type Capability
-                  title "Test Capability"
+                element CP-1010 type Capability {
+                  title: "Test Capability";
+                }
                 
-                element BP-1327 type Process
-                  title "Test Process"
+                element BP-1327 type Process {
+                  title: "Test Process";
+                }
                 """;
 
         mockMvc.perform(post("/api/dsl/materialize")
@@ -272,13 +282,15 @@ class DslApiControllerTest {
     @Test
     void commitDslStoresVersionedDocument() throws Exception {
         String dsl = """
-                meta
-                  language "taxdsl"
-                  version "1.0"
-                  namespace "test.commit"
+                meta {
+                  language: "taxdsl";
+                  version: "2.0";
+                  namespace: "test.commit";
+                }
                 
-                element CP-2001 type Capability
-                  title "Commit Test"
+                element CP-2001 type Capability {
+                  title: "Commit Test";
+                }
                 """;
 
         mockMvc.perform(post("/api/dsl/commit")
@@ -297,11 +309,13 @@ class DslApiControllerTest {
     @Test
     void commitInvalidDslReturnsBadRequest() throws Exception {
         String dsl = """
-                element CP-1023 type Capability
-                  title "First"
+                element CP-1023 type Capability {
+                  title: "First";
+                }
                 
-                element CP-1023 type Capability
-                  title "Duplicate"
+                element CP-1023 type Capability {
+                  title: "Duplicate";
+                }
                 """;
 
         mockMvc.perform(post("/api/dsl/commit")
@@ -315,8 +329,9 @@ class DslApiControllerTest {
     @Test
     void commitDefaultsToDraftBranch() throws Exception {
         String dsl = """
-                element CP-3001 type Capability
-                  title "Default Branch Test"
+                element CP-3001 type Capability {
+                  title: "Default Branch Test";
+                }
                 """;
 
         mockMvc.perform(post("/api/dsl/commit")
@@ -330,8 +345,9 @@ class DslApiControllerTest {
     void getHistoryReturnsDocumentsForBranch() throws Exception {
         // First commit
         String dsl1 = """
-                element CP-4001 type Capability
-                  title "History V1"
+                element CP-4001 type Capability {
+                  title: "History V1";
+                }
                 """;
         mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
@@ -340,10 +356,12 @@ class DslApiControllerTest {
 
         // Second commit
         String dsl2 = """
-                element CP-4001 type Capability
-                  title "History V2"
-                element CP-4002 type Capability
-                  title "Added"
+                element CP-4001 type Capability {
+                  title: "History V2";
+                }
+                element CP-4002 type Capability {
+                  title: "Added";
+                }
                 """;
         mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
@@ -368,14 +386,17 @@ class DslApiControllerTest {
     void diffBetweenTwoDocuments() throws Exception {
         // Commit two different versions and then diff them using Git SHAs
         String dsl1 = """
-                element CP-5001 type Capability
-                  title "V1"
+                element CP-5001 type Capability {
+                  title: "V1";
+                }
                 """;
         String dsl2 = """
-                element CP-5001 type Capability
-                  title "V2 Changed"
-                element CP-5002 type Capability
-                  title "V2 Added"
+                element CP-5001 type Capability {
+                  title: "V2 Changed";
+                }
+                element CP-5002 type Capability {
+                  title: "V2 Added";
+                }
                 """;
 
         // Commit both to get Git SHAs
@@ -423,8 +444,9 @@ class DslApiControllerTest {
     void createBranchForksDocument() throws Exception {
         // First create a commit on the source branch
         String dsl = """
-                element CP-6001 type Capability
-                  title "Branch Source"
+                element CP-6001 type Capability {
+                  title: "Branch Source";
+                }
                 """;
         mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
@@ -456,14 +478,17 @@ class DslApiControllerTest {
         // Use materialize endpoint (not commit) to get document IDs,
         // since materialize stores ArchitectureDslDocument in JPA
         String dsl1 = """
-                element CP-7001 type Capability
-                  title "Incr V1"
+                element CP-7001 type Capability {
+                  title: "Incr V1";
+                }
                 """;
         String dsl2 = """
-                element CP-7001 type Capability
-                  title "Incr V1"
-                element CP-7002 type Capability
-                  title "Incr Added"
+                element CP-7001 type Capability {
+                  title: "Incr V1";
+                }
+                element CP-7002 type Capability {
+                  title: "Incr Added";
+                }
                 """;
 
         var result1 = mockMvc.perform(post("/api/dsl/materialize")
@@ -494,14 +519,17 @@ class DslApiControllerTest {
     @Test
     void textDiffBetweenTwoCommits() throws Exception {
         String dsl1 = """
-                element CP-8001 type Capability
-                  title "TextDiff V1"
+                element CP-8001 type Capability {
+                  title: "TextDiff V1";
+                }
                 """;
         String dsl2 = """
-                element CP-8001 type Capability
-                  title "TextDiff V2 Changed"
-                element CP-8002 type Capability
-                  title "TextDiff Added"
+                element CP-8001 type Capability {
+                  title: "TextDiff V2 Changed";
+                }
+                element CP-8002 type Capability {
+                  title: "TextDiff Added";
+                }
                 """;
 
         var result1 = mockMvc.perform(post("/api/dsl/commit")
@@ -538,8 +566,9 @@ class DslApiControllerTest {
     void cherryPickCommitOntoNewBranch() throws Exception {
         // Create a common base commit
         String baseDsl = """
-                element CP-9000 type Capability
-                  title "Cherry Base"
+                element CP-9000 type Capability {
+                  title: "Cherry Base";
+                }
                 """;
         mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
@@ -555,10 +584,12 @@ class DslApiControllerTest {
 
         // Add a second commit on cherry-source (this is the one we'll cherry-pick)
         String dsl2 = """
-                element CP-9000 type Capability
-                  title "Cherry Base"
-                element CP-9001 type Capability
-                  title "Cherry Source Added"
+                element CP-9000 type Capability {
+                  title: "Cherry Base";
+                }
+                element CP-9001 type Capability {
+                  title: "Cherry Source Added";
+                }
                 """;
         var commitResult = mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
@@ -583,8 +614,9 @@ class DslApiControllerTest {
     void cherryPickInvalidCommitReturnsBadRequest() throws Exception {
         // Target branch must exist first
         String dsl = """
-                element CP-9010 type Capability
-                  title "Target for bad cherry-pick"
+                element CP-9010 type Capability {
+                  title: "Target for bad cherry-pick";
+                }
                 """;
         mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
@@ -603,8 +635,9 @@ class DslApiControllerTest {
     void mergeBranchesSucceeds() throws Exception {
         // Create a common base commit
         String baseDsl = """
-                element CP-9100 type Capability
-                  title "Merge Base"
+                element CP-9100 type Capability {
+                  title: "Merge Base";
+                }
                 """;
         mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
@@ -620,10 +653,12 @@ class DslApiControllerTest {
 
         // Add a second commit on merge-from
         String dsl2 = """
-                element CP-9100 type Capability
-                  title "Merge Base"
-                element CP-9101 type Capability
-                  title "From Branch Added"
+                element CP-9100 type Capability {
+                  title: "Merge Base";
+                }
+                element CP-9101 type Capability {
+                  title: "From Branch Added";
+                }
                 """;
         mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
@@ -644,8 +679,9 @@ class DslApiControllerTest {
     void mergeNonExistentBranchReturnsBadRequest() throws Exception {
         // Create target branch
         String dsl = """
-                element CP-9110 type Capability
-                  title "Merge target"
+                element CP-9110 type Capability {
+                  title: "Merge target";
+                }
                 """;
         mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
@@ -662,8 +698,9 @@ class DslApiControllerTest {
     @Test
     void getGitHeadReturnsDslContent() throws Exception {
         String dsl = """
-                element CP-9201 type Capability
-                  title "Git Head Test"
+                element CP-9201 type Capability {
+                  title: "Git Head Test";
+                }
                 """;
         mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
@@ -687,8 +724,9 @@ class DslApiControllerTest {
     @Test
     void getGitCommitReturnsDslContent() throws Exception {
         String dsl = """
-                element CP-9301 type Capability
-                  title "Git Commit Test"
+                element CP-9301 type Capability {
+                  title: "Git Commit Test";
+                }
                 """;
         var result = mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)
@@ -710,12 +748,15 @@ class DslApiControllerTest {
     @Test
     void indexAndSearchHistory() throws Exception {
         String dsl = """
-                element CP-9401 type Capability
-                  title "Indexable Cap"
-                relation CP-9401 REALIZES CR-9402
-                  status proposed
-                element CR-9402 type CoreService
-                  title "Indexable Svc"
+                element CP-9401 type Capability {
+                  title: "Indexable Cap";
+                }
+                relation CP-9401 REALIZES CR-9402 {
+                  status: proposed;
+                }
+                element CR-9402 type CoreService {
+                  title: "Indexable Svc";
+                }
                 """;
         mockMvc.perform(post("/api/dsl/commit")
                         .contentType(MediaType.TEXT_PLAIN)

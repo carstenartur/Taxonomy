@@ -937,60 +937,67 @@ The **Architecture DSL** is a text-based domain-specific language for describing
 
 ### DSL Format Overview
 
-DSL documents use the `.taxdsl` format. A document consists of an optional `meta` header followed by blocks for elements, relations, requirements, mappings, views, and evidence.
+DSL documents use the `.taxdsl` format. A document consists of an optional `meta` block followed by brace-delimited blocks for elements, relations, requirements, mappings, views, and evidence. Blocks use `{` `}` delimiters and properties use `key: value;` syntax.
 
 **Example document:**
 
 ```
-meta
-  language "taxdsl"
-  version "1.0"
-  namespace "mission.secure-voice"
+meta {
+  language: "taxdsl";
+  version: "2.0";
+  namespace: "mission.secure-voice";
+}
 
-element CP-1023 type Capability
-  title "Communication and Information System Capabilities"
-  description "Ability to provide communication and information systems"
-  taxonomy "Capabilities"
+element CP-1023 type Capability {
+  title: "Communication and Information System Capabilities";
+  description: "Ability to provide communication and information systems";
+  taxonomy: "Capabilities";
 
-  x-owner "CIS"
-  x-criticality "high"
+  x-owner: "CIS";
+  x-criticality: "high";
+}
 
-element BP-1327 type Process
-  title "Enable"
-  description "Enablement of operations"
-  taxonomy "Business Processes"
+element BP-1327 type Process {
+  title: "Enable";
+  description: "Enablement of operations";
+  taxonomy: "Business Processes";
+}
 
-relation CP-1023 REALIZES BP-1327
-  status accepted
-  confidence 0.83
-  provenance "manual"
+relation CP-1023 REALIZES BP-1327 {
+  status: accepted;
+  confidence: 0.83;
+  provenance: "manual";
+}
 
-requirement REQ-001
-  title "Secure voice communications for deployed forces"
-  text "Provide secure voice communications for deployed joint forces"
+requirement REQ-001 {
+  title: "Secure voice communications for deployed forces";
+  text: "Provide secure voice communications for deployed joint forces";
+}
 
-mapping REQ-001 -> CP-1023
-  score 0.92
-  source "llm"
+mapping REQ-001 -> CP-1023 {
+  score: 0.92;
+  source: "llm";
+}
 
-view secure-voice-overview
-  title "Secure Voice Architecture Overview"
-  include CP-1023
-  include BP-1327
-  layout layered
+view secure-voice-overview {
+  title: "Secure Voice Architecture Overview";
+  include: CP-1023;
+  include: BP-1327;
+  layout: layered;
+}
 ```
 
 ### Block Types
 
 | Block | Header syntax | Description |
 |---|---|---|
-| `meta` | `meta` | Document metadata: language, version, namespace |
-| `element` | `element <ID> type <TypeName>` | Architecture element; ID must be a valid taxonomy code from the workbook |
-| `relation` | `relation <SourceID> <RelType> <TargetID>` | Directed relation between two elements |
-| `requirement` | `requirement <ID>` | Business requirement text |
-| `mapping` | `mapping <ReqID> -> <ElementID>` | Requirement-to-element mapping with score |
-| `view` | `view <ID>` | Named subset of elements for diagram generation |
-| `evidence` | `evidence <ID> for relation <Src> <Type> <Tgt>` | Supporting evidence for a relation |
+| `meta` | `meta {` | Document metadata: language, version, namespace |
+| `element` | `element <ID> type <TypeName> {` | Architecture element; ID must be a valid taxonomy code from the workbook |
+| `relation` | `relation <SourceID> <RelType> <TargetID> {` | Directed relation between two elements |
+| `requirement` | `requirement <ID> {` | Business requirement text |
+| `mapping` | `mapping <ReqID> -> <ElementID> {` | Requirement-to-element mapping with score |
+| `view` | `view <ID> {` | Named subset of elements for diagram generation |
+| `evidence` | `evidence <ID> {` | Supporting evidence for a relation; target specified via `for-relation` property |
 
 ### Element Types
 
@@ -1014,12 +1021,13 @@ See [§13 Relation Types Reference](#13-relation-types-reference) for the full l
 Any property starting with `x-` is treated as an **extension attribute**. Extensions are preserved across round-trips and are not validated — they provide a user-defined extensibility mechanism:
 
 ```
-element CP-1023 type Capability
-  title "Communication and Information System Capabilities"
+element CP-1023 type Capability {
+  title: "Communication and Information System Capabilities";
 
-  x-owner "CIS"
-  x-criticality "high"
-  x-lifecycle "target"
+  x-owner: "CIS";
+  x-criticality: "high";
+  x-lifecycle: "target";
+}
 ```
 
 ### Serialization Guarantees

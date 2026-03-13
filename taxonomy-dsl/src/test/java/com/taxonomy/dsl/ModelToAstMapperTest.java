@@ -42,10 +42,10 @@ class ModelToAstMapperTest {
         DocumentAst doc = mapper.toDocument(model, "test");
         String dsl = serializer.serialize(doc);
 
-        assertThat(dsl).contains("element CP-1023 type Capability");
-        assertThat(dsl).contains("title \"Test\"");
-        assertThat(dsl).contains("description \"Description\"");
-        assertThat(dsl).contains("x-owner \"CIS\"");
+        assertThat(dsl).contains("element CP-1023 type Capability {");
+        assertThat(dsl).contains("title: \"Test\"");
+        assertThat(dsl).contains("description: \"Description\"");
+        assertThat(dsl).contains("x-owner: \"CIS\"");
     }
 
     @Test
@@ -59,9 +59,9 @@ class ModelToAstMapperTest {
         DocumentAst doc = mapper.toDocument(model, "test");
         String dsl = serializer.serialize(doc);
 
-        assertThat(dsl).contains("relation CR-1011 SUPPORTS BP-1327");
-        assertThat(dsl).contains("status proposed");
-        assertThat(dsl).contains("confidence 0.76");
+        assertThat(dsl).contains("relation CR-1011 SUPPORTS BP-1327 {");
+        assertThat(dsl).contains("status: proposed;");
+        assertThat(dsl).contains("confidence: 0.76;");
     }
 
     @Test
@@ -75,11 +75,11 @@ class ModelToAstMapperTest {
         DocumentAst doc = mapper.toDocument(model, "test");
         String dsl = serializer.serialize(doc);
 
-        assertThat(dsl).contains("view overview");
-        assertThat(dsl).contains("title \"Architecture Overview\"");
-        assertThat(dsl).contains("include \"CP-1023\"");
-        assertThat(dsl).contains("include \"BP-1327\"");
-        assertThat(dsl).contains("layout layered");
+        assertThat(dsl).contains("view overview {");
+        assertThat(dsl).contains("title: \"Architecture Overview\"");
+        assertThat(dsl).contains("include: \"CP-1023\"");
+        assertThat(dsl).contains("include: \"BP-1327\"");
+        assertThat(dsl).contains("layout: layered;");
     }
 
     @Test
@@ -144,10 +144,11 @@ class ModelToAstMapperTest {
         DocumentAst doc = mapper.toDocument(model, "test");
         String dsl = serializer.serialize(doc);
 
-        assertThat(dsl).contains("evidence EV-001 for relation CR-1011 SUPPORTS BP-1327");
-        assertThat(dsl).contains("type LLM");
-        assertThat(dsl).contains("model \"gpt-4.1-mini\"");
-        assertThat(dsl).contains("confidence 0.76");
+        assertThat(dsl).contains("evidence EV-001 {");
+        assertThat(dsl).contains("for-relation: \"CR-1011 SUPPORTS BP-1327\";");
+        assertThat(dsl).contains("type: LLM;");
+        assertThat(dsl).contains("model: \"gpt-4.1-mini\"");
+        assertThat(dsl).contains("confidence: 0.76;");
     }
 
     @Test
@@ -158,9 +159,9 @@ class ModelToAstMapperTest {
         DocumentAst doc = mapper.toDocument(model, "mission.secure-voice");
         String dsl = serializer.serialize(doc);
 
-        assertThat(dsl).contains("meta");
-        assertThat(dsl).contains("language \"taxdsl\"");
-        assertThat(dsl).contains("version \"1.0\"");
-        assertThat(dsl).contains("namespace \"mission.secure-voice\"");
+        assertThat(dsl).contains("meta {");
+        assertThat(dsl).contains("language: \"taxdsl\"");
+        assertThat(dsl).contains("version: \"2.0\"");
+        assertThat(dsl).contains("namespace: \"mission.secure-voice\"");
     }
 }

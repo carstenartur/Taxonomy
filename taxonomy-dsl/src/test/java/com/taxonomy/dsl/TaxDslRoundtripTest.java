@@ -28,40 +28,47 @@ class TaxDslRoundtripTest {
     @Test
     void roundtripFullDocument() {
         String original = """
-                meta
-                  language "taxdsl"
-                  version "1.0"
-                  namespace "mission.secure-voice"
-                
-                element CP-1023 type Capability
-                  title "Secure Communications Capability"
-                  description "Ability to provide secure communications"
-                  taxonomy "Capabilities"
-                
-                element BP-1327 type Process
-                  title "Conduct Operations"
-                  description "Execution of operations"
-                  taxonomy "Business Processes"
-                
-                relation CP-1023 REALIZES BP-1327
-                  status accepted
-                  confidence 0.83
-                  provenance "manual"
-                
-                requirement REQ-001
-                  title "Secure voice communications for deployed forces"
-                  text "Provide secure voice communications for deployed joint forces"
-                
-                mapping REQ-001 -> CP-1023
-                  score 0.92
-                  source "llm"
-                
-                view secure-voice-overview
-                  title "Secure Voice Architecture Overview"
-                  include REQ-001
-                  include CP-1023
-                  include BP-1327
-                  layout layered
+                meta {
+                  language: "taxdsl";
+                  version: "2.0";
+                  namespace: "mission.secure-voice";
+                }
+
+                element CP-1023 type Capability {
+                  title: "Secure Communications Capability";
+                  description: "Ability to provide secure communications";
+                  taxonomy: "Capabilities";
+                }
+
+                element BP-1327 type Process {
+                  title: "Conduct Operations";
+                  description: "Execution of operations";
+                  taxonomy: "Business Processes";
+                }
+
+                relation CP-1023 REALIZES BP-1327 {
+                  status: accepted;
+                  confidence: 0.83;
+                  provenance: "manual";
+                }
+
+                requirement REQ-001 {
+                  title: "Secure voice communications for deployed forces";
+                  text: "Provide secure voice communications for deployed joint forces";
+                }
+
+                mapping REQ-001 -> CP-1023 {
+                  score: 0.92;
+                  source: "llm";
+                }
+
+                view secure-voice-overview {
+                  title: "Secure Voice Architecture Overview";
+                  include: REQ-001;
+                  include: CP-1023;
+                  include: BP-1327;
+                  layout: layered;
+                }
                 """;
 
         DocumentAst doc1 = parser.parse(original);
@@ -71,7 +78,7 @@ class TaxDslRoundtripTest {
         // Verify structural equivalence
         assertThat(doc2.getMeta()).isNotNull();
         assertThat(doc2.getMeta().language()).isEqualTo("taxdsl");
-        assertThat(doc2.getMeta().version()).isEqualTo("1.0");
+        assertThat(doc2.getMeta().version()).isEqualTo("2.0");
         assertThat(doc2.getMeta().namespace()).isEqualTo("mission.secure-voice");
 
         assertThat(doc2.blocksOfKind("element")).hasSize(2);
@@ -99,10 +106,11 @@ class TaxDslRoundtripTest {
     @Test
     void roundtripPreservesExtensionAttributes() {
         String original = """
-                element CP-1023 type Capability
-                  title "Test"
-                  x-owner "CIS"
-                  x-criticality "high"
+                element CP-1023 type Capability {
+                  title: "Test";
+                  x-owner: "CIS";
+                  x-criticality: "high";
+                }
                 """;
 
         DocumentAst doc1 = parser.parse(original);
@@ -117,9 +125,10 @@ class TaxDslRoundtripTest {
     @Test
     void roundtripPreservesUnknownBlockTypes() {
         String original = """
-                constraint CON-001
-                  title "Max latency"
-                  value "200ms"
+                constraint CON-001 {
+                  title: "Max latency";
+                  value: "200ms";
+                }
                 """;
 
         DocumentAst doc1 = parser.parse(original);
@@ -134,14 +143,16 @@ class TaxDslRoundtripTest {
     @Test
     void roundtripDoubleSerializationIsStable() {
         String original = """
-                meta
-                  language "taxdsl"
-                  version "1.0"
-                  namespace "test"
-                
-                element CP-1023 type Capability
-                  title "Test"
-                  description "Description"
+                meta {
+                  language: "taxdsl";
+                  version: "2.0";
+                  namespace: "test";
+                }
+
+                element CP-1023 type Capability {
+                  title: "Test";
+                  description: "Description";
+                }
                 """;
 
         DocumentAst doc1 = parser.parse(original);
@@ -156,11 +167,13 @@ class TaxDslRoundtripTest {
     @Test
     void roundtripEvidenceBlock() {
         String original = """
-                evidence EV-001 for relation CR-1011 SUPPORTS BP-1327
-                  type LLM
-                  model "gpt-4.1-mini"
-                  confidence 0.76
-                  summary "The service supports the process."
+                evidence EV-001 {
+                  for-relation: CR-1011 SUPPORTS BP-1327;
+                  type: LLM;
+                  model: "gpt-4.1-mini";
+                  confidence: 0.76;
+                  summary: "The service supports the process.";
+                }
                 """;
 
         DocumentAst doc1 = parser.parse(original);
@@ -170,7 +183,8 @@ class TaxDslRoundtripTest {
         assertThat(doc2.getBlocks()).hasSize(1);
         var block = doc2.getBlocks().get(0);
         assertThat(block.getKind()).isEqualTo("evidence");
-        assertThat(block.getHeaderTokens()).contains("EV-001", "for", "relation");
+        assertThat(block.getHeaderTokens()).containsExactly("EV-001");
+        assertThat(block.property("for-relation")).isEqualTo("CR-1011 SUPPORTS BP-1327");
         assertThat(block.property("confidence")).isEqualTo("0.76");
     }
 
@@ -178,9 +192,10 @@ class TaxDslRoundtripTest {
     void roundtripEscapedQuotes() {
         // Create a document with escaped quotes in values
         String original = """
-                element CP-1023 type Capability
-                  title "He said \\"hello\\""
-                  description "Path: C:\\\\Users\\\\test"
+                element CP-1023 type Capability {
+                  title: "He said \\"hello\\"";
+                  description: "Path: C:\\\\Users\\\\test";
+                }
                 """;
 
         DocumentAst doc1 = parser.parse(original);
@@ -201,18 +216,22 @@ class TaxDslRoundtripTest {
     void roundtripDeterministicBlockOrdering() {
         // Input with blocks in non-canonical order
         String original = """
-                meta
-                  language "taxdsl"
-                  version "1.0"
+                meta {
+                  language: "taxdsl";
+                  version: "2.0";
+                }
 
-                relation CP-1023 REALIZES BP-1327
-                  status accepted
+                relation CP-1023 REALIZES BP-1327 {
+                  status: accepted;
+                }
 
-                element CP-1023 type Capability
-                  title "Cap One"
+                element CP-1023 type Capability {
+                  title: "Cap One";
+                }
 
-                element BP-1327 type Process
-                  title "Proc One"
+                element BP-1327 type Process {
+                  title: "Proc One";
+                }
                 """;
 
         DocumentAst doc1 = parser.parse(original);

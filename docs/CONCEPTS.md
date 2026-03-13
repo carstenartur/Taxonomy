@@ -201,7 +201,7 @@ The `RelationCompatibilityMatrix` enforces which source and target root categori
 
 ## Architecture DSL
 
-A text-based domain-specific language for describing architecture models. DSL documents use the `.taxdsl` format with `STRUCT:`, `REL:`, and `DOM:` prefixed blocks for elements, relations, and domain metadata respectively.
+A text-based domain-specific language for describing architecture models. DSL documents use the `.taxdsl` format with brace-delimited blocks (`element ... {`, `relation ... {`, `meta {`) and `key: value;` property syntax for elements, relations, and domain metadata.
 
 DSL documents are version-controlled using JGit with all Git objects stored in the database (not the filesystem). The system supports branching, merging, cherry-picking, and semantic diffs between versions.
 
