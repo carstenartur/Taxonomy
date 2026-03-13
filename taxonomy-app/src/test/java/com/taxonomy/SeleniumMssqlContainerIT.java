@@ -23,7 +23,7 @@ class SeleniumMssqlContainerIT extends AbstractSeleniumContainerIT {
 
     @Override
     protected GenericContainer<?> createDbContainer(Network net) {
-        return new MSSQLServerContainer("mcr.microsoft.com/mssql/server:2022-latest")
+        return new MSSQLServerContainer("mcr.microsoft.com/mssql/server:2022-CU18-ubuntu-22.04")
                 .withNetwork(net)
                 .withNetworkAliases("db")
                 .withPassword(MSSQL_PASSWORD)
@@ -33,15 +33,11 @@ class SeleniumMssqlContainerIT extends AbstractSeleniumContainerIT {
     @Override
     protected GenericContainer<?> createAppContainer(Network net) {
         return ContainerTestUtils.appContainer(net)
+                .withEnv("SPRING_PROFILES_ACTIVE", "mssql")
                 .withEnv("TAXONOMY_DATASOURCE_URL",
-                        "jdbc:sqlserver://db:1433;databaseName=master;encrypt=false;trustServerCertificate=true")
-                .withEnv("SPRING_DATASOURCE_DRIVER_CLASS_NAME",
-                        "com.microsoft.sqlserver.jdbc.SQLServerDriver")
-                .withEnv("SPRING_JPA_DATABASE_PLATFORM",
-                        "org.hibernate.dialect.SQLServerDialect")
+                        "jdbc:sqlserver://db:1433;databaseName=master;encrypt=false;trustServerCertificate=true;loginTimeout=30")
                 .withEnv("SPRING_DATASOURCE_USERNAME", "sa")
                 .withEnv("SPRING_DATASOURCE_PASSWORD", MSSQL_PASSWORD)
-                .withEnv("SPRING_DATASOURCE_TYPE", "com.zaxxer.hikari.HikariDataSource")
                 .withEnv("TAXONOMY_DDL_AUTO", "create");
     }
 }

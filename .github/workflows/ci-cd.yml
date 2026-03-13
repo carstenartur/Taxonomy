@@ -34,7 +34,7 @@ jobs:
           cache: 'maven'
 
       - name: Build and run tests
-        run: mvn -q verify -DexcludedGroups="db-postgres,db-mssql,db-oracle,real-llm"
+        run: mvn -q verify -DexcludedGroups="db-postgres,db-oracle,real-llm"
 
       - name: Generate documentation screenshots
         if: ${{ github.event.inputs.generate-screenshots == 'true' }}
