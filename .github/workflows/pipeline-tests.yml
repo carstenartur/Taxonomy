@@ -1,0 +1,35 @@
+name: Pipeline Integration Tests (LOCAL_ONNX)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'taxonomy-app/src/main/java/com/taxonomy/service/**'
+      - 'taxonomy-app/src/main/java/com/taxonomy/controller/**'
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Cache DJL embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.djl.ai
+          key: djl-minilm-v2-${{ runner.os }}
+
+      - name: Build JAR
+        run: mvn package -DskipTests -q
+
+      - name: Run Pipeline Tests
+        run: mvn failsafe:integration-test failsafe:verify -DrunOnnxTests -Dit.test=LocalOnnxPipelineIT

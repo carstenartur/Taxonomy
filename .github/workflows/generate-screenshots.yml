@@ -23,6 +23,12 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
+      - name: Cache DJL embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.djl.ai
+          key: djl-minilm-v2-${{ runner.os }}
+
       - name: Build JAR
         run: mvn package -DskipTests -q
 
