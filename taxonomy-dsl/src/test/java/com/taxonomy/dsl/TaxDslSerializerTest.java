@@ -166,4 +166,96 @@ class TaxDslSerializerTest {
 
         assertThat(result1).isEqualTo(result2);
     }
+
+    @Test
+    void serializeEscapesQuotesInValues() {
+        BlockAst block = new BlockAst("element",
+                List.of("CP-1001", "type", "Capability"),
+                List.of(
+                        new PropertyAst("title", "He said \"hello\"", null),
+                        new PropertyAst("description", "Path: C:\\Users\\test", null)
+                ),
+                List.of(), Map.of(), null);
+
+        DocumentAst doc = new DocumentAst(null, List.of(block));
+        String result = serializer.serialize(doc);
+
+        assertThat(result).contains("  title \"He said \\\"hello\\\"\"");
+        assertThat(result).contains("  description \"Path: C:\\\\Users\\\\test\"");
+    }
+
+    @Test
+    void serializeBlocksSortedByKindThenId() {
+        // Intentionally out of order: relation before element, BP before CP
+        BlockAst relation = new BlockAst("relation",
+                List.of("CP-1001", "REALIZES", "BP-1040"),
+                List.of(new PropertyAst("status", "accepted", null)),
+                List.of(), Map.of(), null);
+        BlockAst element2 = new BlockAst("element",
+                List.of("CP-1001", "type", "Capability"),
+                List.of(new PropertyAst("title", "Cap One", null)),
+                List.of(), Map.of(), null);
+        BlockAst element1 = new BlockAst("element",
+                List.of("BP-1040", "type", "Process"),
+                List.of(new PropertyAst("title", "Proc One", null)),
+                List.of(), Map.of(), null);
+
+        DocumentAst doc = new DocumentAst(null, List.of(relation, element2, element1));
+        String result = serializer.serialize(doc);
+
+        // Elements should come before relations; BP-1040 before CP-1001
+        int elemBp = result.indexOf("element BP-1040");
+        int elemCp = result.indexOf("element CP-1001");
+        int rel = result.indexOf("relation CP-1001");
+
+        assertThat(elemBp).isLessThan(elemCp);
+        assertThat(elemCp).isLessThan(rel);
+    }
+
+    @Test
+    void serializePropertiesInCanonicalOrder() {
+        // Properties given in non-canonical order: description before title
+        BlockAst block = new BlockAst("element",
+                List.of("CP-1001", "type", "Capability"),
+                List.of(
+                        new PropertyAst("description", "A description", null),
+                        new PropertyAst("taxonomy", "CP", null),
+                        new PropertyAst("title", "A title", null)
+                ),
+                List.of(), Map.of(), null);
+
+        DocumentAst doc = new DocumentAst(null, List.of(block));
+        String result = serializer.serialize(doc);
+
+        // Canonical order for element: title, description, taxonomy
+        int titlePos = result.indexOf("  title ");
+        int descPos = result.indexOf("  description ");
+        int taxPos = result.indexOf("  taxonomy ");
+
+        assertThat(titlePos).isLessThan(descPos);
+        assertThat(descPos).isLessThan(taxPos);
+    }
+
+    @Test
+    void serializeExtensionsSortedAlphabetically() {
+        Map<String, String> extensions = new LinkedHashMap<>();
+        extensions.put("x-zebra", "last");
+        extensions.put("x-alpha", "first");
+
+        BlockAst block = new BlockAst("element",
+                List.of("CP-1001"),
+                List.of(
+                        new PropertyAst("title", "Test", null),
+                        new PropertyAst("x-zebra", "last", null),
+                        new PropertyAst("x-alpha", "first", null)
+                ),
+                List.of(), extensions, null);
+
+        DocumentAst doc = new DocumentAst(null, List.of(block));
+        String result = serializer.serialize(doc);
+
+        int alphaPos = result.indexOf("x-alpha");
+        int zebraPos = result.indexOf("x-zebra");
+        assertThat(alphaPos).isLessThan(zebraPos);
+    }
 }

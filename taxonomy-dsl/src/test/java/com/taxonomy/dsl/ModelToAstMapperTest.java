@@ -119,8 +119,9 @@ class ModelToAstMapperTest {
         assertThat(restored.getMappings()).hasSize(1);
         assertThat(restored.getViews()).hasSize(1);
 
-        // Verify content
-        assertThat(restored.getElements().get(0).getId()).isEqualTo("CP-1001");
+        // Verify content (elements sorted by ID in serialized output: BP-1040 before CP-1001)
+        assertThat(restored.getElements()).extracting(ArchitectureElement::getId)
+                .containsExactlyInAnyOrder("CP-1001", "BP-1040");
         assertThat(restored.getRelations().get(0).getRelationType()).isEqualTo("REALIZES");
         assertThat(restored.getRequirements().get(0).getId()).isEqualTo("REQ-001");
         assertThat(restored.getMappings().get(0).getScore()).isEqualTo(0.92);
