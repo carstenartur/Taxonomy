@@ -31,7 +31,9 @@
 23. [Error Response Schema](#23-error-response-schema)
 24. [OpenAPI / Swagger UI](#24-openapi--swagger-ui)
 25. [Best Practices](#25-best-practices)
-26. [Glossary](#26-glossary)
+26. [API Versioning](#26-api-versioning)
+27. [Curl Examples](#27-curl-examples)
+28. [Glossary](#28-glossary)
 
 ---
 
@@ -1412,11 +1414,329 @@ Proposals, Graph Queries, Quality Metrics, Export, Administration, Embedding).
 
 ---
 
-## 26. Glossary
+## 26. API Versioning
+
+The API is currently **unversioned** — all endpoints use the `/api/` prefix without a version number (e.g., `/api/taxonomy`, `/api/analyze`).
+
+### Current Strategy
+
+| Aspect | Decision |
+|---|---|
+| URL scheme | `/api/{resource}` (no version segment) |
+| Backwards compatibility | Maintained within each release; breaking changes are documented in the release notes |
+| Deprecation policy | Deprecated endpoints return a `Deprecation` header before removal in the next major release |
+| Content negotiation | Not used for versioning |
+
+### Rationale
+
+- The application is designed for **single-tenant, self-hosted deployment** where the client (browser UI) is always co-deployed with the server. This eliminates the multi-client version-skew problem that typically motivates API versioning.
+- The **OpenAPI specification** (`/v3/api-docs`) serves as the machine-readable contract for any external integrations.
+
+### Future Considerations
+
+If the API needs to support multiple concurrent versions (e.g., for third-party integrations or a public API), the recommended migration path is:
+
+1. **URL-based versioning**: Prefix endpoints with `/api/v2/...` for the new version, keeping `/api/...` as an alias for v1.
+2. **OpenAPI spec per version**: Generate separate specs for each version at `/v3/api-docs?group=v1` and `/v3/api-docs?group=v2`.
+3. **Router-level dispatch**: Use Spring's `@RequestMapping` with version prefixes on controller classes.
+
+---
+
+## 27. Curl Examples
+
+Quick-reference curl examples for common workflows. All examples assume the application runs on `http://localhost:8080`.
+
+### Taxonomy & Status
+
+```bash
+# Get full taxonomy tree
+curl http://localhost:8080/api/taxonomy
+
+# Check AI/LLM provider status
+curl http://localhost:8080/api/ai-status
+
+# Check startup status
+curl http://localhost:8080/api/status/startup
+```
+
+### Analysis
+
+```bash
+# Standard analysis (POST, form-encoded)
+curl -X POST http://localhost:8080/api/analyze \
+  -d "businessText=Provide+secure+voice+communications&includeArchitectureView=true"
+
+# Streaming analysis (SSE)
+curl -N "http://localhost:8080/api/analyze-stream?businessText=voice+comms+for+deployed+forces"
+
+# Interactive mode — analyze children of a specific node
+curl "http://localhost:8080/api/analyze-node?parentCode=C3_ROOT&businessText=voice+comms"
+
+# Leaf justification
+curl -X POST http://localhost:8080/api/justify-leaf \
+  -H "Content-Type: application/json" \
+  -d '{"nodeCode":"SVC_VOICE_001","businessText":"Secure voice communications","scores":{"SVC_VOICE_001":87},"reasons":{"SVC_VOICE_001":"Matched on voice"}}'
+```
+
+### Search
+
+```bash
+# Full-text search
+curl "http://localhost:8080/api/search?q=voice+communications&maxResults=20"
+
+# Semantic search (requires embedding enabled)
+curl "http://localhost:8080/api/search/semantic?q=voice+communications&maxResults=20"
+
+# Hybrid search (RRF)
+curl "http://localhost:8080/api/search/hybrid?q=voice+communications&maxResults=20"
+
+# Find similar nodes
+curl "http://localhost:8080/api/search/similar/SVC_VOICE_001?topK=5"
+
+# Graph-semantic search
+curl "http://localhost:8080/api/search/graph?q=voice+communications&maxResults=20"
+
+# Check embedding status
+curl http://localhost:8080/api/embedding/status
+```
+
+### Graph Explorer
+
+```bash
+# Upstream neighbourhood
+curl "http://localhost:8080/api/graph/node/SVC_VOICE_001/upstream?maxHops=2"
+
+# Downstream neighbourhood
+curl "http://localhost:8080/api/graph/node/SVC_VOICE_001/downstream?maxHops=2"
+
+# Failure impact analysis
+curl "http://localhost:8080/api/graph/node/SVC_VOICE_001/failure-impact?maxHops=3"
+
+# Enriched failure impact (with requirement coverage correlation)
+curl "http://localhost:8080/api/graph/node/SVC_VOICE_001/enriched-failure-impact?maxHops=3"
+
+# Requirement impact analysis
+curl -X POST http://localhost:8080/api/graph/impact \
+  -H "Content-Type: application/json" \
+  -d '{"scores":{"SVC_VOICE_001":87,"CAP_C2_003":72},"businessText":"Secure voice","maxHops":2}'
+```
+
+### Relations & Proposals
+
+```bash
+# List all relations
+curl http://localhost:8080/api/relations
+
+# List relations filtered by type
+curl "http://localhost:8080/api/relations?type=REALIZES"
+
+# Relations for a specific node
+curl http://localhost:8080/api/node/CP-1/relations
+
+# Get relation count
+curl http://localhost:8080/api/relations/count
+
+# Create a relation manually
+curl -X POST http://localhost:8080/api/relations \
+  -H "Content-Type: application/json" \
+  -d '{"sourceCode":"CP-1","targetCode":"CR-5","relationType":"REALIZES","provenance":"MANUAL"}'
+
+# Trigger relation proposals
+curl -X POST http://localhost:8080/api/proposals/propose \
+  -H "Content-Type: application/json" \
+  -d '{"sourceCode":"CR-5","relationType":"SUPPORTS","limit":"10"}'
+
+# List all proposals
+curl http://localhost:8080/api/proposals
+
+# List pending proposals only
+curl http://localhost:8080/api/proposals/pending
+
+# Accept a proposal
+curl -X POST http://localhost:8080/api/proposals/1/accept
+
+# Reject a proposal
+curl -X POST http://localhost:8080/api/proposals/1/reject
+
+# Revert a decision
+curl -X POST http://localhost:8080/api/proposals/1/revert
+
+# Bulk accept/reject
+curl -X POST http://localhost:8080/api/proposals/bulk \
+  -H "Content-Type: application/json" \
+  -d '{"ids":[1,2,3],"action":"ACCEPT"}'
+```
+
+### Quality & Coverage
+
+```bash
+# Quality dashboard
+curl http://localhost:8080/api/relations/metrics
+
+# Quality by type
+curl http://localhost:8080/api/relations/metrics/by-type
+
+# Quality by provenance
+curl http://localhost:8080/api/relations/metrics/by-provenance
+
+# Top rejected proposals
+curl "http://localhost:8080/api/relations/metrics/top-rejected?limit=10"
+
+# Record requirement coverage
+curl -X POST http://localhost:8080/api/coverage/record \
+  -H "Content-Type: application/json" \
+  -d '{"requirementId":"REQ-101","requirementText":"Secure comms","scores":{"CP-1":85,"BP-3":72},"minScore":50}'
+
+# Coverage statistics
+curl http://localhost:8080/api/coverage/statistics
+
+# Coverage density map
+curl http://localhost:8080/api/coverage/density
+
+# Coverage for a specific node
+curl http://localhost:8080/api/coverage/node/CP-1
+```
+
+### Gap Analysis, Recommendations & Patterns
+
+```bash
+# Gap analysis
+curl -X POST http://localhost:8080/api/gap/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"scores":{"CP":85,"BP":72},"businessText":"Secure voice","minScore":50}'
+
+# Architecture recommendation
+curl -X POST http://localhost:8080/api/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"scores":{"CP":85,"BP":72},"businessText":"Secure voice","minScore":50}'
+
+# Pattern detection (by node)
+curl "http://localhost:8080/api/patterns/detect?nodeCode=CP"
+
+# Pattern detection (by scores)
+curl -X POST http://localhost:8080/api/patterns/detect \
+  -H "Content-Type: application/json" \
+  -d '{"scores":{"CP":85,"BP":72},"minScore":50}'
+```
+
+### Export & Import
+
+```bash
+# Export scores as JSON
+curl -X POST http://localhost:8080/api/scores/export \
+  -H "Content-Type: application/json" \
+  -d '{"requirement":"Secure voice","scores":{"CO":90,"CR":70},"reasons":{"CO":"Voice in scope"},"provider":"GEMINI"}'
+
+# Import scores from JSON
+curl -X POST http://localhost:8080/api/scores/import \
+  -H "Content-Type: application/json" \
+  -d '{"version":1,"requirement":"Secure voice","scores":{"CO":90,"CR":70}}'
+
+# Export Visio diagram (requires architectureView from POST /api/analyze)
+curl -X POST http://localhost:8080/api/diagram/visio \
+  -H "Content-Type: application/json" \
+  -d '{"anchors":[],"elements":[],"relationships":[]}' --output architecture.vsdx
+
+# Export ArchiMate XML
+curl -X POST http://localhost:8080/api/diagram/archimate \
+  -H "Content-Type: application/json" \
+  -d '{"anchors":[],"elements":[],"relationships":[]}' --output architecture.xml
+
+# Export Mermaid flowchart
+curl -X POST http://localhost:8080/api/diagram/mermaid \
+  -H "Content-Type: application/json" \
+  -d '{"businessText":"Secure voice"}'
+
+# Export report (Markdown, HTML, DOCX, JSON)
+curl -X POST http://localhost:8080/api/report/markdown \
+  -H "Content-Type: application/json" \
+  -d '{"businessText":"Secure voice","scores":{"CP-3":92}}' --output report.md
+
+curl -X POST http://localhost:8080/api/report/html \
+  -H "Content-Type: application/json" \
+  -d '{"businessText":"Secure voice","scores":{"CP-3":92}}' --output report.html
+
+# Import ArchiMate XML model
+curl -X POST http://localhost:8080/api/import/archimate \
+  -F "file=@model.xml"
+```
+
+### Architecture DSL
+
+```bash
+# Export current architecture as DSL text
+curl http://localhost:8080/api/dsl/export
+
+# Get current architecture as JSON
+curl http://localhost:8080/api/dsl/current
+
+# Parse DSL text
+curl -X POST http://localhost:8080/api/dsl/parse \
+  -H "Content-Type: text/plain" \
+  -d 'meta
+  language "taxdsl"
+  version "1.0"
+element CP-1001 type Capability
+  title "Secure Voice"'
+
+# Validate DSL text
+curl -X POST http://localhost:8080/api/dsl/validate \
+  -H "Content-Type: text/plain" \
+  -d 'element CP-1001 type Capability'
+
+# Commit DSL to a branch
+curl -X POST http://localhost:8080/api/dsl/commit \
+  -H "Content-Type: application/json" \
+  -d '{"dslText":"element CP-1001 type Capability\n  title \"Secure Voice\"","branch":"main","message":"Add CP-1001"}'
+
+# List branches
+curl http://localhost:8080/api/dsl/branches
+
+# Get commit history
+curl "http://localhost:8080/api/dsl/history?branch=main"
+
+# Architecture summary
+curl http://localhost:8080/api/architecture/summary
+```
+
+### Administration
+
+```bash
+# Check admin auth status
+curl http://localhost:8080/api/admin/status
+
+# Verify admin password
+curl -X POST http://localhost:8080/api/admin/verify \
+  -H "Content-Type: application/json" \
+  -d '{"password":"your_admin_password"}'
+
+# Get LLM diagnostics (requires admin token)
+curl http://localhost:8080/api/diagnostics \
+  -H "X-Admin-Token: your_admin_password"
+
+# List prompt templates (requires admin token)
+curl http://localhost:8080/api/prompts \
+  -H "X-Admin-Token: your_admin_password"
+
+# Explanation trace for a single node
+curl -X POST http://localhost:8080/api/explain/CP-3 \
+  -H "Content-Type: application/json" \
+  -d '{"businessText":"Secure voice","scores":{"CP-3":92}}'
+
+# Explanation traces for all scored nodes
+curl -X POST http://localhost:8080/api/explain \
+  -H "Content-Type: application/json" \
+  -d '{"businessText":"Secure voice","scores":{"CP-3":92,"CO-2":88}}'
+```
+
+---
+
+## 28. Glossary
 
 | Term | Definition |
 |---|---|
 | **Anchor node** | A high-scoring leaf node that directly satisfies a business requirement; the starting point for architecture-view construction |
+| **Architecture DSL** | A text-based domain-specific language (`.taxdsl` format) for describing architecture models as versionable, diff-friendly source files. Backed by JGit for version control. |
 | **Architecture gap** | An expected relation (per the compatibility matrix) that is absent from the knowledge base |
 | **Architecture pattern** | A named, predefined chain of relation types through the taxonomy (e.g. Full Stack: CP → REALIZES → CR → SUPPORTS → BP → CONSUMES → IP) |
 | **Architecture recommendation** | An AI-generated proposal combining confirmed elements, gap analysis, and candidate suggestions |
@@ -1431,9 +1751,11 @@ Proposals, Graph Queries, Quality Metrics, Export, Administration, Embedding).
 | **Embedding** | A dense numeric vector that encodes the semantic meaning of text or a taxonomy node |
 | **Enriched failure impact** | Failure impact analysis enriched with requirement coverage data and an aggregated risk score |
 | **Hybrid search** | A retrieval strategy that merges full-text and semantic search rankings via Reciprocal Rank Fusion |
+| **Hypothesis** | A provisional relation generated during LLM analysis, following the lifecycle: PENDING → ACCEPTED/REJECTED/APPLIED |
 | **Information Product** | A specific, structured output of a business process (TOGAF Data Architecture) |
 | **KNN** | K-Nearest Neighbours — a vector search algorithm that finds the closest embeddings |
 | **LLM** | Large Language Model — the AI component used for scoring and justification |
+| **Materialization** | The process of converting DSL text into database entities (`TaxonomyRelation`, etc.) for use by the application |
 | **NAF** | NATO Architecture Framework — the standard for describing NATO architectures |
 | **ONNX** | Open Neural Network Exchange — an interoperable format for ML models |
 | **Pattern detection** | The process of checking whether predefined architecture patterns are complete or partially present in the relation graph |

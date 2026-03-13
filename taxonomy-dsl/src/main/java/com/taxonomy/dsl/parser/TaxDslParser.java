@@ -22,8 +22,13 @@ public class TaxDslParser {
     private static final Set<String> KNOWN_BLOCK_TYPES = Set.of(
             "meta", "element", "relation", "requirement", "mapping", "view", "evidence");
 
-    /** Pattern to extract a quoted string value. */
-    private static final Pattern QUOTED_VALUE = Pattern.compile("\"([^\"]*)\"");
+    /**
+     * Pattern to extract a quoted string value.
+     * Supports escaped quotes ({@code \"}) inside the string.
+     * Uses a possessive quantifier ({@code *+}) to prevent catastrophic
+     * backtracking (ReDoS) on malformed input.
+     */
+    private static final Pattern QUOTED_VALUE = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*+)\"");
 
     /**
      * Parse DSL text into a {@link DocumentAst}.
@@ -146,7 +151,7 @@ public class TaxDslParser {
             String rest = line.substring(firstSpace).strip();
             Matcher m = QUOTED_VALUE.matcher(rest);
             if (m.find()) {
-                value = m.group(1);
+                value = unescapeQuotedValue(m.group(1));
             } else {
                 value = rest;
             }
@@ -160,5 +165,26 @@ public class TaxDslParser {
                 .map(PropertyAst::value)
                 .findFirst()
                 .orElse(null);
+    }
+
+    /**
+     * Unescape a quoted string value: {@code \"} → {@code "}, {@code \\} → {@code \}.
+     */
+    private String unescapeQuotedValue(String raw) {
+        if (raw == null || raw.indexOf('\\') < 0) return raw;
+        StringBuilder sb = new StringBuilder(raw.length());
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (c == '\\' && i + 1 < raw.length()) {
+                char next = raw.charAt(i + 1);
+                if (next == '"' || next == '\\') {
+                    sb.append(next);
+                    i++;
+                    continue;
+                }
+            }
+            sb.append(c);
+        }
+        return sb.toString();
     }
 }

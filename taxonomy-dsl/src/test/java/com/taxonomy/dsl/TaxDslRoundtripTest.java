@@ -80,10 +80,11 @@ class TaxDslRoundtripTest {
         assertThat(doc2.blocksOfKind("mapping")).hasSize(1);
         assertThat(doc2.blocksOfKind("view")).hasSize(1);
 
-        // Verify element content preserved
-        var el = doc2.blocksOfKind("element").get(0);
-        assertThat(el.getHeaderTokens()).containsExactly("CP-1001", "type", "Capability");
-        assertThat(el.property("title")).isEqualTo("Secure Communications Capability");
+        // Verify element content preserved (elements sorted by ID: BP-1040 before CP-1001)
+        var elements = doc2.blocksOfKind("element");
+        var cpEl = elements.stream().filter(b -> b.getHeaderTokens().get(0).equals("CP-1001")).findFirst().orElseThrow();
+        assertThat(cpEl.getHeaderTokens()).containsExactly("CP-1001", "type", "Capability");
+        assertThat(cpEl.property("title")).isEqualTo("Secure Communications Capability");
 
         // Verify relation content preserved
         var rel = doc2.blocksOfKind("relation").get(0);
@@ -171,5 +172,59 @@ class TaxDslRoundtripTest {
         assertThat(block.getKind()).isEqualTo("evidence");
         assertThat(block.getHeaderTokens()).contains("EV-001", "for", "relation");
         assertThat(block.property("confidence")).isEqualTo("0.76");
+    }
+
+    @Test
+    void roundtripEscapedQuotes() {
+        // Create a document with escaped quotes in values
+        String original = """
+                element CP-1001 type Capability
+                  title "He said \\"hello\\""
+                  description "Path: C:\\\\Users\\\\test"
+                """;
+
+        DocumentAst doc1 = parser.parse(original);
+        assertThat(doc1.getBlocks().get(0).property("title")).isEqualTo("He said \"hello\"");
+
+        String serialized = serializer.serialize(doc1);
+        assertThat(serialized).contains("He said \\\"hello\\\"");
+
+        DocumentAst doc2 = parser.parse(serialized);
+        assertThat(doc2.getBlocks().get(0).property("title")).isEqualTo("He said \"hello\"");
+
+        // Verify double serialization is stable
+        String serialized2 = serializer.serialize(doc2);
+        assertThat(serialized2).isEqualTo(serialized);
+    }
+
+    @Test
+    void roundtripDeterministicBlockOrdering() {
+        // Input with blocks in non-canonical order
+        String original = """
+                meta
+                  language "taxdsl"
+                  version "1.0"
+
+                relation CP-1001 REALIZES BP-1040
+                  status accepted
+
+                element CP-1001 type Capability
+                  title "Cap One"
+
+                element BP-1040 type Process
+                  title "Proc One"
+                """;
+
+        DocumentAst doc1 = parser.parse(original);
+        String serialized = serializer.serialize(doc1);
+
+        // After serialization, blocks are sorted: elements first (BP before CP), then relations
+        assertThat(serialized.indexOf("element BP-1040")).isLessThan(serialized.indexOf("element CP-1001"));
+        assertThat(serialized.indexOf("element CP-1001")).isLessThan(serialized.indexOf("relation CP-1001"));
+
+        // Double serialization is stable
+        DocumentAst doc2 = parser.parse(serialized);
+        String serialized2 = serializer.serialize(doc2);
+        assertThat(serialized2).isEqualTo(serialized);
     }
 }

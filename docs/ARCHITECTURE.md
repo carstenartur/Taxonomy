@@ -14,6 +14,7 @@ This document describes the architecture of the Taxonomy Architecture Analyzer �
 - [CI / CD](#ci--cd)
 - [Database](#database)
 - [Export Formats](#export-formats)
+- [Detailed Architecture Diagrams](#detailed-architecture-diagrams)
 
 ---
 
@@ -234,3 +235,141 @@ Default: **10 requests per IP per minute** (configurable via `TAXONOMY_RATE_LIMI
 | **ArchiMate XML** | ArchiMate 3.x Model Exchange File Format XML, importable into Archi, BiZZdesign, MEGA, and other ArchiMate-compatible tools. |
 | **Visio `.vsdx`** | Microsoft Visio diagram package, compatible with Visio 2013 and later. |
 | **Mermaid flowchart** | Text-based Mermaid diagram (Markdown code block), renderable in GitHub, GitLab, Notion, Confluence, and most modern documentation platforms. |
+
+---
+
+## Detailed Architecture Diagrams
+
+### Request Lifecycle
+
+The following diagram shows the complete lifecycle of an analysis request, from user input through LLM scoring to diagram export:
+
+```mermaid
+sequenceDiagram
+    participant U as Browser
+    participant C as ApiController
+    participant L as LlmService
+    participant P as LlmResponseParser
+    participant R as RequirementArchView
+    participant T as RelationTraversal
+    participant D as DiagramProjection
+    participant E as ExportServices
+
+    U->>C: POST /api/analyze<br/>{businessText, includeArchView}
+    C->>L: analyzeRequirement(text)
+    L->>L: Select provider<br/>(Gemini/OpenAI/Local)
+
+    loop For each taxonomy root (8 roots)
+        L->>L: Build prompt from template
+        L->>L: Call LLM provider API
+        L->>P: Parse response text
+        P-->>L: scores + reasons
+    end
+
+    L-->>C: Map<nodeCode, score>
+
+    alt includeArchitectureView = true
+        C->>R: buildView(scores, text)
+        R->>R: Select anchors (score ≥ 70)
+        R->>T: propagateRelevance(anchors)
+        T->>T: Walk relations (max hops)
+        T-->>R: elements + relationships
+        R-->>C: RequirementArchitectureView
+
+        Note over D,E: Export triggered separately
+        U->>D: POST /api/diagram/visio
+        D->>E: project → VisioDiagramService
+        E-->>U: .vsdx binary download
+    end
+
+    C-->>U: JSON {scores, reasons,<br/>architectureView?}
+```
+
+### Data Flow Architecture
+
+This diagram shows how data flows between the major subsystems:
+
+```mermaid
+flowchart TB
+    subgraph Input["Input Layer"]
+        Excel["Excel Workbook<br/>(8 taxonomy sheets)"]
+        ArchiImport["ArchiMate XML<br/>Import"]
+        DSLInput["DSL Text<br/>Input"]
+        UserReq["Business<br/>Requirement Text"]
+    end
+
+    subgraph Storage["Persistence Layer"]
+        HSQLDB["HSQLDB<br/>(in-process)"]
+        HibSearch["Hibernate Search 8<br/>+ Lucene 9 Indexes"]
+        JGitDB["JGit DFS<br/>(Git packs in DB)"]
+    end
+
+    subgraph Processing["Processing Layer"]
+        direction TB
+        TaxSvc["TaxonomyService<br/>(load & cache)"]
+        LLM["LlmService<br/>(6 providers + local)"]
+        SearchSvc["SearchService<br/>(4 search modes)"]
+        EmbedSvc["LocalEmbeddingService<br/>(DJL/ONNX)"]
+        PropSvc["RelationProposalService<br/>(candidate → validate → propose)"]
+        GapSvc["GapAnalysis +<br/>PatternDetection"]
+        ArchView["ArchitectureView<br/>Builder"]
+        DslSvc["DslGitRepository<br/>(branch, commit, merge)"]
+    end
+
+    subgraph Output["Output Layer"]
+        UI["Bootstrap 5 SPA<br/>(11 JS modules)"]
+        Visio["Visio .vsdx"]
+        ArchiEx["ArchiMate XML"]
+        Mermaid["Mermaid Flowchart"]
+        Reports["Reports<br/>(MD, HTML, DOCX, JSON)"]
+        JSONAPI["REST API<br/>(106+ endpoints)"]
+    end
+
+    Excel --> TaxSvc
+    ArchiImport --> HSQLDB
+    DSLInput --> DslSvc
+    UserReq --> LLM
+
+    TaxSvc --> HSQLDB
+    TaxSvc --> HibSearch
+    EmbedSvc --> HibSearch
+    DslSvc --> JGitDB
+
+    HSQLDB --> SearchSvc
+    HSQLDB --> PropSvc
+    HSQLDB --> GapSvc
+    HibSearch --> SearchSvc
+    LLM --> ArchView
+    ArchView --> Visio
+    ArchView --> ArchiEx
+    ArchView --> Mermaid
+
+    SearchSvc --> UI
+    ArchView --> UI
+    PropSvc --> UI
+    GapSvc --> UI
+    ArchView --> Reports
+    JSONAPI --> UI
+```
+
+### Module Dependency Graph
+
+```mermaid
+graph LR
+    subgraph Modules
+        domain["taxonomy-domain<br/>(DTOs, enums)"]
+        dsl["taxonomy-dsl<br/>(parser, validator,<br/>model mapper)"]
+        export["taxonomy-export<br/>(ArchiMate, Visio,<br/>Mermaid, diagrams)"]
+        app["taxonomy-app<br/>(Spring Boot,<br/>controllers, services,<br/>JPA, Hibernate Search)"]
+    end
+
+    app --> domain
+    app --> dsl
+    app --> export
+    export --> domain
+
+    style domain fill:#E8F5E9
+    style dsl fill:#E3F2FD
+    style export fill:#FFF3E0
+    style app fill:#FCE4EC
+```

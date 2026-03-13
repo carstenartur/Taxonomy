@@ -9,11 +9,13 @@ import java.util.*;
  *
  * <p>Produces stable, Git-diff-friendly output:
  * <ul>
+ *   <li>Blocks are grouped by kind and sorted by primary identifier for deterministic ordering.</li>
  *   <li>Blocks are separated by a single blank line.</li>
  *   <li>Properties are indented with two spaces.</li>
+ *   <li>Properties within a block follow a canonical order (known properties first, then extensions).</li>
  *   <li>String values are quoted; bare values (numbers, identifiers) are not.</li>
- *   <li>Properties appear in a stable, deterministic order.</li>
  *   <li>Extension attributes ({@code x-*}) are serialized after known attributes.</li>
+ *   <li>Special characters in quoted values are escaped ({@code \"} and {@code \\}).</li>
  * </ul>
  */
 public class TaxDslSerializer {
@@ -22,7 +24,30 @@ public class TaxDslSerializer {
             "score", "confidence", "status", "layout", "type");
 
     /**
+     * Canonical ordering of block kinds for deterministic output.
+     * Unknown block types sort after all known types.
+     */
+    private static final List<String> BLOCK_KIND_ORDER = List.of(
+            "element", "relation", "requirement", "mapping", "view", "evidence");
+
+    /**
+     * Canonical property ordering per block kind.
+     * Properties are serialized in this order; any property not listed sorts alphabetically
+     * after the listed ones but before extension attributes.
+     */
+    private static final Map<String, List<String>> PROPERTY_ORDER = Map.of(
+            "element", List.of("title", "description", "taxonomy"),
+            "relation", List.of("status", "confidence", "provenance"),
+            "requirement", List.of("title", "text"),
+            "mapping", List.of("score", "source"),
+            "view", List.of("title", "include", "layout"),
+            "evidence", List.of("type", "model", "confidence", "summary")
+    );
+
+    /**
      * Serialize a {@link DocumentAst} to DSL text.
+     * Blocks are sorted by kind (element → relation → requirement → mapping → view → evidence → unknown)
+     * and within each kind by primary identifier for deterministic, diff-friendly output.
      */
     public String serialize(DocumentAst document) {
         StringBuilder sb = new StringBuilder();
@@ -31,7 +56,9 @@ public class TaxDslSerializer {
             serializeMeta(document.getMeta(), sb);
         }
 
-        for (BlockAst block : document.getBlocks()) {
+        List<BlockAst> sorted = sortBlocksDeterministically(document.getBlocks());
+
+        for (BlockAst block : sorted) {
             if (!sb.isEmpty()) {
                 sb.append('\n');
             }
@@ -44,6 +71,41 @@ public class TaxDslSerializer {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Sort blocks deterministically: first by kind order, then by primary identifier.
+     * Unknown block types sort after all known types, alphabetically by kind then by ID.
+     */
+    private List<BlockAst> sortBlocksDeterministically(List<BlockAst> blocks) {
+        List<BlockAst> sorted = new ArrayList<>(blocks);
+        sorted.sort(Comparator
+                .comparingInt((BlockAst b) -> {
+                    int idx = BLOCK_KIND_ORDER.indexOf(b.getKind());
+                    return idx >= 0 ? idx : BLOCK_KIND_ORDER.size();
+                })
+                .thenComparing(BlockAst::getKind)
+                .thenComparing(b -> blockSortKey(b)));
+        return sorted;
+    }
+
+    /**
+     * Compute a sort key for a block within its kind group.
+     * For relations, the sort key is a composite of source + type + target.
+     * For other blocks, it is the first header token (the primary ID).
+     */
+    private String blockSortKey(BlockAst block) {
+        List<String> tokens = block.getHeaderTokens();
+        if (tokens.isEmpty()) return "";
+        if ("relation".equals(block.getKind()) && tokens.size() >= 3) {
+            // Sort relations by source + relation type + target for stable ordering
+            return tokens.get(0) + "/" + tokens.get(1) + "/" + tokens.get(2);
+        }
+        if ("mapping".equals(block.getKind()) && tokens.size() >= 3) {
+            // Sort mappings by requirement + element
+            return tokens.get(0) + "/" + tokens.get(2);
+        }
+        return tokens.get(0);
     }
 
     private void serializeMeta(MetaAst meta, StringBuilder sb) {
@@ -67,7 +129,7 @@ public class TaxDslSerializer {
         }
         sb.append('\n');
 
-        // Properties: known first, then extensions
+        // Properties: known first (in canonical order), then extensions (sorted alphabetically)
         List<PropertyAst> known = new ArrayList<>();
         List<PropertyAst> extensions = new ArrayList<>();
         for (PropertyAst prop : block.getProperties()) {
@@ -78,9 +140,19 @@ public class TaxDslSerializer {
             }
         }
 
+        // Sort known properties by canonical order for this block kind
+        List<String> canonicalOrder = PROPERTY_ORDER.getOrDefault(block.getKind(), List.of());
+        known.sort(Comparator.comparingInt((PropertyAst p) -> {
+            int idx = canonicalOrder.indexOf(p.key());
+            return idx >= 0 ? idx : canonicalOrder.size();
+        }).thenComparing(PropertyAst::key));
+
         for (PropertyAst prop : known) {
             serializeProperty(prop, sb);
         }
+
+        // Sort extensions alphabetically for stable output
+        extensions.sort(Comparator.comparing(PropertyAst::key));
 
         if (!extensions.isEmpty() && !known.isEmpty()) {
             // Blank line separates core properties from extensions for clarity in diffs
@@ -95,7 +167,7 @@ public class TaxDslSerializer {
     private void serializeProperty(PropertyAst prop, StringBuilder sb) {
         sb.append("  ").append(prop.key()).append(' ');
         if (shouldQuote(prop.key(), prop.value())) {
-            sb.append('"').append(prop.value()).append('"');
+            sb.append('"').append(escapeForQuoting(prop.value())).append('"');
         } else {
             sb.append(prop.value());
         }
@@ -116,5 +188,15 @@ public class TaxDslSerializer {
         } catch (NumberFormatException e) {
             return true;
         }
+    }
+
+    /**
+     * Escape special characters for a quoted string value:
+     * {@code \} → {@code \\}, {@code "} → {@code \"}.
+     */
+    private String escapeForQuoting(String value) {
+        if (value == null) return "";
+        if (value.indexOf('\\') < 0 && value.indexOf('"') < 0) return value;
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

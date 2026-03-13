@@ -263,4 +263,18 @@ class TaxDslParserTest {
         assertThat(doc.getMeta().language()).isEqualTo(MetaAst.LANGUAGE_ID);
         assertThat(doc.getMeta().version()).isEqualTo(MetaAst.CURRENT_VERSION);
     }
+
+    @Test
+    void parseEscapedQuotesInValues() {
+        String dsl = """
+                element CP-1001 type Capability
+                  title "He said \\"hello\\""
+                  description "Path: C:\\\\Users\\\\test"
+                """;
+        DocumentAst doc = parser.parse(dsl);
+        assertThat(doc.getBlocks()).hasSize(1);
+        BlockAst block = doc.getBlocks().get(0);
+        assertThat(block.property("title")).isEqualTo("He said \"hello\"");
+        assertThat(block.property("description")).isEqualTo("Path: C:\\Users\\test");
+    }
 }

@@ -808,4 +808,137 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
         saveElementScreenshot(panel, "27-coverage-dashboard-data.png");
     }
+
+    // ── Screenshots 28–34: Additional screenshots for documentation completeness ──
+
+    @Test
+    @Order(28)
+    void captureProposalReviewQueue() throws IOException {
+        navigateToTab("relations");
+        WebElement panel = driver.findElement(By.id("proposalsPanel"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
+        // Click the "All" filter to show all proposals (pending, accepted, rejected)
+        WebElement allFilter = driver.findElement(By.id("filterAll"));
+        js("arguments[0].click();", allFilter);
+        wait(10).until(d -> {
+            WebElement container = d.findElement(By.id("proposalsTableContainer"));
+            String text = container.getText();
+            // Positive condition: either proposals are shown (table rows) or a "no proposals" message
+            return text != null && !text.isEmpty() && !text.contains("Loading");
+        });
+        saveElementScreenshot(panel, "28-proposal-review-queue.png");
+    }
+
+    @Test
+    @Order(29)
+    void captureSearchFullText() throws IOException {
+        navigateToTab("analyze");
+        // Open the search panel
+        WebElement searchPanel = driver.findElement(By.id("searchPanel"));
+        openDetails(searchPanel);
+        // Set search mode to full-text
+        js("document.getElementById('searchModeSelect').value = 'fulltext';");
+        // Enter search query
+        WebElement searchInput = driver.findElement(By.id("searchInput"));
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", searchInput);
+        js("arguments[0].value = 'voice communications'; arguments[0].dispatchEvent(new Event('input'));",
+                searchInput);
+        // Click search button
+        js("document.getElementById('searchBtn').click();");
+        wait(10).until(d -> {
+            WebElement results = d.findElement(By.id("searchResultsArea"));
+            return results.isDisplayed() && !results.getText().isEmpty();
+        });
+        saveElementScreenshot(searchPanel, "29-search-fulltext.png");
+    }
+
+    @Test
+    @Order(30)
+    void captureSearchSemantic() throws IOException {
+        navigateToTab("analyze");
+        WebElement searchPanel = driver.findElement(By.id("searchPanel"));
+        openDetails(searchPanel);
+        // Set search mode to semantic
+        js("document.getElementById('searchModeSelect').value = 'semantic';");
+        WebElement searchInput = driver.findElement(By.id("searchInput"));
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", searchInput);
+        js("arguments[0].value = 'secure data exchange'; arguments[0].dispatchEvent(new Event('input'));",
+                searchInput);
+        js("document.getElementById('searchBtn').click();");
+        wait(10).until(d -> {
+            WebElement results = d.findElement(By.id("searchResultsArea"));
+            return results.isDisplayed() && !results.getText().isEmpty();
+        });
+        saveElementScreenshot(searchPanel, "30-search-semantic.png");
+    }
+
+    @Test
+    @Order(31)
+    void captureSearchHybrid() throws IOException {
+        navigateToTab("analyze");
+        WebElement searchPanel = driver.findElement(By.id("searchPanel"));
+        openDetails(searchPanel);
+        // Set search mode to hybrid
+        js("document.getElementById('searchModeSelect').value = 'hybrid';");
+        WebElement searchInput = driver.findElement(By.id("searchInput"));
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", searchInput);
+        js("arguments[0].value = 'command and control'; arguments[0].dispatchEvent(new Event('input'));",
+                searchInput);
+        js("document.getElementById('searchBtn').click();");
+        wait(10).until(d -> {
+            WebElement results = d.findElement(By.id("searchResultsArea"));
+            return results.isDisplayed() && !results.getText().isEmpty();
+        });
+        saveElementScreenshot(searchPanel, "31-search-hybrid.png");
+    }
+
+    @Test
+    @Order(32)
+    void captureSearchGraph() throws IOException {
+        navigateToTab("analyze");
+        WebElement searchPanel = driver.findElement(By.id("searchPanel"));
+        openDetails(searchPanel);
+        // Set search mode to graph
+        js("document.getElementById('searchModeSelect').value = 'graph';");
+        WebElement searchInput = driver.findElement(By.id("searchInput"));
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", searchInput);
+        js("arguments[0].value = 'intelligence processing'; arguments[0].dispatchEvent(new Event('input'));",
+                searchInput);
+        js("document.getElementById('searchBtn').click();");
+        wait(10).until(d -> {
+            WebElement results = d.findElement(By.id("searchResultsArea"));
+            return results.isDisplayed() && !results.getText().isEmpty();
+        });
+        saveElementScreenshot(searchPanel, "32-search-graph.png");
+    }
+
+    @Test
+    @Order(33)
+    void captureExportTab() throws IOException {
+        // Ensure a completed analysis exists so export buttons are visible
+        navigateToTab("analyze");
+        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
+        if (!statusText.contains("complete")) {
+            forceNonInteractiveMode();
+            runAnalysis();
+        }
+        navigateToTab("export");
+        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
+        // Take a full-tab screenshot showing all export options
+        saveScreenshot("33-export-tab.png");
+    }
+
+    @Test
+    @Order(34)
+    void captureDslEditorPanel() throws IOException {
+        navigateToTab("dsl-editor");
+        // Load the current architecture into the DSL editor
+        js("var btn = document.getElementById('dslLoadCurrentBtn'); if (btn) btn.click();");
+        wait(10).until(d -> {
+            WebElement textarea = d.findElement(By.id("dslEditorTextarea"));
+            String val = textarea.getAttribute("value");
+            return val != null && !val.isEmpty();
+        });
+        saveScreenshot("34-dsl-editor-panel.png");
+    }
 }
