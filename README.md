@@ -37,6 +37,12 @@ The system scores every node, selects the most relevant elements, propagates rel
 </details>
 
 <details>
+<summary><strong>Scored taxonomy tree — fully expanded</strong></summary>
+
+<img src="docs/images/35-scored-bp-tree-expanded.png" alt="Full Business Process taxonomy tree expanded with heat-mapped scores" width="800">
+</details>
+
+<details>
 <summary><strong>Architecture view</strong></summary>
 
 <img src="docs/images/20-architecture-view.png" alt="Generated architecture view" width="800">
@@ -133,6 +139,20 @@ Five view modes are available for the taxonomy tree:
 | **Decision Map** | Force-directed graph layout |
 
 Additional panels: Graph Explorer (upstream/downstream/failure-impact queries), Relation Proposals (AI-generated proposals with accept/reject), and an Admin panel for LLM diagnostics and prompt template editing.
+
+<details>
+<summary><strong>Scored sunburst chart</strong></summary>
+
+<img src="docs/images/39-scored-sunburst.png" alt="Scored sunburst chart with heat-mapped colour gradients" width="800">
+</details>
+
+### Workflow at a Glance
+
+| Step | Screenshot |
+|---|---|
+| **1. Analyze** — Score taxonomy nodes against a requirement | <img src="docs/images/15-scored-taxonomy-tree.png" width="250"> |
+| **2. Accept proposals** — Review and approve AI-generated relations | <img src="docs/images/36-proposal-accepted.png" width="250"> |
+| **3. View architecture** — See the resulting architecture diagram | <img src="docs/images/38-architecture-view-detailed.png" width="250"> |
 
 ---
 

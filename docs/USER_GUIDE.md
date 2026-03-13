@@ -177,6 +177,10 @@ Tips for good requirements:
 
 ![Scored taxonomy tree](images/15-scored-taxonomy-tree.png)
 
+The fully expanded tree shows scores at every level, making it easy to identify which branches are most relevant:
+
+![Scored taxonomy tree — fully expanded](images/35-scored-bp-tree-expanded.png)
+
 ### Interactive Mode
 
 Tick the **Interactive Mode** checkbox before clicking **Analyze with AI** to use level-by-level exploration instead of scoring the whole tree at once.
@@ -279,6 +283,10 @@ The Sunburst view renders the taxonomy as a radial sunburst chart where the cent
 - Click a segment to zoom into that subtree.
 
 ![Sunburst view](images/06-sunburst-view.png)
+
+After running an analysis, the sunburst chart displays heat-mapped colour gradients reflecting the scores:
+
+![Scored sunburst view](images/39-scored-sunburst.png)
 
 ### Tree View
 
@@ -450,6 +458,10 @@ The table/graph shows:
 
 ![Graph Explorer failure impact](images/22-graph-explorer-failure.png)
 
+Accepted proposals also appear as graph edges. After accepting a proposal (see [Section 9](#9-working-with-relation-proposals)), the new relation is immediately visible in the Graph Explorer:
+
+![Graph Explorer with accepted relation](images/37-graph-with-accepted-relation.png)
+
 ---
 
 ## 9. Working with Relation Proposals
@@ -500,6 +512,10 @@ For each row in the proposals table:
 
 - Click **Accept** to approve the relation. A confirmed `TaxonomyRelation` is created in the knowledge base and the proposal status changes to ACCEPTED.
 - Click **Reject** to decline the relation. The proposal status changes to REJECTED.
+
+Once accepted, the proposal displays a green **Accepted** badge. The accepted relation is immediately visible in the Graph Explorer:
+
+![Accepted proposal](images/36-proposal-accepted.png)
 
 After each accept or reject action, an **Undo toast notification** appears in the bottom-right corner for 8 seconds. Click **↩️ Undo** to revert the proposal back to PENDING status (and, if it was accepted, delete the created relation).
 
@@ -1031,6 +1047,10 @@ The DSL Editor tab in the application provides:
 5. **Branch management** — Create branches, cherry-pick, and merge
 
 ![DSL Editor panel](images/34-dsl-editor-panel.png)
+
+After accepting proposals, the exported DSL includes `relation` blocks alongside `element` blocks, showing the full architecture data model:
+
+![DSL Editor with relations](images/40-dsl-editor-with-relations.png)
 
 ### Version Control
 

@@ -33,7 +33,7 @@ jobs:
         run: mvn package -DskipTests -q
 
       - name: Generate screenshots
-        run: mvn verify -DgenerateScreenshots -Dit.test=ScreenshotGeneratorIT -Dfailsafe.rerunFailingTestsCount=1
+        run: mvn verify -DgenerateScreenshots -Dit.test=ScreenshotGeneratorIT -Dfailsafe.rerunFailingTestsCount=1 -Dfailsafe.timeout=600
 
       - name: Commit screenshots
         run: |

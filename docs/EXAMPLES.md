@@ -57,6 +57,8 @@ Process: Conduct Operations (BP-4)
 
 Click an export button to download the architecture as ArchiMate XML, Visio `.vsdx`, or Mermaid flowchart.
 
+![Detailed architecture view](images/38-architecture-view-detailed.png)
+
 ### REST API equivalent
 
 ```bash
@@ -163,6 +165,8 @@ Each proposal shows:
 ### Step 3 — Accept or reject
 
 Click **Accept** to add the relation to the knowledge graph, or **Reject** to discard it.
+
+![Accepted proposal](images/36-proposal-accepted.png)
 
 ### REST API
 

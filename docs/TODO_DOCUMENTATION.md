@@ -13,6 +13,12 @@ This file tracks known documentation gaps and improvement opportunities. Items m
 - [x] Screenshot of the export dialog and a sample Visio / ArchiMate output file — added to ScreenshotGeneratorIT (test 33)
 - [x] Annotated diagram of the high-level system architecture (beyond Mermaid in ARCHITECTURE.md) — added detailed data-flow and request-lifecycle diagrams to ARCHITECTURE.md §Detailed Architecture Diagrams
 - [x] Screenshot of the DSL Editor panel — added to ScreenshotGeneratorIT (test 34)
+- [x] Hero image — fully expanded scored BP tree — added to ScreenshotGeneratorIT (test 35)
+- [x] Proposal accepted lifecycle screenshot — added to ScreenshotGeneratorIT (test 36)
+- [x] Graph Explorer with accepted relation — added to ScreenshotGeneratorIT (test 37)
+- [x] Detailed architecture view with accepted proposals — added to ScreenshotGeneratorIT (test 38)
+- [x] Scored sunburst chart with heat-mapped colours — added to ScreenshotGeneratorIT (test 39)
+- [x] DSL Editor with relation blocks — added to ScreenshotGeneratorIT (test 40)
 
 ### Usability Documentation
 
@@ -52,6 +58,8 @@ This is a significant effort (~200+ translatable strings across HTML and 11 JS m
 - [x] Scored taxonomy tree, interactive mode, match legend
 - [x] Architecture view, graph explorer, relation proposals, leaf justification
 - [x] Admin modal, LLM diagnostics, prompt template editor, stale results warning
+- [x] Fully expanded scored tree, accepted proposal, graph with accepted relation
+- [x] Detailed architecture view, scored sunburst, DSL with relations
 
 ### UX Documentation (completed)
 - [x] Stale-results warning behaviour — documented in USER_GUIDE.md §6
