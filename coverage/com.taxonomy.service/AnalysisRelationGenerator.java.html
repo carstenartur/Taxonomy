@@ -72,8 +72,8 @@ public class AnalysisRelationGenerator {
             }
 <span class="fc" id="L73">            String code = entry.getKey();</span>
 <span class="fc" id="L74">            Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(code);</span>
-<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (nodeOpt.isEmpty()) {</span>
-<span class="fc" id="L76">                continue;</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">            if (nodeOpt.isEmpty()) {</span>
+<span class="nc" id="L76">                continue;</span>
             }
 <span class="fc" id="L78">            TaxonomyNode node = nodeOpt.get();</span>
 <span class="fc" id="L79">            String root = node.getTaxonomyRoot();</span>

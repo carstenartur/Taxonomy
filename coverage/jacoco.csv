@@ -92,8 +92,8 @@ Taxonomy Application,com.taxonomy.service,ArchitectureGraphQueryServiceImpl,62,9
 Taxonomy Application,com.taxonomy.service,RelationProposalService,139,289,8,7,24,64,10,10,3,9
 Taxonomy Application,com.taxonomy.service,ArchitecturePatternService.PatternStep,0,20,0,0,0,2,0,2,0,2
 Taxonomy Application,com.taxonomy.service,LlmProvider,0,45,0,0,0,8,0,1,0,1
-Taxonomy Application,com.taxonomy.service,RequirementCoverageService,3,247,4,8,0,47,4,19,0,17
-Taxonomy Application,com.taxonomy.service,AnalysisRelationGenerator,14,342,6,30,2,66,7,17,2,4
+Taxonomy Application,com.taxonomy.service,RequirementCoverageService,2,248,3,9,0,47,3,20,0,17
+Taxonomy Application,com.taxonomy.service,AnalysisRelationGenerator,15,341,7,29,3,65,8,16,2,4
 Taxonomy Application,com.taxonomy.service,ArchitecturePatternService.PatternTemplate,0,9,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.service,ArchitectureGraphQueryServiceImpl.Direction,0,21,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.service,RelationTraversalService,36,65,3,5,7,17,3,5,1,3
