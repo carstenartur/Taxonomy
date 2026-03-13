@@ -50,7 +50,7 @@ class DslMaterializeServiceTest {
         assertThat(doc.get().getBranch()).isEqualTo("main");
         assertThat(doc.get().getCommitId()).isEqualTo("abc123");
         assertThat(doc.get().getNamespace()).isEqualTo("test.materialize");
-        assertThat(doc.get().getDslVersion()).isEqualTo("1.0");
+        assertThat(doc.get().getDslVersion()).isEqualTo("2.0");
     }
 
     @Test
