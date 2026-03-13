@@ -46,34 +46,34 @@ class SemanticDiffDescriberTest {
 
     @Test
     void addedElementProducesSemanticChange() {
-        CanonicalArchitectureModel after = modelWith(elem("CP-1", "Capability", "Auth"));
+        CanonicalArchitectureModel after = modelWith(elem("CP-1010", "Capability", "Auth"));
         ModelDiff diff = differ.diff(null, after);
 
         List<SemanticChange> changes = describer.describe(diff);
         assertThat(changes).hasSize(1);
         assertThat(changes.get(0).changeType()).isEqualTo(SemanticChangeType.ELEMENT_ADDED);
         assertThat(changes.get(0).entityKind()).isEqualTo("element");
-        assertThat(changes.get(0).entityId()).isEqualTo("CP-1");
+        assertThat(changes.get(0).entityId()).isEqualTo("CP-1010");
         assertThat(changes.get(0).description()).contains("Auth");
     }
 
     @Test
     void removedElementProducesSemanticChange() {
-        CanonicalArchitectureModel before = modelWith(elem("CP-1", "Capability", "Auth"));
+        CanonicalArchitectureModel before = modelWith(elem("CP-1010", "Capability", "Auth"));
         ModelDiff diff = differ.diff(before, null);
 
         List<SemanticChange> changes = describer.describe(diff);
         assertThat(changes).hasSize(1);
         assertThat(changes.get(0).changeType()).isEqualTo(SemanticChangeType.ELEMENT_REMOVED);
-        assertThat(changes.get(0).entityId()).isEqualTo("CP-1");
+        assertThat(changes.get(0).entityId()).isEqualTo("CP-1010");
     }
 
     // ── Element property changes ─────────────────────────────────────
 
     @Test
     void changedTitleProducesSemanticChange() {
-        CanonicalArchitectureModel before = modelWith(elem("CP-1", "Capability", "Auth"));
-        CanonicalArchitectureModel after = modelWith(elem("CP-1", "Capability", "Authentication Service"));
+        CanonicalArchitectureModel before = modelWith(elem("CP-1010", "Capability", "Auth"));
+        CanonicalArchitectureModel after = modelWith(elem("CP-1010", "Capability", "Authentication Service"));
         ModelDiff diff = differ.diff(before, after);
 
         List<SemanticChange> changes = describer.describe(diff);
@@ -86,8 +86,8 @@ class SemanticDiffDescriberTest {
 
     @Test
     void changedTypeProducesSemanticChange() {
-        CanonicalArchitectureModel before = modelWith(elem("CP-1", "Capability", "Auth"));
-        ArchitectureElement changed = new ArchitectureElement("CP-1", "Service", "Auth", null, null);
+        CanonicalArchitectureModel before = modelWith(elem("CP-1010", "Capability", "Auth"));
+        ArchitectureElement changed = new ArchitectureElement("CP-1010", "Service", "Auth", null, null);
         CanonicalArchitectureModel after = new CanonicalArchitectureModel();
         after.getElements().add(changed);
 
@@ -98,8 +98,8 @@ class SemanticDiffDescriberTest {
 
     @Test
     void changedDescriptionProducesSemanticChange() {
-        ArchitectureElement before = new ArchitectureElement("CP-1", "Capability", "Auth", "Old desc", null);
-        ArchitectureElement after = new ArchitectureElement("CP-1", "Capability", "Auth", "New desc", null);
+        ArchitectureElement before = new ArchitectureElement("CP-1010", "Capability", "Auth", "Old desc", null);
+        ArchitectureElement after = new ArchitectureElement("CP-1010", "Capability", "Auth", "New desc", null);
         CanonicalArchitectureModel m1 = new CanonicalArchitectureModel();
         m1.getElements().add(before);
         CanonicalArchitectureModel m2 = new CanonicalArchitectureModel();
@@ -112,8 +112,8 @@ class SemanticDiffDescriberTest {
 
     @Test
     void changedTaxonomyProducesSemanticChange() {
-        ArchitectureElement before = new ArchitectureElement("CP-1", "Capability", "Auth", null, "CP");
-        ArchitectureElement after = new ArchitectureElement("CP-1", "Capability", "Auth", null, "BP");
+        ArchitectureElement before = new ArchitectureElement("CP-1010", "Capability", "Auth", null, "CP");
+        ArchitectureElement after = new ArchitectureElement("CP-1010", "Capability", "Auth", null, "BP");
         CanonicalArchitectureModel m1 = new CanonicalArchitectureModel();
         m1.getElements().add(before);
         CanonicalArchitectureModel m2 = new CanonicalArchitectureModel();
@@ -128,19 +128,19 @@ class SemanticDiffDescriberTest {
 
     @Test
     void addedRelationProducesSemanticChange() {
-        CanonicalArchitectureModel after = modelWith(rel("CP-1", "REALIZES", "BP-1"));
+        CanonicalArchitectureModel after = modelWith(rel("CP-1010", "REALIZES", "BP-1327"));
         ModelDiff diff = differ.diff(null, after);
 
         List<SemanticChange> changes = describer.describe(diff);
         assertThat(changes).hasSize(1);
         assertThat(changes.get(0).changeType()).isEqualTo(SemanticChangeType.RELATION_ADDED);
         assertThat(changes.get(0).entityKind()).isEqualTo("relation");
-        assertThat(changes.get(0).description()).contains("CP-1").contains("REALIZES").contains("BP-1");
+        assertThat(changes.get(0).description()).contains("CP-1010").contains("REALIZES").contains("BP-1327");
     }
 
     @Test
     void removedRelationProducesSemanticChange() {
-        CanonicalArchitectureModel before = modelWith(rel("CP-1", "REALIZES", "BP-1"));
+        CanonicalArchitectureModel before = modelWith(rel("CP-1010", "REALIZES", "BP-1327"));
         ModelDiff diff = differ.diff(before, null);
 
         List<SemanticChange> changes = describer.describe(diff);
@@ -150,12 +150,12 @@ class SemanticDiffDescriberTest {
 
     @Test
     void changedRelationStatusProducesSemanticChange() {
-        ArchitectureRelation beforeRel = new ArchitectureRelation("CP-1", "REALIZES", "BP-1");
+        ArchitectureRelation beforeRel = new ArchitectureRelation("CP-1010", "REALIZES", "BP-1327");
         beforeRel.setStatus("provisional");
         CanonicalArchitectureModel before = new CanonicalArchitectureModel();
         before.getRelations().add(beforeRel);
 
-        ArchitectureRelation afterRel = new ArchitectureRelation("CP-1", "REALIZES", "BP-1");
+        ArchitectureRelation afterRel = new ArchitectureRelation("CP-1010", "REALIZES", "BP-1327");
         afterRel.setStatus("accepted");
         CanonicalArchitectureModel after = new CanonicalArchitectureModel();
         after.getRelations().add(afterRel);
@@ -170,12 +170,12 @@ class SemanticDiffDescriberTest {
 
     @Test
     void changedRelationConfidenceProducesSemanticChange() {
-        ArchitectureRelation beforeRel = new ArchitectureRelation("CP-1", "REALIZES", "BP-1");
+        ArchitectureRelation beforeRel = new ArchitectureRelation("CP-1010", "REALIZES", "BP-1327");
         beforeRel.setConfidence(0.5);
         CanonicalArchitectureModel before = new CanonicalArchitectureModel();
         before.getRelations().add(beforeRel);
 
-        ArchitectureRelation afterRel = new ArchitectureRelation("CP-1", "REALIZES", "BP-1");
+        ArchitectureRelation afterRel = new ArchitectureRelation("CP-1010", "REALIZES", "BP-1327");
         afterRel.setConfidence(0.9);
         CanonicalArchitectureModel after = new CanonicalArchitectureModel();
         after.getRelations().add(afterRel);
@@ -190,31 +190,31 @@ class SemanticDiffDescriberTest {
     @Test
     void complexDiffProducesMultipleSemanticChanges() {
         CanonicalArchitectureModel before = modelWith(
-                elem("CP-1", "Capability", "Auth"),
-                elem("CP-2", "Capability", "Crypto"),
-                elem("CP-3", "Capability", "Removed"),
-                rel("CP-1", "REALIZES", "BP-1"),
-                rel("CP-3", "SUPPORTS", "BP-3")
+                elem("CP-1010", "Capability", "Auth"),
+                elem("CP-1022", "Capability", "Crypto"),
+                elem("CP-1023", "Capability", "Removed"),
+                rel("CP-1010", "REALIZES", "BP-1327"),
+                rel("CP-1023", "SUPPORTS", "BP-1481")
         );
         CanonicalArchitectureModel after = modelWith(
-                elem("CP-1", "Capability", "Authentication"),  // changed title
-                elem("CP-2", "Capability", "Crypto"),           // unchanged
-                elem("CP-4", "Capability", "New"),              // added
-                rel("CP-1", "REALIZES", "BP-1"),                // unchanged
-                rel("CP-4", "DEPENDS_ON", "CP-2")               // added
+                elem("CP-1010", "Capability", "Authentication"),  // changed title
+                elem("CP-1022", "Capability", "Crypto"),           // unchanged
+                elem("CP-1027", "Capability", "New"),              // added
+                rel("CP-1010", "REALIZES", "BP-1327"),                // unchanged
+                rel("CP-1027", "DEPENDS_ON", "CP-1022")               // added
         );
 
         ModelDiff diff = differ.diff(before, after);
         List<SemanticChange> changes = describer.describe(diff);
 
-        // Expected: added CP-4, removed CP-3, changed CP-1 title, added rel, removed rel
+        // Expected: added CP-1027, removed CP-1023, changed CP-1010 title, added rel, removed rel
         assertThat(changes).hasSizeGreaterThanOrEqualTo(5);
         assertThat(changes).anyMatch(c -> c.changeType() == SemanticChangeType.ELEMENT_ADDED
-                && "CP-4".equals(c.entityId()));
+                && "CP-1027".equals(c.entityId()));
         assertThat(changes).anyMatch(c -> c.changeType() == SemanticChangeType.ELEMENT_REMOVED
-                && "CP-3".equals(c.entityId()));
+                && "CP-1023".equals(c.entityId()));
         assertThat(changes).anyMatch(c -> c.changeType() == SemanticChangeType.ELEMENT_TITLE_CHANGED
-                && "CP-1".equals(c.entityId()));
+                && "CP-1010".equals(c.entityId()));
         assertThat(changes).anyMatch(c -> c.changeType() == SemanticChangeType.RELATION_ADDED);
         assertThat(changes).anyMatch(c -> c.changeType() == SemanticChangeType.RELATION_REMOVED);
     }
@@ -224,14 +224,14 @@ class SemanticDiffDescriberTest {
     @Test
     void diffSummaryFromDiff() {
         CanonicalArchitectureModel before = modelWith(
-                elem("CP-1", "Capability", "Auth"),
-                rel("CP-1", "REALIZES", "BP-1")
+                elem("CP-1010", "Capability", "Auth"),
+                rel("CP-1010", "REALIZES", "BP-1327")
         );
         CanonicalArchitectureModel after = modelWith(
-                elem("CP-1", "Capability", "Authentication"),
-                elem("CP-2", "Capability", "New"),
-                rel("CP-1", "REALIZES", "BP-1"),
-                rel("CP-2", "SUPPORTS", "BP-2")
+                elem("CP-1010", "Capability", "Authentication"),
+                elem("CP-1022", "Capability", "New"),
+                rel("CP-1010", "REALIZES", "BP-1327"),
+                rel("CP-1022", "SUPPORTS", "BP-2")
         );
 
         ModelDiff diff = differ.diff(before, after);
@@ -250,11 +250,11 @@ class SemanticDiffDescriberTest {
     @Test
     void summarizeProducesReadableText() {
         CanonicalArchitectureModel before = modelWith(
-                elem("CP-1", "Capability", "Auth")
+                elem("CP-1010", "Capability", "Auth")
         );
         CanonicalArchitectureModel after = modelWith(
-                elem("CP-1", "Capability", "Authentication"),
-                elem("CP-2", "Capability", "New")
+                elem("CP-1010", "Capability", "Authentication"),
+                elem("CP-1022", "Capability", "New")
         );
 
         ModelDiff diff = differ.diff(before, after);

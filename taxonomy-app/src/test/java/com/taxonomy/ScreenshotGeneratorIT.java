@@ -39,7 +39,7 @@ import java.util.List;
  * Run with: {@code mvn verify -DgenerateScreenshots -Dtest=ScreenshotGeneratorIT}
  * <p>
  * Screenshots 1–14 do not require an LLM provider.
- * Screenshots 15–27 use mock LLM mode ({@code LLM_MOCK=true}) to produce
+ * Screenshots 15–40 use mock LLM mode ({@code LLM_MOCK=true}) to produce
  * realistic scores without calling any real LLM API.
  */
 @Testcontainers
@@ -954,5 +954,207 @@ class ScreenshotGeneratorIT {
             js("document.getElementById('dslEditorTextarea').value = '" + FALLBACK_DSL_TEXT + "';");
         }
         saveScreenshot("34-dsl-editor-panel.png");
+    }
+
+    // ── Screenshots 35–40: Extended visual guide ──────────────────────────────
+
+    @Test
+    @Order(35)
+    void captureFullScoredBPTreeExpanded() throws IOException {
+        // Ensure analysis is complete (reuse scores from test 15)
+        navigateToTab("analyze");
+        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
+        if (!statusText.contains("complete")) {
+            forceNonInteractiveMode();
+            runAnalysis();
+        }
+        // Switch to list view and expand all nodes
+        driver.findElement(By.id("viewList")).click();
+        wait(5).until(ExpectedConditions.attributeContains(By.id("viewList"), "class", "btn-primary"));
+        js("document.getElementById('expandAll').click();");
+        wait(5).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-toggle")));
+        // Increase viewport height to capture more of the tree
+        driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 2000));
+        wait(2).until(d -> true); // brief settle
+        // Scroll to the taxonomy tree and capture an element screenshot
+        WebElement tree = driver.findElement(By.id("taxonomyTree"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'start'});", tree);
+        saveElementScreenshot(tree, "35-scored-bp-tree-expanded.png");
+        // Reset viewport
+        driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
+    }
+
+    @Test
+    @Order(36)
+    void captureProposalAccepted() throws IOException {
+        // Discover real taxonomy codes at runtime — never hardcode codes that may not exist.
+        // Fetch /api/taxonomy, walk the tree to find the first child under the CP root and
+        // the first child under the CR root.  Store them in window globals for later tests.
+        js("window._proposalCreated = false; window._proposalError = null;" +
+           "fetch('/api/taxonomy').then(r => r.json()).then(function(roots) {" +
+           "  function firstChild(roots, prefix) {" +
+           "    for (var i = 0; i < roots.length; i++) {" +
+           "      if (roots[i].code === prefix && roots[i].children && roots[i].children.length > 0)" +
+           "        return roots[i].children[0].code;" +
+           "    }" +
+           "    return null;" +
+           "  }" +
+           "  var src = firstChild(roots, 'CP');" +
+           "  var tgt = firstChild(roots, 'CR');" +
+           "  if (!src || !tgt) throw new Error('Cannot find CP or CR child nodes in taxonomy');" +
+           "  window._acceptedSourceCode = src;" +
+           "  window._acceptedTargetCode = tgt;" +
+           "  return fetch('/api/proposals/from-hypothesis', {" +
+           "    method: 'POST'," +
+           "    headers: {'Content-Type': 'application/json'}," +
+           "    body: JSON.stringify({" +
+           "      sourceCode: src, targetCode: tgt," +
+           "      relationType: 'REALIZES', confidence: 0.85," +
+           "      rationale: src + ' provides the capability that ' + tgt + ' implements as a core service'" +
+           "    })" +
+           "  });" +
+           "}).then(r => { if (!r.ok) throw new Error('Proposal creation failed: ' + r.status); return r.json(); })" +
+           ".then(function(data) {" +
+           "  window._createdProposalId = data.id;" +
+           "  return fetch('/api/proposals/' + data.id + '/accept', {method: 'POST'});" +
+           "}).then(r => { if (!r.ok) throw new Error('Proposal accept failed: ' + r.status); return r.json(); })" +
+           ".then(function() { window._proposalCreated = true; })" +
+           ".catch(function(err) { window._proposalError = err.message || String(err); });");
+        wait(30).until(d -> {
+            Boolean done = (Boolean) ((JavascriptExecutor) d).executeScript(
+                    "return window._proposalCreated === true;");
+            if (Boolean.TRUE.equals(done)) return true;
+            String err = (String) ((JavascriptExecutor) d).executeScript(
+                    "return window._proposalError;");
+            if (err != null) throw new RuntimeException("Proposal creation/accept failed: " + err);
+            return false;
+        });
+
+        // Navigate to the relations tab and filter to show all proposals
+        navigateToTab("relations");
+        WebElement panel = driver.findElement(By.id("proposalsPanel"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
+        // Click the "Accepted" filter button to show accepted proposals
+        js("var btn = document.getElementById('filterAccepted'); if (btn) btn.click();");
+        wait(10).until(d -> {
+            WebElement container = d.findElement(By.id("proposalsTableContainer"));
+            String text = container.getText();
+            return text != null && !text.isEmpty() && !text.contains("Loading");
+        });
+        saveElementScreenshot(panel, "36-proposal-accepted.png");
+    }
+
+    @Test
+    @Order(37)
+    void captureGraphWithAcceptedRelation() throws IOException {
+        // Read the source code stored by test 36 (discovered from live taxonomy data).
+        String sourceCode = (String) ((JavascriptExecutor) driver).executeScript(
+                "return window._acceptedSourceCode || 'CP';");
+        navigateToTab("graph");
+        WebElement input = driver.findElement(By.id("graphNodeInput"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
+        js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
+                input, sourceCode);
+
+        // Click Downstream to show the accepted relation
+        WebElement downstreamBtn = driver.findElement(By.id("graphDownstreamBtn"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", downstreamBtn);
+        js("arguments[0].click();", downstreamBtn);
+
+        wait(30).until(d -> {
+            String html = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('graphResultsContent');" +
+                    "return el ? el.innerHTML : '';");
+            return html != null
+                    && !html.contains("spinner-border")
+                    && html.contains("graphViewTable");
+        });
+        saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")),
+                "37-graph-with-accepted-relation.png");
+    }
+
+    @Test
+    @Order(38)
+    void captureDetailedArchitectureView() throws IOException {
+        // Reload page for clean state
+        resetPageState();
+        forceNonInteractiveMode();
+
+        // Enable architecture view
+        WebElement archCb = driver.findElement(By.id("includeArchitectureView"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", archCb);
+        if (!archCb.isSelected()) {
+            js("arguments[0].click();", archCb);
+            wait(3).until(ExpectedConditions.elementSelectionStateToBe(archCb, true));
+        }
+
+        // Switch to sunburst view so Analyze calls POST /api/analyze (not streaming)
+        driver.findElement(By.id("viewSunburst")).click();
+        wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
+
+        WebElement textarea = driver.findElement(By.id("businessText"));
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", textarea);
+        js("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input'));",
+                textarea, REQUIREMENT_TEXT);
+        WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
+        js("arguments[0].click();", analyzeBtn);
+
+        wait(120).until(ExpectedConditions.textMatches(
+                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error")));
+        // Navigate to architecture tab
+        navigateToTab("architecture");
+        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
+        saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")),
+                "38-architecture-view-detailed.png");
+
+        // Reset: switch back to list view and uncheck architecture view
+        navigateToTab("analyze");
+        driver.findElement(By.id("viewList")).click();
+        archCb = driver.findElement(By.id("includeArchitectureView"));
+        if (archCb.isSelected()) {
+            js("arguments[0].click();", archCb);
+        }
+    }
+
+    @Test
+    @Order(39)
+    void captureScoredSunburst() throws IOException {
+        // Ensure analysis is complete
+        navigateToTab("analyze");
+        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
+        if (!statusText.contains("complete")) {
+            forceNonInteractiveMode();
+            runAnalysis();
+        }
+        // Switch to sunburst view — scores are already computed, so the sunburst will be coloured
+        driver.findElement(By.id("viewSunburst")).click();
+        wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
+        saveScreenshot("39-scored-sunburst.png");
+        // Reset to list view
+        driver.findElement(By.id("viewList")).click();
+    }
+
+    @Test
+    @Order(40)
+    void captureDslWithRelations() throws IOException {
+        navigateToTab("dsl-editor");
+        // Fetch the DSL export which should now include relation blocks from accepted proposals
+        js("fetch('/api/dsl/export').then(r => r.text()).then(t => {" +
+           "  var ta = document.getElementById('dslEditorTextarea');" +
+           "  if (ta && t && t.trim().length > 0) { ta.value = t; }" +
+           "});");
+        try {
+            wait(15).until(d -> {
+                WebElement ta = d.findElement(By.id("dslEditorTextarea"));
+                String val = ta.getAttribute("value");
+                return val != null && !val.isBlank() && val.contains("relation");
+            });
+        } catch (org.openqa.selenium.TimeoutException e) {
+            // Fallback: inject DSL with relation blocks for the screenshot
+            js("document.getElementById('dslEditorTextarea').value = '" + FALLBACK_DSL_TEXT + "';");
+        }
+        saveScreenshot("40-dsl-editor-with-relations.png");
     }
 }

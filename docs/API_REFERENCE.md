@@ -227,10 +227,10 @@ After analysis, request a natural-language explanation for why a specific leaf n
 
 ```json
 {
-  "nodeCode":    "SVC_VOICE_001",
+  "nodeCode":    "CR-1047",
   "businessText": "Secure voice communications between HQ and deployed forces",
-  "scores":      { "SVC_VOICE_001": 87 },
-  "reasons":     { "SVC_VOICE_001": "Matched on voice, communications, deployed" }
+  "scores":      { "CR-1047": 87 },
+  "reasons":     { "CR-1047": "Matched on voice, communications, deployed" }
 }
 ```
 
@@ -299,7 +299,7 @@ Returns the `topK` taxonomy nodes most similar to the node identified by `{code}
 **Example:**
 
 ```
-GET /api/search/similar/SVC_VOICE_001?topK=5
+GET /api/search/similar/CR-1047?topK=5
 ```
 
 ### 7.5 Graph-Semantic Search
@@ -332,7 +332,7 @@ POST /api/graph/impact
 Content-Type: application/json
 
 {
-  "scores":       { "SVC_VOICE_001": 87, "CAP_C2_003": 72 },
+  "scores":       { "CR-1047": 87, "CP-1022": 72 },
   "businessText": "Secure voice communications between HQ and deployed forces",
   "maxHops":      2
 }
@@ -351,7 +351,7 @@ Returns the nodes that **feed into** the given element (i.e., the nodes that the
 **Example:**
 
 ```
-GET /api/graph/node/SVC_VOICE_001/upstream?maxHops=2
+GET /api/graph/node/CR-1047/upstream?maxHops=2
 ```
 
 ### 8.3 Downstream Neighbourhood
@@ -392,17 +392,17 @@ Returns the same failure/change impact data as §8.4, **enriched with requiremen
 **Example:**
 
 ```
-GET /api/graph/node/SVC_VOICE_001/enriched-failure-impact?maxHops=3
+GET /api/graph/node/CR-1047/enriched-failure-impact?maxHops=3
 ```
 
 ```json
 {
-  "failedNodeCode": "SVC_VOICE_001",
+  "failedNodeCode": "CR-1047",
   "maxHops": 3,
   "directlyAffected": [
     {
-      "nodeCode": "BP-3",
-      "title": "Voice Switching",
+      "nodeCode": "BP-1327",
+      "title": "Enable",
       "relevance": 0.80,
       "hopDistance": 1,
       "coveredByRequirements": ["REQ-101", "REQ-205"],
@@ -430,7 +430,7 @@ POST /api/proposals/propose
 Content-Type: application/json
 
 {
-  "sourceCode": "CR-5",
+  "sourceCode": "CR-1047",
   "relationType": "SUPPORTS",
   "limit": "10"
 }
@@ -603,7 +603,7 @@ Request body:
 {
   "requirementId": "REQ-101",
   "requirementText": "The system shall support secure communications.",
-  "scores": { "CP-1": 85, "BP-3": 72, "SP-2": 34 },
+  "scores": { "CP-1023": 85, "BP-1327": 72, "CR-1047": 34 },
   "minScore": 50
 }
 ```
@@ -819,11 +819,11 @@ POST /api/recommend
       "reasoning": "High-confidence match (score 85)" }
   ],
   "proposedElements": [
-    { "nodeCode": "CR-3", "title": "Voice Core Service", "taxonomyRoot": "CR", "score": 0,
+    { "nodeCode": "CR-1047", "title": "Infrastructure Services", "taxonomyRoot": "CR", "score": 0,
       "reasoning": "Proposed to fill gap: CP (CP) has no REALIZES relation to any CR node" }
   ],
   "suggestedRelations": [
-    { "sourceCode": "CP", "targetCode": "CR-3", "relationType": "REALIZES",
+    { "sourceCode": "CP", "targetCode": "CR-1047", "relationType": "REALIZES",
       "reasoning": "Would complete CP → REALIZES → CR" }
   ],
   "confidence": 50.0,
@@ -1109,7 +1109,7 @@ The Explanation Trace API provides structured reasoning chains that explain why 
 
 Returns an explanation trace for one node, given the analysis scores and requirement text.
 
-**Request body:** `{ "businessText": "...", "scores": { "CP-3": 92, "CO-2": 88, ... } }`
+**Request body:** `{ "businessText": "...", "scores": { "CP-1023": 92, "CO-1011": 88, ... } }`
 
 **Response:** An `ExplanationTrace` object with the node code, score, reasoning chain, and contributing factors.
 
@@ -1134,7 +1134,7 @@ The Report API generates formatted analysis reports from scored results.
 | `POST` | `/api/report/docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | Word document (.docx) |
 | `POST` | `/api/report/json` | `application/json` | Structured JSON report |
 
-**Request body (all endpoints):** `{ "businessText": "...", "scores": { "CP-3": 92, ... } }`
+**Request body (all endpoints):** `{ "businessText": "...", "scores": { "CP-1023": 92, ... } }`
 
 Reports include the requirement text, scored nodes, architecture view elements, and relation summary.
 
@@ -1475,7 +1475,7 @@ curl "http://localhost:8080/api/analyze-node?parentCode=C3_ROOT&businessText=voi
 # Leaf justification
 curl -X POST http://localhost:8080/api/justify-leaf \
   -H "Content-Type: application/json" \
-  -d '{"nodeCode":"SVC_VOICE_001","businessText":"Secure voice communications","scores":{"SVC_VOICE_001":87},"reasons":{"SVC_VOICE_001":"Matched on voice"}}'
+  -d '{"nodeCode":"CR-1047","businessText":"Secure voice communications","scores":{"CR-1047":87},"reasons":{"CR-1047":"Matched on voice"}}'
 ```
 
 ### Search
@@ -1491,7 +1491,7 @@ curl "http://localhost:8080/api/search/semantic?q=voice+communications&maxResult
 curl "http://localhost:8080/api/search/hybrid?q=voice+communications&maxResults=20"
 
 # Find similar nodes
-curl "http://localhost:8080/api/search/similar/SVC_VOICE_001?topK=5"
+curl "http://localhost:8080/api/search/similar/CR-1047?topK=5"
 
 # Graph-semantic search
 curl "http://localhost:8080/api/search/graph?q=voice+communications&maxResults=20"
@@ -1504,21 +1504,21 @@ curl http://localhost:8080/api/embedding/status
 
 ```bash
 # Upstream neighbourhood
-curl "http://localhost:8080/api/graph/node/SVC_VOICE_001/upstream?maxHops=2"
+curl "http://localhost:8080/api/graph/node/CR-1047/upstream?maxHops=2"
 
 # Downstream neighbourhood
-curl "http://localhost:8080/api/graph/node/SVC_VOICE_001/downstream?maxHops=2"
+curl "http://localhost:8080/api/graph/node/CR-1047/downstream?maxHops=2"
 
 # Failure impact analysis
-curl "http://localhost:8080/api/graph/node/SVC_VOICE_001/failure-impact?maxHops=3"
+curl "http://localhost:8080/api/graph/node/CR-1047/failure-impact?maxHops=3"
 
 # Enriched failure impact (with requirement coverage correlation)
-curl "http://localhost:8080/api/graph/node/SVC_VOICE_001/enriched-failure-impact?maxHops=3"
+curl "http://localhost:8080/api/graph/node/CR-1047/enriched-failure-impact?maxHops=3"
 
 # Requirement impact analysis
 curl -X POST http://localhost:8080/api/graph/impact \
   -H "Content-Type: application/json" \
-  -d '{"scores":{"SVC_VOICE_001":87,"CAP_C2_003":72},"businessText":"Secure voice","maxHops":2}'
+  -d '{"scores":{"CR-1047":87,"CP-1022":72},"businessText":"Secure voice","maxHops":2}'
 ```
 
 ### Relations & Proposals
@@ -1531,7 +1531,7 @@ curl http://localhost:8080/api/relations
 curl "http://localhost:8080/api/relations?type=REALIZES"
 
 # Relations for a specific node
-curl http://localhost:8080/api/node/CP-1/relations
+curl http://localhost:8080/api/node/CP-1023/relations
 
 # Get relation count
 curl http://localhost:8080/api/relations/count
@@ -1539,12 +1539,12 @@ curl http://localhost:8080/api/relations/count
 # Create a relation manually
 curl -X POST http://localhost:8080/api/relations \
   -H "Content-Type: application/json" \
-  -d '{"sourceCode":"CP-1","targetCode":"CR-5","relationType":"REALIZES","provenance":"MANUAL"}'
+  -d '{"sourceCode":"CP-1023","targetCode":"CR-1047","relationType":"REALIZES","provenance":"MANUAL"}'
 
 # Trigger relation proposals
 curl -X POST http://localhost:8080/api/proposals/propose \
   -H "Content-Type: application/json" \
-  -d '{"sourceCode":"CR-5","relationType":"SUPPORTS","limit":"10"}'
+  -d '{"sourceCode":"CR-1047","relationType":"SUPPORTS","limit":"10"}'
 
 # List all proposals
 curl http://localhost:8080/api/proposals
@@ -1585,7 +1585,7 @@ curl "http://localhost:8080/api/relations/metrics/top-rejected?limit=10"
 # Record requirement coverage
 curl -X POST http://localhost:8080/api/coverage/record \
   -H "Content-Type: application/json" \
-  -d '{"requirementId":"REQ-101","requirementText":"Secure comms","scores":{"CP-1":85,"BP-3":72},"minScore":50}'
+  -d '{"requirementId":"REQ-101","requirementText":"Secure comms","scores":{"CP-1023":85,"BP-1327":72},"minScore":50}'
 
 # Coverage statistics
 curl http://localhost:8080/api/coverage/statistics
@@ -1594,7 +1594,7 @@ curl http://localhost:8080/api/coverage/statistics
 curl http://localhost:8080/api/coverage/density
 
 # Coverage for a specific node
-curl http://localhost:8080/api/coverage/node/CP-1
+curl http://localhost:8080/api/coverage/node/CP-1023
 ```
 
 ### Gap Analysis, Recommendations & Patterns
@@ -1650,11 +1650,11 @@ curl -X POST http://localhost:8080/api/diagram/mermaid \
 # Export report (Markdown, HTML, DOCX, JSON)
 curl -X POST http://localhost:8080/api/report/markdown \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice","scores":{"CP-3":92}}' --output report.md
+  -d '{"businessText":"Secure voice","scores":{"CP-1023":92}}' --output report.md
 
 curl -X POST http://localhost:8080/api/report/html \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice","scores":{"CP-3":92}}' --output report.html
+  -d '{"businessText":"Secure voice","scores":{"CP-1023":92}}' --output report.html
 
 # Import ArchiMate XML model
 curl -X POST http://localhost:8080/api/import/archimate \
@@ -1676,18 +1676,18 @@ curl -X POST http://localhost:8080/api/dsl/parse \
   -d 'meta
   language "taxdsl"
   version "1.0"
-element CP-1001 type Capability
-  title "Secure Voice"'
+element CP-1023 type Capability
+  title "Communication and Information System Capabilities"'
 
 # Validate DSL text
 curl -X POST http://localhost:8080/api/dsl/validate \
   -H "Content-Type: text/plain" \
-  -d 'element CP-1001 type Capability'
+  -d 'element CP-1023 type Capability'
 
 # Commit DSL to a branch
 curl -X POST http://localhost:8080/api/dsl/commit \
   -H "Content-Type: application/json" \
-  -d '{"dslText":"element CP-1001 type Capability\n  title \"Secure Voice\"","branch":"main","message":"Add CP-1001"}'
+  -d '{"dslText":"element CP-1023 type Capability\n  title \"Communication and Information System Capabilities\"","branch":"main","message":"Add CP-1023"}'
 
 # List branches
 curl http://localhost:8080/api/dsl/branches
@@ -1719,14 +1719,14 @@ curl http://localhost:8080/api/prompts \
   -H "X-Admin-Token: your_admin_password"
 
 # Explanation trace for a single node
-curl -X POST http://localhost:8080/api/explain/CP-3 \
+curl -X POST http://localhost:8080/api/explain/CP-1023 \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice","scores":{"CP-3":92}}'
+  -d '{"businessText":"Secure voice","scores":{"CP-1023":92}}'
 
 # Explanation traces for all scored nodes
 curl -X POST http://localhost:8080/api/explain \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice","scores":{"CP-3":92,"CO-2":88}}'
+  -d '{"businessText":"Secure voice","scores":{"CP-1023":92,"CO-1011":88}}'
 ```
 
 ---

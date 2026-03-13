@@ -11,7 +11,7 @@ import org.apache.lucene.analysis.core.WhitespaceTokenizer;
  *
  * <p>The {@link com.taxonomy.dsl.parser.DslTokenizer} produces space-separated
  * tokens with category prefixes ({@code STRUCT:element}, {@code REL:REALIZES},
- * {@code DOM:Capability}) and raw identifiers ({@code CP-1001}). This analyzer:
+ * {@code DOM:Capability}) and raw identifiers ({@code CP-1023}). This analyzer:
  * <ol>
  *   <li>Splits on whitespace (tokens are already pre-tokenized)</li>
  *   <li>Lowercases for case-insensitive matching</li>

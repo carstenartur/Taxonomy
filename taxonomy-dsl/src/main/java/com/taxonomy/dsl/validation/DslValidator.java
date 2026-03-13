@@ -193,7 +193,7 @@ public class DslValidator {
 
     /**
      * Resolve the taxonomy root code for an element ID, using either the
-     * element type map (from DSL) or the ID prefix (e.g., CP-1001 → CP).
+     * element type map (from DSL) or the ID prefix (e.g., CP-1023 → CP).
      */
     private String resolveTaxonomyRootCode(String elementId, Map<String, String> elementTypeMap) {
         // Try element type from DSL model first

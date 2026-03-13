@@ -42,7 +42,7 @@ class TaxDslSerializerTest {
     @Test
     void serializeElementBlock() {
         BlockAst block = new BlockAst("element",
-                List.of("CP-1001", "type", "Capability"),
+                List.of("CP-1023", "type", "Capability"),
                 List.of(
                         new PropertyAst("title", "Secure Communications", null),
                         new PropertyAst("description", "Ability to communicate securely", null)
@@ -52,7 +52,7 @@ class TaxDslSerializerTest {
         DocumentAst doc = new DocumentAst(null, List.of(block));
         String result = serializer.serialize(doc);
 
-        assertThat(result).contains("element CP-1001 type Capability");
+        assertThat(result).contains("element CP-1023 type Capability");
         assertThat(result).contains("  title \"Secure Communications\"");
         assertThat(result).contains("  description \"Ability to communicate securely\"");
     }
@@ -60,7 +60,7 @@ class TaxDslSerializerTest {
     @Test
     void serializeRelationWithBareValues() {
         BlockAst block = new BlockAst("relation",
-                List.of("SRV-2008", "SUPPORTS", "BP-1040"),
+                List.of("CR-1011", "SUPPORTS", "BP-1327"),
                 List.of(
                         new PropertyAst("status", "proposed", null),
                         new PropertyAst("confidence", "0.76", null),
@@ -71,7 +71,7 @@ class TaxDslSerializerTest {
         DocumentAst doc = new DocumentAst(null, List.of(block));
         String result = serializer.serialize(doc);
 
-        assertThat(result).contains("relation SRV-2008 SUPPORTS BP-1040");
+        assertThat(result).contains("relation CR-1011 SUPPORTS BP-1327");
         assertThat(result).contains("  status proposed");
         assertThat(result).contains("  confidence 0.76");
         assertThat(result).contains("  provenance \"analysis\"");
@@ -84,7 +84,7 @@ class TaxDslSerializerTest {
         extensions.put("x-lifecycle", "target");
 
         BlockAst block = new BlockAst("element",
-                List.of("CP-1001", "type", "Capability"),
+                List.of("CP-1023", "type", "Capability"),
                 List.of(
                         new PropertyAst("title", "Test", null),
                         new PropertyAst("x-owner", "CIS", null),
@@ -106,8 +106,8 @@ class TaxDslSerializerTest {
                 List.of("overview"),
                 List.of(
                         new PropertyAst("title", "Overview", null),
-                        new PropertyAst("include", "CP-1001", null),
-                        new PropertyAst("include", "BP-1040", null),
+                        new PropertyAst("include", "CP-1023", null),
+                        new PropertyAst("include", "BP-1327", null),
                         new PropertyAst("layout", "layered", null)
                 ),
                 List.of(), Map.of(), null);
@@ -116,15 +116,15 @@ class TaxDslSerializerTest {
         String result = serializer.serialize(doc);
 
         assertThat(result).contains("view overview");
-        assertThat(result).contains("  include \"CP-1001\"");
-        assertThat(result).contains("  include \"BP-1040\"");
+        assertThat(result).contains("  include \"CP-1023\"");
+        assertThat(result).contains("  include \"BP-1327\"");
         assertThat(result).contains("  layout layered");
     }
 
     @Test
     void serializeTrailingNewline() {
         BlockAst block = new BlockAst("element",
-                List.of("CP-1001"),
+                List.of("CP-1023"),
                 List.of(new PropertyAst("title", "Test", null)),
                 List.of(), Map.of(), null);
 
@@ -137,11 +137,11 @@ class TaxDslSerializerTest {
     @Test
     void serializeMultipleBlocksSeparatedByBlankLine() {
         BlockAst block1 = new BlockAst("element",
-                List.of("CP-1001"),
+                List.of("CP-1023"),
                 List.of(new PropertyAst("title", "One", null)),
                 List.of(), Map.of(), null);
         BlockAst block2 = new BlockAst("element",
-                List.of("CP-1002"),
+                List.of("CP-1027"),
                 List.of(new PropertyAst("title", "Two", null)),
                 List.of(), Map.of(), null);
 
@@ -149,14 +149,14 @@ class TaxDslSerializerTest {
         String result = serializer.serialize(doc);
 
         // Blocks should be separated by a blank line
-        assertThat(result).contains("element CP-1001\n  title \"One\"\n\nelement CP-1002\n  title \"Two\"\n");
+        assertThat(result).contains("element CP-1023\n  title \"One\"\n\nelement CP-1027\n  title \"Two\"\n");
     }
 
     @Test
     void serializeDeterministicOutput() {
         MetaAst meta = new MetaAst("taxdsl", "1.0", "test", null);
         BlockAst block = new BlockAst("element",
-                List.of("CP-1001", "type", "Capability"),
+                List.of("CP-1023", "type", "Capability"),
                 List.of(new PropertyAst("title", "Test", null)),
                 List.of(), Map.of(), null);
 
@@ -170,7 +170,7 @@ class TaxDslSerializerTest {
     @Test
     void serializeEscapesQuotesInValues() {
         BlockAst block = new BlockAst("element",
-                List.of("CP-1001", "type", "Capability"),
+                List.of("CP-1023", "type", "Capability"),
                 List.of(
                         new PropertyAst("title", "He said \"hello\"", null),
                         new PropertyAst("description", "Path: C:\\Users\\test", null)
@@ -188,25 +188,25 @@ class TaxDslSerializerTest {
     void serializeBlocksSortedByKindThenId() {
         // Intentionally out of order: relation before element, BP before CP
         BlockAst relation = new BlockAst("relation",
-                List.of("CP-1001", "REALIZES", "BP-1040"),
+                List.of("CP-1023", "REALIZES", "BP-1327"),
                 List.of(new PropertyAst("status", "accepted", null)),
                 List.of(), Map.of(), null);
         BlockAst element2 = new BlockAst("element",
-                List.of("CP-1001", "type", "Capability"),
+                List.of("CP-1023", "type", "Capability"),
                 List.of(new PropertyAst("title", "Cap One", null)),
                 List.of(), Map.of(), null);
         BlockAst element1 = new BlockAst("element",
-                List.of("BP-1040", "type", "Process"),
+                List.of("BP-1327", "type", "Process"),
                 List.of(new PropertyAst("title", "Proc One", null)),
                 List.of(), Map.of(), null);
 
         DocumentAst doc = new DocumentAst(null, List.of(relation, element2, element1));
         String result = serializer.serialize(doc);
 
-        // Elements should come before relations; BP-1040 before CP-1001
-        int elemBp = result.indexOf("element BP-1040");
-        int elemCp = result.indexOf("element CP-1001");
-        int rel = result.indexOf("relation CP-1001");
+        // Elements should come before relations; BP-1327 before CP-1023
+        int elemBp = result.indexOf("element BP-1327");
+        int elemCp = result.indexOf("element CP-1023");
+        int rel = result.indexOf("relation CP-1023");
 
         assertThat(elemBp).isLessThan(elemCp);
         assertThat(elemCp).isLessThan(rel);
@@ -216,7 +216,7 @@ class TaxDslSerializerTest {
     void serializePropertiesInCanonicalOrder() {
         // Properties given in non-canonical order: description before title
         BlockAst block = new BlockAst("element",
-                List.of("CP-1001", "type", "Capability"),
+                List.of("CP-1023", "type", "Capability"),
                 List.of(
                         new PropertyAst("description", "A description", null),
                         new PropertyAst("taxonomy", "CP", null),
@@ -243,7 +243,7 @@ class TaxDslSerializerTest {
         extensions.put("x-alpha", "first");
 
         BlockAst block = new BlockAst("element",
-                List.of("CP-1001"),
+                List.of("CP-1023"),
                 List.of(
                         new PropertyAst("title", "Test", null),
                         new PropertyAst("x-zebra", "last", null),

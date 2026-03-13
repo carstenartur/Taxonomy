@@ -53,7 +53,7 @@ class TaxDslParserTest {
     @Test
     void parseElementBlock() {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Secure Communications Capability"
                   description "Ability to provide secure communications"
                   taxonomy "Capabilities"
@@ -63,7 +63,7 @@ class TaxDslParserTest {
 
         BlockAst block = doc.getBlocks().get(0);
         assertThat(block.getKind()).isEqualTo("element");
-        assertThat(block.getHeaderTokens()).containsExactly("CP-1001", "type", "Capability");
+        assertThat(block.getHeaderTokens()).containsExactly("CP-1023", "type", "Capability");
         assertThat(block.property("title")).isEqualTo("Secure Communications Capability");
         assertThat(block.property("description")).isEqualTo("Ability to provide secure communications");
         assertThat(block.property("taxonomy")).isEqualTo("Capabilities");
@@ -72,7 +72,7 @@ class TaxDslParserTest {
     @Test
     void parseRelationBlock() {
         String dsl = """
-                relation SRV-2008 SUPPORTS BP-1040
+                relation CR-1011 SUPPORTS BP-1327
                   status proposed
                   confidence 0.76
                   provenance "analysis"
@@ -82,7 +82,7 @@ class TaxDslParserTest {
 
         BlockAst block = doc.getBlocks().get(0);
         assertThat(block.getKind()).isEqualTo("relation");
-        assertThat(block.getHeaderTokens()).containsExactly("SRV-2008", "SUPPORTS", "BP-1040");
+        assertThat(block.getHeaderTokens()).containsExactly("CR-1011", "SUPPORTS", "BP-1327");
         assertThat(block.property("status")).isEqualTo("proposed");
         assertThat(block.property("confidence")).isEqualTo("0.76");
         assertThat(block.property("provenance")).isEqualTo("analysis");
@@ -108,7 +108,7 @@ class TaxDslParserTest {
     @Test
     void parseMappingBlock() {
         String dsl = """
-                mapping REQ-001 -> CP-1001
+                mapping REQ-001 -> CP-1023
                   score 0.92
                   source "llm"
                 """;
@@ -117,7 +117,7 @@ class TaxDslParserTest {
 
         BlockAst block = doc.getBlocks().get(0);
         assertThat(block.getKind()).isEqualTo("mapping");
-        assertThat(block.getHeaderTokens()).containsExactly("REQ-001", "->", "CP-1001");
+        assertThat(block.getHeaderTokens()).containsExactly("REQ-001", "->", "CP-1023");
         assertThat(block.property("score")).isEqualTo("0.92");
         assertThat(block.property("source")).isEqualTo("llm");
     }
@@ -128,8 +128,8 @@ class TaxDslParserTest {
                 view secure-voice-overview
                   title "Secure Voice Architecture Overview"
                   include REQ-001
-                  include CP-1001
-                  include BP-1040
+                  include CP-1023
+                  include BP-1327
                   layout layered
                 """;
         DocumentAst doc = parser.parse(dsl);
@@ -139,14 +139,14 @@ class TaxDslParserTest {
         assertThat(block.getKind()).isEqualTo("view");
         assertThat(block.getHeaderTokens()).containsExactly("secure-voice-overview");
         assertThat(block.property("title")).isEqualTo("Secure Voice Architecture Overview");
-        assertThat(block.propertyValues("include")).containsExactly("REQ-001", "CP-1001", "BP-1040");
+        assertThat(block.propertyValues("include")).containsExactly("REQ-001", "CP-1023", "BP-1327");
         assertThat(block.property("layout")).isEqualTo("layered");
     }
 
     @Test
     void parseEvidenceBlock() {
         String dsl = """
-                evidence EV-001 for relation SRV-2008 SUPPORTS BP-1040
+                evidence EV-001 for relation CR-1011 SUPPORTS BP-1327
                   type LLM
                   model "gpt-4.1-mini"
                   confidence 0.76
@@ -157,13 +157,13 @@ class TaxDslParserTest {
 
         BlockAst block = doc.getBlocks().get(0);
         assertThat(block.getKind()).isEqualTo("evidence");
-        assertThat(block.getHeaderTokens()).contains("EV-001", "for", "relation", "SRV-2008", "SUPPORTS", "BP-1040");
+        assertThat(block.getHeaderTokens()).contains("EV-001", "for", "relation", "CR-1011", "SUPPORTS", "BP-1327");
     }
 
     @Test
     void parseUnknownAttributes() {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Secure Communications"
                   x-owner "CIS"
                   x-lifecycle "target"
@@ -199,13 +199,13 @@ class TaxDslParserTest {
                   version "1.0"
                   namespace "test"
                 
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Cap One"
                 
-                element BP-1040 type Process
+                element BP-1327 type Process
                   title "Process One"
                 
-                relation CP-1001 REALIZES BP-1040
+                relation CP-1023 REALIZES BP-1327
                   status accepted
                 """;
         DocumentAst doc = parser.parse(dsl);
@@ -220,7 +220,7 @@ class TaxDslParserTest {
     void parseCommentsAreIgnored() {
         String dsl = """
                 # This is a comment
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Cap One"
                   # This is also a comment
                   description "Desc"
@@ -237,7 +237,7 @@ class TaxDslParserTest {
                 meta
                   language "taxdsl"
                 
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Test"
                 """;
         DocumentAst doc = parser.parse(dsl, "test.tax");
@@ -267,7 +267,7 @@ class TaxDslParserTest {
     @Test
     void parseEscapedQuotesInValues() {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "He said \\"hello\\""
                   description "Path: C:\\\\Users\\\\test"
                 """;

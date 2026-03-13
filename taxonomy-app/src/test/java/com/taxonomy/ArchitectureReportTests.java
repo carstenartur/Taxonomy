@@ -309,7 +309,7 @@ class ArchitectureReportTests {
 
     @Test
     void recommendedElementHasExplanationTraceField() {
-        RecommendedElement el = new RecommendedElement("CP-1", "Test", "CP", 90, "reason");
+        RecommendedElement el = new RecommendedElement("CP-1010", "Test", "CP", 90, "reason");
         ExplanationTrace trace = new ExplanationTrace();
         trace.setSummaryText("test trace");
         el.setExplanationTrace(trace);

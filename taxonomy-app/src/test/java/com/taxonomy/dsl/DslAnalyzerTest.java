@@ -22,8 +22,8 @@ class DslAnalyzerTest {
 
     @Test
     void dslAnalyzerSplitsOnWhitespace() throws IOException {
-        List<String> tokens = analyze(new DslAnalyzer(), "CP-1001 BP-1040 REQ-001");
-        assertThat(tokens).containsExactly("cp-1001", "bp-1040", "req-001");
+        List<String> tokens = analyze(new DslAnalyzer(), "CP-1023 BP-1327 REQ-001");
+        assertThat(tokens).containsExactly("cp-1023", "bp-1327", "req-001");
     }
 
     @Test
@@ -47,30 +47,30 @@ class DslAnalyzerTest {
     @Test
     void dslAnalyzerHandlesMixedTokens() throws IOException {
         List<String> tokens = analyze(new DslAnalyzer(),
-                "CP-1001 STRUCT:element REL:REALIZES CR-2001 DOM:Capability");
+                "CP-1023 STRUCT:element REL:REALIZES CR-1047 DOM:Capability");
         assertThat(tokens).hasSize(5);
-        assertThat(tokens).contains("cp-1001", "struct:element", "rel:realizes", "cr-2001", "dom:capability");
+        assertThat(tokens).contains("cp-1023", "struct:element", "rel:realizes", "cr-1047", "dom:capability");
     }
 
     // ── CsvKeywordAnalyzer ──────────────────────────────────────────
 
     @Test
     void csvAnalyzerSplitsOnCommas() throws IOException {
-        List<String> tokens = analyze(new CsvKeywordAnalyzer(), "CP-1001,BP-1040,CR-2001");
-        assertThat(tokens).containsExactly("cp-1001", "bp-1040", "cr-2001");
+        List<String> tokens = analyze(new CsvKeywordAnalyzer(), "CP-1023,BP-1327,CR-1047");
+        assertThat(tokens).containsExactly("cp-1023", "bp-1327", "cr-1047");
     }
 
     @Test
     void csvAnalyzerSplitsOnSemicolons() throws IOException {
         List<String> tokens = analyze(new CsvKeywordAnalyzer(),
-                "CP-1001 REALIZES CR-2001;CR-2001 SUPPORTS BP-1040");
-        assertThat(tokens).containsExactly("cp-1001 realizes cr-2001", "cr-2001 supports bp-1040");
+                "CP-1023 REALIZES CR-1047;CR-1047 SUPPORTS BP-1327");
+        assertThat(tokens).containsExactly("cp-1023 realizes cr-1047", "cr-1047 supports bp-1327");
     }
 
     @Test
     void csvAnalyzerHandlesMixedDelimiters() throws IOException {
-        List<String> tokens = analyze(new CsvKeywordAnalyzer(), "CP-1001,BP-1040;CR-2001");
-        assertThat(tokens).containsExactly("cp-1001", "bp-1040", "cr-2001");
+        List<String> tokens = analyze(new CsvKeywordAnalyzer(), "CP-1023,BP-1327;CR-1047");
+        assertThat(tokens).containsExactly("cp-1023", "bp-1327", "cr-1047");
     }
 
     @Test
@@ -81,8 +81,8 @@ class DslAnalyzerTest {
 
     @Test
     void csvAnalyzerLowercases() throws IOException {
-        List<String> tokens = analyze(new CsvKeywordAnalyzer(), "CP-1001,REQ-001");
-        assertThat(tokens).containsExactly("cp-1001", "req-001");
+        List<String> tokens = analyze(new CsvKeywordAnalyzer(), "CP-1023,REQ-001");
+        assertThat(tokens).containsExactly("cp-1023", "req-001");
     }
 
     // ── Helper ──────────────────────────────────────────────────────

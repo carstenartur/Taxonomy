@@ -33,17 +33,17 @@ class TaxDslRoundtripTest {
                   version "1.0"
                   namespace "mission.secure-voice"
                 
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Secure Communications Capability"
                   description "Ability to provide secure communications"
                   taxonomy "Capabilities"
                 
-                element BP-1040 type Process
+                element BP-1327 type Process
                   title "Conduct Operations"
                   description "Execution of operations"
                   taxonomy "Business Processes"
                 
-                relation CP-1001 REALIZES BP-1040
+                relation CP-1023 REALIZES BP-1327
                   status accepted
                   confidence 0.83
                   provenance "manual"
@@ -52,15 +52,15 @@ class TaxDslRoundtripTest {
                   title "Secure voice communications for deployed forces"
                   text "Provide secure voice communications for deployed joint forces"
                 
-                mapping REQ-001 -> CP-1001
+                mapping REQ-001 -> CP-1023
                   score 0.92
                   source "llm"
                 
                 view secure-voice-overview
                   title "Secure Voice Architecture Overview"
                   include REQ-001
-                  include CP-1001
-                  include BP-1040
+                  include CP-1023
+                  include BP-1327
                   layout layered
                 """;
 
@@ -80,26 +80,26 @@ class TaxDslRoundtripTest {
         assertThat(doc2.blocksOfKind("mapping")).hasSize(1);
         assertThat(doc2.blocksOfKind("view")).hasSize(1);
 
-        // Verify element content preserved (elements sorted by ID: BP-1040 before CP-1001)
+        // Verify element content preserved (elements sorted by ID: BP-1327 before CP-1023)
         var elements = doc2.blocksOfKind("element");
-        var cpEl = elements.stream().filter(b -> b.getHeaderTokens().get(0).equals("CP-1001")).findFirst().orElseThrow();
-        assertThat(cpEl.getHeaderTokens()).containsExactly("CP-1001", "type", "Capability");
+        var cpEl = elements.stream().filter(b -> b.getHeaderTokens().get(0).equals("CP-1023")).findFirst().orElseThrow();
+        assertThat(cpEl.getHeaderTokens()).containsExactly("CP-1023", "type", "Capability");
         assertThat(cpEl.property("title")).isEqualTo("Secure Communications Capability");
 
         // Verify relation content preserved
         var rel = doc2.blocksOfKind("relation").get(0);
-        assertThat(rel.getHeaderTokens()).containsExactly("CP-1001", "REALIZES", "BP-1040");
+        assertThat(rel.getHeaderTokens()).containsExactly("CP-1023", "REALIZES", "BP-1327");
         assertThat(rel.property("confidence")).isEqualTo("0.83");
 
         // Verify view includes preserved
         var view = doc2.blocksOfKind("view").get(0);
-        assertThat(view.propertyValues("include")).containsExactly("REQ-001", "CP-1001", "BP-1040");
+        assertThat(view.propertyValues("include")).containsExactly("REQ-001", "CP-1023", "BP-1327");
     }
 
     @Test
     void roundtripPreservesExtensionAttributes() {
         String original = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Test"
                   x-owner "CIS"
                   x-criticality "high"
@@ -139,7 +139,7 @@ class TaxDslRoundtripTest {
                   version "1.0"
                   namespace "test"
                 
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Test"
                   description "Description"
                 """;
@@ -156,7 +156,7 @@ class TaxDslRoundtripTest {
     @Test
     void roundtripEvidenceBlock() {
         String original = """
-                evidence EV-001 for relation SRV-2008 SUPPORTS BP-1040
+                evidence EV-001 for relation CR-1011 SUPPORTS BP-1327
                   type LLM
                   model "gpt-4.1-mini"
                   confidence 0.76
@@ -178,7 +178,7 @@ class TaxDslRoundtripTest {
     void roundtripEscapedQuotes() {
         // Create a document with escaped quotes in values
         String original = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "He said \\"hello\\""
                   description "Path: C:\\\\Users\\\\test"
                 """;
@@ -205,13 +205,13 @@ class TaxDslRoundtripTest {
                   language "taxdsl"
                   version "1.0"
 
-                relation CP-1001 REALIZES BP-1040
+                relation CP-1023 REALIZES BP-1327
                   status accepted
 
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Cap One"
 
-                element BP-1040 type Process
+                element BP-1327 type Process
                   title "Proc One"
                 """;
 
@@ -219,8 +219,8 @@ class TaxDslRoundtripTest {
         String serialized = serializer.serialize(doc1);
 
         // After serialization, blocks are sorted: elements first (BP before CP), then relations
-        assertThat(serialized.indexOf("element BP-1040")).isLessThan(serialized.indexOf("element CP-1001"));
-        assertThat(serialized.indexOf("element CP-1001")).isLessThan(serialized.indexOf("relation CP-1001"));
+        assertThat(serialized.indexOf("element BP-1327")).isLessThan(serialized.indexOf("element CP-1023"));
+        assertThat(serialized.indexOf("element CP-1023")).isLessThan(serialized.indexOf("relation CP-1023"));
 
         // Double serialization is stable
         DocumentAst doc2 = parser.parse(serialized);

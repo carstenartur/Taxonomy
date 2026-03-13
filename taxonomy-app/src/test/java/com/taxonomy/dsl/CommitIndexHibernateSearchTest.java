@@ -41,12 +41,12 @@ class CommitIndexHibernateSearchTest {
         // Insert a commit with DSL tokens
         ArchitectureCommitIndex entry = createEntry(
                 "abc123", "author1", "Initial architecture commit",
-                "CP-1001 STRUCT:element REL:REALIZES DOM:Capability CR-2001",
-                "CP-1001,CR-2001", "CP-1001 REALIZES CR-2001");
+                "CP-1023 STRUCT:element REL:REALIZES DOM:Capability CR-1047",
+                "CP-1023,CR-1047", "CP-1023 REALIZES CR-1047");
         indexRepository.save(entry);
 
         // Search for a DSL element ID in tokenized text
-        List<ArchitectureCommitIndex> results = commitIndexService.search("cp-1001");
+        List<ArchitectureCommitIndex> results = commitIndexService.search("cp-1023");
         assertThat(results).isNotEmpty();
         assertThat(results.get(0).getCommitId()).isEqualTo("abc123");
     }
@@ -68,11 +68,11 @@ class CommitIndexHibernateSearchTest {
     void findByElementIdUsesHibernateSearch() {
         ArchitectureCommitIndex entry = createEntry(
                 "ghi789", "author3", "Element addition",
-                "BP-1040 STRUCT:element DOM:Process",
-                "BP-1040,CP-1001", "");
+                "BP-1327 STRUCT:element DOM:Process",
+                "BP-1327,CP-1023", "");
         indexRepository.save(entry);
 
-        List<ArchitectureCommitIndex> results = commitIndexService.findByElement("BP-1040");
+        List<ArchitectureCommitIndex> results = commitIndexService.findByElement("BP-1327");
         assertThat(results).isNotEmpty();
         assertThat(results.get(0).getCommitId()).isEqualTo("ghi789");
     }
@@ -81,11 +81,11 @@ class CommitIndexHibernateSearchTest {
     void findByRelationKeyUsesHibernateSearch() {
         ArchitectureCommitIndex entry = createEntry(
                 "jkl012", "author4", "Relation creation",
-                "CP-1001 CR-2001 REL:REALIZES STRUCT:relation",
-                "CP-1001,CR-2001", "CP-1001 REALIZES CR-2001");
+                "CP-1023 CR-1047 REL:REALIZES STRUCT:relation",
+                "CP-1023,CR-1047", "CP-1023 REALIZES CR-1047");
         indexRepository.save(entry);
 
-        List<ArchitectureCommitIndex> results = commitIndexService.findByRelation("CP-1001 REALIZES CR-2001");
+        List<ArchitectureCommitIndex> results = commitIndexService.findByRelation("CP-1023 REALIZES CR-1047");
         assertThat(results).isNotEmpty();
         assertThat(results.get(0).getCommitId()).isEqualTo("jkl012");
     }
@@ -142,8 +142,8 @@ class CommitIndexHibernateSearchTest {
         ArchitectureCommitIndex entry = createEntry(
                 "pqr678pqr678pqr678pqr678pqr678pqr67890",
                 "author6", "Added REALIZES relations",
-                "CP-1001 CR-2001 STRUCT:relation REL:REALIZES DOM:Capability",
-                "CP-1001,CR-2001", "CP-1001 REALIZES CR-2001");
+                "CP-1023 CR-1047 STRUCT:relation REL:REALIZES DOM:Capability",
+                "CP-1023,CR-1047", "CP-1023 REALIZES CR-1047");
         indexRepository.save(entry);
 
         // Search for the prefixed relation type token

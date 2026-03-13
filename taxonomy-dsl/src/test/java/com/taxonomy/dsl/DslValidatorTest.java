@@ -25,10 +25,10 @@ class DslValidatorTest {
     @Test
     void validModelPassesValidation() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Test", "Desc", "CP"));
-        model.getElements().add(new ArchitectureElement("BP-1040", "Process", "Test 2", "Desc 2", "BP"));
+        model.getElements().add(new ArchitectureElement("CP-1023", "Capability", "Test", "Desc", "CP"));
+        model.getElements().add(new ArchitectureElement("BP-1327", "Process", "Test 2", "Desc 2", "BP"));
 
-        ArchitectureRelation rel = new ArchitectureRelation("CP-1001", "REALIZES", "BP-1040");
+        ArchitectureRelation rel = new ArchitectureRelation("CP-1023", "REALIZES", "BP-1327");
         rel.setStatus("accepted");
         model.getRelations().add(rel);
 
@@ -40,12 +40,12 @@ class DslValidatorTest {
     @Test
     void duplicateElementIdIsError() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "First", null, null));
-        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Duplicate", null, null));
+        model.getElements().add(new ArchitectureElement("CP-1023", "Capability", "First", null, null));
+        model.getElements().add(new ArchitectureElement("CP-1023", "Capability", "Duplicate", null, null));
 
         DslValidationResult result = validator.validate(model);
         assertThat(result.isValid()).isFalse();
-        assertThat(result.getErrors()).anyMatch(e -> e.contains("Duplicate element ID: CP-1001"));
+        assertThat(result.getErrors()).anyMatch(e -> e.contains("Duplicate element ID: CP-1023"));
     }
 
     @Test
@@ -62,9 +62,9 @@ class DslValidatorTest {
     @Test
     void relationWithUnknownSourceIdIsWarning() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        model.getElements().add(new ArchitectureElement("BP-1040", "Process", "Test", null, null));
+        model.getElements().add(new ArchitectureElement("BP-1327", "Process", "Test", null, null));
 
-        ArchitectureRelation rel = new ArchitectureRelation("UNKNOWN-1", "SUPPORTS", "BP-1040");
+        ArchitectureRelation rel = new ArchitectureRelation("UNKNOWN-1", "SUPPORTS", "BP-1327");
         model.getRelations().add(rel);
 
         DslValidationResult result = validator.validate(model);
@@ -75,9 +75,9 @@ class DslValidatorTest {
     @Test
     void relationWithUnknownTargetIdIsWarning() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Test", null, null));
+        model.getElements().add(new ArchitectureElement("CP-1023", "Capability", "Test", null, null));
 
-        ArchitectureRelation rel = new ArchitectureRelation("CP-1001", "REALIZES", "UNKNOWN-2");
+        ArchitectureRelation rel = new ArchitectureRelation("CP-1023", "REALIZES", "UNKNOWN-2");
         model.getRelations().add(rel);
 
         DslValidationResult result = validator.validate(model);
@@ -87,10 +87,10 @@ class DslValidatorTest {
     @Test
     void invalidRelationStatusIsError() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Test", null, null));
-        model.getElements().add(new ArchitectureElement("BP-1040", "Process", "Test", null, null));
+        model.getElements().add(new ArchitectureElement("CP-1023", "Capability", "Test", null, null));
+        model.getElements().add(new ArchitectureElement("BP-1327", "Process", "Test", null, null));
 
-        ArchitectureRelation rel = new ArchitectureRelation("CP-1001", "REALIZES", "BP-1040");
+        ArchitectureRelation rel = new ArchitectureRelation("CP-1023", "REALIZES", "BP-1327");
         rel.setStatus("invalid-status");
         model.getRelations().add(rel);
 
@@ -125,7 +125,7 @@ class DslValidatorTest {
     @Test
     void missingElementTitleIsWarning() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", null, null, null));
+        model.getElements().add(new ArchitectureElement("CP-1023", "Capability", null, null, null));
 
         DslValidationResult result = validator.validate(model);
         assertThat(result.isValid()).isTrue();
@@ -135,9 +135,9 @@ class DslValidatorTest {
     @Test
     void mappingWithUnknownRequirementIsWarning() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Test", null, null));
+        model.getElements().add(new ArchitectureElement("CP-1023", "Capability", "Test", null, null));
 
-        RequirementMapping mapping = new RequirementMapping("REQ-UNKNOWN", "CP-1001");
+        RequirementMapping mapping = new RequirementMapping("REQ-UNKNOWN", "CP-1023");
         model.getMappings().add(mapping);
 
         DslValidationResult result = validator.validate(model);
@@ -170,10 +170,10 @@ class DslValidatorTest {
     @Test
     void validTypeCombinationRealizes() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Test Cap", null, null));
-        model.getElements().add(new ArchitectureElement("CR-2001", "CoreService", "Test Svc", null, null));
+        model.getElements().add(new ArchitectureElement("CP-1023", "Capability", "Test Cap", null, null));
+        model.getElements().add(new ArchitectureElement("CR-1047", "CoreService", "Test Svc", null, null));
 
-        ArchitectureRelation rel = new ArchitectureRelation("CP-1001", "REALIZES", "CR-2001");
+        ArchitectureRelation rel = new ArchitectureRelation("CP-1023", "REALIZES", "CR-1047");
         model.getRelations().add(rel);
 
         DslValidationResult result = validator.validate(model);
@@ -184,10 +184,10 @@ class DslValidatorTest {
     void invalidSourceTypeForRelation() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
         // BP (Process) should not be source for REALIZES (requires CP)
-        model.getElements().add(new ArchitectureElement("BP-1040", "Process", "Test Proc", null, null));
-        model.getElements().add(new ArchitectureElement("CR-2001", "CoreService", "Test Svc", null, null));
+        model.getElements().add(new ArchitectureElement("BP-1327", "Process", "Test Proc", null, null));
+        model.getElements().add(new ArchitectureElement("CR-1047", "CoreService", "Test Svc", null, null));
 
-        ArchitectureRelation rel = new ArchitectureRelation("BP-1040", "REALIZES", "CR-2001");
+        ArchitectureRelation rel = new ArchitectureRelation("BP-1327", "REALIZES", "CR-1047");
         model.getRelations().add(rel);
 
         DslValidationResult result = validator.validate(model);
@@ -198,10 +198,10 @@ class DslValidatorTest {
     void invalidTargetTypeForRelation() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
         // CP→BP is wrong for REALIZES; REALIZES requires CP→CR
-        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Test Cap", null, null));
-        model.getElements().add(new ArchitectureElement("BP-1040", "Process", "Test Proc", null, null));
+        model.getElements().add(new ArchitectureElement("CP-1023", "Capability", "Test Cap", null, null));
+        model.getElements().add(new ArchitectureElement("BP-1327", "Process", "Test Proc", null, null));
 
-        ArchitectureRelation rel = new ArchitectureRelation("CP-1001", "REALIZES", "BP-1040");
+        ArchitectureRelation rel = new ArchitectureRelation("CP-1023", "REALIZES", "BP-1327");
         model.getRelations().add(rel);
 
         DslValidationResult result = validator.validate(model);
@@ -211,10 +211,10 @@ class DslValidatorTest {
     @Test
     void relatedToHasNoTypeRestrictions() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Test", null, null));
-        model.getElements().add(new ArchitectureElement("BP-1040", "Process", "Test", null, null));
+        model.getElements().add(new ArchitectureElement("CP-1023", "Capability", "Test", null, null));
+        model.getElements().add(new ArchitectureElement("BP-1327", "Process", "Test", null, null));
 
-        ArchitectureRelation rel = new ArchitectureRelation("CP-1001", "RELATED_TO", "BP-1040");
+        ArchitectureRelation rel = new ArchitectureRelation("CP-1023", "RELATED_TO", "BP-1327");
         model.getRelations().add(rel);
 
         DslValidationResult result = validator.validate(model);
@@ -225,11 +225,11 @@ class DslValidatorTest {
     void typeCombinationByIdPrefix() {
         // When no explicit type is provided, use ID prefix to resolve root
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        model.getElements().add(new ArchitectureElement("CR-2001", null, "Service", null, null));
-        model.getElements().add(new ArchitectureElement("BP-1040", null, "Process", null, null));
+        model.getElements().add(new ArchitectureElement("CR-1047", null, "Service", null, null));
+        model.getElements().add(new ArchitectureElement("BP-1327", null, "Process", null, null));
 
         // CR→BP for SUPPORTS is valid
-        ArchitectureRelation rel = new ArchitectureRelation("CR-2001", "SUPPORTS", "BP-1040");
+        ArchitectureRelation rel = new ArchitectureRelation("CR-1047", "SUPPORTS", "BP-1327");
         model.getRelations().add(rel);
 
         DslValidationResult result = validator.validate(model);

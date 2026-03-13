@@ -31,31 +31,33 @@ Click **Analyze with AI**. The system scores every taxonomy node (0–100) and o
 
 | Code | Node | Score |
 |---|---|---|
-| CP-3 | Secure Communications Capability | 92 |
-| CO-2 | Voice Communications Service | 88 |
-| CR-5 | Interoperability Service | 81 |
-| UA-7 | Operations Coordination System | 74 |
-| BP-4 | Conduct Operations | 71 |
+| CP-1023 | Communication and Information System Capabilities | 92 |
+| CO-1011 | Communications Access Services | 88 |
+| CR-1047 | Infrastructure Services | 81 |
+| UA-1015 | Air Applications | 74 |
+| BP-1327 | Enable | 71 |
 
 ### Step 3 — Generate the architecture view
 
 The system automatically selects nodes with score ≥ 70 as anchors, propagates relevance through taxonomy relations, and builds a structured architecture model:
 
 ```
-Capability: Secure Communications Capability (CP-3)
+Capability: Communication and Information System Capabilities (CP-1023)
     ↓ supports
-Service: Voice Communications Service (CO-2)
+Service: Communications Access Services (CO-1011)
     ↓ realises
-Service: Interoperability Service (CR-5)
+Service: Infrastructure Services (CR-1047)
     ↓ used by
-Application: Operations Coordination System (UA-7)
+Application: Air Applications (UA-1015)
     ↓ enables
-Process: Conduct Operations (BP-4)
+Process: Enable (BP-1327)
 ```
 
 ### Step 4 — Export
 
 Click an export button to download the architecture as ArchiMate XML, Visio `.vsdx`, or Mermaid flowchart.
+
+![Detailed architecture view](images/38-architecture-view-detailed.png)
 
 ### REST API equivalent
 
@@ -74,25 +76,25 @@ curl -X POST http://localhost:8080/api/analyze \
 ### Web UI
 
 1. Open the **Graph Explorer** panel on the right.
-2. Enter the node code, e.g. `CR-5` (Interoperability Service).
+2. Enter the node code, e.g. `CR-1047` (Infrastructure Services).
 3. Click **Failure Impact**.
-4. The result shows every element that depends on `CR-5`, directly or transitively.
+4. The result shows every element that depends on `CR-1047`, directly or transitively.
 
 ### REST API
 
 ```bash
-curl "http://localhost:8080/api/graph/node/CR-5/failure-impact"
+curl "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
 ```
 
 ### Example result
 
 ```json
 {
-  "sourceNode": "CR-5",
-  "sourceTitle": "Interoperability Service",
+  "sourceNode": "CR-1047",
+  "sourceTitle": "Infrastructure Services",
   "impactedNodes": [
-    { "code": "UA-7", "title": "Operations Coordination System", "distance": 1 },
-    { "code": "BP-4", "title": "Conduct Operations", "distance": 2 }
+    { "code": "UA-1015", "title": "Air Applications", "distance": 1 },
+    { "code": "BP-1327", "title": "Enable", "distance": 2 }
   ]
 }
 ```
@@ -116,7 +118,7 @@ curl -X POST http://localhost:8080/api/gap/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "businessText": "Maritime surveillance data sharing",
-    "scores": {"CP-3": 92, "CO-2": 88, "CR-5": 81}
+    "scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}
   }'
 ```
 
@@ -126,16 +128,16 @@ curl -X POST http://localhost:8080/api/gap/analyze \
 {
   "missingRelations": [
     {
-      "source": "CO-2",
-      "target": "IP-3",
+      "source": "CO-1011",
+      "target": "IP-1659",
       "suggestedType": "produces",
-      "reason": "Voice service likely produces communication records"
+      "reason": "Communications service likely produces situation reports"
     }
   ],
   "incompletePatterns": [
     {
       "pattern": "Full Stack",
-      "presentElements": ["CP-3", "CO-2", "CR-5"],
+      "presentElements": ["CP-1023", "CO-1011", "CR-1047"],
       "missingLayers": ["Information Products"]
     }
   ]
@@ -164,13 +166,15 @@ Each proposal shows:
 
 Click **Accept** to add the relation to the knowledge graph, or **Reject** to discard it.
 
+![Accepted proposal](images/36-proposal-accepted.png)
+
 ### REST API
 
 ```bash
 # Generate proposals for a node
 curl -X POST http://localhost:8080/api/proposals/propose \
   -H "Content-Type: application/json" \
-  -d '{"sourceCode": "CR-5", "relationType": "SUPPORTS"}'
+  -d '{"sourceCode": "CR-1047", "relationType": "SUPPORTS"}'
 
 # List pending proposals
 curl "http://localhost:8080/api/proposals/pending"
@@ -203,7 +207,7 @@ curl -X POST http://localhost:8080/api/recommend \
   -H "Content-Type: application/json" \
   -d '{
     "businessText": "Secure satellite communications for remote operations",
-    "scores": {"CO-2": 88, "CR-5": 81}
+    "scores": {"CO-1056": 88, "CR-1047": 81}
   }'
 ```
 
@@ -212,11 +216,11 @@ curl -X POST http://localhost:8080/api/recommend \
 ```json
 {
   "recommendedNodes": [
-    { "code": "CO-4", "title": "Satellite Communications Service", "reason": "Directly relevant to satellite communications requirement" },
-    { "code": "CP-8", "title": "Remote Operations Capability", "reason": "Supports remote operations as stated in requirement" }
+    { "code": "CO-1063", "title": "Transport Services", "reason": "Directly relevant to satellite communications requirement" },
+    { "code": "CP-1023", "title": "Communication and Information System Capabilities", "reason": "Supports remote operations as stated in requirement" }
   ],
   "recommendedRelations": [
-    { "source": "CO-4", "target": "CO-2", "type": "supports", "reason": "Satellite service supports voice communications" }
+    { "source": "CO-1056", "target": "CO-1011", "type": "supports", "reason": "Transmission services support communications access" }
   ]
 }
 ```
@@ -232,7 +236,7 @@ curl -X POST http://localhost:8080/api/recommend \
 ```bash
 curl -X POST http://localhost:8080/api/diagram/archimate \
   -H "Content-Type: application/json" \
-  -d '{"scores": {"CP-3": 92, "CO-2": 88, "CR-5": 81}}' \
+  -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}' \
   -o architecture.xml
 ```
 
@@ -243,7 +247,7 @@ The resulting XML file can be imported into **Archi**, **BiZZdesign**, **MEGA**,
 ```bash
 curl -X POST http://localhost:8080/api/diagram/visio \
   -H "Content-Type: application/json" \
-  -d '{"scores": {"CP-3": 92, "CO-2": 88, "CR-5": 81}}' \
+  -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}' \
   -o architecture.vsdx
 ```
 
@@ -252,16 +256,16 @@ curl -X POST http://localhost:8080/api/diagram/visio \
 ```bash
 curl -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
-  -d '{"scores": {"CP-3": 92, "CO-2": 88, "CR-5": 81}}'
+  -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}'
 ```
 
 The response is a Mermaid flowchart code block that renders in GitHub, GitLab, Notion, and Confluence:
 
 ```mermaid
 graph TD
-    CP-3["Secure Communications Capability"]
-    CO-2["Voice Communications Service"]
-    CR-5["Interoperability Service"]
-    CP-3 -->|supports| CO-2
-    CO-2 -->|realises| CR-5
+    CP-1023["Communication and Information System Capabilities"]
+    CO-1011["Communications Access Services"]
+    CR-1047["Infrastructure Services"]
+    CP-1023 -->|supports| CO-1011
+    CO-1011 -->|realises| CR-1047
 ```

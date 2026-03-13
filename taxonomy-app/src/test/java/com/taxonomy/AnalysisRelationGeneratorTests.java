@@ -66,7 +66,7 @@ class AnalysisRelationGeneratorTests {
     @Test
     void generateReturnsEmptyWhenOnlyOneRootQualifies() {
         // Only BP root qualifies — need at least 2 roots for cross-root relations
-        Map<String, Integer> scores = Map.of("BP", 80, "BP-1", 70);
+        Map<String, Integer> scores = Map.of("BP", 80, "BP-1327", 70);
         List<RelationHypothesisDto> result = generator.generate(scores);
         assertThat(result).isEmpty();
     }

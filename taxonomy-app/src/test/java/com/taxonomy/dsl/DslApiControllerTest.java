@@ -44,10 +44,10 @@ class DslApiControllerTest {
     @Test
     void parseValidDslReturnsJsonResult() throws Exception {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Test"
                 
-                relation CP-1001 REALIZES BP-1040
+                relation CP-1023 REALIZES BP-1327
                   status accepted
                 """;
 
@@ -72,7 +72,7 @@ class DslApiControllerTest {
     @Test
     void validateValidDslReturnsNoErrors() throws Exception {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Test"
                 """;
 
@@ -87,10 +87,10 @@ class DslApiControllerTest {
     @Test
     void validateDslWithDuplicateIdsReturnsErrors() throws Exception {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "First"
                 
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Duplicate"
                 """;
 
@@ -145,10 +145,10 @@ class DslApiControllerTest {
     @Test
     void materializeDslWithInvalidContentReturnsBadRequest() throws Exception {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "First"
                 
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Duplicate"
                 """;
 
@@ -169,10 +169,10 @@ class DslApiControllerTest {
                   version "1.0"
                   namespace "test"
                 
-                element CP-1 type Capability
+                element CP-1010 type Capability
                   title "Test Capability"
                 
-                element BP-1 type Process
+                element BP-1327 type Process
                   title "Test Process"
                 """;
 
@@ -297,10 +297,10 @@ class DslApiControllerTest {
     @Test
     void commitInvalidDslReturnsBadRequest() throws Exception {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "First"
                 
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Duplicate"
                 """;
 

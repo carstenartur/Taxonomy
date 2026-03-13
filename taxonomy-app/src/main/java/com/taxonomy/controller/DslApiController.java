@@ -651,7 +651,7 @@ public class DslApiController {
     @GetMapping("/history/relation")
     @Operation(summary = "Find commits that affected a specific relation",
             description = "Searches affectedRelationIds and tokenized DSL text for the given " +
-                    "relation key (e.g., 'CP-1001 REALIZES CR-2001') using Hibernate Search.")
+                    "relation key (e.g., 'CP-1023 REALIZES CR-1047') using Hibernate Search.")
     public ResponseEntity<?> findHistoryByRelation(@RequestParam String key) {
         return ResponseEntity.ok(commitIndexService.findByRelation(key));
     }

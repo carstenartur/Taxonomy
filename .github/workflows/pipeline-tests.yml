@@ -32,4 +32,4 @@ jobs:
         run: mvn package -DskipTests -q
 
       - name: Run Pipeline Tests
-        run: mvn failsafe:integration-test failsafe:verify -DrunOnnxTests -Dit.test=LocalOnnxPipelineIT
+        run: mvn failsafe:integration-test failsafe:verify -DrunOnnxTests -Dit.test=LocalOnnxPipelineIT -pl taxonomy-app

@@ -177,6 +177,10 @@ Tips for good requirements:
 
 ![Scored taxonomy tree](images/15-scored-taxonomy-tree.png)
 
+The fully expanded tree shows scores at every level, making it easy to identify which branches are most relevant:
+
+![Scored taxonomy tree — fully expanded](images/35-scored-bp-tree-expanded.png)
+
 ### Interactive Mode
 
 Tick the **Interactive Mode** checkbox before clicking **Analyze with AI** to use level-by-level exploration instead of scoring the whole tree at once.
@@ -279,6 +283,10 @@ The Sunburst view renders the taxonomy as a radial sunburst chart where the cent
 - Click a segment to zoom into that subtree.
 
 ![Sunburst view](images/06-sunburst-view.png)
+
+After running an analysis, the sunburst chart displays heat-mapped colour gradients reflecting the scores:
+
+![Scored sunburst view](images/39-scored-sunburst.png)
 
 ### Tree View
 
@@ -450,6 +458,10 @@ The table/graph shows:
 
 ![Graph Explorer failure impact](images/22-graph-explorer-failure.png)
 
+Accepted proposals also appear as graph edges. After accepting a proposal (see [Section 9](#9-working-with-relation-proposals)), the new relation is immediately visible in the Graph Explorer:
+
+![Graph Explorer with accepted relation](images/37-graph-with-accepted-relation.png)
+
 ---
 
 ## 9. Working with Relation Proposals
@@ -500,6 +512,10 @@ For each row in the proposals table:
 
 - Click **Accept** to approve the relation. A confirmed `TaxonomyRelation` is created in the knowledge base and the proposal status changes to ACCEPTED.
 - Click **Reject** to decline the relation. The proposal status changes to REJECTED.
+
+Once accepted, the proposal displays a green **Accepted** badge. The accepted relation is immediately visible in the Graph Explorer:
+
+![Accepted proposal](images/36-proposal-accepted.png)
 
 After each accept or reject action, an **Undo toast notification** appears in the bottom-right corner for 8 seconds. Click **↩️ Undo** to revert the proposal back to PENDING status (and, if it was accepted, delete the created relation).
 
@@ -931,20 +947,20 @@ meta
   version "1.0"
   namespace "mission.secure-voice"
 
-element CP-1001 type Capability
-  title "Secure Communications Capability"
-  description "Ability to provide secure communications"
+element CP-1023 type Capability
+  title "Communication and Information System Capabilities"
+  description "Ability to provide communication and information systems"
   taxonomy "Capabilities"
 
   x-owner "CIS"
   x-criticality "high"
 
-element BP-1040 type Process
-  title "Conduct Operations"
-  description "Execution of operations"
+element BP-1327 type Process
+  title "Enable"
+  description "Enablement of operations"
   taxonomy "Business Processes"
 
-relation CP-1001 REALIZES BP-1040
+relation CP-1023 REALIZES BP-1327
   status accepted
   confidence 0.83
   provenance "manual"
@@ -953,14 +969,14 @@ requirement REQ-001
   title "Secure voice communications for deployed forces"
   text "Provide secure voice communications for deployed joint forces"
 
-mapping REQ-001 -> CP-1001
+mapping REQ-001 -> CP-1023
   score 0.92
   source "llm"
 
 view secure-voice-overview
   title "Secure Voice Architecture Overview"
-  include CP-1001
-  include BP-1040
+  include CP-1023
+  include BP-1327
   layout layered
 ```
 
@@ -969,7 +985,7 @@ view secure-voice-overview
 | Block | Header syntax | Description |
 |---|---|---|
 | `meta` | `meta` | Document metadata: language, version, namespace |
-| `element` | `element <ID> type <TypeName>` | Architecture element (Capability, Process, CoreService, etc.) |
+| `element` | `element <ID> type <TypeName>` | Architecture element; ID must be a valid taxonomy code from the workbook |
 | `relation` | `relation <SourceID> <RelType> <TargetID>` | Directed relation between two elements |
 | `requirement` | `requirement <ID>` | Business requirement text |
 | `mapping` | `mapping <ReqID> -> <ElementID>` | Requirement-to-element mapping with score |
@@ -998,8 +1014,8 @@ See [§13 Relation Types Reference](#13-relation-types-reference) for the full l
 Any property starting with `x-` is treated as an **extension attribute**. Extensions are preserved across round-trips and are not validated — they provide a user-defined extensibility mechanism:
 
 ```
-element CP-1001 type Capability
-  title "Secure Communications"
+element CP-1023 type Capability
+  title "Communication and Information System Capabilities"
 
   x-owner "CIS"
   x-criticality "high"
@@ -1031,6 +1047,10 @@ The DSL Editor tab in the application provides:
 5. **Branch management** — Create branches, cherry-pick, and merge
 
 ![DSL Editor panel](images/34-dsl-editor-panel.png)
+
+After accepting proposals, the exported DSL includes `relation` blocks alongside `element` blocks, showing the full architecture data model:
+
+![DSL Editor with relations](images/40-dsl-editor-with-relations.png)
 
 ### Version Control
 
