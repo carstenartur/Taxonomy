@@ -25,8 +25,10 @@ public class TaxDslParser {
     /**
      * Pattern to extract a quoted string value.
      * Supports escaped quotes ({@code \"}) inside the string.
+     * Uses a possessive quantifier ({@code *+}) to prevent catastrophic
+     * backtracking (ReDoS) on malformed input.
      */
-    private static final Pattern QUOTED_VALUE = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
+    private static final Pattern QUOTED_VALUE = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*+)\"");
 
     /**
      * Parse DSL text into a {@link DocumentAst}.

@@ -22,8 +22,10 @@ public class LlmResponseParser {
 
     private static final Logger log = LoggerFactory.getLogger(LlmResponseParser.class);
 
+    // Possessive quantifiers (*+) prevent catastrophic backtracking (ReDoS) on
+    // malformed input while preserving the same matching semantics for valid JSON.
     private static final Pattern JSON_OBJECT_PATTERN =
-            Pattern.compile("\\{[^{}]*(?:\\{[^{}]*\\}[^{}]*)*\\}", Pattern.DOTALL);
+            Pattern.compile("\\{[^{}]*+(?:\\{[^{}]*+\\}[^{}]*+)*+\\}", Pattern.DOTALL);
 
     private final ObjectMapper objectMapper;
 
