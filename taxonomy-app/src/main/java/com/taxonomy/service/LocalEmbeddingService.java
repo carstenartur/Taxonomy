@@ -137,21 +137,25 @@ public class LocalEmbeddingService {
                         model = loadFromUrl(url);
                         log.info("all-MiniLM-L6-v2 loaded successfully.");
                     } catch (Exception primary) {
+                        // When the djl:// protocol fails (e.g. URL truncation in Alpine),
+                        // try loading directly from HuggingFace before giving up.
                         if (url.startsWith("djl://")) {
                             log.warn("djl:// URL failed ({}), trying HuggingFace fallback…",
                                     primary.getMessage());
                             try {
                                 model = loadFromUrl(FALLBACK_MODEL_URL);
                                 log.info("all-MiniLM-L6-v2 loaded from HuggingFace fallback.");
-                                return model;
                             } catch (Exception fallback) {
                                 log.error("Fallback also failed: {}", fallback.getMessage());
+                                modelLoadFailed = true;
+                                throw primary;
                             }
+                        } else {
+                            modelLoadFailed = true;
+                            log.error("Failed to load DJL model from '{}'; semantic search disabled. Error: {}",
+                                    url, primary.getMessage());
+                            throw primary;
                         }
-                        modelLoadFailed = true;
-                        log.error("Failed to load DJL model from '{}'; semantic search disabled. Error: {}",
-                                url, primary.getMessage());
-                        throw primary;
                     }
                 }
             }

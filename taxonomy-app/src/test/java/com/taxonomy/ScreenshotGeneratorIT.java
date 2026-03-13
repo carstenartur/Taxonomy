@@ -50,6 +50,12 @@ class ScreenshotGeneratorIT {
     private static final String REQUIREMENT_TEXT =
             "Provide secure voice communications between HQ and deployed forces";
 
+    private static final String FALLBACK_DSL_TEXT =
+            "meta\\n  language \"taxdsl\"\\n  version \"1.0\"\\n  namespace \"default\"\\n\\n" +
+            "element CP type Capability\\n  title \"Capability Packages\"\\n\\n" +
+            "element CR type CoreService\\n  title \"Core Services\"\\n\\n" +
+            "relation CP REALIZES CR\\n  status accepted\\n";
+
     private static final Path OUTPUT_DIR = Path.of("docs/images");
 
     private static Network network;
@@ -945,11 +951,7 @@ class ScreenshotGeneratorIT {
             });
         } catch (org.openqa.selenium.TimeoutException e) {
             // Fallback: inject representative DSL for the screenshot
-            js("document.getElementById('dslEditorTextarea').value = " +
-               "'meta\\n  language \"taxdsl\"\\n  version \"1.0\"\\n  namespace \"default\"\\n\\n" +
-               "element CP type Capability\\n  title \"Capability Packages\"\\n\\n" +
-               "element CR type CoreService\\n  title \"Core Services\"\\n\\n" +
-               "relation CP REALIZES CR\\n  status accepted\\n';");
+            js("document.getElementById('dslEditorTextarea').value = '" + FALLBACK_DSL_TEXT + "';");
         }
         saveScreenshot("34-dsl-editor-panel.png");
     }
