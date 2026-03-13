@@ -987,7 +987,9 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(36)
     void captureProposalAccepted() throws IOException {
-        // Create a proposal via the REST API, then accept it
+        // Create a proposal via the REST API, then accept it.
+        // CP-3 (Capability) → CR-5 (Core Service) is chosen because these are common
+        // taxonomy codes present in the test data and form a natural REALIZES relation.
         js("window._proposalCreated = false;" +
            "fetch('/api/proposals/from-hypothesis', {" +
            "  method: 'POST'," +
@@ -1021,7 +1023,8 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(37)
     void captureGraphWithAcceptedRelation() throws IOException {
-        // Navigate to the graph tab and query for the source node of the accepted proposal
+        // Navigate to the graph tab and query for CP-3 (the source node of the proposal
+        // accepted in test 36) to show that the accepted relation is visible as a graph edge.
         navigateToTab("graph");
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
