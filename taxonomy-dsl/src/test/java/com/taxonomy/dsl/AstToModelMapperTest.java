@@ -26,11 +26,12 @@ class AstToModelMapperTest {
     @Test
     void mapElement() {
         String dsl = """
-                element CP-1023 type Capability
-                  title "Secure Communications"
-                  description "Ability to communicate securely"
-                  taxonomy "Capabilities"
-                  x-owner "CIS"
+                element CP-1023 type Capability {
+                  title: "Secure Communications";
+                  description: "Ability to communicate securely";
+                  taxonomy: "Capabilities";
+                  x-owner: "CIS";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         CanonicalArchitectureModel model = mapper.map(doc);
@@ -48,10 +49,11 @@ class AstToModelMapperTest {
     @Test
     void mapRelation() {
         String dsl = """
-                relation CR-1011 SUPPORTS BP-1327
-                  status proposed
-                  confidence 0.76
-                  provenance "analysis"
+                relation CR-1011 SUPPORTS BP-1327 {
+                  status: proposed;
+                  confidence: 0.76;
+                  provenance: "analysis";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         CanonicalArchitectureModel model = mapper.map(doc);
@@ -69,9 +71,10 @@ class AstToModelMapperTest {
     @Test
     void mapRequirement() {
         String dsl = """
-                requirement REQ-001
-                  title "Secure voice comms"
-                  text "Provide secure voice communications"
+                requirement REQ-001 {
+                  title: "Secure voice comms";
+                  text: "Provide secure voice communications";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         CanonicalArchitectureModel model = mapper.map(doc);
@@ -86,9 +89,10 @@ class AstToModelMapperTest {
     @Test
     void mapMapping() {
         String dsl = """
-                mapping REQ-001 -> CP-1023
-                  score 0.92
-                  source "llm"
+                mapping REQ-001 -> CP-1023 {
+                  score: 0.92;
+                  source: "llm";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         CanonicalArchitectureModel model = mapper.map(doc);
@@ -104,11 +108,12 @@ class AstToModelMapperTest {
     @Test
     void mapView() {
         String dsl = """
-                view overview
-                  title "Overview"
-                  include CP-1023
-                  include BP-1327
-                  layout layered
+                view overview {
+                  title: "Overview";
+                  include: "CP-1023";
+                  include: "BP-1327";
+                  layout: layered;
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         CanonicalArchitectureModel model = mapper.map(doc);
@@ -124,11 +129,13 @@ class AstToModelMapperTest {
     @Test
     void mapEvidence() {
         String dsl = """
-                evidence EV-001 for relation CR-1011 SUPPORTS BP-1327
-                  type LLM
-                  model "gpt-4.1-mini"
-                  confidence 0.76
-                  summary "The service supports the process."
+                evidence EV-001 {
+                  for-relation: CR-1011 SUPPORTS BP-1327;
+                  type: LLM;
+                  model: "gpt-4.1-mini";
+                  confidence: 0.76;
+                  summary: "The service supports the process.";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         CanonicalArchitectureModel model = mapper.map(doc);
@@ -147,11 +154,13 @@ class AstToModelMapperTest {
     @Test
     void mapUnknownBlockTypesAreSkipped() {
         String dsl = """
-                constraint CON-001
-                  title "Max latency"
+                constraint CON-001 {
+                  title: "Max latency";
+                }
                 
-                element CP-1023 type Capability
-                  title "Test"
+                element CP-1023 type Capability {
+                  title: "Test";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         CanonicalArchitectureModel model = mapper.map(doc);
@@ -165,39 +174,48 @@ class AstToModelMapperTest {
     @Test
     void mapCompleteDocument() {
         String dsl = """
-                meta
-                  language "taxdsl"
-                  version "1.0"
-                  namespace "test"
+                meta {
+                  language: "taxdsl";
+                  version: "2.0";
+                  namespace: "test";
+                }
                 
-                element CP-1023 type Capability
-                  title "Cap One"
+                element CP-1023 type Capability {
+                  title: "Cap One";
+                }
                 
-                element BP-1327 type Process
-                  title "Process One"
+                element BP-1327 type Process {
+                  title: "Process One";
+                }
                 
-                relation CP-1023 REALIZES BP-1327
-                  status accepted
-                  confidence 0.83
+                relation CP-1023 REALIZES BP-1327 {
+                  status: accepted;
+                  confidence: 0.83;
+                }
                 
-                requirement REQ-001
-                  title "Req One"
-                  text "Requirement text"
+                requirement REQ-001 {
+                  title: "Req One";
+                  text: "Requirement text";
+                }
                 
-                mapping REQ-001 -> CP-1023
-                  score 0.92
-                  source "llm"
+                mapping REQ-001 -> CP-1023 {
+                  score: 0.92;
+                  source: "llm";
+                }
                 
-                view overview
-                  title "Overview"
-                  include CP-1023
-                  include BP-1327
-                  layout layered
+                view overview {
+                  title: "Overview";
+                  include: "CP-1023";
+                  include: "BP-1327";
+                  layout: layered;
+                }
                 
-                evidence EV-001 for relation CP-1023 REALIZES BP-1327
-                  type LLM
-                  confidence 0.83
-                  summary "Direct realization."
+                evidence EV-001 {
+                  for-relation: CP-1023 REALIZES BP-1327;
+                  type: LLM;
+                  confidence: 0.83;
+                  summary: "Direct realization.";
+                }
                 """;
         DocumentAst doc = parser.parse(dsl);
         CanonicalArchitectureModel model = mapper.map(doc);
