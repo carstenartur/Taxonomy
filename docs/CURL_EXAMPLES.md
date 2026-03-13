@@ -234,21 +234,23 @@ curl http://localhost:8080/api/dsl/current
 # Parse DSL text
 curl -X POST http://localhost:8080/api/dsl/parse \
   -H "Content-Type: text/plain" \
-  -d 'meta
-  language "taxdsl"
-  version "1.0"
-element CP-1023 type Capability
-  title "Communication and Information System Capabilities"'
+  -d 'meta {
+  language: "taxdsl";
+  version: "2.0";
+}
+element CP-1023 type Capability {
+  title: "Communication and Information System Capabilities";
+}'
 
 # Validate DSL text
 curl -X POST http://localhost:8080/api/dsl/validate \
   -H "Content-Type: text/plain" \
-  -d 'element CP-1023 type Capability'
+  -d 'element CP-1023 type Capability { }'
 
 # Commit DSL to a branch
 curl -X POST http://localhost:8080/api/dsl/commit \
   -H "Content-Type: application/json" \
-  -d '{"dslText":"element CP-1023 type Capability\n  title \"Communication and Information System Capabilities\"","branch":"main","message":"Add CP-1023"}'
+  -d '{"dslText":"element CP-1023 type Capability {\n  title: \"Communication and Information System Capabilities\";\n}","branch":"main","message":"Add CP-1023"}'
 
 # List branches
 curl http://localhost:8080/api/dsl/branches
