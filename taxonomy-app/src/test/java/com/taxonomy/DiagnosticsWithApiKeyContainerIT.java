@@ -16,6 +16,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -37,6 +38,10 @@ class DiagnosticsWithApiKeyContainerIT {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5)).build();
 
+    /** HTTP Basic auth header value for the default admin user. */
+    private static final String BASIC_AUTH = "Basic " +
+            Base64.getEncoder().encodeToString("admin:admin".getBytes());
+
     @Container
     static GenericContainer<?> app = new GenericContainer<>(
             new ImageFromDockerfile()
@@ -51,7 +56,7 @@ class DiagnosticsWithApiKeyContainerIT {
             .withExposedPorts(8080)
             .withEnv("GEMINI_API_KEY", "test1234fake")
             .withStartupTimeout(Duration.ofSeconds(120))
-            .waitingFor(Wait.forHttp("/api/diagnostics")
+            .waitingFor(Wait.forHttp("/actuator/health")
                     .forStatusCode(200)
                     .forPort(8080));
 
@@ -63,6 +68,7 @@ class DiagnosticsWithApiKeyContainerIT {
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl() + "/api/diagnostics"))
                 .header("Accept", "application/json")
+                .header("Authorization", BASIC_AUTH)
                 .GET().build();
         HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
         assertThat(resp.statusCode()).isEqualTo(200);
@@ -74,6 +80,7 @@ class DiagnosticsWithApiKeyContainerIT {
                 .uri(URI.create(baseUrl() + "/api/analyze-node?parentCode=" + parentCode
                         + "&businessText=" + businessText.replace(" ", "%20")))
                 .header("Accept", "application/json")
+                .header("Authorization", BASIC_AUTH)
                 .GET().build();
         HTTP.send(req, HttpResponse.BodyHandlers.ofString());
     }

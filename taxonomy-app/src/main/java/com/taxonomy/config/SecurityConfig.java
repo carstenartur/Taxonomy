@@ -62,6 +62,7 @@ public class SecurityConfig {
                 .requestMatchers("/**").authenticated()
             )
             .formLogin(Customizer.withDefaults())
+            .httpBasic(Customizer.withDefaults())
             .logout(Customizer.withDefaults());
 
         // CSRF protection is enabled by default (important for browser sessions).

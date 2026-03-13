@@ -111,20 +111,20 @@ class SecurityTests {
                 .andExpect(status().isOk());
     }
 
-    // ── Unauthenticated access redirects to login ─────────────────────────────
+    // ── Unauthenticated access is denied ─────────────────────────────────────
 
     @Test
     @WithAnonymousUser
-    void unauthenticatedApiAccessRedirectsToLogin() throws Exception {
+    void unauthenticatedApiAccessIsUnauthorized() throws Exception {
         mockMvc.perform(get("/api/taxonomy"))
-                .andExpect(status().is3xxRedirection());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     @WithAnonymousUser
-    void unauthenticatedGuiAccessRedirectsToLogin() throws Exception {
+    void unauthenticatedGuiAccessIsUnauthorized() throws Exception {
         mockMvc.perform(get("/"))
-                .andExpect(status().is3xxRedirection());
+                .andExpect(status().isUnauthorized());
     }
 
     // ── Authenticated USER access ─────────────────────────────────────────────

@@ -18,6 +18,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Base64;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -40,6 +41,10 @@ class LocalOnnxPipelineIT {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10)).build();
 
+    /** HTTP Basic auth header value for the default admin user. */
+    private static final String BASIC_AUTH = "Basic " +
+            Base64.getEncoder().encodeToString("admin:admin".getBytes());
+
     @Container
     static GenericContainer<?> app = new GenericContainer<>(
             new ImageFromDockerfile()
@@ -55,7 +60,7 @@ class LocalOnnxPipelineIT {
             .withEnv("LLM_PROVIDER", "LOCAL_ONNX")
             .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true")
             .withStartupTimeout(Duration.ofSeconds(180))
-            .waitingFor(Wait.forHttp("/api/ai-status")
+            .waitingFor(Wait.forHttp("/actuator/health")
                     .forStatusCode(200)
                     .forPort(8080));
 
@@ -70,6 +75,7 @@ class LocalOnnxPipelineIT {
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + path))
                 .header("Accept", "application/json")
+                .header("Authorization", BASIC_AUTH)
                 .GET().build();
         return HTTP.send(req, HttpResponse.BodyHandlers.ofString());
     }
@@ -79,6 +85,7 @@ class LocalOnnxPipelineIT {
                 .uri(URI.create(baseUrl + path))
                 .header("Content-Type", contentType)
                 .header("Accept", "application/json")
+                .header("Authorization", BASIC_AUTH)
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
         return HTTP.send(req, HttpResponse.BodyHandlers.ofString());

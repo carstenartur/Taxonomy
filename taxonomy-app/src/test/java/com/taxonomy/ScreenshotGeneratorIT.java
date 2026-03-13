@@ -117,9 +117,8 @@ class ScreenshotGeneratorIT {
                 .withEnv("ADMIN_PASSWORD", "testpassword123")
                 .withEnv("LLM_MOCK", "true")
                 .withStartupTimeout(Duration.ofSeconds(120))
-                // Use /api/ai-status (public) instead of /api/diagnostics (returns 401 when
-                // ADMIN_PASSWORD is configured) as the container readiness check.
-                .waitingFor(Wait.forHttp("/api/ai-status").forStatusCode(200).forPort(8080));
+                // Use /actuator/health (public) as the container readiness check.
+                .waitingFor(Wait.forHttp("/actuator/health").forStatusCode(200).forPort(8080));
 
         app = appContainer;
         app.start();
@@ -131,6 +130,14 @@ class ScreenshotGeneratorIT {
 
         driver = chrome.getWebDriver();
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
+
+        // Login via form (Spring Security requires authentication)
+        driver.get("http://app:8080/login");
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .until(ExpectedConditions.presenceOfElementLocated(By.name("username")));
+        driver.findElement(By.name("username")).sendKeys("admin");
+        driver.findElement(By.name("password")).sendKeys("admin");
+        driver.findElement(By.cssSelector("button[type='submit'], input[type='submit']")).click();
 
         // Load the application and wait for the taxonomy tree to be FULLY RENDERED
         driver.get("http://app:8080/");
