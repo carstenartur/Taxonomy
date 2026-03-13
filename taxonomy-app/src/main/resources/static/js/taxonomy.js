@@ -742,9 +742,10 @@
                 if (window.TaxonomyViews) {
                     const treeRoot = data.find(r => r.code === currentTreeRoot) || data[0];
                     const treeContainer = document.getElementById('taxonomyTree');
-                    const nodeCount = window.TaxonomyViews.countNodes
-                        ? window.TaxonomyViews.countNodes(treeRoot) : 0;
-                    if (nodeCount > 500 && window.TaxonomyViews.renderTreeCanvas) {
+                    const canUseCanvas = window.TaxonomyViews.countNodes
+                        && window.TaxonomyViews.renderTreeCanvas
+                        && window.TaxonomyViews.countNodes(treeRoot) > 500;
+                    if (canUseCanvas) {
                         window.TaxonomyViews.renderTreeCanvas(treeContainer, [treeRoot], scores);
                     } else {
                         window.TaxonomyViews.renderTreeDiagram(treeContainer, [treeRoot], scores);

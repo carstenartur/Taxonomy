@@ -1273,11 +1273,15 @@
         lines.push('');
 
         function dotId(code) {
-            return '"' + code.replace(/"/g, '\\"') + '"';
+            return '"' + code.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+        }
+
+        function dotEscape(text) {
+            return text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         }
 
         function walk(node) {
-            var label = node.name ? node.code + '\\n' + node.name : node.code;
+            var label = node.name ? dotEscape(node.code) + '\\n' + dotEscape(node.name) : dotEscape(node.code);
             var fillColor = '#e8e8e8';
             if (scores && scores[node.code] > 0) {
                 var pct = Math.min(scores[node.code] / 100, 1);

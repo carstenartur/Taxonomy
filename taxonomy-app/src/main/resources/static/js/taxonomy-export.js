@@ -325,7 +325,8 @@
      */
     function exportPdf() {
         // Try vector PDF if jsPDF and svg2pdf.js are available
-        if (typeof window.jspdf !== 'undefined' && typeof window.svg2pdf !== 'undefined') {
+        // svg2pdf.js registers itself on jsPDF prototype as the .svg() method
+        if (typeof window.jspdf !== 'undefined') {
             var container = document.getElementById('taxonomyTree');
             var svgEl = container ? container.querySelector('svg') : null;
 
@@ -345,10 +346,12 @@
                 var orientation = w > h ? 'landscape' : 'portrait';
                 var jsPDF = window.jspdf.jsPDF;
                 var doc = new jsPDF({ orientation: orientation, unit: 'pt', format: [w, h] });
-                doc.svg(svgEl, { x: 0, y: 0, width: w, height: h }).then(function () {
-                    doc.save('taxonomy-view.pdf');
-                });
-                return;
+                if (typeof doc.svg === 'function') {
+                    doc.svg(svgEl, { x: 0, y: 0, width: w, height: h }).then(function () {
+                        doc.save('taxonomy-view.pdf');
+                    });
+                    return;
+                }
             }
         }
         // Fallback to browser print
