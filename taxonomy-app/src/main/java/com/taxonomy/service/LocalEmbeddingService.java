@@ -62,6 +62,10 @@ public class LocalEmbeddingService {
     static final String DEFAULT_MODEL_URL =
             "djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2";
 
+    /** Fallback URL used when the {@code djl://} protocol fails (e.g. URL truncation in Alpine). */
+    static final String FALLBACK_MODEL_URL =
+            "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2";
+
     /**
      * Raw cosine-similarity threshold below which a node receives score 0.
      * Value in (-1, 1); 0.25 means "weak or no semantic overlap".
@@ -130,23 +134,38 @@ public class LocalEmbeddingService {
                     String url = effectiveModelUrl();
                     log.info("Loading all-MiniLM-L6-v2 via DJL / ONNX Runtime from {} …", url);
                     try {
-                        Criteria.Builder<String, float[]> builder = Criteria.builder()
-                                .optApplication(Application.NLP.TEXT_EMBEDDING)
-                                .setTypes(String.class, float[].class)
-                                .optModelUrls(url)
-                                .optEngine("OnnxRuntime");
-                        model = builder.build().loadModel();
+                        model = loadFromUrl(url);
                         log.info("all-MiniLM-L6-v2 loaded successfully.");
-                    } catch (Exception e) {
+                    } catch (Exception primary) {
+                        if (url.startsWith("djl://")) {
+                            log.warn("djl:// URL failed ({}), trying HuggingFace fallback…",
+                                    primary.getMessage());
+                            try {
+                                model = loadFromUrl(FALLBACK_MODEL_URL);
+                                log.info("all-MiniLM-L6-v2 loaded from HuggingFace fallback.");
+                                return model;
+                            } catch (Exception fallback) {
+                                log.error("Fallback also failed: {}", fallback.getMessage());
+                            }
+                        }
                         modelLoadFailed = true;
                         log.error("Failed to load DJL model from '{}'; semantic search disabled. Error: {}",
-                                url, e.getMessage());
-                        throw e;
+                                url, primary.getMessage());
+                        throw primary;
                     }
                 }
             }
         }
         return model;
+    }
+
+    private ZooModel<String, float[]> loadFromUrl(String url) throws Exception {
+        return Criteria.builder()
+                .optApplication(Application.NLP.TEXT_EMBEDDING)
+                .setTypes(String.class, float[].class)
+                .optModelUrls(url)
+                .optEngine("OnnxRuntime")
+                .build().loadModel();
     }
 
     // ── Index status ──────────────────────────────────────────────────────────
