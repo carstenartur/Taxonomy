@@ -11,14 +11,14 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * Runs the same diagnostics + API tests as {@link DiagnosticsContainerIT}
  * but against a <strong>PostgreSQL</strong> database backend.
  * <p>
- * Tagged with {@code external-db} — excluded from the default {@code mvn verify}
+ * Tagged with {@code db-postgres} — excluded from the default {@code mvn verify}
  * run. Execute explicitly with:
  * <pre>
- * mvn verify -DexcludedGroups= -Dit.test=DiagnosticsPostgresContainerIT
+ * mvn verify -DexcludedGroups=real-llm -Dit.test=DiagnosticsPostgresContainerIT
  * </pre>
  */
 @Testcontainers
-@Tag("external-db")
+@Tag("db-postgres")
 class DiagnosticsPostgresContainerIT extends AbstractDatabaseContainerIT {
 
     static Network network = Network.newNetwork();

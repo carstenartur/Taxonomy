@@ -9,14 +9,14 @@ import org.testcontainers.oracle.OracleContainer;
 /**
  * Selenium UI + REST tests against <strong>Oracle Database Free</strong>.
  * <p>
- * Tagged with {@code external-db} — excluded from the default {@code mvn verify}.
+ * Tagged with {@code db-oracle} — excluded from the default {@code mvn verify}.
  * Execute explicitly with:
  * <pre>
- * mvn verify -DexcludedGroups= -Dit.test=SeleniumOracleContainerIT
+ * mvn verify -DexcludedGroups=real-llm -Dit.test=SeleniumOracleContainerIT
  * </pre>
  */
 @Testcontainers
-@Tag("external-db")
+@Tag("db-oracle")
 class SeleniumOracleContainerIT extends AbstractSeleniumContainerIT {
 
     @Override

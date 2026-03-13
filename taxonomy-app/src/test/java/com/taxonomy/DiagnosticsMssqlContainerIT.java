@@ -11,14 +11,14 @@ import org.testcontainers.mssqlserver.MSSQLServerContainer;
  * Runs the same diagnostics + API tests as {@link DiagnosticsContainerIT}
  * but against a <strong>Microsoft SQL Server</strong> database backend.
  * <p>
- * Tagged with {@code external-db} — excluded from the default {@code mvn verify}
+ * Tagged with {@code db-mssql} — excluded from the default {@code mvn verify}
  * run. Execute explicitly with:
  * <pre>
- * mvn verify -DexcludedGroups= -Dit.test=DiagnosticsMssqlContainerIT
+ * mvn verify -DexcludedGroups=real-llm -Dit.test=DiagnosticsMssqlContainerIT
  * </pre>
  */
 @Testcontainers
-@Tag("external-db")
+@Tag("db-mssql")
 class DiagnosticsMssqlContainerIT extends AbstractDatabaseContainerIT {
 
     static Network network = Network.newNetwork();

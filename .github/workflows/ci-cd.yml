@@ -30,7 +30,7 @@ jobs:
       - name: Build and run tests
         env:
           GEMINI_API_KEY: ""
-        run: mvn -q verify -DexcludedGroups="external-db,real-llm"
+        run: mvn -q verify -DexcludedGroups="db-postgres,db-mssql,db-oracle,real-llm"
 
       - name: Publish test results
         uses: dorny/test-reporter@v2
