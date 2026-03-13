@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureSummaryService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">ArchitectureSummaryService.java</span></div><h1>ArchitectureSummaryService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dto.ArchitectureSummary;
+import com.taxonomy.dto.ArchitectureSummary.NextStep;
+import com.taxonomy.dto.ArchitectureSummary.SummaryEntry;
+import com.taxonomy.model.TaxonomyNode;
+import com.taxonomy.repository.RelationProposalRepository;
+import com.taxonomy.repository.RelationHypothesisRepository;
+import com.taxonomy.repository.RequirementCoverageRepository;
+import com.taxonomy.repository.TaxonomyNodeRepository;
+import com.taxonomy.repository.TaxonomyRelationRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Produces a compact, actionable architecture summary.
+ *
+ * &lt;p&gt;The summary aggregates data from nodes, relations, proposals,
+ * hypotheses, and coverage to provide an at-a-glance view of the
+ * current architecture state, plus recommended next steps.
+ */
+@Service
+public class ArchitectureSummaryService {
+
+    private static final int TOP_N = 5;
+
+    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyRelationRepository relationRepository;
+    private final RelationProposalRepository proposalRepository;
+    private final RelationHypothesisRepository hypothesisRepository;
+    private final RequirementCoverageRepository coverageRepository;
+
+    public ArchitectureSummaryService(TaxonomyNodeRepository nodeRepository,
+                                      TaxonomyRelationRepository relationRepository,
+                                      RelationProposalRepository proposalRepository,
+                                      RelationHypothesisRepository hypothesisRepository,
+<span class="fc" id="L41">                                      RequirementCoverageRepository coverageRepository) {</span>
+<span class="fc" id="L42">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L43">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L44">        this.proposalRepository = proposalRepository;</span>
+<span class="fc" id="L45">        this.hypothesisRepository = hypothesisRepository;</span>
+<span class="fc" id="L46">        this.coverageRepository = coverageRepository;</span>
+<span class="fc" id="L47">    }</span>
+
+    /**
+     * Build the architecture summary from current data.
+     */
+    @Transactional(readOnly = true)
+    public ArchitectureSummary buildSummary() {
+<span class="fc" id="L54">        List&lt;TaxonomyNode&gt; allNodes = nodeRepository.findAll();</span>
+<span class="fc" id="L55">        int totalRelations = (int) relationRepository.count();</span>
+<span class="fc" id="L56">        int totalProposals = (int) proposalRepository.count();</span>
+<span class="fc" id="L57">        int totalHypotheses = (int) hypothesisRepository.count();</span>
+
+        // Coverage stats
+<span class="fc" id="L60">        Map&lt;String, Integer&gt; coverageCounts = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L61">        coverageRepository.findNodeCodeCountPairs().forEach(pair -&gt; {</span>
+<span class="nc" id="L62">            String code = (String) pair[0];</span>
+<span class="nc" id="L63">            long count = (Long) pair[1];</span>
+<span class="nc" id="L64">            coverageCounts.put(code, (int) count);</span>
+<span class="nc" id="L65">        });</span>
+<span class="fc" id="L66">        int coveredNodes = coverageCounts.size();</span>
+
+        // Classify nodes by taxonomy root
+<span class="fc" id="L69">        Map&lt;String, List&lt;TaxonomyNode&gt;&gt; byRoot = allNodes.stream()</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">                .filter(n -&gt; n.getTaxonomyRoot() != null)</span>
+<span class="fc" id="L71">                .collect(Collectors.groupingBy(TaxonomyNode::getTaxonomyRoot));</span>
+
+<span class="fc" id="L73">        List&lt;SummaryEntry&gt; topCapabilities = topByRelations(byRoot.getOrDefault(&quot;CP&quot;, List.of()), coverageCounts);</span>
+<span class="fc" id="L74">        List&lt;SummaryEntry&gt; topProcesses = topByRelations(byRoot.getOrDefault(&quot;BP&quot;, List.of()), coverageCounts);</span>
+<span class="fc" id="L75">        List&lt;SummaryEntry&gt; topServices = topByRelations(byRoot.getOrDefault(&quot;CR&quot;, List.of()), coverageCounts);</span>
+
+        // Hub nodes
+<span class="fc" id="L78">        List&lt;SummaryEntry&gt; hubNodes = allNodes.stream()</span>
+<span class="fc" id="L79">                .filter(n -&gt; &quot;hub&quot;.equals(n.getGraphRole()))</span>
+<span class="fc" id="L80">                .sorted(Comparator.comparingInt(TaxonomyNode::getTotalRelationCount).reversed())</span>
+<span class="fc" id="L81">                .limit(TOP_N)</span>
+<span class="pc" id="L82">                .map(n -&gt; new SummaryEntry(n.getCode(), n.getNameEn(), n.getTotalRelationCount()))</span>
+<span class="fc" id="L83">                .toList();</span>
+
+        // Gaps: nodes with no coverage
+<span class="fc" id="L86">        List&lt;String&gt; gaps = allNodes.stream()</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                .filter(n -&gt; n.getLevel() &gt; 1)</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">                .filter(n -&gt; !coverageCounts.containsKey(n.getCode()))</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">                .filter(n -&gt; n.getTotalRelationCount() &gt; 0)</span>
+<span class="fc" id="L90">                .sorted(Comparator.comparingInt(TaxonomyNode::getTotalRelationCount).reversed())</span>
+<span class="fc" id="L91">                .limit(TOP_N)</span>
+<span class="pc" id="L92">                .map(n -&gt; n.getCode() + &quot; (&quot; + n.getNameEn() + &quot;)&quot;)</span>
+<span class="fc" id="L93">                .toList();</span>
+
+        // Next steps
+<span class="fc" id="L96">        List&lt;NextStep&gt; nextSteps = buildNextSteps(totalRelations, totalProposals, totalHypotheses, coveredNodes);</span>
+
+<span class="fc" id="L98">        return new ArchitectureSummary(</span>
+<span class="fc" id="L99">                Instant.now(),</span>
+<span class="fc" id="L100">                allNodes.size(),</span>
+                totalRelations,
+                totalProposals,
+                totalHypotheses,
+                coveredNodes,
+                topCapabilities,
+                topProcesses,
+                topServices,
+                gaps,
+                hubNodes,
+                nextSteps
+        );
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────
+
+    private List&lt;SummaryEntry&gt; topByRelations(List&lt;TaxonomyNode&gt; nodes, Map&lt;String, Integer&gt; coverageCounts) {
+<span class="fc" id="L117">        return nodes.stream()</span>
+<span class="fc" id="L118">                .sorted(Comparator.comparingInt((TaxonomyNode n) -&gt;</span>
+<span class="fc" id="L119">                        n.getTotalRelationCount() + coverageCounts.getOrDefault(n.getCode(), 0)).reversed())</span>
+<span class="fc" id="L120">                .limit(TOP_N)</span>
+<span class="fc" id="L121">                .map(n -&gt; new SummaryEntry(</span>
+<span class="fc" id="L122">                        n.getCode(),</span>
+<span class="fc" id="L123">                        n.getNameEn(),</span>
+<span class="fc" id="L124">                        n.getTotalRelationCount() + coverageCounts.getOrDefault(n.getCode(), 0)))</span>
+<span class="fc" id="L125">                .toList();</span>
+    }
+
+    private List&lt;NextStep&gt; buildNextSteps(int relations, int proposals, int hypotheses, int covered) {
+<span class="fc" id="L129">        List&lt;NextStep&gt; steps = new ArrayList&lt;&gt;();</span>
+
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (relations == 0) {</span>
+<span class="fc" id="L132">            steps.add(new NextStep(&quot;Import Relations&quot;,</span>
+                    &quot;No relations found. Import or create relations to enable graph analysis.&quot;,
+                    &quot;/api/relations&quot;));
+        }
+
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        if (proposals &gt; 0) {</span>
+<span class="nc" id="L138">            steps.add(new NextStep(&quot;Review Proposals&quot;,</span>
+                    proposals + &quot; pending relation proposal(s). Accept or reject them to improve the architecture graph.&quot;,
+                    &quot;/api/proposals&quot;));
+        }
+
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">        if (hypotheses &gt; 0) {</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">            String noun = hypotheses == 1 ? &quot;hypothesis&quot; : &quot;hypotheses&quot;;</span>
+<span class="nc" id="L145">            steps.add(new NextStep(&quot;Evaluate Hypotheses&quot;,</span>
+                    hypotheses + &quot; &quot; + noun + &quot; waiting for review.&quot;,
+                    &quot;/api/dsl/hypotheses&quot;));
+        }
+
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (covered == 0) {</span>
+<span class="fc" id="L151">            steps.add(new NextStep(&quot;Analyze Requirements&quot;,</span>
+                    &quot;No requirement coverage found. Analyze a business requirement to map it against the taxonomy.&quot;,
+                    &quot;/api/analyze&quot;));
+        }
+
+<span class="fc" id="L156">        steps.add(new NextStep(&quot;Explore Graph&quot;,</span>
+                &quot;Use the graph explorer to visualize upstream/downstream dependencies.&quot;,
+                &quot;/api/graph&quot;));
+
+<span class="fc" id="L160">        steps.add(new NextStep(&quot;Export Architecture&quot;,</span>
+                &quot;Export the current architecture as ArchiMate, Mermaid, or Visio diagram.&quot;,
+                &quot;/api/report&quot;));
+
+<span class="fc" id="L164">        return steps;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

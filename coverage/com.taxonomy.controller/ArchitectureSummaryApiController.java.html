@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureSummaryApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.controller</a> &gt; <span class="el_source">ArchitectureSummaryApiController.java</span></div><h1>ArchitectureSummaryApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.controller;
+
+import com.taxonomy.dto.ArchitectureSummary;
+import com.taxonomy.dto.NodeGraphMetadata;
+import com.taxonomy.model.TaxonomyNode;
+import com.taxonomy.repository.TaxonomyNodeRepository;
+import com.taxonomy.service.ArchitectureSummaryService;
+import com.taxonomy.service.DerivedMetadataService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * REST API for Architecture Summary and Derived Metadata.
+ *
+ * &lt;p&gt;Provides:
+ * &lt;ul&gt;
+ *     &lt;li&gt;Architecture summary with next-step guidance&lt;/li&gt;
+ *     &lt;li&gt;Node-level graph metadata (relation counts, roles)&lt;/li&gt;
+ *     &lt;li&gt;Trigger for metadata recomputation&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/architecture&quot;)
+@Tag(name = &quot;Architecture Intelligence&quot;)
+public class ArchitectureSummaryApiController {
+
+    private final ArchitectureSummaryService summaryService;
+    private final DerivedMetadataService metadataService;
+    private final TaxonomyNodeRepository nodeRepository;
+
+    public ArchitectureSummaryApiController(ArchitectureSummaryService summaryService,
+                                            DerivedMetadataService metadataService,
+<span class="fc" id="L38">                                            TaxonomyNodeRepository nodeRepository) {</span>
+<span class="fc" id="L39">        this.summaryService = summaryService;</span>
+<span class="fc" id="L40">        this.metadataService = metadataService;</span>
+<span class="fc" id="L41">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L42">    }</span>
+
+    @GetMapping(&quot;/summary&quot;)
+    @Operation(summary = &quot;Get architecture summary with next steps&quot;,
+            description = &quot;Returns key findings (top capabilities, processes, services, hubs, gaps) &quot; +
+                    &quot;and recommended next actions based on the current architecture state.&quot;)
+    public ResponseEntity&lt;ArchitectureSummary&gt; getSummary() {
+<span class="fc" id="L49">        return ResponseEntity.ok(summaryService.buildSummary());</span>
+    }
+
+    @PostMapping(&quot;/metadata/recompute&quot;)
+    @Operation(summary = &quot;Recompute derived graph metadata&quot;,
+            description = &quot;Recalculates relation counts, requirement coverage, and graph roles &quot; +
+                    &quot;for all taxonomy nodes. This should be called after bulk data changes.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; recomputeMetadata() {
+<span class="fc" id="L57">        int updated = metadataService.recomputeAll();</span>
+<span class="fc" id="L58">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L59">        result.put(&quot;updatedNodes&quot;, updated);</span>
+<span class="fc" id="L60">        return ResponseEntity.ok(result);</span>
+    }
+
+    @GetMapping(&quot;/metadata/{nodeCode}&quot;)
+    @Operation(summary = &quot;Get derived metadata for a specific node&quot;,
+            description = &quot;Returns relation counts, requirement coverage count, and graph role &quot; +
+                    &quot;for the given node code.&quot;)
+    public ResponseEntity&lt;?&gt; getNodeMetadata(@PathVariable String nodeCode) {
+<span class="fc" id="L68">        return nodeRepository.findByCode(nodeCode)</span>
+<span class="fc" id="L69">                .map(node -&gt; {</span>
+<span class="fc" id="L70">                    NodeGraphMetadata metadata = new NodeGraphMetadata(</span>
+<span class="fc" id="L71">                            node.getCode(),</span>
+<span class="fc" id="L72">                            node.getIncomingRelationCount(),</span>
+<span class="fc" id="L73">                            node.getOutgoingRelationCount(),</span>
+<span class="fc" id="L74">                            node.getTotalRelationCount(),</span>
+<span class="fc" id="L75">                            node.getRequirementCoverageCount(),</span>
+<span class="fc" id="L76">                            node.getGraphRole()</span>
+                    );
+<span class="fc" id="L78">                    return ResponseEntity.ok((Object) metadata);</span>
+                })
+<span class="fc" id="L80">                .orElseGet(() -&gt; {</span>
+<span class="fc" id="L81">                    Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L82">                    error.put(&quot;error&quot;, &quot;Node not found: &quot; + nodeCode);</span>
+<span class="fc" id="L83">                    return ResponseEntity.notFound().build();</span>
+                });
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

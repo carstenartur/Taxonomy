@@ -3,6 +3,7 @@
 import com.taxonomy.dsl.parser.DslTokenizer;
 import com.taxonomy.dsl.storage.DslCommit;
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dto.ElementHistoryAggregation;
 import com.taxonomy.model.ArchitectureCommitIndex;
 import com.taxonomy.repository.ArchitectureCommitIndexRepository;
 import jakarta.persistence.EntityManager;
@@ -15,7 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -33,20 +36,20 @@ import java.util.Set;
 @Service
 public class CommitIndexService {
 
-<span class="fc" id="L36">    private static final Logger log = LoggerFactory.getLogger(CommitIndexService.class);</span>
+<span class="fc" id="L39">    private static final Logger log = LoggerFactory.getLogger(CommitIndexService.class);</span>
 
     private final DslGitRepository gitRepository;
     private final ArchitectureCommitIndexRepository indexRepository;
-<span class="fc" id="L40">    private final DslTokenizer tokenizer = new DslTokenizer();</span>
+<span class="fc" id="L43">    private final DslTokenizer tokenizer = new DslTokenizer();</span>
 
     @PersistenceContext
     private EntityManager entityManager;
 
     public CommitIndexService(DslGitRepository gitRepository,
-<span class="fc" id="L46">                              ArchitectureCommitIndexRepository indexRepository) {</span>
-<span class="fc" id="L47">        this.gitRepository = gitRepository;</span>
-<span class="fc" id="L48">        this.indexRepository = indexRepository;</span>
-<span class="fc" id="L49">    }</span>
+<span class="fc" id="L49">                              ArchitectureCommitIndexRepository indexRepository) {</span>
+<span class="fc" id="L50">        this.gitRepository = gitRepository;</span>
+<span class="fc" id="L51">        this.indexRepository = indexRepository;</span>
+<span class="fc" id="L52">    }</span>
 
     /**
      * Index all unindexed commits on the given branch.
@@ -57,49 +60,49 @@ public class CommitIndexService {
     @Transactional
     public int indexBranch(String branch) {
         try {
-<span class="fc" id="L60">            List&lt;DslCommit&gt; commits = gitRepository.getDslHistory(branch);</span>
-<span class="fc" id="L61">            int indexed = 0;</span>
+<span class="fc" id="L63">            List&lt;DslCommit&gt; commits = gitRepository.getDslHistory(branch);</span>
+<span class="fc" id="L64">            int indexed = 0;</span>
 
-<span class="fc bfc" id="L63" title="All 2 branches covered.">            for (DslCommit commit : commits) {</span>
-<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                if (indexRepository.existsByCommitId(commit.commitId())) {</span>
-<span class="nc" id="L65">                    continue; // already indexed</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            for (DslCommit commit : commits) {</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">                if (indexRepository.existsByCommitId(commit.commitId())) {</span>
+<span class="nc" id="L68">                    continue; // already indexed</span>
                 }
 
-<span class="fc" id="L68">                String dslText = gitRepository.getDslAtCommit(commit.commitId());</span>
-<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                if (dslText == null) {</span>
-<span class="nc" id="L70">                    continue;</span>
+<span class="fc" id="L71">                String dslText = gitRepository.getDslAtCommit(commit.commitId());</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">                if (dslText == null) {</span>
+<span class="nc" id="L73">                    continue;</span>
                 }
 
-<span class="fc" id="L73">                ArchitectureCommitIndex entry = new ArchitectureCommitIndex();</span>
-<span class="fc" id="L74">                entry.setCommitId(commit.commitId());</span>
-<span class="fc" id="L75">                entry.setAuthor(commit.author());</span>
-<span class="fc" id="L76">                entry.setCommitTimestamp(commit.timestamp());</span>
-<span class="fc" id="L77">                entry.setMessage(commit.message());</span>
-<span class="fc" id="L78">                entry.setBranch(branch);</span>
-<span class="fc" id="L79">                entry.setChangedFiles(&quot;architecture.taxdsl&quot;);</span>
+<span class="fc" id="L76">                ArchitectureCommitIndex entry = new ArchitectureCommitIndex();</span>
+<span class="fc" id="L77">                entry.setCommitId(commit.commitId());</span>
+<span class="fc" id="L78">                entry.setAuthor(commit.author());</span>
+<span class="fc" id="L79">                entry.setCommitTimestamp(commit.timestamp());</span>
+<span class="fc" id="L80">                entry.setMessage(commit.message());</span>
+<span class="fc" id="L81">                entry.setBranch(branch);</span>
+<span class="fc" id="L82">                entry.setChangedFiles(&quot;architecture.taxdsl&quot;);</span>
 
                 // Tokenize DSL content
-<span class="fc" id="L82">                String tokenized = tokenizer.tokenize(dslText);</span>
-<span class="fc" id="L83">                entry.setTokenizedChangeText(tokenized);</span>
+<span class="fc" id="L85">                String tokenized = tokenizer.tokenize(dslText);</span>
+<span class="fc" id="L86">                entry.setTokenizedChangeText(tokenized);</span>
 
                 // Extract affected IDs
-<span class="fc" id="L86">                Set&lt;String&gt; elementIds = tokenizer.extractElementIds(dslText);</span>
-<span class="fc" id="L87">                entry.setAffectedElementIds(String.join(&quot;,&quot;, elementIds));</span>
+<span class="fc" id="L89">                Set&lt;String&gt; elementIds = tokenizer.extractElementIds(dslText);</span>
+<span class="fc" id="L90">                entry.setAffectedElementIds(String.join(&quot;,&quot;, elementIds));</span>
 
-<span class="fc" id="L89">                Set&lt;String&gt; relationKeys = tokenizer.extractRelationKeys(dslText);</span>
-<span class="fc" id="L90">                entry.setAffectedRelationIds(String.join(&quot;;&quot;, relationKeys));</span>
+<span class="fc" id="L92">                Set&lt;String&gt; relationKeys = tokenizer.extractRelationKeys(dslText);</span>
+<span class="fc" id="L93">                entry.setAffectedRelationIds(String.join(&quot;;&quot;, relationKeys));</span>
 
-<span class="fc" id="L92">                indexRepository.save(entry);</span>
-<span class="fc" id="L93">                indexed++;</span>
-<span class="fc" id="L94">            }</span>
+<span class="fc" id="L95">                indexRepository.save(entry);</span>
+<span class="fc" id="L96">                indexed++;</span>
+<span class="fc" id="L97">            }</span>
 
-<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            if (indexed &gt; 0) {</span>
-<span class="fc" id="L97">                log.info(&quot;Indexed {} new commit(s) on branch '{}'&quot;, indexed, branch);</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            if (indexed &gt; 0) {</span>
+<span class="fc" id="L100">                log.info(&quot;Indexed {} new commit(s) on branch '{}'&quot;, indexed, branch);</span>
             }
-<span class="fc" id="L99">            return indexed;</span>
-<span class="nc" id="L100">        } catch (IOException e) {</span>
-<span class="nc" id="L101">            log.error(&quot;Failed to index branch '{}'&quot;, branch, e);</span>
-<span class="nc" id="L102">            return 0;</span>
+<span class="fc" id="L102">            return indexed;</span>
+<span class="nc" id="L103">        } catch (IOException e) {</span>
+<span class="nc" id="L104">            log.error(&quot;Failed to index branch '{}'&quot;, branch, e);</span>
+<span class="nc" id="L105">            return 0;</span>
         }
     }
 
@@ -114,7 +117,7 @@ public class CommitIndexService {
      */
     @Transactional(readOnly = true)
     public List&lt;ArchitectureCommitIndex&gt; search(String query) {
-<span class="fc" id="L117">        return search(query, 50);</span>
+<span class="fc" id="L120">        return search(query, 50);</span>
     }
 
     /**
@@ -126,36 +129,36 @@ public class CommitIndexService {
      */
     @Transactional(readOnly = true)
     public List&lt;ArchitectureCommitIndex&gt; search(String query, int maxResults) {
-<span class="fc bfc" id="L129" title="All 4 branches covered.">        if (query == null || query.isBlank()) {</span>
-<span class="fc" id="L130">            return Collections.emptyList();</span>
+<span class="fc bfc" id="L132" title="All 4 branches covered.">        if (query == null || query.isBlank()) {</span>
+<span class="fc" id="L133">            return Collections.emptyList();</span>
         }
         try {
-<span class="fc" id="L133">            SearchSession session = Search.session(entityManager);</span>
-<span class="fc" id="L134">            String lower = query.toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L136">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L137">            String lower = query.toLowerCase(Locale.ROOT);</span>
 
-<span class="fc" id="L136">            return session.search(ArchitectureCommitIndex.class)</span>
-<span class="fc" id="L137">                    .where(f -&gt; f.bool()</span>
-<span class="fc" id="L138">                            .should(f.match()</span>
-<span class="fc" id="L139">                                    .field(&quot;tokenizedChangeText&quot;)</span>
-<span class="fc" id="L140">                                    .matching(lower)</span>
-<span class="fc" id="L141">                                    .boost(1.0f))</span>
-<span class="fc" id="L142">                            .should(f.match()</span>
-<span class="fc" id="L143">                                    .field(&quot;message&quot;)</span>
-<span class="fc" id="L144">                                    .matching(query)</span>
-<span class="fc" id="L145">                                    .boost(0.5f))</span>
-<span class="fc" id="L146">                            .should(f.match()</span>
-<span class="fc" id="L147">                                    .field(&quot;affectedElementIds&quot;)</span>
-<span class="fc" id="L148">                                    .matching(lower)</span>
-<span class="fc" id="L149">                                    .boost(3.0f))</span>
-<span class="fc" id="L150">                            .should(f.match()</span>
-<span class="fc" id="L151">                                    .field(&quot;affectedRelationIds&quot;)</span>
-<span class="fc" id="L152">                                    .matching(lower)</span>
-<span class="fc" id="L153">                                    .boost(2.0f)))</span>
-<span class="fc" id="L154">                    .sort(f -&gt; f.score())</span>
-<span class="fc" id="L155">                    .fetchHits(maxResults);</span>
-<span class="nc" id="L156">        } catch (Exception e) {</span>
-<span class="nc" id="L157">            log.error(&quot;Hibernate Search commit search failed for '{}': {}&quot;, query, e.getMessage());</span>
-<span class="nc" id="L158">            return Collections.emptyList();</span>
+<span class="fc" id="L139">            return session.search(ArchitectureCommitIndex.class)</span>
+<span class="fc" id="L140">                    .where(f -&gt; f.bool()</span>
+<span class="fc" id="L141">                            .should(f.match()</span>
+<span class="fc" id="L142">                                    .field(&quot;tokenizedChangeText&quot;)</span>
+<span class="fc" id="L143">                                    .matching(lower)</span>
+<span class="fc" id="L144">                                    .boost(1.0f))</span>
+<span class="fc" id="L145">                            .should(f.match()</span>
+<span class="fc" id="L146">                                    .field(&quot;message&quot;)</span>
+<span class="fc" id="L147">                                    .matching(query)</span>
+<span class="fc" id="L148">                                    .boost(0.5f))</span>
+<span class="fc" id="L149">                            .should(f.match()</span>
+<span class="fc" id="L150">                                    .field(&quot;affectedElementIds&quot;)</span>
+<span class="fc" id="L151">                                    .matching(lower)</span>
+<span class="fc" id="L152">                                    .boost(3.0f))</span>
+<span class="fc" id="L153">                            .should(f.match()</span>
+<span class="fc" id="L154">                                    .field(&quot;affectedRelationIds&quot;)</span>
+<span class="fc" id="L155">                                    .matching(lower)</span>
+<span class="fc" id="L156">                                    .boost(2.0f)))</span>
+<span class="fc" id="L157">                    .sort(f -&gt; f.score())</span>
+<span class="fc" id="L158">                    .fetchHits(maxResults);</span>
+<span class="nc" id="L159">        } catch (Exception e) {</span>
+<span class="nc" id="L160">            log.error(&quot;Hibernate Search commit search failed for '{}': {}&quot;, query, e.getMessage());</span>
+<span class="nc" id="L161">            return Collections.emptyList();</span>
         }
     }
 
@@ -167,26 +170,26 @@ public class CommitIndexService {
      */
     @Transactional(readOnly = true)
     public List&lt;ArchitectureCommitIndex&gt; findByElement(String elementId) {
-<span class="fc bfc" id="L170" title="All 4 branches covered.">        if (elementId == null || elementId.isBlank()) {</span>
-<span class="fc" id="L171">            return Collections.emptyList();</span>
+<span class="fc bfc" id="L173" title="All 4 branches covered.">        if (elementId == null || elementId.isBlank()) {</span>
+<span class="fc" id="L174">            return Collections.emptyList();</span>
         }
         try {
-<span class="fc" id="L174">            SearchSession session = Search.session(entityManager);</span>
-<span class="fc" id="L175">            return session.search(ArchitectureCommitIndex.class)</span>
-<span class="fc" id="L176">                    .where(f -&gt; f.bool()</span>
-<span class="fc" id="L177">                            .should(f.match()</span>
-<span class="fc" id="L178">                                    .field(&quot;affectedElementIds&quot;)</span>
-<span class="fc" id="L179">                                    .matching(elementId.toLowerCase(Locale.ROOT))</span>
-<span class="fc" id="L180">                                    .boost(3.0f))</span>
-<span class="fc" id="L181">                            .should(f.match()</span>
-<span class="fc" id="L182">                                    .field(&quot;tokenizedChangeText&quot;)</span>
-<span class="fc" id="L183">                                    .matching(elementId.toLowerCase(Locale.ROOT))</span>
-<span class="fc" id="L184">                                    .boost(1.0f)))</span>
-<span class="fc" id="L185">                    .sort(f -&gt; f.score())</span>
-<span class="fc" id="L186">                    .fetchHits(50);</span>
-<span class="nc" id="L187">        } catch (Exception e) {</span>
-<span class="nc" id="L188">            log.error(&quot;Hibernate Search element search failed for '{}': {}&quot;, elementId, e.getMessage());</span>
-<span class="nc" id="L189">            return Collections.emptyList();</span>
+<span class="fc" id="L177">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L178">            return session.search(ArchitectureCommitIndex.class)</span>
+<span class="fc" id="L179">                    .where(f -&gt; f.bool()</span>
+<span class="fc" id="L180">                            .should(f.match()</span>
+<span class="fc" id="L181">                                    .field(&quot;affectedElementIds&quot;)</span>
+<span class="fc" id="L182">                                    .matching(elementId.toLowerCase(Locale.ROOT))</span>
+<span class="fc" id="L183">                                    .boost(3.0f))</span>
+<span class="fc" id="L184">                            .should(f.match()</span>
+<span class="fc" id="L185">                                    .field(&quot;tokenizedChangeText&quot;)</span>
+<span class="fc" id="L186">                                    .matching(elementId.toLowerCase(Locale.ROOT))</span>
+<span class="fc" id="L187">                                    .boost(1.0f)))</span>
+<span class="fc" id="L188">                    .sort(f -&gt; f.score())</span>
+<span class="fc" id="L189">                    .fetchHits(50);</span>
+<span class="nc" id="L190">        } catch (Exception e) {</span>
+<span class="nc" id="L191">            log.error(&quot;Hibernate Search element search failed for '{}': {}&quot;, elementId, e.getMessage());</span>
+<span class="nc" id="L192">            return Collections.emptyList();</span>
         }
     }
 
@@ -198,27 +201,68 @@ public class CommitIndexService {
      */
     @Transactional(readOnly = true)
     public List&lt;ArchitectureCommitIndex&gt; findByRelation(String relationKey) {
-<span class="fc bfc" id="L201" title="All 4 branches covered.">        if (relationKey == null || relationKey.isBlank()) {</span>
-<span class="fc" id="L202">            return Collections.emptyList();</span>
+<span class="fc bfc" id="L204" title="All 4 branches covered.">        if (relationKey == null || relationKey.isBlank()) {</span>
+<span class="fc" id="L205">            return Collections.emptyList();</span>
         }
         try {
-<span class="fc" id="L205">            SearchSession session = Search.session(entityManager);</span>
-<span class="fc" id="L206">            return session.search(ArchitectureCommitIndex.class)</span>
-<span class="fc" id="L207">                    .where(f -&gt; f.bool()</span>
-<span class="fc" id="L208">                            .should(f.match()</span>
-<span class="fc" id="L209">                                    .field(&quot;affectedRelationIds&quot;)</span>
-<span class="fc" id="L210">                                    .matching(relationKey.toLowerCase(Locale.ROOT))</span>
-<span class="fc" id="L211">                                    .boost(3.0f))</span>
-<span class="fc" id="L212">                            .should(f.match()</span>
-<span class="fc" id="L213">                                    .field(&quot;tokenizedChangeText&quot;)</span>
-<span class="fc" id="L214">                                    .matching(relationKey.toLowerCase(Locale.ROOT))</span>
-<span class="fc" id="L215">                                    .boost(1.0f)))</span>
-<span class="fc" id="L216">                    .sort(f -&gt; f.score())</span>
-<span class="fc" id="L217">                    .fetchHits(50);</span>
-<span class="nc" id="L218">        } catch (Exception e) {</span>
-<span class="nc" id="L219">            log.error(&quot;Hibernate Search relation search failed for '{}': {}&quot;, relationKey, e.getMessage());</span>
-<span class="nc" id="L220">            return Collections.emptyList();</span>
+<span class="fc" id="L208">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L209">            return session.search(ArchitectureCommitIndex.class)</span>
+<span class="fc" id="L210">                    .where(f -&gt; f.bool()</span>
+<span class="fc" id="L211">                            .should(f.match()</span>
+<span class="fc" id="L212">                                    .field(&quot;affectedRelationIds&quot;)</span>
+<span class="fc" id="L213">                                    .matching(relationKey.toLowerCase(Locale.ROOT))</span>
+<span class="fc" id="L214">                                    .boost(3.0f))</span>
+<span class="fc" id="L215">                            .should(f.match()</span>
+<span class="fc" id="L216">                                    .field(&quot;tokenizedChangeText&quot;)</span>
+<span class="fc" id="L217">                                    .matching(relationKey.toLowerCase(Locale.ROOT))</span>
+<span class="fc" id="L218">                                    .boost(1.0f)))</span>
+<span class="fc" id="L219">                    .sort(f -&gt; f.score())</span>
+<span class="fc" id="L220">                    .fetchHits(50);</span>
+<span class="nc" id="L221">        } catch (Exception e) {</span>
+<span class="nc" id="L222">            log.error(&quot;Hibernate Search relation search failed for '{}': {}&quot;, relationKey, e.getMessage());</span>
+<span class="nc" id="L223">            return Collections.emptyList();</span>
         }
+    }
+
+    /**
+     * Build an aggregated history view for a specific element.
+     *
+     * &lt;p&gt;Computes firstSeen, lastSeen, occurrence count, volatility,
+     * and recent commit messages — useful for understanding how
+     * an element has evolved over time.
+     *
+     * @param elementId the element ID (e.g., &quot;CP-1001&quot;)
+     * @return the aggregation, or {@code null} if no history found
+     */
+    @Transactional(readOnly = true)
+    public ElementHistoryAggregation aggregateElementHistory(String elementId) {
+<span class="nc" id="L239">        List&lt;ArchitectureCommitIndex&gt; commits = findByElement(elementId);</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">        if (commits.isEmpty()) {</span>
+<span class="nc" id="L241">            return null;</span>
+        }
+
+<span class="nc" id="L244">        long totalCommits = indexRepository.count();</span>
+
+<span class="nc" id="L246">        Instant firstSeen = commits.stream()</span>
+<span class="nc" id="L247">                .map(ArchitectureCommitIndex::getCommitTimestamp)</span>
+<span class="nc" id="L248">                .min(Comparator.naturalOrder())</span>
+<span class="nc" id="L249">                .orElse(null);</span>
+<span class="nc" id="L250">        Instant lastSeen = commits.stream()</span>
+<span class="nc" id="L251">                .map(ArchitectureCommitIndex::getCommitTimestamp)</span>
+<span class="nc" id="L252">                .max(Comparator.naturalOrder())</span>
+<span class="nc" id="L253">                .orElse(null);</span>
+
+<span class="nc" id="L255">        List&lt;String&gt; recentMessages = commits.stream()</span>
+<span class="nc" id="L256">                .sorted(Comparator.comparing(ArchitectureCommitIndex::getCommitTimestamp).reversed())</span>
+<span class="nc" id="L257">                .limit(5)</span>
+<span class="nc" id="L258">                .map(ArchitectureCommitIndex::getMessage)</span>
+<span class="nc" id="L259">                .toList();</span>
+
+<span class="nc" id="L261">        double volatility = ElementHistoryAggregation.computeVolatility(commits.size(), (int) totalCommits);</span>
+
+<span class="nc" id="L263">        return new ElementHistoryAggregation(</span>
+                elementId, firstSeen, lastSeen,
+<span class="nc" id="L265">                commits.size(), volatility, recentMessages);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
