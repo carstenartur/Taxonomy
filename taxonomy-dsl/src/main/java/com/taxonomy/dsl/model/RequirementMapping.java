@@ -6,7 +6,7 @@ import java.util.*;
  * Canonical representation of a requirement-to-element mapping.
  *
  * <p>Corresponds to a DSL {@code mapping} block, e.g.
- * {@code mapping REQ-001 -> CP-1001}.
+ * {@code mapping REQ-001 -> CP-1023}.
  */
 public class RequirementMapping {
 

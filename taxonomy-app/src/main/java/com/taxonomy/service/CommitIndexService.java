@@ -165,7 +165,7 @@ public class CommitIndexService {
     /**
      * Find commits that affected a specific element using Hibernate Search.
      *
-     * @param elementId the element ID (e.g., "CP-1001")
+     * @param elementId the element ID (e.g., "CP-1023")
      * @return matching commits sorted by relevance
      */
     @Transactional(readOnly = true)
@@ -196,7 +196,7 @@ public class CommitIndexService {
     /**
      * Find commits that affected a specific relation using Hibernate Search.
      *
-     * @param relationKey the relation key (e.g., "CP-1001 REALIZES CR-2001")
+     * @param relationKey the relation key (e.g., "CP-1023 REALIZES CR-1047")
      * @return matching commits sorted by relevance
      */
     @Transactional(readOnly = true)
@@ -231,7 +231,7 @@ public class CommitIndexService {
      * and recent commit messages — useful for understanding how
      * an element has evolved over time.
      *
-     * @param elementId the element ID (e.g., "CP-1001")
+     * @param elementId the element ID (e.g., "CP-1023")
      * @return the aggregation, or {@code null} if no history found
      */
     @Transactional(readOnly = true)

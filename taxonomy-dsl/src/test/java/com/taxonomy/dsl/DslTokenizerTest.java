@@ -23,22 +23,22 @@ class DslTokenizerTest {
     @Test
     void tokenizeExtractsIdentifiers() {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Secure Communications"
-                element BP-1040 type Process
+                element BP-1327 type Process
                   title "Conduct Operations"
                 """;
         String tokens = tokenizer.tokenize(dsl);
-        assertThat(tokens).contains("CP-1001");
-        assertThat(tokens).contains("BP-1040");
+        assertThat(tokens).contains("CP-1023");
+        assertThat(tokens).contains("BP-1327");
     }
 
     @Test
     void tokenizeExtractsStructureTokens() {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Test"
-                relation CP-1001 REALIZES CR-2001
+                relation CP-1023 REALIZES CR-1047
                   status accepted
                 """;
         String tokens = tokenizer.tokenize(dsl);
@@ -49,9 +49,9 @@ class DslTokenizerTest {
     @Test
     void tokenizeExtractsRelationTokens() {
         String dsl = """
-                relation CP-1001 REALIZES CR-2001
+                relation CP-1023 REALIZES CR-1047
                   status accepted
-                relation CR-2001 SUPPORTS BP-1040
+                relation CR-1047 SUPPORTS BP-1327
                   status proposed
                 """;
         String tokens = tokenizer.tokenize(dsl);
@@ -62,9 +62,9 @@ class DslTokenizerTest {
     @Test
     void tokenizeExtractsDomainTokens() {
         String dsl = """
-                element CP-1001 type Capability
-                element BP-1040 type Process
-                element CR-2001 type CoreService
+                element CP-1023 type Capability
+                element BP-1327 type Process
+                element CR-1047 type CoreService
                 """;
         String tokens = tokenizer.tokenize(dsl);
         assertThat(tokens).contains("DOM:Capability");
@@ -82,35 +82,35 @@ class DslTokenizerTest {
     @Test
     void extractElementIdsFindsAllIds() {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Test"
-                relation CP-1001 REALIZES CR-2001
+                relation CP-1023 REALIZES CR-1047
                 requirement REQ-001
                   title "Test Req"
                 """;
         Set<String> ids = tokenizer.extractElementIds(dsl);
-        assertThat(ids).containsExactlyInAnyOrder("CP-1001", "CR-2001", "REQ-001");
+        assertThat(ids).containsExactlyInAnyOrder("CP-1023", "CR-1047", "REQ-001");
     }
 
     @Test
     void extractRelationKeysFindsRelations() {
         String dsl = """
-                relation CP-1001 REALIZES CR-2001
+                relation CP-1023 REALIZES CR-1047
                   status accepted
-                relation CR-2001 SUPPORTS BP-1040
+                relation CR-1047 SUPPORTS BP-1327
                   status proposed
                 """;
         Set<String> keys = tokenizer.extractRelationKeys(dsl);
         assertThat(keys).containsExactlyInAnyOrder(
-                "CP-1001 REALIZES CR-2001",
-                "CR-2001 SUPPORTS BP-1040"
+                "CP-1023 REALIZES CR-1047",
+                "CR-1047 SUPPORTS BP-1327"
         );
     }
 
     @Test
     void extractRelationKeysReturnsEmptyForNoRelations() {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "No relations here"
                 """;
         Set<String> keys = tokenizer.extractRelationKeys(dsl);
@@ -120,15 +120,15 @@ class DslTokenizerTest {
     @Test
     void tokenizeDeduplicates() {
         String dsl = """
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "First"
-                element CP-1001 type Capability
+                element CP-1023 type Capability
                   title "Duplicate ID"
                 """;
         String tokens = tokenizer.tokenize(dsl);
-        // CP-1001 should appear only once
+        // CP-1023 should appear only once
         String[] parts = tokens.split(" ");
-        long cpCount = java.util.Arrays.stream(parts).filter(t -> t.equals("CP-1001")).count();
+        long cpCount = java.util.Arrays.stream(parts).filter(t -> t.equals("CP-1023")).count();
         assertThat(cpCount).isEqualTo(1);
     }
 }

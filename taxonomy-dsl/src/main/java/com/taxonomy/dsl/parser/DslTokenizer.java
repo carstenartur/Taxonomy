@@ -13,7 +13,7 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li><b>Structure tokens</b>: element, relation, mapping, view, evidence, requirement</li>
  *   <li><b>Domain tokens</b>: Capability, Process, Service, Application, InformationProduct, etc.</li>
- *   <li><b>Identifier tokens</b>: CP-1001, BP-1040, REQ-001, etc.</li>
+ *   <li><b>Identifier tokens</b>: CP-1023, BP-1327, REQ-001, etc.</li>
  *   <li><b>Relation tokens</b>: REALIZES, SUPPORTS, USES, PRODUCES, CONSUMES, etc.</li>
  * </ul>
  *
@@ -61,7 +61,7 @@ public class DslTokenizer {
 
         List<String> tokens = new ArrayList<>();
 
-        // Extract identifiers (CP-1001, BP-1040, REQ-001, etc.)
+        // Extract identifiers (CP-1023, BP-1327, REQ-001, etc.)
         Matcher idMatcher = IDENTIFIER_PATTERN.matcher(dslText);
         while (idMatcher.find()) {
             tokens.add(idMatcher.group(1));
@@ -95,7 +95,7 @@ public class DslTokenizer {
      * Extract all architecture element IDs from DSL text.
      *
      * @param dslText the raw DSL text
-     * @return set of element IDs found (e.g., CP-1001, BP-1040)
+     * @return set of element IDs found (e.g., CP-1023, BP-1327)
      */
     public Set<String> extractElementIds(String dslText) {
         if (dslText == null) return Collections.emptySet();

@@ -34,8 +34,8 @@ class ModelDifferTest {
     @Test
     void diffIdenticalModelsProducesEmptyDiff() {
         CanonicalArchitectureModel model = modelWith(
-                elem("CP-1", "Capability", "Auth"),
-                rel("CP-1", "REALIZES", "BP-1")
+                elem("CP-1010", "Capability", "Auth"),
+                rel("CP-1010", "REALIZES", "BP-1327")
         );
         ModelDiff diff = differ.diff(model, model);
         assertThat(diff.isEmpty()).isTrue();
@@ -44,8 +44,8 @@ class ModelDifferTest {
     @Test
     void diffFromNullBeforeDetectsAllAsAdded() {
         CanonicalArchitectureModel after = modelWith(
-                elem("CP-1", "Capability", "Auth"),
-                rel("CP-1", "REALIZES", "BP-1")
+                elem("CP-1010", "Capability", "Auth"),
+                rel("CP-1010", "REALIZES", "BP-1327")
         );
         ModelDiff diff = differ.diff(null, after);
         assertThat(diff.addedElements()).hasSize(1);
@@ -57,8 +57,8 @@ class ModelDifferTest {
     @Test
     void diffToNullAfterDetectsAllAsRemoved() {
         CanonicalArchitectureModel before = modelWith(
-                elem("CP-1", "Capability", "Auth"),
-                rel("CP-1", "REALIZES", "BP-1")
+                elem("CP-1010", "Capability", "Auth"),
+                rel("CP-1010", "REALIZES", "BP-1327")
         );
         ModelDiff diff = differ.diff(before, null);
         assertThat(diff.removedElements()).hasSize(1);
@@ -72,15 +72,15 @@ class ModelDifferTest {
     @Test
     void detectsAddedElement() {
         CanonicalArchitectureModel before = modelWith(
-                elem("CP-1", "Capability", "Auth")
+                elem("CP-1010", "Capability", "Auth")
         );
         CanonicalArchitectureModel after = modelWith(
-                elem("CP-1", "Capability", "Auth"),
-                elem("CP-2", "Capability", "Crypto")
+                elem("CP-1010", "Capability", "Auth"),
+                elem("CP-1022", "Capability", "Crypto")
         );
         ModelDiff diff = differ.diff(before, after);
         assertThat(diff.addedElements()).hasSize(1);
-        assertThat(diff.addedElements().get(0).getId()).isEqualTo("CP-2");
+        assertThat(diff.addedElements().get(0).getId()).isEqualTo("CP-1022");
         assertThat(diff.removedElements()).isEmpty();
         assertThat(diff.changedElements()).isEmpty();
     }
@@ -88,25 +88,25 @@ class ModelDifferTest {
     @Test
     void detectsRemovedElement() {
         CanonicalArchitectureModel before = modelWith(
-                elem("CP-1", "Capability", "Auth"),
-                elem("CP-2", "Capability", "Crypto")
+                elem("CP-1010", "Capability", "Auth"),
+                elem("CP-1022", "Capability", "Crypto")
         );
         CanonicalArchitectureModel after = modelWith(
-                elem("CP-1", "Capability", "Auth")
+                elem("CP-1010", "Capability", "Auth")
         );
         ModelDiff diff = differ.diff(before, after);
         assertThat(diff.removedElements()).hasSize(1);
-        assertThat(diff.removedElements().get(0).getId()).isEqualTo("CP-2");
+        assertThat(diff.removedElements().get(0).getId()).isEqualTo("CP-1022");
         assertThat(diff.addedElements()).isEmpty();
     }
 
     @Test
     void detectsChangedElementTitle() {
         CanonicalArchitectureModel before = modelWith(
-                elem("CP-1", "Capability", "Auth")
+                elem("CP-1010", "Capability", "Auth")
         );
         CanonicalArchitectureModel after = modelWith(
-                elem("CP-1", "Capability", "Authentication Service")
+                elem("CP-1010", "Capability", "Authentication Service")
         );
         ModelDiff diff = differ.diff(before, after);
         assertThat(diff.changedElements()).hasSize(1);
@@ -119,9 +119,9 @@ class ModelDifferTest {
     @Test
     void detectsChangedElementType() {
         CanonicalArchitectureModel before = modelWith(
-                elem("CP-1", "Capability", "Auth")
+                elem("CP-1010", "Capability", "Auth")
         );
-        ArchitectureElement changed = new ArchitectureElement("CP-1", "Service", "Auth", null, null);
+        ArchitectureElement changed = new ArchitectureElement("CP-1010", "Service", "Auth", null, null);
         CanonicalArchitectureModel after = new CanonicalArchitectureModel();
         after.getElements().add(changed);
 
@@ -134,40 +134,40 @@ class ModelDifferTest {
     @Test
     void detectsAddedRelation() {
         CanonicalArchitectureModel before = modelWith(
-                rel("CP-1", "REALIZES", "BP-1")
+                rel("CP-1010", "REALIZES", "BP-1327")
         );
         CanonicalArchitectureModel after = modelWith(
-                rel("CP-1", "REALIZES", "BP-1"),
-                rel("CP-2", "SUPPORTS", "BP-2")
+                rel("CP-1010", "REALIZES", "BP-1327"),
+                rel("CP-1022", "SUPPORTS", "BP-2")
         );
         ModelDiff diff = differ.diff(before, after);
         assertThat(diff.addedRelations()).hasSize(1);
-        assertThat(diff.addedRelations().get(0).getSourceId()).isEqualTo("CP-2");
+        assertThat(diff.addedRelations().get(0).getSourceId()).isEqualTo("CP-1022");
         assertThat(diff.removedRelations()).isEmpty();
     }
 
     @Test
     void detectsRemovedRelation() {
         CanonicalArchitectureModel before = modelWith(
-                rel("CP-1", "REALIZES", "BP-1"),
-                rel("CP-2", "SUPPORTS", "BP-2")
+                rel("CP-1010", "REALIZES", "BP-1327"),
+                rel("CP-1022", "SUPPORTS", "BP-2")
         );
         CanonicalArchitectureModel after = modelWith(
-                rel("CP-1", "REALIZES", "BP-1")
+                rel("CP-1010", "REALIZES", "BP-1327")
         );
         ModelDiff diff = differ.diff(before, after);
         assertThat(diff.removedRelations()).hasSize(1);
-        assertThat(diff.removedRelations().get(0).getSourceId()).isEqualTo("CP-2");
+        assertThat(diff.removedRelations().get(0).getSourceId()).isEqualTo("CP-1022");
     }
 
     @Test
     void detectsChangedRelationStatus() {
-        ArchitectureRelation beforeRel = new ArchitectureRelation("CP-1", "REALIZES", "BP-1");
+        ArchitectureRelation beforeRel = new ArchitectureRelation("CP-1010", "REALIZES", "BP-1327");
         beforeRel.setStatus("provisional");
         CanonicalArchitectureModel before = new CanonicalArchitectureModel();
         before.getRelations().add(beforeRel);
 
-        ArchitectureRelation afterRel = new ArchitectureRelation("CP-1", "REALIZES", "BP-1");
+        ArchitectureRelation afterRel = new ArchitectureRelation("CP-1010", "REALIZES", "BP-1327");
         afterRel.setStatus("accepted");
         CanonicalArchitectureModel after = new CanonicalArchitectureModel();
         after.getRelations().add(afterRel);
@@ -182,12 +182,12 @@ class ModelDifferTest {
 
     @Test
     void detectsChangedRelationConfidence() {
-        ArchitectureRelation beforeRel = new ArchitectureRelation("CP-1", "REALIZES", "BP-1");
+        ArchitectureRelation beforeRel = new ArchitectureRelation("CP-1010", "REALIZES", "BP-1327");
         beforeRel.setConfidence(0.5);
         CanonicalArchitectureModel before = new CanonicalArchitectureModel();
         before.getRelations().add(beforeRel);
 
-        ArchitectureRelation afterRel = new ArchitectureRelation("CP-1", "REALIZES", "BP-1");
+        ArchitectureRelation afterRel = new ArchitectureRelation("CP-1010", "REALIZES", "BP-1327");
         afterRel.setConfidence(0.9);
         CanonicalArchitectureModel after = new CanonicalArchitectureModel();
         after.getRelations().add(afterRel);
@@ -201,33 +201,33 @@ class ModelDifferTest {
     @Test
     void complexDiffWithMultipleChangeTypes() {
         CanonicalArchitectureModel before = modelWith(
-                elem("CP-1", "Capability", "Auth"),
-                elem("CP-2", "Capability", "Crypto"),
-                elem("CP-3", "Capability", "Removed"),
-                rel("CP-1", "REALIZES", "BP-1"),
-                rel("CP-3", "SUPPORTS", "BP-3")
+                elem("CP-1010", "Capability", "Auth"),
+                elem("CP-1022", "Capability", "Crypto"),
+                elem("CP-1023", "Capability", "Removed"),
+                rel("CP-1010", "REALIZES", "BP-1327"),
+                rel("CP-1023", "SUPPORTS", "BP-1481")
         );
 
         CanonicalArchitectureModel after = modelWith(
-                elem("CP-1", "Capability", "Authentication"), // changed title
-                elem("CP-2", "Capability", "Crypto"),         // unchanged
-                elem("CP-4", "Capability", "New"),            // added
-                rel("CP-1", "REALIZES", "BP-1"),              // unchanged
-                rel("CP-4", "DEPENDS_ON", "CP-2")             // added
+                elem("CP-1010", "Capability", "Authentication"), // changed title
+                elem("CP-1022", "Capability", "Crypto"),         // unchanged
+                elem("CP-1027", "Capability", "New"),            // added
+                rel("CP-1010", "REALIZES", "BP-1327"),              // unchanged
+                rel("CP-1027", "DEPENDS_ON", "CP-1022")             // added
         );
 
         ModelDiff diff = differ.diff(before, after);
 
-        assertThat(diff.addedElements()).extracting(ArchitectureElement::getId).containsExactly("CP-4");
-        assertThat(diff.removedElements()).extracting(ArchitectureElement::getId).containsExactly("CP-3");
+        assertThat(diff.addedElements()).extracting(ArchitectureElement::getId).containsExactly("CP-1027");
+        assertThat(diff.removedElements()).extracting(ArchitectureElement::getId).containsExactly("CP-1023");
         assertThat(diff.changedElements()).hasSize(1);
         assertThat(diff.changedElements().get(0).before().getTitle()).isEqualTo("Auth");
         assertThat(diff.changedElements().get(0).after().getTitle()).isEqualTo("Authentication");
 
         assertThat(diff.addedRelations()).hasSize(1);
-        assertThat(diff.addedRelations().get(0).getSourceId()).isEqualTo("CP-4");
+        assertThat(diff.addedRelations().get(0).getSourceId()).isEqualTo("CP-1027");
         assertThat(diff.removedRelations()).hasSize(1);
-        assertThat(diff.removedRelations().get(0).getSourceId()).isEqualTo("CP-3");
+        assertThat(diff.removedRelations().get(0).getSourceId()).isEqualTo("CP-1023");
         assertThat(diff.changedRelations()).isEmpty();
 
         assertThat(diff.isEmpty()).isFalse();

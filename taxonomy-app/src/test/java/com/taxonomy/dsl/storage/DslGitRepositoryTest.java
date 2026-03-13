@@ -25,13 +25,13 @@ class DslGitRepositoryTest {
               version "1.0"
               namespace "test"
 
-            element CP-1001 type Capability
+            element CP-1023 type Capability
               title "Secure Voice"
 
-            element CR-2001 type CoreService
+            element CR-1047 type CoreService
               title "Voice Core"
 
-            relation CP-1001 REALIZES CR-2001
+            relation CP-1023 REALIZES CR-1047
               status accepted
             """;
 
@@ -41,19 +41,19 @@ class DslGitRepositoryTest {
               version "1.0"
               namespace "test"
 
-            element CP-1001 type Capability
+            element CP-1023 type Capability
               title "Secure Voice"
 
-            element CR-2001 type CoreService
+            element CR-1047 type CoreService
               title "Voice Core"
 
-            element BP-3001 type BuildingBlock
+            element BP-1481 type BuildingBlock
               title "SIP Gateway"
 
-            relation CP-1001 REALIZES CR-2001
+            relation CP-1023 REALIZES CR-1047
               status accepted
 
-            relation CR-2001 REALIZES BP-3001
+            relation CR-1047 REALIZES BP-1481
               status provisional
             """;
 
@@ -171,10 +171,10 @@ class DslGitRepositoryTest {
 
         ModelDiff diff = repo.diffBetween(c1, c2);
         assertFalse(diff.isEmpty());
-        // V2 adds BP-3001 element and CR-2001->BP-3001 relation
+        // V2 adds BP-1481 element and CR-1047->BP-1481 relation
         assertEquals(1, diff.addedElements().size());
         assertEquals(1, diff.addedRelations().size());
-        assertEquals("BP-3001", diff.addedElements().get(0).getId());
+        assertEquals("BP-1481", diff.addedElements().get(0).getId());
     }
 
     @Test
@@ -285,7 +285,7 @@ class DslGitRepositoryTest {
         repo.createBranch("review", "draft");
 
         // Add v2 to draft
-        String v2CommitId = repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "add BP-3001");
+        String v2CommitId = repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "add BP-1481");
 
         // Cherry-pick the v2 commit onto review
         String newCommitId = repo.cherryPick(v2CommitId, "review");
@@ -315,7 +315,7 @@ class DslGitRepositoryTest {
         repo.createBranch("accepted", "draft");
 
         // Add a commit to draft
-        repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "add BP-3001");
+        repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "add BP-1481");
 
         // Merge draft into accepted (should fast-forward)
         String mergeId = repo.merge("draft", "accepted");

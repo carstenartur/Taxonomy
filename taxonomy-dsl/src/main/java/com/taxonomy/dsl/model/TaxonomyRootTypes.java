@@ -54,7 +54,7 @@ public final class TaxonomyRootTypes {
     }
 
     /**
-     * Extract the root code prefix from an element ID (e.g., "CP" from "CP-1001").
+     * Extract the root code prefix from an element ID (e.g., "CP" from "CP-1023").
      * Returns {@code null} if the ID doesn't match the expected pattern.
      */
     public static String rootFromId(String elementId) {

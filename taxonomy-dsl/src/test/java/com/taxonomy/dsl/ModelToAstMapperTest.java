@@ -35,14 +35,14 @@ class ModelToAstMapperTest {
     @Test
     void mapElementToAst() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        ArchitectureElement el = new ArchitectureElement("CP-1001", "Capability", "Test", "Description", "CP");
+        ArchitectureElement el = new ArchitectureElement("CP-1023", "Capability", "Test", "Description", "CP");
         el.setExtensions(Map.of("x-owner", "CIS"));
         model.getElements().add(el);
 
         DocumentAst doc = mapper.toDocument(model, "test");
         String dsl = serializer.serialize(doc);
 
-        assertThat(dsl).contains("element CP-1001 type Capability");
+        assertThat(dsl).contains("element CP-1023 type Capability");
         assertThat(dsl).contains("title \"Test\"");
         assertThat(dsl).contains("description \"Description\"");
         assertThat(dsl).contains("x-owner \"CIS\"");
@@ -51,7 +51,7 @@ class ModelToAstMapperTest {
     @Test
     void mapRelationToAst() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        ArchitectureRelation rel = new ArchitectureRelation("SRV-2008", "SUPPORTS", "BP-1040");
+        ArchitectureRelation rel = new ArchitectureRelation("CR-1011", "SUPPORTS", "BP-1327");
         rel.setStatus("proposed");
         rel.setConfidence(0.76);
         model.getRelations().add(rel);
@@ -59,7 +59,7 @@ class ModelToAstMapperTest {
         DocumentAst doc = mapper.toDocument(model, "test");
         String dsl = serializer.serialize(doc);
 
-        assertThat(dsl).contains("relation SRV-2008 SUPPORTS BP-1040");
+        assertThat(dsl).contains("relation CR-1011 SUPPORTS BP-1327");
         assertThat(dsl).contains("status proposed");
         assertThat(dsl).contains("confidence 0.76");
     }
@@ -68,7 +68,7 @@ class ModelToAstMapperTest {
     void mapViewToAst() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
         ArchitectureView view = new ArchitectureView("overview", "Architecture Overview");
-        view.setIncludes(List.of("CP-1001", "BP-1040"));
+        view.setIncludes(List.of("CP-1023", "BP-1327"));
         view.setLayout("layered");
         model.getViews().add(view);
 
@@ -77,8 +77,8 @@ class ModelToAstMapperTest {
 
         assertThat(dsl).contains("view overview");
         assertThat(dsl).contains("title \"Architecture Overview\"");
-        assertThat(dsl).contains("include \"CP-1001\"");
-        assertThat(dsl).contains("include \"BP-1040\"");
+        assertThat(dsl).contains("include \"CP-1023\"");
+        assertThat(dsl).contains("include \"BP-1327\"");
         assertThat(dsl).contains("layout layered");
     }
 
@@ -86,23 +86,23 @@ class ModelToAstMapperTest {
     void fullRoundtripModelToAstToModel() {
         // Build a model
         CanonicalArchitectureModel original = new CanonicalArchitectureModel();
-        original.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Cap One", "Desc", "CP"));
-        original.getElements().add(new ArchitectureElement("BP-1040", "Process", "Proc One", "Desc", "BP"));
+        original.getElements().add(new ArchitectureElement("CP-1023", "Capability", "Cap One", "Desc", "CP"));
+        original.getElements().add(new ArchitectureElement("BP-1327", "Process", "Proc One", "Desc", "BP"));
 
-        ArchitectureRelation rel = new ArchitectureRelation("CP-1001", "REALIZES", "BP-1040");
+        ArchitectureRelation rel = new ArchitectureRelation("CP-1023", "REALIZES", "BP-1327");
         rel.setStatus("accepted");
         rel.setConfidence(0.83);
         original.getRelations().add(rel);
 
         original.getRequirements().add(new ArchitectureRequirement("REQ-001", "Req One", "Req text"));
 
-        RequirementMapping mapping = new RequirementMapping("REQ-001", "CP-1001");
+        RequirementMapping mapping = new RequirementMapping("REQ-001", "CP-1023");
         mapping.setScore(0.92);
         mapping.setSource("llm");
         original.getMappings().add(mapping);
 
         ArchitectureView view = new ArchitectureView("overview", "Overview");
-        view.setIncludes(List.of("CP-1001", "BP-1040"));
+        view.setIncludes(List.of("CP-1023", "BP-1327"));
         view.setLayout("layered");
         original.getViews().add(view);
 
@@ -119,22 +119,22 @@ class ModelToAstMapperTest {
         assertThat(restored.getMappings()).hasSize(1);
         assertThat(restored.getViews()).hasSize(1);
 
-        // Verify content (elements sorted by ID in serialized output: BP-1040 before CP-1001)
+        // Verify content (elements sorted by ID in serialized output: BP-1327 before CP-1023)
         assertThat(restored.getElements()).extracting(ArchitectureElement::getId)
-                .containsExactlyInAnyOrder("CP-1001", "BP-1040");
+                .containsExactlyInAnyOrder("CP-1023", "BP-1327");
         assertThat(restored.getRelations().get(0).getRelationType()).isEqualTo("REALIZES");
         assertThat(restored.getRequirements().get(0).getId()).isEqualTo("REQ-001");
         assertThat(restored.getMappings().get(0).getScore()).isEqualTo(0.92);
-        assertThat(restored.getViews().get(0).getIncludes()).containsExactly("CP-1001", "BP-1040");
+        assertThat(restored.getViews().get(0).getIncludes()).containsExactly("CP-1023", "BP-1327");
     }
 
     @Test
     void mapEvidenceToAst() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
         ArchitectureEvidence ev = new ArchitectureEvidence("EV-001");
-        ev.setForRelationSource("SRV-2008");
+        ev.setForRelationSource("CR-1011");
         ev.setForRelationType("SUPPORTS");
-        ev.setForRelationTarget("BP-1040");
+        ev.setForRelationTarget("BP-1327");
         ev.setEvidenceType("LLM");
         ev.setModel("gpt-4.1-mini");
         ev.setConfidence(0.76);
@@ -144,7 +144,7 @@ class ModelToAstMapperTest {
         DocumentAst doc = mapper.toDocument(model, "test");
         String dsl = serializer.serialize(doc);
 
-        assertThat(dsl).contains("evidence EV-001 for relation SRV-2008 SUPPORTS BP-1040");
+        assertThat(dsl).contains("evidence EV-001 for relation CR-1011 SUPPORTS BP-1327");
         assertThat(dsl).contains("type LLM");
         assertThat(dsl).contains("model \"gpt-4.1-mini\"");
         assertThat(dsl).contains("confidence 0.76");
@@ -153,7 +153,7 @@ class ModelToAstMapperTest {
     @Test
     void metaBlockIncluded() {
         CanonicalArchitectureModel model = new CanonicalArchitectureModel();
-        model.getElements().add(new ArchitectureElement("CP-1001", "Capability", "Test", null, null));
+        model.getElements().add(new ArchitectureElement("CP-1023", "Capability", "Test", null, null));
 
         DocumentAst doc = mapper.toDocument(model, "mission.secure-voice");
         String dsl = serializer.serialize(doc);

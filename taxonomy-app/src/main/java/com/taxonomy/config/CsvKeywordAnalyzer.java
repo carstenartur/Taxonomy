@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
  * {@link com.taxonomy.model.ArchitectureCommitIndex}.
  *
  * <p>Splits on commas and semicolons, trims whitespace, and lowercases
- * so that individual IDs like {@code "CP-1001"} become searchable tokens.
+ * so that individual IDs like {@code "CP-1023"} become searchable tokens.
  */
 public class CsvKeywordAnalyzer extends Analyzer {
 

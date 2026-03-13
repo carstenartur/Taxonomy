@@ -35,7 +35,7 @@ This document explains the key terms used throughout the Taxonomy Architecture A
 
 A single element in the C3 Taxonomy hierarchy. Each node has:
 
-- **Code** — a unique identifier read from the taxonomy workbook. The eight root categories use two-letter codes (`BP`, `BR`, `CP`, `CI`, `CO`, `CR`, `IP`, `UA`); child codes are defined by the workbook and vary per catalogue version.
+- **Code** — a hierarchical identifier from the centrally published C3 Taxonomy Catalogue workbook, e.g. `CP-1022` (Command and Control Capabilities) or `CR-1047` (Infrastructure Services). The eight root categories use two-letter codes (`BP`, `BR`, `CP`, `CI`, `CO`, `CR`, `IP`, `UA`); all child codes are defined in the workbook and cannot be invented locally.
 - **Title** — a short English name, for example _"Secure Voice Service"_.
 - **Description** — a longer English description explaining the node's purpose.
 - **Level** — its depth in the hierarchy (0 = root, 1 = first-level child, etc.).

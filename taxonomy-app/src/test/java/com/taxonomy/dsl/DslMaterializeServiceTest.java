@@ -30,7 +30,7 @@ class DslMaterializeServiceTest {
                   version "1.0"
                   namespace "test.materialize"
                 
-                element CP-1 type Capability
+                element CP-1010 type Capability
                   title "Test Capability"
                 """;
 
@@ -54,10 +54,10 @@ class DslMaterializeServiceTest {
     @Test
     void materializeDslWithDuplicateIdsFails() {
         String dsl = """
-                element CP-1 type Capability
+                element CP-1010 type Capability
                   title "First"
                 
-                element CP-1 type Capability
+                element CP-1010 type Capability
                   title "Duplicate"
                 """;
 
@@ -114,7 +114,7 @@ class DslMaterializeServiceTest {
     @Test
     void materializeWithNullPathUsesInline() {
         String dsl = """
-                element CP-2 type Capability
+                element CP-1022 type Capability
                   title "Inline Test"
                 """;
 

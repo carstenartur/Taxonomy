@@ -9,7 +9,7 @@ import java.util.*;
  * {@code mapping}, {@code view}, {@code evidence}, and future block types) is first
  * parsed into a {@code BlockAst}. The {@link #kind} field carries the keyword
  * (e.g. {@code "element"}), while {@link #headerTokens} contains the remaining
- * tokens on the header line (e.g. {@code ["CP-1001", "type", "Capability"]}).
+ * tokens on the header line (e.g. {@code ["CP-1023", "type", "Capability"]}).
  *
  * <p>Unknown block types and unknown properties are preserved so that
  * round-trips through parse → serialize are lossless.

@@ -19,8 +19,6 @@ This document shows worked examples of common tasks in the Taxonomy Architecture
 
 **Goal:** Map a business requirement to relevant taxonomy elements and generate an architecture view.
 
-> **Note:** The codes below (e.g., `‹CP child›`, `‹CR child›`) are placeholders. Actual codes are defined by the imported C3 Taxonomy Catalogue Excel workbook and vary per catalogue version. Run the application and call `GET /api/taxonomy` to discover the real codes.
-
 ### Step 1 — Enter the requirement
 
 Open `http://localhost:8080` and paste into the analysis text area:
@@ -33,26 +31,26 @@ Click **Analyze with AI**. The system scores every taxonomy node (0–100) and o
 
 | Code | Node | Score |
 |---|---|---|
-| _‹CP child›_ | Secure Communications Capability | 92 |
-| _‹CO child›_ | Voice Communications Service | 88 |
-| _‹CR child›_ | Interoperability Service | 81 |
-| _‹UA child›_ | Operations Coordination System | 74 |
-| _‹BP child›_ | Conduct Operations | 71 |
+| CP-1023 | Communication and Information System Capabilities | 92 |
+| CO-1011 | Communications Access Services | 88 |
+| CR-1047 | Infrastructure Services | 81 |
+| UA-1015 | Air Applications | 74 |
+| BP-1327 | Enable | 71 |
 
 ### Step 3 — Generate the architecture view
 
 The system automatically selects nodes with score ≥ 70 as anchors, propagates relevance through taxonomy relations, and builds a structured architecture model:
 
 ```
-Capability: Secure Communications Capability (‹CP child›)
+Capability: Communication and Information System Capabilities (CP-1023)
     ↓ supports
-Service: Voice Communications Service (‹CO child›)
+Service: Communications Access Services (CO-1011)
     ↓ realises
-Service: Interoperability Service (‹CR child›)
+Service: Infrastructure Services (CR-1047)
     ↓ used by
-Application: Operations Coordination System (‹UA child›)
+Application: Air Applications (UA-1015)
     ↓ enables
-Process: Conduct Operations (‹BP child›)
+Process: Enable (BP-1327)
 ```
 
 ### Step 4 — Export
@@ -78,26 +76,25 @@ curl -X POST http://localhost:8080/api/analyze \
 ### Web UI
 
 1. Open the **Graph Explorer** panel on the right.
-2. Enter a node code (e.g. a Core Service code from your taxonomy).
+2. Enter the node code, e.g. `CR-1047` (Infrastructure Services).
 3. Click **Failure Impact**.
-4. The result shows every element that depends on that node, directly or transitively.
+4. The result shows every element that depends on `CR-1047`, directly or transitively.
 
 ### REST API
 
 ```bash
-# Replace ‹node-code› with an actual code from your taxonomy (e.g. from /api/taxonomy)
-curl "http://localhost:8080/api/graph/node/‹node-code›/failure-impact"
+curl "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
 ```
 
 ### Example result
 
 ```json
 {
-  "sourceNode": "‹CR child›",
-  "sourceTitle": "Interoperability Service",
+  "sourceNode": "CR-1047",
+  "sourceTitle": "Infrastructure Services",
   "impactedNodes": [
-    { "code": "‹UA child›", "title": "Operations Coordination System", "distance": 1 },
-    { "code": "‹BP child›", "title": "Conduct Operations", "distance": 2 }
+    { "code": "UA-1015", "title": "Air Applications", "distance": 1 },
+    { "code": "BP-1327", "title": "Enable", "distance": 2 }
   ]
 }
 ```
@@ -121,7 +118,7 @@ curl -X POST http://localhost:8080/api/gap/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "businessText": "Maritime surveillance data sharing",
-    "scores": {"‹CP child›": 92, "‹CO child›": 88, "‹CR child›": 81}
+    "scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}
   }'
 ```
 
@@ -131,16 +128,16 @@ curl -X POST http://localhost:8080/api/gap/analyze \
 {
   "missingRelations": [
     {
-      "source": "‹CO child›",
-      "target": "‹IP child›",
+      "source": "CO-1011",
+      "target": "IP-1659",
       "suggestedType": "produces",
-      "reason": "Voice service likely produces communication records"
+      "reason": "Communications service likely produces situation reports"
     }
   ],
   "incompletePatterns": [
     {
       "pattern": "Full Stack",
-      "presentElements": ["‹CP child›", "‹CO child›", "‹CR child›"],
+      "presentElements": ["CP-1023", "CO-1011", "CR-1047"],
       "missingLayers": ["Information Products"]
     }
   ]
@@ -174,10 +171,10 @@ Click **Accept** to add the relation to the knowledge graph, or **Reject** to di
 ### REST API
 
 ```bash
-# Generate proposals for a node (replace ‹node-code› with a real code from /api/taxonomy)
+# Generate proposals for a node
 curl -X POST http://localhost:8080/api/proposals/propose \
   -H "Content-Type: application/json" \
-  -d '{"sourceCode": "‹node-code›", "relationType": "SUPPORTS"}'
+  -d '{"sourceCode": "CR-1047", "relationType": "SUPPORTS"}'
 
 # List pending proposals
 curl "http://localhost:8080/api/proposals/pending"
@@ -210,7 +207,7 @@ curl -X POST http://localhost:8080/api/recommend \
   -H "Content-Type: application/json" \
   -d '{
     "businessText": "Secure satellite communications for remote operations",
-    "scores": {"‹CO child›": 88, "‹CR child›": 81}
+    "scores": {"CO-1056": 88, "CR-1047": 81}
   }'
 ```
 
@@ -219,11 +216,11 @@ curl -X POST http://localhost:8080/api/recommend \
 ```json
 {
   "recommendedNodes": [
-    { "code": "‹CO child›", "title": "Satellite Communications Service", "reason": "Directly relevant to satellite communications requirement" },
-    { "code": "‹CP child›", "title": "Remote Operations Capability", "reason": "Supports remote operations as stated in requirement" }
+    { "code": "CO-1063", "title": "Transport Services", "reason": "Directly relevant to satellite communications requirement" },
+    { "code": "CP-1023", "title": "Communication and Information System Capabilities", "reason": "Supports remote operations as stated in requirement" }
   ],
   "recommendedRelations": [
-    { "source": "‹CO child 1›", "target": "‹CO child 2›", "type": "supports", "reason": "Satellite service supports voice communications" }
+    { "source": "CO-1056", "target": "CO-1011", "type": "supports", "reason": "Transmission services support communications access" }
   ]
 }
 ```
@@ -237,10 +234,9 @@ curl -X POST http://localhost:8080/api/recommend \
 ### ArchiMate XML
 
 ```bash
-# Replace the scores object with real codes and scores from your analysis
 curl -X POST http://localhost:8080/api/diagram/archimate \
   -H "Content-Type: application/json" \
-  -d '{"scores": {"‹CP child›": 92, "‹CO child›": 88, "‹CR child›": 81}}' \
+  -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}' \
   -o architecture.xml
 ```
 
@@ -251,7 +247,7 @@ The resulting XML file can be imported into **Archi**, **BiZZdesign**, **MEGA**,
 ```bash
 curl -X POST http://localhost:8080/api/diagram/visio \
   -H "Content-Type: application/json" \
-  -d '{"scores": {"‹CP child›": 92, "‹CO child›": 88, "‹CR child›": 81}}' \
+  -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}' \
   -o architecture.vsdx
 ```
 
@@ -260,16 +256,16 @@ curl -X POST http://localhost:8080/api/diagram/visio \
 ```bash
 curl -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
-  -d '{"scores": {"‹CP child›": 92, "‹CO child›": 88, "‹CR child›": 81}}'
+  -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}'
 ```
 
 The response is a Mermaid flowchart code block that renders in GitHub, GitLab, Notion, and Confluence:
 
 ```mermaid
 graph TD
-    CP_x["Secure Communications Capability"]
-    CO_x["Voice Communications Service"]
-    CR_x["Interoperability Service"]
-    CP_x -->|supports| CO_x
-    CO_x -->|realises| CR_x
+    CP-1023["Communication and Information System Capabilities"]
+    CO-1011["Communications Access Services"]
+    CR-1047["Infrastructure Services"]
+    CP-1023 -->|supports| CO-1011
+    CO-1011 -->|realises| CR-1047
 ```
