@@ -1144,6 +1144,8 @@
         var marginRight = 300;
         var marginTop = 20;
         var marginBottom = 20;
+        var CHAR_WIDTH_ESTIMATE = 7;  // approx px per character for 12px Arial
+        var BADGE_OFFSET = 20;        // extra px gap between label end and badge
 
         var rootData = { code: '__root__', name: '', children: data };
         var root = d3.hierarchy(rootData);
@@ -1243,7 +1245,7 @@
                 var badge = document.createElementNS(svgNS, 'text');
                 badge.setAttribute('dy', '0.31em');
                 badge.setAttribute('x', (d.children || d._children) ? '-10' : '10');
-                badge.setAttribute('dx', (d.children || d._children) ? ('-' + (label.length * 7 + 20)) : '' + (label.length * 7 + 20));
+                badge.setAttribute('dx', (d.children || d._children) ? ('-' + (label.length * CHAR_WIDTH_ESTIMATE + BADGE_OFFSET)) : '' + (label.length * CHAR_WIDTH_ESTIMATE + BADGE_OFFSET));
                 badge.setAttribute('text-anchor', 'start');
                 badge.setAttribute('fill', 'green');
                 badge.setAttribute('font-size', '10px');
