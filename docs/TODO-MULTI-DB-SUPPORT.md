@@ -1,25 +1,28 @@
 # TODO: Full Multi-Database Support
 
-## Status: Planned
+## Status: In Progress
 
-The application currently defaults to HSQLDB and has initial integration tests for PostgreSQL, Microsoft SQL Server, and Oracle. Full multi-database support is planned but not yet complete.
+The application defaults to HSQLDB and supports **Spring profile-based** database
+switching. MSSQL support is implemented with integration tests, CI workflow,
+Docker Compose, and documentation. PostgreSQL and Oracle have initial integration
+tests but are not yet fully verified.
 
 ## Scope
 
 Full multi-database support means end-to-end coverage across:
 
 ### Application Layer
-- [ ] Database-specific Hibernate dialect auto-detection
-- [ ] Connection pool configuration per database type
+- [x] Database-specific Hibernate dialect auto-detection (via Spring profiles: `hsqldb`, `mssql`)
+- [x] Connection pool configuration per database type (HikariCP for MSSQL, SimpleDriverDataSource for HSQLDB)
 - [ ] DDL generation validation for all supported databases
-- [ ] Database-specific SQL compatibility (reserved words, identifier length limits, LOB handling, `@Nationalized` support)
+- [x] Database-specific SQL compatibility (`@Nationalized` → `nvarchar`, `@Lob` → `nvarchar(max)` / `varbinary(max)`)
 
 ### Testing
 - [ ] All external database integration tests passing in CI (PostgreSQL, MSSQL, Oracle)
 - [ ] Fix Oracle integration tests (currently returning HTTP 500/503 — likely DDL or dialect issues)
-- [ ] Fix MSSQL integration tests (currently failing with prelogin connection errors in CI)
+- [x] Fix MSSQL integration tests (pinned container image, added `loginTimeout`, Spring profile)
 - [ ] PostgreSQL integration tests verified
-- [ ] Add database-specific CI workflow (matrix strategy for each DB)
+- [x] Add database-specific CI workflow (MSSQL job in `ci-cd.yml`)
 
 ### GUI / Frontend
 - [ ] Database connection status indicator in the UI
@@ -27,8 +30,9 @@ Full multi-database support means end-to-end coverage across:
 - [ ] Database-specific configuration guidance in the UI
 
 ### Documentation
-- [ ] Configuration guide for each supported database
-- [ ] Docker Compose examples for each database
+- [x] Configuration guide for MSSQL (`docs/MSSQL-SETUP.md`)
+- [ ] Configuration guide for PostgreSQL
+- [ ] Docker Compose examples for each database (`docker-compose-mssql.yml` done)
 - [ ] Migration guide from HSQLDB to production databases
 - [ ] Performance considerations per database
 

@@ -1,0 +1,33 @@
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-CU18-ubuntu-22.04
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "A_Str0ng_Required_Password"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "A_Str0ng_Required_Password" -Q "SELECT 1" -C
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  taxonomy:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: mssql
+      TAXONOMY_DATASOURCE_URL: "jdbc:sqlserver://db:1433;databaseName=master;encrypt=false;trustServerCertificate=true"
+      SPRING_DATASOURCE_USERNAME: sa
+      SPRING_DATASOURCE_PASSWORD: "A_Str0ng_Required_Password"
+      TAXONOMY_DDL_AUTO: create
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  mssql-data:

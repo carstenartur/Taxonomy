@@ -116,14 +116,47 @@ Set `ADMIN_PASSWORD` as a secret environment variable in the Render dashboard
 
 ## Database Configuration
 
+The application uses **Spring profiles** to switch between database backends.
+Set `SPRING_PROFILES_ACTIVE` to select the database; the default is `hsqldb`.
+
+| Profile | Database | Config File |
+|---|---|---|
+| `hsqldb` (default) | HSQLDB (in-memory or file) | `application-hsqldb.properties` |
+| `mssql` | Microsoft SQL Server | `application-mssql.properties` |
+
+### Common Database Properties
+
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
-| `TAXONOMY_DATASOURCE_URL` | `spring.datasource.url` | String | `jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1` | JDBC URL. Defaults to in-memory HSQLDB (local dev / tests). Set to `jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;shutdown=true` for production disk-backed storage. |
-| — | `spring.datasource.driver-class-name` | String | `org.hsqldb.jdbc.JDBCDriver` | JDBC driver class. |
-| — | `spring.datasource.type` | String | `org.springframework.jdbc.datasource.SimpleDriverDataSource` | DataSource implementation. `SimpleDriverDataSource` bypasses HikariCP entirely — no connection pool is needed for in-process HSQLDB, which eliminates pool-exhaustion issues and reduces memory overhead. |
+| `SPRING_PROFILES_ACTIVE` | `spring.profiles.active` | String | `hsqldb` | Database profile. Set to `mssql` for SQL Server. |
+| `TAXONOMY_DATASOURCE_URL` | `spring.datasource.url` | String | *(profile-dependent)* | JDBC URL. Each profile provides a sensible default; override for custom hosts. |
+| `SPRING_DATASOURCE_USERNAME` | `spring.datasource.username` | String | `sa` | Database username. |
+| `SPRING_DATASOURCE_PASSWORD` | `spring.datasource.password` | String | *(empty)* | Database password. **Required** for MSSQL. |
 | `TAXONOMY_DDL_AUTO` | `spring.jpa.hibernate.ddl-auto` | String | `create` | Schema generation strategy. `create` rebuilds on each start (safe for in-memory default). Set to `update` for file-based deployments so data is not wiped on restart. |
 | — | `spring.jpa.show-sql` | Boolean | `false` | Whether to log SQL statements. |
-| — | `spring.jpa.database-platform` | String | `org.hibernate.dialect.HSQLDialect` | Explicit Hibernate dialect. Required because `SimpleDriverDataSource` does not expose JDBC metadata, so Hibernate 7.x cannot detect the dialect automatically. |
+
+### HSQLDB Profile (Default)
+
+| Property | Default | Description |
+|---|---|---|
+| `spring.datasource.url` | `jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1` | In-memory HSQLDB. Override for disk-backed storage. |
+| `spring.datasource.driver-class-name` | `org.hsqldb.jdbc.JDBCDriver` | HSQLDB JDBC driver. |
+| `spring.datasource.type` | `SimpleDriverDataSource` | Bypasses HikariCP — no pool needed for in-process HSQLDB. |
+| `spring.jpa.database-platform` | `org.hibernate.dialect.HSQLDialect` | Explicit dialect (required because `SimpleDriverDataSource` does not expose JDBC metadata). |
+
+### MSSQL Profile
+
+Activate with `SPRING_PROFILES_ACTIVE=mssql`. See [MSSQL-SETUP.md](MSSQL-SETUP.md) for details.
+
+| Property | Default | Description |
+|---|---|---|
+| `spring.datasource.url` | `jdbc:sqlserver://localhost:1433;databaseName=taxonomy;encrypt=false;trustServerCertificate=true` | SQL Server JDBC URL. |
+| `spring.datasource.driver-class-name` | `com.microsoft.sqlserver.jdbc.SQLServerDriver` | MSSQL JDBC driver. |
+| `spring.datasource.type` | `com.zaxxer.hikari.HikariDataSource` | HikariCP connection pool. |
+| `spring.jpa.database-platform` | `org.hibernate.dialect.SQLServerDialect` | SQL Server dialect. |
+| `spring.datasource.hikari.maximum-pool-size` | `10` | HikariCP max connections. |
+| `spring.datasource.hikari.connection-timeout` | `30000` | Connection timeout (ms). |
+| `spring.datasource.hikari.initialization-fail-timeout` | `60000` | Startup retry timeout (ms). |
 
 ---
 
