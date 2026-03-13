@@ -62,6 +62,10 @@ import java.util.stream.Collectors;
     static final String DEFAULT_MODEL_URL =
             &quot;djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2&quot;;
 
+    /** Fallback URL used when the {@code djl://} protocol fails (e.g. URL truncation in Alpine). */
+    static final String FALLBACK_MODEL_URL =
+            &quot;https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2&quot;;
+
     /**
      * Raw cosine-similarity threshold below which a node receives score 0.
      * Value in (-1, 1); 0.25 means &quot;weak or no semantic overlap&quot;.
@@ -82,8 +86,8 @@ import java.util.stream.Collectors;
     // ── DJL model (lazy) ──────────────────────────────────────────────────────
 
     private volatile ZooModel&lt;String, float[]&gt; model;
-<span class="fc" id="L85">    private volatile boolean modelLoadFailed = false;</span>
-<span class="fc" id="L86">    private final Object modelLock = new Object();</span>
+<span class="fc" id="L89">    private volatile boolean modelLoadFailed = false;</span>
+<span class="fc" id="L90">    private final Object modelLock = new Object();</span>
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
@@ -97,7 +101,7 @@ import java.util.stream.Collectors;
      * ({@code TAXONOMY_EMBEDDING_ENABLED=true}, which is the default).
      */
     public boolean isEnabled() {
-<span class="fc" id="L100">        return embeddingEnabled;</span>
+<span class="fc" id="L104">        return embeddingEnabled;</span>
     }
 
     /**
@@ -105,7 +109,7 @@ import java.util.stream.Collectors;
      * successfully (or has not been tried yet).
      */
     public boolean isAvailable() {
-<span class="pc bpc" id="L108" title="1 of 4 branches missed.">        return embeddingEnabled &amp;&amp; !modelLoadFailed;</span>
+<span class="pc bpc" id="L112" title="1 of 4 branches missed.">        return embeddingEnabled &amp;&amp; !modelLoadFailed;</span>
     }
 
     /**
@@ -113,40 +117,59 @@ import java.util.stream.Collectors;
      * otherwise {@link #modelName}.
      */
     public String effectiveModelUrl() {
-<span class="pc bpc" id="L116" title="2 of 4 branches missed.">        return (modelDir != null &amp;&amp; !modelDir.isBlank()) ? modelDir : modelName;</span>
+<span class="pc bpc" id="L120" title="2 of 4 branches missed.">        return (modelDir != null &amp;&amp; !modelDir.isBlank()) ? modelDir : modelName;</span>
     }
 
     /** Returns the lazily loaded DJL model, downloading it on first call. */
     ZooModel&lt;String, float[]&gt; getModel() throws Exception {
-<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (!embeddingEnabled) {</span>
-<span class="nc" id="L122">            throw new IllegalStateException(&quot;Embedding is disabled (TAXONOMY_EMBEDDING_ENABLED=false)&quot;);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        if (!embeddingEnabled) {</span>
+<span class="nc" id="L126">            throw new IllegalStateException(&quot;Embedding is disabled (TAXONOMY_EMBEDDING_ENABLED=false)&quot;);</span>
         }
-<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        if (modelLoadFailed) {</span>
-<span class="nc" id="L125">            throw new IllegalStateException(&quot;DJL model failed to load previously; embedding unavailable&quot;);</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (modelLoadFailed) {</span>
+<span class="nc" id="L129">            throw new IllegalStateException(&quot;DJL model failed to load previously; embedding unavailable&quot;);</span>
         }
-<span class="pc bpc" id="L127" title="1 of 2 branches missed.">        if (model == null) {</span>
-<span class="fc" id="L128">            synchronized (modelLock) {</span>
-<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                if (model == null) {</span>
-<span class="fc" id="L130">                    String url = effectiveModelUrl();</span>
-<span class="fc" id="L131">                    log.info(&quot;Loading all-MiniLM-L6-v2 via DJL / ONNX Runtime from {} …&quot;, url);</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (model == null) {</span>
+<span class="fc" id="L132">            synchronized (modelLock) {</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">                if (model == null) {</span>
+<span class="fc" id="L134">                    String url = effectiveModelUrl();</span>
+<span class="fc" id="L135">                    log.info(&quot;Loading all-MiniLM-L6-v2 via DJL / ONNX Runtime from {} …&quot;, url);</span>
                     try {
-<span class="fc" id="L133">                        Criteria.Builder&lt;String, float[]&gt; builder = Criteria.builder()</span>
-<span class="fc" id="L134">                                .optApplication(Application.NLP.TEXT_EMBEDDING)</span>
-<span class="fc" id="L135">                                .setTypes(String.class, float[].class)</span>
-<span class="nc" id="L136">                                .optModelUrls(url)</span>
-<span class="nc" id="L137">                                .optEngine(&quot;OnnxRuntime&quot;);</span>
-<span class="nc" id="L138">                        model = builder.build().loadModel();</span>
-<span class="nc" id="L139">                        log.info(&quot;all-MiniLM-L6-v2 loaded successfully.&quot;);</span>
-<span class="fc" id="L140">                    } catch (Exception e) {</span>
-<span class="fc" id="L141">                        modelLoadFailed = true;</span>
-<span class="fc" id="L142">                        log.error(&quot;Failed to load DJL model from '{}'; semantic search disabled. Error: {}&quot;,</span>
-<span class="fc" id="L143">                                url, e.getMessage());</span>
-<span class="fc" id="L144">                        throw e;</span>
-<span class="nc" id="L145">                    }</span>
+<span class="nc" id="L137">                        model = loadFromUrl(url);</span>
+<span class="nc" id="L138">                        log.info(&quot;all-MiniLM-L6-v2 loaded successfully.&quot;);</span>
+<span class="fc" id="L139">                    } catch (Exception primary) {</span>
+                        // When the djl:// protocol fails (e.g. URL truncation in Alpine),
+                        // try loading directly from HuggingFace before giving up.
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">                        if (url.startsWith(&quot;djl://&quot;)) {</span>
+<span class="fc" id="L143">                            log.warn(&quot;djl:// URL failed ({}), trying HuggingFace fallback…&quot;,</span>
+<span class="fc" id="L144">                                    primary.getMessage());</span>
+                            try {
+<span class="nc" id="L146">                                model = loadFromUrl(FALLBACK_MODEL_URL);</span>
+<span class="nc" id="L147">                                log.info(&quot;all-MiniLM-L6-v2 loaded from HuggingFace fallback.&quot;);</span>
+<span class="fc" id="L148">                            } catch (Exception fallback) {</span>
+<span class="fc" id="L149">                                log.error(&quot;Fallback also failed: {}&quot;, fallback.getMessage());</span>
+<span class="fc" id="L150">                                modelLoadFailed = true;</span>
+<span class="fc" id="L151">                                throw primary;</span>
+<span class="nc" id="L152">                            }</span>
+                        } else {
+<span class="nc" id="L154">                            modelLoadFailed = true;</span>
+<span class="nc" id="L155">                            log.error(&quot;Failed to load DJL model from '{}'; semantic search disabled. Error: {}&quot;,</span>
+<span class="nc" id="L156">                                    url, primary.getMessage());</span>
+<span class="nc" id="L157">                            throw primary;</span>
+                        }
+<span class="nc" id="L159">                    }</span>
                 }
-<span class="nc" id="L147">            }</span>
+<span class="nc" id="L161">            }</span>
         }
-<span class="nc" id="L149">        return model;</span>
+<span class="nc" id="L163">        return model;</span>
+    }
+
+    private ZooModel&lt;String, float[]&gt; loadFromUrl(String url) throws Exception {
+<span class="pc" id="L167">        return Criteria.builder()</span>
+<span class="fc" id="L168">                .optApplication(Application.NLP.TEXT_EMBEDDING)</span>
+<span class="fc" id="L169">                .setTypes(String.class, float[].class)</span>
+<span class="fc" id="L170">                .optModelUrls(url)</span>
+<span class="fc" id="L171">                .optEngine(&quot;OnnxRuntime&quot;)</span>
+<span class="nc" id="L172">                .build().loadModel();</span>
     }
 
     // ── Index status ──────────────────────────────────────────────────────────
@@ -158,12 +181,12 @@ import java.util.stream.Collectors;
     @Transactional(readOnly = true)
     public int indexedNodeCount() {
         try {
-<span class="fc" id="L161">            SearchSession session = Search.session(entityManager);</span>
-<span class="fc" id="L162">            return (int) session.search(TaxonomyNode.class)</span>
-<span class="fc" id="L163">                    .where(f -&gt; f.matchAll())</span>
-<span class="fc" id="L164">                    .fetchTotalHitCount();</span>
-<span class="nc" id="L165">        } catch (Exception e) {</span>
-<span class="nc" id="L166">            return 0;</span>
+<span class="fc" id="L184">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L185">            return (int) session.search(TaxonomyNode.class)</span>
+<span class="fc" id="L186">                    .where(f -&gt; f.matchAll())</span>
+<span class="fc" id="L187">                    .fetchTotalHitCount();</span>
+<span class="nc" id="L188">        } catch (Exception e) {</span>
+<span class="nc" id="L189">            return 0;</span>
         }
     }
 
@@ -175,8 +198,8 @@ import java.util.stream.Collectors;
      * @throws Exception if the model cannot be loaded or inference fails
      */
     public float[] embed(String text) throws Exception {
-<span class="nc" id="L178">        try (Predictor&lt;String, float[]&gt; predictor = getModel().newPredictor()) {</span>
-<span class="nc" id="L179">            return predictor.predict(text);</span>
+<span class="nc" id="L201">        try (Predictor&lt;String, float[]&gt; predictor = getModel().newPredictor()) {</span>
+<span class="nc" id="L202">            return predictor.predict(text);</span>
         }
     }
 
@@ -192,45 +215,45 @@ import java.util.stream.Collectors;
      */
     @Transactional(readOnly = true)
     public Map&lt;String, Integer&gt; scoreNodes(String businessText, List&lt;TaxonomyNode&gt; nodes) {
-<span class="fc" id="L195">        Map&lt;String, Integer&gt; scores = new HashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L196" title="All 2 branches covered.">        for (TaxonomyNode node : nodes) {</span>
-<span class="fc" id="L197">            scores.put(node.getCode(), 0);</span>
-<span class="fc" id="L198">        }</span>
+<span class="fc" id="L218">        Map&lt;String, Integer&gt; scores = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        for (TaxonomyNode node : nodes) {</span>
+<span class="fc" id="L220">            scores.put(node.getCode(), 0);</span>
+<span class="fc" id="L221">        }</span>
 
-<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        if (!isAvailable()) return scores;</span>
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">        if (!isAvailable()) return scores;</span>
 
         try {
-<span class="nc" id="L203">            float[] queryVector = embed(businessText);</span>
-<span class="nc" id="L204">            List&lt;String&gt; nodeCodes = nodes.stream()</span>
-<span class="nc" id="L205">                    .map(TaxonomyNode::getCode).collect(Collectors.toList());</span>
+<span class="nc" id="L226">            float[] queryVector = embed(businessText);</span>
+<span class="nc" id="L227">            List&lt;String&gt; nodeCodes = nodes.stream()</span>
+<span class="nc" id="L228">                    .map(TaxonomyNode::getCode).collect(Collectors.toList());</span>
 
-<span class="nc" id="L207">            SearchSession session = Search.session(entityManager);</span>
+<span class="nc" id="L230">            SearchSession session = Search.session(entityManager);</span>
             // Use score projection so we can map Lucene scores to percentages
-<span class="nc" id="L209">            List&lt;List&lt;?&gt;&gt; hits = session.search(TaxonomyNode.class)</span>
-<span class="nc" id="L210">                    .select(f -&gt; f.composite(f.entity(TaxonomyNode.class), f.score()))</span>
-<span class="nc" id="L211">                    .where(f -&gt; f.knn(nodes.size())</span>
-<span class="nc" id="L212">                            .field(&quot;embedding&quot;)</span>
-<span class="nc" id="L213">                            .matching(queryVector)</span>
-<span class="nc" id="L214">                            .filter(f.terms().field(&quot;code&quot;).matchingAny(nodeCodes)))</span>
-<span class="nc" id="L215">                    .fetchHits(nodes.size());</span>
+<span class="nc" id="L232">            List&lt;List&lt;?&gt;&gt; hits = session.search(TaxonomyNode.class)</span>
+<span class="nc" id="L233">                    .select(f -&gt; f.composite(f.entity(TaxonomyNode.class), f.score()))</span>
+<span class="nc" id="L234">                    .where(f -&gt; f.knn(nodes.size())</span>
+<span class="nc" id="L235">                            .field(&quot;embedding&quot;)</span>
+<span class="nc" id="L236">                            .matching(queryVector)</span>
+<span class="nc" id="L237">                            .filter(f.terms().field(&quot;code&quot;).matchingAny(nodeCodes)))</span>
+<span class="nc" id="L238">                    .fetchHits(nodes.size());</span>
 
-<span class="nc bnc" id="L217" title="All 2 branches missed.">            for (List&lt;?&gt; hit : hits) {</span>
-<span class="nc" id="L218">                TaxonomyNode node = (TaxonomyNode) hit.get(0);</span>
-<span class="nc" id="L219">                float luceneScore = (Float) hit.get(1);</span>
+<span class="nc bnc" id="L240" title="All 2 branches missed.">            for (List&lt;?&gt; hit : hits) {</span>
+<span class="nc" id="L241">                TaxonomyNode node = (TaxonomyNode) hit.get(0);</span>
+<span class="nc" id="L242">                float luceneScore = (Float) hit.get(1);</span>
                 // Lucene COSINE KNN score = (1 + cosineSim) / 2 → cosineSim in [-1, 1]
                 // Map cosineSim to percentage: cosineSim = 2 * luceneScore - 1
-<span class="nc" id="L222">                int percentage = (int) Math.round((2.0 * luceneScore - 1.0) * 100.0);</span>
-<span class="nc" id="L223">                percentage = Math.max(0, Math.min(100, percentage));</span>
-<span class="nc" id="L224">                scores.put(node.getCode(), percentage);</span>
-<span class="nc" id="L225">            }</span>
+<span class="nc" id="L245">                int percentage = (int) Math.round((2.0 * luceneScore - 1.0) * 100.0);</span>
+<span class="nc" id="L246">                percentage = Math.max(0, Math.min(100, percentage));</span>
+<span class="nc" id="L247">                scores.put(node.getCode(), percentage);</span>
+<span class="nc" id="L248">            }</span>
 
-<span class="nc" id="L227">            log.info(&quot;LOCAL_ONNX scores: {}&quot;, scores);</span>
+<span class="nc" id="L250">            log.info(&quot;LOCAL_ONNX scores: {}&quot;, scores);</span>
 
-<span class="fc" id="L229">        } catch (Exception e) {</span>
-<span class="fc" id="L230">            log.error(&quot;Error in KNN vector scoring; returning zero scores&quot;, e);</span>
-<span class="nc" id="L231">        }</span>
+<span class="fc" id="L252">        } catch (Exception e) {</span>
+<span class="fc" id="L253">            log.error(&quot;Error in KNN vector scoring; returning zero scores&quot;, e);</span>
+<span class="nc" id="L254">        }</span>
 
-<span class="fc" id="L233">        return scores;</span>
+<span class="fc" id="L256">        return scores;</span>
     }
 
     /**
@@ -244,17 +267,17 @@ import java.util.stream.Collectors;
      */
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNodeDto&gt; semanticSearch(String queryText, int topK) {
-<span class="pc bpc" id="L247" title="1 of 2 branches missed.">        if (!isAvailable()) return Collections.emptyList();</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">        if (!isAvailable()) return Collections.emptyList();</span>
         try {
-<span class="nc" id="L249">            float[] queryVector = embed(queryText);</span>
-<span class="nc" id="L250">            SearchSession session = Search.session(entityManager);</span>
-<span class="nc" id="L251">            List&lt;TaxonomyNode&gt; hits = session.search(TaxonomyNode.class)</span>
-<span class="nc" id="L252">                    .where(f -&gt; f.knn(topK).field(&quot;embedding&quot;).matching(queryVector))</span>
-<span class="nc" id="L253">                    .fetchHits(topK);</span>
-<span class="nc" id="L254">            return hits.stream().map(this::toFlatDto).collect(Collectors.toList());</span>
-<span class="nc" id="L255">        } catch (Exception e) {</span>
-<span class="nc" id="L256">            log.error(&quot;Semantic search failed for query '{}': {}&quot;, queryText, e.getMessage());</span>
-<span class="nc" id="L257">            return Collections.emptyList();</span>
+<span class="nc" id="L272">            float[] queryVector = embed(queryText);</span>
+<span class="nc" id="L273">            SearchSession session = Search.session(entityManager);</span>
+<span class="nc" id="L274">            List&lt;TaxonomyNode&gt; hits = session.search(TaxonomyNode.class)</span>
+<span class="nc" id="L275">                    .where(f -&gt; f.knn(topK).field(&quot;embedding&quot;).matching(queryVector))</span>
+<span class="nc" id="L276">                    .fetchHits(topK);</span>
+<span class="nc" id="L277">            return hits.stream().map(this::toFlatDto).collect(Collectors.toList());</span>
+<span class="nc" id="L278">        } catch (Exception e) {</span>
+<span class="nc" id="L279">            log.error(&quot;Semantic search failed for query '{}': {}&quot;, queryText, e.getMessage());</span>
+<span class="nc" id="L280">            return Collections.emptyList();</span>
         }
     }
 
@@ -269,66 +292,66 @@ import java.util.stream.Collectors;
      */
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNodeDto&gt; findSimilarNodes(String nodeCode, int topK) {
-<span class="pc bpc" id="L272" title="1 of 2 branches missed.">        if (!isAvailable()) return Collections.emptyList();</span>
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">        if (!isAvailable()) return Collections.emptyList();</span>
         try {
-<span class="nc" id="L274">            TaxonomyNode node = entityManager.createQuery(</span>
+<span class="nc" id="L297">            TaxonomyNode node = entityManager.createQuery(</span>
                             &quot;SELECT n FROM TaxonomyNode n WHERE n.code = :code&quot;, TaxonomyNode.class)
-<span class="nc" id="L276">                    .setParameter(&quot;code&quot;, nodeCode)</span>
-<span class="nc" id="L277">                    .getResultStream().findFirst().orElse(null);</span>
-<span class="nc bnc" id="L278" title="All 2 branches missed.">            if (node == null) {</span>
-<span class="nc" id="L279">                log.warn(&quot;Node '{}' not found in database&quot;, nodeCode);</span>
-<span class="nc" id="L280">                return Collections.emptyList();</span>
+<span class="nc" id="L299">                    .setParameter(&quot;code&quot;, nodeCode)</span>
+<span class="nc" id="L300">                    .getResultStream().findFirst().orElse(null);</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">            if (node == null) {</span>
+<span class="nc" id="L302">                log.warn(&quot;Node '{}' not found in database&quot;, nodeCode);</span>
+<span class="nc" id="L303">                return Collections.emptyList();</span>
             }
 
-<span class="nc" id="L283">            String nodeText = buildNodeText(node);</span>
-<span class="nc" id="L284">            float[] queryVector = embed(nodeText);</span>
+<span class="nc" id="L306">            String nodeText = buildNodeText(node);</span>
+<span class="nc" id="L307">            float[] queryVector = embed(nodeText);</span>
 
-<span class="nc" id="L286">            SearchSession session = Search.session(entityManager);</span>
+<span class="nc" id="L309">            SearchSession session = Search.session(entityManager);</span>
             // Retrieve topK+1 so we can exclude the source node
-<span class="nc" id="L288">            List&lt;TaxonomyNode&gt; hits = session.search(TaxonomyNode.class)</span>
-<span class="nc" id="L289">                    .where(f -&gt; f.knn(topK + 1).field(&quot;embedding&quot;).matching(queryVector))</span>
-<span class="nc" id="L290">                    .fetchHits(topK + 1);</span>
+<span class="nc" id="L311">            List&lt;TaxonomyNode&gt; hits = session.search(TaxonomyNode.class)</span>
+<span class="nc" id="L312">                    .where(f -&gt; f.knn(topK + 1).field(&quot;embedding&quot;).matching(queryVector))</span>
+<span class="nc" id="L313">                    .fetchHits(topK + 1);</span>
 
-<span class="nc" id="L292">            return hits.stream()</span>
-<span class="nc bnc" id="L293" title="All 2 branches missed.">                    .filter(n -&gt; !nodeCode.equals(n.getCode()))</span>
-<span class="nc" id="L294">                    .limit(topK)</span>
-<span class="nc" id="L295">                    .map(this::toFlatDto)</span>
-<span class="nc" id="L296">                    .collect(Collectors.toList());</span>
-<span class="nc" id="L297">        } catch (Exception e) {</span>
-<span class="nc" id="L298">            log.error(&quot;findSimilarNodes failed for node '{}': {}&quot;, nodeCode, e.getMessage());</span>
-<span class="nc" id="L299">            return Collections.emptyList();</span>
+<span class="nc" id="L315">            return hits.stream()</span>
+<span class="nc bnc" id="L316" title="All 2 branches missed.">                    .filter(n -&gt; !nodeCode.equals(n.getCode()))</span>
+<span class="nc" id="L317">                    .limit(topK)</span>
+<span class="nc" id="L318">                    .map(this::toFlatDto)</span>
+<span class="nc" id="L319">                    .collect(Collectors.toList());</span>
+<span class="nc" id="L320">        } catch (Exception e) {</span>
+<span class="nc" id="L321">            log.error(&quot;findSimilarNodes failed for node '{}': {}&quot;, nodeCode, e.getMessage());</span>
+<span class="nc" id="L322">            return Collections.emptyList();</span>
         }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private String buildNodeText(TaxonomyNode node) {
-<span class="nc bnc" id="L306" title="All 2 branches missed.">        StringBuilder sb = new StringBuilder(node.getNameEn() != null ? node.getNameEn() : &quot;&quot;);</span>
-<span class="nc bnc" id="L307" title="All 4 branches missed.">        if (node.getDescriptionEn() != null &amp;&amp; !node.getDescriptionEn().isBlank()) {</span>
-<span class="nc" id="L308">            sb.append(&quot;. &quot;).append(node.getDescriptionEn());</span>
+<span class="nc bnc" id="L329" title="All 2 branches missed.">        StringBuilder sb = new StringBuilder(node.getNameEn() != null ? node.getNameEn() : &quot;&quot;);</span>
+<span class="nc bnc" id="L330" title="All 4 branches missed.">        if (node.getDescriptionEn() != null &amp;&amp; !node.getDescriptionEn().isBlank()) {</span>
+<span class="nc" id="L331">            sb.append(&quot;. &quot;).append(node.getDescriptionEn());</span>
         }
-<span class="nc" id="L310">        return sb.toString();</span>
+<span class="nc" id="L333">        return sb.toString();</span>
     }
 
     private TaxonomyNodeDto toFlatDto(TaxonomyNode node) {
-<span class="nc" id="L314">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
-<span class="nc" id="L315">        dto.setId(node.getId());</span>
-<span class="nc" id="L316">        dto.setCode(node.getCode());</span>
-<span class="nc" id="L317">        dto.setUuid(node.getUuid());</span>
-<span class="nc" id="L318">        dto.setNameEn(node.getNameEn());</span>
-<span class="nc" id="L319">        dto.setNameDe(node.getNameDe());</span>
-<span class="nc" id="L320">        dto.setDescriptionEn(node.getDescriptionEn());</span>
-<span class="nc" id="L321">        dto.setDescriptionDe(node.getDescriptionDe());</span>
-<span class="nc" id="L322">        dto.setParentCode(node.getParentCode());</span>
-<span class="nc" id="L323">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
-<span class="nc" id="L324">        dto.setLevel(node.getLevel());</span>
-<span class="nc" id="L325">        dto.setDataset(node.getDataset());</span>
-<span class="nc" id="L326">        dto.setExternalId(node.getExternalId());</span>
-<span class="nc" id="L327">        dto.setSource(node.getSource());</span>
-<span class="nc" id="L328">        dto.setReference(node.getReference());</span>
-<span class="nc" id="L329">        dto.setSortOrder(node.getSortOrder());</span>
-<span class="nc" id="L330">        dto.setState(node.getState());</span>
-<span class="nc" id="L331">        return dto;</span>
+<span class="nc" id="L337">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
+<span class="nc" id="L338">        dto.setId(node.getId());</span>
+<span class="nc" id="L339">        dto.setCode(node.getCode());</span>
+<span class="nc" id="L340">        dto.setUuid(node.getUuid());</span>
+<span class="nc" id="L341">        dto.setNameEn(node.getNameEn());</span>
+<span class="nc" id="L342">        dto.setNameDe(node.getNameDe());</span>
+<span class="nc" id="L343">        dto.setDescriptionEn(node.getDescriptionEn());</span>
+<span class="nc" id="L344">        dto.setDescriptionDe(node.getDescriptionDe());</span>
+<span class="nc" id="L345">        dto.setParentCode(node.getParentCode());</span>
+<span class="nc" id="L346">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
+<span class="nc" id="L347">        dto.setLevel(node.getLevel());</span>
+<span class="nc" id="L348">        dto.setDataset(node.getDataset());</span>
+<span class="nc" id="L349">        dto.setExternalId(node.getExternalId());</span>
+<span class="nc" id="L350">        dto.setSource(node.getSource());</span>
+<span class="nc" id="L351">        dto.setReference(node.getReference());</span>
+<span class="nc" id="L352">        dto.setSortOrder(node.getSortOrder());</span>
+<span class="nc" id="L353">        dto.setState(node.getState());</span>
+<span class="nc" id="L354">        return dto;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
