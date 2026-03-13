@@ -107,7 +107,7 @@ public class RequirementCoverageService {
 
         // Gap candidates: taxonomy nodes with zero coverage entries
 <span class="fc" id="L109">        List&lt;NodeCoverageEntry&gt; gapCandidates = nodeRepository.findAll().stream()</span>
-<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                .filter(n -&gt; !densityMap.containsKey(n.getCode()))</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">                .filter(n -&gt; !densityMap.containsKey(n.getCode()))</span>
 <span class="fc" id="L111">                .sorted(Comparator.comparing(n -&gt; n.getCode()))</span>
 <span class="fc" id="L112">                .limit(TOP_N)</span>
 <span class="fc" id="L113">                .map(n -&gt; new NodeCoverageEntry(n.getCode(), 0))</span>
