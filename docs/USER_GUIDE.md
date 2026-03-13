@@ -19,6 +19,7 @@
     - [Architecture Gap Analysis](#11d-architecture-gap-analysis)
     - [Architecture Recommendation](#11e-architecture-recommendation)
     - [Architecture Pattern Detection](#11f-architecture-pattern-detection)
+    - [Architecture DSL](#11g-architecture-dsl)
 12. [Administration](#12-administration)
 13. [Relation Types Reference](#13-relation-types-reference)
 14. [Tips and Best Practices](#14-tips-and-best-practices)
@@ -904,6 +905,179 @@ See the [API Reference](API_REFERENCE.md#15-architecture-pattern-detection) for 
 
 ---
 
+## 11g. Architecture DSL
+
+The **Architecture DSL** is a text-based domain-specific language for describing architecture models as versionable, diff-friendly source files. It serves as the **single source of truth** for architecture definitions — changes are committed to a Git-backed repository, can be reviewed in pull requests, and are materialized into the application database.
+
+### Why DSL?
+
+| Traditional approach | DSL approach |
+|---|---|
+| Architecture stored in database only | Architecture stored as readable text files |
+| Changes are invisible until compared | Changes are visible as Git diffs |
+| No review process for architecture changes | Changes can be reviewed before merging |
+| Hard to reproduce past states | Full version history via Git |
+| Database-dependent | Portable text format |
+
+### DSL Format Overview
+
+DSL documents use the `.taxdsl` format. A document consists of an optional `meta` header followed by blocks for elements, relations, requirements, mappings, views, and evidence.
+
+**Example document:**
+
+```
+meta
+  language "taxdsl"
+  version "1.0"
+  namespace "mission.secure-voice"
+
+element CP-1001 type Capability
+  title "Secure Communications Capability"
+  description "Ability to provide secure communications"
+  taxonomy "Capabilities"
+
+  x-owner "CIS"
+  x-criticality "high"
+
+element BP-1040 type Process
+  title "Conduct Operations"
+  description "Execution of operations"
+  taxonomy "Business Processes"
+
+relation CP-1001 REALIZES BP-1040
+  status accepted
+  confidence 0.83
+  provenance "manual"
+
+requirement REQ-001
+  title "Secure voice communications for deployed forces"
+  text "Provide secure voice communications for deployed joint forces"
+
+mapping REQ-001 -> CP-1001
+  score 0.92
+  source "llm"
+
+view secure-voice-overview
+  title "Secure Voice Architecture Overview"
+  include CP-1001
+  include BP-1040
+  layout layered
+```
+
+### Block Types
+
+| Block | Header syntax | Description |
+|---|---|---|
+| `meta` | `meta` | Document metadata: language, version, namespace |
+| `element` | `element <ID> type <TypeName>` | Architecture element (Capability, Process, CoreService, etc.) |
+| `relation` | `relation <SourceID> <RelType> <TargetID>` | Directed relation between two elements |
+| `requirement` | `requirement <ID>` | Business requirement text |
+| `mapping` | `mapping <ReqID> -> <ElementID>` | Requirement-to-element mapping with score |
+| `view` | `view <ID>` | Named subset of elements for diagram generation |
+| `evidence` | `evidence <ID> for relation <Src> <Type> <Tgt>` | Supporting evidence for a relation |
+
+### Element Types
+
+| Type name | Taxonomy root | Description |
+|---|---|---|
+| `Capability` | CP | A bounded, outcome-oriented ability |
+| `Process` | BP | Business process |
+| `CoreService` | CR | Core service (SOA) |
+| `COIService` | CI | Community of Interest service |
+| `CommunicationsService` | CO | Communications infrastructure |
+| `UserApplication` | UA | User-facing application |
+| `InformationProduct` | IP | Structured information output |
+| `BusinessRole` | BR | Organisational role |
+
+### Relation Types
+
+See [§13 Relation Types Reference](#13-relation-types-reference) for the full list of 10 relation types and their compatibility rules.
+
+### Extension Attributes
+
+Any property starting with `x-` is treated as an **extension attribute**. Extensions are preserved across round-trips and are not validated — they provide a user-defined extensibility mechanism:
+
+```
+element CP-1001 type Capability
+  title "Secure Communications"
+
+  x-owner "CIS"
+  x-criticality "high"
+  x-lifecycle "target"
+```
+
+### Serialization Guarantees
+
+The DSL serializer produces **deterministic, Git-diff-friendly** output:
+
+| Property | Guarantee |
+|---|---|
+| **Block ordering** | Sorted by kind (elements → relations → requirements → mappings → views → evidence), then by primary ID within each kind |
+| **Property ordering** | Canonical order per block kind (e.g., title → description → taxonomy for elements) |
+| **Extension ordering** | Alphabetically sorted after known properties, separated by a blank line |
+| **Escape sequences** | `\"` and `\\` in quoted values for special characters |
+| **Round-trip stability** | `parse → serialize → parse → serialize` always produces identical output |
+
+These guarantees mean that **the same architecture always serializes to the same text**, regardless of the order in which elements were added. Git diffs show only actual semantic changes.
+
+### DSL Editor Panel
+
+The DSL Editor tab in the application provides:
+
+1. **Load Current** — Export the current architecture state as DSL text
+2. **Edit** — Modify the DSL text directly in the editor
+3. **Validate** — Check the DSL for errors and warnings
+4. **Commit** — Save changes to the Git-backed repository with a commit message
+5. **Branch management** — Create branches, cherry-pick, and merge
+
+![DSL Editor panel](images/34-dsl-editor-panel.png)
+
+### Version Control
+
+The DSL is stored in a **JGit repository** backed by the application database (no filesystem required). This provides full Git semantics:
+
+- **Branching** — Create feature branches to experiment with architecture changes
+- **Commit history** — Full audit trail of who changed what and when
+- **Diff** — Compare any two versions (semantic diff showing added/removed/changed elements, or unified text diff)
+- **Cherry-pick** — Port specific changes between branches
+- **Merge** — Combine branches with three-way merge support
+
+### Materialization
+
+DSL documents are **materialized** into the application database. This creates `TaxonomyRelation` entities from DSL relations, making them visible in the Graph Explorer, Relation Proposals, and Architecture View.
+
+Two materialization modes are available:
+
+| Mode | Endpoint | Description |
+|---|---|---|
+| **Full** | `POST /api/dsl/materialize` | Replaces all relations with DSL content |
+| **Incremental** | `POST /api/dsl/materialize-incremental` | Only applies the delta between two versions |
+
+### Hypotheses
+
+Relations generated during LLM analysis are stored as **hypotheses** — provisional relations that require human review before becoming permanent. Hypotheses follow a lifecycle:
+
+```
+PENDING → ACCEPTED (creates TaxonomyRelation)
+        → REJECTED (marked as rejected)
+        → APPLIED (session-only, not persisted)
+```
+
+The Hypotheses API (`/api/dsl/hypotheses`) allows querying, accepting, and rejecting hypotheses, with supporting evidence available for each.
+
+### Commit History Search
+
+Commit history is indexed into Hibernate Search for full-text search. You can:
+
+- Search across all commit messages and change content
+- Find all commits that affected a specific element
+- Find all commits that affected a specific relation
+- View aggregated change history for an element
+
+See the [API Reference](API_REFERENCE.md#21-architecture-dsl) for full endpoint documentation.
+
+---
+
 ## 12. Administration
 
 Administration features are hidden behind a password-protected admin mode. A standard user does not need to access these features.
@@ -1020,6 +1194,7 @@ The system uses 10 relation types, each corresponding to a specific relationship
 | Term | Definition |
 |---|---|
 | **Anchor node** | A high-scoring leaf node that directly satisfies a business requirement; the starting point for the Architecture View |
+| **Architecture DSL** | A text-based domain-specific language (`.taxdsl` format) for describing architecture models as versionable, diff-friendly source files |
 | **Architecture gap** | An expected relation (per the compatibility matrix) that is absent from the knowledge base |
 | **Architecture pattern** | A predefined chain of relation types through the taxonomy (e.g. Full Stack, App Chain, Role Chain) |
 | **Architecture recommendation** | An automated proposal combining confirmed elements, gap analysis, and candidate suggestions for a business requirement |
@@ -1034,10 +1209,12 @@ The system uses 10 relation types, each corresponding to a specific relationship
 | **Enriched failure impact** | Failure impact analysis that includes requirement coverage data and risk scoring |
 | **Graph Explorer** | The right-panel tool for running upstream, downstream, and failure-impact queries on the relation graph |
 | **Hybrid search** | A retrieval strategy combining full-text and semantic search rankings (available via API) |
+| **Hypothesis** | A provisional relation generated during LLM analysis, awaiting human review before becoming permanent |
 | **Information Product** | A specific, structured output of a business process (TOGAF Data Architecture) |
 | **Interactive Mode** | An analysis mode that scores one tree level at a time instead of the whole tree at once |
 | **Leaf node** | A taxonomy node with no children; the most specific level of the taxonomy |
 | **LLM** | Large Language Model — the AI component used for scoring, justification, and proposal generation |
+| **Materialization** | The process of converting DSL text into database entities (TaxonomyRelation, etc.) |
 | **Match Legend** | The colour scale on the right panel showing what each shade of green corresponds to in terms of score |
 | **NAF** | NATO Architecture Framework — the standard for describing NATO architectures |
 | **Pattern detection** | Checking whether predefined architecture patterns are complete or partially present in the relation graph |

@@ -1736,6 +1736,7 @@ curl -X POST http://localhost:8080/api/explain \
 | Term | Definition |
 |---|---|
 | **Anchor node** | A high-scoring leaf node that directly satisfies a business requirement; the starting point for architecture-view construction |
+| **Architecture DSL** | A text-based domain-specific language (`.taxdsl` format) for describing architecture models as versionable, diff-friendly source files. Backed by JGit for version control. |
 | **Architecture gap** | An expected relation (per the compatibility matrix) that is absent from the knowledge base |
 | **Architecture pattern** | A named, predefined chain of relation types through the taxonomy (e.g. Full Stack: CP → REALIZES → CR → SUPPORTS → BP → CONSUMES → IP) |
 | **Architecture recommendation** | An AI-generated proposal combining confirmed elements, gap analysis, and candidate suggestions |
@@ -1750,9 +1751,11 @@ curl -X POST http://localhost:8080/api/explain \
 | **Embedding** | A dense numeric vector that encodes the semantic meaning of text or a taxonomy node |
 | **Enriched failure impact** | Failure impact analysis enriched with requirement coverage data and an aggregated risk score |
 | **Hybrid search** | A retrieval strategy that merges full-text and semantic search rankings via Reciprocal Rank Fusion |
+| **Hypothesis** | A provisional relation generated during LLM analysis, following the lifecycle: PENDING → ACCEPTED/REJECTED/APPLIED |
 | **Information Product** | A specific, structured output of a business process (TOGAF Data Architecture) |
 | **KNN** | K-Nearest Neighbours — a vector search algorithm that finds the closest embeddings |
 | **LLM** | Large Language Model — the AI component used for scoring and justification |
+| **Materialization** | The process of converting DSL text into database entities (`TaxonomyRelation`, etc.) for use by the application |
 | **NAF** | NATO Architecture Framework — the standard for describing NATO architectures |
 | **ONNX** | Open Neural Network Exchange — an interoperable format for ML models |
 | **Pattern detection** | The process of checking whether predefined architecture patterns are complete or partially present in the relation graph |

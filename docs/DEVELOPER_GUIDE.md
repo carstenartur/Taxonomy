@@ -233,9 +233,29 @@ The `LlmService` supports multiple LLM providers. To add a new one:
 
 ## DSL and JGit Storage
 
-The Architecture DSL subsystem uses JGit DFS (Distributed File System) with all Git objects stored in the HSQLDB database — no filesystem is used.
+The Architecture DSL subsystem uses JGit DFS (Distributed File System) with all Git objects stored in the HSQLDB database — no filesystem is used. The DSL serves as the **single source of truth** for architecture definitions.
 
-**Key classes:**
+**DSL module (`taxonomy-dsl`)** — Spring-independent library:
+
+| Package | Role |
+|---|---|
+| `dsl.parser` | Line-oriented parser: DSL text → `DocumentAst` |
+| `dsl.serializer` | Deterministic serializer: `DocumentAst` → DSL text (sorted blocks, canonical property order, escape sequences) |
+| `dsl.ast` | AST node types: `DocumentAst`, `BlockAst`, `PropertyAst`, `MetaAst` |
+| `dsl.model` | Canonical model: `CanonicalArchitectureModel`, `ArchitectureElement`, `ArchitectureRelation`, etc. |
+| `dsl.mapper` | Bidirectional mapping: AST ↔ canonical model |
+| `dsl.validation` | Validation: duplicate IDs, reference integrity, relation type compatibility matrix |
+| `dsl.diff` | Semantic diff: `ModelDiffer` compares two models; `SemanticDiffDescriber` generates human-readable descriptions |
+
+**Serialization guarantees** (critical for Git-friendly diffs):
+
+- **Block ordering**: Sorted by kind (element → relation → requirement → mapping → view → evidence), then by primary ID
+- **Property ordering**: Canonical order per block kind (title → description → taxonomy for elements, etc.)
+- **Extensions**: Sorted alphabetically after known properties
+- **Escape sequences**: `\"` and `\\` in quoted values
+- **Round-trip stability**: `parse → serialize → parse → serialize` always produces identical output
+
+**JGit integration classes:**
 
 | Class | Role |
 |---|---|
