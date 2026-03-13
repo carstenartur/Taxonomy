@@ -470,10 +470,10 @@ public class ArchitectureReportService {
     }
 
     private String inlineFormat(String text) {
-        // Bold
-<span class="fc" id="L474">        text = text.replaceAll(&quot;\\*\\*([^*]+)\\*\\*&quot;, &quot;&lt;strong&gt;$1&lt;/strong&gt;&quot;);</span>
-        // Inline code
-<span class="fc" id="L476">        text = text.replaceAll(&quot;`([^`]+)`&quot;, &quot;&lt;code&gt;$1&lt;/code&gt;&quot;);</span>
+        // Bold — possessive quantifier (++) prevents backtracking (ReDoS) on unclosed markers
+<span class="fc" id="L474">        text = text.replaceAll(&quot;\\*\\*([^*]++)\\*\\*&quot;, &quot;&lt;strong&gt;$1&lt;/strong&gt;&quot;);</span>
+        // Inline code — possessive quantifier (++) prevents backtracking (ReDoS) on unclosed markers
+<span class="fc" id="L476">        text = text.replaceAll(&quot;`([^`]++)`&quot;, &quot;&lt;code&gt;$1&lt;/code&gt;&quot;);</span>
 <span class="fc" id="L477">        return text;</span>
     }
 
