@@ -25,11 +25,11 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("Taxonomy Architecture Analyzer API")
                         .description("""
-                                REST API for the Taxonomy Architecture Analyzer.
-                                Analyse business requirements against the C3 Taxonomy catalogue,
-                                manage taxonomy relations, run graph-based architecture queries,
-                                and export results as Visio or ArchiMate diagrams.""")
-                        .version("1.0.0")
+                                REST API for the Taxonomy Architecture Analyzer — maps free-text business \
+                                requirements to structured C3 Taxonomy elements using LLM-powered scoring.
+                                Manage taxonomy relations, run graph-based architecture queries, \
+                                and export results as Visio, ArchiMate, or Mermaid diagrams.""")
+                        .version("1.1.1-SNAPSHOT")
                         .contact(new Contact()
                                 .name("Taxonomy Architecture Analyzer")
                                 .url("https://github.com/carstenartur/Taxonomy"))
@@ -46,8 +46,18 @@ public class OpenApiConfig {
                         new Tag().name("Proposals").description("Relation proposal pipeline — propose, review, accept/reject"),
                         new Tag().name("Graph Queries").description("Graph-based architecture impact and neighbourhood queries"),
                         new Tag().name("Quality Metrics").description("Relation quality dashboard and provenance metrics"),
-                        new Tag().name("Export").description("Visio (.vsdx) and ArchiMate XML diagram export"),
+                        new Tag().name("Requirement Coverage").description("Track which taxonomy nodes are covered by recorded requirements"),
+                        new Tag().name("Gap Analysis").description("Identify missing relations and incomplete architecture patterns"),
+                        new Tag().name("Architecture Recommendation").description("AI-generated architecture improvement suggestions"),
+                        new Tag().name("Pattern Detection").description("Detect predefined architecture patterns in the relation graph"),
+                        new Tag().name("Export").description("Visio (.vsdx), ArchiMate XML, and Mermaid diagram export"),
+                        new Tag().name("Report Export").description("Export architecture analysis as Markdown, HTML, DOCX, or JSON reports"),
+                        new Tag().name("Architecture DSL").description("Architecture DSL parsing, validation, versioning (JGit), and materialisation"),
+                        new Tag().name("Architecture Intelligence").description("Architecture summary, derived metadata, and next-step guidance"),
+                        new Tag().name("Explainable Reasoning").description("Structured explanation traces for scored taxonomy nodes"),
+                        new Tag().name("ArchiMate Import").description("Import ArchiMate 3.x XML models into the taxonomy knowledge base"),
                         new Tag().name("Administration").description("Admin status, diagnostics, and prompt template management"),
-                        new Tag().name("Embedding").description("Embedding model status and configuration")));
+                        new Tag().name("Embedding").description("Embedding model status and configuration"),
+                        new Tag().name("Status").description("Application startup and initialisation status")));
     }
 }
