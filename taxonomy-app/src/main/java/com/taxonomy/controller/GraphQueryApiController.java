@@ -1,18 +1,28 @@
 package com.taxonomy.controller;
 
+import com.taxonomy.dto.ApqcHierarchyNode;
 import com.taxonomy.dto.ChangeImpactView;
 import com.taxonomy.dto.EnrichedChangeImpactView;
 import com.taxonomy.dto.GraphNeighborhoodView;
 import com.taxonomy.dto.RequirementImpactView;
+import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.model.ArchitectureDslDocument;
+import com.taxonomy.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.service.ArchitectureGraphQueryService;
 import com.taxonomy.service.EnrichedImpactService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
+import java.util.*;
 
 /**
  * REST API for graph-based architecture queries.
@@ -24,6 +34,7 @@ import java.util.Map;
  *   <li>{@code GET  /api/graph/node/{code}/downstream} — Downstream neighborhood</li>
  *   <li>{@code GET  /api/graph/node/{code}/failure-impact} — Failure/change impact</li>
  *   <li>{@code GET  /api/graph/node/{code}/enriched-failure-impact} — Enriched failure impact with requirement correlation</li>
+ *   <li>{@code GET  /api/graph/apqc-hierarchy} — APQC process hierarchy from imported DSL</li>
  * </ul>
  */
 @RestController
@@ -31,13 +42,18 @@ import java.util.Map;
 @Tag(name = "Graph Queries")
 public class GraphQueryApiController {
 
+    private static final Logger log = LoggerFactory.getLogger(GraphQueryApiController.class);
+
     private final ArchitectureGraphQueryService graphQueryService;
     private final EnrichedImpactService enrichedImpactService;
+    private final ArchitectureDslDocumentRepository documentRepository;
 
     public GraphQueryApiController(ArchitectureGraphQueryService graphQueryService,
-                                   EnrichedImpactService enrichedImpactService) {
+                                   EnrichedImpactService enrichedImpactService,
+                                   ArchitectureDslDocumentRepository documentRepository) {
         this.graphQueryService = graphQueryService;
         this.enrichedImpactService = enrichedImpactService;
+        this.documentRepository = documentRepository;
     }
 
     /**
@@ -119,5 +135,62 @@ public class GraphQueryApiController {
             @Parameter(description = "Maximum traversal hops") @RequestParam(defaultValue = "3") int maxHops) {
         EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(code, maxHops);
         return ResponseEntity.ok(view);
+    }
+
+    /**
+     * Returns the APQC process hierarchy extracted from imported DSL documents.
+     *
+     * <p>Scans all stored DSL documents for elements with the
+     * {@code x-source-framework: "apqc"} extension and reconstructs the
+     * parent–child hierarchy using {@code x-apqc-parent} chains.
+     */
+    @Operation(summary = "APQC hierarchy",
+               description = "Returns APQC process elements from imported DSL documents as a hierarchy tree")
+    @GetMapping("/apqc-hierarchy")
+    public ResponseEntity<List<ApqcHierarchyNode>> apqcHierarchy() {
+        TaxDslParser parser = new TaxDslParser();
+        AstToModelMapper mapper = new AstToModelMapper();
+        List<ArchitectureElement> apqcElements = new ArrayList<>();
+
+        for (ArchitectureDslDocument doc : documentRepository.findAll()) {
+            if (doc.getRawContent() == null || doc.getRawContent().isBlank()) continue;
+            try {
+                var ast = parser.parse(doc.getRawContent(), doc.getPath());
+                CanonicalArchitectureModel model = mapper.map(ast);
+                for (ArchitectureElement el : model.getElements()) {
+                    if ("apqc".equals(el.getExtensions().get("x-source-framework"))) {
+                        apqcElements.add(el);
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("Skipping unparseable DSL document '{}': {}", doc.getPath(), e.getMessage());
+            }
+        }
+
+        // Build lookup map and tree
+        Map<String, ApqcHierarchyNode> nodeMap = new LinkedHashMap<>();
+        for (ArchitectureElement el : apqcElements) {
+            Map<String, String> ext = el.getExtensions();
+            String level = ext.getOrDefault("x-apqc-level", "Unknown");
+            String pcfId = ext.getOrDefault("x-apqc-pcf-id", "");
+            String parentId = ext.get("x-apqc-parent");
+            String taxonomyRoot = TaxonomyRootTypes.rootFor(el.getType());
+            nodeMap.put(el.getId(), new ApqcHierarchyNode(
+                    el.getId(), el.getTitle(), level, pcfId, parentId,
+                    taxonomyRoot != null ? taxonomyRoot : "",
+                    new ArrayList<>()));
+        }
+
+        // Link children to parents
+        List<ApqcHierarchyNode> roots = new ArrayList<>();
+        for (ApqcHierarchyNode node : nodeMap.values()) {
+            if (node.parentId() != null && nodeMap.containsKey(node.parentId())) {
+                nodeMap.get(node.parentId()).children().add(node);
+            } else {
+                roots.add(node);
+            }
+        }
+
+        return ResponseEntity.ok(roots);
     }
 }

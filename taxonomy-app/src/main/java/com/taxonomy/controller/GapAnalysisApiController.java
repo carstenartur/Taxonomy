@@ -1,5 +1,6 @@
 package com.taxonomy.controller;
 
+import com.taxonomy.dto.ApqcCoverageResult;
 import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.service.ArchitectureGapService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -15,6 +16,7 @@ import java.util.Map;
  * <p>Endpoints:
  * <ul>
  *   <li>{@code POST /api/gap/analyze} — Perform gap analysis on scored nodes</li>
+ *   <li>{@code GET  /api/gap/apqc-coverage} — APQC process coverage analysis</li>
  * </ul>
  */
 @RestController
@@ -49,5 +51,18 @@ public class GapAnalysisApiController {
                 request.businessText(),
                 request.minScore());
         return ResponseEntity.ok(view);
+    }
+
+    /**
+     * Analyses which APQC process categories are covered by the current
+     * architecture model.
+     */
+    @Operation(summary = "APQC coverage analysis",
+               description = "Reports which APQC process categories are covered and which have gaps")
+    @GetMapping("/apqc-coverage")
+    public ResponseEntity<ApqcCoverageResult> apqcCoverage(
+            @RequestParam(required = false) String businessText) {
+        ApqcCoverageResult result = gapService.analyzeApqcCoverage(businessText);
+        return ResponseEntity.ok(result);
     }
 }

@@ -171,29 +171,79 @@ public class ArchitectureGapService {
     /**
      * Analyses which APQC process categories are covered by the current architecture model.
      *
-     * <p>Searches for relations with APQC provenance and checks whether they
-     * have outgoing relations, indicating integration with the broader architecture.
+     * <p>Searches for nodes whose code patterns suggest APQC provenance (imported
+     * via the APQC pipeline) and checks whether they have outgoing relations,
+     * indicating integration with the broader architecture.
      *
      * @param requirementText optional business requirement text for context
-     * @return gap analysis view showing APQC coverage status
+     * @return APQC coverage result with per-level statistics
      */
     @Transactional(readOnly = true)
-    public GapAnalysisView analyzeApqcCoverage(String requirementText) {
-        GapAnalysisView view = new GapAnalysisView();
-        view.setBusinessText(requirementText != null ? requirementText : "APQC Coverage Analysis");
-
+    public ApqcCoverageResult analyzeApqcCoverage(String requirementText) {
         // Find all relations to check for APQC-sourced nodes
         List<TaxonomyRelation> allRelations = relationRepository.findAll();
 
-        // Check nodes for APQC provenance
+        // Check relations for APQC provenance
         List<TaxonomyRelation> apqcRelations = allRelations.stream()
                 .filter(r -> "APQC_IMPORT".equals(r.getProvenance()) ||
-                             (r.getDescription() != null && r.getDescription().contains("apqc")))
+                             "dsl-materialize".equals(r.getProvenance()) ||
+                             (r.getDescription() != null && r.getDescription().toLowerCase().contains("apqc")))
                 .toList();
 
-        view.setTotalAnchors(apqcRelations.size());
-        view.setTotalGaps(0);
-        view.getNotes().add("Found " + apqcRelations.size() + " APQC-related relations in the model.");
-        return view;
+        // Identify unique APQC-related node codes from source and target
+        Set<String> apqcNodeCodes = apqcRelations.stream()
+                .flatMap(rel -> java.util.stream.Stream.of(rel.getSourceNode(), rel.getTargetNode()))
+                .filter(Objects::nonNull)
+                .map(TaxonomyNode::getCode)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        // Group by taxonomy root (which maps to APQC levels via the import profile)
+        Map<String, Integer> coverageByLevel = new LinkedHashMap<>();
+        // APQC mapping: CP=Category, BP=ProcessGroup, CR=Process, CI=Activity, BR=Task
+        Map<String, String> rootToLevel = Map.of(
+                "CP", "Category", "BP", "ProcessGroup", "CR", "Process",
+                "CI", "Activity", "BR", "Task");
+
+        for (String code : apqcNodeCodes) {
+            Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(code);
+            nodeOpt.ifPresent(node -> {
+                String level = rootToLevel.getOrDefault(node.getTaxonomyRoot(), "Unknown");
+                coverageByLevel.merge(level, 1, Integer::sum);
+            });
+        }
+
+        // Count categories that have at least one relation (covered)
+        int totalCategories = coverageByLevel.values().stream().mapToInt(Integer::intValue).sum();
+        Set<String> coveredRoots = new LinkedHashSet<>();
+        for (TaxonomyRelation rel : apqcRelations) {
+            if (rel.getSourceNode() != null) coveredRoots.add(rel.getSourceNode().getTaxonomyRoot());
+            if (rel.getTargetNode() != null) coveredRoots.add(rel.getTargetNode().getTaxonomyRoot());
+        }
+
+        // Count categories with outgoing relations as "covered"
+        int coveredCategories = 0;
+        List<String> uncoveredCategories = new ArrayList<>();
+        for (String levelName : rootToLevel.values()) {
+            int count = coverageByLevel.getOrDefault(levelName, 0);
+            if (count > 0) {
+                coveredCategories++;
+            } else {
+                uncoveredCategories.add(levelName);
+            }
+        }
+
+        double coveragePercent = rootToLevel.size() > 0
+                ? (coveredCategories * 100.0) / rootToLevel.size()
+                : 0.0;
+
+        log.info("APQC coverage analysis: {} categories, {} covered, {}%",
+                totalCategories, coveredCategories, String.format("%.1f", coveragePercent));
+
+        return new ApqcCoverageResult(
+                totalCategories,
+                coveredCategories,
+                coveragePercent,
+                uncoveredCategories,
+                coverageByLevel);
     }
 }

@@ -235,4 +235,90 @@ class DslValidatorTest {
         DslValidationResult result = validator.validate(model);
         assertThat(result.getWarnings()).noneMatch(w -> w.contains("not a valid source type") || w.contains("not a valid target type"));
     }
+
+    // --- C4 type-combination validation tests ---
+
+    @Test
+    void containsSystemToUserApplicationIsValid() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        model.getElements().add(new ArchitectureElement("SY-0001", "System", "Web App", null, null));
+        model.getElements().add(new ArchitectureElement("UA-1001", "UserApplication", "Frontend", null, null));
+
+        model.getRelations().add(new ArchitectureRelation("SY-0001", "CONTAINS", "UA-1001"));
+
+        DslValidationResult result = validator.validate(model);
+        assertThat(result.getWarnings()).noneMatch(w -> w.contains("not a valid"));
+    }
+
+    @Test
+    void containsSystemToComponentIsValid() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        model.getElements().add(new ArchitectureElement("SY-0001", "System", "Platform", null, null));
+        model.getElements().add(new ArchitectureElement("CM-0001", "Component", "Auth Module", null, null));
+
+        model.getRelations().add(new ArchitectureRelation("SY-0001", "CONTAINS", "CM-0001"));
+
+        DslValidationResult result = validator.validate(model);
+        assertThat(result.getWarnings()).noneMatch(w -> w.contains("not a valid"));
+    }
+
+    @Test
+    void containsCapabilityToComponentIsRejected() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        model.getElements().add(new ArchitectureElement("CP-1023", "Capability", "Cap", null, null));
+        model.getElements().add(new ArchitectureElement("CM-0001", "Component", "Comp", null, null));
+
+        model.getRelations().add(new ArchitectureRelation("CP-1023", "CONTAINS", "CM-0001"));
+
+        DslValidationResult result = validator.validate(model);
+        assertThat(result.getWarnings()).anyMatch(w -> w.contains("not a valid source type for CONTAINS"));
+    }
+
+    @Test
+    void usesSystemToSystemIsValid() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        model.getElements().add(new ArchitectureElement("SY-0001", "System", "System A", null, null));
+        model.getElements().add(new ArchitectureElement("SY-0002", "System", "System B", null, null));
+
+        model.getRelations().add(new ArchitectureRelation("SY-0001", "USES", "SY-0002"));
+
+        DslValidationResult result = validator.validate(model);
+        assertThat(result.getWarnings()).noneMatch(w -> w.contains("not a valid"));
+    }
+
+    @Test
+    void usesSystemToCoreServiceIsValid() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        model.getElements().add(new ArchitectureElement("SY-0001", "System", "System A", null, null));
+        model.getElements().add(new ArchitectureElement("CR-1047", "CoreService", "API Service", null, null));
+
+        model.getRelations().add(new ArchitectureRelation("SY-0001", "USES", "CR-1047"));
+
+        DslValidationResult result = validator.validate(model);
+        assertThat(result.getWarnings()).noneMatch(w -> w.contains("not a valid"));
+    }
+
+    @Test
+    void dependsOnComponentToComponentIsValid() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        model.getElements().add(new ArchitectureElement("CM-0001", "Component", "Auth", null, null));
+        model.getElements().add(new ArchitectureElement("CM-0002", "Component", "Database", null, null));
+
+        model.getRelations().add(new ArchitectureRelation("CM-0001", "DEPENDS_ON", "CM-0002"));
+
+        DslValidationResult result = validator.validate(model);
+        assertThat(result.getWarnings()).noneMatch(w -> w.contains("not a valid"));
+    }
+
+    @Test
+    void dependsOnComponentToCoreServiceIsValid() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        model.getElements().add(new ArchitectureElement("CM-0001", "Component", "Auth", null, null));
+        model.getElements().add(new ArchitectureElement("CR-1047", "CoreService", "Crypto Service", null, null));
+
+        model.getRelations().add(new ArchitectureRelation("CM-0001", "DEPENDS_ON", "CR-1047"));
+
+        DslValidationResult result = validator.validate(model);
+        assertThat(result.getWarnings()).noneMatch(w -> w.contains("not a valid"));
+    }
 }
