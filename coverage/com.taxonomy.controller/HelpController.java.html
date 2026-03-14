@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HelpController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.controller</a> &gt; <span class="el_source">HelpController.java</span></div><h1>HelpController.java</h1><pre class="source lang-java linenums">package com.taxonomy.controller;
+
+import com.vladsch.flexmark.ext.autolink.AutolinkExtension;
+import com.vladsch.flexmark.ext.gfm.strikethrough.StrikethroughExtension;
+import com.vladsch.flexmark.ext.tables.TablesExtension;
+import com.vladsch.flexmark.html.HtmlRenderer;
+import com.vladsch.flexmark.parser.Parser;
+import com.vladsch.flexmark.util.ast.Node;
+import com.vladsch.flexmark.util.data.MutableDataSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Serves the in-app Help tab: table of contents, rendered Markdown documents,
+ * and documentation images.
+ */
+@Controller
+@RequestMapping(&quot;/help&quot;)
+public class HelpController {
+
+<span class="fc" id="L37">    private static final Logger log = LoggerFactory.getLogger(HelpController.class);</span>
+
+    /** Only allow safe filename characters to prevent path traversal. */
+<span class="fc" id="L40">    private static final java.util.regex.Pattern SAFE_NAME = java.util.regex.Pattern.compile(&quot;^[A-Za-z0-9_-]+$&quot;);</span>
+
+    /** Only allow safe image filenames (letters, digits, hyphens, underscores, dots). */
+<span class="fc" id="L43">    private static final java.util.regex.Pattern SAFE_IMAGE = java.util.regex.Pattern.compile(&quot;^[A-Za-z0-9_.-]+$&quot;);</span>
+
+<span class="fc" id="L45">    record DocEntry(String filename, String title, String icon, String audience) {}</span>
+
+<span class="fc" id="L47">    static final List&lt;DocEntry&gt; DOCS = List.of(</span>
+        new DocEntry(&quot;USER_GUIDE&quot;,               &quot;User Guide&quot;,               &quot;📖&quot;, &quot;Everyone&quot;),
+        new DocEntry(&quot;CONCEPTS&quot;,                  &quot;Concepts&quot;,                 &quot;💡&quot;, &quot;Everyone&quot;),
+        new DocEntry(&quot;EXAMPLES&quot;,                  &quot;Examples&quot;,                 &quot;📝&quot;, &quot;Everyone&quot;),
+        new DocEntry(&quot;CONFIGURATION_REFERENCE&quot;,   &quot;Configuration Reference&quot;,  &quot;⚙️&quot;, &quot;Admins&quot;),
+        new DocEntry(&quot;API_REFERENCE&quot;,             &quot;API Reference&quot;,            &quot;🔌&quot;, &quot;Integrators&quot;),
+        new DocEntry(&quot;CURL_EXAMPLES&quot;,             &quot;cURL Examples&quot;,            &quot;💻&quot;, &quot;Integrators&quot;),
+        new DocEntry(&quot;ARCHITECTURE&quot;,              &quot;Architecture&quot;,             &quot;🏗️&quot;, &quot;Developers&quot;),
+        new DocEntry(&quot;DEVELOPER_GUIDE&quot;,           &quot;Developer Guide&quot;,          &quot;🛠️&quot;, &quot;Developers&quot;),
+        new DocEntry(&quot;DEPLOYMENT_GUIDE&quot;,          &quot;Deployment Guide&quot;,         &quot;🚀&quot;, &quot;DevOps&quot;),
+        new DocEntry(&quot;SECURITY&quot;,                  &quot;Security&quot;,                 &quot;🔒&quot;, &quot;Admins&quot;),
+        new DocEntry(&quot;POSTGRESQL-SETUP&quot;,          &quot;PostgreSQL Setup&quot;,         &quot;🐘&quot;, &quot;DevOps&quot;),
+        new DocEntry(&quot;MSSQL-SETUP&quot;,               &quot;MSSQL Setup&quot;,              &quot;🗄️&quot;, &quot;DevOps&quot;)
+    );
+
+    private final Parser parser;
+    private final HtmlRenderer renderer;
+<span class="fc" id="L64">    private final ConcurrentHashMap&lt;String, String&gt; htmlCache = new ConcurrentHashMap&lt;&gt;();</span>
+
+<span class="fc" id="L66">    public HelpController() {</span>
+<span class="fc" id="L67">        MutableDataSet options = new MutableDataSet();</span>
+<span class="fc" id="L68">        options.set(Parser.EXTENSIONS, Arrays.asList(</span>
+<span class="fc" id="L69">            TablesExtension.create(),</span>
+<span class="fc" id="L70">            AutolinkExtension.create(),</span>
+<span class="fc" id="L71">            StrikethroughExtension.create()</span>
+        ));
+<span class="fc" id="L73">        this.parser = Parser.builder(options).build();</span>
+<span class="fc" id="L74">        this.renderer = HtmlRenderer.builder(options).build();</span>
+<span class="fc" id="L75">    }</span>
+
+    /** Returns the ordered table of contents as JSON. */
+    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public List&lt;DocEntry&gt; getToc() {
+<span class="fc" id="L81">        return DOCS;</span>
+    }
+
+    /** Renders a Markdown document to HTML. */
+    @GetMapping(value = &quot;/{docName}&quot;, produces = MediaType.TEXT_HTML_VALUE)
+    @ResponseBody
+    public ResponseEntity&lt;String&gt; getDoc(@PathVariable String docName) {
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (!SAFE_NAME.matcher(docName).matches()) {</span>
+<span class="nc" id="L89">            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(&quot;Invalid document name&quot;);</span>
+        }
+        // Only allow documents that exist in the known list
+<span class="fc" id="L92">        boolean knownDoc = DOCS.stream().anyMatch(d -&gt; d.filename().equals(docName));</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (!knownDoc) {</span>
+<span class="fc" id="L94">            return ResponseEntity.notFound().build();</span>
+        }
+<span class="fc" id="L96">        String html = htmlCache.computeIfAbsent(docName, this::renderDoc);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (html == null) {</span>
+<span class="nc" id="L98">            return ResponseEntity.notFound().build();</span>
+        }
+<span class="fc" id="L100">        return ResponseEntity.ok(html);</span>
+    }
+
+    /** Serves images from classpath docs/images/. */
+    @GetMapping(&quot;/images/{imageName}&quot;)
+    @ResponseBody
+    public ResponseEntity&lt;byte[]&gt; getImage(@PathVariable String imageName) {
+        // Validate the full filename: only alphanumeric, hyphens, underscores, and dots allowed.
+        // This prevents path traversal (no slashes, no &quot;..&quot;) while allowing extensions like .png.
+<span class="pc bpc" id="L109" title="2 of 4 branches missed.">        if (!SAFE_IMAGE.matcher(imageName).matches() || imageName.contains(&quot;..&quot;)) {</span>
+<span class="nc" id="L110">            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();</span>
+        }
+        try {
+<span class="fc" id="L113">            ClassPathResource resource = new ClassPathResource(&quot;docs/images/&quot; + imageName);</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">            if (!resource.exists()) {</span>
+<span class="fc" id="L115">                return ResponseEntity.notFound().build();</span>
+            }
+<span class="nc" id="L117">            byte[] bytes = resource.getInputStream().readAllBytes();</span>
+<span class="nc" id="L118">            MediaType mediaType = guessMediaType(imageName);</span>
+<span class="nc" id="L119">            return ResponseEntity.ok().contentType(mediaType).body(bytes);</span>
+<span class="nc" id="L120">        } catch (IOException e) {</span>
+<span class="nc" id="L121">            log.warn(&quot;Could not read image {}: {}&quot;, imageName, e.getMessage());</span>
+<span class="nc" id="L122">            return ResponseEntity.notFound().build();</span>
+        }
+    }
+
+    // ── private helpers ───────────────────────────────────────────────────────
+
+    private String renderDoc(String docName) {
+<span class="fc" id="L129">        String path = &quot;docs/&quot; + docName + &quot;.md&quot;;</span>
+<span class="fc" id="L130">        ClassPathResource resource = new ClassPathResource(path);</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (!resource.exists()) {</span>
+<span class="nc" id="L132">            return null;</span>
+        }
+<span class="fc" id="L134">        try (InputStream in = resource.getInputStream()) {</span>
+<span class="fc" id="L135">            String markdown = new String(in.readAllBytes(), StandardCharsets.UTF_8);</span>
+            // Rewrite relative image paths to absolute /help/images/... URLs
+<span class="fc" id="L137">            markdown = markdown.replaceAll(&quot;\\(images/([^)]+)\\)&quot;, &quot;(/help/images/$1)&quot;);</span>
+<span class="fc" id="L138">            Node document = parser.parse(markdown);</span>
+<span class="fc" id="L139">            String body = renderer.render(document);</span>
+<span class="fc" id="L140">            return &quot;&lt;div class=\&quot;help-doc-content\&quot;&gt;&quot; + body + &quot;&lt;/div&gt;&quot;;</span>
+<span class="nc" id="L141">        } catch (IOException e) {</span>
+<span class="nc" id="L142">            log.error(&quot;Failed to render help doc {}: {}&quot;, docName, e.getMessage());</span>
+<span class="nc" id="L143">            return null;</span>
+        }
+    }
+
+    private MediaType guessMediaType(String imageName) {
+<span class="nc" id="L148">        String lower = imageName.toLowerCase();</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (lower.endsWith(&quot;.png&quot;))  return MediaType.IMAGE_PNG;</span>
+<span class="nc bnc" id="L150" title="All 4 branches missed.">        if (lower.endsWith(&quot;.jpg&quot;) || lower.endsWith(&quot;.jpeg&quot;)) return MediaType.IMAGE_JPEG;</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (lower.endsWith(&quot;.gif&quot;)) return MediaType.IMAGE_GIF;</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (lower.endsWith(&quot;.svg&quot;)) return MediaType.valueOf(&quot;image/svg+xml&quot;);</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (lower.endsWith(&quot;.webp&quot;)) return MediaType.valueOf(&quot;image/webp&quot;);</span>
+<span class="nc" id="L154">        return MediaType.APPLICATION_OCTET_STREAM;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
