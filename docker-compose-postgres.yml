@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: taxonomy
+      POSTGRES_USER: taxonomy
+      POSTGRES_PASSWORD: taxonomy
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U taxonomy -d taxonomy
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  taxonomy:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      TAXONOMY_DATASOURCE_URL: "jdbc:postgresql://db:5432/taxonomy"
+      SPRING_DATASOURCE_USERNAME: taxonomy
+      SPRING_DATASOURCE_PASSWORD: taxonomy
+      TAXONOMY_DDL_AUTO: create
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

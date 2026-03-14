@@ -158,6 +158,20 @@ Activate with `SPRING_PROFILES_ACTIVE=mssql`. See [MSSQL-SETUP.md](MSSQL-SETUP.m
 | `spring.datasource.hikari.connection-timeout` | `30000` | Connection timeout (ms). |
 | `spring.datasource.hikari.initialization-fail-timeout` | `60000` | Startup retry timeout (ms). |
 
+### PostgreSQL Profile
+
+Activate with `SPRING_PROFILES_ACTIVE=postgres`. See [POSTGRESQL-SETUP.md](POSTGRESQL-SETUP.md) for details.
+
+| Property | Default | Description |
+|---|---|---|
+| `spring.datasource.url` | `jdbc:postgresql://localhost:5432/taxonomy` | PostgreSQL JDBC URL. |
+| `spring.datasource.driver-class-name` | `org.postgresql.Driver` | PostgreSQL JDBC driver. |
+| `spring.datasource.type` | `com.zaxxer.hikari.HikariDataSource` | HikariCP connection pool. |
+| `spring.jpa.database-platform` | `org.hibernate.dialect.PostgreSQLDialect` | PostgreSQL dialect. |
+| `spring.datasource.hikari.maximum-pool-size` | `10` | HikariCP max connections. |
+| `spring.datasource.hikari.connection-timeout` | `30000` | Connection timeout (ms). |
+| `spring.datasource.hikari.initialization-fail-timeout` | `60000` | Startup retry timeout (ms). |
+
 ---
 
 ## Hibernate Search / Lucene
