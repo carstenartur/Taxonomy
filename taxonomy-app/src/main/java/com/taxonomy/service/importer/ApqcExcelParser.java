@@ -112,7 +112,10 @@ public class ApqcExcelParser implements ExternalParser {
     private String getCellValueAsString(Cell cell) {
         if (cell == null) return null;
         return switch (cell.getCellType()) {
-            case STRING -> cell.getStringCellValue().trim();
+            case STRING -> {
+                RichTextString rts = cell.getRichStringCellValue();
+                yield (rts != null ? rts.getString() : cell.getStringCellValue()).trim();
+            }
             case NUMERIC -> {
                 double num = cell.getNumericCellValue();
                 if (num == Math.floor(num) && !Double.isInfinite(num)) {
