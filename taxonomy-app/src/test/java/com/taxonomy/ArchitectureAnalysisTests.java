@@ -144,6 +144,38 @@ class ArchitectureAnalysisTests {
         assertThat(expected).isEmpty();
     }
 
+    @Test
+    void compatibilityMatrixSystemUsesSystemAndCoreService() {
+        assertThat(compatibilityMatrix.isCompatible("SY", "SY", RelationType.USES)).isTrue();
+        assertThat(compatibilityMatrix.isCompatible("SY", "CR", RelationType.USES)).isTrue();
+        assertThat(compatibilityMatrix.isCompatible("SY", "BP", RelationType.USES)).isFalse();
+    }
+
+    @Test
+    void compatibilityMatrixComponentDependsOnComponentAndCoreService() {
+        assertThat(compatibilityMatrix.isCompatible("CM", "CM", RelationType.DEPENDS_ON)).isTrue();
+        assertThat(compatibilityMatrix.isCompatible("CM", "CR", RelationType.DEPENDS_ON)).isTrue();
+        assertThat(compatibilityMatrix.isCompatible("CM", "BP", RelationType.DEPENDS_ON)).isFalse();
+    }
+
+    @Test
+    void compatibilityMatrixSystemContainsUserAppAndComponent() {
+        assertThat(compatibilityMatrix.isCompatible("SY", "UA", RelationType.CONTAINS)).isTrue();
+        assertThat(compatibilityMatrix.isCompatible("SY", "CM", RelationType.CONTAINS)).isTrue();
+        assertThat(compatibilityMatrix.isCompatible("SY", "BP", RelationType.CONTAINS)).isFalse();
+    }
+
+    @Test
+    void compatibilityMatrixExpectedOutgoingForSystem() {
+        Map<RelationType, Set<String>> expected = compatibilityMatrix.getExpectedOutgoingRelations("SY");
+        assertThat(expected).containsKey(RelationType.USES);
+        assertThat(expected.get(RelationType.USES)).containsExactlyInAnyOrder("SY", "CR");
+        assertThat(expected).containsKey(RelationType.DEPENDS_ON);
+        assertThat(expected.get(RelationType.DEPENDS_ON)).contains("SY");
+        assertThat(expected).containsKey(RelationType.CONTAINS);
+        assertThat(expected.get(RelationType.CONTAINS)).containsExactlyInAnyOrder("UA", "CM");
+    }
+
     // ── Gap Analysis API Tests ────────────────────────────────────────────
 
     @Test
