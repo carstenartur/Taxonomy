@@ -367,6 +367,12 @@
                                     &#127919; Req. Impact
                                 </button>
                             </div>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="graphApqcFilter" value="">
+                                <label class="form-check-label small" for="graphApqcFilter">
+                                    Show APQC hierarchy only (filter nodes with <code>x-source-framework: apqc</code>)
+                                </label>
+                            </div>
                             <div id="graphResultsArea" class="mt-2" style="display:none;">
                                 <div id="graphResultsContent"></div>
                             </div>
@@ -419,6 +425,7 @@
                                 <option value="DEPENDS_ON">DEPENDS_ON</option>
                                 <option value="PRODUCES">PRODUCES</option>
                                 <option value="COMMUNICATES_WITH">COMMUNICATES_WITH</option>
+                                <option value="CONTAINS">CONTAINS</option>
                                 <option value="RELATED_TO">RELATED_TO</option>
                             </select>
                             <button id="createRelationBtn" class="btn btn-sm btn-outline-primary">&#10133; New Relation</button>
@@ -495,6 +502,43 @@
                             <input type="file" id="archiMateImportFile" accept=".xml" style="display:none;">
                         </div>
 
+                    </div>
+                </div>
+
+                <!-- Framework Import Card -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header fw-semibold">&#128228; Framework Import</div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">
+                            Import architecture models from external frameworks (UAF, APQC, C4/Structurizr).
+                            Elements and relations will be mapped to the taxonomy and materialized into the database.
+                        </p>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-5">
+                                <label for="importProfileSelect" class="form-label small">Profile</label>
+                                <select id="importProfileSelect" class="form-select form-select-sm">
+                                    <option value="">-- Select Profile --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="importFrameworkFile" class="form-label small">File</label>
+                                <input type="file" id="importFrameworkFile" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="importBranch" class="form-label small">Branch</label>
+                                <input type="text" id="importBranch" class="form-control form-control-sm" value="main" placeholder="main">
+                            </div>
+                        </div>
+
+                        <div id="importProfileInfo" class="mb-2"></div>
+
+                        <div class="d-flex gap-2 mb-3">
+                            <button id="importPreviewBtn" class="btn btn-outline-info btn-sm" title="Preview import without writing to database">&#128270; Preview</button>
+                            <button id="importExecuteBtn" class="btn btn-outline-success btn-sm" title="Execute full import into database">&#128228; Import</button>
+                        </div>
+
+                        <div id="importResultArea"></div>
                     </div>
                 </div>
 
@@ -831,6 +875,7 @@
     })();
 </script>
 <script th:src="@{/js/taxonomy-export.js}"></script>
+<script th:src="@{/js/taxonomy-import.js}"></script>
 <script th:src="@{/js/taxonomy-graph.js}"></script>
 <script th:src="@{/js/taxonomy-search.js}"></script>
 <script th:src="@{/js/taxonomy-quality.js}"></script>
@@ -861,6 +906,7 @@
                     <option value="DEPENDS_ON">DEPENDS_ON</option>
                     <option value="PRODUCES">PRODUCES</option>
                     <option value="COMMUNICATES_WITH">COMMUNICATES_WITH</option>
+                    <option value="CONTAINS">CONTAINS</option>
                     <option value="RELATED_TO">RELATED_TO</option>
                 </select>
             </div>
@@ -967,6 +1013,7 @@
                         <option value="DEPENDS_ON">DEPENDS_ON</option>
                         <option value="PRODUCES">PRODUCES</option>
                         <option value="COMMUNICATES_WITH">COMMUNICATES_WITH</option>
+                        <option value="CONTAINS">CONTAINS</option>
                         <option value="RELATED_TO">RELATED_TO</option>
                     </select>
                 </div>

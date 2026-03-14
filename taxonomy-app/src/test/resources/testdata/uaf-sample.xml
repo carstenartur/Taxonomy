@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+         xmlns:uaf="http://www.omg.org/spec/UAF/20210301"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <uaf:Model xmi:id="model-1" name="Sample UAF Model">
+    <packagedElement xmi:id="cap-1" xsi:type="uaf:Capability" name="Provide Logistics"/>
+    <packagedElement xmi:id="act-1" xsi:type="uaf:OperationalActivity" name="Track Shipment"/>
+    <packagedElement xmi:id="svc-1" xsi:type="uaf:ServiceFunction" name="Logistics Tracking Service"/>
+    <packagedElement xmi:id="sys-1" xsi:type="uaf:System" name="Logistics Platform"/>
+    <packagedElement xmi:id="org-1" xsi:type="uaf:Organization" name="Supply Chain Division"/>
+    <ownedConnector xmi:id="rel-1" xsi:type="uaf:Implements" source="cap-1" target="svc-1"/>
+    <ownedConnector xmi:id="rel-2" xsi:type="uaf:Supports" source="svc-1" target="act-1"/>
+    <ownedConnector xmi:id="rel-3" xsi:type="uaf:IsAssignedTo" source="org-1" target="act-1"/>
+  </uaf:Model>
+</xmi:XMI>
