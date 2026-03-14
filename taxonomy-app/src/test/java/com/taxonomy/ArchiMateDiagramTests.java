@@ -109,6 +109,18 @@ class ArchiMateDiagramTests {
                 .isEqualTo("ApplicationComponent");
     }
 
+    @Test
+    void typeMapping_SystemSingular() {
+        assertThat(ArchiMateDiagramService.toArchiMateType("System"))
+                .isEqualTo("Node");
+    }
+
+    @Test
+    void typeMapping_ComponentSingular() {
+        assertThat(ArchiMateDiagramService.toArchiMateType("Component"))
+                .isEqualTo("ApplicationComponent");
+    }
+
     // ── ArchiMateDiagramService – relationship mapping ──────────────────────
 
     @Test
@@ -364,6 +376,18 @@ class ArchiMateDiagramTests {
     void convertUserApplicationsColorIsBlue() {
         int[] color = ArchiMateDiagramService.toColor("User Applications");
         assertThat(color).containsExactly(181, 255, 255);
+    }
+
+    @Test
+    void convertSystemSingularColorIsLavender() {
+        int[] color = ArchiMateDiagramService.toColor("System");
+        assertThat(color).containsExactly(204, 204, 255);
+    }
+
+    @Test
+    void convertComponentSingularColorIsLightPurple() {
+        int[] color = ArchiMateDiagramService.toColor("Component");
+        assertThat(color).containsExactly(224, 204, 255);
     }
 
     // ── ArchiMateXmlExporter ────────────────────────────────────────────────

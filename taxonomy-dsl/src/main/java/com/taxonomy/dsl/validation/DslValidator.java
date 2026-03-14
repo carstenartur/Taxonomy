@@ -41,10 +41,10 @@ public class DslValidator {
         m.put("REALIZES",          Map.of("CP", Set.of("CR")));
         m.put("SUPPORTS",          Map.of("CR", Set.of("BP")));
         m.put("CONSUMES",          Map.of("BP", Set.of("IP")));
-        m.put("USES",              Map.of("UA", Set.of("CR")));
+        m.put("USES",              Map.of("UA", Set.of("CR"), "SY", Set.of("SY", "CR")));
         m.put("FULFILLS",          Map.of("CI", Set.of("CP")));
         m.put("ASSIGNED_TO",       Map.of("BR", Set.of("BP")));
-        m.put("DEPENDS_ON",        Map.of("CR", Set.of("CR"), "SY", Set.of("SY")));
+        m.put("DEPENDS_ON",        Map.of("CR", Set.of("CR"), "SY", Set.of("SY"), "CM", Set.of("CM", "CR")));
         m.put("PRODUCES",          Map.of("BP", Set.of("IP")));
         m.put("COMMUNICATES_WITH", Map.of("CO", Set.of("CR")));
         m.put("CONTAINS",          Map.of("SY", Set.of("UA", "CM"), "CM", Set.of("CM")));

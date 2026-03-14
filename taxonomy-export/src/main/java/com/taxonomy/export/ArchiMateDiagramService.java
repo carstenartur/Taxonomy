@@ -156,6 +156,8 @@ public class ArchiMateDiagramService {
             case "Information Products"  -> "DataObject";
             case "Systems"               -> "ApplicationComponent";
             case "Components"            -> "ApplicationComponent";
+            case "System"                -> "Node";
+            case "Component"             -> "ApplicationComponent";
             default                      -> "BusinessObject";
         };
     }
@@ -197,6 +199,8 @@ public class ArchiMateDiagramService {
             case "Information Products"   -> new int[]{204, 255, 204};
             case "Systems"                -> new int[]{181, 204, 255};
             case "Components"             -> new int[]{204, 181, 255};
+            case "System"                 -> new int[]{204, 204, 255};
+            case "Component"              -> new int[]{224, 204, 255};
             default                       -> new int[]{224, 224, 224};
         };
     }

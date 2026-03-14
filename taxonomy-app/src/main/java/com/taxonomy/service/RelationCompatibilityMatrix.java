@@ -34,6 +34,8 @@ public class RelationCompatibilityMatrix {
         addRule(RelationType.CONSUMES,          "BP",  Set.of("IP"));
         // User Application → Core Service
         addRule(RelationType.USES,              "UA",  Set.of("CR"));
+        // System → System / Core Service (C4 inter-system usage)
+        addRule(RelationType.USES,              "SY",  Set.of("SY", "CR"));
         // COI Service → Capability
         addRule(RelationType.FULFILLS,          "CI", Set.of("CP"));
         // Business Role → Business Process
@@ -42,6 +44,8 @@ public class RelationCompatibilityMatrix {
         addRule(RelationType.DEPENDS_ON,        "CR",  Set.of("CR"));
         // System → System (C4 inter-system dependency)
         addRule(RelationType.DEPENDS_ON,        "SY",  Set.of("SY"));
+        // Component → Component / Core Service (C4 component dependency)
+        addRule(RelationType.DEPENDS_ON,        "CM",  Set.of("CM", "CR"));
         // Business Process → Information Product
         addRule(RelationType.PRODUCES,          "BP",  Set.of("IP"));
         // Communications Service → Core Service
