@@ -23,7 +23,8 @@ public class DslValidator {
     /** Recognized relation types from the type matrix. */
     private static final Set<String> VALID_RELATION_TYPES = Set.of(
             "REALIZES", "SUPPORTS", "CONSUMES", "USES", "FULFILLS",
-            "ASSIGNED_TO", "DEPENDS_ON", "PRODUCES", "COMMUNICATES_WITH", "RELATED_TO");
+            "ASSIGNED_TO", "DEPENDS_ON", "PRODUCES", "COMMUNICATES_WITH",
+            "CONTAINS", "RELATED_TO");
 
     /** Recognized relation statuses. */
     private static final Set<String> VALID_STATUSES = Set.of(
@@ -43,9 +44,10 @@ public class DslValidator {
         m.put("USES",              Map.of("UA", Set.of("CR")));
         m.put("FULFILLS",          Map.of("CI", Set.of("CP")));
         m.put("ASSIGNED_TO",       Map.of("BR", Set.of("BP")));
-        m.put("DEPENDS_ON",        Map.of("CR", Set.of("CR")));
+        m.put("DEPENDS_ON",        Map.of("CR", Set.of("CR"), "SY", Set.of("SY")));
         m.put("PRODUCES",          Map.of("BP", Set.of("IP")));
         m.put("COMMUNICATES_WITH", Map.of("CO", Set.of("CR")));
+        m.put("CONTAINS",          Map.of("SY", Set.of("UA", "CM"), "CM", Set.of("CM")));
         // RELATED_TO has no restrictions
         TYPE_MATRIX = Collections.unmodifiableMap(m);
     }

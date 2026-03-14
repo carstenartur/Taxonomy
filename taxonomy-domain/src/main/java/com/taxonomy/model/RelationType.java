@@ -10,5 +10,6 @@ public enum RelationType {
     DEPENDS_ON,         // Service → Service (Technical dependency)
     PRODUCES,           // Business Process → Information Product (Data flow)
     COMMUNICATES_WITH,  // Communications Service → Core Service (NAF NSOV)
+    CONTAINS,           // System → Component containment (C4 model)
     RELATED_TO          // Generic fallback relation
 }
