@@ -290,7 +290,7 @@ public class DslApiController {
                 entry.put("timestamp", c.timestamp());
                 // Resolve documentId from the materialized document (if it exists)
                 var doc = documentRepository.findByCommitId(c.commitId());
-                entry.put("documentId", doc.map(d -> d.getId()).orElse(null));
+                entry.put("documentId", doc.map(ArchitectureDslDocument::getId).orElse(null));
                 history.add(entry);
             }
             ViewContext viewContext = repositoryStateService.getViewContext(branch);
