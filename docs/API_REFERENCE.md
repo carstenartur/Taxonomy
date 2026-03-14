@@ -5,6 +5,8 @@ CSRF is disabled for `/api/**` — REST clients do not need CSRF tokens.
 
 Interactive docs: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) (when the app is running).
 
+> For end-to-end workflow examples using curl, see [Curl Workflow Examples](CURL_EXAMPLES.md).
+
 ---
 
 ## Table of Contents
