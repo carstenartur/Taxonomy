@@ -349,6 +349,89 @@ class DslGitRepositoryTest {
         assertFalse(repo.isDatabaseBacked(), "InMemory repo should not be database-backed");
     }
 
+    // ── getHeadCommit ───────────────────────────────────────────────
+
+    @Test
+    void getHeadCommitReturnsCommitSha() throws IOException {
+        String commitId = repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        assertEquals(commitId, repo.getHeadCommit("draft"));
+    }
+
+    @Test
+    void getHeadCommitReturnsNullForNonexistentBranch() throws IOException {
+        assertNull(repo.getHeadCommit("nonexistent"));
+    }
+
+    @Test
+    void getHeadCommitReturnsLatestAfterMultipleCommits() throws IOException {
+        repo.commitDsl("draft", SAMPLE_DSL, "tester", "first");
+        String second = repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "second");
+        assertEquals(second, repo.getHeadCommit("draft"));
+    }
+
+    // ── getBranchNames ──────────────────────────────────────────────
+
+    @Test
+    void getBranchNamesInitiallyEmpty() throws IOException {
+        assertTrue(repo.getBranchNames().isEmpty());
+    }
+
+    @Test
+    void getBranchNamesReturnsBranchNames() throws IOException {
+        repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        repo.createBranch("review", "draft");
+
+        var names = repo.getBranchNames();
+        assertEquals(2, names.size());
+        assertTrue(names.contains("draft"));
+        assertTrue(names.contains("review"));
+    }
+
+    // ── getCommitCount ──────────────────────────────────────────────
+
+    @Test
+    void getCommitCountReturnsZeroForNonexistentBranch() throws IOException {
+        assertEquals(0, repo.getCommitCount("nonexistent"));
+    }
+
+    @Test
+    void getCommitCountCountsAllCommits() throws IOException {
+        repo.commitDsl("draft", SAMPLE_DSL, "tester", "first");
+        repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "second");
+        repo.commitDsl("draft", SAMPLE_DSL, "tester", "third");
+        assertEquals(3, repo.getCommitCount("draft"));
+    }
+
+    // ── getHeadCommitInfo ───────────────────────────────────────────
+
+    @Test
+    void getHeadCommitInfoReturnsNullForNonexistentBranch() throws IOException {
+        assertNull(repo.getHeadCommitInfo("nonexistent"));
+    }
+
+    @Test
+    void getHeadCommitInfoReturnsCommitMetadata() throws IOException {
+        repo.commitDsl("draft", SAMPLE_DSL, "alice@test.com", "initial commit");
+
+        DslCommit info = repo.getHeadCommitInfo("draft");
+        assertNotNull(info);
+        assertEquals("alice@test.com", info.author());
+        assertEquals("initial commit", info.message());
+        assertNotNull(info.commitId());
+        assertNotNull(info.timestamp());
+    }
+
+    @Test
+    void getHeadCommitInfoReturnsLatestCommit() throws IOException {
+        repo.commitDsl("draft", SAMPLE_DSL, "alice", "first");
+        repo.commitDsl("draft", SAMPLE_DSL_V2, "bob", "second");
+
+        DslCommit info = repo.getHeadCommitInfo("draft");
+        assertNotNull(info);
+        assertEquals("bob", info.author());
+        assertEquals("second", info.message());
+    }
+
     // ── Full draft → cherry-pick → review → merge → accepted ────────
 
     @Test

@@ -518,6 +518,80 @@ public class DslGitRepository {
         }
     }
 
+    // ── State query helpers ────────────────────────────────────────
+
+    /**
+     * Get the HEAD commit SHA for a branch.
+     *
+     * @param branch the branch name
+     * @return the 40-char commit SHA, or {@code null} if the branch doesn't exist
+     * @throws IOException on JGit errors
+     */
+    public String getHeadCommit(String branch) throws IOException {
+        String refName = Constants.R_HEADS + branch;
+        Ref ref = gitRepo.getRefDatabase().exactRef(refName);
+        return ref != null && ref.getObjectId() != null ? ref.getObjectId().name() : null;
+    }
+
+    /**
+     * Get all branch names (without the {@code refs/heads/} prefix).
+     *
+     * @return list of branch names (may be empty)
+     * @throws IOException on JGit errors
+     */
+    public List<String> getBranchNames() throws IOException {
+        List<String> names = new ArrayList<>();
+        for (Ref ref : gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS)) {
+            names.add(ref.getName().substring(Constants.R_HEADS.length()));
+        }
+        return names;
+    }
+
+    /**
+     * Count the number of commits on a branch.
+     *
+     * @param branch the branch name
+     * @return the commit count (0 if branch doesn't exist)
+     * @throws IOException on JGit errors
+     */
+    public int getCommitCount(String branch) throws IOException {
+        String refName = Constants.R_HEADS + branch;
+        Ref ref = gitRepo.getRefDatabase().exactRef(refName);
+        if (ref == null) return 0;
+
+        int count = 0;
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            walk.markStart(walk.parseCommit(ref.getObjectId()));
+            for (RevCommit ignored : walk) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Get the {@link DslCommit} metadata for the HEAD of a branch.
+     *
+     * @param branch the branch name
+     * @return the HEAD commit info, or {@code null} if the branch has no commits
+     * @throws IOException on JGit errors
+     */
+    public DslCommit getHeadCommitInfo(String branch) throws IOException {
+        String refName = Constants.R_HEADS + branch;
+        Ref ref = gitRepo.getRefDatabase().exactRef(refName);
+        if (ref == null) return null;
+
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            RevCommit c = walk.parseCommit(ref.getObjectId());
+            PersonIdent authorIdent = c.getAuthorIdent();
+            return new DslCommit(
+                    c.name(),
+                    authorIdent.getName(),
+                    Instant.ofEpochSecond(c.getCommitTime()),
+                    c.getFullMessage());
+        }
+    }
+
     // ── Internal helpers ────────────────────────────────────────────
 
     private String readDslFromTree(RevTree tree) throws IOException {
