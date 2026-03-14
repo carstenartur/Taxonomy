@@ -252,7 +252,7 @@ The application uses **Spring Security** with a three-role authorisation model:
 |---|---|
 | `ROLE_USER` | Read all API endpoints, run analysis, export diagrams, access GUI |
 | `ROLE_ARCHITECT` | Everything in USER, plus write access to relations, DSL, and Git operations |
-| `ROLE_ADMIN` | Everything in ARCHITECT, plus admin endpoints (`/admin/**`, `/api/admin/**`) |
+| `ROLE_ADMIN` | Everything in ARCHITECT, plus admin endpoints (`/admin/**`, `/api/admin/**`), user management |
 
 **Authentication methods:**
 
@@ -261,7 +261,20 @@ The application uses **Spring Security** with a three-role authorisation model:
 
 A default `admin` user (with all three roles) is seeded on first startup via `SecurityDataInitializer`. The password is configurable through `TAXONOMY_ADMIN_PASSWORD` (default: `admin`).
 
-**Public endpoints** (no authentication required): `/login`, `/error`, `/actuator/health/**`, `/v3/api-docs/**`, `/swagger-ui/**`, and static assets.
+**Public endpoints** (no authentication required): `/login`, `/error`, `/actuator/health/**`, `/v3/api-docs/**` (configurable), `/swagger-ui/**` (configurable), and static assets.
+
+**Security hardening features:**
+
+| Feature | Default | Config |
+|---|---|---|
+| Login brute-force protection | Enabled (5 attempts, 5 min lockout) | `TAXONOMY_LOGIN_RATE_LIMIT` |
+| Security headers (HSTS, CSP, X-Frame-Options) | Always enabled | — |
+| Swagger access control | Public | `TAXONOMY_SWAGGER_PUBLIC` |
+| Password change enforcement | Disabled (warn only) | `TAXONOMY_REQUIRE_PASSWORD_CHANGE` |
+| User management API | Always available for ADMIN | `/api/admin/users` |
+| Security audit logging | Disabled | `TAXONOMY_AUDIT_LOGGING` |
+
+See [Security](SECURITY.md) for full details.
 
 ---
 

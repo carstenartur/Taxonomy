@@ -63,7 +63,10 @@ docker run -d \
   -p 8080:8080 \
   -e GEMINI_API_KEY=your-gemini-api-key \
   -e ADMIN_PASSWORD=your-admin-password \
+  -e TAXONOMY_ADMIN_PASSWORD=strong-login-password \
   -e TAXONOMY_EMBEDDING_ENABLED=true \
+  -e TAXONOMY_SWAGGER_PUBLIC=false \
+  -e TAXONOMY_AUDIT_LOGGING=true \
   taxonomy-analyzer
 ```
 

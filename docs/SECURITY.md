@@ -152,6 +152,120 @@ The browser-based JavaScript (`fetch()` calls to `/api/**`) includes CSRF tokens
 
 ---
 
+## Brute-Force Protection
+
+The `LoginRateLimitFilter` protects against brute-force login attacks by tracking failed authentication attempts per IP address. After a configurable number of failures, the IP is locked out for a configurable duration.
+
+| Setting | Environment Variable | Default | Description |
+|---|---|---|---|
+| Enabled | `TAXONOMY_LOGIN_RATE_LIMIT` | `true` | Enable/disable login rate limiting |
+| Max attempts | `TAXONOMY_LOGIN_MAX_ATTEMPTS` | `5` | Failed attempts before lockout |
+| Lockout duration | `TAXONOMY_LOGIN_LOCKOUT_SECONDS` | `300` | Lockout duration in seconds (5 minutes) |
+
+**Behavior:**
+- Applies to `POST /login` (form login) and `/api/**` (HTTP Basic returning 401)
+- Returns HTTP 423 (Locked) with a JSON body when an IP is locked out
+- Lockout expires automatically after the configured duration
+- Successful login clears the failure counter for that IP
+
+Disable with `TAXONOMY_LOGIN_RATE_LIMIT=false` for development or testing.
+
+---
+
+## Security Headers
+
+The application sends the following security headers on all responses:
+
+| Header | Value | Purpose |
+|---|---|---|
+| `X-Content-Type-Options` | `nosniff` | Prevents MIME type sniffing |
+| `X-Frame-Options` | `SAMEORIGIN` | Prevents clickjacking via iframes |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Enforces HTTPS (HSTS) |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Controls referrer information |
+
+These headers are always enabled and cannot be disabled.
+
+---
+
+## Swagger Access Control
+
+Swagger UI and OpenAPI documentation access can be controlled independently of whether SpringDoc is enabled:
+
+| Variable | Default | Description |
+|---|---|---|
+| `TAXONOMY_SPRINGDOC_ENABLED` | `true` | Enable/disable SpringDoc entirely |
+| `TAXONOMY_SWAGGER_PUBLIC` | `true` | Allow unauthenticated access to Swagger UI |
+
+- **Development** (default): Swagger UI is publicly accessible (`TAXONOMY_SWAGGER_PUBLIC=true`)
+- **Production**: Set `TAXONOMY_SWAGGER_PUBLIC=false` to require authentication, or `TAXONOMY_SPRINGDOC_ENABLED=false` to disable entirely
+
+---
+
+## First-Time Password Change
+
+The default admin password (`admin`) triggers a startup warning:
+
+```
+SECURITY WARNING: Default admin password 'admin' is in use. Set TAXONOMY_ADMIN_PASSWORD environment variable to change it.
+```
+
+To enforce password changes, set `TAXONOMY_REQUIRE_PASSWORD_CHANGE=true`. When enabled:
+- GUI users with the default password are redirected to `/change-password`
+- The change-password form requires the current password, a new password (minimum 8 characters), and confirmation
+
+Authenticated users can always change their password at `/change-password`.
+
+---
+
+## Managing Users
+
+The User Management API allows administrators to create, update, and disable users via REST endpoints.
+
+### Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/admin/users` | List all users (without password hashes) |
+| `GET` | `/api/admin/users/{id}` | Get a specific user |
+| `POST` | `/api/admin/users` | Create a new user |
+| `PUT` | `/api/admin/users/{id}` | Update user details (roles, displayName, email, enabled) |
+| `PUT` | `/api/admin/users/{id}/password` | Change a user's password |
+| `DELETE` | `/api/admin/users/{id}` | Disable a user (soft delete) |
+
+All endpoints require `ROLE_ADMIN`. See the [API Reference](API_REFERENCE.md) for request/response details.
+
+### Safety Rules
+
+- The last remaining admin user cannot be disabled
+- The ADMIN role cannot be removed from the last admin user
+- Usernames must be unique
+- Passwords must be at least 8 characters
+
+---
+
+## Audit Logging
+
+Security audit logging records authentication events for compliance and forensics. Disabled by default.
+
+| Variable | Default | Description |
+|---|---|---|
+| `TAXONOMY_AUDIT_LOGGING` | `false` | Enable security audit logging |
+
+When enabled, the following events are logged:
+
+| Event | Log Level | Format |
+|---|---|---|
+| Successful login | `INFO` | `LOGIN_SUCCESS user={username} ip={ip}` |
+| Failed login | `WARN` | `LOGIN_FAILED user={username} ip={ip}` |
+| User created | `INFO` | `USER_CREATED user={username} roles={roles} by={admin}` |
+| User updated | `INFO` | `USER_UPDATED user={username} by={admin}` |
+| User disabled | `INFO` | `USER_DISABLED user={username} by={admin}` |
+| Password changed | `INFO` | `USER_PASSWORD_CHANGED user={username} by={admin}` |
+
+Enable with `TAXONOMY_AUDIT_LOGGING=true` for production or compliance environments.
+
+---
+
 ## Related Documentation
 
 - [Configuration Reference](CONFIGURATION_REFERENCE.md) — full list of environment variables including security settings
