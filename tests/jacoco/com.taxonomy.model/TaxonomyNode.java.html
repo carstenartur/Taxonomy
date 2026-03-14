@@ -63,6 +63,7 @@ import java.util.List;
     private String taxonomyRoot;
 
     @GenericField
+    @Column(name = &quot;node_level&quot;)
     private int level;
 
     @Nationalized
@@ -118,107 +119,107 @@ import java.util.List;
     @JoinColumn(name = &quot;parent_id&quot;)
     private TaxonomyNode parent;
 
-<span class="fc" id="L121">    @OneToMany(mappedBy = &quot;parent&quot;, cascade = CascadeType.ALL)</span>
+<span class="fc" id="L122">    @OneToMany(mappedBy = &quot;parent&quot;, cascade = CascadeType.ALL)</span>
     @OrderBy(&quot;nameEn ASC&quot;)
     @BatchSize(size = 50)
     private List&lt;TaxonomyNode&gt; children = new ArrayList&lt;&gt;();
 
-<span class="fc" id="L126">    @OneToMany(mappedBy = &quot;sourceNode&quot;, cascade = CascadeType.ALL, orphanRemoval = true)</span>
+<span class="fc" id="L127">    @OneToMany(mappedBy = &quot;sourceNode&quot;, cascade = CascadeType.ALL, orphanRemoval = true)</span>
     @BatchSize(size = 50)
     private List&lt;TaxonomyRelation&gt; outgoingRelations = new ArrayList&lt;&gt;();
 
-<span class="fc" id="L130">    @OneToMany(mappedBy = &quot;targetNode&quot;, cascade = CascadeType.ALL, orphanRemoval = true)</span>
+<span class="fc" id="L131">    @OneToMany(mappedBy = &quot;targetNode&quot;, cascade = CascadeType.ALL, orphanRemoval = true)</span>
     @BatchSize(size = 50)
     private List&lt;TaxonomyRelation&gt; incomingRelations = new ArrayList&lt;&gt;();
 
-<span class="fc" id="L134">    public Long getId() { return id; }</span>
-<span class="nc" id="L135">    public void setId(Long id) { this.id = id; }</span>
+<span class="fc" id="L135">    public Long getId() { return id; }</span>
+<span class="nc" id="L136">    public void setId(Long id) { this.id = id; }</span>
 
-<span class="fc" id="L137">    public String getCode() { return code; }</span>
-<span class="fc" id="L138">    public void setCode(String code) { this.code = code; }</span>
+<span class="fc" id="L138">    public String getCode() { return code; }</span>
+<span class="fc" id="L139">    public void setCode(String code) { this.code = code; }</span>
 
-<span class="fc" id="L140">    public String getUuid() { return uuid; }</span>
-<span class="fc" id="L141">    public void setUuid(String uuid) { this.uuid = uuid; }</span>
+<span class="fc" id="L141">    public String getUuid() { return uuid; }</span>
+<span class="fc" id="L142">    public void setUuid(String uuid) { this.uuid = uuid; }</span>
 
-<span class="fc" id="L143">    public String getNameEn() { return nameEn; }</span>
-<span class="fc" id="L144">    public void setNameEn(String nameEn) { this.nameEn = nameEn; }</span>
+<span class="fc" id="L144">    public String getNameEn() { return nameEn; }</span>
+<span class="fc" id="L145">    public void setNameEn(String nameEn) { this.nameEn = nameEn; }</span>
 
-<span class="fc" id="L146">    public String getNameDe() { return nameDe; }</span>
-<span class="nc" id="L147">    public void setNameDe(String nameDe) { this.nameDe = nameDe; }</span>
+<span class="fc" id="L147">    public String getNameDe() { return nameDe; }</span>
+<span class="nc" id="L148">    public void setNameDe(String nameDe) { this.nameDe = nameDe; }</span>
 
     /** Backward-compatible getter; returns the English name. */
-<span class="fc" id="L150">    public String getName() { return nameEn; }</span>
+<span class="fc" id="L151">    public String getName() { return nameEn; }</span>
 
-<span class="fc" id="L152">    public String getDescriptionEn() { return descriptionEn; }</span>
-<span class="fc" id="L153">    public void setDescriptionEn(String descriptionEn) { this.descriptionEn = descriptionEn; }</span>
+<span class="fc" id="L153">    public String getDescriptionEn() { return descriptionEn; }</span>
+<span class="fc" id="L154">    public void setDescriptionEn(String descriptionEn) { this.descriptionEn = descriptionEn; }</span>
 
-<span class="fc" id="L155">    public String getDescriptionDe() { return descriptionDe; }</span>
-<span class="nc" id="L156">    public void setDescriptionDe(String descriptionDe) { this.descriptionDe = descriptionDe; }</span>
+<span class="fc" id="L156">    public String getDescriptionDe() { return descriptionDe; }</span>
+<span class="nc" id="L157">    public void setDescriptionDe(String descriptionDe) { this.descriptionDe = descriptionDe; }</span>
 
     /** Backward-compatible getter; returns the English description. */
-<span class="nc" id="L159">    public String getDescription() { return descriptionEn; }</span>
+<span class="nc" id="L160">    public String getDescription() { return descriptionEn; }</span>
 
-<span class="fc" id="L161">    public String getParentCode() { return parentCode; }</span>
-<span class="fc" id="L162">    public void setParentCode(String parentCode) { this.parentCode = parentCode; }</span>
+<span class="fc" id="L162">    public String getParentCode() { return parentCode; }</span>
+<span class="fc" id="L163">    public void setParentCode(String parentCode) { this.parentCode = parentCode; }</span>
 
-<span class="fc" id="L164">    public String getTaxonomyRoot() { return taxonomyRoot; }</span>
-<span class="fc" id="L165">    public void setTaxonomyRoot(String taxonomyRoot) { this.taxonomyRoot = taxonomyRoot; }</span>
+<span class="fc" id="L165">    public String getTaxonomyRoot() { return taxonomyRoot; }</span>
+<span class="fc" id="L166">    public void setTaxonomyRoot(String taxonomyRoot) { this.taxonomyRoot = taxonomyRoot; }</span>
 
-<span class="fc" id="L167">    public int getLevel() { return level; }</span>
-<span class="fc" id="L168">    public void setLevel(int level) { this.level = level; }</span>
+<span class="fc" id="L168">    public int getLevel() { return level; }</span>
+<span class="fc" id="L169">    public void setLevel(int level) { this.level = level; }</span>
 
-<span class="fc" id="L170">    public String getDataset() { return dataset; }</span>
-<span class="fc" id="L171">    public void setDataset(String dataset) { this.dataset = dataset; }</span>
+<span class="fc" id="L171">    public String getDataset() { return dataset; }</span>
+<span class="fc" id="L172">    public void setDataset(String dataset) { this.dataset = dataset; }</span>
 
-<span class="fc" id="L173">    public String getExternalId() { return externalId; }</span>
-<span class="fc" id="L174">    public void setExternalId(String externalId) { this.externalId = externalId; }</span>
+<span class="fc" id="L174">    public String getExternalId() { return externalId; }</span>
+<span class="fc" id="L175">    public void setExternalId(String externalId) { this.externalId = externalId; }</span>
 
-<span class="fc" id="L176">    public String getSource() { return source; }</span>
-<span class="fc" id="L177">    public void setSource(String source) { this.source = source; }</span>
+<span class="fc" id="L177">    public String getSource() { return source; }</span>
+<span class="fc" id="L178">    public void setSource(String source) { this.source = source; }</span>
 
-<span class="fc" id="L179">    public String getReference() { return reference; }</span>
-<span class="fc" id="L180">    public void setReference(String reference) { this.reference = reference; }</span>
+<span class="fc" id="L180">    public String getReference() { return reference; }</span>
+<span class="fc" id="L181">    public void setReference(String reference) { this.reference = reference; }</span>
 
-<span class="fc" id="L182">    public Integer getSortOrder() { return sortOrder; }</span>
-<span class="fc" id="L183">    public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }</span>
+<span class="fc" id="L183">    public Integer getSortOrder() { return sortOrder; }</span>
+<span class="fc" id="L184">    public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }</span>
 
-<span class="fc" id="L185">    public String getState() { return state; }</span>
-<span class="fc" id="L186">    public void setState(String state) { this.state = state; }</span>
+<span class="fc" id="L186">    public String getState() { return state; }</span>
+<span class="fc" id="L187">    public void setState(String state) { this.state = state; }</span>
 
-<span class="nc" id="L188">    public float[] getSemanticEmbedding() { return semanticEmbedding; }</span>
+<span class="nc" id="L189">    public float[] getSemanticEmbedding() { return semanticEmbedding; }</span>
     public void setSemanticEmbedding(float[] semanticEmbedding) {
-<span class="nc" id="L190">        this.semanticEmbedding = semanticEmbedding;</span>
-<span class="nc bnc" id="L191" title="All 2 branches missed.">        this.hasEmbedding = (semanticEmbedding != null);</span>
-<span class="nc" id="L192">    }</span>
+<span class="nc" id="L191">        this.semanticEmbedding = semanticEmbedding;</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        this.hasEmbedding = (semanticEmbedding != null);</span>
+<span class="nc" id="L193">    }</span>
 
-<span class="nc" id="L194">    public boolean isHasEmbedding() { return hasEmbedding; }</span>
-<span class="nc" id="L195">    private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }</span>
+<span class="nc" id="L195">    public boolean isHasEmbedding() { return hasEmbedding; }</span>
+<span class="nc" id="L196">    private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }</span>
 
-<span class="fc" id="L197">    public int getIncomingRelationCount() { return incomingRelationCount; }</span>
-<span class="fc" id="L198">    public void setIncomingRelationCount(int incomingRelationCount) { this.incomingRelationCount = incomingRelationCount; }</span>
+<span class="fc" id="L198">    public int getIncomingRelationCount() { return incomingRelationCount; }</span>
+<span class="fc" id="L199">    public void setIncomingRelationCount(int incomingRelationCount) { this.incomingRelationCount = incomingRelationCount; }</span>
 
-<span class="fc" id="L200">    public int getOutgoingRelationCount() { return outgoingRelationCount; }</span>
-<span class="fc" id="L201">    public void setOutgoingRelationCount(int outgoingRelationCount) { this.outgoingRelationCount = outgoingRelationCount; }</span>
+<span class="fc" id="L201">    public int getOutgoingRelationCount() { return outgoingRelationCount; }</span>
+<span class="fc" id="L202">    public void setOutgoingRelationCount(int outgoingRelationCount) { this.outgoingRelationCount = outgoingRelationCount; }</span>
 
-<span class="fc" id="L203">    public int getRequirementCoverageCount() { return requirementCoverageCount; }</span>
-<span class="fc" id="L204">    public void setRequirementCoverageCount(int requirementCoverageCount) { this.requirementCoverageCount = requirementCoverageCount; }</span>
+<span class="fc" id="L204">    public int getRequirementCoverageCount() { return requirementCoverageCount; }</span>
+<span class="fc" id="L205">    public void setRequirementCoverageCount(int requirementCoverageCount) { this.requirementCoverageCount = requirementCoverageCount; }</span>
 
-<span class="fc" id="L206">    public String getGraphRole() { return graphRole; }</span>
-<span class="fc" id="L207">    public void setGraphRole(String graphRole) { this.graphRole = graphRole; }</span>
+<span class="fc" id="L207">    public String getGraphRole() { return graphRole; }</span>
+<span class="fc" id="L208">    public void setGraphRole(String graphRole) { this.graphRole = graphRole; }</span>
 
     /** Total number of relations (incoming + outgoing). */
-<span class="fc" id="L210">    public int getTotalRelationCount() { return incomingRelationCount + outgoingRelationCount; }</span>
+<span class="fc" id="L211">    public int getTotalRelationCount() { return incomingRelationCount + outgoingRelationCount; }</span>
 
-<span class="nc" id="L212">    public TaxonomyNode getParent() { return parent; }</span>
-<span class="fc" id="L213">    public void setParent(TaxonomyNode parent) { this.parent = parent; }</span>
+<span class="nc" id="L213">    public TaxonomyNode getParent() { return parent; }</span>
+<span class="fc" id="L214">    public void setParent(TaxonomyNode parent) { this.parent = parent; }</span>
 
-<span class="fc" id="L215">    public List&lt;TaxonomyNode&gt; getChildren() { return children; }</span>
-<span class="nc" id="L216">    public void setChildren(List&lt;TaxonomyNode&gt; children) { this.children = children; }</span>
+<span class="fc" id="L216">    public List&lt;TaxonomyNode&gt; getChildren() { return children; }</span>
+<span class="nc" id="L217">    public void setChildren(List&lt;TaxonomyNode&gt; children) { this.children = children; }</span>
 
-<span class="fc" id="L218">    public List&lt;TaxonomyRelation&gt; getOutgoingRelations() { return outgoingRelations; }</span>
-<span class="nc" id="L219">    public void setOutgoingRelations(List&lt;TaxonomyRelation&gt; outgoingRelations) { this.outgoingRelations = outgoingRelations; }</span>
+<span class="fc" id="L219">    public List&lt;TaxonomyRelation&gt; getOutgoingRelations() { return outgoingRelations; }</span>
+<span class="nc" id="L220">    public void setOutgoingRelations(List&lt;TaxonomyRelation&gt; outgoingRelations) { this.outgoingRelations = outgoingRelations; }</span>
 
-<span class="fc" id="L221">    public List&lt;TaxonomyRelation&gt; getIncomingRelations() { return incomingRelations; }</span>
-<span class="nc" id="L222">    public void setIncomingRelations(List&lt;TaxonomyRelation&gt; incomingRelations) { this.incomingRelations = incomingRelations; }</span>
+<span class="fc" id="L222">    public List&lt;TaxonomyRelation&gt; getIncomingRelations() { return incomingRelations; }</span>
+<span class="nc" id="L223">    public void setIncomingRelations(List&lt;TaxonomyRelation&gt; incomingRelations) { this.incomingRelations = incomingRelations; }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
