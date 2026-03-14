@@ -10,9 +10,11 @@ import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.model.*;
 import com.taxonomy.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.repository.RelationHypothesisRepository;
+import com.taxonomy.service.RepositoryStateService;
 import com.taxonomy.service.TaxonomyRelationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +48,8 @@ public class DslMaterializeService {
     private final TaxonomyRelationService relationService;
     private final RelationHypothesisRepository hypothesisRepository;
     private final ArchitectureDslDocumentRepository documentRepository;
+    @Nullable
+    private final RepositoryStateService repositoryStateService;
 
     private final TaxDslParser parser = new TaxDslParser();
     private final AstToModelMapper astMapper = new AstToModelMapper();
@@ -54,10 +58,12 @@ public class DslMaterializeService {
 
     public DslMaterializeService(TaxonomyRelationService relationService,
                                   RelationHypothesisRepository hypothesisRepository,
-                                  ArchitectureDslDocumentRepository documentRepository) {
+                                  ArchitectureDslDocumentRepository documentRepository,
+                                  @Nullable RepositoryStateService repositoryStateService) {
         this.relationService = relationService;
         this.hypothesisRepository = hypothesisRepository;
         this.documentRepository = documentRepository;
+        this.repositoryStateService = repositoryStateService;
     }
 
     /**
@@ -149,6 +155,11 @@ public class DslMaterializeService {
 
         log.info("Materialized DSL document '{}': {} relations, {} hypotheses",
                 path, relationsCreated, hypothesesCreated);
+
+        // Track projection state for staleness detection
+        if (repositoryStateService != null && commitId != null) {
+            repositoryStateService.recordProjection(commitId, branch);
+        }
 
         return new MaterializeResult(true, List.of(), validation.getWarnings(),
                 relationsCreated, hypothesesCreated, saved.getId());
