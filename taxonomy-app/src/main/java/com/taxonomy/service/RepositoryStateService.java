@@ -94,6 +94,11 @@ public class RepositoryStateService {
     /**
      * Build a {@link ViewContext} for inclusion in API responses.
      *
+     * <p>The {@code includesProvisionalRelations} flag is set to {@code true} because
+     * the architecture data may always include provisional (unreviewed) relations
+     * from DSL materialization. A future enhancement could check the actual branch
+     * to distinguish between draft (provisional) and accepted (reviewed only) data.
+     *
      * @param branch the branch the data is based on
      * @return the view context metadata
      */
@@ -129,8 +134,7 @@ public class RepositoryStateService {
         this.lastProjectionCommit = commitId;
         this.lastProjectionBranch = branch;
         this.lastProjectionTimestamp = Instant.now();
-        log.info("Recorded projection: branch='{}', commit='{}'", branch,
-                commitId != null ? commitId.substring(0, Math.min(7, commitId.length())) : "null");
+        log.info("Recorded projection: branch='{}', commit='{}'", branch, abbreviateSha(commitId));
     }
 
     /**
@@ -143,8 +147,7 @@ public class RepositoryStateService {
     public void recordIndexBuild(String commitId) {
         this.lastIndexCommit = commitId;
         this.lastIndexTimestamp = Instant.now();
-        log.info("Recorded index build: commit='{}'",
-                commitId != null ? commitId.substring(0, Math.min(7, commitId.length())) : "null");
+        log.info("Recorded index build: commit='{}'", abbreviateSha(commitId));
     }
 
     /**
@@ -222,5 +225,10 @@ public class RepositoryStateService {
             return false;
         }
         return !headCommit.equals(lastIndexCommit);
+    }
+
+    private String abbreviateSha(String commitId) {
+        if (commitId == null) return "null";
+        return commitId.substring(0, Math.min(7, commitId.length()));
     }
 }
