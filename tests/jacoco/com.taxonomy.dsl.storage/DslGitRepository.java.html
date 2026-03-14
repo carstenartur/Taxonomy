@@ -518,20 +518,94 @@ public class DslGitRepository {
 <span class="pc" id="L518">        }</span>
     }
 
+    // ── State query helpers ────────────────────────────────────────
+
+    /**
+     * Get the HEAD commit SHA for a branch.
+     *
+     * @param branch the branch name
+     * @return the 40-char commit SHA, or {@code null} if the branch doesn't exist
+     * @throws IOException on JGit errors
+     */
+    public String getHeadCommit(String branch) throws IOException {
+<span class="fc" id="L531">        String refName = Constants.R_HEADS + branch;</span>
+<span class="fc" id="L532">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="pc bpc" id="L533" title="1 of 4 branches missed.">        return ref != null &amp;&amp; ref.getObjectId() != null ? ref.getObjectId().name() : null;</span>
+    }
+
+    /**
+     * Get all branch names (without the {@code refs/heads/} prefix).
+     *
+     * @return list of branch names (may be empty)
+     * @throws IOException on JGit errors
+     */
+    public List&lt;String&gt; getBranchNames() throws IOException {
+<span class="fc" id="L543">        List&lt;String&gt; names = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L544" title="All 2 branches covered.">        for (Ref ref : gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS)) {</span>
+<span class="fc" id="L545">            names.add(ref.getName().substring(Constants.R_HEADS.length()));</span>
+<span class="fc" id="L546">        }</span>
+<span class="fc" id="L547">        return names;</span>
+    }
+
+    /**
+     * Count the number of commits on a branch.
+     *
+     * @param branch the branch name
+     * @return the commit count (0 if branch doesn't exist)
+     * @throws IOException on JGit errors
+     */
+    public int getCommitCount(String branch) throws IOException {
+<span class="fc" id="L558">        String refName = Constants.R_HEADS + branch;</span>
+<span class="fc" id="L559">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L560" title="All 2 branches covered.">        if (ref == null) return 0;</span>
+
+<span class="fc" id="L562">        int count = 0;</span>
+<span class="fc" id="L563">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L564">            walk.markStart(walk.parseCommit(ref.getObjectId()));</span>
+<span class="fc bfc" id="L565" title="All 2 branches covered.">            for (RevCommit ignored : walk) {</span>
+<span class="fc" id="L566">                count++;</span>
+<span class="fc" id="L567">            }</span>
+        }
+<span class="fc" id="L569">        return count;</span>
+    }
+
+    /**
+     * Get the {@link DslCommit} metadata for the HEAD of a branch.
+     *
+     * @param branch the branch name
+     * @return the HEAD commit info, or {@code null} if the branch has no commits
+     * @throws IOException on JGit errors
+     */
+    public DslCommit getHeadCommitInfo(String branch) throws IOException {
+<span class="fc" id="L580">        String refName = Constants.R_HEADS + branch;</span>
+<span class="fc" id="L581">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L582" title="All 2 branches covered.">        if (ref == null) return null;</span>
+
+<span class="fc" id="L584">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L585">            RevCommit c = walk.parseCommit(ref.getObjectId());</span>
+<span class="fc" id="L586">            PersonIdent authorIdent = c.getAuthorIdent();</span>
+<span class="fc" id="L587">            return new DslCommit(</span>
+<span class="fc" id="L588">                    c.name(),</span>
+<span class="fc" id="L589">                    authorIdent.getName(),</span>
+<span class="fc" id="L590">                    Instant.ofEpochSecond(c.getCommitTime()),</span>
+<span class="fc" id="L591">                    c.getFullMessage());</span>
+        }
+    }
+
     // ── Internal helpers ────────────────────────────────────────────
 
     private String readDslFromTree(RevTree tree) throws IOException {
-<span class="fc" id="L524">        try (TreeWalk tw = TreeWalk.forPath(gitRepo, DSL_FILENAME, tree)) {</span>
-<span class="pc bpc" id="L525" title="1 of 2 branches missed.">            if (tw == null) return null;</span>
-<span class="fc" id="L526">            ObjectId blobId = tw.getObjectId(0);</span>
-<span class="fc" id="L527">            ObjectLoader loader = gitRepo.open(blobId, Constants.OBJ_BLOB);</span>
-<span class="fc" id="L528">            return new String(loader.getBytes(), StandardCharsets.UTF_8);</span>
-<span class="nc bnc" id="L529" title="All 2 branches missed.">        }</span>
+<span class="fc" id="L598">        try (TreeWalk tw = TreeWalk.forPath(gitRepo, DSL_FILENAME, tree)) {</span>
+<span class="pc bpc" id="L599" title="1 of 2 branches missed.">            if (tw == null) return null;</span>
+<span class="fc" id="L600">            ObjectId blobId = tw.getObjectId(0);</span>
+<span class="fc" id="L601">            ObjectLoader loader = gitRepo.open(blobId, Constants.OBJ_BLOB);</span>
+<span class="fc" id="L602">            return new String(loader.getBytes(), StandardCharsets.UTF_8);</span>
+<span class="nc bnc" id="L603" title="All 2 branches missed.">        }</span>
     }
 
     /** Expose the underlying JGit repository (for advanced operations). */
     public Repository getGitRepository() {
-<span class="nc" id="L534">        return gitRepo;</span>
+<span class="fc" id="L608">        return gitRepo;</span>
     }
 
     /**
@@ -540,7 +614,7 @@ public class DslGitRepository {
      * @return true if backed by HibernateRepository (persistent)
      */
     public boolean isDatabaseBacked() {
-<span class="fc" id="L543">        return gitRepo instanceof HibernateRepository;</span>
+<span class="fc" id="L617">        return gitRepo instanceof HibernateRepository;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

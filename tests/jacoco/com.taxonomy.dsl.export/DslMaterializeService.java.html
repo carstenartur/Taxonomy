@@ -10,9 +10,11 @@ import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.model.*;
 import com.taxonomy.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.repository.RelationHypothesisRepository;
+import com.taxonomy.service.RepositoryStateService;
 import com.taxonomy.service.TaxonomyRelationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,29 +43,33 @@ import java.util.*;
 @Service
 public class DslMaterializeService {
 
-<span class="fc" id="L44">    private static final Logger log = LoggerFactory.getLogger(DslMaterializeService.class);</span>
+<span class="fc" id="L46">    private static final Logger log = LoggerFactory.getLogger(DslMaterializeService.class);</span>
 
     private final TaxonomyRelationService relationService;
     private final RelationHypothesisRepository hypothesisRepository;
     private final ArchitectureDslDocumentRepository documentRepository;
+    @Nullable
+    private final RepositoryStateService repositoryStateService;
 
-<span class="fc" id="L50">    private final TaxDslParser parser = new TaxDslParser();</span>
-<span class="fc" id="L51">    private final AstToModelMapper astMapper = new AstToModelMapper();</span>
-<span class="fc" id="L52">    private final DslValidator validator = new DslValidator();</span>
-<span class="fc" id="L53">    private final ModelDiffer differ = new ModelDiffer();</span>
+<span class="fc" id="L54">    private final TaxDslParser parser = new TaxDslParser();</span>
+<span class="fc" id="L55">    private final AstToModelMapper astMapper = new AstToModelMapper();</span>
+<span class="fc" id="L56">    private final DslValidator validator = new DslValidator();</span>
+<span class="fc" id="L57">    private final ModelDiffer differ = new ModelDiffer();</span>
 
     public DslMaterializeService(TaxonomyRelationService relationService,
                                   RelationHypothesisRepository hypothesisRepository,
-<span class="fc" id="L57">                                  ArchitectureDslDocumentRepository documentRepository) {</span>
-<span class="fc" id="L58">        this.relationService = relationService;</span>
-<span class="fc" id="L59">        this.hypothesisRepository = hypothesisRepository;</span>
-<span class="fc" id="L60">        this.documentRepository = documentRepository;</span>
-<span class="fc" id="L61">    }</span>
+                                  ArchitectureDslDocumentRepository documentRepository,
+<span class="fc" id="L62">                                  @Nullable RepositoryStateService repositoryStateService) {</span>
+<span class="fc" id="L63">        this.relationService = relationService;</span>
+<span class="fc" id="L64">        this.hypothesisRepository = hypothesisRepository;</span>
+<span class="fc" id="L65">        this.documentRepository = documentRepository;</span>
+<span class="fc" id="L66">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L67">    }</span>
 
     /**
      * Result of a materialization operation.
      */
-<span class="fc" id="L66">    public record MaterializeResult(</span>
+<span class="fc" id="L72">    public record MaterializeResult(</span>
             boolean valid,
             List&lt;String&gt; errors,
             List&lt;String&gt; warnings,
@@ -84,74 +90,79 @@ public class DslMaterializeService {
     @Transactional
     public MaterializeResult materialize(String dslText, String path, String branch, String commitId) {
         // 1. Parse
-<span class="fc" id="L87">        var doc = parser.parse(dslText, path);</span>
-<span class="fc" id="L88">        CanonicalArchitectureModel model = astMapper.map(doc);</span>
+<span class="fc" id="L93">        var doc = parser.parse(dslText, path);</span>
+<span class="fc" id="L94">        CanonicalArchitectureModel model = astMapper.map(doc);</span>
 
         // 2. Validate
-<span class="fc" id="L91">        DslValidationResult validation = validator.validate(model);</span>
-<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (!validation.isValid()) {</span>
-<span class="fc" id="L93">            return new MaterializeResult(false, validation.getErrors(), validation.getWarnings(),</span>
+<span class="fc" id="L97">        DslValidationResult validation = validator.validate(model);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        if (!validation.isValid()) {</span>
+<span class="fc" id="L99">            return new MaterializeResult(false, validation.getErrors(), validation.getWarnings(),</span>
                     0, 0, null);
         }
 
         // 3. Materialize relations
-<span class="fc" id="L98">        int relationsCreated = 0;</span>
-<span class="fc" id="L99">        int hypothesesCreated = 0;</span>
+<span class="fc" id="L104">        int relationsCreated = 0;</span>
+<span class="fc" id="L105">        int hypothesesCreated = 0;</span>
 
-<span class="fc bfc" id="L101" title="All 2 branches covered.">        for (ArchitectureRelation rel : model.getRelations()) {</span>
-<span class="pc bpc" id="L102" title="1 of 2 branches missed.">            String status = rel.getStatus() != null ? rel.getStatus().toLowerCase() : &quot;accepted&quot;;</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        for (ArchitectureRelation rel : model.getRelations()) {</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            String status = rel.getStatus() != null ? rel.getStatus().toLowerCase() : &quot;accepted&quot;;</span>
 
-<span class="fc bfc" id="L104" title="All 2 branches covered.">            if (&quot;accepted&quot;.equals(status)) {</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (&quot;accepted&quot;.equals(status)) {</span>
                 try {
-<span class="fc" id="L106">                    RelationType type = RelationType.valueOf(rel.getRelationType());</span>
-<span class="fc" id="L107">                    relationService.createRelation(</span>
-<span class="fc" id="L108">                            rel.getSourceId(), rel.getTargetId(), type,</span>
+<span class="fc" id="L112">                    RelationType type = RelationType.valueOf(rel.getRelationType());</span>
+<span class="fc" id="L113">                    relationService.createRelation(</span>
+<span class="fc" id="L114">                            rel.getSourceId(), rel.getTargetId(), type,</span>
                             &quot;Materialized from DSL&quot;, &quot;dsl-materialize&quot;);
-<span class="fc" id="L110">                    relationsCreated++;</span>
-<span class="nc" id="L111">                } catch (IllegalArgumentException e) {</span>
-<span class="nc" id="L112">                    log.warn(&quot;Skipped relation {} → {}: {}&quot;, rel.getSourceId(), rel.getTargetId(), e.getMessage());</span>
-<span class="pc" id="L113">                }</span>
-<span class="pc bpc" id="L114" title="2 of 4 branches missed.">            } else if (&quot;proposed&quot;.equals(status) || &quot;provisional&quot;.equals(status)) {</span>
+<span class="fc" id="L116">                    relationsCreated++;</span>
+<span class="nc" id="L117">                } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L118">                    log.warn(&quot;Skipped relation {} → {}: {}&quot;, rel.getSourceId(), rel.getTargetId(), e.getMessage());</span>
+<span class="pc" id="L119">                }</span>
+<span class="pc bpc" id="L120" title="2 of 4 branches missed.">            } else if (&quot;proposed&quot;.equals(status) || &quot;provisional&quot;.equals(status)) {</span>
                 try {
-<span class="fc" id="L116">                    RelationType type = RelationType.valueOf(rel.getRelationType());</span>
-<span class="pc bpc" id="L117" title="1 of 2 branches missed.">                    HypothesisStatus hStatus = &quot;proposed&quot;.equals(status)</span>
-<span class="pc" id="L118">                            ? HypothesisStatus.PROPOSED : HypothesisStatus.PROVISIONAL;</span>
+<span class="fc" id="L122">                    RelationType type = RelationType.valueOf(rel.getRelationType());</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">                    HypothesisStatus hStatus = &quot;proposed&quot;.equals(status)</span>
+<span class="pc" id="L124">                            ? HypothesisStatus.PROPOSED : HypothesisStatus.PROVISIONAL;</span>
 
-<span class="fc" id="L120">                    RelationHypothesis hypothesis = new RelationHypothesis();</span>
-<span class="fc" id="L121">                    hypothesis.setSourceNodeId(rel.getSourceId());</span>
-<span class="fc" id="L122">                    hypothesis.setTargetNodeId(rel.getTargetId());</span>
-<span class="fc" id="L123">                    hypothesis.setRelationType(type);</span>
-<span class="fc" id="L124">                    hypothesis.setStatus(hStatus);</span>
-<span class="fc" id="L125">                    hypothesis.setConfidence(rel.getConfidence());</span>
-<span class="fc" id="L126">                    hypothesis.setAnalysisSessionId(&quot;dsl-materialize&quot;);</span>
+<span class="fc" id="L126">                    RelationHypothesis hypothesis = new RelationHypothesis();</span>
+<span class="fc" id="L127">                    hypothesis.setSourceNodeId(rel.getSourceId());</span>
+<span class="fc" id="L128">                    hypothesis.setTargetNodeId(rel.getTargetId());</span>
+<span class="fc" id="L129">                    hypothesis.setRelationType(type);</span>
+<span class="fc" id="L130">                    hypothesis.setStatus(hStatus);</span>
+<span class="fc" id="L131">                    hypothesis.setConfidence(rel.getConfidence());</span>
+<span class="fc" id="L132">                    hypothesis.setAnalysisSessionId(&quot;dsl-materialize&quot;);</span>
 
-<span class="fc" id="L128">                    hypothesisRepository.save(hypothesis);</span>
-<span class="fc" id="L129">                    hypothesesCreated++;</span>
-<span class="nc" id="L130">                } catch (IllegalArgumentException e) {</span>
-<span class="nc" id="L131">                    log.warn(&quot;Skipped hypothesis {} → {}: {}&quot;, rel.getSourceId(), rel.getTargetId(), e.getMessage());</span>
-<span class="fc" id="L132">                }</span>
+<span class="fc" id="L134">                    hypothesisRepository.save(hypothesis);</span>
+<span class="fc" id="L135">                    hypothesesCreated++;</span>
+<span class="nc" id="L136">                } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L137">                    log.warn(&quot;Skipped hypothesis {} → {}: {}&quot;, rel.getSourceId(), rel.getTargetId(), e.getMessage());</span>
+<span class="fc" id="L138">                }</span>
             }
-<span class="fc" id="L134">        }</span>
+<span class="fc" id="L140">        }</span>
 
         // 4. Store the DSL document
-<span class="fc bfc" id="L137" title="All 2 branches covered.">        String namespace = doc.getMeta() != null ? doc.getMeta().namespace() : null;</span>
-<span class="fc bfc" id="L138" title="All 2 branches covered.">        String dslVersion = doc.getMeta() != null ? doc.getMeta().version() : null;</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        String namespace = doc.getMeta() != null ? doc.getMeta().namespace() : null;</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        String dslVersion = doc.getMeta() != null ? doc.getMeta().version() : null;</span>
 
-<span class="fc" id="L140">        ArchitectureDslDocument document = new ArchitectureDslDocument();</span>
-<span class="fc bfc" id="L141" title="All 2 branches covered.">        document.setPath(path != null ? path : &quot;inline&quot;);</span>
-<span class="fc" id="L142">        document.setBranch(branch);</span>
-<span class="fc" id="L143">        document.setCommitId(commitId);</span>
-<span class="fc" id="L144">        document.setNamespace(namespace);</span>
-<span class="fc" id="L145">        document.setDslVersion(dslVersion);</span>
-<span class="fc" id="L146">        document.setRawContent(dslText);</span>
+<span class="fc" id="L146">        ArchitectureDslDocument document = new ArchitectureDslDocument();</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        document.setPath(path != null ? path : &quot;inline&quot;);</span>
+<span class="fc" id="L148">        document.setBranch(branch);</span>
+<span class="fc" id="L149">        document.setCommitId(commitId);</span>
+<span class="fc" id="L150">        document.setNamespace(namespace);</span>
+<span class="fc" id="L151">        document.setDslVersion(dslVersion);</span>
+<span class="fc" id="L152">        document.setRawContent(dslText);</span>
 
-<span class="fc" id="L148">        ArchitectureDslDocument saved = documentRepository.save(document);</span>
+<span class="fc" id="L154">        ArchitectureDslDocument saved = documentRepository.save(document);</span>
 
-<span class="fc" id="L150">        log.info(&quot;Materialized DSL document '{}': {} relations, {} hypotheses&quot;,</span>
-<span class="fc" id="L151">                path, relationsCreated, hypothesesCreated);</span>
+<span class="fc" id="L156">        log.info(&quot;Materialized DSL document '{}': {} relations, {} hypotheses&quot;,</span>
+<span class="fc" id="L157">                path, relationsCreated, hypothesesCreated);</span>
 
-<span class="fc" id="L153">        return new MaterializeResult(true, List.of(), validation.getWarnings(),</span>
-<span class="fc" id="L154">                relationsCreated, hypothesesCreated, saved.getId());</span>
+        // Track projection state for staleness detection
+<span class="pc bpc" id="L160" title="1 of 4 branches missed.">        if (repositoryStateService != null &amp;&amp; commitId != null) {</span>
+<span class="fc" id="L161">            repositoryStateService.recordProjection(commitId, branch);</span>
+        }
+
+<span class="fc" id="L164">        return new MaterializeResult(true, List.of(), validation.getWarnings(),</span>
+<span class="fc" id="L165">                relationsCreated, hypothesesCreated, saved.getId());</span>
     }
 
     /**
@@ -163,18 +174,18 @@ public class DslMaterializeService {
      * @throws IllegalArgumentException if a document ID is not found
      */
     public ModelDiff diffDocuments(Long beforeDocId, Long afterDocId) {
-<span class="fc" id="L166">        CanonicalArchitectureModel before = null;</span>
-<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        if (beforeDocId != null) {</span>
-<span class="fc" id="L168">            ArchitectureDslDocument beforeDoc = documentRepository.findById(beforeDocId)</span>
-<span class="fc" id="L169">                    .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Before document not found: &quot; + beforeDocId));</span>
-<span class="fc" id="L170">            before = parseToModel(beforeDoc.getRawContent(), beforeDoc.getPath());</span>
+<span class="fc" id="L177">        CanonicalArchitectureModel before = null;</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        if (beforeDocId != null) {</span>
+<span class="fc" id="L179">            ArchitectureDslDocument beforeDoc = documentRepository.findById(beforeDocId)</span>
+<span class="fc" id="L180">                    .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Before document not found: &quot; + beforeDocId));</span>
+<span class="fc" id="L181">            before = parseToModel(beforeDoc.getRawContent(), beforeDoc.getPath());</span>
         }
 
-<span class="fc" id="L173">        ArchitectureDslDocument afterDoc = documentRepository.findById(afterDocId)</span>
-<span class="pc" id="L174">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;After document not found: &quot; + afterDocId));</span>
-<span class="fc" id="L175">        CanonicalArchitectureModel after = parseToModel(afterDoc.getRawContent(), afterDoc.getPath());</span>
+<span class="fc" id="L184">        ArchitectureDslDocument afterDoc = documentRepository.findById(afterDocId)</span>
+<span class="pc" id="L185">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;After document not found: &quot; + afterDocId));</span>
+<span class="fc" id="L186">        CanonicalArchitectureModel after = parseToModel(afterDoc.getRawContent(), afterDoc.getPath());</span>
 
-<span class="fc" id="L177">        return differ.diff(before, after);</span>
+<span class="fc" id="L188">        return differ.diff(before, after);</span>
     }
 
     /**
@@ -189,76 +200,76 @@ public class DslMaterializeService {
      */
     @Transactional
     public MaterializeResult materializeIncremental(Long beforeDocId, Long afterDocId) {
-<span class="fc" id="L192">        ModelDiff diff = diffDocuments(beforeDocId, afterDocId);</span>
+<span class="fc" id="L203">        ModelDiff diff = diffDocuments(beforeDocId, afterDocId);</span>
 
-<span class="fc" id="L194">        int relationsCreated = 0;</span>
-<span class="fc" id="L195">        int hypothesesCreated = 0;</span>
-<span class="fc" id="L196">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L205">        int relationsCreated = 0;</span>
+<span class="fc" id="L206">        int hypothesesCreated = 0;</span>
+<span class="fc" id="L207">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
 
         // Process added relations
-<span class="pc bpc" id="L199" title="1 of 2 branches missed.">        for (ArchitectureRelation rel : diff.addedRelations()) {</span>
-<span class="nc bnc" id="L200" title="All 2 branches missed.">            String status = rel.getStatus() != null ? rel.getStatus().toLowerCase() : &quot;accepted&quot;;</span>
-<span class="nc bnc" id="L201" title="All 2 branches missed.">            if (&quot;accepted&quot;.equals(status)) {</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">        for (ArchitectureRelation rel : diff.addedRelations()) {</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">            String status = rel.getStatus() != null ? rel.getStatus().toLowerCase() : &quot;accepted&quot;;</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">            if (&quot;accepted&quot;.equals(status)) {</span>
                 try {
-<span class="nc" id="L203">                    RelationType type = RelationType.valueOf(rel.getRelationType());</span>
-<span class="nc" id="L204">                    relationService.createRelation(</span>
-<span class="nc" id="L205">                            rel.getSourceId(), rel.getTargetId(), type,</span>
+<span class="nc" id="L214">                    RelationType type = RelationType.valueOf(rel.getRelationType());</span>
+<span class="nc" id="L215">                    relationService.createRelation(</span>
+<span class="nc" id="L216">                            rel.getSourceId(), rel.getTargetId(), type,</span>
                             &quot;Materialized incrementally from DSL&quot;, &quot;dsl-incremental&quot;);
-<span class="nc" id="L207">                    relationsCreated++;</span>
-<span class="nc" id="L208">                } catch (IllegalArgumentException e) {</span>
-<span class="nc" id="L209">                    warnings.add(&quot;Skipped relation &quot; + rel.getSourceId() + &quot; → &quot; + rel.getTargetId() + &quot;: &quot; + e.getMessage());</span>
-<span class="nc" id="L210">                }</span>
-<span class="nc bnc" id="L211" title="All 4 branches missed.">            } else if (&quot;proposed&quot;.equals(status) || &quot;provisional&quot;.equals(status)) {</span>
+<span class="nc" id="L218">                    relationsCreated++;</span>
+<span class="nc" id="L219">                } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L220">                    warnings.add(&quot;Skipped relation &quot; + rel.getSourceId() + &quot; → &quot; + rel.getTargetId() + &quot;: &quot; + e.getMessage());</span>
+<span class="nc" id="L221">                }</span>
+<span class="nc bnc" id="L222" title="All 4 branches missed.">            } else if (&quot;proposed&quot;.equals(status) || &quot;provisional&quot;.equals(status)) {</span>
                 try {
-<span class="nc" id="L213">                    RelationType type = RelationType.valueOf(rel.getRelationType());</span>
-<span class="nc bnc" id="L214" title="All 2 branches missed.">                    HypothesisStatus hStatus = &quot;proposed&quot;.equals(status)</span>
-<span class="nc" id="L215">                            ? HypothesisStatus.PROPOSED : HypothesisStatus.PROVISIONAL;</span>
+<span class="nc" id="L224">                    RelationType type = RelationType.valueOf(rel.getRelationType());</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">                    HypothesisStatus hStatus = &quot;proposed&quot;.equals(status)</span>
+<span class="nc" id="L226">                            ? HypothesisStatus.PROPOSED : HypothesisStatus.PROVISIONAL;</span>
 
-<span class="nc" id="L217">                    RelationHypothesis hypothesis = new RelationHypothesis();</span>
-<span class="nc" id="L218">                    hypothesis.setSourceNodeId(rel.getSourceId());</span>
-<span class="nc" id="L219">                    hypothesis.setTargetNodeId(rel.getTargetId());</span>
-<span class="nc" id="L220">                    hypothesis.setRelationType(type);</span>
-<span class="nc" id="L221">                    hypothesis.setStatus(hStatus);</span>
-<span class="nc" id="L222">                    hypothesis.setConfidence(rel.getConfidence());</span>
-<span class="nc" id="L223">                    hypothesis.setAnalysisSessionId(&quot;dsl-incremental&quot;);</span>
+<span class="nc" id="L228">                    RelationHypothesis hypothesis = new RelationHypothesis();</span>
+<span class="nc" id="L229">                    hypothesis.setSourceNodeId(rel.getSourceId());</span>
+<span class="nc" id="L230">                    hypothesis.setTargetNodeId(rel.getTargetId());</span>
+<span class="nc" id="L231">                    hypothesis.setRelationType(type);</span>
+<span class="nc" id="L232">                    hypothesis.setStatus(hStatus);</span>
+<span class="nc" id="L233">                    hypothesis.setConfidence(rel.getConfidence());</span>
+<span class="nc" id="L234">                    hypothesis.setAnalysisSessionId(&quot;dsl-incremental&quot;);</span>
 
-<span class="nc" id="L225">                    hypothesisRepository.save(hypothesis);</span>
-<span class="nc" id="L226">                    hypothesesCreated++;</span>
-<span class="nc" id="L227">                } catch (IllegalArgumentException e) {</span>
-<span class="nc" id="L228">                    warnings.add(&quot;Skipped hypothesis &quot; + rel.getSourceId() + &quot; → &quot; + rel.getTargetId() + &quot;: &quot; + e.getMessage());</span>
-<span class="nc" id="L229">                }</span>
+<span class="nc" id="L236">                    hypothesisRepository.save(hypothesis);</span>
+<span class="nc" id="L237">                    hypothesesCreated++;</span>
+<span class="nc" id="L238">                } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L239">                    warnings.add(&quot;Skipped hypothesis &quot; + rel.getSourceId() + &quot; → &quot; + rel.getTargetId() + &quot;: &quot; + e.getMessage());</span>
+<span class="nc" id="L240">                }</span>
             }
-<span class="nc" id="L231">        }</span>
+<span class="nc" id="L242">        }</span>
 
         // Process changed relations (status changes, e.g. provisional → accepted)
-<span class="pc bpc" id="L234" title="1 of 2 branches missed.">        for (ModelDiff.RelationChange change : diff.changedRelations()) {</span>
-<span class="nc bnc" id="L235" title="All 2 branches missed.">            String newStatus = change.after().getStatus() != null ? change.after().getStatus().toLowerCase() : &quot;accepted&quot;;</span>
-<span class="nc bnc" id="L236" title="All 2 branches missed.">            String oldStatus = change.before().getStatus() != null ? change.before().getStatus().toLowerCase() : &quot;accepted&quot;;</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">        for (ModelDiff.RelationChange change : diff.changedRelations()) {</span>
+<span class="nc bnc" id="L246" title="All 2 branches missed.">            String newStatus = change.after().getStatus() != null ? change.after().getStatus().toLowerCase() : &quot;accepted&quot;;</span>
+<span class="nc bnc" id="L247" title="All 2 branches missed.">            String oldStatus = change.before().getStatus() != null ? change.before().getStatus().toLowerCase() : &quot;accepted&quot;;</span>
 
             // If status changed from provisional/proposed to accepted, create relation
-<span class="nc bnc" id="L239" title="All 4 branches missed.">            if (&quot;accepted&quot;.equals(newStatus) &amp;&amp; !newStatus.equals(oldStatus)) {</span>
+<span class="nc bnc" id="L250" title="All 4 branches missed.">            if (&quot;accepted&quot;.equals(newStatus) &amp;&amp; !newStatus.equals(oldStatus)) {</span>
                 try {
-<span class="nc" id="L241">                    RelationType type = RelationType.valueOf(change.after().getRelationType());</span>
-<span class="nc" id="L242">                    relationService.createRelation(</span>
-<span class="nc" id="L243">                            change.after().getSourceId(), change.after().getTargetId(), type,</span>
+<span class="nc" id="L252">                    RelationType type = RelationType.valueOf(change.after().getRelationType());</span>
+<span class="nc" id="L253">                    relationService.createRelation(</span>
+<span class="nc" id="L254">                            change.after().getSourceId(), change.after().getTargetId(), type,</span>
                             &quot;Promoted from &quot; + oldStatus + &quot; via DSL&quot;, &quot;dsl-incremental&quot;);
-<span class="nc" id="L245">                    relationsCreated++;</span>
-<span class="nc" id="L246">                } catch (IllegalArgumentException e) {</span>
-<span class="nc" id="L247">                    warnings.add(&quot;Skipped promotion &quot; + change.after().getSourceId() + &quot; → &quot; + change.after().getTargetId() + &quot;: &quot; + e.getMessage());</span>
-<span class="nc" id="L248">                }</span>
+<span class="nc" id="L256">                    relationsCreated++;</span>
+<span class="nc" id="L257">                } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L258">                    warnings.add(&quot;Skipped promotion &quot; + change.after().getSourceId() + &quot; → &quot; + change.after().getTargetId() + &quot;: &quot; + e.getMessage());</span>
+<span class="nc" id="L259">                }</span>
             }
-<span class="nc" id="L250">        }</span>
+<span class="nc" id="L261">        }</span>
 
-<span class="fc" id="L252">        log.info(&quot;Incremental materialization: {} relations created, {} hypotheses created, {} changes total&quot;,</span>
-<span class="fc" id="L253">                relationsCreated, hypothesesCreated, diff.totalChanges());</span>
+<span class="fc" id="L263">        log.info(&quot;Incremental materialization: {} relations created, {} hypotheses created, {} changes total&quot;,</span>
+<span class="fc" id="L264">                relationsCreated, hypothesesCreated, diff.totalChanges());</span>
 
-<span class="fc" id="L255">        return new MaterializeResult(true, List.of(), warnings,</span>
+<span class="fc" id="L266">        return new MaterializeResult(true, List.of(), warnings,</span>
                 relationsCreated, hypothesesCreated, afterDocId);
     }
 
     private CanonicalArchitectureModel parseToModel(String dslText, String path) {
-<span class="fc" id="L260">        var doc = parser.parse(dslText, path);</span>
-<span class="fc" id="L261">        return astMapper.map(doc);</span>
+<span class="fc" id="L271">        var doc = parser.parse(dslText, path);</span>
+<span class="fc" id="L272">        return astMapper.map(doc);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
