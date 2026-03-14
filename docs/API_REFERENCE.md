@@ -53,7 +53,7 @@ POST /api/analyze
 ```bash
 curl -u admin:admin -X POST http://localhost:8080/api/analyze \
   -H "Content-Type: application/json" \
-  -d '{"businessText": "Provide secure voice communications", "includeArchitectureView": true}'
+  -d '{"businessText": "Provide integrated communication services for hospital staff", "includeArchitectureView": true}'
 ```
 
 **Response (200):**

@@ -10,7 +10,7 @@
 | **4** | Explore the scored tree and architecture view | Left panel (tree) + right panel (architecture view card) |
 | **5** | Export your diagram | Left panel → ArchiMate / Visio / Mermaid / JSON buttons |
 
-> **Example requirement:** _"Provide secure voice and video communications for deployed forces."_
+> **Example requirement:** _"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments."_
 
 The system scores every taxonomy node (0–100), highlights the most relevant elements with colour-coded scores, generates an architecture view showing how they relate, and lets you export the result.
 
@@ -181,7 +181,7 @@ In the **Business Requirement Analysis** card on the right panel, you will see a
 
 Type your requirement as a clear, imperative sentence. For example:
 
-> *"Provide secure voice communications between HQ and deployed forces."*
+> *"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments."*
 
 Tips for good requirements:
 - Use domain vocabulary: capability, service, information product, communications, command, control.
@@ -968,7 +968,7 @@ DSL documents use the `.taxdsl` format. A document consists of an optional `meta
 meta {
   language: "taxdsl";
   version: "2.0";
-  namespace: "mission.secure-voice";
+  namespace: "mission.hospital-comms";
 }
 
 element CP-1023 type Capability {
@@ -993,8 +993,8 @@ relation CP-1023 REALIZES BP-1327 {
 }
 
 requirement REQ-001 {
-  title: "Secure voice communications for deployed forces";
-  text: "Provide secure voice communications for deployed joint forces";
+  title: "Integrated communication platform for clinical staff";
+  text: "Provide integrated communication and information services for hospital staff across all departments";
 }
 
 mapping REQ-001 -> CP-1023 {
@@ -1002,8 +1002,8 @@ mapping REQ-001 -> CP-1023 {
   source: "llm";
 }
 
-view secure-voice-overview {
-  title: "Secure Voice Architecture Overview";
+view hospital-comms-overview {
+  title: "Hospital Communications Architecture Overview";
   include: CP-1023;
   include: BP-1327;
   layout: layered;
@@ -1212,7 +1212,7 @@ The system uses 10 relation types, each corresponding to a specific relationship
 
 ### Writing Effective Requirements
 
-- **Be specific:** Instead of *"communications"*, write *"secure voice communications between HQ and deployed forces"*.
+- **Be specific:** Instead of *"communications"*, write *"integrated communication services for hospital staff enabling real-time data exchange between departments"*.
 - **Use domain vocabulary:** Terms like *capability*, *service*, *information product*, *command*, *control* help the AI find better matches.
 - **One requirement at a time:** Analyze one requirement per session for cleaner, more focused results.
 - **Keep it concise:** Aim for 1–3 sentences. Very long paragraphs do not improve accuracy.
