@@ -72,9 +72,9 @@ class ScreenshotGeneratorIT {
             "<span class=\"search-result-code fw-semibold me-1\">CR-1047</span> " +
             "<span class=\"search-result-name text-truncate\">Data Exchange Services</span>" +
             "<span class=\"badge bg-success ms-auto\">82%</span></a>" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"IP-2001\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">IP-2001</span> " +
-            "<span class=\"search-result-name text-truncate\">Interoperability Framework</span>" +
+            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CO-1011\">" +
+            "<span class=\"search-result-code fw-semibold me-1\">CO-1011</span> " +
+            "<span class=\"search-result-name text-truncate\">Communications Access Services</span>" +
             "<span class=\"badge bg-success ms-auto\">76%</span></a>" +
             "</div>";
 
@@ -84,13 +84,13 @@ class ScreenshotGeneratorIT {
     private static final String FALLBACK_HYBRID_SEARCH_HTML =
             "<div class=\"small text-muted mb-1\">3 result(s)</div>" +
             "<div class=\"list-group list-group-flush search-results-list\">" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CO-3010\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">CO-3010</span> " +
-            "<span class=\"search-result-name text-truncate\">Command Operations Center</span>" +
+            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CO-1011\">" +
+            "<span class=\"search-result-code fw-semibold me-1\">CO-1011</span> " +
+            "<span class=\"search-result-name text-truncate\">Communications Access Services</span>" +
             "<span class=\"badge bg-success ms-auto\">91%</span></a>" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CI-2047\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">CI-2047</span> " +
-            "<span class=\"search-result-name text-truncate\">Intelligence Processing</span>" +
+            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CI-1023\">" +
+            "<span class=\"search-result-code fw-semibold me-1\">CI-1023</span> " +
+            "<span class=\"search-result-name text-truncate\">Surveillance Services</span>" +
             "<span class=\"badge bg-success ms-auto\">85%</span></a>" +
             "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CR-1023\">" +
             "<span class=\"search-result-code fw-semibold me-1\">CR-1023</span> " +
@@ -106,12 +106,12 @@ class ScreenshotGeneratorIT {
             "<div class=\"small fst-italic mb-2\">Graph analysis: 3 connected nodes found</div>" +
             "<div class=\"small text-muted mb-1\">3 matched node(s)</div>" +
             "<div class=\"list-group list-group-flush search-results-list\">" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"IP-2001\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">IP-2001</span> " +
-            "<span class=\"search-result-name text-truncate\">Interoperability Framework</span></a>" +
-            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CI-2047\">" +
-            "<span class=\"search-result-code fw-semibold me-1\">CI-2047</span> " +
-            "<span class=\"search-result-name text-truncate\">Command Intelligence Node</span></a>" +
+            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CO-1011\">" +
+            "<span class=\"search-result-code fw-semibold me-1\">CO-1011</span> " +
+            "<span class=\"search-result-name text-truncate\">Communications Access Services</span></a>" +
+            "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CI-1023\">" +
+            "<span class=\"search-result-code fw-semibold me-1\">CI-1023</span> " +
+            "<span class=\"search-result-name text-truncate\">Surveillance Services</span></a>" +
             "<a href=\"#\" class=\"list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item\" data-code=\"CR-1047\">" +
             "<span class=\"search-result-code fw-semibold me-1\">CR-1047</span> " +
             "<span class=\"search-result-name text-truncate\">Data Exchange Services</span></a>" +
@@ -549,8 +549,9 @@ class ScreenshotGeneratorIT {
     void captureGraphExplorerPanel() throws IOException {
         navigateToTab("graph");
         WebElement input = driver.findElement(By.id("graphNodeInput"));
-        input.clear();
-        input.sendKeys("BP");
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
+        js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
+        js("arguments[0].value = 'BP-1040'; arguments[0].dispatchEvent(new Event('input'));", input);
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "11-graph-explorer-panel.png");
     }
 
@@ -773,7 +774,7 @@ class ScreenshotGeneratorIT {
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
-        js("arguments[0].value = 'BP-1'; arguments[0].dispatchEvent(new Event('input'));", input);
+        js("arguments[0].value = 'BP-1327'; arguments[0].dispatchEvent(new Event('input'));", input);
         WebElement upstreamBtn = driver.findElement(By.id("graphUpstreamBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", upstreamBtn);
         js("arguments[0].click();", upstreamBtn);
@@ -789,7 +790,7 @@ class ScreenshotGeneratorIT {
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
-        js("arguments[0].value = 'BP-1'; arguments[0].dispatchEvent(new Event('input'));", input);
+        js("arguments[0].value = 'BP-1327'; arguments[0].dispatchEvent(new Event('input'));", input);
 
         WebElement failureBtn = driver.findElement(By.id("graphFailureBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", failureBtn);
