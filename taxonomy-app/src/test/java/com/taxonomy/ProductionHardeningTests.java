@@ -10,8 +10,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.lang.reflect.Field;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -43,12 +41,9 @@ class ProductionHardeningTests {
     private RateLimitFilter rateLimitFilter;
 
     @BeforeEach
-    void resetCounters() throws Exception {
+    void resetCounters() {
         // Clear the per-IP counters between tests to avoid cross-test interference
-        Field countersField = RateLimitFilter.class.getDeclaredField("counters");
-        countersField.setAccessible(true);
-        java.util.Map<?, ?> counters = (java.util.Map<?, ?>) countersField.get(rateLimitFilter);
-        counters.clear();
+        rateLimitFilter.clearCounters();
     }
 
     // ── RateLimitFilter Tests ────────────────────────────────────────────────
@@ -57,9 +52,10 @@ class ProductionHardeningTests {
     void rateLimitFilterAllowsRequestsUnderLimit() throws Exception {
         // With limit=3, first 3 requests should succeed
         for (int i = 0; i < 3; i++) {
-            mockMvc.perform(get("/api/analyze-stream")
+            mockMvc.perform(get("/api/analyze-node")
+                            .param("parentCode", "BP")
                             .param("businessText", "test requirement")
-                            .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                            .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk());
         }
     }
@@ -68,15 +64,17 @@ class ProductionHardeningTests {
     void rateLimitFilterBlocks429AfterLimitExceeded() throws Exception {
         // Exhaust the limit (3 requests)
         for (int i = 0; i < 3; i++) {
-            mockMvc.perform(get("/api/analyze-stream")
+            mockMvc.perform(get("/api/analyze-node")
+                            .param("parentCode", "BP")
                             .param("businessText", "test requirement")
-                            .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                            .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk());
         }
         // 4th request should be rate limited
-        mockMvc.perform(get("/api/analyze-stream")
+        mockMvc.perform(get("/api/analyze-node")
+                        .param("parentCode", "BP")
                         .param("businessText", "test requirement")
-                        .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                        .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().is(429));
     }
 

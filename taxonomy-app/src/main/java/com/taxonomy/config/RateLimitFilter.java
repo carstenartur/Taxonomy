@@ -83,6 +83,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
     }
 
+    /** Visible for testing — clears all per-IP rate limit counters. */
+    public void clearCounters() {
+        counters.clear();
+    }
+
     private boolean isRateLimitedPath(String path) {
         return path.equals("/api/analyze")
             || path.equals("/api/analyze-stream")
