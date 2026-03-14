@@ -32,6 +32,22 @@ This file tracks known documentation gaps and improvement opportunities. Items m
 - [x] **No versioning strategy documented**: API versioning strategy documented in API_REFERENCE.md §API Versioning
 - [x] **Rate-limiting documentation**: Rate limiting is now documented in CONFIGURATION_REFERENCE.md and ARCHITECTURE.md
 
+### Documentation Structure
+
+- [x] **USER_GUIDE.md too large (64 KB)**: Extracted topics into dedicated guides with cross-references:
+  - [x] Framework Import → FRAMEWORK_IMPORT.md
+  - [x] Git Integration → GIT_INTEGRATION.md
+  - [x] Preferences → PREFERENCES.md
+  - [x] AI Providers → AI_PROVIDERS.md
+- [x] **Database setup files consolidated**: PostgreSQL, MSSQL, and Oracle setup guides merged into DATABASE_SETUP.md
+- [x] **ORACLE-SETUP missing from Help tab**: Consolidated into DATABASE_SETUP.md and registered in HelpController
+- [x] **HelpController DOCS list updated**: New documentation files registered (FRAMEWORK_IMPORT, GIT_INTEGRATION, PREFERENCES, AI_PROVIDERS, DATABASE_SETUP)
+- [x] **Architecture documentation extended**: Git state, ViewContext/Action Guards, Framework Mapping Layer added to ARCHITECTURE.md
+- [x] **Concepts extended**: Framework Mapping, Quality Analysis, Gap Analysis added to CONCEPTS.md
+- [x] **Security extended**: Environment variables summary table, password change flow added to SECURITY.md
+- [x] **Configuration Reference extended**: Runtime preferences table, framework import config added to CONFIGURATION_REFERENCE.md
+- [x] **Deployment Guide extended**: Database backends section with migration path added to DEPLOYMENT_GUIDE.md
+
 ---
 
 ## Internationalisation (i18n) Roadmap
@@ -82,6 +98,8 @@ This is a significant effort (~200+ translatable strings across HTML and 11 JS m
 - [x] Rate limiting configuration — CONFIGURATION_REFERENCE.md §Rate Limiting
 - [x] Async initialization — CONFIGURATION_REFERENCE.md §Server Configuration (TAXONOMY_INIT_ASYNC)
 - [x] SpringDoc enable/disable — CONFIGURATION_REFERENCE.md §OpenAPI / Swagger UI (TAXONOMY_SPRINGDOC_ENABLED)
+- [x] Runtime preferences — CONFIGURATION_REFERENCE.md §Runtime Preferences and PREFERENCES.md
+- [x] Framework import config — CONFIGURATION_REFERENCE.md §Framework Import Configuration
 
 ### API Documentation (completed)
 - [x] OpenAPI / Swagger integration — springdoc-openapi at `/swagger-ui.html`
@@ -96,6 +114,9 @@ This is a significant effort (~200+ translatable strings across HTML and 11 JS m
 - [x] DSL storage architecture (JGit/Hibernate) — ARCHITECTURE.md §DSL Storage Architecture
 - [x] Rate limiting — ARCHITECTURE.md §Rate Limiting
 - [x] All 15 controllers listed in architecture diagram — ARCHITECTURE.md §High-Level Architecture
+- [x] Git state tracking — ARCHITECTURE.md §Git State as First-Class Concept
+- [x] ViewContext and Action Guards — ARCHITECTURE.md §ViewContext and Action Guards
+- [x] Framework Mapping Layer — ARCHITECTURE.md §Framework Mapping Layer
 
 ### Conceptual Documentation (completed)
 - [x] Relation types — CONCEPTS.md §Relation Type
@@ -104,5 +125,15 @@ This is a significant effort (~200+ translatable strings across HTML and 11 JS m
 - [x] Relation evidence — CONCEPTS.md §Relation Evidence
 - [x] Explanation traces — CONCEPTS.md §Explanation Trace
 - [x] Canonical architecture model — CONCEPTS.md §Canonical Architecture Model
+- [x] Framework mappings — CONCEPTS.md §Framework Mapping
+- [x] Quality and gap analysis — CONCEPTS.md §Quality Analysis and §Gap Analysis
+
+### Security Documentation (completed)
+- [x] Login rate limiting — SECURITY.md §Brute-Force Protection
+- [x] Security headers — SECURITY.md §Security Headers
+- [x] User management API — SECURITY.md §Managing Users
+- [x] Audit logging — SECURITY.md §Audit Logging
+- [x] Environment variables summary — SECURITY.md §Security Environment Variables Summary
+- [x] Password change flow — SECURITY.md §Password Change Flow
 
 </details>

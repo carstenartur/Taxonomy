@@ -48,6 +48,10 @@ public class HelpController {
         new DocEntry("USER_GUIDE",               "User Guide",               "📖", "Everyone"),
         new DocEntry("CONCEPTS",                  "Concepts",                 "💡", "Everyone"),
         new DocEntry("EXAMPLES",                  "Examples",                 "📝", "Everyone"),
+        new DocEntry("FRAMEWORK_IMPORT",          "Framework Import",         "📥", "Everyone"),
+        new DocEntry("GIT_INTEGRATION",           "Git Integration",          "🔀", "Everyone"),
+        new DocEntry("PREFERENCES",               "Preferences",              "⚙️", "Everyone"),
+        new DocEntry("AI_PROVIDERS",              "AI Providers",             "🤖", "Everyone"),
         new DocEntry("CONFIGURATION_REFERENCE",   "Configuration Reference",  "⚙️", "Admins"),
         new DocEntry("API_REFERENCE",             "API Reference",            "🔌", "Integrators"),
         new DocEntry("CURL_EXAMPLES",             "cURL Examples",            "💻", "Integrators"),
@@ -55,8 +59,7 @@ public class HelpController {
         new DocEntry("DEVELOPER_GUIDE",           "Developer Guide",          "🛠️", "Developers"),
         new DocEntry("DEPLOYMENT_GUIDE",          "Deployment Guide",         "🚀", "DevOps"),
         new DocEntry("SECURITY",                  "Security",                 "🔒", "Admins"),
-        new DocEntry("POSTGRESQL-SETUP",          "PostgreSQL Setup",         "🐘", "DevOps"),
-        new DocEntry("MSSQL-SETUP",               "MSSQL Setup",              "🗄️", "DevOps")
+        new DocEntry("DATABASE_SETUP",            "Database Setup",           "🗄️", "DevOps")
     );
 
     private final Parser parser;

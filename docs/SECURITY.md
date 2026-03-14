@@ -266,8 +266,42 @@ Enable with `TAXONOMY_AUDIT_LOGGING=true` for production or compliance environme
 
 ---
 
+## Security Environment Variables Summary
+
+All security-related environment variables in one place:
+
+| Variable | Default | Description |
+|---|---|---|
+| `TAXONOMY_ADMIN_PASSWORD` | `admin` | Login password for the default admin user |
+| `ADMIN_PASSWORD` | *(empty)* | Token for the UI admin panel protection layer |
+| `TAXONOMY_LOGIN_RATE_LIMIT` | `true` | Enable brute-force protection on `/login` |
+| `TAXONOMY_LOGIN_MAX_ATTEMPTS` | `5` | Failed attempts before lockout |
+| `TAXONOMY_LOGIN_LOCKOUT_SECONDS` | `300` | Lockout duration (5 minutes) |
+| `TAXONOMY_REQUIRE_PASSWORD_CHANGE` | `false` | Force password change on first login |
+| `TAXONOMY_SWAGGER_PUBLIC` | `true` | Allow unauthenticated Swagger UI access |
+| `TAXONOMY_AUDIT_LOGGING` | `false` | Log security events to application log |
+
+> ⚠️ **For production deployments**, always change `TAXONOMY_ADMIN_PASSWORD` from the default, set `TAXONOMY_SWAGGER_PUBLIC=false`, and enable `TAXONOMY_AUDIT_LOGGING=true`.
+
+---
+
+## Password Change Flow
+
+The password change mechanism is available at `POST /change-password`:
+
+1. User submits current password, new password, and confirmation
+2. Server validates current password matches
+3. Server validates new password meets requirements
+4. Password is updated in the database
+5. If `TAXONOMY_REQUIRE_PASSWORD_CHANGE=true`, the first-login flag is cleared
+
+The `ChangePasswordController` handles the flow and redirects back to the main page on success.
+
+---
+
 ## Related Documentation
 
 - [Configuration Reference](CONFIGURATION_REFERENCE.md) — full list of environment variables including security settings
 - [Deployment Guide](DEPLOYMENT_GUIDE.md) — Docker and Render.com deployment with security considerations
 - [API Reference](API_REFERENCE.md) — endpoint authentication requirements
+- [Preferences](PREFERENCES.md) — runtime configuration with audit trail

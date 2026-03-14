@@ -237,3 +237,41 @@ The internal representation of an architecture described in DSL. It contains:
 - **Mappings** — links between requirements and architecture elements
 - **Views** — named subsets of elements and relations
 - **Evidence** — justification data for relations
+
+---
+
+## Framework Mapping
+
+A framework mapping converts elements and relations from an external architecture framework (such as UAF, APQC, or C4/Structurizr) into the taxonomy's internal representation. Each supported framework has a **mapping profile** that defines how external types correspond to taxonomy root codes and relation types.
+
+For example, the UAF profile maps `Capability` → CP, `OperationalActivity` → BP, `System` → UA. The APQC profile maps hierarchy levels (1–5) to different root codes. The C4 profile maps `SoftwareSystem` → SY, `Container` → UA, `Component` → CM.
+
+Imported elements carry an `x-source-framework` extension attribute that records which framework they originated from.
+
+See [Framework Import](FRAMEWORK_IMPORT.md) for full mapping tables and the import workflow.
+
+---
+
+## Quality Analysis
+
+Quality analysis evaluates the completeness and consistency of the architecture model. It examines:
+
+- **Relation completeness** — whether elements have the expected outgoing and incoming relations based on their type
+- **Orphan detection** — elements with no relations at all
+- **Type consistency** — whether relation source/target types match the compatibility matrix
+
+The Quality Dashboard (📊) in the right panel displays these metrics for the current relation proposals.
+
+---
+
+## Gap Analysis
+
+Gap analysis identifies missing architecture coverage by comparing the current model against expected patterns:
+
+- **Missing relations** — expected relations that do not exist between related elements
+- **Incomplete patterns** — partial matches of known architecture patterns (Full Stack, App Chain, Role Chain)
+- **APQC coverage** — how well the taxonomy maps to APQC Process Classification Framework categories
+
+API endpoint: `GET /api/gap/apqc-coverage` returns `ApqcCoverageResult` with coverage statistics.
+
+See [User Guide](USER_GUIDE.md) § 11e for the Gap Analysis panel.
