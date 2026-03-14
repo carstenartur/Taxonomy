@@ -61,7 +61,6 @@ public class ExternalModelMapper {
             // Set extensions: source framework marker + profile-specific extensions
             Map<String, String> extensions = new LinkedHashMap<>();
             extensions.put("x-source-framework", profile.profileId());
-            extensions.put("x-" + profile.profileId() + "-kind", ext.type());
             Map<String, String> profileExtensions = profile.elementExtensions(
                     ext.type(), ext.properties() != null ? ext.properties() : Map.of());
             extensions.putAll(profileExtensions);
@@ -93,7 +92,6 @@ public class ExternalModelMapper {
             // Set extensions
             Map<String, String> extensions = new LinkedHashMap<>();
             extensions.put("x-source-framework", profile.profileId());
-            extensions.put("x-" + profile.profileId() + "-rel", ext.type());
             Map<String, String> profileExtensions = profile.relationExtensions(
                     ext.type(), ext.properties() != null ? ext.properties() : Map.of());
             extensions.putAll(profileExtensions);
