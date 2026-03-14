@@ -20,22 +20,22 @@ public class TaxonomyHealthIndicator implements HealthIndicator {
 
     @Override
     public Health health() {
-<span class="nc" id="L23">        String status = taxonomyService.getInitStatus();</span>
-<span class="nc" id="L24">        boolean initialized = taxonomyService.isInitialized();</span>
+<span class="fc" id="L23">        String status = taxonomyService.getInitStatus();</span>
+<span class="fc" id="L24">        boolean initialized = taxonomyService.isInitialized();</span>
 
-<span class="nc bnc" id="L26" title="All 2 branches missed.">        Health.Builder builder = initialized ? Health.up() : Health.down();</span>
-<span class="nc" id="L27">        builder.withDetail(&quot;initStatus&quot;, status);</span>
-<span class="nc" id="L28">        builder.withDetail(&quot;initialized&quot;, initialized);</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">        Health.Builder builder = initialized ? Health.up() : Health.down();</span>
+<span class="fc" id="L27">        builder.withDetail(&quot;initStatus&quot;, status);</span>
+<span class="fc" id="L28">        builder.withDetail(&quot;initialized&quot;, initialized);</span>
 
         // Add memory info
-<span class="nc" id="L31">        Runtime rt = Runtime.getRuntime();</span>
-<span class="nc" id="L32">        long heapUsed = rt.totalMemory() - rt.freeMemory();</span>
-<span class="nc" id="L33">        long heapMax = rt.maxMemory();</span>
-<span class="nc" id="L34">        builder.withDetail(&quot;heapUsedMB&quot;, heapUsed / (1024 * 1024));</span>
-<span class="nc" id="L35">        builder.withDetail(&quot;heapMaxMB&quot;, heapMax / (1024 * 1024));</span>
-<span class="nc" id="L36">        builder.withDetail(&quot;heapUsagePercent&quot;, Math.round((double) heapUsed / heapMax * 100));</span>
+<span class="fc" id="L31">        Runtime rt = Runtime.getRuntime();</span>
+<span class="fc" id="L32">        long heapUsed = rt.totalMemory() - rt.freeMemory();</span>
+<span class="fc" id="L33">        long heapMax = rt.maxMemory();</span>
+<span class="fc" id="L34">        builder.withDetail(&quot;heapUsedMB&quot;, heapUsed / (1024 * 1024));</span>
+<span class="fc" id="L35">        builder.withDetail(&quot;heapMaxMB&quot;, heapMax / (1024 * 1024));</span>
+<span class="fc" id="L36">        builder.withDetail(&quot;heapUsagePercent&quot;, Math.round((double) heapUsed / heapMax * 100));</span>
 
-<span class="nc" id="L38">        return builder.build();</span>
+<span class="fc" id="L38">        return builder.build();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

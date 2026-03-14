@@ -35,16 +35,16 @@ import java.io.IOException;
 <span class="fc" id="L35">        String path = request.getRequestURI();</span>
 
         // Only filter actuator paths
-<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        if (!path.startsWith(&quot;/actuator/&quot;)) {</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (!path.startsWith(&quot;/actuator/&quot;)) {</span>
 <span class="fc" id="L39">            filterChain.doFilter(request, response);</span>
 <span class="fc" id="L40">            return;</span>
         }
 
         // Public endpoints: health and info
-<span class="nc bnc" id="L44" title="All 4 branches missed.">        if (path.equals(&quot;/actuator/health&quot;) || path.startsWith(&quot;/actuator/health/&quot;)</span>
+<span class="pc bpc" id="L44" title="3 of 4 branches missed.">        if (path.equals(&quot;/actuator/health&quot;) || path.startsWith(&quot;/actuator/health/&quot;)</span>
 <span class="nc bnc" id="L45" title="All 2 branches missed.">                || path.equals(&quot;/actuator/info&quot;)) {</span>
-<span class="nc" id="L46">            filterChain.doFilter(request, response);</span>
-<span class="nc" id="L47">            return;</span>
+<span class="fc" id="L46">            filterChain.doFilter(request, response);</span>
+<span class="fc" id="L47">            return;</span>
         }
 
         // If no admin password configured, allow all

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityDataInitializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.config</a> &gt; <span class="el_source">SecurityDataInitializer.java</span></div><h1>SecurityDataInitializer.java</h1><pre class="source lang-java linenums">package com.taxonomy.config;
+
+import com.taxonomy.model.AppRole;
+import com.taxonomy.model.AppUser;
+import com.taxonomy.repository.RoleRepository;
+import com.taxonomy.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Component;
+
+import java.util.Set;
+
+/**
+ * Seeds the default roles and an initial admin user on first startup.
+ * &lt;p&gt;
+ * If the roles or admin user already exist (e.g. persistent database) this is a no-op.
+ * The default admin password can be overridden via the {@code TAXONOMY_ADMIN_PASSWORD}
+ * environment variable (or the equivalent Spring property {@code taxonomy.admin-password}).
+ */
+@Component
+public class SecurityDataInitializer implements ApplicationRunner {
+
+<span class="fc" id="L27">    private static final Logger log = LoggerFactory.getLogger(SecurityDataInitializer.class);</span>
+
+    private final RoleRepository roleRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final String adminPassword;
+
+    public SecurityDataInitializer(RoleRepository roleRepository,
+                                   UserRepository userRepository,
+                                   PasswordEncoder passwordEncoder,
+<span class="fc" id="L37">                                   @Value(&quot;${taxonomy.admin-password:admin}&quot;) String adminPassword) {</span>
+<span class="fc" id="L38">        this.roleRepository = roleRepository;</span>
+<span class="fc" id="L39">        this.userRepository = userRepository;</span>
+<span class="fc" id="L40">        this.passwordEncoder = passwordEncoder;</span>
+<span class="fc" id="L41">        this.adminPassword = adminPassword;</span>
+<span class="fc" id="L42">    }</span>
+
+    @Override
+    public void run(ApplicationArguments args) {
+        // Seed roles
+<span class="fc" id="L47">        AppRole roleUser = findOrCreateRole(&quot;ROLE_USER&quot;);</span>
+<span class="fc" id="L48">        AppRole roleArchitect = findOrCreateRole(&quot;ROLE_ARCHITECT&quot;);</span>
+<span class="fc" id="L49">        AppRole roleAdmin = findOrCreateRole(&quot;ROLE_ADMIN&quot;);</span>
+
+        // Seed default admin user (if not present)
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (userRepository.findByUsername(&quot;admin&quot;).isEmpty()) {</span>
+<span class="fc" id="L53">            AppUser admin = new AppUser();</span>
+<span class="fc" id="L54">            admin.setUsername(&quot;admin&quot;);</span>
+<span class="fc" id="L55">            admin.setPasswordHash(passwordEncoder.encode(adminPassword));</span>
+<span class="fc" id="L56">            admin.setEnabled(true);</span>
+<span class="fc" id="L57">            admin.setDisplayName(&quot;Administrator&quot;);</span>
+<span class="fc" id="L58">            admin.setRoles(Set.of(roleUser, roleArchitect, roleAdmin));</span>
+<span class="fc" id="L59">            userRepository.save(admin);</span>
+<span class="fc" id="L60">            log.info(&quot;Created default admin user (username=admin). Change the password immediately.&quot;);</span>
+        }
+<span class="fc" id="L62">    }</span>
+
+    private AppRole findOrCreateRole(String name) {
+<span class="fc" id="L65">        return roleRepository.findByName(name)</span>
+<span class="fc" id="L66">                .orElseGet(() -&gt; roleRepository.save(new AppRole(name)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
