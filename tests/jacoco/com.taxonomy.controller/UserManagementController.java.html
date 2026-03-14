@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserManagementController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.controller</a> &gt; <span class="el_source">UserManagementController.java</span></div><h1>UserManagementController.java</h1><pre class="source lang-java linenums">package com.taxonomy.controller;
+
+import com.taxonomy.model.AppRole;
+import com.taxonomy.model.AppUser;
+import com.taxonomy.repository.RoleRepository;
+import com.taxonomy.repository.UserRepository;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Admin-only REST API for managing application users.
+ * &lt;p&gt;
+ * All endpoints require {@code ROLE_ADMIN}. The last remaining admin user
+ * cannot be disabled or have the ADMIN role removed — this prevents lockout.
+ */
+@RestController
+@RequestMapping(&quot;/api/admin/users&quot;)
+@PreAuthorize(&quot;hasRole('ADMIN')&quot;)
+@Tag(name = &quot;User Management&quot;, description = &quot;Admin-only user CRUD operations&quot;)
+public class UserManagementController {
+
+<span class="fc" id="L33">    private static final Logger log = LoggerFactory.getLogger(UserManagementController.class);</span>
+    private static final int MIN_PASSWORD_LENGTH = 8;
+
+    private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    public UserManagementController(UserRepository userRepository,
+                                    RoleRepository roleRepository,
+<span class="fc" id="L42">                                    PasswordEncoder passwordEncoder) {</span>
+<span class="fc" id="L43">        this.userRepository = userRepository;</span>
+<span class="fc" id="L44">        this.roleRepository = roleRepository;</span>
+<span class="fc" id="L45">        this.passwordEncoder = passwordEncoder;</span>
+<span class="fc" id="L46">    }</span>
+
+    @GetMapping
+    @Operation(summary = &quot;List all users&quot;, description = &quot;Returns all users without password hashes.&quot;)
+    public List&lt;Map&lt;String, Object&gt;&gt; listUsers() {
+<span class="fc" id="L51">        return userRepository.findAll().stream()</span>
+<span class="fc" id="L52">                .map(this::toUserMap)</span>
+<span class="fc" id="L53">                .collect(Collectors.toList());</span>
+    }
+
+    @GetMapping(&quot;/{id}&quot;)
+    @Operation(summary = &quot;Get user by ID&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getUser(@PathVariable Long id) {
+<span class="nc" id="L59">        return userRepository.findById(id)</span>
+<span class="nc" id="L60">                .map(user -&gt; ResponseEntity.ok(toUserMap(user)))</span>
+<span class="nc" id="L61">                .orElse(ResponseEntity.notFound().build());</span>
+    }
+
+    @PostMapping
+    @Operation(summary = &quot;Create a new user&quot;)
+    public ResponseEntity&lt;Object&gt; createUser(@RequestBody Map&lt;String, Object&gt; body,
+                                             Authentication authentication) {
+<span class="fc" id="L68">        String username = (String) body.get(&quot;username&quot;);</span>
+<span class="fc" id="L69">        String password = (String) body.get(&quot;password&quot;);</span>
+<span class="fc" id="L70">        String displayName = (String) body.get(&quot;displayName&quot;);</span>
+<span class="fc" id="L71">        String email = (String) body.get(&quot;email&quot;);</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L73">        List&lt;String&gt; roles = (List&lt;String&gt;) body.get(&quot;roles&quot;);</span>
+
+        // Validation
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">        if (username == null || username.isBlank()) {</span>
+<span class="nc" id="L77">            return badRequest(&quot;Username is required.&quot;);</span>
+        }
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">        if (password == null || password.length() &lt; MIN_PASSWORD_LENGTH) {</span>
+<span class="fc" id="L80">            return badRequest(&quot;Password must be at least &quot; + MIN_PASSWORD_LENGTH + &quot; characters.&quot;);</span>
+        }
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        if (userRepository.findByUsername(username).isPresent()) {</span>
+<span class="fc" id="L83">            return ResponseEntity.status(HttpStatus.CONFLICT)</span>
+<span class="fc" id="L84">                    .body(Map.of(&quot;error&quot;, &quot;Username '&quot; + username + &quot;' already exists.&quot;));</span>
+        }
+
+<span class="fc" id="L87">        AppUser user = new AppUser();</span>
+<span class="fc" id="L88">        user.setUsername(username);</span>
+<span class="fc" id="L89">        user.setPasswordHash(passwordEncoder.encode(password));</span>
+<span class="fc" id="L90">        user.setEnabled(true);</span>
+<span class="fc" id="L91">        user.setDisplayName(displayName);</span>
+<span class="fc" id="L92">        user.setEmail(email);</span>
+<span class="fc" id="L93">        user.setRoles(resolveRoles(roles));</span>
+<span class="fc" id="L94">        userRepository.save(user);</span>
+
+<span class="fc" id="L96">        log.info(&quot;USER_CREATED user={} roles={} by={}&quot;, username,</span>
+<span class="fc" id="L97">                user.getRoles().stream().map(AppRole::getName).collect(Collectors.joining(&quot;,&quot;)),</span>
+<span class="fc" id="L98">                authentication.getName());</span>
+
+<span class="fc" id="L100">        return ResponseEntity.status(HttpStatus.CREATED).body(toUserMap(user));</span>
+    }
+
+    @PutMapping(&quot;/{id}&quot;)
+    @Operation(summary = &quot;Update user details (roles, displayName, email, enabled)&quot;)
+    public ResponseEntity&lt;Object&gt; updateUser(@PathVariable Long id,
+                                             @RequestBody Map&lt;String, Object&gt; body,
+                                             Authentication authentication) {
+<span class="nc" id="L108">        Optional&lt;AppUser&gt; optionalUser = userRepository.findById(id);</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">        if (optionalUser.isEmpty()) {</span>
+<span class="nc" id="L110">            return ResponseEntity.notFound().build();</span>
+        }
+
+<span class="nc" id="L113">        AppUser user = optionalUser.get();</span>
+
+<span class="nc bnc" id="L115" title="All 2 branches missed.">        if (body.containsKey(&quot;displayName&quot;)) {</span>
+<span class="nc" id="L116">            user.setDisplayName((String) body.get(&quot;displayName&quot;));</span>
+        }
+<span class="nc bnc" id="L118" title="All 2 branches missed.">        if (body.containsKey(&quot;email&quot;)) {</span>
+<span class="nc" id="L119">            user.setEmail((String) body.get(&quot;email&quot;));</span>
+        }
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (body.containsKey(&quot;enabled&quot;)) {</span>
+<span class="nc" id="L122">            boolean enabled = (Boolean) body.get(&quot;enabled&quot;);</span>
+<span class="nc bnc" id="L123" title="All 4 branches missed.">            if (!enabled &amp;&amp; isLastAdmin(user)) {</span>
+<span class="nc" id="L124">                return badRequest(&quot;Cannot disable the last admin user.&quot;);</span>
+            }
+<span class="nc" id="L126">            user.setEnabled(enabled);</span>
+        }
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (body.containsKey(&quot;roles&quot;)) {</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc" id="L130">            List&lt;String&gt; roles = (List&lt;String&gt;) body.get(&quot;roles&quot;);</span>
+<span class="nc" id="L131">            Set&lt;AppRole&gt; newRoles = resolveRoles(roles);</span>
+<span class="nc" id="L132">            boolean removingAdmin = user.getRoles().stream()</span>
+<span class="nc bnc" id="L133" title="All 2 branches missed.">                    .anyMatch(r -&gt; r.getName().equals(&quot;ROLE_ADMIN&quot;))</span>
+<span class="nc bnc" id="L134" title="All 2 branches missed.">                    &amp;&amp; newRoles.stream().noneMatch(r -&gt; r.getName().equals(&quot;ROLE_ADMIN&quot;));</span>
+<span class="nc bnc" id="L135" title="All 4 branches missed.">            if (removingAdmin &amp;&amp; isLastAdmin(user)) {</span>
+<span class="nc" id="L136">                return badRequest(&quot;Cannot remove ADMIN role from the last admin user.&quot;);</span>
+            }
+<span class="nc" id="L138">            user.setRoles(newRoles);</span>
+        }
+
+<span class="nc" id="L141">        userRepository.save(user);</span>
+<span class="nc" id="L142">        log.info(&quot;USER_UPDATED user={} by={}&quot;, user.getUsername(), authentication.getName());</span>
+
+<span class="nc" id="L144">        return ResponseEntity.ok(toUserMap(user));</span>
+    }
+
+    @PutMapping(&quot;/{id}/password&quot;)
+    @Operation(summary = &quot;Change a user's password (admin action)&quot;)
+    public ResponseEntity&lt;Object&gt; changePassword(@PathVariable Long id,
+                                                 @RequestBody Map&lt;String, String&gt; body,
+                                                 Authentication authentication) {
+<span class="nc" id="L152">        Optional&lt;AppUser&gt; optionalUser = userRepository.findById(id);</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (optionalUser.isEmpty()) {</span>
+<span class="nc" id="L154">            return ResponseEntity.notFound().build();</span>
+        }
+
+<span class="nc" id="L157">        String newPassword = body.get(&quot;password&quot;);</span>
+<span class="nc bnc" id="L158" title="All 4 branches missed.">        if (newPassword == null || newPassword.length() &lt; MIN_PASSWORD_LENGTH) {</span>
+<span class="nc" id="L159">            return badRequest(&quot;Password must be at least &quot; + MIN_PASSWORD_LENGTH + &quot; characters.&quot;);</span>
+        }
+
+<span class="nc" id="L162">        AppUser user = optionalUser.get();</span>
+<span class="nc" id="L163">        user.setPasswordHash(passwordEncoder.encode(newPassword));</span>
+<span class="nc" id="L164">        userRepository.save(user);</span>
+<span class="nc" id="L165">        log.info(&quot;USER_PASSWORD_CHANGED user={} by={}&quot;, user.getUsername(), authentication.getName());</span>
+
+<span class="nc" id="L167">        return ResponseEntity.ok(Map.of(&quot;message&quot;, &quot;Password changed successfully.&quot;));</span>
+    }
+
+    @DeleteMapping(&quot;/{id}&quot;)
+    @Operation(summary = &quot;Disable a user (soft delete)&quot;)
+    public ResponseEntity&lt;Object&gt; disableUser(@PathVariable Long id,
+                                              Authentication authentication) {
+<span class="fc" id="L174">        Optional&lt;AppUser&gt; optionalUser = userRepository.findById(id);</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        if (optionalUser.isEmpty()) {</span>
+<span class="nc" id="L176">            return ResponseEntity.notFound().build();</span>
+        }
+
+<span class="fc" id="L179">        AppUser user = optionalUser.get();</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">        if (isLastAdmin(user)) {</span>
+<span class="fc" id="L181">            return badRequest(&quot;Cannot disable the last admin user.&quot;);</span>
+        }
+
+<span class="nc" id="L184">        user.setEnabled(false);</span>
+<span class="nc" id="L185">        userRepository.save(user);</span>
+<span class="nc" id="L186">        log.info(&quot;USER_DISABLED user={} by={}&quot;, user.getUsername(), authentication.getName());</span>
+
+<span class="nc" id="L188">        return ResponseEntity.ok(Map.of(&quot;message&quot;, &quot;User '&quot; + user.getUsername() + &quot;' has been disabled.&quot;));</span>
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private boolean isLastAdmin(AppUser user) {
+<span class="fc" id="L194">        boolean userIsAdmin = user.getRoles().stream()</span>
+<span class="fc" id="L195">                .anyMatch(r -&gt; r.getName().equals(&quot;ROLE_ADMIN&quot;));</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">        if (!userIsAdmin) {</span>
+<span class="nc" id="L197">            return false;</span>
+        }
+<span class="fc" id="L199">        long adminCount = userRepository.findAll().stream()</span>
+<span class="fc" id="L200">                .filter(AppUser::isEnabled)</span>
+<span class="fc" id="L201">                .filter(u -&gt; u.getRoles().stream().anyMatch(r -&gt; r.getName().equals(&quot;ROLE_ADMIN&quot;)))</span>
+<span class="fc" id="L202">                .count();</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">        return adminCount &lt;= 1;</span>
+    }
+
+    private Set&lt;AppRole&gt; resolveRoles(List&lt;String&gt; roleNames) {
+<span class="pc bpc" id="L207" title="2 of 4 branches missed.">        if (roleNames == null || roleNames.isEmpty()) {</span>
+            // Default to USER role
+<span class="nc" id="L209">            return roleRepository.findByName(&quot;ROLE_USER&quot;)</span>
+<span class="nc" id="L210">                    .map(Set::of)</span>
+<span class="nc" id="L211">                    .orElse(Set.of());</span>
+        }
+<span class="fc" id="L213">        Set&lt;AppRole&gt; roles = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        for (String roleName : roleNames) {</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">            String normalized = roleName.startsWith(&quot;ROLE_&quot;) ? roleName : &quot;ROLE_&quot; + roleName;</span>
+<span class="fc" id="L216">            roleRepository.findByName(normalized).ifPresent(roles::add);</span>
+<span class="fc" id="L217">        }</span>
+<span class="fc" id="L218">        return roles;</span>
+    }
+
+    private Map&lt;String, Object&gt; toUserMap(AppUser user) {
+<span class="fc" id="L222">        Map&lt;String, Object&gt; map = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L223">        map.put(&quot;id&quot;, user.getId());</span>
+<span class="fc" id="L224">        map.put(&quot;username&quot;, user.getUsername());</span>
+<span class="fc" id="L225">        map.put(&quot;displayName&quot;, user.getDisplayName());</span>
+<span class="fc" id="L226">        map.put(&quot;email&quot;, user.getEmail());</span>
+<span class="fc" id="L227">        map.put(&quot;enabled&quot;, user.isEnabled());</span>
+<span class="fc" id="L228">        map.put(&quot;roles&quot;, user.getRoles().stream()</span>
+<span class="fc" id="L229">                .map(AppRole::getName)</span>
+<span class="fc" id="L230">                .sorted()</span>
+<span class="fc" id="L231">                .collect(Collectors.toList()));</span>
+<span class="fc" id="L232">        return map;</span>
+    }
+
+    private ResponseEntity&lt;Object&gt; badRequest(String message) {
+<span class="fc" id="L236">        return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, message));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

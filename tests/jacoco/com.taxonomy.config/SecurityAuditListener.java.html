@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityAuditListener.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.config</a> &gt; <span class="el_source">SecurityAuditListener.java</span></div><h1>SecurityAuditListener.java</h1><pre class="source lang-java linenums">package com.taxonomy.config;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.event.EventListener;
+import org.springframework.security.authentication.event.AuthenticationFailureBadCredentialsEvent;
+import org.springframework.security.authentication.event.AuthenticationSuccessEvent;
+import org.springframework.security.web.authentication.WebAuthenticationDetails;
+import org.springframework.stereotype.Component;
+
+/**
+ * Listens to Spring Security authentication events and logs them for audit purposes.
+ * &lt;p&gt;
+ * Enabled with {@code TAXONOMY_AUDIT_LOGGING=true}. Disabled by default to avoid log noise.
+ */
+@Component
+@ConditionalOnProperty(name = &quot;taxonomy.security.audit-logging&quot;, havingValue = &quot;true&quot;)
+<span class="nc" id="L19">public class SecurityAuditListener {</span>
+
+<span class="nc" id="L21">    private static final Logger log = LoggerFactory.getLogger(SecurityAuditListener.class);</span>
+
+    @EventListener
+    public void onSuccess(AuthenticationSuccessEvent event) {
+<span class="nc" id="L25">        String username = event.getAuthentication().getName();</span>
+<span class="nc" id="L26">        String ip = extractIp(event.getAuthentication().getDetails());</span>
+<span class="nc" id="L27">        log.info(&quot;LOGIN_SUCCESS user={} ip={}&quot;, username, ip);</span>
+<span class="nc" id="L28">    }</span>
+
+    @EventListener
+    public void onFailure(AuthenticationFailureBadCredentialsEvent event) {
+<span class="nc" id="L32">        String username = event.getAuthentication().getName();</span>
+<span class="nc" id="L33">        String ip = extractIp(event.getAuthentication().getDetails());</span>
+<span class="nc" id="L34">        log.warn(&quot;LOGIN_FAILED user={} ip={}&quot;, username, ip);</span>
+<span class="nc" id="L35">    }</span>
+
+    private String extractIp(Object details) {
+<span class="nc bnc" id="L38" title="All 2 branches missed.">        if (details instanceof WebAuthenticationDetails webDetails) {</span>
+<span class="nc" id="L39">            return webDetails.getRemoteAddress();</span>
+        }
+<span class="nc" id="L41">        return &quot;unknown&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
