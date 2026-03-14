@@ -14,7 +14,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Brute-force protection filter for login endpoints.
@@ -121,56 +120,48 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
      * Tracks failed login attempts for a single IP address.
      */
     static class FailureTracker {
-        private final AtomicInteger count = new AtomicInteger(0);
-        private volatile long firstFailureTime = 0;
+        private int count = 0;
+        private long firstFailureTime = 0;
 
-        int recordFailure(int lockoutSeconds) {
+        synchronized int recordFailure(int lockoutSeconds) {
             long now = System.currentTimeMillis();
             long windowMs = lockoutSeconds * 1000L;
 
             // If the window has expired, reset the counter
             if (firstFailureTime > 0 && (now - firstFailureTime) > windowMs) {
-                synchronized (this) {
-                    if (firstFailureTime > 0 && (now - firstFailureTime) > windowMs) {
-                        count.set(0);
-                        firstFailureTime = now;
-                    }
-                }
+                count = 0;
+                firstFailureTime = now;
             }
 
             if (firstFailureTime == 0) {
                 firstFailureTime = now;
             }
-            return count.incrementAndGet();
+            return ++count;
         }
 
-        boolean isLockedOut(int maxAttempts, int lockoutSeconds) {
-            if (count.get() < maxAttempts) {
+        synchronized boolean isLockedOut(int maxAttempts, int lockoutSeconds) {
+            if (count < maxAttempts) {
                 return false;
             }
             long elapsed = System.currentTimeMillis() - firstFailureTime;
             long windowMs = lockoutSeconds * 1000L;
             if (elapsed > windowMs) {
                 // Lockout expired — reset
-                synchronized (this) {
-                    if (System.currentTimeMillis() - firstFailureTime > windowMs) {
-                        count.set(0);
-                        firstFailureTime = 0;
-                        return false;
-                    }
-                }
+                count = 0;
+                firstFailureTime = 0;
+                return false;
             }
             return true;
         }
 
-        long getRemainingLockoutSeconds(int lockoutSeconds) {
+        synchronized long getRemainingLockoutSeconds(int lockoutSeconds) {
             long elapsed = System.currentTimeMillis() - firstFailureTime;
             long remaining = (lockoutSeconds * 1000L - elapsed) / 1000;
             return Math.max(0, remaining);
         }
 
-        int getCount() {
-            return count.get();
+        synchronized int getCount() {
+            return count;
         }
     }
 }
