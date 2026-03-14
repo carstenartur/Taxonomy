@@ -39,6 +39,9 @@ public class HelpController {
     /** Only allow safe filename characters to prevent path traversal. */
     private static final java.util.regex.Pattern SAFE_NAME = java.util.regex.Pattern.compile("^[A-Za-z0-9_-]+$");
 
+    /** Only allow safe image filenames (letters, digits, hyphens, underscores, dots). */
+    private static final java.util.regex.Pattern SAFE_IMAGE = java.util.regex.Pattern.compile("^[A-Za-z0-9_.-]+$");
+
     record DocEntry(String filename, String title, String icon, String audience) {}
 
     static final List<DocEntry> DOCS = List.of(
@@ -101,11 +104,9 @@ public class HelpController {
     @GetMapping("/images/{imageName}")
     @ResponseBody
     public ResponseEntity<byte[]> getImage(@PathVariable String imageName) {
-        if (!SAFE_NAME.matcher(sanitizeImageName(imageName)).matches()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
-        }
-        // Only allow simple filenames (no path separators)
-        if (imageName.contains("/") || imageName.contains("\\") || imageName.contains("..")) {
+        // Validate the full filename: only alphanumeric, hyphens, underscores, and dots allowed.
+        // This prevents path traversal (no slashes, no "..") while allowing extensions like .png.
+        if (!SAFE_IMAGE.matcher(imageName).matches() || imageName.contains("..")) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
         try {
@@ -141,12 +142,6 @@ public class HelpController {
             log.error("Failed to render help doc {}: {}", docName, e.getMessage());
             return null;
         }
-    }
-
-    private String sanitizeImageName(String name) {
-        // Strip extension for the SAFE_NAME check
-        int dot = name.lastIndexOf('.');
-        return dot >= 0 ? name.substring(0, dot) : name;
     }
 
     private MediaType guessMediaType(String imageName) {
