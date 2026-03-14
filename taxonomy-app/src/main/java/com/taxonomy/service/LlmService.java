@@ -44,12 +44,12 @@ public class LlmService {
     private static final ThreadLocal<LlmProvider> requestProviderOverride = new ThreadLocal<>();
 
     /** Sets a per-request provider override (call from controller before analysis). */
-    public static void setRequestProvider(LlmProvider provider) {
+    public void setRequestProvider(LlmProvider provider) {
         requestProviderOverride.set(provider);
     }
 
     /** Clears the per-request provider override (call in finally block). */
-    public static void clearRequestProvider() {
+    public void clearRequestProvider() {
         requestProviderOverride.remove();
     }
 

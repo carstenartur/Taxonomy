@@ -1267,6 +1267,28 @@
                                 childEl.appendChild(justifyBtn);
                             }
                         }
+
+                        // Add manual score edit button
+                        if (!childEl.querySelector('.tax-manual-btn')) {
+                            var manualBtn = document.createElement('button');
+                            manualBtn.className = 'btn btn-sm btn-outline-secondary tax-manual-btn ms-1';
+                            manualBtn.textContent = '✏️';
+                            manualBtn.title = 'Set score manually (no AI)';
+                            manualBtn.addEventListener('click', function (e) {
+                                e.stopPropagation();
+                                var score = prompt('Enter score (0-100) for ' + code + ':');
+                                if (score !== null) {
+                                    var val = parseInt(score, 10);
+                                    if (!isNaN(val) && val >= 0 && val <= 100) {
+                                        currentScores[code] = val;
+                                        currentReasons[code] = 'Manually assigned';
+                                        applyScoreToNode(code, val, 'Manually assigned');
+                                        updateExportGroupVisibility();
+                                    }
+                                }
+                            });
+                            childEl.appendChild(manualBtn);
+                        }
                     }
                 });
 

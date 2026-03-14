@@ -145,7 +145,8 @@ class TaxonomyApplicationTests {
         mockMvc.perform(post("/api/analyze")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"businessText\":\"test\",\"provider\":\"INVALID_PROVIDER\"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
     }
 
     @Test

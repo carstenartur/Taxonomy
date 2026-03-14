@@ -197,10 +197,15 @@ public class ApiController {
 
         if (request.getProvider() != null && !request.getProvider().isBlank()) {
             try {
-                LlmService.setRequestProvider(
+                llmService.setRequestProvider(
                         LlmProvider.valueOf(request.getProvider().toUpperCase()));
             } catch (IllegalArgumentException e) {
-                return ResponseEntity.badRequest().build();
+                @SuppressWarnings("unchecked")
+                ResponseEntity<AnalysisResult> badProvider = (ResponseEntity<AnalysisResult>)
+                        (ResponseEntity<?>) ResponseEntity.badRequest().body(Map.of(
+                                "error", "Unknown provider: " + request.getProvider(),
+                                "validProviders", java.util.Arrays.toString(LlmProvider.values())));
+                return badProvider;
             }
         }
         try {
@@ -228,7 +233,7 @@ public class ApiController {
 
             return ResponseEntity.ok(result);
         } finally {
-            LlmService.clearRequestProvider();
+            llmService.clearRequestProvider();
         }
     }
 
@@ -279,8 +284,10 @@ public class ApiController {
                 try {
                     emitter.send(SseEmitter.event()
                             .name("error")
-                            .data("{\"status\":\"ERROR\",\"errorMessage\":\"Unknown provider: " + provider + "\"}"));
-                } catch (IOException ignored) {
+                            .data(objectMapper.writeValueAsString(Map.of(
+                                    "status", "ERROR",
+                                    "errorMessage", "Unknown provider: " + provider))));
+                } catch (Exception ignored) {
                     // client already disconnected
                 }
                 emitter.complete();
@@ -291,7 +298,7 @@ public class ApiController {
         final LlmProvider providerOverride = resolvedProvider;
         analysisExecutor.execute(() -> {
             if (providerOverride != null) {
-                LlmService.setRequestProvider(providerOverride);
+                llmService.setRequestProvider(providerOverride);
             }
             try {
                 llmService.analyzeStreaming(businessText, new AnalysisEventCallback() {
@@ -352,7 +359,7 @@ public class ApiController {
             } catch (Exception e) {
                 emitter.completeWithError(e);
             } finally {
-                LlmService.clearRequestProvider();
+                llmService.clearRequestProvider();
             }
         });
 
