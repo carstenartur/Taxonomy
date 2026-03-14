@@ -8,6 +8,11 @@
 window.TaxonomyVersions = (function () {
     'use strict';
 
+    // ── Constants ─────────────────────────────────────────────────
+
+    var MAX_COMMIT_MESSAGE_DISPLAY = 50;
+    var DEFAULT_AUTHOR = 'user';
+
     // ── Selectors (resolved lazily) ─────────────────────────────────
 
     function el(id) { return document.getElementById(id); }
@@ -313,7 +318,7 @@ window.TaxonomyVersions = (function () {
         var info = el('versionsUndoInfo');
         if (!info) return;
         if (latestCommit) {
-            info.textContent = 'Last: "' + (latestCommit.message || '').substring(0, 50) + '"';
+            info.textContent = 'Last: "' + (latestCommit.message || '').substring(0, MAX_COMMIT_MESSAGE_DISPLAY) + '"';
         } else {
             info.textContent = '';
         }
@@ -344,7 +349,7 @@ window.TaxonomyVersions = (function () {
             .then(function (data) {
                 if (!data.dslText) throw new Error('No DSL content on this branch');
                 return fetch('/api/dsl/commit?branch=' + encodeURIComponent(currentBranch) +
-                    '&author=user&message=' + encodeURIComponent(message), {
+                    '&author=' + encodeURIComponent(DEFAULT_AUTHOR) + '&message=' + encodeURIComponent(message), {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain' },
                     body: data.dslText
