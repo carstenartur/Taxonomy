@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.config</a> &gt; <span class="el_source">SecurityConfig.java</span></div><h1>SecurityConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+
+/**
+ * Central Spring Security configuration.
+ * &lt;p&gt;
+ * Protects GUI (form login + session) and REST API (HTTP Basic for programmatic clients).
+ * CSRF protection is enabled for browser sessions but disabled for {@code /api/**} paths
+ * so that stateless REST clients authenticated via HTTP Basic can POST without a CSRF token.
+ */
+@Configuration
+@EnableMethodSecurity
+<span class="fc" id="L22">public class SecurityConfig {</span>
+
+    @Bean
+    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+<span class="fc" id="L26">        http</span>
+<span class="fc" id="L27">            .authorizeHttpRequests(auth -&gt; auth</span>
+                // public resources
+<span class="fc" id="L29">                .requestMatchers(&quot;/login&quot;, &quot;/error&quot;, &quot;/css/**&quot;, &quot;/js/**&quot;, &quot;/images/**&quot;, &quot;/webjars/**&quot;).permitAll()</span>
+
+                // health / status endpoints
+<span class="fc" id="L32">                .requestMatchers(&quot;/actuator/health&quot;, &quot;/actuator/health/**&quot;, &quot;/actuator/info&quot;).permitAll()</span>
+
+                // OpenAPI / Swagger UI (development)
+<span class="fc" id="L35">                .requestMatchers(&quot;/v3/api-docs/**&quot;, &quot;/swagger-ui/**&quot;, &quot;/swagger-ui.html&quot;).permitAll()</span>
+
+                // Admin-only
+<span class="fc" id="L38">                .requestMatchers(&quot;/admin/**&quot;, &quot;/api/admin/**&quot;).hasRole(&quot;ADMIN&quot;)</span>
+
+                // Write operations on architecture endpoints — ARCHITECT or ADMIN
+<span class="fc" id="L41">                .requestMatchers(HttpMethod.POST,   &quot;/api/relations/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L42">                .requestMatchers(HttpMethod.PUT,    &quot;/api/relations/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L43">                .requestMatchers(HttpMethod.DELETE,  &quot;/api/relations/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+
+<span class="fc" id="L45">                .requestMatchers(HttpMethod.POST,   &quot;/api/dsl/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L46">                .requestMatchers(HttpMethod.PUT,    &quot;/api/dsl/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L47">                .requestMatchers(HttpMethod.DELETE,  &quot;/api/dsl/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+
+<span class="fc" id="L49">                .requestMatchers(HttpMethod.POST,   &quot;/api/git/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L50">                .requestMatchers(HttpMethod.PUT,    &quot;/api/git/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L51">                .requestMatchers(HttpMethod.DELETE,  &quot;/api/git/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+
+<span class="fc" id="L53">                .requestMatchers(HttpMethod.POST,   &quot;/api/export/**&quot;).hasAnyRole(&quot;USER&quot;, &quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+
+                // Reading API — any authenticated user
+<span class="fc" id="L56">                .requestMatchers(HttpMethod.GET, &quot;/api/**&quot;).authenticated()</span>
+
+                // POST to analyze/search etc. — any authenticated user
+<span class="fc" id="L59">                .requestMatchers(HttpMethod.POST, &quot;/api/analyze&quot;).authenticated()</span>
+<span class="fc" id="L60">                .requestMatchers(HttpMethod.POST, &quot;/api/justify-leaf&quot;).authenticated()</span>
+
+                // GUI — any authenticated user
+<span class="fc" id="L63">                .requestMatchers(&quot;/**&quot;).authenticated()</span>
+            )
+<span class="fc" id="L65">            .csrf(csrf -&gt; csrf</span>
+                // Disable CSRF for REST API paths — stateless HTTP Basic clients cannot
+                // participate in CSRF token exchange.  Browser-based sessions that call
+                // /api/** via fetch() still include the CSRF token from the meta tags,
+                // but it is simply ignored for these paths.
+<span class="fc" id="L70">                .ignoringRequestMatchers(&quot;/api/**&quot;)</span>
+            )
+<span class="fc" id="L72">            .formLogin(Customizer.withDefaults())</span>
+<span class="fc" id="L73">            .httpBasic(Customizer.withDefaults())</span>
+<span class="fc" id="L74">            .logout(Customizer.withDefaults());</span>
+
+<span class="fc" id="L76">        return http.build();</span>
+    }
+
+    @Bean
+    PasswordEncoder passwordEncoder() {
+<span class="fc" id="L81">        return new BCryptPasswordEncoder();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
