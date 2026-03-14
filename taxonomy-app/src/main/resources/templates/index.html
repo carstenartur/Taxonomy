@@ -1036,10 +1036,12 @@
 <script>
 (function () {
     'use strict';
-    var PAGES = ['analyze', 'architecture', 'graph', 'relations', 'export', 'dsl-editor', 'admin', 'preferences'];
-    var FULL_WIDTH_PAGES = ['relations', 'export', 'admin', 'preferences'];
+    var PAGES = ['analyze', 'architecture', 'graph', 'relations', 'export', 'dsl-editor', 'admin'];
+    var FULL_WIDTH_PAGES = ['relations', 'export', 'admin'];
     PAGES.splice(PAGES.indexOf('admin'), 0, 'help');
     FULL_WIDTH_PAGES.splice(FULL_WIDTH_PAGES.indexOf('admin'), 0, 'help');
+    if (PAGES.indexOf('preferences') === -1) { PAGES.push('preferences'); }
+    if (FULL_WIDTH_PAGES.indexOf('preferences') === -1) { FULL_WIDTH_PAGES.push('preferences'); }
 
     function activatePage(pageName) {
         if (PAGES.indexOf(pageName) === -1) { pageName = 'analyze'; }
