@@ -480,6 +480,18 @@
         var targetBranch = prompt('Cherry-pick commit ' + commitId.substring(0, 8) + ' onto which branch?', 'review');
         if (!targetBranch || !targetBranch.trim()) return;
         targetBranch = targetBranch.trim();
+
+        // Use preview dialog if available
+        if (window.TaxonomyActionGuards) {
+            window.TaxonomyActionGuards.showCherryPickPreview(commitId, targetBranch, function () {
+                executeCherryPick(commitId, targetBranch);
+            });
+        } else {
+            executeCherryPick(commitId, targetBranch);
+        }
+    }
+
+    function executeCherryPick(commitId, targetBranch) {
         showStatus('Cherry-picking ' + commitId.substring(0, 8) + ' onto "' + targetBranch + '"…', 'info');
         fetch('/api/dsl/cherry-pick?commitId=' + encodeURIComponent(commitId) + '&targetBranch=' + encodeURIComponent(targetBranch), {
             method: 'POST'
@@ -502,6 +514,18 @@
         var intoBranch = prompt('Merge branch "' + fromBranch + '" into which branch?', 'accepted');
         if (!intoBranch || !intoBranch.trim()) return;
         intoBranch = intoBranch.trim();
+
+        // Use preview dialog if available
+        if (window.TaxonomyActionGuards) {
+            window.TaxonomyActionGuards.showMergePreview(fromBranch, intoBranch, function () {
+                executeMerge(fromBranch, intoBranch);
+            });
+        } else {
+            executeMerge(fromBranch, intoBranch);
+        }
+    }
+
+    function executeMerge(fromBranch, intoBranch) {
         showStatus('Merging "' + fromBranch + '" into "' + intoBranch + '"…', 'info');
         fetch('/api/dsl/merge?fromBranch=' + encodeURIComponent(fromBranch) + '&intoBranch=' + encodeURIComponent(intoBranch), {
             method: 'POST'

@@ -1422,6 +1422,11 @@
                 // Render suggested relationships from provisional relations
                 renderSuggestedRelations(result.provisionalRelations);
 
+                // Render ViewContext provenance info
+                if (window.TaxonomyViewContext) {
+                    window.TaxonomyViewContext.renderFromResponse('analyzeViewContext', result);
+                }
+
                 // Store architecture view and show summary button
                 if (result.architectureView) {
                     currentArchView = result.architectureView;

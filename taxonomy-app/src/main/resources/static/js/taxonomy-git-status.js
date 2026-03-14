@@ -101,6 +101,11 @@
 
         statusBar.innerHTML = parts.join(' ');
         statusBar.classList.remove('d-none');
+
+        // Apply action guards based on the current state
+        if (window.TaxonomyActionGuards) {
+            window.TaxonomyActionGuards.guardAll(state);
+        }
     }
 
     function renderError(msg) {
