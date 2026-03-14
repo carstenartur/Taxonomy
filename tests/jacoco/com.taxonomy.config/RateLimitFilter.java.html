@@ -83,42 +83,47 @@ import java.util.concurrent.atomic.AtomicInteger;
         }
 <span class="fc" id="L84">    }</span>
 
+    /** Visible for testing — clears all per-IP rate limit counters. */
+    public void clearCounters() {
+<span class="fc" id="L88">        counters.clear();</span>
+<span class="fc" id="L89">    }</span>
+
     private boolean isRateLimitedPath(String path) {
-<span class="fc bfc" id="L87" title="All 2 branches covered.">        return path.equals(&quot;/api/analyze&quot;)</span>
-<span class="fc bfc" id="L88" title="All 2 branches covered.">            || path.equals(&quot;/api/analyze-stream&quot;)</span>
-<span class="fc bfc" id="L89" title="All 2 branches covered.">            || path.equals(&quot;/api/analyze-node&quot;)</span>
-<span class="pc bpc" id="L90" title="1 of 2 branches missed.">            || path.equals(&quot;/api/justify-leaf&quot;);</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        return path.equals(&quot;/api/analyze&quot;)</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            || path.equals(&quot;/api/analyze-stream&quot;)</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            || path.equals(&quot;/api/analyze-node&quot;)</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">            || path.equals(&quot;/api/justify-leaf&quot;);</span>
     }
 
     private String getClientIp(HttpServletRequest request) {
-<span class="fc" id="L94">        String xff = request.getHeader(&quot;X-Forwarded-For&quot;);</span>
-<span class="pc bpc" id="L95" title="3 of 4 branches missed.">        if (xff != null &amp;&amp; !xff.isBlank()) {</span>
-<span class="nc" id="L96">            return xff.split(&quot;,&quot;)[0].trim();</span>
+<span class="fc" id="L99">        String xff = request.getHeader(&quot;X-Forwarded-For&quot;);</span>
+<span class="pc bpc" id="L100" title="3 of 4 branches missed.">        if (xff != null &amp;&amp; !xff.isBlank()) {</span>
+<span class="nc" id="L101">            return xff.split(&quot;,&quot;)[0].trim();</span>
         }
-<span class="fc" id="L98">        return request.getRemoteAddr();</span>
+<span class="fc" id="L103">        return request.getRemoteAddr();</span>
     }
 
     /**
      * Sliding window counter per minute.
      */
-<span class="fc" id="L104">    static class WindowCounter {</span>
-<span class="fc" id="L105">        private final AtomicInteger count = new AtomicInteger(0);</span>
-<span class="fc" id="L106">        private volatile long windowStart = System.currentTimeMillis();</span>
+<span class="fc" id="L109">    static class WindowCounter {</span>
+<span class="fc" id="L110">        private final AtomicInteger count = new AtomicInteger(0);</span>
+<span class="fc" id="L111">        private volatile long windowStart = System.currentTimeMillis();</span>
 
         boolean incrementAndCheck(int max) {
-<span class="fc" id="L109">            long now = System.currentTimeMillis();</span>
+<span class="fc" id="L114">            long now = System.currentTimeMillis();</span>
             // Reset window every 60 seconds — synchronized to prevent a race between
             // the reset check and the increment that would count against the new window
-<span class="pc bpc" id="L112" title="1 of 2 branches missed.">            if (now - windowStart &gt; 60_000) {</span>
-<span class="nc" id="L113">                synchronized (this) {</span>
-<span class="nc bnc" id="L114" title="All 2 branches missed.">                    if (now - windowStart &gt; 60_000) {</span>
-<span class="nc" id="L115">                        count.set(1);</span>
-<span class="nc" id="L116">                        windowStart = now;</span>
-<span class="nc" id="L117">                        return true;</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">            if (now - windowStart &gt; 60_000) {</span>
+<span class="nc" id="L118">                synchronized (this) {</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">                    if (now - windowStart &gt; 60_000) {</span>
+<span class="nc" id="L120">                        count.set(1);</span>
+<span class="nc" id="L121">                        windowStart = now;</span>
+<span class="nc" id="L122">                        return true;</span>
                     }
-<span class="nc" id="L119">                }</span>
+<span class="nc" id="L124">                }</span>
             }
-<span class="fc bfc" id="L121" title="All 2 branches covered.">            return count.incrementAndGet() &lt;= max;</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            return count.incrementAndGet() &lt;= max;</span>
         }
     }
 }
