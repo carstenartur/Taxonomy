@@ -134,7 +134,12 @@
                         </label>
                         <textarea id="businessText" class="form-control mb-3" rows="7"
                                   placeholder="e.g. We need a system to manage and display real-time air tracks, integrate radar data, and provide a common operational picture to commanders at brigade and above level..."></textarea>
-                        <div class="d-flex gap-2">
+                        <div class="d-flex gap-2 align-items-center">
+                            <select id="providerSelect" class="form-select form-select-sm"
+                                    style="width: auto; min-width: 160px;"
+                                    title="Choose AI provider for this analysis">
+                                <option value="">🔧 Server Default</option>
+                            </select>
                             <button id="analyzeBtn" class="btn btn-primary flex-grow-1" data-guard="analyze" title="Analyze the business requirement text against the taxonomy using the configured AI/LLM provider">
                                 <span id="analyzeSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
                                 Analyze with AI

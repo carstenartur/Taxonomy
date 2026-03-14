@@ -1271,3 +1271,12 @@
 [data-bs-theme="dark"] .help-doc-content th { background: #343a40; }
 [data-bs-theme="dark"] .help-doc-content td, [data-bs-theme="dark"] .help-doc-content th { border-color: #444; }
 [data-bs-theme="dark"] .help-doc-content img { border-color: #444; }
+
+/* Manual Score Input */
+.manual-score-input {
+    font-size: 0.8rem;
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: 1px solid #6c757d;
+    vertical-align: middle;
+}

@@ -114,7 +114,8 @@ class TaxonomyApplicationTests {
         mockMvc.perform(get("/api/ai-status").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.available").isBoolean());
+                .andExpect(jsonPath("$.available").isBoolean())
+                .andExpect(jsonPath("$.availableProviders").isArray());
     }
 
     @Test
@@ -123,7 +124,28 @@ class TaxonomyApplicationTests {
         mockMvc.perform(get("/api/ai-status").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.available").value(false))
-                .andExpect(jsonPath("$.provider", org.hamcrest.Matchers.nullValue()));
+                .andExpect(jsonPath("$.provider", org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.availableProviders").isArray())
+                .andExpect(jsonPath("$.availableProviders[0]").value("LOCAL_ONNX"));
+    }
+
+    @Test
+    void analyzeEndpointAcceptsProviderField() throws Exception {
+        // LOCAL_ONNX should work without any API key
+        mockMvc.perform(post("/api/analyze")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"businessText\":\"Provide secure voice communications\",\"provider\":\"LOCAL_ONNX\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").exists())
+                .andExpect(jsonPath("$.scores").exists());
+    }
+
+    @Test
+    void analyzeEndpointRejectsBadProvider() throws Exception {
+        mockMvc.perform(post("/api/analyze")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"businessText\":\"test\",\"provider\":\"INVALID_PROVIDER\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

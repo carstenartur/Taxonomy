@@ -28,6 +28,14 @@
         // Poll AI status every 30 seconds to keep the indicator current
         setInterval(checkAiStatus, 30000);
         document.getElementById('analyzeBtn').addEventListener('click', function () {
+            // Check if Manual Scoring is selected
+            var providerSelect = document.getElementById('providerSelect');
+            var selectedProvider = providerSelect ? providerSelect.value : '';
+            if (selectedProvider === 'MANUAL') {
+                enterManualScoringMode();
+                return;
+            }
+
             const interactiveCb = document.getElementById('interactiveMode');
             interactiveMode = interactiveCb ? interactiveCb.checked : false;
             if (interactiveMode) {
@@ -452,6 +460,28 @@
     }
 
     // ── Check AI availability ─────────────────────────────────────────────────
+    function populateProviderDropdown(aiStatus) {
+        var select = document.getElementById('providerSelect');
+        if (!select || !aiStatus.availableProviders) return;
+
+        // Keep the first static option (Server Default)
+        while (select.options.length > 1) select.remove(1);
+
+        aiStatus.availableProviders.forEach(function(p) {
+            var opt = document.createElement('option');
+            opt.value = p;
+            var icon = (p === 'LOCAL_ONNX') ? '💻' : '☁️';
+            opt.textContent = icon + ' ' + p;
+            select.appendChild(opt);
+        });
+
+        // Manual scoring option
+        var manualOpt = document.createElement('option');
+        manualOpt.value = 'MANUAL';
+        manualOpt.textContent = '✏️ Manual Scoring';
+        select.appendChild(manualOpt);
+    }
+
     function checkAiStatus() {
         fetch('/api/ai-status')
             .then(r => r.json())
@@ -459,6 +489,10 @@
                 const btn = document.getElementById('analyzeBtn');
                 const infoEl = document.getElementById('aiProviderInfo');
                 const badge = document.getElementById('aiStatusBadge');
+
+                // Populate provider dropdown
+                populateProviderDropdown(status);
+
                 if (status.available) {
                     btn.disabled = false;
                     const aiWarn = document.getElementById('aiUnavailableWarning');
@@ -480,7 +514,8 @@
                         badge.className = 'badge bg-success ms-auto me-2 fs-6';
                     }
                 } else {
-                    btn.disabled = true;
+                    // Even when no cloud provider is available, allow LOCAL_ONNX and MANUAL
+                    btn.disabled = false;
                     infoEl.classList.add('d-none');
                     const aiWarn = document.getElementById('aiUnavailableWarning');
                     if (aiWarn) aiWarn.classList.remove('d-none');
@@ -493,7 +528,7 @@
                         '⚠️ AI analysis is not available — no LLM API key is configured. ' +
                         'Set one of the following environment variables: GEMINI_API_KEY, ' +
                         'OPENAI_API_KEY, DEEPSEEK_API_KEY, DASHSCOPE_API_KEY, LLAMA_API_KEY, ' +
-                        'or MISTRAL_API_KEY.');
+                        'or MISTRAL_API_KEY. You can still use LOCAL_ONNX or Manual Scoring.');
                 }
             })
             .catch(() => {
@@ -1348,13 +1383,21 @@
         clearAnalysisLog();
         document.getElementById('businessText').classList.remove('stale-results');
 
+        var providerSelect = document.getElementById('providerSelect');
+        var provider = providerSelect ? providerSelect.value : '';
+
+        var requestBody = {
+            businessText: text,
+            includeArchitectureView: document.getElementById('includeArchitectureView').checked
+        };
+        if (provider && provider !== 'MANUAL') {
+            requestBody.provider = provider;
+        }
+
         fetch('/api/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                businessText: text,
-                includeArchitectureView: document.getElementById('includeArchitectureView').checked
-            })
+            body: JSON.stringify(requestBody)
         })
             .then(r => {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1973,7 +2016,13 @@
         // Render a clean tree without scores first
         renderView(taxonomyData, null);
 
-        const url = '/api/analyze-stream?businessText=' + encodeURIComponent(text);
+        var providerSelect = document.getElementById('providerSelect');
+        var provider = providerSelect ? providerSelect.value : '';
+
+        var url = '/api/analyze-stream?businessText=' + encodeURIComponent(text);
+        if (provider && provider !== 'MANUAL') {
+            url += '&provider=' + encodeURIComponent(provider);
+        }
         const eventSource = new EventSource(url);
 
         eventSource.addEventListener('phase', function (e) {
@@ -2676,6 +2725,102 @@
         if (!el) return;
         if (!type || !msg) { el.innerHTML = ''; return; }
         el.innerHTML = '<span class="text-' + type + '">' + escapeHtml(msg) + '</span>';
+    }
+
+    // ── Manual Scoring Mode ───────────────────────────────────────────────────
+
+    function enterManualScoringMode() {
+        var text = document.getElementById('businessText').value.trim();
+        if (!text) {
+            showStatus('warning', 'Please enter a requirement text (used as label for export).');
+            return;
+        }
+
+        storedBusinessText = text;
+        lastAnalyzedText = text;
+        currentScores = {};
+        currentReasons = {};
+
+        renderView(taxonomyData, null);
+        addManualScoreInputs();
+
+        showStatus('info', '✏️ Manual Mode: Set scores (0–100) on any node, then click "Apply Manual Scores".');
+        showManualApplyButton();
+    }
+
+    function addManualScoreInputs() {
+        document.querySelectorAll('.tax-node').forEach(function(node) {
+            var code = node.dataset ? node.dataset.code : null;
+            if (!code) return;
+            var header = node.querySelector(':scope > .tax-node-header');
+            if (!header) return;
+
+            var input = document.createElement('input');
+            input.type = 'number';
+            input.min = '0';
+            input.max = '100';
+            input.value = '0';
+            input.className = 'form-control form-control-sm manual-score-input';
+            input.dataset.code = code;
+            input.style.cssText = 'width:60px; display:inline-block; margin-left:8px;';
+            input.title = 'Score for ' + code + ' (0-100)';
+            input.addEventListener('click', function(e) { e.stopPropagation(); });
+            header.appendChild(input);
+        });
+    }
+
+    function showManualApplyButton() {
+        var existing = document.getElementById('manualApplyBtn');
+        if (existing) existing.remove();
+
+        var container = document.getElementById('statusArea');
+        if (!container) return;
+
+        var btn = document.createElement('button');
+        btn.id = 'manualApplyBtn';
+        btn.className = 'btn btn-success btn-sm mt-2';
+        btn.textContent = '✅ Apply Manual Scores';
+        btn.addEventListener('click', applyManualScores);
+        container.parentNode.insertBefore(btn, container.nextSibling);
+    }
+
+    function applyManualScores() {
+        var scores = {};
+        var reasons = {};
+        document.querySelectorAll('.manual-score-input').forEach(function(input) {
+            var val = parseInt(input.value, 10);
+            if (!isNaN(val) && val > 0) {
+                scores[input.dataset.code] = val;
+                reasons[input.dataset.code] = 'Manually assigned';
+            }
+        });
+
+        if (Object.keys(scores).length === 0) {
+            showStatus('warning', 'No scores entered. Set at least one score > 0.');
+            return;
+        }
+
+        currentScores = scores;
+        currentReasons = reasons;
+        window._taxonomyCurrentScores = scores;
+
+        renderView(taxonomyData, scores);
+
+        var exportGroup = document.getElementById('exportGroup');
+        if (exportGroup) exportGroup.style.display = '';
+        var exportHint = document.getElementById('exportHint');
+        if (exportHint) exportHint.style.display = 'none';
+
+        showStatus('success', '✏️ Manual scores applied: ' +
+            Object.keys(scores).length + ' node(s) scored. ' +
+            'You can now export or generate an Architecture View.');
+
+        // Remove score inputs and apply button
+        document.querySelectorAll('.manual-score-input').forEach(function(el) {
+            el.remove();
+        });
+        var applyBtn = document.getElementById('manualApplyBtn');
+        if (applyBtn) applyBtn.remove();
     }
 
 })();
