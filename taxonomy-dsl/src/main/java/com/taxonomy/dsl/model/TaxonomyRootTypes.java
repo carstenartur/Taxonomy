@@ -12,7 +12,15 @@ public final class TaxonomyRootTypes {
 
     private TaxonomyRootTypes() {} // utility class
 
-    /** Maps taxonomy root codes to DSL element type names. */
+    /**
+     * Maps taxonomy root codes to DSL element type names.
+     *
+     * <p>Future extensions for C4 model support:
+     * <ul>
+     *   <li>{@code "SY"} → {@code "System"} (C4 Software System)</li>
+     *   <li>{@code "CM"} → {@code "Component"} (C4 Component)</li>
+     * </ul>
+     */
     public static final Map<String, String> ROOT_TO_TYPE = Map.of(
             "CP", "Capability",
             "BP", "Process",

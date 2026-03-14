@@ -1,6 +1,7 @@
 package com.taxonomy.service;
 
 import com.taxonomy.dto.ArchiMateImportResult;
+import com.taxonomy.dsl.mapping.profiles.ArchiMateMappingProfile;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.model.TaxonomyNode;
 import com.taxonomy.model.TaxonomyRelation;
@@ -39,38 +40,8 @@ public class ArchiMateXmlImporter {
     private final TaxonomyNodeRepository nodeRepository;
     private final TaxonomyRelationRepository relationRepository;
 
-    /**
-     * Reverse mapping from ArchiMate element type to taxonomy root code.
-     */
-    private static final Map<String, String> ARCHIMATE_TO_TAXONOMY_ROOT = Map.ofEntries(
-            Map.entry("Capability", "CP"),
-            Map.entry("BusinessProcess", "BP"),
-            Map.entry("BusinessRole", "BR"),
-            Map.entry("ApplicationService", "CR"),
-            Map.entry("BusinessService", "CI"),
-            Map.entry("CommunicationNetwork", "CO"),
-            Map.entry("TechnologyService", "CR"),
-            Map.entry("ApplicationComponent", "UA"),
-            Map.entry("DataObject", "IP"),
-            Map.entry("BusinessObject", "IP")
-    );
-
-    /**
-     * Mapping from ArchiMate relationship type to taxonomy RelationType.
-     */
-    private static final Map<String, RelationType> ARCHIMATE_TO_RELATION_TYPE = Map.ofEntries(
-            Map.entry("Realization", RelationType.REALIZES),
-            Map.entry("Serving", RelationType.SUPPORTS),
-            Map.entry("Access", RelationType.CONSUMES),
-            Map.entry("Assignment", RelationType.ASSIGNED_TO),
-            Map.entry("Flow", RelationType.COMMUNICATES_WITH),
-            Map.entry("Composition", RelationType.RELATED_TO),
-            Map.entry("Aggregation", RelationType.RELATED_TO),
-            Map.entry("Association", RelationType.RELATED_TO),
-            Map.entry("Triggering", RelationType.SUPPORTS),
-            Map.entry("Influence", RelationType.RELATED_TO),
-            Map.entry("Specialization", RelationType.RELATED_TO)
-    );
+    /** Shared mapping profile for ArchiMate types. */
+    private static final ArchiMateMappingProfile PROFILE = new ArchiMateMappingProfile();
 
     public ArchiMateXmlImporter(TaxonomyNodeRepository nodeRepository,
                                  TaxonomyRelationRepository relationRepository) {
@@ -198,7 +169,7 @@ public class ArchiMateXmlImporter {
         Map<String, TaxonomyNode> matched = new LinkedHashMap<>();
 
         for (ParsedElement el : elements.values()) {
-            String taxonomyRoot = ARCHIMATE_TO_TAXONOMY_ROOT.get(el.type);
+            String taxonomyRoot = PROFILE.mapElementType(el.type);
             if (taxonomyRoot == null) {
                 notes.add("Unknown ArchiMate type: " + el.type + " for element " + el.label);
                 continue;
@@ -258,8 +229,10 @@ public class ArchiMateXmlImporter {
 
             if (sourceNode == null || targetNode == null) continue;
 
-            RelationType relationType = ARCHIMATE_TO_RELATION_TYPE.getOrDefault(
-                    rel.type, RelationType.RELATED_TO);
+            String relTypeName = PROFILE.mapRelationType(rel.type);
+            RelationType relationType = relTypeName != null
+                    ? RelationType.valueOf(relTypeName)
+                    : RelationType.RELATED_TO;
 
             // Check if relation already exists
             List<TaxonomyRelation> existing = relationRepository
