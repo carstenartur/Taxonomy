@@ -191,11 +191,11 @@ public class ArchitectureGapService {
                 .toList();
 
         // Identify unique APQC-related node codes from source and target
-        Set<String> apqcNodeCodes = new LinkedHashSet<>();
-        for (TaxonomyRelation rel : apqcRelations) {
-            if (rel.getSourceNode() != null) apqcNodeCodes.add(rel.getSourceNode().getCode());
-            if (rel.getTargetNode() != null) apqcNodeCodes.add(rel.getTargetNode().getCode());
-        }
+        Set<String> apqcNodeCodes = apqcRelations.stream()
+                .flatMap(rel -> java.util.stream.Stream.of(rel.getSourceNode(), rel.getTargetNode()))
+                .filter(Objects::nonNull)
+                .map(TaxonomyNode::getCode)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
 
         // Group by taxonomy root (which maps to APQC levels via the import profile)
         Map<String, Integer> coverageByLevel = new LinkedHashMap<>();
