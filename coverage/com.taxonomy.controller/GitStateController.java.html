@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GitStateController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.controller</a> &gt; <span class="el_source">GitStateController.java</span></div><h1>GitStateController.java</h1><pre class="source lang-java linenums">package com.taxonomy.controller;
+
+import com.taxonomy.dto.ProjectionState;
+import com.taxonomy.dto.RepositoryState;
+import com.taxonomy.service.RepositoryStateService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+
+/**
+ * REST API for querying the Git repository state.
+ *
+ * &lt;p&gt;Exposes the current branch, HEAD commit, projection/index freshness,
+ * and branch overview. All data comes from {@link RepositoryStateService}
+ * which combines JGit repository metadata with projection tracking.
+ */
+@RestController
+@RequestMapping(&quot;/api/git&quot;)
+@Tag(name = &quot;Git Repository State&quot;)
+public class GitStateController {
+
+    private final RepositoryStateService stateService;
+
+<span class="fc" id="L27">    public GitStateController(RepositoryStateService stateService) {</span>
+<span class="fc" id="L28">        this.stateService = stateService;</span>
+<span class="fc" id="L29">    }</span>
+
+    @GetMapping(&quot;/state&quot;)
+    @Operation(summary = &quot;Full repository state including projection/index staleness&quot;,
+            description = &quot;Returns the complete repository state snapshot for a branch, &quot; +
+                    &quot;including HEAD commit info, all branches, projection/index freshness, &quot; +
+                    &quot;and any in-progress operations.&quot;)
+    public ResponseEntity&lt;RepositoryState&gt; getState(
+            @RequestParam(defaultValue = &quot;draft&quot;) String branch) {
+<span class="fc" id="L38">        return ResponseEntity.ok(stateService.getState(branch));</span>
+    }
+
+    @GetMapping(&quot;/projection&quot;)
+    @Operation(summary = &quot;Projection and search index freshness&quot;,
+            description = &quot;Returns which commit the DB projection and search index are &quot; +
+                    &quot;built from, and whether they are stale relative to HEAD.&quot;)
+    public ResponseEntity&lt;ProjectionState&gt; getProjectionState(
+            @RequestParam(defaultValue = &quot;draft&quot;) String branch) {
+<span class="fc" id="L47">        return ResponseEntity.ok(stateService.getProjectionState(branch));</span>
+    }
+
+    @GetMapping(&quot;/branches&quot;)
+    @Operation(summary = &quot;List all branches with HEAD commit info&quot;,
+            description = &quot;Returns all Git branches in the repository with their &quot; +
+                    &quot;HEAD commit SHA and basic metadata.&quot;)
+    public ResponseEntity&lt;RepositoryState&gt; listBranches(
+            @RequestParam(defaultValue = &quot;draft&quot;) String branch) {
+        // Reuse full state which includes branch list
+<span class="fc" id="L57">        return ResponseEntity.ok(stateService.getState(branch));</span>
+    }
+
+    @GetMapping(&quot;/stale&quot;)
+    @Operation(summary = &quot;Quick check: is projection/index stale?&quot;,
+            description = &quot;Lightweight endpoint returning only staleness flags. &quot; +
+                    &quot;Useful for periodic polling from the UI.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Boolean&gt;&gt; isStale(
+            @RequestParam(defaultValue = &quot;draft&quot;) String branch) {
+<span class="fc" id="L66">        ProjectionState ps = stateService.getProjectionState(branch);</span>
+<span class="fc" id="L67">        return ResponseEntity.ok(Map.of(</span>
+<span class="fc" id="L68">                &quot;projectionStale&quot;, ps.projectionStale(),</span>
+<span class="fc" id="L69">                &quot;indexStale&quot;, ps.indexStale()</span>
+        ));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

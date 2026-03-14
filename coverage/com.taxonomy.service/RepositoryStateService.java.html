@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RepositoryStateService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">RepositoryStateService.java</span></div><h1>RepositoryStateService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dsl.storage.DslCommit;
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dto.ProjectionState;
+import com.taxonomy.dto.RepositoryState;
+import com.taxonomy.dto.ViewContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.List;
+
+/**
+ * Provides a unified view of the Git repository state, including projection
+ * and search-index freshness tracking.
+ *
+ * &lt;p&gt;This service is the single source of truth for answering: &quot;What version
+ * of the architecture is the user looking at?&quot; It tracks:
+ * &lt;ul&gt;
+ *   &lt;li&gt;Git HEAD — the latest commit on a branch&lt;/li&gt;
+ *   &lt;li&gt;Projection commit — the commit the DB projection was built from&lt;/li&gt;
+ *   &lt;li&gt;Index commit — the commit the search index was built from&lt;/li&gt;
+ *   &lt;li&gt;Operation state — whether a multi-step merge/cherry-pick is in progress&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@Service
+public class RepositoryStateService {
+
+<span class="fc" id="L32">    private static final Logger log = LoggerFactory.getLogger(RepositoryStateService.class);</span>
+
+    private final DslGitRepository gitRepository;
+
+    // Tracked state — updated by DslMaterializeService after each materialization
+    private volatile String lastProjectionCommit;
+    private volatile String lastProjectionBranch;
+    private volatile Instant lastProjectionTimestamp;
+    private volatile String lastIndexCommit;
+    private volatile Instant lastIndexTimestamp;
+
+    // Operation tracking (for multi-step merge/cherry-pick UI)
+    private volatile String operationKind;  // null = no operation
+
+<span class="fc" id="L46">    public RepositoryStateService(DslGitRepository gitRepository) {</span>
+<span class="fc" id="L47">        this.gitRepository = gitRepository;</span>
+<span class="fc" id="L48">    }</span>
+
+    /**
+     * Build the full repository state snapshot for a branch.
+     *
+     * @param branch the branch to query (e.g. &quot;draft&quot;)
+     * @return the full repository state
+     */
+    public RepositoryState getState(String branch) {
+        try {
+<span class="fc" id="L58">            DslCommit headInfo = gitRepository.getHeadCommitInfo(branch);</span>
+<span class="fc" id="L59">            List&lt;String&gt; branches = gitRepository.getBranchNames();</span>
+<span class="fc" id="L60">            int commitCount = gitRepository.getCommitCount(branch);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            String headCommit = headInfo != null ? headInfo.commitId() : null;</span>
+
+<span class="fc" id="L63">            boolean projStale = isProjectionStaleForCommit(headCommit);</span>
+<span class="fc" id="L64">            boolean idxStale = isIndexStale(headCommit);</span>
+
+<span class="fc" id="L66">            return new RepositoryState(</span>
+                    branch,
+                    headCommit,
+<span class="fc bfc" id="L69" title="All 2 branches covered.">                    headInfo != null ? headInfo.timestamp() : null,</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                    headInfo != null ? headInfo.author() : null,</span>
+<span class="fc bfc" id="L71" title="All 4 branches covered.">                    headInfo != null ? headInfo.message() : null,</span>
+                    branches,
+                    operationKind != null,
+                    operationKind,
+                    lastProjectionCommit,
+                    lastProjectionBranch,
+                    lastProjectionTimestamp,
+                    projStale,
+                    lastIndexCommit,
+                    idxStale,
+                    commitCount,
+<span class="fc" id="L82">                    gitRepository.isDatabaseBacked()</span>
+            );
+<span class="fc" id="L84">        } catch (IOException e) {</span>
+<span class="fc" id="L85">            log.error(&quot;Failed to build repository state for branch '{}'&quot;, branch, e);</span>
+<span class="fc" id="L86">            return new RepositoryState(</span>
+<span class="fc" id="L87">                    branch, null, null, null, null, List.of(),</span>
+                    false, null, null, null, null, false, null, false, 0,
+<span class="fc" id="L89">                    gitRepository.isDatabaseBacked()</span>
+            );
+        }
+    }
+
+    /**
+     * Build a {@link ViewContext} for inclusion in API responses.
+     *
+     * &lt;p&gt;The {@code includesProvisionalRelations} flag is set to {@code true} because
+     * the architecture data may always include provisional (unreviewed) relations
+     * from DSL materialization. A future enhancement could check the actual branch
+     * to distinguish between draft (provisional) and accepted (reviewed only) data.
+     *
+     * @param branch the branch the data is based on
+     * @return the view context metadata
+     */
+    public ViewContext getViewContext(String branch) {
+        try {
+<span class="fc" id="L107">            DslCommit headInfo = gitRepository.getHeadCommitInfo(branch);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            String headCommit = headInfo != null ? headInfo.commitId() : null;</span>
+
+<span class="fc" id="L110">            return new ViewContext(</span>
+                    headCommit,
+                    branch,
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                    headInfo != null ? headInfo.timestamp() : null,</span>
+                    true, // architecture data always may include provisional relations
+<span class="fc" id="L115">                    isProjectionStaleForCommit(headCommit),</span>
+<span class="fc" id="L116">                    isIndexStale(headCommit)</span>
+            );
+<span class="nc" id="L118">        } catch (IOException e) {</span>
+<span class="nc" id="L119">            log.error(&quot;Failed to build view context for branch '{}'&quot;, branch, e);</span>
+<span class="nc" id="L120">            return new ViewContext(null, branch, null, true, false, false);</span>
+        }
+    }
+
+    /**
+     * Record that a materialization completed successfully.
+     *
+     * &lt;p&gt;Called by {@code DslMaterializeService} after a successful materialization
+     * to track which commit the DB projection is based on.
+     *
+     * @param commitId the commit SHA that was materialized
+     * @param branch   the branch that was materialized
+     */
+    public void recordProjection(String commitId, String branch) {
+<span class="fc" id="L134">        this.lastProjectionCommit = commitId;</span>
+<span class="fc" id="L135">        this.lastProjectionBranch = branch;</span>
+<span class="fc" id="L136">        this.lastProjectionTimestamp = Instant.now();</span>
+<span class="fc" id="L137">        log.info(&quot;Recorded projection: branch='{}', commit='{}'&quot;, branch, abbreviateSha(commitId));</span>
+<span class="fc" id="L138">    }</span>
+
+    /**
+     * Record that a search index rebuild completed successfully.
+     *
+     * &lt;p&gt;Called by the search index infrastructure after a successful reindex.
+     *
+     * @param commitId the commit SHA the index was built from
+     */
+    public void recordIndexBuild(String commitId) {
+<span class="fc" id="L148">        this.lastIndexCommit = commitId;</span>
+<span class="fc" id="L149">        this.lastIndexTimestamp = Instant.now();</span>
+<span class="fc" id="L150">        log.info(&quot;Recorded index build: commit='{}'&quot;, abbreviateSha(commitId));</span>
+<span class="fc" id="L151">    }</span>
+
+    /**
+     * Check if the DB projection is stale (HEAD has moved past the projection commit).
+     *
+     * @param branch the branch to check
+     * @return true if projection is stale
+     */
+    public boolean isProjectionStale(String branch) {
+        try {
+<span class="fc" id="L161">            String headCommit = gitRepository.getHeadCommit(branch);</span>
+<span class="fc" id="L162">            return isProjectionStaleForCommit(headCommit);</span>
+<span class="nc" id="L163">        } catch (IOException e) {</span>
+<span class="nc" id="L164">            log.error(&quot;Failed to check projection staleness for branch '{}'&quot;, branch, e);</span>
+<span class="nc" id="L165">            return false;</span>
+        }
+    }
+
+    /**
+     * Get the full projection state for diagnostics.
+     *
+     * @param branch the branch to check against
+     * @return the projection state
+     */
+    public ProjectionState getProjectionState(String branch) {
+        try {
+<span class="fc" id="L177">            String headCommit = gitRepository.getHeadCommit(branch);</span>
+<span class="fc" id="L178">            return new ProjectionState(</span>
+                    lastProjectionCommit,
+                    lastProjectionBranch,
+                    lastProjectionTimestamp,
+                    lastIndexCommit,
+                    lastIndexTimestamp,
+<span class="fc" id="L184">                    isProjectionStaleForCommit(headCommit),</span>
+<span class="fc" id="L185">                    isIndexStale(headCommit)</span>
+            );
+<span class="fc" id="L187">        } catch (IOException e) {</span>
+<span class="fc" id="L188">            log.error(&quot;Failed to get projection state for branch '{}'&quot;, branch, e);</span>
+<span class="fc" id="L189">            return new ProjectionState(</span>
+                    lastProjectionCommit, lastProjectionBranch, lastProjectionTimestamp,
+                    lastIndexCommit, lastIndexTimestamp, false, false
+            );
+        }
+    }
+
+    /**
+     * Mark the start of a multi-step operation (e.g. merge, cherry-pick).
+     *
+     * @param kind the operation kind (&quot;merge&quot;, &quot;cherry-pick&quot;, &quot;revert&quot;)
+     */
+    public void beginOperation(String kind) {
+<span class="fc" id="L202">        this.operationKind = kind;</span>
+<span class="fc" id="L203">        log.info(&quot;Operation started: {}&quot;, kind);</span>
+<span class="fc" id="L204">    }</span>
+
+    /**
+     * Mark the end of a multi-step operation.
+     */
+    public void endOperation() {
+<span class="fc" id="L210">        log.info(&quot;Operation ended: {}&quot;, operationKind);</span>
+<span class="fc" id="L211">        this.operationKind = null;</span>
+<span class="fc" id="L212">    }</span>
+
+    // ── Internal helpers ────────────────────────────────────────────
+
+    private boolean isProjectionStaleForCommit(String headCommit) {
+<span class="fc bfc" id="L217" title="All 4 branches covered.">        if (headCommit == null || lastProjectionCommit == null) {</span>
+            // Deliberate: if no projection has been recorded yet (e.g. fresh startup),
+            // we treat the state as &quot;not stale&quot; rather than &quot;unknown&quot;. This avoids
+            // false warnings during initial setup before the first materialization.
+<span class="fc" id="L221">            return false;</span>
+        }
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        return !headCommit.equals(lastProjectionCommit);</span>
+    }
+
+    private boolean isIndexStale(String headCommit) {
+<span class="fc bfc" id="L227" title="All 4 branches covered.">        if (headCommit == null || lastIndexCommit == null) {</span>
+            // Same rationale as isProjectionStaleForCommit: absence of tracking
+            // data is treated as fresh to avoid false warnings at startup.
+<span class="fc" id="L230">            return false;</span>
+        }
+<span class="fc bfc" id="L232" title="All 2 branches covered.">        return !headCommit.equals(lastIndexCommit);</span>
+    }
+
+    private String abbreviateSha(String commitId) {
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        if (commitId == null) return &quot;null&quot;;</span>
+<span class="fc" id="L237">        return commitId.substring(0, Math.min(7, commitId.length()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
