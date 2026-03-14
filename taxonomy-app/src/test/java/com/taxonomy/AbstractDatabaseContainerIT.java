@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -34,6 +35,10 @@ abstract class AbstractDatabaseContainerIT {
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5)).build();
 
+    /** HTTP Basic auth header value for the default admin user. */
+    private static final String BASIC_AUTH = "Basic " +
+            Base64.getEncoder().encodeToString("admin:admin".getBytes());
+
     /** Subclasses must return the running application container. */
     protected abstract GenericContainer<?> getAppContainer();
 
@@ -46,6 +51,7 @@ abstract class AbstractDatabaseContainerIT {
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl() + "/api/diagnostics"))
                 .header("Accept", "application/json")
+                .header("Authorization", BASIC_AUTH)
                 .GET().build();
         HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
         assertThat(resp.statusCode()).isEqualTo(200);
@@ -56,6 +62,7 @@ abstract class AbstractDatabaseContainerIT {
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl() + path))
                 .header("Accept", "application/json")
+                .header("Authorization", BASIC_AUTH)
                 .GET().build();
         return HTTP.send(req, HttpResponse.BodyHandlers.ofString());
     }
@@ -93,6 +100,7 @@ abstract class AbstractDatabaseContainerIT {
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl() + "/api/diagnostics"))
                 .header("Accept", "application/json")
+                .header("Authorization", BASIC_AUTH)
                 .GET().build();
         HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
         assertThat(resp.headers().firstValue("Content-Type").orElse(""))
@@ -173,6 +181,7 @@ abstract class AbstractDatabaseContainerIT {
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl() + "/"))
                 .header("Accept", "text/html")
+                .header("Authorization", BASIC_AUTH)
                 .GET().build();
         HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
         assertThat(resp.statusCode()).isEqualTo(200);

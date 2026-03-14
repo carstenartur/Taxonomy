@@ -16,12 +16,14 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import org.springframework.security.test.context.support.WithMockUser;
 
 /**
  * Tests for {@link HypothesisService}.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@WithMockUser(roles = "ADMIN")
 class HypothesisServiceTest {
 
     @Autowired

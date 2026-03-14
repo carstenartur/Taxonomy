@@ -8,12 +8,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import org.springframework.security.test.context.support.WithMockUser;
 
 /**
  * Tests for {@link DslMaterializeService}.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@WithMockUser(roles = "ADMIN")
 class DslMaterializeServiceTest {
 
     @Autowired

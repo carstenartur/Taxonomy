@@ -22,6 +22,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 
 import tools.jackson.databind.JsonNode;
@@ -46,6 +47,10 @@ abstract class AbstractSeleniumContainerIT {
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5)).build();
+
+    /** HTTP Basic auth header value for the default admin user. */
+    private static final String BASIC_AUTH = "Basic " +
+            Base64.getEncoder().encodeToString("admin:admin".getBytes());
 
     private Network network;
     private GenericContainer<?> dbContainer;
@@ -93,6 +98,15 @@ abstract class AbstractSeleniumContainerIT {
         driver = chrome.getWebDriver();
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
 
+        // Login via form (Spring Security requires authentication)
+        driver.get("http://app:8080/login");
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .until(ExpectedConditions.presenceOfElementLocated(By.name("username")));
+        driver.findElement(By.name("username")).sendKeys("admin");
+        driver.findElement(By.name("password")).sendKeys("admin");
+        driver.findElement(By.cssSelector("button[type='submit'], input[type='submit']")).click();
+
+        // Wait for the main page to load after login
         driver.get("http://app:8080/");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
@@ -123,6 +137,7 @@ abstract class AbstractSeleniumContainerIT {
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl() + path))
                 .header("Accept", "application/json")
+                .header("Authorization", BASIC_AUTH)
                 .GET().build();
         return HTTP.send(req, HttpResponse.BodyHandlers.ofString());
     }

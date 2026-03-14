@@ -33,7 +33,7 @@ class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
                             .build()))
             .withExposedPorts(8080)
             .withStartupTimeout(Duration.ofSeconds(120))
-            .waitingFor(Wait.forHttp("/api/diagnostics")
+            .waitingFor(Wait.forHttp("/actuator/health")
                     .forStatusCode(200)
                     .forPort(8080));
 

@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import org.springframework.security.test.context.support.WithMockUser;
 
 /**
  * Integration tests for Hibernate Search–backed commit history search.
@@ -23,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@WithMockUser(roles = "ADMIN")
 class CommitIndexHibernateSearchTest {
 
     @Autowired
