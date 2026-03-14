@@ -12,16 +12,26 @@ public final class TaxonomyRootTypes {
 
     private TaxonomyRootTypes() {} // utility class
 
-    /** Maps taxonomy root codes to DSL element type names. */
-    public static final Map<String, String> ROOT_TO_TYPE = Map.of(
-            "CP", "Capability",
-            "BP", "Process",
-            "CR", "CoreService",
-            "CI", "COIService",
-            "CO", "CommunicationsService",
-            "UA", "UserApplication",
-            "IP", "InformationProduct",
-            "BR", "BusinessRole"
+    /**
+     * Maps taxonomy root codes to DSL element type names.
+     *
+     * <p>Includes C4 model types:
+     * <ul>
+     *   <li>{@code "SY"} → {@code "System"} (C4 Software System)</li>
+     *   <li>{@code "CM"} → {@code "Component"} (C4 Component)</li>
+     * </ul>
+     */
+    public static final Map<String, String> ROOT_TO_TYPE = Map.ofEntries(
+            Map.entry("CP", "Capability"),
+            Map.entry("BP", "Process"),
+            Map.entry("CR", "CoreService"),
+            Map.entry("CI", "COIService"),
+            Map.entry("CO", "CommunicationsService"),
+            Map.entry("UA", "UserApplication"),
+            Map.entry("IP", "InformationProduct"),
+            Map.entry("BR", "BusinessRole"),
+            Map.entry("SY", "System"),
+            Map.entry("CM", "Component")
     );
 
     /** Reverse mapping: DSL element type name → taxonomy root code. */

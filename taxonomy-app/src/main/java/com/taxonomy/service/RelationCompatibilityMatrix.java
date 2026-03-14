@@ -40,10 +40,16 @@ public class RelationCompatibilityMatrix {
         addRule(RelationType.ASSIGNED_TO,       "BR",  Set.of("BP"));
         // Core Service → Core Service (same root)
         addRule(RelationType.DEPENDS_ON,        "CR",  Set.of("CR"));
+        // System → System (C4 inter-system dependency)
+        addRule(RelationType.DEPENDS_ON,        "SY",  Set.of("SY"));
         // Business Process → Information Product
         addRule(RelationType.PRODUCES,          "BP",  Set.of("IP"));
         // Communications Service → Core Service
         addRule(RelationType.COMMUNICATES_WITH, "CO",  Set.of("CR"));
+        // System → User Application / Component (C4 containment)
+        addRule(RelationType.CONTAINS,          "SY",  Set.of("UA", "CM"));
+        // Component → Component (C4 nesting)
+        addRule(RelationType.CONTAINS,          "CM",  Set.of("CM"));
         // RELATED_TO has no restrictions
     }
 
