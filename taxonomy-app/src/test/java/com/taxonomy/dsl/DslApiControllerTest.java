@@ -811,4 +811,89 @@ class DslApiControllerTest {
         mockMvc.perform(post("/api/dsl/hypotheses/999999/apply-session"))
                 .andExpect(status().isNotFound());
     }
+
+    // ── ViewContext in API responses ────────────────────────────────
+
+    @Test
+    void materializeResponseContainsViewContext() throws Exception {
+        String dsl = """
+                element CP-1023 type Capability {
+                  title: "ViewContext Test";
+                }
+                """;
+
+        mockMvc.perform(post("/api/dsl/materialize")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.viewContext").exists())
+                .andExpect(jsonPath("$.viewContext.basedOnBranch").isString())
+                .andExpect(jsonPath("$.viewContext.includesProvisionalRelations").isBoolean())
+                .andExpect(jsonPath("$.viewContext.projectionStale").isBoolean())
+                .andExpect(jsonPath("$.viewContext.indexStale").isBoolean());
+    }
+
+    @Test
+    void currentArchitectureContainsViewContext() throws Exception {
+        mockMvc.perform(get("/api/dsl/current"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.viewContext").exists())
+                .andExpect(jsonPath("$.viewContext.basedOnBranch").value("draft"));
+    }
+
+    @Test
+    void commitResponseContainsViewContext() throws Exception {
+        String dsl = """
+                element CP-1023 type Capability {
+                  title: "ViewContext Commit Test";
+                }
+                """;
+
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl)
+                        .param("branch", "vc-test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.viewContext").exists())
+                .andExpect(jsonPath("$.viewContext.basedOnBranch").value("vc-test"))
+                .andExpect(jsonPath("$.viewContext.basedOnCommit").isNotEmpty());
+    }
+
+    @Test
+    void gitHeadResponseContainsViewContext() throws Exception {
+        // First commit something
+        String dsl = """
+                element CP-1023 type Capability {
+                  title: "GitHead ViewContext";
+                }
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                .contentType(MediaType.TEXT_PLAIN)
+                .content(dsl)
+                .param("branch", "vc-git-head"));
+
+        mockMvc.perform(get("/api/dsl/git/head").param("branch", "vc-git-head"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.viewContext").exists())
+                .andExpect(jsonPath("$.viewContext.basedOnBranch").value("vc-git-head"));
+    }
+
+    @Test
+    void historyResponseContainsViewContext() throws Exception {
+        String dsl = """
+                element CP-1023 type Capability {
+                  title: "History ViewContext";
+                }
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                .contentType(MediaType.TEXT_PLAIN)
+                .content(dsl)
+                .param("branch", "vc-history"));
+
+        mockMvc.perform(get("/api/dsl/history").param("branch", "vc-history"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.viewContext").exists())
+                .andExpect(jsonPath("$.viewContext.basedOnBranch").value("vc-history"))
+                .andExpect(jsonPath("$.viewContext.basedOnCommit").isNotEmpty());
+    }
 }

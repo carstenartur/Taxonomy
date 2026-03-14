@@ -290,7 +290,7 @@ public class DslApiController {
             result.put("commits", history);
             result.put("viewContext", viewContext);
             return ResponseEntity.ok(result);
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("Failed to read history for branch '{}'", branch, e);
             return ResponseEntity.internalServerError().build();
         }
