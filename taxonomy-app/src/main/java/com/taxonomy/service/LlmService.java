@@ -22,7 +22,6 @@ import com.taxonomy.dto.SavedAnalysis;
 
 import java.time.Instant;
 import java.util.*;
-import java.util.ArrayDeque;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -68,6 +67,13 @@ public class LlmService {
 
     /** Maximum number of cross-reference nodes included in a leaf justification prompt. */
     private static final int MAX_CROSS_REFERENCES = 5;
+
+    /**
+     * Buffer added to the sleep duration in the outgoing RPM throttle (milliseconds).
+     * Accounts for minor clock drift so the oldest timestamp is guaranteed to have
+     * left the 60-second window before the next call is made.
+     */
+    private static final long THROTTLE_BUFFER_MS = 50L;
 
     private static final String OPENAI_URL   = "https://api.openai.com/v1/chat/completions";
     private static final String DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
@@ -1204,7 +1210,7 @@ public class LlmService {
         // If we've reached the rpm limit, sleep until the oldest call clears the window
         if (callTimestamps.size() >= rpm) {
             long oldest = callTimestamps.peekFirst();
-            long sleepMs = oldest + 60_000L - System.currentTimeMillis() + 50L; // 50 ms buffer
+            long sleepMs = oldest + 60_000L - System.currentTimeMillis() + THROTTLE_BUFFER_MS;
             if (sleepMs > 0) {
                 log.debug("LLM RPM throttle: sleeping {}ms (rpm={}, calls in window={})",
                         sleepMs, rpm, callTimestamps.size());
