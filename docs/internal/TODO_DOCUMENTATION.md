@@ -95,7 +95,7 @@ This is a significant effort (~200+ translatable strings across HTML and 11 JS m
 - [x] Module architecture (4 modules) — ARCHITECTURE.md §Module Architecture
 - [x] DSL storage architecture (JGit/Hibernate) — ARCHITECTURE.md §DSL Storage Architecture
 - [x] Rate limiting — ARCHITECTURE.md §Rate Limiting
-- [x] All 14 controllers listed in architecture diagram — ARCHITECTURE.md §High-Level Architecture
+- [x] All 15 controllers listed in architecture diagram — ARCHITECTURE.md §High-Level Architecture
 
 ### Conceptual Documentation (completed)
 - [x] Relation types — CONCEPTS.md §Relation Type

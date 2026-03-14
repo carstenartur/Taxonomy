@@ -1,5 +1,27 @@
 # Taxonomy Architecture Analyzer — User Guide
 
+## Fastest Path — Your First Analysis in 5 Steps
+
+| Step | Action | Where |
+|:---:|---|---|
+| **1** | Log in with `admin` / `admin` | Login page at `http://localhost:8080` |
+| **2** | Type your requirement | Right panel → "Business Requirement Analysis" text area |
+| **3** | Click **Analyze with AI** | Button below the text area |
+| **4** | Explore the scored tree and architecture view | Left panel (tree) + right panel (architecture view card) |
+| **5** | Export your diagram | Left panel → ArchiMate / Visio / Mermaid / JSON buttons |
+
+> **Example requirement:** _"Provide secure voice and video communications for deployed forces."_
+
+The system scores every taxonomy node (0–100), highlights the most relevant elements with colour-coded scores, generates an architecture view showing how they relate, and lets you export the result.
+
+![Scored taxonomy tree](images/15-scored-taxonomy-tree.png)
+
+**Ready for more?** Continue reading for the full guide, or jump to [Architecture View](#7-architecture-view) to understand how the architecture is generated.
+
+> **New users:** Start with the core workflow (Analyze → Architecture → Export). Advanced features like Graph Explorer, DSL Editor, and Gap Analysis are described in later sections.
+
+---
+
 ## Table of Contents
 
 1. [Overview](#1-overview)
@@ -72,7 +94,7 @@ The **Taxonomy Architecture Analyzer** is a web application that helps Architect
 
 Open your web browser and navigate to the application URL (for example `http://localhost:8080` when running locally, or the deployed URL provided by your administrator).
 
-The application loads as a single page. No login is required for standard use; administrator features require unlocking admin mode (see [Section 12](#12-administration)).
+The application loads as a single page. A login page is presented on first access — sign in with the default credentials (`admin` / `admin`) or with the password configured via the `TAXONOMY_ADMIN_PASSWORD` environment variable. After login, all standard features are available; administrator features additionally require unlocking admin mode (see [Section 12](#12-administration)).
 
 **First-time users** will see a **Welcome overlay** with a 3-step guide explaining how to get started:
 1. Describe your requirement in the text area

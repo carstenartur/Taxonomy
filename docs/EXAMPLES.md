@@ -12,6 +12,8 @@ This document shows worked examples of common tasks in the Taxonomy Architecture
 - [4. Relation Proposals](#4-relation-proposals)
 - [5. Architecture Recommendations](#5-architecture-recommendations)
 - [6. Diagram Export](#6-diagram-export)
+- [7. Maritime Surveillance — End-to-End](#7-maritime-surveillance--end-to-end)
+- [8. Architecture DSL Workflow](#8-architecture-dsl-workflow)
 
 ---
 
@@ -62,7 +64,7 @@ Click an export button to download the architecture as ArchiMate XML, Visio `.vs
 ### REST API equivalent
 
 ```bash
-curl -X POST http://localhost:8080/api/analyze \
+curl -u admin:admin -X POST http://localhost:8080/api/analyze \
   -d "businessText=Provide+secure+voice+and+video+communications+for+deployed+forces" \
   -d "includeArchitectureView=true"
 ```
@@ -83,7 +85,7 @@ curl -X POST http://localhost:8080/api/analyze \
 ### REST API
 
 ```bash
-curl "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
+curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
 ```
 
 ### Example result
@@ -114,7 +116,7 @@ curl "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
 ### REST API
 
 ```bash
-curl -X POST http://localhost:8080/api/gap/analyze \
+curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "businessText": "Maritime surveillance data sharing",
@@ -172,26 +174,26 @@ Click **Accept** to add the relation to the knowledge graph, or **Reject** to di
 
 ```bash
 # Generate proposals for a node
-curl -X POST http://localhost:8080/api/proposals/propose \
+curl -u admin:admin -X POST http://localhost:8080/api/proposals/propose \
   -H "Content-Type: application/json" \
   -d '{"sourceCode": "CR-1047", "relationType": "SUPPORTS"}'
 
 # List pending proposals
-curl "http://localhost:8080/api/proposals/pending"
+curl -u admin:admin "http://localhost:8080/api/proposals/pending"
 
 # Accept a proposal
-curl -X POST "http://localhost:8080/api/proposals/42/accept"
+curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/accept"
 
 # Reject a proposal
-curl -X POST "http://localhost:8080/api/proposals/42/reject"
+curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/reject"
 
 # Bulk accept/reject
-curl -X POST http://localhost:8080/api/proposals/bulk \
+curl -u admin:admin -X POST http://localhost:8080/api/proposals/bulk \
   -H "Content-Type: application/json" \
   -d '{"ids": [42, 43, 44], "action": "ACCEPT"}'
 
 # Revert a decision
-curl -X POST "http://localhost:8080/api/proposals/42/revert"
+curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/revert"
 ```
 
 ---
@@ -203,7 +205,7 @@ curl -X POST "http://localhost:8080/api/proposals/42/revert"
 ### REST API
 
 ```bash
-curl -X POST http://localhost:8080/api/recommend \
+curl -u admin:admin -X POST http://localhost:8080/api/recommend \
   -H "Content-Type: application/json" \
   -d '{
     "businessText": "Secure satellite communications for remote operations",
@@ -234,7 +236,7 @@ curl -X POST http://localhost:8080/api/recommend \
 ### ArchiMate XML
 
 ```bash
-curl -X POST http://localhost:8080/api/diagram/archimate \
+curl -u admin:admin -X POST http://localhost:8080/api/diagram/archimate \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}' \
   -o architecture.xml
@@ -245,7 +247,7 @@ The resulting XML file can be imported into **Archi**, **BiZZdesign**, **MEGA**,
 ### Visio
 
 ```bash
-curl -X POST http://localhost:8080/api/diagram/visio \
+curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}' \
   -o architecture.vsdx
@@ -254,7 +256,7 @@ curl -X POST http://localhost:8080/api/diagram/visio \
 ### Mermaid
 
 ```bash
-curl -X POST http://localhost:8080/api/diagram/mermaid \
+curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}'
 ```
@@ -269,3 +271,109 @@ graph TD
     CP-1023 -->|supports| CO-1011
     CO-1011 -->|realises| CR-1047
 ```
+
+---
+
+## 7. Maritime Surveillance — End-to-End
+
+**Goal:** Walk through a complete workflow — from requirement to exported architecture.
+
+### Requirement
+
+> _"Establish maritime surveillance capability for threat detection and vessel tracking in littoral waters."_
+
+### Step 1 — Analyze
+
+Paste the requirement into the analysis panel and click **Analyze with AI**.
+
+The system scores all ~2,500 taxonomy nodes. Top matches might include:
+
+| Code | Node | Score |
+|---|---|---|
+| CP-1022 | Intelligence Capabilities | 89 |
+| CI-1023 | Surveillance Services | 85 |
+| CR-1047 | Infrastructure Services | 78 |
+| BP-1481 | Protect | 72 |
+
+### Step 2 — Review the architecture view
+
+The architecture view groups scored nodes by layer (Capability → Service → Process) and shows relations between them.
+
+### Step 3 — Check for gaps
+
+The gap analysis (automatic or via `POST /api/gap/analyze`) may identify:
+- Missing link between Intelligence Capabilities and Surveillance Services
+- Incomplete "Full Stack" pattern (no Information Product layer)
+
+### Step 4 — Generate relation proposals
+
+Click **Propose Relations** in the Relation Proposals panel. The AI might suggest:
+- `CI-1023 REALIZES CP-1022` — "Surveillance services realize the intelligence capability"
+- `CR-1047 SUPPORTS CI-1023` — "Infrastructure services support surveillance"
+
+Accept the proposals that make sense; reject the rest.
+
+### Step 5 — Export
+
+Click **ArchiMate** to download the architecture as XML. Import into Archi or BiZZdesign for further refinement.
+
+---
+
+## 8. Architecture DSL Workflow
+
+**Goal:** Use the text-based DSL to define and version architecture elements.
+
+### Step 1 — Export current state as DSL
+
+```bash
+curl -u admin:admin "http://localhost:8080/api/dsl/export"
+```
+
+Returns DSL text like:
+
+```
+meta {
+  language: "taxdsl";
+  version: "2.0";
+  namespace: "maritime-surveillance";
+}
+
+element CP-1022 type Capability {
+  title: "Intelligence Capabilities";
+}
+
+element CI-1023 type Service {
+  title: "Surveillance Services";
+}
+
+relation CI-1023 REALIZES CP-1022 {
+  status: accepted;
+  provenance: AI_PROPOSED;
+}
+```
+
+### Step 2 — Edit and commit
+
+Modify the DSL (add elements, relations, evidence) and commit:
+
+```bash
+curl -u admin:admin -X POST "http://localhost:8080/api/dsl/commit?branch=draft&message=add+surveillance+relations" \
+  -H "Content-Type: text/plain" \
+  -d @architecture.taxdsl
+```
+
+### Step 3 — Review changes
+
+View the diff between two commits:
+
+```bash
+curl -u admin:admin "http://localhost:8080/api/dsl/diff/semantic/{beforeId}/{afterId}"
+```
+
+### Step 4 — Merge to accepted
+
+```bash
+curl -u admin:admin -X POST "http://localhost:8080/api/dsl/merge?fromBranch=draft&intoBranch=accepted"
+```
+
+The merged changes are materialized into the relation database and become visible in the graph and architecture views.
