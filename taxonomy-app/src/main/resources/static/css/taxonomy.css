@@ -1125,3 +1125,149 @@
 .admin-unlocked #mainNavTabs .admin-only {
     display: list-item;
 }
+
+/* ── Help Tab ──────────────────────────────────────────────────────────── */
+.help-layout {
+    display: flex;
+    gap: 0;
+    height: calc(100vh - 120px);
+    overflow: hidden;
+}
+
+.help-sidebar {
+    width: 260px;
+    min-width: 200px;
+    flex-shrink: 0;
+    border-right: 1px solid #dee2e6;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.help-search-wrap {
+    padding: 8px 10px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.help-toc-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: 4px 0;
+}
+
+.help-toc-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    margin: 1px 4px;
+    transition: background 0.12s;
+}
+
+.help-toc-item:hover {
+    background: #f0f4fa;
+}
+
+.help-toc-item.active {
+    background: #e7f0ff;
+    font-weight: 600;
+}
+
+.help-toc-link {
+    text-decoration: none;
+    color: inherit;
+    font-size: 0.875rem;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.help-toc-link:hover {
+    text-decoration: none;
+    color: inherit;
+}
+
+.help-audience-badge {
+    font-size: 0.65rem;
+    background: #e9ecef;
+    color: #6c757d;
+    border-radius: 10px;
+    padding: 1px 6px;
+    white-space: nowrap;
+    margin-left: 6px;
+    flex-shrink: 0;
+}
+
+.help-content-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 24px;
+    position: relative;
+}
+
+.help-doc-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.help-doc-content {
+    font-size: 0.92rem;
+    line-height: 1.7;
+}
+
+.help-doc-content h1 { font-size: 1.5rem; margin-top: 1.4em; }
+.help-doc-content h2 { font-size: 1.25rem; margin-top: 1.2em; }
+.help-doc-content h3 { font-size: 1.05rem; margin-top: 1em; }
+.help-doc-content code { font-size: 0.85em; padding: 1px 4px; background: #f4f4f4; border-radius: 3px; }
+.help-doc-content pre  { background: #f4f4f4; padding: 12px; border-radius: 6px; overflow-x: auto; }
+.help-doc-content pre code { background: none; padding: 0; }
+.help-doc-content table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.875rem; }
+.help-doc-content th, .help-doc-content td { border: 1px solid #dee2e6; padding: 6px 10px; }
+.help-doc-content th { background: #f8f9fa; font-weight: 600; }
+.help-doc-content img { max-width: 100%; height: auto; border-radius: 4px; border: 1px solid #dee2e6; margin: 8px 0; }
+.help-doc-content a { color: #0d6efd; }
+.help-doc-content blockquote { border-left: 4px solid #0d6efd; padding-left: 12px; color: #6c757d; margin: 8px 0; }
+
+.help-back-to-top {
+    position: sticky;
+    bottom: 16px;
+    float: right;
+    background: #0d6efd;
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    transition: background 0.15s;
+}
+
+.help-back-to-top:hover { background: #0b5ed7; }
+
+/* Responsive: stack sidebar on small screens */
+@media (max-width: 768px) {
+    .help-layout { flex-direction: column; height: auto; }
+    .help-sidebar { width: 100%; border-right: none; border-bottom: 1px solid #dee2e6; max-height: 220px; }
+    .help-content-area { padding: 12px; }
+}
+
+/* Dark mode */
+[data-bs-theme="dark"] .help-sidebar { border-right-color: #444; }
+[data-bs-theme="dark"] .help-search-wrap { border-bottom-color: #444; }
+[data-bs-theme="dark"] .help-toc-item:hover { background: #2b3035; }
+[data-bs-theme="dark"] .help-toc-item.active { background: #1c3461; }
+[data-bs-theme="dark"] .help-audience-badge { background: #3a3f45; color: #9ca3af; }
+[data-bs-theme="dark"] .help-doc-title { border-bottom-color: #444; }
+[data-bs-theme="dark"] .help-doc-content code { background: #2b3035; color: #f8f9fa; }
+[data-bs-theme="dark"] .help-doc-content pre { background: #2b3035; }
+[data-bs-theme="dark"] .help-doc-content th { background: #343a40; }
+[data-bs-theme="dark"] .help-doc-content td, [data-bs-theme="dark"] .help-doc-content th { border-color: #444; }
+[data-bs-theme="dark"] .help-doc-content img { border-color: #444; }
