@@ -1,12 +1,12 @@
 package com.taxonomy.controller;
 
-import com.taxonomy.service.RepositoryStateService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -19,13 +19,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
 class ViewContextIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
-
-    @Autowired
-    private RepositoryStateService repositoryStateService;
 
     @Test
     void materializeResponseViewContextNotNull() throws Exception {
@@ -54,22 +52,27 @@ class ViewContextIntegrationTest {
 
     @Test
     void historyEndpointReturnsViewContextField() throws Exception {
-        // The history endpoint wraps commits with viewContext — verify structure
-        // Using default branch which may or may not have commits
-        var result = mockMvc.perform(get("/api/dsl/history"))
-                .andReturn();
-        // Accept both 200 (success) and 500 (shared DslGitRepository state in test suite)
-        int status = result.getResponse().getStatus();
-        if (status == 200) {
-            mockMvc.perform(get("/api/dsl/history"))
-                    .andExpect(jsonPath("$.viewContext").exists())
-                    .andExpect(jsonPath("$.commits").isArray());
-        }
+        // Seed a commit on the default "draft" branch (always present)
+        String dsl = """
+                element CP-1023 type Capability {
+                  title: "History Seed";
+                }
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(dsl)
+                        .param("branch", "draft"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/dsl/history").param("branch", "draft"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.viewContext").exists())
+                .andExpect(jsonPath("$.viewContext.basedOnBranch").value("draft"))
+                .andExpect(jsonPath("$.commits").isArray());
     }
 
     @Test
     void reportJsonContainsViewContext() throws Exception {
-        // First analyze something to have scores
         String requestBody = """
                 {
                     "scores": {"CP-1023": 80},
@@ -87,7 +90,7 @@ class ViewContextIntegrationTest {
     }
 
     @Test
-    void viewContextProjectionStaleCorrectAfterMaterialization() throws Exception {
+    void viewContextProjectionNotStaleAfterMaterialization() throws Exception {
         // After materialization, projection should not be stale
         String dsl = """
                 element CP-1023 type Capability {
@@ -99,7 +102,7 @@ class ViewContextIntegrationTest {
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(dsl))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.viewContext.projectionStale").isBoolean());
+                .andExpect(jsonPath("$.viewContext.projectionStale").value(false));
     }
 
     @Test

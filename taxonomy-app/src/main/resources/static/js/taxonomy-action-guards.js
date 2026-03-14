@@ -6,7 +6,6 @@
  *
  * <p>Buttons opt-in via data-guard attributes:
  *   data-guard="commit|merge|cherry-pick|import|export|analyze|materialize"
- *   data-guard-branch="draft" (optional, defaults to "draft")
  *
  * <p>Guard rules:
  *   - operationInProgress blocks: commit, merge, cherry-pick, import, materialize
@@ -20,6 +19,11 @@ window.TaxonomyActionGuards = (function () {
     var BLOCK_ON_OPERATION = ['commit', 'merge', 'cherry-pick', 'import', 'materialize'];
     var WARN_ON_PROJECTION_STALE = ['export', 'accept-hypothesis'];
     var WARN_ON_INDEX_STALE = ['analyze'];
+
+    // Data attribute used to store the original title before guards overwrite it
+    var ORIG_TITLE_ATTR = 'data-guard-original-title';
+    // Data attribute set when a guard blocks the button (so we only re-enable our own blocks)
+    var GUARD_BLOCKED_ATTR = 'data-guard-blocked';
 
     function escapeHtml(s) {
         if (!s) return '';
@@ -44,32 +48,56 @@ window.TaxonomyActionGuards = (function () {
     }
 
     /**
+     * Store the original title once so it can be restored later.
+     */
+    function saveOriginalTitle(btn) {
+        if (!btn.hasAttribute(ORIG_TITLE_ATTR)) {
+            btn.setAttribute(ORIG_TITLE_ATTR, btn.getAttribute('title') || '');
+        }
+    }
+
+    /**
+     * Restore the original title that was present before guards were applied.
+     */
+    function restoreOriginalTitle(btn) {
+        if (btn.hasAttribute(ORIG_TITLE_ATTR)) {
+            var original = btn.getAttribute(ORIG_TITLE_ATTR);
+            if (original) {
+                btn.setAttribute('title', original);
+            } else {
+                btn.removeAttribute('title');
+            }
+        }
+    }
+
+    /**
      * Apply guard logic to a single button.
      */
     function applyGuard(btn, guardType, state) {
-        // Remove previous guard state
-        btn.classList.remove('guard-blocked');
-        btn.removeAttribute('title');
+        // Save the original title on first encounter
+        saveOriginalTitle(btn);
+
+        // Clear previous guard state
         removeWarningBadge(btn);
 
-        // Check blocks
+        // If we previously blocked this button, unblock it first
+        if (btn.hasAttribute(GUARD_BLOCKED_ATTR)) {
+            btn.classList.remove('guard-blocked');
+            btn.disabled = false;
+            btn.removeAttribute(GUARD_BLOCKED_ATTR);
+        }
+
+        // Restore original title (may be overwritten below by a guard message)
+        restoreOriginalTitle(btn);
+
+        // Check blocks: operation in progress blocks write operations
         if (state.operationInProgress && BLOCK_ON_OPERATION.indexOf(guardType) !== -1) {
             btn.classList.add('guard-blocked');
             btn.setAttribute('title',
                 'Blocked: ' + escapeHtml(state.operationKind || 'operation') + ' in progress — complete it first');
             btn.disabled = true;
+            btn.setAttribute(GUARD_BLOCKED_ATTR, 'true');
             return;
-        }
-
-        // Re-enable if previously blocked
-        if (btn.classList.contains('guard-blocked')) {
-            btn.classList.remove('guard-blocked');
-        }
-        // Only re-enable if not disabled for other reasons
-        if (btn.hasAttribute('data-guard-was-disabled')) {
-            // Don't re-enable — was disabled before guards applied
-        } else if (!state.operationInProgress && BLOCK_ON_OPERATION.indexOf(guardType) !== -1) {
-            btn.disabled = false;
         }
 
         // Check warnings

@@ -194,13 +194,20 @@ public class DslApiController {
             DslMaterializeService.MaterializeResult matResult =
                     materializeService.materializeIncremental(beforeDocId, afterDocId);
 
+            // Derive branch from the after document when available
+            String branch = "draft";
+            var afterDoc = documentRepository.findById(afterDocId);
+            if (afterDoc.isPresent() && afterDoc.get().getBranch() != null) {
+                branch = afterDoc.get().getBranch();
+            }
+
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("valid", matResult.valid());
             result.put("warnings", matResult.warnings());
             result.put("relationsCreated", matResult.relationsCreated());
             result.put("hypothesesCreated", matResult.hypothesesCreated());
             result.put("documentId", matResult.documentId());
-            result.put("viewContext", repositoryStateService.getViewContext("draft"));
+            result.put("viewContext", repositoryStateService.getViewContext(branch));
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             Map<String, Object> error = new LinkedHashMap<>();
@@ -281,6 +288,9 @@ public class DslApiController {
                 entry.put("author", c.author());
                 entry.put("message", c.message());
                 entry.put("timestamp", c.timestamp());
+                // Resolve documentId from the materialized document (if it exists)
+                var doc = documentRepository.findByCommitId(c.commitId());
+                entry.put("documentId", doc.map(d -> d.getId()).orElse(null));
                 history.add(entry);
             }
             ViewContext viewContext = repositoryStateService.getViewContext(branch);

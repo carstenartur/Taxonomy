@@ -105,7 +105,7 @@ window.TaxonomyViewContext = (function () {
                     basedOnCommit: state.headCommit,
                     basedOnBranch: state.currentBranch,
                     commitTimestamp: state.headTimestamp,
-                    includesProvisionalRelations: true,
+                    includesProvisionalRelations: false,
                     projectionStale: state.projectionStale,
                     indexStale: state.indexStale
                 });

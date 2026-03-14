@@ -1114,7 +1114,15 @@
             };
             var containerId = viewContextMap[pageName];
             if (containerId) {
-                window.TaxonomyViewContext.fetchAndRender(containerId);
+                // For DSL editor, use the currently selected branch
+                var branch = undefined;
+                if (pageName === 'dsl-editor') {
+                    var branchSelect = document.getElementById('dslBranchSelect');
+                    if (branchSelect && branchSelect.value) {
+                        branch = branchSelect.value;
+                    }
+                }
+                window.TaxonomyViewContext.fetchAndRender(containerId, branch);
             }
         }
     }
