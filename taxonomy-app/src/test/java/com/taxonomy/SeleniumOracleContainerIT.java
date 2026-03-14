@@ -9,7 +9,8 @@ import org.testcontainers.oracle.OracleContainer;
 /**
  * Selenium UI + REST tests against <strong>Oracle Database Free</strong>.
  * <p>
- * Tagged with {@code db-oracle}. Execute explicitly with:
+ * Tagged with {@code db-oracle} — included in the default {@code mvn verify}
+ * run (requires Docker). Execute explicitly with:
  * <pre>
  * mvn verify -DexcludedGroups=real-llm -Dit.test=SeleniumOracleContainerIT
  * </pre>

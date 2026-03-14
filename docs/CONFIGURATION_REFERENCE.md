@@ -173,8 +173,8 @@ Set `SPRING_PROFILES_ACTIVE` to select the database; the default is `hsqldb`.
 |---|---|---|---|---|
 | `SPRING_PROFILES_ACTIVE` | `spring.profiles.active` | String | `hsqldb` | Database profile. Set to `mssql` for SQL Server, `postgres` for PostgreSQL, or `oracle` for Oracle Database. |
 | `TAXONOMY_DATASOURCE_URL` | `spring.datasource.url` | String | *(profile-dependent)* | JDBC URL. Each profile provides a sensible default; override for custom hosts. |
-| `SPRING_DATASOURCE_USERNAME` | `spring.datasource.username` | String | `sa` | Database username. |
-| `SPRING_DATASOURCE_PASSWORD` | `spring.datasource.password` | String | *(empty)* | Database password. **Required** for MSSQL. |
+| `SPRING_DATASOURCE_USERNAME` | `spring.datasource.username` | String | *(profile-dependent)* | Database username. Default: `sa` (MSSQL), `taxonomy` (PostgreSQL, Oracle), `sa` (HSQLDB). |
+| `SPRING_DATASOURCE_PASSWORD` | `spring.datasource.password` | String | *(profile-dependent)* | Database password. Default: *(empty)* (HSQLDB), `taxonomy` (PostgreSQL, Oracle). **Required** for MSSQL (must meet complexity rules). |
 | `TAXONOMY_DDL_AUTO` | `spring.jpa.hibernate.ddl-auto` | String | `create` | Schema generation strategy. `create` rebuilds on each start (safe for in-memory default). Set to `update` for file-based deployments so data is not wiped on restart. |
 | — | `spring.jpa.show-sql` | Boolean | `false` | Whether to log SQL statements. |
 

@@ -22,7 +22,7 @@ Full multi-database support means end-to-end coverage across:
 - [x] Fix Oracle integration tests (Spring profile `oracle` + application-oracle.properties)
 - [x] Fix MSSQL integration tests (pinned container image, added `loginTimeout`, Spring profile)
 - [x] PostgreSQL integration tests verified
-- [x] Add database-specific CI workflow (MSSQL, PostgreSQL, and Oracle in `ci-cd.yml`)
+- [x] Include all DB integration tests (MSSQL, PostgreSQL, Oracle) in the main CI job (`ci-cd.yml`)
 
 ### GUI / Frontend
 - [ ] Database connection status indicator in the UI
