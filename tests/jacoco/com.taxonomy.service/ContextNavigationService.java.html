@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContextNavigationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">ContextNavigationService.java</span></div><h1>ContextNavigationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dto.ContextHistoryEntry;
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.NavigationReason;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Manages the current architecture context and navigation history.
+ *
+ * &lt;p&gt;Provides browser-like navigation: the user can open read-only snapshots,
+ * switch branches, return to origin, and navigate back through history.
+ *
+ * &lt;p&gt;This service is session-scoped in spirit (volatile fields for a single
+ * application instance). In a multi-user deployment, the state is shared
+ * but each navigation is atomic.
+ */
+@Service
+public class ContextNavigationService {
+
+<span class="fc" id="L34">    private static final Logger log = LoggerFactory.getLogger(ContextNavigationService.class);</span>
+
+    private final DslGitRepository gitRepository;
+    private final RepositoryStateService stateService;
+    private final int maxHistory;
+
+    private volatile ContextRef currentContext;
+<span class="fc" id="L41">    private final Deque&lt;ContextHistoryEntry&gt; history = new ArrayDeque&lt;&gt;();</span>
+
+    public ContextNavigationService(DslGitRepository gitRepository,
+                                    RepositoryStateService stateService,
+<span class="fc" id="L45">                                    @Value(&quot;${taxonomy.context.max-history:50}&quot;) int maxHistory) {</span>
+<span class="fc" id="L46">        this.gitRepository = gitRepository;</span>
+<span class="fc" id="L47">        this.stateService = stateService;</span>
+<span class="fc" id="L48">        this.maxHistory = maxHistory;</span>
+        // Initialise with default editable context on draft branch
+<span class="fc" id="L50">        this.currentContext = buildEditableContext(&quot;draft&quot;);</span>
+<span class="fc" id="L51">    }</span>
+
+    /**
+     * Get the current context reference.
+     *
+     * @return the current context, never null
+     */
+    public ContextRef getCurrentContext() {
+<span class="fc" id="L59">        return currentContext;</span>
+    }
+
+    /**
+     * Open a read-only context for a specific branch and commit.
+     *
+     * @param branch     the branch to view
+     * @param commitId   the commit SHA (null for HEAD)
+     * @param searchQuery the search query that led here (may be null)
+     * @param elementId  the matched element ID (may be null)
+     * @return the new read-only context
+     */
+    public ContextRef openReadOnly(String branch, String commitId,
+                                   String searchQuery, String elementId) {
+<span class="fc" id="L73">        String resolvedCommit = resolveCommit(branch, commitId);</span>
+
+<span class="fc" id="L75">        ContextRef previous = currentContext;</span>
+<span class="fc" id="L76">        ContextRef newCtx = new ContextRef(</span>
+<span class="fc" id="L77">                UUID.randomUUID().toString(),</span>
+                branch,
+                resolvedCommit,
+<span class="fc" id="L80">                Instant.now(),</span>
+                ContextMode.READ_ONLY,
+<span class="fc" id="L82">                previous.contextId(),</span>
+<span class="fc" id="L83">                previous.branch(),</span>
+<span class="fc" id="L84">                previous.commitId(),</span>
+                searchQuery,
+                elementId,
+                false
+        );
+
+<span class="fc" id="L90">        recordNavigation(previous.contextId(), newCtx.contextId(),</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                searchQuery != null ? NavigationReason.SEARCH_OPEN : NavigationReason.MANUAL_SWITCH);</span>
+<span class="fc" id="L92">        this.currentContext = newCtx;</span>
+<span class="fc" id="L93">        log.info(&quot;Opened read-only context: branch='{}', commit='{}'&quot;,</span>
+<span class="fc" id="L94">                branch, abbreviateSha(resolvedCommit));</span>
+<span class="fc" id="L95">        return newCtx;</span>
+    }
+
+    /**
+     * Switch the working context to a different branch/commit.
+     *
+     * &lt;p&gt;The new context is editable (unless the branch does not exist).
+     *
+     * @param branch   the branch to switch to
+     * @param commitId the commit SHA (null for HEAD)
+     * @return the new context
+     */
+    public ContextRef switchContext(String branch, String commitId) {
+<span class="fc" id="L108">        String resolvedCommit = resolveCommit(branch, commitId);</span>
+
+<span class="fc" id="L110">        ContextRef previous = currentContext;</span>
+<span class="fc" id="L111">        ContextRef newCtx = new ContextRef(</span>
+<span class="fc" id="L112">                UUID.randomUUID().toString(),</span>
+                branch,
+                resolvedCommit,
+<span class="fc" id="L115">                Instant.now(),</span>
+                ContextMode.EDITABLE,
+<span class="fc" id="L117">                previous.contextId(),</span>
+<span class="fc" id="L118">                previous.branch(),</span>
+<span class="fc" id="L119">                previous.commitId(),</span>
+                null,
+                null,
+                false
+        );
+
+<span class="fc" id="L125">        recordNavigation(previous.contextId(), newCtx.contextId(), NavigationReason.MANUAL_SWITCH);</span>
+<span class="fc" id="L126">        this.currentContext = newCtx;</span>
+<span class="fc" id="L127">        log.info(&quot;Switched context: branch='{}', commit='{}'&quot;,</span>
+<span class="fc" id="L128">                branch, abbreviateSha(resolvedCommit));</span>
+<span class="fc" id="L129">        return newCtx;</span>
+    }
+
+    /**
+     * Return to the origin context (the context from which we navigated away).
+     *
+     * @return the origin context, or the current context if no origin exists
+     */
+    public ContextRef returnToOrigin() {
+<span class="fc" id="L138">        ContextRef current = this.currentContext;</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (current.originContextId() == null) {</span>
+<span class="fc" id="L140">            log.debug(&quot;No origin context to return to&quot;);</span>
+<span class="fc" id="L141">            return current;</span>
+        }
+
+<span class="fc" id="L144">        ContextRef origin = new ContextRef(</span>
+<span class="fc" id="L145">                UUID.randomUUID().toString(),</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">                current.originBranch() != null ? current.originBranch() : &quot;draft&quot;,</span>
+<span class="fc" id="L147">                current.originCommitId(),</span>
+<span class="fc" id="L148">                Instant.now(),</span>
+                ContextMode.EDITABLE,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false
+        );
+
+<span class="fc" id="L158">        recordNavigation(current.contextId(), origin.contextId(), NavigationReason.RETURN);</span>
+<span class="fc" id="L159">        this.currentContext = origin;</span>
+<span class="fc" id="L160">        log.info(&quot;Returned to origin: branch='{}'&quot;, origin.branch());</span>
+<span class="fc" id="L161">        return origin;</span>
+    }
+
+    /**
+     * Go one step back in navigation history.
+     *
+     * @return the previous context, or the current context if history is empty
+     */
+    public ContextRef back() {
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (history.isEmpty()) {</span>
+<span class="fc" id="L171">            log.debug(&quot;Navigation history is empty — cannot go back&quot;);</span>
+<span class="fc" id="L172">            return currentContext;</span>
+        }
+
+<span class="fc" id="L175">        ContextHistoryEntry lastEntry = history.peekLast();</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">        if (lastEntry == null) {</span>
+<span class="nc" id="L177">            return currentContext;</span>
+        }
+
+        // Find the from-context in history and rebuild it
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        String targetBranch = currentContext.originBranch() != null</span>
+<span class="pc" id="L182">                ? currentContext.originBranch() : &quot;draft&quot;;</span>
+<span class="fc" id="L183">        String targetCommit = currentContext.originCommitId();</span>
+
+<span class="fc" id="L185">        ContextRef backCtx = new ContextRef(</span>
+<span class="fc" id="L186">                UUID.randomUUID().toString(),</span>
+                targetBranch,
+                targetCommit,
+<span class="fc" id="L189">                Instant.now(),</span>
+                ContextMode.EDITABLE,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false
+        );
+
+        // Remove the last history entry (we're going back)
+<span class="fc" id="L200">        history.pollLast();</span>
+<span class="fc" id="L201">        this.currentContext = backCtx;</span>
+<span class="fc" id="L202">        log.info(&quot;Navigated back to: branch='{}'&quot;, targetBranch);</span>
+<span class="fc" id="L203">        return backCtx;</span>
+    }
+
+    /**
+     * Get the full navigation history.
+     *
+     * @return list of navigation entries (newest last)
+     */
+    public List&lt;ContextHistoryEntry&gt; getHistory() {
+<span class="fc" id="L212">        return new ArrayList&lt;&gt;(history);</span>
+    }
+
+    /**
+     * Create a new branch variant from the current context.
+     *
+     * @param variantName the name for the new branch
+     * @return the new context on the variant branch
+     * @throws IOException if the branch creation fails
+     */
+    public ContextRef createVariantFromCurrent(String variantName) throws IOException {
+<span class="fc" id="L223">        ContextRef current = this.currentContext;</span>
+<span class="fc" id="L224">        String sourceBranch = current.branch();</span>
+
+<span class="fc" id="L226">        String newCommitId = gitRepository.createBranch(variantName, sourceBranch);</span>
+
+<span class="fc" id="L228">        ContextRef variantCtx = new ContextRef(</span>
+<span class="fc" id="L229">                UUID.randomUUID().toString(),</span>
+                variantName,
+                newCommitId,
+<span class="fc" id="L232">                Instant.now(),</span>
+                ContextMode.EDITABLE,
+<span class="fc" id="L234">                current.contextId(),</span>
+<span class="fc" id="L235">                current.branch(),</span>
+<span class="fc" id="L236">                current.commitId(),</span>
+                null,
+                null,
+                false
+        );
+
+<span class="fc" id="L242">        recordNavigation(current.contextId(), variantCtx.contextId(), NavigationReason.VARIANT_CREATED);</span>
+<span class="fc" id="L243">        this.currentContext = variantCtx;</span>
+<span class="fc" id="L244">        log.info(&quot;Created variant '{}' from branch '{}'&quot;, variantName, sourceBranch);</span>
+<span class="fc" id="L245">        return variantCtx;</span>
+    }
+
+    /**
+     * Check if the current context is read-only.
+     *
+     * @return true if edits should be blocked
+     */
+    public boolean isReadOnly() {
+<span class="fc bfc" id="L254" title="All 2 branches covered.">        return currentContext.mode() == ContextMode.READ_ONLY</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">            || currentContext.mode() == ContextMode.TEMPORARY;</span>
+    }
+
+    // ── Internal helpers ────────────────────────────────────────────
+
+    private ContextRef buildEditableContext(String branch) {
+<span class="fc" id="L261">        String commitId = resolveCommit(branch, null);</span>
+<span class="fc" id="L262">        return new ContextRef(</span>
+<span class="fc" id="L263">                UUID.randomUUID().toString(),</span>
+                branch,
+                commitId,
+<span class="fc" id="L266">                Instant.now(),</span>
+                ContextMode.EDITABLE,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false
+        );
+    }
+
+    private String resolveCommit(String branch, String commitId) {
+<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (commitId != null) {</span>
+<span class="fc" id="L279">            return commitId;</span>
+        }
+        try {
+<span class="fc" id="L282">            return gitRepository.getHeadCommit(branch);</span>
+<span class="nc" id="L283">        } catch (IOException e) {</span>
+<span class="nc" id="L284">            log.warn(&quot;Could not resolve HEAD for branch '{}': {}&quot;, branch, e.getMessage());</span>
+<span class="nc" id="L285">            return null;</span>
+        }
+    }
+
+    private void recordNavigation(String fromId, String toId, NavigationReason reason) {
+<span class="fc" id="L290">        history.addLast(new ContextHistoryEntry(fromId, toId, reason, Instant.now()));</span>
+<span class="pc bpc" id="L291" title="1 of 2 branches missed.">        while (history.size() &gt; maxHistory) {</span>
+<span class="nc" id="L292">            history.pollFirst();</span>
+        }
+<span class="fc" id="L294">    }</span>
+
+    private String abbreviateSha(String sha) {
+<span class="pc bpc" id="L297" title="1 of 2 branches missed.">        if (sha == null) return &quot;null&quot;;</span>
+<span class="fc" id="L298">        return sha.substring(0, Math.min(7, sha.length()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
