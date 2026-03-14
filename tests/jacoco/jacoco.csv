@@ -21,7 +21,9 @@ Taxonomy Application,com.taxonomy.controller,ImportApiController,47,45,1,3,7,12,
 Taxonomy Application,com.taxonomy.controller,ProposalApiController,134,185,23,19,34,51,16,15,1,9
 Taxonomy Application,com.taxonomy.controller,GapAnalysisApiController,0,32,0,2,0,10,0,4,0,3
 Taxonomy Application,com.taxonomy.controller,ArchiMateImportController,20,25,0,2,5,8,0,4,0,3
+Taxonomy Application,com.taxonomy.controller,HelpController,88,273,18,8,20,35,13,8,1,7
 Taxonomy Application,com.taxonomy.controller,DslApiController,285,1171,13,33,68,242,16,41,6,28
+Taxonomy Application,com.taxonomy.controller,HelpController.DocEntry,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.controller,PatternDetectionApiController,1,29,1,1,0,9,1,3,0,3
 Taxonomy Application,com.taxonomy.controller,PatternDetectionApiController.PatternDetectionRequest,0,9,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.controller,RecommendationApiController,1,23,1,1,0,8,1,2,0,2
