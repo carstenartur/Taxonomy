@@ -9,7 +9,7 @@ Quick-reference curl examples for common workflows. All examples assume the appl
 # Replace with your configured credentials if TAXONOMY_ADMIN_PASSWORD is set.
 ```
 
-For the full interactive API reference, see [Swagger UI](http://localhost:8080/swagger-ui.html) or the [API Reference redirect](API_REFERENCE.md) which links to the auto-generated Swagger documentation.
+For the full interactive API reference, see [Swagger UI](http://localhost:8080/swagger-ui.html) or the [API Reference](API_REFERENCE.md) which includes endpoint descriptions, request/response examples, and error codes.
 
 ---
 
