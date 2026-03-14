@@ -63,6 +63,10 @@ public class SecurityConfig {
                 auth.requestMatchers(HttpMethod.PUT,    "/api/git/**").hasAnyRole("ARCHITECT", "ADMIN");
                 auth.requestMatchers(HttpMethod.DELETE,  "/api/git/**").hasAnyRole("ARCHITECT", "ADMIN");
 
+                // Context navigation — reads for any user, writes for ARCHITECT/ADMIN
+                auth.requestMatchers(HttpMethod.GET,    "/api/context/**").authenticated();
+                auth.requestMatchers(HttpMethod.POST,   "/api/context/**").hasAnyRole("ARCHITECT", "ADMIN");
+
                 auth.requestMatchers(HttpMethod.POST,   "/api/export/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
 
                 // Reading API — any authenticated user

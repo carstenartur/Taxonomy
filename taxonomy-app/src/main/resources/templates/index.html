@@ -26,6 +26,9 @@
 <!-- Global Git status bar — shows branch, HEAD commit, projection/index freshness -->
 <div id="gitStatusBar" class="git-status-bar d-none"></div>
 
+<!-- Context Navigation Bar — shows current context, mode, navigation controls -->
+<div id="contextBar" class="d-none"></div>
+
 <!-- Page navigation -->
 <div class="bg-dark border-top border-secondary">
     <div class="container-fluid px-3">
@@ -1002,6 +1005,10 @@
 </script>
 <script th:src="@{/js/taxonomy-git-status.js}"></script>
 <script th:src="@{/js/taxonomy-viewcontext.js}"></script>
+<script th:src="@{/js/taxonomy-context-bar.js}"></script>
+<script th:src="@{/js/taxonomy-history-search.js}"></script>
+<script th:src="@{/js/taxonomy-context-compare.js}"></script>
+<script th:src="@{/js/taxonomy-context-transfer.js}"></script>
 <script th:src="@{/js/taxonomy-action-guards.js}"></script>
 <script th:src="@{/js/taxonomy-versions.js}"></script>
 <script th:src="@{/js/taxonomy-export.js}"></script>
@@ -1308,6 +1315,87 @@
     updateSystemStatus();
 }());
 </script>
+
+<!-- ── Context Bar Initialization ───────────────────────────────────────── -->
+<script>
+(function () {
+    'use strict';
+    if (window.TaxonomyContextBar) {
+        document.addEventListener('DOMContentLoaded', function () {
+            window.TaxonomyContextBar.init('contextBar');
+        });
+    }
+}());
+</script>
+
+<!-- ── Context Compare Modal ────────────────────────────────────────────── -->
+<div class="modal fade" id="contextCompareModal" tabindex="-1" aria-labelledby="contextCompareModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="contextCompareModalLabel">&#8596; Compare Contexts</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label for="compareLeftBranch" class="form-label">Left Branch</label>
+                        <input type="text" class="form-control form-control-sm" id="compareLeftBranch" value="draft"/>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="compareLeftCommit" class="form-label">Left Commit (optional)</label>
+                        <input type="text" class="form-control form-control-sm" id="compareLeftCommit" placeholder="HEAD"/>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="compareRightBranch" class="form-label">Right Branch</label>
+                        <input type="text" class="form-control form-control-sm" id="compareRightBranch" value="draft"/>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="compareRightCommit" class="form-label">Right Commit (optional)</label>
+                        <input type="text" class="form-control form-control-sm" id="compareRightCommit" placeholder="HEAD"/>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-sm mb-3" onclick="TaxonomyContextCompare.doCompare()">Compare</button>
+                <div id="contextCompareResults"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Context Transfer Modal ───────────────────────────────────────────── -->
+<div class="modal fade" id="contextTransferModal" tabindex="-1" aria-labelledby="contextTransferModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="contextTransferModalLabel">&#128228; Selective Transfer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="transferSourceCommit" class="form-label">Source Commit</label>
+                        <input type="text" class="form-control form-control-sm" id="transferSourceCommit"/>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="transferTargetCommit" class="form-label">Target Commit</label>
+                        <input type="text" class="form-control form-control-sm" id="transferTargetCommit"/>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="transferElementIds" class="form-label">Element IDs (comma-separated)</label>
+                    <input type="text" class="form-control form-control-sm" id="transferElementIds" placeholder="CP-1023, CR-1047"/>
+                </div>
+                <div class="mb-3">
+                    <label for="transferRelationIds" class="form-label">Relation Keys (comma-separated)</label>
+                    <input type="text" class="form-control form-control-sm" id="transferRelationIds" placeholder="CP-1023 REALIZES CR-1047"/>
+                </div>
+                <button class="btn btn-outline-primary btn-sm me-2" onclick="TaxonomyContextTransfer.previewTransfer()">Preview</button>
+                <button class="btn btn-primary btn-sm" onclick="TaxonomyContextTransfer.applyTransfer()">Apply Transfer</button>
+                <div id="transferPreviewResults" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- ── Preferences Tab Script ───────────────────────────────────────────── -->
 <script>

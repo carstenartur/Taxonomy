@@ -15,11 +15,13 @@ import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.validation.DslValidationResult;
 import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.dto.ViewContext;
+import com.taxonomy.dto.VersionedSearchResult;
 import com.taxonomy.model.ArchitectureDslDocument;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.model.RelationHypothesis;
 import com.taxonomy.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.service.CommitIndexService;
+import com.taxonomy.service.ContextNavigationService;
 import com.taxonomy.service.ConflictDetectionService;
 import com.taxonomy.service.HypothesisService;
 import com.taxonomy.service.RepositoryStateGuard;
@@ -62,6 +64,7 @@ public class DslApiController {
     private final ConflictDetectionService conflictDetectionService;
     private final RepositoryStateGuard stateGuard;
     private final RepositoryStateService repositoryStateService;
+    private final ContextNavigationService contextNavigationService;
 
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
@@ -76,7 +79,8 @@ public class DslApiController {
                             CommitIndexService commitIndexService,
                             ConflictDetectionService conflictDetectionService,
                             RepositoryStateGuard stateGuard,
-                            RepositoryStateService repositoryStateService) {
+                            RepositoryStateService repositoryStateService,
+                            ContextNavigationService contextNavigationService) {
         this.exportService = exportService;
         this.materializeService = materializeService;
         this.documentRepository = documentRepository;
@@ -86,6 +90,7 @@ public class DslApiController {
         this.conflictDetectionService = conflictDetectionService;
         this.stateGuard = stateGuard;
         this.repositoryStateService = repositoryStateService;
+        this.contextNavigationService = contextNavigationService;
     }
 
     // ── Export & current state ────────────────────────────────────────
@@ -819,5 +824,71 @@ public class DslApiController {
             return ResponseEntity.ok(result);
         }
         return ResponseEntity.ok(aggregation);
+    }
+
+    // ── Versioned History Search (Phase 2) ──────────────────────────
+
+    @GetMapping("/history/search-versioned")
+    @Operation(summary = "Search architecture history with version context",
+            description = "Full-text search returning results enriched with version metadata: " +
+                    "lineage info, recency, and suggested context actions.")
+    public ResponseEntity<List<VersionedSearchResult>> searchVersioned(
+            @RequestParam String query,
+            @RequestParam(defaultValue = "draft") String currentBranch,
+            @RequestParam(defaultValue = "50") int maxResults) {
+
+        var hits = commitIndexService.search(query, maxResults);
+        if (hits.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+
+        String headCommit;
+        try {
+            headCommit = gitRepository.getHeadCommit(currentBranch);
+        } catch (IOException e) {
+            headCommit = null;
+        }
+
+        // Find the latest overall and latest on current branch
+        var latestOverall = hits.stream()
+                .filter(h -> h.getCommitTimestamp() != null)
+                .max(java.util.Comparator.comparing(h -> h.getCommitTimestamp()))
+                .orElse(null);
+        var latestOnBranch = hits.stream()
+                .filter(h -> currentBranch.equals(h.getBranch()) && h.getCommitTimestamp() != null)
+                .max(java.util.Comparator.comparing(h -> h.getCommitTimestamp()))
+                .orElse(null);
+
+        final String resolvedHead = headCommit;
+        List<VersionedSearchResult> results = hits.stream().map(hit -> {
+            boolean onLineage = currentBranch.equals(hit.getBranch());
+            boolean isLatestOnBranch = latestOnBranch != null
+                    && hit.getCommitId().equals(latestOnBranch.getCommitId());
+            boolean isLatestOverall = latestOverall != null
+                    && hit.getCommitId().equals(latestOverall.getCommitId());
+
+            List<String> actions = new java.util.ArrayList<>();
+            actions.add("OPEN_READ_ONLY");
+            if (!onLineage || !isLatestOnBranch) {
+                actions.add("SWITCH");
+            }
+            actions.add("CREATE_VARIANT");
+            actions.add("COMPARE");
+
+            return new VersionedSearchResult(
+                    hit.getCommitId(),
+                    hit.getBranch(),
+                    hit.getCommitTimestamp(),
+                    hit.getAffectedElementIds(),
+                    hit.getMessage(),
+                    0.0f,
+                    onLineage,
+                    isLatestOnBranch,
+                    isLatestOverall,
+                    actions
+            );
+        }).toList();
+
+        return ResponseEntity.ok(results);
     }
 }
