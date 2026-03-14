@@ -518,6 +518,146 @@ public class DslGitRepository {
         }
     }
 
+    // ── Revert & undo operations ───────────────────────────────────
+
+    /**
+     * Revert a specific commit on a branch.
+     *
+     * <p>Creates a new commit that undoes the changes introduced by the
+     * specified commit. Uses a three-way merge where the base is the commit
+     * to revert, ours is the branch HEAD, and theirs is the parent of the
+     * commit to revert (i.e. the state before the commit).
+     *
+     * @param commitId the commit SHA to revert
+     * @param branch   the branch on which to create the revert commit
+     * @return the new revert commit SHA, or {@code null} if the revert failed
+     * @throws IOException on JGit errors
+     */
+    public String revert(String commitId, String branch) throws IOException {
+        ObjectId revertOid = ObjectId.fromString(commitId);
+
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            RevCommit revertCommit = walk.parseCommit(revertOid);
+
+            if (revertCommit.getParentCount() == 0) {
+                log.warn("Cannot revert initial commit {}", commitId);
+                return null;
+            }
+
+            String refName = Constants.R_HEADS + branch;
+            Ref branchRef = gitRepo.getRefDatabase().exactRef(refName);
+            if (branchRef == null) {
+                log.warn("Branch '{}' not found for revert", branch);
+                return null;
+            }
+
+            RevCommit branchHead = walk.parseCommit(branchRef.getObjectId());
+            RevCommit parentCommit = walk.parseCommit(revertCommit.getParent(0));
+
+            // Three-way merge: base=revertCommit, ours=branchHead, theirs=parentCommit
+            // This effectively applies the inverse of revertCommit's changes
+            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);
+            merger.setBase(revertCommit);
+            boolean success = merger.merge(branchHead, parentCommit);
+
+            if (!success) {
+                log.warn("Revert conflict for {} on '{}'", commitId, branch);
+                return null;
+            }
+
+            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {
+                CommitBuilder newCommit = new CommitBuilder();
+                newCommit.setTreeId(merger.getResultTreeId());
+                newCommit.setParentId(branchHead);
+                PersonIdent ident = new PersonIdent("taxonomy", "taxonomy@system");
+                newCommit.setAuthor(ident);
+                newCommit.setCommitter(ident);
+                newCommit.setMessage("Revert: " + revertCommit.getShortMessage());
+
+                ObjectId newCommitId = inserter.insert(newCommit);
+                inserter.flush();
+
+                RefUpdate ru = gitRepo.updateRef(refName);
+                ru.setNewObjectId(newCommitId);
+                ru.setForceUpdate(true);
+                ru.update();
+
+                log.info("Reverted {} on '{}': {}", commitId, branch, newCommitId.name());
+                return newCommitId.name();
+            }
+        }
+    }
+
+    /**
+     * Undo the last commit on a branch by resetting to its parent.
+     *
+     * <p>This is a simple "soft reset" — the branch ref is moved to the parent
+     * commit, effectively removing the last commit from the branch history.
+     * The commit object still exists in the repository but is no longer
+     * reachable from the branch.
+     *
+     * @param branch the branch name
+     * @return the new HEAD SHA (the parent), or {@code null} if no parent exists
+     * @throws IOException on JGit errors
+     */
+    public String undoLast(String branch) throws IOException {
+        String refName = Constants.R_HEADS + branch;
+        Ref branchRef = gitRepo.getRefDatabase().exactRef(refName);
+        if (branchRef == null) {
+            log.warn("Branch '{}' not found for undo", branch);
+            return null;
+        }
+
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            RevCommit headCommit = walk.parseCommit(branchRef.getObjectId());
+
+            if (headCommit.getParentCount() == 0) {
+                log.warn("Cannot undo: branch '{}' has only the initial commit", branch);
+                return null;
+            }
+
+            RevCommit parentCommit = walk.parseCommit(headCommit.getParent(0));
+
+            RefUpdate ru = gitRepo.updateRef(refName);
+            ru.setNewObjectId(parentCommit);
+            ru.setForceUpdate(true);
+            ru.update();
+
+            log.info("Undo last on '{}': {} → {}", branch, headCommit.name(), parentCommit.name());
+            return parentCommit.name();
+        }
+    }
+
+    /**
+     * Restore the DSL content from a specific commit as a new commit on the branch.
+     *
+     * <p>Reads the DSL text from the given commit and creates a new commit on
+     * the specified branch with that content. This is a "restore to version"
+     * operation — the branch moves forward with a new commit whose tree
+     * matches the old commit.
+     *
+     * @param commitId the source commit SHA to restore from
+     * @param branch   the branch to create the new commit on
+     * @return the new commit SHA, or {@code null} if the source commit was not found
+     * @throws IOException on JGit errors
+     */
+    public String restore(String commitId, String branch) throws IOException {
+        String dslText;
+        try {
+            dslText = getDslAtCommit(commitId);
+        } catch (org.eclipse.jgit.errors.MissingObjectException e) {
+            log.warn("Cannot restore: commit {} not found", commitId);
+            return null;
+        }
+        if (dslText == null) {
+            log.warn("Cannot restore: commit {} has no DSL content", commitId);
+            return null;
+        }
+
+        return commitDsl(branch, dslText, "taxonomy",
+                "Restored from version " + commitId.substring(0, 7));
+    }
+
     // ── State query helpers ────────────────────────────────────────
 
     /**

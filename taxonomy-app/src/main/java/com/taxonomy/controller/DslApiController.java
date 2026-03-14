@@ -513,6 +513,88 @@ public class DslApiController {
         }
     }
 
+    // ── Revert, undo & restore ─────────────────────────────────────
+
+    @PostMapping("/revert")
+    @Operation(summary = "Revert a specific commit on a branch",
+            description = "Creates a new commit that undoes the changes of the specified commit. " +
+                    "Uses three-way merge to cleanly reverse the commit.")
+    public ResponseEntity<Map<String, Object>> revert(
+            @RequestParam String commitId,
+            @RequestParam(defaultValue = "draft") String branch) {
+        try {
+            String newCommitId = gitRepository.revert(commitId, branch);
+            if (newCommitId == null) {
+                Map<String, Object> error = new LinkedHashMap<>();
+                error.put("error", "Revert failed (conflict, initial commit, or branch not found)");
+                return ResponseEntity.badRequest().body(error);
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("commitId", newCommitId);
+            result.put("branch", branch);
+            result.put("revertedCommit", commitId);
+            return ResponseEntity.ok(result);
+        } catch (org.eclipse.jgit.errors.MissingObjectException e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Revert failed: commit not found — " + e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (IOException e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Revert failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    @PostMapping("/undo")
+    @Operation(summary = "Undo the last commit on a branch",
+            description = "Resets the branch to its parent commit, effectively removing the last " +
+                    "commit from the branch history. Cannot undo the initial commit.")
+    public ResponseEntity<Map<String, Object>> undoLast(
+            @RequestParam(defaultValue = "draft") String branch) {
+        try {
+            String newHeadId = gitRepository.undoLast(branch);
+            if (newHeadId == null) {
+                Map<String, Object> error = new LinkedHashMap<>();
+                error.put("error", "Undo failed (branch not found or only initial commit)");
+                return ResponseEntity.badRequest().body(error);
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("commitId", newHeadId);
+            result.put("branch", branch);
+            return ResponseEntity.ok(result);
+        } catch (IOException e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Undo failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    @PostMapping("/restore")
+    @Operation(summary = "Restore DSL content from a specific commit",
+            description = "Creates a new commit on the branch with the DSL content from an older " +
+                    "commit. This is a forward-moving 'restore to version' operation.")
+    public ResponseEntity<Map<String, Object>> restore(
+            @RequestParam String commitId,
+            @RequestParam(defaultValue = "draft") String branch) {
+        try {
+            String newCommitId = gitRepository.restore(commitId, branch);
+            if (newCommitId == null) {
+                Map<String, Object> error = new LinkedHashMap<>();
+                error.put("error", "Restore failed: source commit not found or has no DSL content");
+                return ResponseEntity.badRequest().body(error);
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("commitId", newCommitId);
+            result.put("branch", branch);
+            result.put("restoredFrom", commitId);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Restore failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
     // ── Merge/Cherry-pick preview ───────────────────────────────────
 
     @GetMapping("/merge/preview")
