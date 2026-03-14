@@ -1,0 +1,63 @@
+/* ── Git Status Bar ─────────────────────────────────────── */
+.git-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 16px;
+    background: #1a1a2e;
+    border-bottom: 1px solid #333;
+    font-size: 0.78rem;
+    color: #ccc;
+    flex-wrap: wrap;
+}
+
+.git-status-bar .git-branch {
+    font-weight: 600;
+    color: #8be9fd;
+}
+
+.git-status-bar .git-sha {
+    font-family: monospace;
+    color: #aaa;
+    font-size: 0.72rem;
+}
+
+.git-status-bar .git-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.git-status-bar .git-indicator .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.git-status-bar .dot.fresh {
+    background-color: #50fa7b;
+}
+
+.git-status-bar .dot.stale {
+    background-color: #f1fa8c;
+}
+
+.git-status-bar .dot.error {
+    background-color: #ff5555;
+}
+
+.git-status-bar .git-operation {
+    color: #ff5555;
+    font-weight: 600;
+}
+
+.git-status-bar .git-sep {
+    color: #555;
+}
+
+/* Dark mode adjustments (already dark by default) */
+body.dark-mode .git-status-bar {
+    background: #0d0d1a;
+    border-bottom-color: #222;
+}

@@ -1,0 +1,77 @@
+package com.taxonomy.service;
+
+import com.taxonomy.dto.ProjectionState;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Guards write operations by checking the current repository state.
+ *
+ * <p>Before committing, materializing, cherry-picking, or merging, this
+ * component checks whether the operation is safe and returns warnings
+ * or blocks.
+ */
+@Component
+public class RepositoryStateGuard {
+
+    private final RepositoryStateService stateService;
+
+    public RepositoryStateGuard(RepositoryStateService stateService) {
+        this.stateService = stateService;
+    }
+
+    /**
+     * Result of a write-operation safety check.
+     *
+     * @param allowed  whether the operation may proceed
+     * @param warnings non-fatal issues the user should be aware of
+     * @param blocks   fatal issues that prevent the operation
+     */
+    public record OperationCheck(
+            boolean allowed,
+            List<String> warnings,
+            List<String> blocks
+    ) {}
+
+    /**
+     * Check whether a write operation is safe to perform.
+     *
+     * @param branch        the target branch
+     * @param operationType the type of operation (e.g. "commit", "materialize", "cherry-pick", "merge")
+     * @return the operation check result
+     */
+    public OperationCheck checkWriteOperation(String branch, String operationType) {
+        List<String> warnings = new ArrayList<>();
+        List<String> blocks = new ArrayList<>();
+
+        var state = stateService.getState(branch);
+
+        // Block if an operation is already in progress
+        if (state.operationInProgress()) {
+            blocks.add("A " + state.operationKind() + " operation is already in progress. " +
+                    "Complete or cancel it before starting a new operation.");
+        }
+
+        // Block if branch doesn't exist (for operations that require existing branch)
+        if (!"commit".equals(operationType) && state.headCommit() == null) {
+            blocks.add("Branch '" + branch + "' does not exist or has no commits.");
+        }
+
+        // Warn if projection is stale
+        ProjectionState ps = stateService.getProjectionState(branch);
+        if (ps.projectionStale()) {
+            warnings.add("DB projection is stale — it was built from a different commit than HEAD. " +
+                    "Consider re-materializing before this operation.");
+        }
+
+        // Warn if index is stale
+        if (ps.indexStale()) {
+            warnings.add("Search index is stale — search results may not reflect latest changes.");
+        }
+
+        boolean allowed = blocks.isEmpty();
+        return new OperationCheck(allowed, warnings, blocks);
+    }
+}

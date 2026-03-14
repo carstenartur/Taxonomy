@@ -19,7 +19,9 @@ import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.model.RelationHypothesis;
 import com.taxonomy.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.service.CommitIndexService;
+import com.taxonomy.service.ConflictDetectionService;
 import com.taxonomy.service.HypothesisService;
+import com.taxonomy.service.RepositoryStateGuard;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -55,6 +57,8 @@ public class DslApiController {
     private final HypothesisService hypothesisService;
     private final DslGitRepository gitRepository;
     private final CommitIndexService commitIndexService;
+    private final ConflictDetectionService conflictDetectionService;
+    private final RepositoryStateGuard stateGuard;
 
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
@@ -66,13 +70,17 @@ public class DslApiController {
                             ArchitectureDslDocumentRepository documentRepository,
                             HypothesisService hypothesisService,
                             DslGitRepository gitRepository,
-                            CommitIndexService commitIndexService) {
+                            CommitIndexService commitIndexService,
+                            ConflictDetectionService conflictDetectionService,
+                            RepositoryStateGuard stateGuard) {
         this.exportService = exportService;
         this.materializeService = materializeService;
         this.documentRepository = documentRepository;
         this.hypothesisService = hypothesisService;
         this.gitRepository = gitRepository;
         this.commitIndexService = commitIndexService;
+        this.conflictDetectionService = conflictDetectionService;
+        this.stateGuard = stateGuard;
     }
 
     // ── Export & current state ────────────────────────────────────────
@@ -476,6 +484,38 @@ public class DslApiController {
             error.put("error", "Merge failed: " + e.getMessage());
             return ResponseEntity.internalServerError().body(error);
         }
+    }
+
+    // ── Merge/Cherry-pick preview ───────────────────────────────────
+
+    @GetMapping("/merge/preview")
+    @Operation(summary = "Preview a merge: would it conflict?",
+            description = "Dry-run merge check. Returns whether the merge would succeed, " +
+                    "whether it's a fast-forward, or whether conflicts would occur.")
+    public ResponseEntity<ConflictDetectionService.MergePreview> previewMerge(
+            @RequestParam String from,
+            @RequestParam String into) {
+        return ResponseEntity.ok(conflictDetectionService.previewMerge(from, into));
+    }
+
+    @GetMapping("/cherry-pick/preview")
+    @Operation(summary = "Preview a cherry-pick: would it conflict?",
+            description = "Dry-run cherry-pick check. Returns whether the cherry-pick would succeed " +
+                    "or whether conflicts would occur.")
+    public ResponseEntity<ConflictDetectionService.CherryPickPreview> previewCherryPick(
+            @RequestParam String commitId,
+            @RequestParam(defaultValue = "review") String targetBranch) {
+        return ResponseEntity.ok(conflictDetectionService.previewCherryPick(commitId, targetBranch));
+    }
+
+    @GetMapping("/operation/check")
+    @Operation(summary = "Check whether a write operation is safe",
+            description = "Returns warnings (e.g. stale projection) and blocks (e.g. operation in progress) " +
+                    "for a given write operation type.")
+    public ResponseEntity<RepositoryStateGuard.OperationCheck> checkOperation(
+            @RequestParam(defaultValue = "draft") String branch,
+            @RequestParam String operationType) {
+        return ResponseEntity.ok(stateGuard.checkWriteOperation(branch, operationType));
     }
 
     // ── Git-backed read operations ──────────────────────────────────
