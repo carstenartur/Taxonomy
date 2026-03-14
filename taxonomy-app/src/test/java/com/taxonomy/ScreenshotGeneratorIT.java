@@ -503,6 +503,7 @@ class ScreenshotGeneratorIT {
     void captureSunburstView() throws IOException {
         driver.findElement(By.id("viewSunburst")).click();
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
+        wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "sunburst"));
         saveScreenshot("06-sunburst-view.png");
         driver.findElement(By.id("viewList")).click();
     }
@@ -512,6 +513,7 @@ class ScreenshotGeneratorIT {
     void captureTreeView() throws IOException {
         driver.findElement(By.id("viewTree")).click();
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewTree"), "class", "btn-primary"));
+        wait(10).until(ExpectedConditions.attributeContains(By.id("taxonomyTree"), "data-view-rendered", "tree"));
         saveScreenshot("07-tree-view.png");
         driver.findElement(By.id("viewList")).click();
     }
@@ -521,6 +523,7 @@ class ScreenshotGeneratorIT {
     void captureDecisionMapView() throws IOException {
         driver.findElement(By.id("viewDecision")).click();
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewDecision"), "class", "btn-primary"));
+        wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "decision"));
         saveScreenshot("08-decision-map-view.png");
         driver.findElement(By.id("viewList")).click();
     }
@@ -1285,6 +1288,8 @@ class ScreenshotGeneratorIT {
         // Switch to sunburst view — scores are already computed, so the sunburst will be coloured
         driver.findElement(By.id("viewSunburst")).click();
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
+        // Wait for the sunburst SVG to actually finish rendering
+        wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "sunburst"));
         saveScreenshot("39-scored-sunburst.png");
         // Reset to list view
         driver.findElement(By.id("viewList")).click();
