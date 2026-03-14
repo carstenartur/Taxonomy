@@ -1,6 +1,7 @@
 package com.taxonomy.service;
 
 import com.taxonomy.dto.ProjectionState;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -11,15 +12,18 @@ import java.util.List;
  *
  * <p>Before committing, materializing, cherry-picking, or merging, this
  * component checks whether the operation is safe and returns warnings
- * or blocks.
+ * or blocks. Also blocks writes when the current context is read-only.
  */
 @Component
 public class RepositoryStateGuard {
 
     private final RepositoryStateService stateService;
+    private final @Nullable ContextNavigationService contextNavigationService;
 
-    public RepositoryStateGuard(RepositoryStateService stateService) {
+    public RepositoryStateGuard(RepositoryStateService stateService,
+                                @Nullable ContextNavigationService contextNavigationService) {
         this.stateService = stateService;
+        this.contextNavigationService = contextNavigationService;
     }
 
     /**
@@ -45,6 +49,11 @@ public class RepositoryStateGuard {
     public OperationCheck checkWriteOperation(String branch, String operationType) {
         List<String> warnings = new ArrayList<>();
         List<String> blocks = new ArrayList<>();
+
+        // Block if current context is read-only
+        if (contextNavigationService != null && contextNavigationService.isReadOnly()) {
+            blocks.add("Current context is read-only. Switch to an editable context before making changes.");
+        }
 
         var state = stateService.getState(branch);
 

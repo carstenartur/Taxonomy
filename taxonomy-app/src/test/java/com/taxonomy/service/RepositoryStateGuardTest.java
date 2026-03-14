@@ -35,7 +35,7 @@ class RepositoryStateGuardTest {
     void setUp() {
         gitRepo = new DslGitRepository();
         stateService = new RepositoryStateService(gitRepo);
-        guard = new RepositoryStateGuard(stateService);
+        guard = new RepositoryStateGuard(stateService, null);
     }
 
     @Test
