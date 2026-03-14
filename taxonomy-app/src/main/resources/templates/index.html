@@ -1177,6 +1177,7 @@
             if (el.type === 'checkbox') {
                 el.checked = (val === true || val === 'true');
             } else if (el.type === 'password') {
+                // Show masked value as placeholder; keep field empty so blank = no change
                 el.placeholder = val ? String(val) : 'Leave blank to keep existing token';
                 el.value = '';
             } else {
@@ -1192,6 +1193,7 @@
             if (el.type === 'checkbox') {
                 changes[key] = el.checked;
             } else if (el.type === 'password') {
+                // Only include token if user actually typed something
                 if (el.value !== '') {
                     changes[key] = el.value;
                 }
@@ -1278,6 +1280,7 @@
         });
     }
 
+    // Wire up buttons
     document.addEventListener('DOMContentLoaded', function () {
         var saveBtn  = document.getElementById('prefSaveBtn');
         var resetBtn = document.getElementById('prefResetBtn');
@@ -1290,6 +1293,7 @@
         });
     });
 
+    // Load preferences when the tab becomes active
     document.querySelectorAll('#mainNavTabs .nav-link').forEach(function (link) {
         if (link.getAttribute('data-page') === 'preferences') {
             link.addEventListener('click', loadPreferences);

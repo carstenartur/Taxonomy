@@ -5,10 +5,14 @@ import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.model.TaxonomyNode;
+import com.taxonomy.preferences.PreferencesService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
@@ -64,6 +68,13 @@ public class LlmService {
     /** Maximum number of cross-reference nodes included in a leaf justification prompt. */
     private static final int MAX_CROSS_REFERENCES = 5;
 
+    /**
+     * Buffer added to the sleep duration in the outgoing RPM throttle (milliseconds).
+     * Accounts for minor clock drift so the oldest timestamp is guaranteed to have
+     * left the 60-second window before the next call is made.
+     */
+    private static final long THROTTLE_BUFFER_MS = 50L;
+
     private static final String OPENAI_URL   = "https://api.openai.com/v1/chat/completions";
     private static final String DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
     private static final String QWEN_URL     = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
@@ -113,6 +124,19 @@ public class LlmService {
     private final LocalEmbeddingService localEmbeddingService;
     private final SavedAnalysisService savedAnalysisService;
     private final LlmResponseParser responseParser;
+
+    /** Optional — injected lazily to avoid circular dependencies. May be {@code null}. */
+    @Autowired(required = false)
+    @Lazy
+    private PreferencesService preferencesService;
+
+    /** Optional — injected lazily so the timeout can be updated at runtime. May be {@code null}. */
+    @Autowired(required = false)
+    private SimpleClientHttpRequestFactory llmRequestFactory;
+
+    // ── Outgoing RPM throttle (sliding window) ────────────────────────────────
+    /** Timestamps (ms) of the most recent outgoing LLM API calls, kept in a FIFO queue. */
+    private final ArrayDeque<Long> callTimestamps = new ArrayDeque<>();
 
     // ── Cached mock data loaded from classpath ────────────────────────────────
     private volatile SavedAnalysis cachedMockAnalysis = null;
@@ -775,6 +799,8 @@ public class LlmService {
      * on error (including logging). Rate-limit exceptions are propagated.
      */
     private String callGeminiHttpBody(String prompt, String apiKey) {
+        throttleOutgoingLlmCall();
+        applyCurrentTimeout();
         Map<String, Object> body    = new LinkedHashMap<>();
         Map<String, Object> content = new LinkedHashMap<>();
         Map<String, Object> part    = new LinkedHashMap<>();
@@ -841,6 +867,8 @@ public class LlmService {
      */
     private String callOpenAiCompatibleHttpBody(String prompt, String apiKey,
                                                  LlmProvider provider) {
+        throttleOutgoingLlmCall();
+        applyCurrentTimeout();
         String url = switch (provider) {
             case OPENAI   -> OPENAI_URL;
             case DEEPSEEK -> DEEPSEEK_URL;
@@ -1154,4 +1182,60 @@ public class LlmService {
             return "Error generating justification: " + e.getMessage();
         }
     }
+
+    // ── Outgoing RPM throttle ─────────────────────────────────────────────────
+
+    /**
+     * Paces outgoing LLM API calls to respect the configured {@code llm.rpm} preference.
+     *
+     * <p>Uses a sliding-window approach: the timestamps of the most recent calls are kept
+     * in a FIFO queue. If the number of calls in the last 60 seconds has reached the rpm
+     * limit, the current thread sleeps until the oldest call falls outside the window.
+     *
+     * <p>No-op when {@code PreferencesService} is not available or rpm is ≤ 0.
+     */
+    private synchronized void throttleOutgoingLlmCall() {
+        if (preferencesService == null) return;
+        int rpm = preferencesService.getInt("llm.rpm", 5);
+        if (rpm <= 0) return;
+
+        long now = System.currentTimeMillis();
+        long windowStart = now - 60_000L;
+
+        // Discard timestamps older than 1 minute
+        while (!callTimestamps.isEmpty() && callTimestamps.peekFirst() < windowStart) {
+            callTimestamps.pollFirst();
+        }
+
+        // If we've reached the rpm limit, sleep until the oldest call clears the window
+        if (callTimestamps.size() >= rpm) {
+            long oldest = callTimestamps.peekFirst();
+            long sleepMs = oldest + 60_000L - System.currentTimeMillis() + THROTTLE_BUFFER_MS;
+            if (sleepMs > 0) {
+                log.debug("LLM RPM throttle: sleeping {}ms (rpm={}, calls in window={})",
+                        sleepMs, rpm, callTimestamps.size());
+                try {
+                    Thread.sleep(sleepMs);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+
+        callTimestamps.addLast(System.currentTimeMillis());
+    }
+
+    /**
+     * Updates the HTTP read timeout on the shared {@link SimpleClientHttpRequestFactory}
+     * from the current {@code llm.timeout.seconds} preference value.
+     *
+     * <p>This allows the timeout to be changed at runtime via the Preferences API without
+     * an application restart. No-op when neither factory nor preferences are available.
+     */
+    private void applyCurrentTimeout() {
+        if (preferencesService == null || llmRequestFactory == null) return;
+        int timeoutSeconds = preferencesService.getInt("llm.timeout.seconds", 30);
+        llmRequestFactory.setReadTimeout(timeoutSeconds * 1000);
+    }
 }
+
