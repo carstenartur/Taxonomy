@@ -36,49 +36,50 @@ import org.springframework.security.web.SecurityFilterChain;
 
                 // Admin-only
 <span class="fc" id="L38">                .requestMatchers(&quot;/admin/**&quot;, &quot;/api/admin/**&quot;).hasRole(&quot;ADMIN&quot;)</span>
+<span class="fc" id="L39">                .requestMatchers(&quot;/api/preferences/**&quot;).hasRole(&quot;ADMIN&quot;)</span>
 
                 // Write operations on architecture endpoints — ARCHITECT or ADMIN
-<span class="fc" id="L41">                .requestMatchers(HttpMethod.POST,   &quot;/api/relations/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
-<span class="fc" id="L42">                .requestMatchers(HttpMethod.PUT,    &quot;/api/relations/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
-<span class="fc" id="L43">                .requestMatchers(HttpMethod.DELETE,  &quot;/api/relations/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L42">                .requestMatchers(HttpMethod.POST,   &quot;/api/relations/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L43">                .requestMatchers(HttpMethod.PUT,    &quot;/api/relations/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L44">                .requestMatchers(HttpMethod.DELETE,  &quot;/api/relations/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
 
-<span class="fc" id="L45">                .requestMatchers(HttpMethod.POST,   &quot;/api/dsl/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
-<span class="fc" id="L46">                .requestMatchers(HttpMethod.PUT,    &quot;/api/dsl/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
-<span class="fc" id="L47">                .requestMatchers(HttpMethod.DELETE,  &quot;/api/dsl/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L46">                .requestMatchers(HttpMethod.POST,   &quot;/api/dsl/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L47">                .requestMatchers(HttpMethod.PUT,    &quot;/api/dsl/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L48">                .requestMatchers(HttpMethod.DELETE,  &quot;/api/dsl/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
 
-<span class="fc" id="L49">                .requestMatchers(HttpMethod.POST,   &quot;/api/git/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
-<span class="fc" id="L50">                .requestMatchers(HttpMethod.PUT,    &quot;/api/git/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
-<span class="fc" id="L51">                .requestMatchers(HttpMethod.DELETE,  &quot;/api/git/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L50">                .requestMatchers(HttpMethod.POST,   &quot;/api/git/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L51">                .requestMatchers(HttpMethod.PUT,    &quot;/api/git/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L52">                .requestMatchers(HttpMethod.DELETE,  &quot;/api/git/**&quot;).hasAnyRole(&quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
 
-<span class="fc" id="L53">                .requestMatchers(HttpMethod.POST,   &quot;/api/export/**&quot;).hasAnyRole(&quot;USER&quot;, &quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
+<span class="fc" id="L54">                .requestMatchers(HttpMethod.POST,   &quot;/api/export/**&quot;).hasAnyRole(&quot;USER&quot;, &quot;ARCHITECT&quot;, &quot;ADMIN&quot;)</span>
 
                 // Reading API — any authenticated user
-<span class="fc" id="L56">                .requestMatchers(HttpMethod.GET, &quot;/api/**&quot;).authenticated()</span>
+<span class="fc" id="L57">                .requestMatchers(HttpMethod.GET, &quot;/api/**&quot;).authenticated()</span>
 
                 // POST to analyze/search etc. — any authenticated user
-<span class="fc" id="L59">                .requestMatchers(HttpMethod.POST, &quot;/api/analyze&quot;).authenticated()</span>
-<span class="fc" id="L60">                .requestMatchers(HttpMethod.POST, &quot;/api/justify-leaf&quot;).authenticated()</span>
+<span class="fc" id="L60">                .requestMatchers(HttpMethod.POST, &quot;/api/analyze&quot;).authenticated()</span>
+<span class="fc" id="L61">                .requestMatchers(HttpMethod.POST, &quot;/api/justify-leaf&quot;).authenticated()</span>
 
                 // GUI — any authenticated user
-<span class="fc" id="L63">                .requestMatchers(&quot;/**&quot;).authenticated()</span>
+<span class="fc" id="L64">                .requestMatchers(&quot;/**&quot;).authenticated()</span>
             )
-<span class="fc" id="L65">            .csrf(csrf -&gt; csrf</span>
+<span class="fc" id="L66">            .csrf(csrf -&gt; csrf</span>
                 // Disable CSRF for REST API paths — stateless HTTP Basic clients cannot
                 // participate in CSRF token exchange.  Browser-based sessions that call
                 // /api/** via fetch() still include the CSRF token from the meta tags,
                 // but it is simply ignored for these paths.
-<span class="fc" id="L70">                .ignoringRequestMatchers(&quot;/api/**&quot;)</span>
+<span class="fc" id="L71">                .ignoringRequestMatchers(&quot;/api/**&quot;)</span>
             )
-<span class="fc" id="L72">            .formLogin(Customizer.withDefaults())</span>
-<span class="fc" id="L73">            .httpBasic(Customizer.withDefaults())</span>
-<span class="fc" id="L74">            .logout(Customizer.withDefaults());</span>
+<span class="fc" id="L73">            .formLogin(Customizer.withDefaults())</span>
+<span class="fc" id="L74">            .httpBasic(Customizer.withDefaults())</span>
+<span class="fc" id="L75">            .logout(Customizer.withDefaults());</span>
 
-<span class="fc" id="L76">        return http.build();</span>
+<span class="fc" id="L77">        return http.build();</span>
     }
 
     @Bean
     PasswordEncoder passwordEncoder() {
-<span class="fc" id="L81">        return new BCryptPasswordEncoder();</span>
+<span class="fc" id="L82">        return new BCryptPasswordEncoder();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

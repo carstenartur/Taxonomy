@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PreferencesGitRepository.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.preferences.storage</a> &gt; <span class="el_source">PreferencesGitRepository.java</span></div><h1>PreferencesGitRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.preferences.storage;
+
+import com.taxonomy.dsl.storage.jgit.HibernateRepository;
+import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
+import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
+import org.eclipse.jgit.lib.*;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.hibernate.SessionFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Facade around a JGit DFS repository that stores preferences as a JSON file.
+ *
+ * &lt;p&gt;Uses the {@code sandbox-jgit-storage-hibernate} pattern with a &lt;em&gt;separate&lt;/em&gt;
+ * project name ({@code &quot;taxonomy-preferences&quot;}) so that preferences history is
+ * completely decoupled from the Architecture DSL history ({@code &quot;taxonomy-dsl&quot;}).
+ *
+ * &lt;pre&gt;
+ * preferences.json → JGit commit → HibernateRepository(&quot;taxonomy-preferences&quot;)
+ *                                         ↕
+ *                   HibernateObjDatabase / HibernateRefDatabase (git_packs table)
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;Both repositories share the same {@code git_packs} database table but are
+ * logically independent Git repositories with separate commit histories, branches,
+ * and refs.
+ *
+ * &lt;p&gt;For tests, the no-arg constructor creates an {@link InMemoryRepository}.
+ */
+public class PreferencesGitRepository {
+
+<span class="fc" id="L41">    private static final Logger log = LoggerFactory.getLogger(PreferencesGitRepository.class);</span>
+
+    /** The single JSON file stored in every commit tree. */
+    static final String PREFERENCES_FILENAME = &quot;preferences.json&quot;;
+
+    /** The single branch used for preferences history. */
+    static final String MAIN_BRANCH = &quot;main&quot;;
+
+    private final Repository gitRepo;
+
+    /**
+     * Create a PreferencesGitRepository backed by a database via Hibernate.
+     *
+     * &lt;p&gt;This is the primary constructor for production use. All Git objects
+     * are stored in the {@code git_packs} table — exactly as the
+     * {@code sandbox-jgit-storage-hibernate} module does, but in a
+     * &lt;strong&gt;separate&lt;/strong&gt; project ({@code &quot;taxonomy-preferences&quot;}) from
+     * the Architecture DSL repository.
+     *
+     * @param sessionFactory the Hibernate SessionFactory (shared with the existing app)
+     */
+<span class="fc" id="L62">    public PreferencesGitRepository(SessionFactory sessionFactory) {</span>
+<span class="fc" id="L63">        this.gitRepo = new HibernateRepository(sessionFactory, &quot;taxonomy-preferences&quot;);</span>
+<span class="fc" id="L64">        log.info(&quot;Initialised PreferencesGitRepository (HibernateRepository → database)&quot;);</span>
+<span class="fc" id="L65">    }</span>
+
+    /**
+     * Create a PreferencesGitRepository backed by an in-memory DFS repository.
+     *
+     * &lt;p&gt;This is suitable for testing only. Data is lost on JVM restart.
+     */
+<span class="fc" id="L72">    public PreferencesGitRepository() {</span>
+<span class="fc" id="L73">        this.gitRepo = new InMemoryRepository(</span>
+                new DfsRepositoryDescription(&quot;taxonomy-preferences&quot;));
+<span class="fc" id="L75">        log.info(&quot;Initialised PreferencesGitRepository (InMemoryRepository — volatile)&quot;);</span>
+<span class="fc" id="L76">    }</span>
+
+    /**
+     * Commit preferences JSON to the {@code main} branch.
+     *
+     * @param jsonContent the preferences JSON string
+     * @param author      author identity string (e.g. username)
+     * @param message     commit message
+     * @return the commit SHA hex string
+     * @throws IOException on JGit errors
+     */
+    public String commit(String jsonContent, String author, String message) throws IOException {
+<span class="fc" id="L88">        PersonIdent personIdent = new PersonIdent(</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                author != null ? author : &quot;taxonomy&quot;,</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                author != null ? author : &quot;taxonomy@system&quot;);</span>
+
+<span class="fc" id="L92">        try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
+            // 1. JSON → Blob
+<span class="fc" id="L94">            ObjectId blobId = inserter.insert(Constants.OBJ_BLOB,</span>
+<span class="fc" id="L95">                    jsonContent.getBytes(StandardCharsets.UTF_8));</span>
+
+            // 2. Tree (preferences.json → blobId)
+<span class="fc" id="L98">            TreeFormatter tree = new TreeFormatter();</span>
+<span class="fc" id="L99">            tree.append(PREFERENCES_FILENAME, FileMode.REGULAR_FILE, blobId);</span>
+<span class="fc" id="L100">            ObjectId treeId = inserter.insert(tree);</span>
+
+            // 3. Commit
+<span class="fc" id="L103">            CommitBuilder commitBuilder = new CommitBuilder();</span>
+<span class="fc" id="L104">            commitBuilder.setTreeId(treeId);</span>
+<span class="fc" id="L105">            commitBuilder.setAuthor(personIdent);</span>
+<span class="fc" id="L106">            commitBuilder.setCommitter(personIdent);</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            commitBuilder.setMessage(message != null ? message : &quot;Preferences update&quot;);</span>
+
+            // Parent = current HEAD of main branch
+<span class="fc" id="L110">            String refName = Constants.R_HEADS + MAIN_BRANCH;</span>
+<span class="fc" id="L111">            Ref branchRef = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            if (branchRef != null) {</span>
+<span class="fc" id="L113">                commitBuilder.setParentId(branchRef.getObjectId());</span>
+            }
+
+<span class="fc" id="L116">            ObjectId commitId = inserter.insert(commitBuilder);</span>
+<span class="fc" id="L117">            inserter.flush();</span>
+
+            // 4. Update branch ref
+<span class="fc" id="L120">            RefUpdate ru = gitRepo.updateRef(refName);</span>
+<span class="fc" id="L121">            ru.setNewObjectId(commitId);</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            if (branchRef == null) {</span>
+<span class="fc" id="L123">                ru.setExpectedOldObjectId(ObjectId.zeroId());</span>
+            }
+<span class="fc" id="L125">            ru.setForceUpdate(true);</span>
+<span class="fc" id="L126">            RefUpdate.Result result = ru.update();</span>
+
+<span class="fc" id="L128">            log.info(&quot;Committed preferences to '{}': {} (ref update: {})&quot;,</span>
+<span class="fc" id="L129">                    MAIN_BRANCH, commitId.name(), result);</span>
+
+<span class="fc" id="L131">            return commitId.name();</span>
+        }
+    }
+
+    /**
+     * Read the preferences JSON at the HEAD of the {@code main} branch.
+     *
+     * @return the JSON string, or {@code null} if the branch has no commits yet
+     * @throws IOException on JGit errors
+     */
+    public String readHead() throws IOException {
+<span class="fc" id="L142">        String refName = Constants.R_HEADS + MAIN_BRANCH;</span>
+<span class="fc" id="L143">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">        if (ref == null) return null;</span>
+
+<span class="fc" id="L146">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L147">            RevCommit revCommit = walk.parseCommit(ref.getObjectId());</span>
+<span class="fc" id="L148">            return readJsonFromTree(revCommit.getTree());</span>
+        }
+    }
+
+    /**
+     * Get the commit history of the {@code main} branch, newest first.
+     *
+     * @return list of preference commits (may be empty)
+     * @throws IOException on JGit errors
+     */
+    public List&lt;PreferencesCommit&gt; getHistory() throws IOException {
+<span class="fc" id="L159">        String refName = Constants.R_HEADS + MAIN_BRANCH;</span>
+<span class="fc" id="L160">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (ref == null) return List.of();</span>
+
+<span class="fc" id="L163">        List&lt;PreferencesCommit&gt; history = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L164">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L165">            walk.markStart(walk.parseCommit(ref.getObjectId()));</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            for (RevCommit c : walk) {</span>
+<span class="fc" id="L167">                PersonIdent authorIdent = c.getAuthorIdent();</span>
+<span class="fc" id="L168">                history.add(new PreferencesCommit(</span>
+<span class="fc" id="L169">                        c.name(),</span>
+<span class="fc" id="L170">                        authorIdent.getName(),</span>
+<span class="fc" id="L171">                        Instant.ofEpochSecond(c.getCommitTime()),</span>
+<span class="fc" id="L172">                        c.getFullMessage()));</span>
+<span class="fc" id="L173">            }</span>
+        }
+<span class="fc" id="L175">        return history;</span>
+    }
+
+    private String readJsonFromTree(org.eclipse.jgit.revwalk.RevTree tree) throws IOException {
+<span class="fc" id="L179">        try (TreeWalk tw = TreeWalk.forPath(gitRepo, PREFERENCES_FILENAME, tree)) {</span>
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">            if (tw == null) return null;</span>
+<span class="fc" id="L181">            ObjectId blobId = tw.getObjectId(0);</span>
+<span class="fc" id="L182">            ObjectLoader loader = gitRepo.open(blobId, Constants.OBJ_BLOB);</span>
+<span class="fc" id="L183">            return new String(loader.getBytes(), StandardCharsets.UTF_8);</span>
+<span class="nc bnc" id="L184" title="All 2 branches missed.">        }</span>
+    }
+
+    /**
+     * Check if this repository is backed by a database (Hibernate) or in-memory.
+     *
+     * @return {@code true} if backed by HibernateRepository (persistent)
+     */
+    public boolean isDatabaseBacked() {
+<span class="fc" id="L193">        return gitRepo instanceof HibernateRepository;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
