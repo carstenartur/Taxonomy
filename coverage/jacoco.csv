@@ -134,13 +134,13 @@ Taxonomy Application,com.taxonomy.service,ArchitectureReportService,266,1325,46,
 Taxonomy Application,com.taxonomy.service,EnrichedImpactService,26,238,2,8,4,52,2,7,0,4
 Taxonomy Application,com.taxonomy.service,RelationValidationService.ValidationResult,0,35,0,0,0,10,0,6,0,6
 Taxonomy Application,com.taxonomy.service,ConflictDetectionService,90,243,2,12,12,49,2,9,0,4
-Taxonomy Application,com.taxonomy.service,TaxonomyService,365,1143,64,79,96,276,51,49,3,23
+Taxonomy Application,com.taxonomy.service,TaxonomyService,407,1151,71,80,103,277,56,49,3,23
 Taxonomy Application,com.taxonomy.service,LlmResponseParser,409,157,45,9,81,27,30,10,7,6
 Taxonomy Application,com.taxonomy.service,LlmService,1962,1006,255,101,399,224,190,37,16,24
 Taxonomy Application,com.taxonomy.service,ArchitectureRecommendationService,21,359,7,23,6,80,7,13,0,5
 Taxonomy Application,com.taxonomy.service,SavedAnalysisService,2,170,1,21,0,40,1,16,0,6
 Taxonomy Application,com.taxonomy.service.importer,FrameworkImportService,38,334,2,8,7,68,2,11,0,8
-Taxonomy Application,com.taxonomy.service.importer,ApqcExcelParser,395,29,52,0,67,3,34,3,7,3
+Taxonomy Application,com.taxonomy.service.importer,ApqcExcelParser,92,340,30,24,15,56,26,12,1,9
 Taxonomy Application,com.taxonomy.service.importer,ApqcCsvParser,48,428,20,42,7,67,19,22,1,9
 Taxonomy Application,com.taxonomy.service.importer,FrameworkImportService.RegisteredProfile,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.service.importer,StructurizrDslParser,17,286,17,43,5,62,17,22,0,6
