@@ -13,6 +13,8 @@ public interface ArchitectureDslDocumentRepository extends JpaRepository<Archite
 
     Optional<ArchitectureDslDocument> findByPath(String path);
 
+    Optional<ArchitectureDslDocument> findByCommitId(String commitId);
+
     List<ArchitectureDslDocument> findByBranch(String branch);
 
     List<ArchitectureDslDocument> findByNamespace(String namespace);

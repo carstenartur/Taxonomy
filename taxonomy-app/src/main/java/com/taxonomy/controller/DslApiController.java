@@ -14,6 +14,7 @@ import com.taxonomy.dsl.storage.DslCommit;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.validation.DslValidationResult;
 import com.taxonomy.dsl.validation.DslValidator;
+import com.taxonomy.dto.ViewContext;
 import com.taxonomy.model.ArchitectureDslDocument;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.model.RelationHypothesis;
@@ -22,6 +23,7 @@ import com.taxonomy.service.CommitIndexService;
 import com.taxonomy.service.ConflictDetectionService;
 import com.taxonomy.service.HypothesisService;
 import com.taxonomy.service.RepositoryStateGuard;
+import com.taxonomy.service.RepositoryStateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -59,6 +61,7 @@ public class DslApiController {
     private final CommitIndexService commitIndexService;
     private final ConflictDetectionService conflictDetectionService;
     private final RepositoryStateGuard stateGuard;
+    private final RepositoryStateService repositoryStateService;
 
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
@@ -72,7 +75,8 @@ public class DslApiController {
                             DslGitRepository gitRepository,
                             CommitIndexService commitIndexService,
                             ConflictDetectionService conflictDetectionService,
-                            RepositoryStateGuard stateGuard) {
+                            RepositoryStateGuard stateGuard,
+                            RepositoryStateService repositoryStateService) {
         this.exportService = exportService;
         this.materializeService = materializeService;
         this.documentRepository = documentRepository;
@@ -81,6 +85,7 @@ public class DslApiController {
         this.commitIndexService = commitIndexService;
         this.conflictDetectionService = conflictDetectionService;
         this.stateGuard = stateGuard;
+        this.repositoryStateService = repositoryStateService;
     }
 
     // ── Export & current state ────────────────────────────────────────
@@ -106,6 +111,7 @@ public class DslApiController {
         result.put("mappings", model.getMappings());
         result.put("views", model.getViews());
         result.put("evidence", model.getEvidence());
+        result.put("viewContext", repositoryStateService.getViewContext("draft"));
         return ResponseEntity.ok(result);
     }
 
@@ -168,6 +174,9 @@ public class DslApiController {
         result.put("hypothesesCreated", matResult.hypothesesCreated());
         result.put("documentId", matResult.documentId());
 
+        String effectiveBranch = branch != null ? branch : "draft";
+        result.put("viewContext", repositoryStateService.getViewContext(effectiveBranch));
+
         if (!matResult.valid()) {
             return ResponseEntity.badRequest().body(result);
         }
@@ -185,12 +194,20 @@ public class DslApiController {
             DslMaterializeService.MaterializeResult matResult =
                     materializeService.materializeIncremental(beforeDocId, afterDocId);
 
+            // Derive branch from the after document when available
+            String branch = "draft";
+            var afterDoc = documentRepository.findById(afterDocId);
+            if (afterDoc.isPresent() && afterDoc.get().getBranch() != null) {
+                branch = afterDoc.get().getBranch();
+            }
+
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("valid", matResult.valid());
             result.put("warnings", matResult.warnings());
             result.put("relationsCreated", matResult.relationsCreated());
             result.put("hypothesesCreated", matResult.hypothesesCreated());
             result.put("documentId", matResult.documentId());
+            result.put("viewContext", repositoryStateService.getViewContext(branch));
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             Map<String, Object> error = new LinkedHashMap<>();
@@ -250,6 +267,7 @@ public class DslApiController {
         result.put("valid", true);
         result.put("warnings", validation.getWarnings());
         result.put("databaseBacked", gitRepository.isDatabaseBacked());
+        result.put("viewContext", repositoryStateService.getViewContext(branch));
         return ResponseEntity.ok(result);
     }
 
@@ -257,7 +275,7 @@ public class DslApiController {
     @Operation(summary = "Get commit history for a branch",
             description = "Returns all DSL commits on the specified branch from the JGit " +
                     "repository (database-backed), newest first.")
-    public ResponseEntity<List<Map<String, Object>>> getHistory(
+    public ResponseEntity<Map<String, Object>> getHistory(
             @RequestParam(defaultValue = "draft") String branch) {
 
         try {
@@ -270,10 +288,19 @@ public class DslApiController {
                 entry.put("author", c.author());
                 entry.put("message", c.message());
                 entry.put("timestamp", c.timestamp());
+                // Resolve documentId from the materialized document (if it exists)
+                var doc = documentRepository.findByCommitId(c.commitId());
+                entry.put("documentId", doc.map(ArchitectureDslDocument::getId).orElse(null));
                 history.add(entry);
             }
-            return ResponseEntity.ok(history);
-        } catch (IOException e) {
+            ViewContext viewContext = repositoryStateService.getViewContext(branch);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("currentBranch", branch);
+            result.put("headCommit", viewContext.basedOnCommit());
+            result.put("commits", history);
+            result.put("viewContext", viewContext);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
             log.error("Failed to read history for branch '{}'", branch, e);
             return ResponseEntity.internalServerError().build();
         }
@@ -536,6 +563,7 @@ public class DslApiController {
             result.put("branch", branch);
             result.put("dslText", dslText);
             result.put("length", dslText.length());
+            result.put("viewContext", repositoryStateService.getViewContext(branch));
             return ResponseEntity.ok(result);
         } catch (IOException e) {
             Map<String, Object> error = new LinkedHashMap<>();

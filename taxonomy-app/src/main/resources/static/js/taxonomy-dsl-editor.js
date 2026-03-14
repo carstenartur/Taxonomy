@@ -200,7 +200,8 @@
         showStatus('Loading history for incremental materialization…', 'info');
         fetch('/api/dsl/history?branch=' + encodeURIComponent(branch))
             .then(function (r) { return r.json(); })
-            .then(function (docs) {
+            .then(function (response) {
+                var docs = response.commits || response;
                 if (docs.length < 2) {
                     showStatus('Need at least 2 commits on branch "' + branch + '" for incremental materialization', 'error');
                     return;
@@ -285,7 +286,8 @@
         if (!historyBody) return;
         fetch('/api/dsl/history?branch=' + encodeURIComponent(branch || 'draft'))
             .then(function (r) { return r.json(); })
-            .then(function (docs) {
+            .then(function (response) {
+                var docs = response.commits || response;
                 renderHistory(docs);
             })
             .catch(function () {
@@ -478,6 +480,18 @@
         var targetBranch = prompt('Cherry-pick commit ' + commitId.substring(0, 8) + ' onto which branch?', 'review');
         if (!targetBranch || !targetBranch.trim()) return;
         targetBranch = targetBranch.trim();
+
+        // Use preview dialog if available
+        if (window.TaxonomyActionGuards) {
+            window.TaxonomyActionGuards.showCherryPickPreview(commitId, targetBranch, function () {
+                executeCherryPick(commitId, targetBranch);
+            });
+        } else {
+            executeCherryPick(commitId, targetBranch);
+        }
+    }
+
+    function executeCherryPick(commitId, targetBranch) {
         showStatus('Cherry-picking ' + commitId.substring(0, 8) + ' onto "' + targetBranch + '"…', 'info');
         fetch('/api/dsl/cherry-pick?commitId=' + encodeURIComponent(commitId) + '&targetBranch=' + encodeURIComponent(targetBranch), {
             method: 'POST'
@@ -500,6 +514,18 @@
         var intoBranch = prompt('Merge branch "' + fromBranch + '" into which branch?', 'accepted');
         if (!intoBranch || !intoBranch.trim()) return;
         intoBranch = intoBranch.trim();
+
+        // Use preview dialog if available
+        if (window.TaxonomyActionGuards) {
+            window.TaxonomyActionGuards.showMergePreview(fromBranch, intoBranch, function () {
+                executeMerge(fromBranch, intoBranch);
+            });
+        } else {
+            executeMerge(fromBranch, intoBranch);
+        }
+    }
+
+    function executeMerge(fromBranch, intoBranch) {
         showStatus('Merging "' + fromBranch + '" into "' + intoBranch + '"…', 'info');
         fetch('/api/dsl/merge?fromBranch=' + encodeURIComponent(fromBranch) + '&intoBranch=' + encodeURIComponent(intoBranch), {
             method: 'POST'

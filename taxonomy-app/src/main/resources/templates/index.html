@@ -122,6 +122,9 @@
                  ============================================================ -->
             <div id="tab-analyze" class="tab-pane-content">
 
+                <!-- ViewContext: shows Git provenance for analysis data -->
+                <div id="analyzeViewContext" class="view-context-bar d-none"></div>
+
                 <!-- Business Requirement Analysis -->
                 <div class="card shadow-sm mb-3">
                     <div class="card-header fw-semibold">Business Requirement Analysis</div>
@@ -132,7 +135,7 @@
                         <textarea id="businessText" class="form-control mb-3" rows="7"
                                   placeholder="e.g. We need a system to manage and display real-time air tracks, integrate radar data, and provide a common operational picture to commanders at brigade and above level..."></textarea>
                         <div class="d-flex gap-2">
-                            <button id="analyzeBtn" class="btn btn-primary flex-grow-1" title="Analyze the business requirement text against the taxonomy using the configured AI/LLM provider">
+                            <button id="analyzeBtn" class="btn btn-primary flex-grow-1" data-guard="analyze" title="Analyze the business requirement text against the taxonomy using the configured AI/LLM provider">
                                 <span id="analyzeSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status"></span>
                                 Analyze with AI
                             </button>
@@ -327,6 +330,9 @@
                  ============================================================ -->
             <div id="tab-graph" class="tab-pane-content d-none">
 
+                <!-- ViewContext: shows Git provenance for graph data -->
+                <div id="graphViewContext" class="view-context-bar d-none"></div>
+
                 <!-- Graph Explorer Panel -->
                 <div id="graphExplorerPanel" class="mt-0">
                     <div class="card shadow-sm">
@@ -450,6 +456,9 @@
                  ============================================================ -->
             <div id="tab-export" class="tab-pane-content d-none">
 
+                <!-- ViewContext: shows Git provenance for export data -->
+                <div id="exportViewContext" class="view-context-bar d-none"></div>
+
                 <div class="card shadow-sm mb-3">
                     <div class="card-header fw-semibold">&#128229; Export Architecture</div>
                     <div class="card-body">
@@ -493,9 +502,9 @@
                             </div>
                             <h6 class="mb-2">&#128196; Full Report</h6>
                             <div class="d-flex gap-2 flex-wrap mb-3">
-                                <button id="exportReportMd"   class="btn btn-outline-dark" title="Export a comprehensive architecture report as Markdown">&#128196; Report (.md)</button>
-                                <button id="exportReportHtml" class="btn btn-outline-dark" title="Export a comprehensive architecture report as HTML">&#128196; Report (.html)</button>
-                                <button id="exportReportDocx" class="btn btn-outline-dark" title="Export a comprehensive architecture report as Word document">&#128196; Report (.docx)</button>
+                                <button id="exportReportMd"   class="btn btn-outline-dark" data-guard="export" title="Export a comprehensive architecture report as Markdown">&#128196; Report (.md)</button>
+                                <button id="exportReportHtml" class="btn btn-outline-dark" data-guard="export" title="Export a comprehensive architecture report as HTML">&#128196; Report (.html)</button>
+                                <button id="exportReportDocx" class="btn btn-outline-dark" data-guard="export" title="Export a comprehensive architecture report as Word document">&#128196; Report (.docx)</button>
                             </div>
                         </div>
 
@@ -542,7 +551,7 @@
 
                         <div class="d-flex gap-2 mb-3">
                             <button id="importPreviewBtn" class="btn btn-outline-info btn-sm" title="Preview import without writing to database">&#128270; Preview</button>
-                            <button id="importExecuteBtn" class="btn btn-outline-success btn-sm" title="Execute full import into database">&#128228; Import</button>
+                            <button id="importExecuteBtn" class="btn btn-outline-success btn-sm" data-guard="import" title="Execute full import into database">&#128228; Import</button>
                         </div>
 
                         <div id="importResultArea"></div>
@@ -555,6 +564,9 @@
                  TAB: DSL EDITOR
                  ============================================================ -->
             <div id="tab-dsl-editor" class="tab-pane-content d-none">
+
+                <!-- ViewContext: shows Git provenance for DSL data -->
+                <div id="dslViewContext" class="view-context-bar d-none"></div>
 
                 <div class="row g-3">
                     <!-- Left: Editor -->
@@ -604,7 +616,7 @@
                                             <option value="draft">draft</option>
                                         </select>
                                         <button id="dslNewBranchBtn" class="btn btn-sm btn-outline-secondary" title="Create new branch">&#10010;</button>
-                                        <button id="dslMergeBtn" class="btn btn-sm btn-outline-info" title="Merge current branch into another">&#128256; Merge</button>
+                                        <button id="dslMergeBtn" class="btn btn-sm btn-outline-info" data-guard="merge" title="Merge current branch into another">&#128256; Merge</button>
                                     </div>
                                 </div>
                                 <div class="mb-2">
@@ -616,8 +628,8 @@
                                     <input id="dslMessageInput" type="text" class="form-control form-control-sm" placeholder="Describe your changes…">
                                 </div>
                                 <div class="d-flex gap-2 flex-wrap">
-                                    <button id="dslCommitBtn" class="btn btn-sm btn-primary" title="Commit DSL to selected branch (no materialization)">&#128230; Commit</button>
-                                    <button id="dslMaterializeBtn" class="btn btn-sm btn-success" title="Materialize DSL into taxonomy database">&#9889; Materialize</button>
+                                    <button id="dslCommitBtn" class="btn btn-sm btn-primary" data-guard="commit" title="Commit DSL to selected branch (no materialization)">&#128230; Commit</button>
+                                    <button id="dslMaterializeBtn" class="btn btn-sm btn-success" data-guard="materialize" title="Materialize DSL into taxonomy database">&#9889; Materialize</button>
                                     <button id="dslMaterializeIncrBtn" class="btn btn-sm btn-outline-success" title="Incremental materialization (delta only)">&#916; Incremental</button>
                                 </div>
                             </div>
@@ -911,6 +923,8 @@
     })();
 </script>
 <script th:src="@{/js/taxonomy-git-status.js}"></script>
+<script th:src="@{/js/taxonomy-viewcontext.js}"></script>
+<script th:src="@{/js/taxonomy-action-guards.js}"></script>
 <script th:src="@{/js/taxonomy-export.js}"></script>
 <script th:src="@{/js/taxonomy-import.js}"></script>
 <script th:src="@{/js/taxonomy-graph.js}"></script>
@@ -1122,6 +1136,27 @@
         // Update URL hash without adding to browser history
         if (history.replaceState) {
             history.replaceState(null, '', '#' + pageName);
+        }
+
+        // Fetch and render ViewContext for views that display architecture data
+        if (window.TaxonomyViewContext) {
+            var viewContextMap = {
+                'graph': 'graphViewContext',
+                'export': 'exportViewContext',
+                'dsl-editor': 'dslViewContext'
+            };
+            var containerId = viewContextMap[pageName];
+            if (containerId) {
+                // For DSL editor, use the currently selected branch
+                var branch = undefined;
+                if (pageName === 'dsl-editor') {
+                    var branchSelect = document.getElementById('dslBranchSelect');
+                    if (branchSelect && branchSelect.value) {
+                        branch = branchSelect.value;
+                    }
+                }
+                window.TaxonomyViewContext.fetchAndRender(containerId, branch);
+            }
         }
     }
 

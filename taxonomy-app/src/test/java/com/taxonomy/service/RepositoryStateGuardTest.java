@@ -109,4 +109,62 @@ class RepositoryStateGuardTest {
         var check = guard.checkWriteOperation("draft", "commit");
         assertTrue(check.allowed());
     }
+
+    // ── Extended guard combinations ──────────────────────────────────
+
+    @Test
+    void mergeBlockedDuringOperation() throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        stateService.beginOperation("revert");
+
+        var check = guard.checkWriteOperation("draft", "merge");
+        assertFalse(check.allowed());
+        assertTrue(check.blocks().stream().anyMatch(b -> b.contains("revert")));
+    }
+
+    @Test
+    void cherryPickBlockedDuringOperation() throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        stateService.beginOperation("merge");
+
+        var check = guard.checkWriteOperation("draft", "cherry-pick");
+        assertFalse(check.allowed());
+    }
+
+    @Test
+    void importBlockedDuringOperation() throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        stateService.beginOperation("cherry-pick");
+
+        var check = guard.checkWriteOperation("draft", "import");
+        assertFalse(check.allowed());
+    }
+
+    @Test
+    void staleProjectionAndStaleIndexBothWarn() throws IOException {
+        String commitId = gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "first");
+        stateService.recordProjection(commitId, "draft");
+        stateService.recordIndexBuild(commitId);
+
+        // Move HEAD ahead
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "second");
+
+        var check = guard.checkWriteOperation("draft", "commit");
+        assertTrue(check.allowed());
+        // Both projection and index should be stale
+        assertTrue(check.warnings().size() >= 2,
+                "Both projection and index should generate warnings but got: " + check.warnings());
+    }
+
+    @Test
+    void operationBlockedEvenWithStaleState() throws IOException {
+        String commitId = gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "first");
+        stateService.recordProjection(commitId, "draft");
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "second");
+
+        stateService.beginOperation("merge");
+
+        var check = guard.checkWriteOperation("draft", "commit");
+        assertFalse(check.allowed(), "Operation in progress should block even if state is stale");
+    }
 }

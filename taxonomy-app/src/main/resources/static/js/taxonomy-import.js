@@ -106,7 +106,8 @@
             body: formData
         })
         .then(function (res) { return res.json(); })
-        .then(function (result) {
+        .then(function (response) {
+            var result = response.result || response;
             renderResult(result, false);
         })
         .catch(function (err) {

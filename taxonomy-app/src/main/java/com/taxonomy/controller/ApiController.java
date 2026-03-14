@@ -16,6 +16,7 @@ import com.taxonomy.service.HybridSearchService;
 import com.taxonomy.service.LocalEmbeddingService;
 import com.taxonomy.service.LlmService;
 import com.taxonomy.service.PromptTemplateService;
+import com.taxonomy.service.RepositoryStateService;
 import com.taxonomy.service.RequirementArchitectureViewService;
 import com.taxonomy.service.AnalysisRelationGenerator;
 import com.taxonomy.service.HypothesisService;
@@ -77,6 +78,7 @@ public class ApiController {
     private final SavedAnalysisService savedAnalysisService;
     private final AnalysisRelationGenerator analysisRelationGenerator;
     private final HypothesisService hypothesisService;
+    private final RepositoryStateService repositoryStateService;
 
     @Value("${admin.token:}")
     private String adminPassword;
@@ -96,7 +98,8 @@ public class ApiController {
                          MermaidExportService mermaidExportService,
                          SavedAnalysisService savedAnalysisService,
                          AnalysisRelationGenerator analysisRelationGenerator,
-                         HypothesisService hypothesisService) {
+                         HypothesisService hypothesisService,
+                         RepositoryStateService repositoryStateService) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.searchService = searchService;
@@ -116,6 +119,7 @@ public class ApiController {
         this.savedAnalysisService = savedAnalysisService;
         this.analysisRelationGenerator = analysisRelationGenerator;
         this.hypothesisService = hypothesisService;
+        this.repositoryStateService = repositoryStateService;
     }
 
     @Operation(summary = "Get full taxonomy tree", description = "Returns the complete taxonomy hierarchy as a nested tree of nodes", tags = {"Taxonomy"})
@@ -208,6 +212,8 @@ public class ApiController {
                             request.getMaxArchitectureNodes(),
                             result.getProvisionalRelations()));
         }
+
+        result.setViewContext(repositoryStateService.getViewContext("draft"));
 
         return ResponseEntity.ok(result);
     }
