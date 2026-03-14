@@ -11,8 +11,7 @@ import org.testcontainers.oracle.OracleContainer;
  * Runs the same diagnostics + API tests as {@link DiagnosticsContainerIT}
  * but against an <strong>Oracle Database Free</strong> backend.
  * <p>
- * Tagged with {@code db-oracle} — excluded from the default {@code mvn verify}
- * run. Execute explicitly with:
+ * Tagged with {@code db-oracle}. Execute explicitly with:
  * <pre>
  * mvn verify -DexcludedGroups=real-llm -Dit.test=DiagnosticsOracleContainerIT
  * </pre>
@@ -33,15 +32,11 @@ class DiagnosticsOracleContainerIT extends AbstractDatabaseContainerIT {
 
     @Container
     static GenericContainer<?> app = ContainerTestUtils.appContainer(network)
+            .withEnv("SPRING_PROFILES_ACTIVE", "oracle")
             .withEnv("TAXONOMY_DATASOURCE_URL",
                     "jdbc:oracle:thin:@db:1521/taxonomy")
-            .withEnv("SPRING_DATASOURCE_DRIVER_CLASS_NAME",
-                    "oracle.jdbc.OracleDriver")
-            .withEnv("SPRING_JPA_DATABASE_PLATFORM",
-                    "org.hibernate.dialect.OracleDialect")
             .withEnv("SPRING_DATASOURCE_USERNAME", "taxonomy")
             .withEnv("SPRING_DATASOURCE_PASSWORD", "taxonomy")
-            .withEnv("SPRING_DATASOURCE_TYPE", "com.zaxxer.hikari.HikariDataSource")
             .withEnv("TAXONOMY_DDL_AUTO", "create")
             .dependsOn(db);
 
