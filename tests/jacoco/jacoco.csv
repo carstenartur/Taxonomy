@@ -79,7 +79,7 @@ Taxonomy Application,com.taxonomy.service,LlmService.ScoreParseResult,6,41,0,2,2
 Taxonomy Application,com.taxonomy.service,ArchitectureSummaryService,67,270,9,9,7,57,11,12,3,11
 Taxonomy Application,com.taxonomy.service,HybridSearchService,45,28,3,1,7,9,2,3,0,3
 Taxonomy Application,com.taxonomy.service,RelationCandidateService,6,138,5,5,0,25,4,7,0,6
-Taxonomy Application,com.taxonomy.service,ArchiMateXmlImporter,105,547,31,45,25,121,27,21,1,9
+Taxonomy Application,com.taxonomy.service,ArchiMateXmlImporter,110,416,33,45,28,99,28,21,1,9
 Taxonomy Application,com.taxonomy.service,ArchitectureGraphQueryServiceImpl.TraversalResult,0,15,0,0,0,6,0,1,0,1
 Taxonomy Application,com.taxonomy.service,RankFusionUtil,0,74,0,2,0,16,0,4,0,3
 Taxonomy Application,com.taxonomy.service,LlmResponseParser.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
