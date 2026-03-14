@@ -9,8 +9,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /**
  * Selenium UI + REST tests against <strong>PostgreSQL</strong>.
  * <p>
- * Tagged with {@code db-postgres} — excluded from the default {@code mvn verify}.
- * Execute explicitly with:
+ * Tagged with {@code db-postgres} — included in the default {@code mvn verify}
+ * run (requires Docker). Execute explicitly with:
  * <pre>
  * mvn verify -DexcludedGroups=real-llm -Dit.test=SeleniumPostgresContainerIT
  * </pre>
@@ -32,12 +32,10 @@ class SeleniumPostgresContainerIT extends AbstractSeleniumContainerIT {
     @Override
     protected GenericContainer<?> createAppContainer(Network net) {
         return ContainerTestUtils.appContainer(net)
+                .withEnv("SPRING_PROFILES_ACTIVE", "postgres")
                 .withEnv("TAXONOMY_DATASOURCE_URL", "jdbc:postgresql://db:5432/taxonomy")
-                .withEnv("SPRING_DATASOURCE_DRIVER_CLASS_NAME", "org.postgresql.Driver")
-                .withEnv("SPRING_JPA_DATABASE_PLATFORM", "org.hibernate.dialect.PostgreSQLDialect")
                 .withEnv("SPRING_DATASOURCE_USERNAME", "taxonomy")
                 .withEnv("SPRING_DATASOURCE_PASSWORD", "taxonomy")
-                .withEnv("SPRING_DATASOURCE_TYPE", "com.zaxxer.hikari.HikariDataSource")
                 .withEnv("TAXONOMY_DDL_AUTO", "create");
     }
 }
