@@ -215,13 +215,18 @@ public class RepositoryStateService {
 
     private boolean isProjectionStaleForCommit(String headCommit) {
         if (headCommit == null || lastProjectionCommit == null) {
-            return false; // no commit or no projection yet — not considered stale
+            // Deliberate: if no projection has been recorded yet (e.g. fresh startup),
+            // we treat the state as "not stale" rather than "unknown". This avoids
+            // false warnings during initial setup before the first materialization.
+            return false;
         }
         return !headCommit.equals(lastProjectionCommit);
     }
 
     private boolean isIndexStale(String headCommit) {
         if (headCommit == null || lastIndexCommit == null) {
+            // Same rationale as isProjectionStaleForCommit: absence of tracking
+            // data is treated as fresh to avoid false warnings at startup.
             return false;
         }
         return !headCommit.equals(lastIndexCommit);

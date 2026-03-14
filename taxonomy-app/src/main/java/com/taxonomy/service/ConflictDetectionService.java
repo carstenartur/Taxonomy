@@ -159,7 +159,8 @@ public class ConflictDetectionService {
                         org.eclipse.jgit.lib.ObjectId.fromString(commitId));
                 RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());
 
-                // Try three-way merge (dry run)
+                // Try three-way merge (dry run) — mirrors the merge order used
+                // in DslGitRepository.cherryPick() for consistent conflict prediction
                 ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(repo, true);
                 boolean success = merger.merge(targetHead, pickCommit);
 
