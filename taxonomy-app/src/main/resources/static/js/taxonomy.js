@@ -1078,7 +1078,7 @@
         if (node.description) {
             const desc = document.createElement('div');
             desc.className = 'tax-description';
-            desc.textContent = node.description;
+            desc.innerHTML = escapeHtml(node.description).replace(/\n/g, '<br>');
             wrapper.appendChild(desc);
         }
 
