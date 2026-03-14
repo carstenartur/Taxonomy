@@ -518,6 +518,146 @@ public class DslGitRepository {
 <span class="pc" id="L518">        }</span>
     }
 
+    // ── Revert &amp; undo operations ───────────────────────────────────
+
+    /**
+     * Revert a specific commit on a branch.
+     *
+     * &lt;p&gt;Creates a new commit that undoes the changes introduced by the
+     * specified commit. Uses a three-way merge where the base is the commit
+     * to revert, ours is the branch HEAD, and theirs is the parent of the
+     * commit to revert (i.e. the state before the commit).
+     *
+     * @param commitId the commit SHA to revert
+     * @param branch   the branch on which to create the revert commit
+     * @return the new revert commit SHA, or {@code null} if the revert failed
+     * @throws IOException on JGit errors
+     */
+    public String revert(String commitId, String branch) throws IOException {
+<span class="fc" id="L537">        ObjectId revertOid = ObjectId.fromString(commitId);</span>
+
+<span class="fc" id="L539">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L540">            RevCommit revertCommit = walk.parseCommit(revertOid);</span>
+
+<span class="fc bfc" id="L542" title="All 2 branches covered.">            if (revertCommit.getParentCount() == 0) {</span>
+<span class="fc" id="L543">                log.warn(&quot;Cannot revert initial commit {}&quot;, commitId);</span>
+<span class="fc" id="L544">                return null;</span>
+            }
+
+<span class="fc" id="L547">            String refName = Constants.R_HEADS + branch;</span>
+<span class="fc" id="L548">            Ref branchRef = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="pc bpc" id="L549" title="1 of 2 branches missed.">            if (branchRef == null) {</span>
+<span class="nc" id="L550">                log.warn(&quot;Branch '{}' not found for revert&quot;, branch);</span>
+<span class="nc" id="L551">                return null;</span>
+            }
+
+<span class="fc" id="L554">            RevCommit branchHead = walk.parseCommit(branchRef.getObjectId());</span>
+<span class="fc" id="L555">            RevCommit parentCommit = walk.parseCommit(revertCommit.getParent(0));</span>
+
+            // Three-way merge: base=revertCommit, ours=branchHead, theirs=parentCommit
+            // This effectively applies the inverse of revertCommit's changes
+<span class="fc" id="L559">            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);</span>
+<span class="fc" id="L560">            merger.setBase(revertCommit);</span>
+<span class="fc" id="L561">            boolean success = merger.merge(branchHead, parentCommit);</span>
+
+<span class="pc bpc" id="L563" title="1 of 2 branches missed.">            if (!success) {</span>
+<span class="nc" id="L564">                log.warn(&quot;Revert conflict for {} on '{}'&quot;, commitId, branch);</span>
+<span class="nc" id="L565">                return null;</span>
+            }
+
+<span class="fc" id="L568">            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
+<span class="fc" id="L569">                CommitBuilder newCommit = new CommitBuilder();</span>
+<span class="fc" id="L570">                newCommit.setTreeId(merger.getResultTreeId());</span>
+<span class="fc" id="L571">                newCommit.setParentId(branchHead);</span>
+<span class="fc" id="L572">                PersonIdent ident = new PersonIdent(&quot;taxonomy&quot;, &quot;taxonomy@system&quot;);</span>
+<span class="fc" id="L573">                newCommit.setAuthor(ident);</span>
+<span class="fc" id="L574">                newCommit.setCommitter(ident);</span>
+<span class="fc" id="L575">                newCommit.setMessage(&quot;Revert: &quot; + revertCommit.getShortMessage());</span>
+
+<span class="fc" id="L577">                ObjectId newCommitId = inserter.insert(newCommit);</span>
+<span class="fc" id="L578">                inserter.flush();</span>
+
+<span class="fc" id="L580">                RefUpdate ru = gitRepo.updateRef(refName);</span>
+<span class="fc" id="L581">                ru.setNewObjectId(newCommitId);</span>
+<span class="fc" id="L582">                ru.setForceUpdate(true);</span>
+<span class="fc" id="L583">                ru.update();</span>
+
+<span class="fc" id="L585">                log.info(&quot;Reverted {} on '{}': {}&quot;, commitId, branch, newCommitId.name());</span>
+<span class="fc" id="L586">                return newCommitId.name();</span>
+            }
+<span class="pc" id="L588">        }</span>
+    }
+
+    /**
+     * Undo the last commit on a branch by resetting to its parent.
+     *
+     * &lt;p&gt;This is a simple &quot;soft reset&quot; — the branch ref is moved to the parent
+     * commit, effectively removing the last commit from the branch history.
+     * The commit object still exists in the repository but is no longer
+     * reachable from the branch.
+     *
+     * @param branch the branch name
+     * @return the new HEAD SHA (the parent), or {@code null} if no parent exists
+     * @throws IOException on JGit errors
+     */
+    public String undoLast(String branch) throws IOException {
+<span class="fc" id="L604">        String refName = Constants.R_HEADS + branch;</span>
+<span class="fc" id="L605">        Ref branchRef = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L606" title="All 2 branches covered.">        if (branchRef == null) {</span>
+<span class="fc" id="L607">            log.warn(&quot;Branch '{}' not found for undo&quot;, branch);</span>
+<span class="fc" id="L608">            return null;</span>
+        }
+
+<span class="fc" id="L611">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L612">            RevCommit headCommit = walk.parseCommit(branchRef.getObjectId());</span>
+
+<span class="fc bfc" id="L614" title="All 2 branches covered.">            if (headCommit.getParentCount() == 0) {</span>
+<span class="fc" id="L615">                log.warn(&quot;Cannot undo: branch '{}' has only the initial commit&quot;, branch);</span>
+<span class="fc" id="L616">                return null;</span>
+            }
+
+<span class="fc" id="L619">            RevCommit parentCommit = walk.parseCommit(headCommit.getParent(0));</span>
+
+<span class="fc" id="L621">            RefUpdate ru = gitRepo.updateRef(refName);</span>
+<span class="fc" id="L622">            ru.setNewObjectId(parentCommit);</span>
+<span class="fc" id="L623">            ru.setForceUpdate(true);</span>
+<span class="fc" id="L624">            ru.update();</span>
+
+<span class="fc" id="L626">            log.info(&quot;Undo last on '{}': {} → {}&quot;, branch, headCommit.name(), parentCommit.name());</span>
+<span class="fc" id="L627">            return parentCommit.name();</span>
+<span class="fc" id="L628">        }</span>
+    }
+
+    /**
+     * Restore the DSL content from a specific commit as a new commit on the branch.
+     *
+     * &lt;p&gt;Reads the DSL text from the given commit and creates a new commit on
+     * the specified branch with that content. This is a &quot;restore to version&quot;
+     * operation — the branch moves forward with a new commit whose tree
+     * matches the old commit.
+     *
+     * @param commitId the source commit SHA to restore from
+     * @param branch   the branch to create the new commit on
+     * @return the new commit SHA, or {@code null} if the source commit was not found
+     * @throws IOException on JGit errors
+     */
+    public String restore(String commitId, String branch) throws IOException {
+        String dslText;
+        try {
+<span class="fc" id="L647">            dslText = getDslAtCommit(commitId);</span>
+<span class="fc" id="L648">        } catch (org.eclipse.jgit.errors.MissingObjectException e) {</span>
+<span class="fc" id="L649">            log.warn(&quot;Cannot restore: commit {} not found&quot;, commitId);</span>
+<span class="fc" id="L650">            return null;</span>
+<span class="fc" id="L651">        }</span>
+<span class="pc bpc" id="L652" title="1 of 2 branches missed.">        if (dslText == null) {</span>
+<span class="nc" id="L653">            log.warn(&quot;Cannot restore: commit {} has no DSL content&quot;, commitId);</span>
+<span class="nc" id="L654">            return null;</span>
+        }
+
+<span class="fc" id="L657">        return commitDsl(branch, dslText, &quot;taxonomy&quot;,</span>
+<span class="fc" id="L658">                &quot;Restored from version &quot; + commitId.substring(0, 7));</span>
+    }
+
     // ── State query helpers ────────────────────────────────────────
 
     /**
@@ -528,9 +668,9 @@ public class DslGitRepository {
      * @throws IOException on JGit errors
      */
     public String getHeadCommit(String branch) throws IOException {
-<span class="fc" id="L531">        String refName = Constants.R_HEADS + branch;</span>
-<span class="fc" id="L532">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
-<span class="pc bpc" id="L533" title="1 of 4 branches missed.">        return ref != null &amp;&amp; ref.getObjectId() != null ? ref.getObjectId().name() : null;</span>
+<span class="fc" id="L671">        String refName = Constants.R_HEADS + branch;</span>
+<span class="fc" id="L672">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="pc bpc" id="L673" title="1 of 4 branches missed.">        return ref != null &amp;&amp; ref.getObjectId() != null ? ref.getObjectId().name() : null;</span>
     }
 
     /**
@@ -540,11 +680,11 @@ public class DslGitRepository {
      * @throws IOException on JGit errors
      */
     public List&lt;String&gt; getBranchNames() throws IOException {
-<span class="fc" id="L543">        List&lt;String&gt; names = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L544" title="All 2 branches covered.">        for (Ref ref : gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS)) {</span>
-<span class="fc" id="L545">            names.add(ref.getName().substring(Constants.R_HEADS.length()));</span>
-<span class="fc" id="L546">        }</span>
-<span class="fc" id="L547">        return names;</span>
+<span class="fc" id="L683">        List&lt;String&gt; names = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L684" title="All 2 branches covered.">        for (Ref ref : gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS)) {</span>
+<span class="fc" id="L685">            names.add(ref.getName().substring(Constants.R_HEADS.length()));</span>
+<span class="fc" id="L686">        }</span>
+<span class="fc" id="L687">        return names;</span>
     }
 
     /**
@@ -555,18 +695,18 @@ public class DslGitRepository {
      * @throws IOException on JGit errors
      */
     public int getCommitCount(String branch) throws IOException {
-<span class="fc" id="L558">        String refName = Constants.R_HEADS + branch;</span>
-<span class="fc" id="L559">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
-<span class="fc bfc" id="L560" title="All 2 branches covered.">        if (ref == null) return 0;</span>
+<span class="fc" id="L698">        String refName = Constants.R_HEADS + branch;</span>
+<span class="fc" id="L699">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L700" title="All 2 branches covered.">        if (ref == null) return 0;</span>
 
-<span class="fc" id="L562">        int count = 0;</span>
-<span class="fc" id="L563">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
-<span class="fc" id="L564">            walk.markStart(walk.parseCommit(ref.getObjectId()));</span>
-<span class="fc bfc" id="L565" title="All 2 branches covered.">            for (RevCommit ignored : walk) {</span>
-<span class="fc" id="L566">                count++;</span>
-<span class="fc" id="L567">            }</span>
+<span class="fc" id="L702">        int count = 0;</span>
+<span class="fc" id="L703">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L704">            walk.markStart(walk.parseCommit(ref.getObjectId()));</span>
+<span class="fc bfc" id="L705" title="All 2 branches covered.">            for (RevCommit ignored : walk) {</span>
+<span class="fc" id="L706">                count++;</span>
+<span class="fc" id="L707">            }</span>
         }
-<span class="fc" id="L569">        return count;</span>
+<span class="fc" id="L709">        return count;</span>
     }
 
     /**
@@ -577,35 +717,35 @@ public class DslGitRepository {
      * @throws IOException on JGit errors
      */
     public DslCommit getHeadCommitInfo(String branch) throws IOException {
-<span class="fc" id="L580">        String refName = Constants.R_HEADS + branch;</span>
-<span class="fc" id="L581">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
-<span class="fc bfc" id="L582" title="All 2 branches covered.">        if (ref == null) return null;</span>
+<span class="fc" id="L720">        String refName = Constants.R_HEADS + branch;</span>
+<span class="fc" id="L721">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L722" title="All 2 branches covered.">        if (ref == null) return null;</span>
 
-<span class="fc" id="L584">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
-<span class="fc" id="L585">            RevCommit c = walk.parseCommit(ref.getObjectId());</span>
-<span class="fc" id="L586">            PersonIdent authorIdent = c.getAuthorIdent();</span>
-<span class="fc" id="L587">            return new DslCommit(</span>
-<span class="fc" id="L588">                    c.name(),</span>
-<span class="fc" id="L589">                    authorIdent.getName(),</span>
-<span class="fc" id="L590">                    Instant.ofEpochSecond(c.getCommitTime()),</span>
-<span class="fc" id="L591">                    c.getFullMessage());</span>
+<span class="fc" id="L724">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L725">            RevCommit c = walk.parseCommit(ref.getObjectId());</span>
+<span class="fc" id="L726">            PersonIdent authorIdent = c.getAuthorIdent();</span>
+<span class="fc" id="L727">            return new DslCommit(</span>
+<span class="fc" id="L728">                    c.name(),</span>
+<span class="fc" id="L729">                    authorIdent.getName(),</span>
+<span class="fc" id="L730">                    Instant.ofEpochSecond(c.getCommitTime()),</span>
+<span class="fc" id="L731">                    c.getFullMessage());</span>
         }
     }
 
     // ── Internal helpers ────────────────────────────────────────────
 
     private String readDslFromTree(RevTree tree) throws IOException {
-<span class="fc" id="L598">        try (TreeWalk tw = TreeWalk.forPath(gitRepo, DSL_FILENAME, tree)) {</span>
-<span class="pc bpc" id="L599" title="1 of 2 branches missed.">            if (tw == null) return null;</span>
-<span class="fc" id="L600">            ObjectId blobId = tw.getObjectId(0);</span>
-<span class="fc" id="L601">            ObjectLoader loader = gitRepo.open(blobId, Constants.OBJ_BLOB);</span>
-<span class="fc" id="L602">            return new String(loader.getBytes(), StandardCharsets.UTF_8);</span>
-<span class="nc bnc" id="L603" title="All 2 branches missed.">        }</span>
+<span class="fc" id="L738">        try (TreeWalk tw = TreeWalk.forPath(gitRepo, DSL_FILENAME, tree)) {</span>
+<span class="pc bpc" id="L739" title="1 of 2 branches missed.">            if (tw == null) return null;</span>
+<span class="fc" id="L740">            ObjectId blobId = tw.getObjectId(0);</span>
+<span class="fc" id="L741">            ObjectLoader loader = gitRepo.open(blobId, Constants.OBJ_BLOB);</span>
+<span class="fc" id="L742">            return new String(loader.getBytes(), StandardCharsets.UTF_8);</span>
+<span class="nc bnc" id="L743" title="All 2 branches missed.">        }</span>
     }
 
     /** Expose the underlying JGit repository (for advanced operations). */
     public Repository getGitRepository() {
-<span class="fc" id="L608">        return gitRepo;</span>
+<span class="fc" id="L748">        return gitRepo;</span>
     }
 
     /**
@@ -614,7 +754,7 @@ public class DslGitRepository {
      * @return true if backed by HibernateRepository (persistent)
      */
     public boolean isDatabaseBacked() {
-<span class="fc" id="L617">        return gitRepo instanceof HibernateRepository;</span>
+<span class="fc" id="L757">        return gitRepo instanceof HibernateRepository;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
