@@ -200,6 +200,51 @@ class ArchitectureAnalysisTests {
                 .andExpect(jsonPath("$.notes").isNotEmpty());
     }
 
+    // ── APQC Coverage Tests ──────────────────────────────────────────────
+
+    @Test
+    void apqcCoverageWithNoApqcDataReturnsZeroCoverage() {
+        ApqcCoverageResult result = gapService.analyzeApqcCoverage(null);
+        assertThat(result.totalCategories()).isGreaterThanOrEqualTo(0);
+        assertThat(result.coverageByLevel()).isNotNull();
+        assertThat(result.uncoveredCategories()).isNotNull();
+    }
+
+    @Test
+    void apqcCoverageEndpointReturnsOk() throws Exception {
+        mockMvc.perform(get("/api/gap/apqc-coverage"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCategories").isNumber())
+                .andExpect(jsonPath("$.coveredCategories").isNumber())
+                .andExpect(jsonPath("$.coveragePercent").isNumber())
+                .andExpect(jsonPath("$.uncoveredCategories").isArray())
+                .andExpect(jsonPath("$.coverageByLevel").isMap());
+    }
+
+    @Test
+    void apqcCoverageEndpointWithBusinessTextReturnsOk() throws Exception {
+        mockMvc.perform(get("/api/gap/apqc-coverage")
+                        .param("businessText", "Supply chain management"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCategories").isNumber());
+    }
+
+    @Test
+    void apqcHierarchyEndpointReturnsOk() throws Exception {
+        mockMvc.perform(get("/api/graph/apqc-hierarchy"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
+    void apqcCoverageWithApqcRelationsCountsCategories() {
+        // Create a relation with APQC provenance
+        relationService.createRelation("CP", "BP", RelationType.REALIZES, "apqc test", "APQC_IMPORT");
+
+        ApqcCoverageResult result = gapService.analyzeApqcCoverage("test");
+        assertThat(result.totalCategories()).isGreaterThanOrEqualTo(1);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // Step 3 — Enriched Failure Impact Tests
     // ═══════════════════════════════════════════════════════════════════════

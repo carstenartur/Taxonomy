@@ -128,7 +128,17 @@
         'Applications': '#8E44AD',
         'User Applications': '#8E44AD',
         'Information Products': '#3498DB',
-        'Communications Services': '#E74C3C'
+        'Communications Services': '#E74C3C',
+        'Systems': '#6A5ACD',
+        'Components': '#9B59B6'
+    };
+
+    var APQC_LEVEL_COLORS = {
+        'Category':     '#1B4F72',
+        'ProcessGroup': '#2E86C1',
+        'Process':      '#5DADE2',
+        'Activity':     '#AED6F1',
+        'Task':         '#D6EAF8'
     };
 
     function getNodeColor(taxonomySheet) {
@@ -540,16 +550,177 @@
         });
     }
 
+    // ── APQC Hierarchy ───────────────────────────────────────────────────────
+
+    function getApqcLevelColor(level) {
+        return APQC_LEVEL_COLORS[level] || '#6c757d';
+    }
+
+    /**
+     * Render an APQC hierarchy tree using D3.
+     * @param {HTMLElement} container - DOM element to render into
+     * @param {Array} roots - Array of ApqcHierarchyNode trees
+     */
+    function renderApqcTree(container, roots) {
+        if (typeof d3 === 'undefined' || !roots || roots.length === 0) {
+            container.innerHTML = '<div class="alert alert-info py-1 px-2 small mb-0">' +
+                'No APQC hierarchy data found. Import an APQC file first via the Import tab.</div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        var syntheticRoot = { name: 'APQC Process Classification Framework', level: '', children: roots };
+        var root = d3.hierarchy(syntheticRoot);
+
+        var marginLeft = 30;
+        var marginRight = 200;
+        var marginTop = 10;
+        var marginBottom = 10;
+        var nodeRadius = 6;
+        var dy = 200;
+        var dx = 24;
+
+        root.sort(function (a, b) { return d3.ascending(a.data.pcfId || '', b.data.pcfId || ''); });
+        var treeLayout = d3.tree().nodeSize([dx, dy]);
+        treeLayout(root);
+
+        var x0 = Infinity, x1 = -Infinity;
+        root.each(function (d) {
+            if (d.x > x1) x1 = d.x;
+            if (d.x < x0) x0 = d.x;
+        });
+
+        var width = container.clientWidth || 600;
+        var height = x1 - x0 + marginTop + marginBottom + dx;
+
+        var svg = d3.select(container).append('svg')
+            .attr('width', width)
+            .attr('height', height)
+            .attr('viewBox', [-marginLeft, x0 - marginTop, width, height])
+            .style('font', '12px sans-serif');
+
+        // Links
+        svg.append('g')
+            .attr('fill', 'none')
+            .attr('stroke', '#ccc')
+            .attr('stroke-width', 1.5)
+            .selectAll('path')
+            .data(root.links())
+            .join('path')
+            .attr('d', d3.linkHorizontal()
+                .x(function (d) { return d.y; })
+                .y(function (d) { return d.x; }));
+
+        // Nodes
+        var node = svg.append('g')
+            .selectAll('g')
+            .data(root.descendants())
+            .join('g')
+            .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; });
+
+        node.append('circle')
+            .attr('r', nodeRadius)
+            .attr('fill', function (d) { return d.data.level ? getApqcLevelColor(d.data.level) : '#333'; })
+            .attr('stroke', '#fff')
+            .attr('stroke-width', 1.5);
+
+        node.append('text')
+            .attr('dy', '0.32em')
+            .attr('x', function (d) { return d.children ? -10 : 10; })
+            .attr('text-anchor', function (d) { return d.children ? 'end' : 'start'; })
+            .text(function (d) {
+                var label = d.data.name || d.data.id || '';
+                return label.length > 40 ? label.substring(0, 37) + '...' : label;
+            });
+
+        node.append('title')
+            .text(function (d) {
+                var parts = [];
+                if (d.data.id) parts.push('ID: ' + d.data.id);
+                if (d.data.pcfId) parts.push('PCF: ' + d.data.pcfId);
+                if (d.data.level) parts.push('Level: ' + d.data.level);
+                if (d.data.taxonomyRoot) parts.push('Root: ' + d.data.taxonomyRoot);
+                return parts.join('\n');
+            });
+
+        // Legend
+        var legendDiv = d3.select(container).append('div')
+            .attr('class', 'force-graph-legend mt-1');
+        Object.keys(APQC_LEVEL_COLORS).forEach(function (level) {
+            legendDiv.append('span').attr('class', 'force-graph-legend-item')
+                .html('<span class="force-graph-legend-dot" style="background:' +
+                    APQC_LEVEL_COLORS[level] + '"></span> ' + level);
+        });
+    }
+
+    function onApqcFilterChange() {
+        var checkbox = document.getElementById('graphApqcFilter');
+        if (!checkbox) return;
+
+        var area = document.getElementById('graphResultsArea');
+        var content = document.getElementById('graphResultsContent');
+
+        if (checkbox.checked) {
+            if (area) area.style.display = '';
+            if (content) {
+                content.innerHTML =
+                    '<div class="text-center text-muted py-2">' +
+                    '<div class="spinner-border spinner-border-sm me-1" role="status"></div> ' +
+                    'Loading APQC hierarchy&hellip;</div>';
+            }
+            fetch('/api/graph/apqc-hierarchy')
+                .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(function (data) {
+                    if (!content) return;
+                    if (!data || data.length === 0) {
+                        content.innerHTML = '<div class="alert alert-info py-1 px-2 small mb-0">' +
+                            'No APQC hierarchy data found. Import an APQC file first via the Import tab.</div>';
+                        return;
+                    }
+                    content.innerHTML =
+                        '<div class="mb-1"><strong>APQC Process Hierarchy</strong> ' +
+                        '<span class="badge bg-secondary">' + countNodes(data) + ' processes</span></div>' +
+                        '<div id="apqcTreeContainer"></div>';
+                    var treeContainer = document.getElementById('apqcTreeContainer');
+                    if (treeContainer) renderApqcTree(treeContainer, data);
+                })
+                .catch(function (err) {
+                    if (content) {
+                        content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0">' +
+                            'Failed to load APQC hierarchy: ' + escapeHtml(err.message) + '</div>';
+                    }
+                });
+        } else {
+            if (area) area.style.display = 'none';
+            if (content) content.innerHTML = '';
+        }
+    }
+
+    function countNodes(nodes) {
+        var count = 0;
+        if (!nodes) return count;
+        for (var i = 0; i < nodes.length; i++) {
+            count++;
+            if (nodes[i].children) count += countNodes(nodes[i].children);
+        }
+        return count;
+    }
+
     // ── Bootstrap initialization ──────────────────────────────────────────────
 
     document.addEventListener('DOMContentLoaded', function () {
         var upBtn = document.getElementById('graphUpstreamBtn');
         var downBtn = document.getElementById('graphDownstreamBtn');
         var failBtn = document.getElementById('graphFailureBtn');
+        var apqcCheckbox = document.getElementById('graphApqcFilter');
 
         if (upBtn) upBtn.addEventListener('click', onUpstreamClick);
         if (downBtn) downBtn.addEventListener('click', onDownstreamClick);
         if (failBtn) failBtn.addEventListener('click', onFailureClick);
+        if (apqcCheckbox) apqcCheckbox.addEventListener('change', onApqcFilterChange);
     });
 
     // ── Public API ────────────────────────────────────────────────────────────
