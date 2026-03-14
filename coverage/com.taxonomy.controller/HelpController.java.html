@@ -48,6 +48,10 @@ public class HelpController {
         new DocEntry(&quot;USER_GUIDE&quot;,               &quot;User Guide&quot;,               &quot;📖&quot;, &quot;Everyone&quot;),
         new DocEntry(&quot;CONCEPTS&quot;,                  &quot;Concepts&quot;,                 &quot;💡&quot;, &quot;Everyone&quot;),
         new DocEntry(&quot;EXAMPLES&quot;,                  &quot;Examples&quot;,                 &quot;📝&quot;, &quot;Everyone&quot;),
+        new DocEntry(&quot;FRAMEWORK_IMPORT&quot;,          &quot;Framework Import&quot;,         &quot;📥&quot;, &quot;Everyone&quot;),
+        new DocEntry(&quot;GIT_INTEGRATION&quot;,           &quot;Git Integration&quot;,          &quot;🔀&quot;, &quot;Developers&quot;),
+        new DocEntry(&quot;PREFERENCES&quot;,               &quot;Preferences&quot;,              &quot;🎛️&quot;, &quot;Admins&quot;),
+        new DocEntry(&quot;AI_PROVIDERS&quot;,              &quot;AI Providers&quot;,             &quot;🤖&quot;, &quot;Everyone&quot;),
         new DocEntry(&quot;CONFIGURATION_REFERENCE&quot;,   &quot;Configuration Reference&quot;,  &quot;⚙️&quot;, &quot;Admins&quot;),
         new DocEntry(&quot;API_REFERENCE&quot;,             &quot;API Reference&quot;,            &quot;🔌&quot;, &quot;Integrators&quot;),
         new DocEntry(&quot;CURL_EXAMPLES&quot;,             &quot;cURL Examples&quot;,            &quot;💻&quot;, &quot;Integrators&quot;),
@@ -55,49 +59,48 @@ public class HelpController {
         new DocEntry(&quot;DEVELOPER_GUIDE&quot;,           &quot;Developer Guide&quot;,          &quot;🛠️&quot;, &quot;Developers&quot;),
         new DocEntry(&quot;DEPLOYMENT_GUIDE&quot;,          &quot;Deployment Guide&quot;,         &quot;🚀&quot;, &quot;DevOps&quot;),
         new DocEntry(&quot;SECURITY&quot;,                  &quot;Security&quot;,                 &quot;🔒&quot;, &quot;Admins&quot;),
-        new DocEntry(&quot;POSTGRESQL-SETUP&quot;,          &quot;PostgreSQL Setup&quot;,         &quot;🐘&quot;, &quot;DevOps&quot;),
-        new DocEntry(&quot;MSSQL-SETUP&quot;,               &quot;MSSQL Setup&quot;,              &quot;🗄️&quot;, &quot;DevOps&quot;)
+        new DocEntry(&quot;DATABASE_SETUP&quot;,            &quot;Database Setup&quot;,           &quot;🗄️&quot;, &quot;DevOps&quot;)
     );
 
     private final Parser parser;
     private final HtmlRenderer renderer;
-<span class="fc" id="L64">    private final ConcurrentHashMap&lt;String, String&gt; htmlCache = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="fc" id="L67">    private final ConcurrentHashMap&lt;String, String&gt; htmlCache = new ConcurrentHashMap&lt;&gt;();</span>
 
-<span class="fc" id="L66">    public HelpController() {</span>
-<span class="fc" id="L67">        MutableDataSet options = new MutableDataSet();</span>
-<span class="fc" id="L68">        options.set(Parser.EXTENSIONS, Arrays.asList(</span>
-<span class="fc" id="L69">            TablesExtension.create(),</span>
-<span class="fc" id="L70">            AutolinkExtension.create(),</span>
-<span class="fc" id="L71">            StrikethroughExtension.create()</span>
+<span class="fc" id="L69">    public HelpController() {</span>
+<span class="fc" id="L70">        MutableDataSet options = new MutableDataSet();</span>
+<span class="fc" id="L71">        options.set(Parser.EXTENSIONS, Arrays.asList(</span>
+<span class="fc" id="L72">            TablesExtension.create(),</span>
+<span class="fc" id="L73">            AutolinkExtension.create(),</span>
+<span class="fc" id="L74">            StrikethroughExtension.create()</span>
         ));
-<span class="fc" id="L73">        this.parser = Parser.builder(options).build();</span>
-<span class="fc" id="L74">        this.renderer = HtmlRenderer.builder(options).build();</span>
-<span class="fc" id="L75">    }</span>
+<span class="fc" id="L76">        this.parser = Parser.builder(options).build();</span>
+<span class="fc" id="L77">        this.renderer = HtmlRenderer.builder(options).build();</span>
+<span class="fc" id="L78">    }</span>
 
     /** Returns the ordered table of contents as JSON. */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public List&lt;DocEntry&gt; getToc() {
-<span class="fc" id="L81">        return DOCS;</span>
+<span class="fc" id="L84">        return DOCS;</span>
     }
 
     /** Renders a Markdown document to HTML. */
     @GetMapping(value = &quot;/{docName}&quot;, produces = MediaType.TEXT_HTML_VALUE)
     @ResponseBody
     public ResponseEntity&lt;String&gt; getDoc(@PathVariable String docName) {
-<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (!SAFE_NAME.matcher(docName).matches()) {</span>
-<span class="nc" id="L89">            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(&quot;Invalid document name&quot;);</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (!SAFE_NAME.matcher(docName).matches()) {</span>
+<span class="nc" id="L92">            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(&quot;Invalid document name&quot;);</span>
         }
         // Only allow documents that exist in the known list
-<span class="fc" id="L92">        boolean knownDoc = DOCS.stream().anyMatch(d -&gt; d.filename().equals(docName));</span>
-<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (!knownDoc) {</span>
-<span class="fc" id="L94">            return ResponseEntity.notFound().build();</span>
+<span class="fc" id="L95">        boolean knownDoc = DOCS.stream().anyMatch(d -&gt; d.filename().equals(docName));</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (!knownDoc) {</span>
+<span class="fc" id="L97">            return ResponseEntity.notFound().build();</span>
         }
-<span class="fc" id="L96">        String html = htmlCache.computeIfAbsent(docName, this::renderDoc);</span>
-<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (html == null) {</span>
-<span class="nc" id="L98">            return ResponseEntity.notFound().build();</span>
+<span class="fc" id="L99">        String html = htmlCache.computeIfAbsent(docName, this::renderDoc);</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">        if (html == null) {</span>
+<span class="nc" id="L101">            return ResponseEntity.notFound().build();</span>
         }
-<span class="fc" id="L100">        return ResponseEntity.ok(html);</span>
+<span class="fc" id="L103">        return ResponseEntity.ok(html);</span>
     }
 
     /** Serves images from classpath docs/images/. */
@@ -106,52 +109,52 @@ public class HelpController {
     public ResponseEntity&lt;byte[]&gt; getImage(@PathVariable String imageName) {
         // Validate the full filename: only alphanumeric, hyphens, underscores, and dots allowed.
         // This prevents path traversal (no slashes, no &quot;..&quot;) while allowing extensions like .png.
-<span class="pc bpc" id="L109" title="2 of 4 branches missed.">        if (!SAFE_IMAGE.matcher(imageName).matches() || imageName.contains(&quot;..&quot;)) {</span>
-<span class="nc" id="L110">            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();</span>
+<span class="pc bpc" id="L112" title="2 of 4 branches missed.">        if (!SAFE_IMAGE.matcher(imageName).matches() || imageName.contains(&quot;..&quot;)) {</span>
+<span class="nc" id="L113">            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();</span>
         }
         try {
-<span class="fc" id="L113">            ClassPathResource resource = new ClassPathResource(&quot;docs/images/&quot; + imageName);</span>
-<span class="pc bpc" id="L114" title="1 of 2 branches missed.">            if (!resource.exists()) {</span>
-<span class="fc" id="L115">                return ResponseEntity.notFound().build();</span>
+<span class="fc" id="L116">            ClassPathResource resource = new ClassPathResource(&quot;docs/images/&quot; + imageName);</span>
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">            if (!resource.exists()) {</span>
+<span class="fc" id="L118">                return ResponseEntity.notFound().build();</span>
             }
-<span class="nc" id="L117">            byte[] bytes = resource.getInputStream().readAllBytes();</span>
-<span class="nc" id="L118">            MediaType mediaType = guessMediaType(imageName);</span>
-<span class="nc" id="L119">            return ResponseEntity.ok().contentType(mediaType).body(bytes);</span>
-<span class="nc" id="L120">        } catch (IOException e) {</span>
-<span class="nc" id="L121">            log.warn(&quot;Could not read image {}: {}&quot;, imageName, e.getMessage());</span>
-<span class="nc" id="L122">            return ResponseEntity.notFound().build();</span>
+<span class="nc" id="L120">            byte[] bytes = resource.getInputStream().readAllBytes();</span>
+<span class="nc" id="L121">            MediaType mediaType = guessMediaType(imageName);</span>
+<span class="nc" id="L122">            return ResponseEntity.ok().contentType(mediaType).body(bytes);</span>
+<span class="nc" id="L123">        } catch (IOException e) {</span>
+<span class="nc" id="L124">            log.warn(&quot;Could not read image {}: {}&quot;, imageName, e.getMessage());</span>
+<span class="nc" id="L125">            return ResponseEntity.notFound().build();</span>
         }
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
 
     private String renderDoc(String docName) {
-<span class="fc" id="L129">        String path = &quot;docs/&quot; + docName + &quot;.md&quot;;</span>
-<span class="fc" id="L130">        ClassPathResource resource = new ClassPathResource(path);</span>
-<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (!resource.exists()) {</span>
-<span class="nc" id="L132">            return null;</span>
+<span class="fc" id="L132">        String path = &quot;docs/&quot; + docName + &quot;.md&quot;;</span>
+<span class="fc" id="L133">        ClassPathResource resource = new ClassPathResource(path);</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        if (!resource.exists()) {</span>
+<span class="nc" id="L135">            return null;</span>
         }
-<span class="fc" id="L134">        try (InputStream in = resource.getInputStream()) {</span>
-<span class="fc" id="L135">            String markdown = new String(in.readAllBytes(), StandardCharsets.UTF_8);</span>
+<span class="fc" id="L137">        try (InputStream in = resource.getInputStream()) {</span>
+<span class="fc" id="L138">            String markdown = new String(in.readAllBytes(), StandardCharsets.UTF_8);</span>
             // Rewrite relative image paths to absolute /help/images/... URLs
-<span class="fc" id="L137">            markdown = markdown.replaceAll(&quot;\\(images/([^)]+)\\)&quot;, &quot;(/help/images/$1)&quot;);</span>
-<span class="fc" id="L138">            Node document = parser.parse(markdown);</span>
-<span class="fc" id="L139">            String body = renderer.render(document);</span>
-<span class="fc" id="L140">            return &quot;&lt;div class=\&quot;help-doc-content\&quot;&gt;&quot; + body + &quot;&lt;/div&gt;&quot;;</span>
-<span class="nc" id="L141">        } catch (IOException e) {</span>
-<span class="nc" id="L142">            log.error(&quot;Failed to render help doc {}: {}&quot;, docName, e.getMessage());</span>
-<span class="nc" id="L143">            return null;</span>
+<span class="fc" id="L140">            markdown = markdown.replaceAll(&quot;\\(images/([^)]+)\\)&quot;, &quot;(/help/images/$1)&quot;);</span>
+<span class="fc" id="L141">            Node document = parser.parse(markdown);</span>
+<span class="fc" id="L142">            String body = renderer.render(document);</span>
+<span class="fc" id="L143">            return &quot;&lt;div class=\&quot;help-doc-content\&quot;&gt;&quot; + body + &quot;&lt;/div&gt;&quot;;</span>
+<span class="nc" id="L144">        } catch (IOException e) {</span>
+<span class="nc" id="L145">            log.error(&quot;Failed to render help doc {}: {}&quot;, docName, e.getMessage());</span>
+<span class="nc" id="L146">            return null;</span>
         }
     }
 
     private MediaType guessMediaType(String imageName) {
-<span class="nc" id="L148">        String lower = imageName.toLowerCase();</span>
-<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (lower.endsWith(&quot;.png&quot;))  return MediaType.IMAGE_PNG;</span>
-<span class="nc bnc" id="L150" title="All 4 branches missed.">        if (lower.endsWith(&quot;.jpg&quot;) || lower.endsWith(&quot;.jpeg&quot;)) return MediaType.IMAGE_JPEG;</span>
-<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (lower.endsWith(&quot;.gif&quot;)) return MediaType.IMAGE_GIF;</span>
-<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (lower.endsWith(&quot;.svg&quot;)) return MediaType.valueOf(&quot;image/svg+xml&quot;);</span>
-<span class="nc bnc" id="L153" title="All 2 branches missed.">        if (lower.endsWith(&quot;.webp&quot;)) return MediaType.valueOf(&quot;image/webp&quot;);</span>
-<span class="nc" id="L154">        return MediaType.APPLICATION_OCTET_STREAM;</span>
+<span class="nc" id="L151">        String lower = imageName.toLowerCase();</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (lower.endsWith(&quot;.png&quot;))  return MediaType.IMAGE_PNG;</span>
+<span class="nc bnc" id="L153" title="All 4 branches missed.">        if (lower.endsWith(&quot;.jpg&quot;) || lower.endsWith(&quot;.jpeg&quot;)) return MediaType.IMAGE_JPEG;</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">        if (lower.endsWith(&quot;.gif&quot;)) return MediaType.IMAGE_GIF;</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">        if (lower.endsWith(&quot;.svg&quot;)) return MediaType.valueOf(&quot;image/svg+xml&quot;);</span>
+<span class="nc bnc" id="L156" title="All 2 branches missed.">        if (lower.endsWith(&quot;.webp&quot;)) return MediaType.valueOf(&quot;image/webp&quot;);</span>
+<span class="nc" id="L157">        return MediaType.APPLICATION_OCTET_STREAM;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
