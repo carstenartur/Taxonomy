@@ -17,3 +17,5 @@ services:
         value: "true"         # cache Thymeleaf templates in production for faster response times
       - key: TAXONOMY_SPRINGDOC_ENABLED
         value: "false"         # disable Swagger UI in production to save memory and reduce attack surface
+      - key: TAXONOMY_SWAGGER_PUBLIC
+        value: "false"         # require authentication for Swagger UI when enabled

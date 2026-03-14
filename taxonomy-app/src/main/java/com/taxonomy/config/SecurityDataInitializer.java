@@ -59,6 +59,12 @@ public class SecurityDataInitializer implements ApplicationRunner {
             userRepository.save(admin);
             log.info("Created default admin user (username=admin). Change the password immediately.");
         }
+
+        // Warn if the default password is still in use
+        if ("admin".equals(adminPassword)) {
+            log.warn("SECURITY WARNING: Default admin password 'admin' is in use. "
+                    + "Set TAXONOMY_ADMIN_PASSWORD environment variable to change it.");
+        }
     }
 
     private AppRole findOrCreateRole(String name) {
