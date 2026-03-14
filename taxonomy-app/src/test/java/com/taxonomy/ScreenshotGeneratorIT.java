@@ -48,7 +48,7 @@ import java.util.List;
 class ScreenshotGeneratorIT {
 
     private static final String REQUIREMENT_TEXT =
-            "Provide secure voice communications between HQ and deployed forces";
+            "Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments";
 
     private static final String FALLBACK_DSL_TEXT =
             "meta {\\n  language: \"taxdsl\";\\n  version: \"2.0\";\\n  namespace: \"default\";\\n}\\n\\n" +
@@ -550,7 +550,7 @@ class ScreenshotGeneratorIT {
         navigateToTab("graph");
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         input.clear();
-        input.sendKeys("BP");
+        input.sendKeys("BP-1040");
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "11-graph-explorer-panel.png");
     }
 
@@ -773,7 +773,7 @@ class ScreenshotGeneratorIT {
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
-        js("arguments[0].value = 'BP-1'; arguments[0].dispatchEvent(new Event('input'));", input);
+        js("arguments[0].value = 'BP-1327'; arguments[0].dispatchEvent(new Event('input'));", input);
         WebElement upstreamBtn = driver.findElement(By.id("graphUpstreamBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", upstreamBtn);
         js("arguments[0].click();", upstreamBtn);
@@ -789,7 +789,7 @@ class ScreenshotGeneratorIT {
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
-        js("arguments[0].value = 'BP-1'; arguments[0].dispatchEvent(new Event('input'));", input);
+        js("arguments[0].value = 'BP-1327'; arguments[0].dispatchEvent(new Event('input'));", input);
 
         WebElement failureBtn = driver.findElement(By.id("graphFailureBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", failureBtn);

@@ -27,7 +27,7 @@ flowchart LR
 
 ## Quick Example
 
-> _"Provide secure voice communications for deployed forces."_
+> _"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments and coordinated workflow management for clinical teams."_
 
 <img src="docs/images/15-scored-taxonomy-tree.png" alt="Scored taxonomy tree" width="700">
 
