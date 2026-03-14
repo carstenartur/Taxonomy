@@ -157,6 +157,17 @@ For Oracle instances using a SID instead of a service name, use:
 jdbc:oracle:thin:@localhost:1521:ORCL
 ```
 
+### Oracle Reserved Words
+
+Oracle reserves certain SQL keywords (e.g., `LEVEL`, `COMMENT`, `USER`) that
+cannot be used as unquoted column names. The application maps conflicting Java
+field names to safe column names via `@Column(name = "...")` annotations — for
+example, `TaxonomyNode.level` is mapped to the column `node_level`.
+
+If you add new entity fields, check
+[Oracle Reserved Words](https://docs.oracle.com/en/database/oracle/oracle-database/23/sqlrf/Oracle-SQL-Reserved-Words.html)
+to ensure the column name is not reserved.
+
 ### Slow Container Startup
 
 **Symptom:** The Oracle container takes a long time to start.
