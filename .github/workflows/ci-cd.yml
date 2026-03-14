@@ -52,11 +52,13 @@ jobs:
       - name: Publish test results
         uses: dorny/test-reporter@v2
         if: always()
+        continue-on-error: true
         with:
           name: Maven Tests
           path: '**/target/surefire-reports/TEST-*.xml,**/target/failsafe-reports/TEST-*.xml'
           reporter: java-junit
           fail-on-error: false
+          max-annotations: '50'
 
       - name: Generate Surefire HTML report
         if: always()
