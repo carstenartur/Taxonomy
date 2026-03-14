@@ -15,25 +15,25 @@ Analyze a business requirement, then export the resulting architecture as ArchiM
 # Step 1 — Analyze the requirement
 curl -u admin:admin -X POST http://localhost:8080/api/analyze \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Provide secure voice communications for deployed forces","includeArchitectureView":true}'
+  -d '{"businessText":"Provide integrated communication services for hospital staff","includeArchitectureView":true}'
 
 # Step 2 — Export the architecture as ArchiMate XML
 curl -u admin:admin -X POST http://localhost:8080/api/diagram/archimate \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Provide secure voice communications for deployed forces"}' \
+  -d '{"businessText":"Provide integrated communication services for hospital staff"}' \
   --output architecture.xml
 
 # Alternative exports:
 # Visio
 curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Provide secure voice communications for deployed forces"}' \
+  -d '{"businessText":"Provide integrated communication services for hospital staff"}' \
   --output architecture.vsdx
 
 # Mermaid
 curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Provide secure voice communications for deployed forces"}'
+  -d '{"businessText":"Provide integrated communication services for hospital staff"}'
 ```
 
 ---
@@ -46,17 +46,17 @@ Identify architecture gaps and get AI-generated recommendations.
 # Step 1 — Analyze the requirement
 curl -u admin:admin -X POST http://localhost:8080/api/analyze \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice communications","includeArchitectureView":true}'
+  -d '{"businessText":"Integrated hospital communication services","includeArchitectureView":true}'
 
 # Step 2 — Run gap analysis on the scored nodes
 curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
   -H "Content-Type: application/json" \
-  -d '{"scores":{"CP":85,"BP":72},"businessText":"Secure voice communications","minScore":50}'
+  -d '{"scores":{"CP":85,"BP":72},"businessText":"Integrated hospital communication services","minScore":50}'
 
 # Step 3 — Get architecture recommendations
 curl -u admin:admin -X POST http://localhost:8080/api/recommend \
   -H "Content-Type: application/json" \
-  -d '{"scores":{"CP":85,"BP":72},"businessText":"Secure voice communications","minScore":50}'
+  -d '{"scores":{"CP":85,"BP":72},"businessText":"Integrated hospital communication services","minScore":50}'
 ```
 
 ---
@@ -141,5 +141,5 @@ curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact
 # Export report as Markdown
 curl -u admin:admin -X POST http://localhost:8080/api/report/markdown \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice","scores":{"CP-1023":92}}' --output report.md
+  -d '{"businessText":"Hospital communications","scores":{"CP-1023":92}}' --output report.md
 ```

@@ -12,7 +12,7 @@ This document shows worked examples of common tasks in the Taxonomy Architecture
 - [4. Relation Proposals](#4-relation-proposals)
 - [5. Architecture Recommendations](#5-architecture-recommendations)
 - [6. Diagram Export](#6-diagram-export)
-- [7. Maritime Surveillance — End-to-End](#7-maritime-surveillance--end-to-end)
+- [7. Field Service Monitoring — End-to-End](#7-field-service-monitoring--end-to-end)
 - [8. Architecture DSL Workflow](#8-architecture-dsl-workflow)
 
 ---
@@ -25,7 +25,7 @@ This document shows worked examples of common tasks in the Taxonomy Architecture
 
 Open `http://localhost:8080` and paste into the analysis text area:
 
-> _"Provide secure voice and video communications for deployed forces with interoperability across national systems."_
+> _"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments and coordinated workflow management for clinical teams."_
 
 ### Step 2 — Analyze
 
@@ -65,7 +65,7 @@ Click an export button to download the architecture as ArchiMate XML, Visio `.vs
 
 ```bash
 curl -u admin:admin -X POST http://localhost:8080/api/analyze \
-  -d "businessText=Provide+secure+voice+and+video+communications+for+deployed+forces" \
+  -d "businessText=Provide+integrated+communication+platform+for+hospital+staff" \
   -d "includeArchitectureView=true"
 ```
 
@@ -119,7 +119,7 @@ curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact
 curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
   -H "Content-Type: application/json" \
   -d '{
-    "businessText": "Maritime surveillance data sharing",
+    "businessText": "Patient data sharing across hospital departments",
     "scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}
   }'
 ```
@@ -208,7 +208,7 @@ curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/revert"
 curl -u admin:admin -X POST http://localhost:8080/api/recommend \
   -H "Content-Type: application/json" \
   -d '{
-    "businessText": "Secure satellite communications for remote operations",
+    "businessText": "Reliable remote access and coordination services for distributed field teams",
     "scores": {"CO-1056": 88, "CR-1047": 81}
   }'
 ```
@@ -218,11 +218,11 @@ curl -u admin:admin -X POST http://localhost:8080/api/recommend \
 ```json
 {
   "recommendedNodes": [
-    { "code": "CO-1063", "title": "Transport Services", "reason": "Directly relevant to satellite communications requirement" },
-    { "code": "CP-1023", "title": "Communication and Information System Capabilities", "reason": "Supports remote operations as stated in requirement" }
+    { "code": "CO-1063", "title": "Transport Services", "reason": "Directly relevant to remote coordination and data transport requirement" },
+    { "code": "CP-1023", "title": "Communication and Information System Capabilities", "reason": "Supports distributed operations as stated in requirement" }
   ],
   "recommendedRelations": [
-    { "source": "CO-1056", "target": "CO-1011", "type": "supports", "reason": "Transmission services support communications access" }
+    { "source": "CO-1056", "target": "CO-1011", "type": "supports", "reason": "Transmission services support communications access for field teams" }
   ]
 }
 ```
@@ -274,13 +274,13 @@ graph TD
 
 ---
 
-## 7. Maritime Surveillance — End-to-End
+## 7. Field Service Monitoring — End-to-End
 
 **Goal:** Walk through a complete workflow — from requirement to exported architecture.
 
 ### Requirement
 
-> _"Establish maritime surveillance capability for threat detection and vessel tracking in littoral waters."_
+> _"Establish a field service monitoring platform for coordinating maintenance teams, tracking asset status in real time, and managing work orders across regional service areas."_
 
 ### Step 1 — Analyze
 
@@ -308,8 +308,8 @@ The gap analysis (automatic or via `POST /api/gap/analyze`) may identify:
 ### Step 4 — Generate relation proposals
 
 Click **Propose Relations** in the Relation Proposals panel. The AI might suggest:
-- `CI-1023 REALIZES CP-1022` — "Surveillance services realize the intelligence capability"
-- `CR-1047 SUPPORTS CI-1023` — "Infrastructure services support surveillance"
+- `CI-1023 REALIZES CP-1022` — "Monitoring services realize the analytics capability"
+- `CR-1047 SUPPORTS CI-1023` — "Infrastructure services support field monitoring"
 
 Accept the proposals that make sense; reject the rest.
 
@@ -335,7 +335,7 @@ Returns DSL text like:
 meta {
   language: "taxdsl";
   version: "2.0";
-  namespace: "maritime-surveillance";
+  namespace: "field-service-monitoring";
 }
 
 element CP-1022 type Capability {
@@ -357,7 +357,7 @@ relation CI-1023 REALIZES CP-1022 {
 Modify the DSL (add elements, relations, evidence) and commit:
 
 ```bash
-curl -u admin:admin -X POST "http://localhost:8080/api/dsl/commit?branch=draft&message=add+surveillance+relations" \
+curl -u admin:admin -X POST "http://localhost:8080/api/dsl/commit?branch=draft&message=add+field+monitoring+relations" \
   -H "Content-Type: text/plain" \
   -d @architecture.taxdsl
 ```

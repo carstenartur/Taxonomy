@@ -141,7 +141,7 @@ public class LlmService {
     // ── Cached mock data loaded from classpath ────────────────────────────────
     private volatile SavedAnalysis cachedMockAnalysis = null;
 
-    // ── Mock-mode scores for "Provide secure voice communications between HQ and deployed forces" ──
+    // ── Mock-mode scores for "Provide integrated communication platform for hospital staff" ──
     // These are used as per-taxonomy independent scores (0–100 each), NOT a pie-chart that sums to 100.
     // Each value represents "how well does this taxonomy cover the requirement?" independently.
     private static final Map<String, Integer> MOCK_ROOT_SCORES = Map.of(
@@ -156,14 +156,14 @@ public class LlmService {
     );
 
     private static final Map<String, String> MOCK_ROOT_REASONS = Map.of(
-            "CO", "Directly related to providing secure voice communication channels between headquarters and deployed forces.",
-            "CR", "Communications resources are needed to establish the secure voice links.",
-            "CP", "Capability packages enable the implementation of secure voice communications.",
-            "IP", "Infrastructure products form the physical foundation for voice communications.",
-            "BP", "Business processes govern the use of secure voice communications.",
-            "CI", "COI services may leverage secure voice communication channels.",
-            "UA", "User applications provide interfaces for voice communication.",
-            "BR", "Business rules define policies for secure voice communication usage."
+            "CO", "Directly related to providing integrated communication channels between hospital departments and clinical teams.",
+            "CR", "Communications resources are needed to establish the infrastructure for data and voice exchange.",
+            "CP", "Capability packages enable the implementation of integrated information and communication services.",
+            "IP", "Information products provide the patient records and clinical data shared across departments.",
+            "BP", "Business processes govern the coordination of workflows across clinical teams.",
+            "CI", "COI services may leverage the integrated communication platform for information sharing.",
+            "UA", "User applications provide interfaces for staff to access information and communication services.",
+            "BR", "Business rules define access policies and service-level requirements for the communication platform."
     );
 
     // ── Diagnostics tracking ──────────────────────────────────────────────────
@@ -243,7 +243,7 @@ public class LlmService {
                 if (reason == null) {
                     String root = node.getTaxonomyRoot() != null ? node.getTaxonomyRoot() : node.getCode();
                     reason = MOCK_ROOT_REASONS.getOrDefault(root,
-                            "Relevant to the secure voice communications requirement.");
+                            "Relevant to the integrated communication platform requirement.");
                 }
                 reasons.put(node.getCode(), reason);
             } else {
@@ -257,7 +257,7 @@ public class LlmService {
                 int score = Math.max(0, Math.min(parentScore, baseScore + variation));
                 scores.put(node.getCode(), score);
                 String reason = MOCK_ROOT_REASONS.getOrDefault(root,
-                        "Relevant to the secure voice communications requirement.");
+                        "Relevant to the integrated communication platform requirement.");
                 reasons.put(node.getCode(), reason);
             }
         }

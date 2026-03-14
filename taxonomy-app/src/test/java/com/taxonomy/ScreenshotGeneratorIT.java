@@ -48,7 +48,7 @@ import java.util.List;
 class ScreenshotGeneratorIT {
 
     private static final String REQUIREMENT_TEXT =
-            "Provide secure voice communications between HQ and deployed forces";
+            "Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments and coordinated workflow management for clinical teams";
 
     private static final String FALLBACK_DSL_TEXT =
             "meta {\\n  language: \"taxdsl\";\\n  version: \"2.0\";\\n  namespace: \"default\";\\n}\\n\\n" +
@@ -550,6 +550,8 @@ class ScreenshotGeneratorIT {
         navigateToTab("graph");
         WebElement input = driver.findElement(By.id("graphNodeInput"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", input);
+        // Use JS value-dispatch (same pattern as other tests) to populate a real node code that
+        // matches the placeholder text (placeholder="e.g. BP-1040"), showing a realistic screenshot.
         js("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input'));", input);
         js("arguments[0].value = 'BP-1040'; arguments[0].dispatchEvent(new Event('input'));", input);
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "11-graph-explorer-panel.png");
