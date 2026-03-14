@@ -63,6 +63,7 @@ public class TaxonomyNode {
     private String taxonomyRoot;
 
     @GenericField
+    @Column(name = "node_level")
     private int level;
 
     @Nationalized

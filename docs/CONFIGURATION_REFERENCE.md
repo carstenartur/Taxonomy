@@ -164,15 +164,17 @@ Set `SPRING_PROFILES_ACTIVE` to select the database; the default is `hsqldb`.
 |---|---|---|
 | `hsqldb` (default) | HSQLDB (in-memory or file) | `application-hsqldb.properties` |
 | `mssql` | Microsoft SQL Server | `application-mssql.properties` |
+| `postgres` | PostgreSQL | `application-postgres.properties` |
+| `oracle` | Oracle Database | `application-oracle.properties` |
 
 ### Common Database Properties
 
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
-| `SPRING_PROFILES_ACTIVE` | `spring.profiles.active` | String | `hsqldb` | Database profile. Set to `mssql` for SQL Server. |
+| `SPRING_PROFILES_ACTIVE` | `spring.profiles.active` | String | `hsqldb` | Database profile. Set to `mssql` for SQL Server, `postgres` for PostgreSQL, or `oracle` for Oracle Database. |
 | `TAXONOMY_DATASOURCE_URL` | `spring.datasource.url` | String | *(profile-dependent)* | JDBC URL. Each profile provides a sensible default; override for custom hosts. |
-| `SPRING_DATASOURCE_USERNAME` | `spring.datasource.username` | String | `sa` | Database username. |
-| `SPRING_DATASOURCE_PASSWORD` | `spring.datasource.password` | String | *(empty)* | Database password. **Required** for MSSQL. |
+| `SPRING_DATASOURCE_USERNAME` | `spring.datasource.username` | String | *(profile-dependent)* | Database username. Default: `sa` (MSSQL), `taxonomy` (PostgreSQL, Oracle), `sa` (HSQLDB). |
+| `SPRING_DATASOURCE_PASSWORD` | `spring.datasource.password` | String | *(profile-dependent)* | Database password. Default: *(empty)* (HSQLDB), `taxonomy` (PostgreSQL, Oracle). **Required** for MSSQL (must meet complexity rules). |
 | `TAXONOMY_DDL_AUTO` | `spring.jpa.hibernate.ddl-auto` | String | `create` | Schema generation strategy. `create` rebuilds on each start (safe for in-memory default). Set to `update` for file-based deployments so data is not wiped on restart. |
 | — | `spring.jpa.show-sql` | Boolean | `false` | Whether to log SQL statements. |
 
@@ -209,6 +211,20 @@ Activate with `SPRING_PROFILES_ACTIVE=postgres`. See [POSTGRESQL-SETUP.md](POSTG
 | `spring.datasource.driver-class-name` | `org.postgresql.Driver` | PostgreSQL JDBC driver. |
 | `spring.datasource.type` | `com.zaxxer.hikari.HikariDataSource` | HikariCP connection pool. |
 | `spring.jpa.database-platform` | `org.hibernate.dialect.PostgreSQLDialect` | PostgreSQL dialect. |
+| `spring.datasource.hikari.maximum-pool-size` | `10` | HikariCP max connections. |
+| `spring.datasource.hikari.connection-timeout` | `30000` | Connection timeout (ms). |
+| `spring.datasource.hikari.initialization-fail-timeout` | `60000` | Startup retry timeout (ms). |
+
+### Oracle Profile
+
+Activate with `SPRING_PROFILES_ACTIVE=oracle`. See [ORACLE-SETUP.md](ORACLE-SETUP.md) for details.
+
+| Property | Default | Description |
+|---|---|---|
+| `spring.datasource.url` | `jdbc:oracle:thin:@localhost:1521/taxonomy` | Oracle JDBC URL (thin driver). |
+| `spring.datasource.driver-class-name` | `oracle.jdbc.OracleDriver` | Oracle JDBC driver. |
+| `spring.datasource.type` | `com.zaxxer.hikari.HikariDataSource` | HikariCP connection pool. |
+| `spring.jpa.database-platform` | `org.hibernate.dialect.OracleDialect` | Oracle dialect. |
 | `spring.datasource.hikari.maximum-pool-size` | `10` | HikariCP max connections. |
 | `spring.datasource.hikari.connection-timeout` | `30000` | Connection timeout (ms). |
 | `spring.datasource.hikari.initialization-fail-timeout` | `60000` | Startup retry timeout (ms). |

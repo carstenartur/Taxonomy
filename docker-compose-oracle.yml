@@ -1,0 +1,32 @@
+services:
+  db:
+    image: gvenzl/oracle-free:23-slim-faststart
+    environment:
+      ORACLE_DATABASE: taxonomy
+      ORACLE_PASSWORD: taxonomy
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    healthcheck:
+      test: healthcheck.sh
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  taxonomy:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: oracle
+      TAXONOMY_DATASOURCE_URL: "jdbc:oracle:thin:@db:1521/taxonomy"
+      SPRING_DATASOURCE_USERNAME: taxonomy
+      SPRING_DATASOURCE_PASSWORD: taxonomy
+      TAXONOMY_DDL_AUTO: create
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  oracle-data:
