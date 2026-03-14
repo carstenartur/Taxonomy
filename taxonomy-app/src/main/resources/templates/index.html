@@ -659,12 +659,11 @@
                                     <button id="dslLoadCurrentBtn" class="btn btn-sm btn-outline-secondary" title="Load current architecture as DSL">&#128260; Load Current</button>
                                     <button id="dslParseBtn" class="btn btn-sm btn-outline-primary" title="Parse DSL and show structure">&#128269; Parse</button>
                                     <button id="dslValidateBtn" class="btn btn-sm btn-outline-info" title="Validate DSL for errors">&#9989; Validate</button>
+                                    <button id="dslFormatBtn" class="btn btn-sm btn-outline-secondary" title="Format DSL (canonical style) — Shift+Alt+F">&#10024; Format</button>
                                 </div>
                             </div>
                             <div class="card-body p-0">
-                                <textarea id="dslEditorTextarea" class="form-control font-monospace border-0" rows="20"
-                                          placeholder="// Architecture DSL v2 — type or load from current state&#10;&#10;meta {&#10;  language: &quot;taxdsl&quot;;&#10;  version: &quot;2.0&quot;;&#10;  namespace: &quot;my-architecture&quot;;&#10;}&#10;&#10;element CP-1001 type Capability {&#10;  title: &quot;Secure Voice&quot;;&#10;}&#10;&#10;relation CP-1001 REALIZES BP-1040 {&#10;  status: accepted;&#10;}"
-                                          style="resize:vertical; min-height:300px; font-size:0.82rem; line-height:1.4; tab-size:2;"></textarea>
+                        <div id="dslEditorContainer" class="border-0" style="min-height:300px;"></div>
                             </div>
                             <div class="card-footer">
                                 <div id="dslValidationOutput" class="small"></div>
@@ -1021,6 +1020,8 @@
 <script th:src="@{/js/taxonomy-analysis.js}"></script>
 <script th:src="@{/js/taxonomy-onboarding.js}"></script>
 <script th:src="@{/js/taxonomy-help.js}"></script>
+<script th:src="@{/js/taxonomy-dsl-editor.js}"></script>
+<script type="module" th:src="@{/js/taxonomy-dsl-codemirror.mjs}"></script>
 <script th:src="@{/js/taxonomy.js}"></script>
 
 <!-- Propose Relations Modal -->

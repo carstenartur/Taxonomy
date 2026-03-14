@@ -1280,3 +1280,32 @@
     border: 1px solid #6c757d;
     vertical-align: middle;
 }
+
+/* ── CodeMirror 6 DSL Editor ─────────────────────────────────────────── */
+#dslEditorContainer {
+    border-radius: 0;
+    overflow: hidden;
+}
+
+#dslEditorContainer .cm-editor {
+    height: auto;
+    min-height: 300px;
+    max-height: 500px;
+    font-size: 0.82rem;
+    border: none;
+    outline: none;
+}
+
+#dslEditorContainer .cm-editor.cm-focused {
+    outline: none;
+}
+
+#dslEditorContainer .cm-scroller {
+    font-family: var(--bs-font-monospace, monospace);
+    overflow: auto;
+    max-height: 500px;
+}
+
+[data-bs-theme="dark"] #dslEditorContainer .cm-editor:not(.cm-focused) {
+    background: #282c34;
+}

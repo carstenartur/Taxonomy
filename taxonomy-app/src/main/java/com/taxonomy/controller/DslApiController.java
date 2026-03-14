@@ -6,6 +6,7 @@ import com.taxonomy.dsl.diff.SemanticDiffDescriber;
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.mapper.ModelToAstMapper;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
@@ -69,6 +70,7 @@ public class DslApiController {
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
     private final AstToModelMapper astMapper = new AstToModelMapper();
+    private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();
     private final DslValidator validator = new DslValidator();
 
     public DslApiController(TaxDslExportService exportService,
@@ -154,6 +156,21 @@ public class DslApiController {
         result.put("errors", validation.getErrors());
         result.put("warnings", validation.getWarnings());
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/format")
+    @Operation(summary = "Format DSL text into canonical form",
+            description = "Parses the input DSL, maps it through the canonical model, and re-serializes " +
+                    "it using TaxDslSerializer to produce deterministic, Git-diff-friendly output.")
+    public ResponseEntity<String> formatDsl(@RequestBody(required = false) String dslText) {
+        String text = dslText != null ? dslText : "";
+        var doc = parser.parse(text);
+        CanonicalArchitectureModel model = astMapper.map(doc);
+        var reformatted = modelToAstMapper.toDocument(model, "default");
+        String formatted = serializer.serialize(reformatted);
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_PLAIN)
+                .body(formatted);
     }
 
     // ── Materialization ──────────────────────────────────────────────
