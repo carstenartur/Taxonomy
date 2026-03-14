@@ -40,6 +40,19 @@ public class LlmService {
 
     private static final Logger log = LoggerFactory.getLogger(LlmService.class);
 
+    /** ThreadLocal for per-request provider override. */
+    private static final ThreadLocal<LlmProvider> requestProviderOverride = new ThreadLocal<>();
+
+    /** Sets a per-request provider override (call from controller before analysis). */
+    public void setRequestProvider(LlmProvider provider) {
+        requestProviderOverride.set(provider);
+    }
+
+    /** Clears the per-request provider override (call in finally block). */
+    public void clearRequestProvider() {
+        requestProviderOverride.remove();
+    }
+
     /**
      * Holds the parsed scores, optional reasons, and an optional discrepancy from an LLM response.
      * Backward-compatible: if the LLM returns the old integer-only format, reasons will be empty.
@@ -297,6 +310,10 @@ public class LlmService {
      * Returns the active provider based on the priority chain.
      */
     public LlmProvider getActiveProvider() {
+        // Priority 0: per-request override via ThreadLocal
+        LlmProvider override = requestProviderOverride.get();
+        if (override != null) return override;
+
         // Priority 1: explicit config / LLM_PROVIDER env var
         if (llmProviderConfig != null && !llmProviderConfig.isBlank()) {
             try {
@@ -349,6 +366,23 @@ public class LlmService {
             case MISTRAL     -> "Mistral";
             case LOCAL_ONNX  -> "Local (all-MiniLM-L6-v2)";
         };
+    }
+
+    /**
+     * Returns the list of currently available providers.
+     * {@code LOCAL_ONNX} is always included (no API key required).
+     * Cloud providers are included only when their API key is configured.
+     */
+    public List<String> getAvailableProviders() {
+        List<String> providers = new ArrayList<>();
+        providers.add("LOCAL_ONNX");
+        if (geminiApiKey  != null && !geminiApiKey.isBlank())  providers.add("GEMINI");
+        if (openaiApiKey  != null && !openaiApiKey.isBlank())  providers.add("OPENAI");
+        if (deepseekApiKey != null && !deepseekApiKey.isBlank()) providers.add("DEEPSEEK");
+        if (qwenApiKey    != null && !qwenApiKey.isBlank())    providers.add("QWEN");
+        if (llamaApiKey   != null && !llamaApiKey.isBlank())   providers.add("LLAMA");
+        if (mistralApiKey != null && !mistralApiKey.isBlank()) providers.add("MISTRAL");
+        return providers;
     }
 
     /**

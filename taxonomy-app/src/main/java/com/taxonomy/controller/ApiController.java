@@ -14,6 +14,7 @@ import com.taxonomy.service.AnalysisEventCallback;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.service.HybridSearchService;
 import com.taxonomy.service.LocalEmbeddingService;
+import com.taxonomy.service.LlmProvider;
 import com.taxonomy.service.LlmService;
 import com.taxonomy.service.PromptTemplateService;
 import com.taxonomy.service.RepositoryStateService;
@@ -136,7 +137,8 @@ public class ApiController {
     public ResponseEntity<AiStatusResponse> aiStatus() {
         boolean available = llmService.isAvailable();
         String provider = available ? llmService.getActiveProviderName() : null;
-        return ResponseEntity.ok(new AiStatusResponse(available, provider));
+        List<String> availableProviders = llmService.getAvailableProviders();
+        return ResponseEntity.ok(new AiStatusResponse(available, provider, availableProviders));
     }
 
     @Operation(summary = "Startup status", description = "Returns the initialization state of the taxonomy data. Poll this endpoint after receiving a 503 to know when the app is ready.", tags = {"Status"})
@@ -193,29 +195,46 @@ public class ApiController {
             return ResponseEntity.badRequest().build();
         }
 
-        AnalysisResult result = llmService.analyzeWithBudget(request.getBusinessText());
-
-        // Generate provisional relation hypotheses from scored nodes
-        if (result.getScores() != null) {
-            result.setProvisionalRelations(
-                    analysisRelationGenerator.generate(result.getScores()));
-
-            // Persist hypotheses to database for later accept/reject via API
-            if (!result.getProvisionalRelations().isEmpty()) {
-                hypothesisService.persistFromAnalysis(result.getProvisionalRelations(), null);
+        if (request.getProvider() != null && !request.getProvider().isBlank()) {
+            try {
+                llmService.setRequestProvider(
+                        LlmProvider.valueOf(request.getProvider().toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                @SuppressWarnings("unchecked")
+                ResponseEntity<AnalysisResult> badProvider = (ResponseEntity<AnalysisResult>)
+                        (ResponseEntity<?>) ResponseEntity.badRequest().body(Map.of(
+                                "error", "Unknown provider: " + request.getProvider(),
+                                "validProviders", java.util.Arrays.toString(LlmProvider.values())));
+                return badProvider;
             }
         }
+        try {
+            AnalysisResult result = llmService.analyzeWithBudget(request.getBusinessText());
 
-        if (request.isIncludeArchitectureView() && result.getScores() != null) {
-            result.setArchitectureView(
-                    architectureViewService.build(result.getScores(), request.getBusinessText(),
-                            request.getMaxArchitectureNodes(),
-                            result.getProvisionalRelations()));
+            // Generate provisional relation hypotheses from scored nodes
+            if (result.getScores() != null) {
+                result.setProvisionalRelations(
+                        analysisRelationGenerator.generate(result.getScores()));
+
+                // Persist hypotheses to database for later accept/reject via API
+                if (!result.getProvisionalRelations().isEmpty()) {
+                    hypothesisService.persistFromAnalysis(result.getProvisionalRelations(), null);
+                }
+            }
+
+            if (request.isIncludeArchitectureView() && result.getScores() != null) {
+                result.setArchitectureView(
+                        architectureViewService.build(result.getScores(), request.getBusinessText(),
+                                request.getMaxArchitectureNodes(),
+                                result.getProvisionalRelations()));
+            }
+
+            result.setViewContext(repositoryStateService.getViewContext("draft"));
+
+            return ResponseEntity.ok(result);
+        } finally {
+            llmService.clearRequestProvider();
         }
-
-        result.setViewContext(repositoryStateService.getViewContext("draft"));
-
-        return ResponseEntity.ok(result);
     }
 
     /**
@@ -225,7 +244,9 @@ public class ApiController {
      */
     @Operation(summary = "Streaming analysis (SSE)", description = "Server-Sent Events streaming analysis. Emits phase, scores, expanding, complete, and error events as the LLM processes the taxonomy level by level.", tags = {"Analysis"})
     @GetMapping(value = "/analyze-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter analyzeStream(@Parameter(description = "Business requirement text to analyze") @RequestParam String businessText) {
+    public SseEmitter analyzeStream(
+            @Parameter(description = "Business requirement text to analyze") @RequestParam String businessText,
+            @Parameter(description = "LLM provider override (e.g. GEMINI, LOCAL_ONNX)") @RequestParam(required = false) String provider) {
         SseEmitter emitter = new SseEmitter(120_000L);
 
         if (!taxonomyService.isInitialized()) {
@@ -255,7 +276,30 @@ public class ApiController {
             return emitter;
         }
 
+        LlmProvider resolvedProvider = null;
+        if (provider != null && !provider.isBlank()) {
+            try {
+                resolvedProvider = LlmProvider.valueOf(provider.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name("error")
+                            .data(objectMapper.writeValueAsString(Map.of(
+                                    "status", "ERROR",
+                                    "errorMessage", "Unknown provider: " + provider))));
+                } catch (Exception ignored) {
+                    // client already disconnected
+                }
+                emitter.complete();
+                return emitter;
+            }
+        }
+
+        final LlmProvider providerOverride = resolvedProvider;
         analysisExecutor.execute(() -> {
+            if (providerOverride != null) {
+                llmService.setRequestProvider(providerOverride);
+            }
             try {
                 llmService.analyzeStreaming(businessText, new AnalysisEventCallback() {
 
@@ -314,6 +358,8 @@ public class ApiController {
                 });
             } catch (Exception e) {
                 emitter.completeWithError(e);
+            } finally {
+                llmService.clearRequestProvider();
             }
         });
 
