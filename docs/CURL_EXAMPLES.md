@@ -260,6 +260,12 @@ curl "http://localhost:8080/api/dsl/history?branch=main"
 
 # Architecture summary
 curl http://localhost:8080/api/architecture/summary
+
+# Get node graph metadata
+curl http://localhost:8080/api/architecture/metadata/CP-1023
+
+# Recompute derived graph metadata for all nodes
+curl -X POST http://localhost:8080/api/architecture/metadata/recompute
 ```
 
 ## Administration

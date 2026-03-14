@@ -97,7 +97,7 @@ graph TB
     end
 
     subgraph App["Spring Boot 4 Application :8080"]
-        Controllers["REST Controllers (14)<br/>ApiController · GraphQueryApi<br/>ProposalApi · CoverageApi<br/>GapAnalysis · PatternDetection<br/>Recommendation · ArchiMateImport<br/>DslApi · ReportApi · RelationApi<br/>QualityApi · ExplanationTrace"]
+        Controllers["REST Controllers (15)<br/>ApiController · GraphQueryApi<br/>ProposalApi · CoverageApi<br/>GapAnalysis · PatternDetection<br/>Recommendation · ArchiMateImport<br/>DslApi · ReportApi · RelationApi<br/>QualityApi · ExplanationTrace<br/>ArchitectureSummary"]
         Services["Service Layer<br/>LlmService · TaxonomyService<br/>SearchService · HybridSearchService<br/>RequirementArchitectureViewService<br/>DiagramProjectionService<br/>RelationProposalService"]
         Persistence["Persistence<br/>HSQLDB (in-process)<br/>Hibernate Search 8 / Lucene 9"]
     end
@@ -194,6 +194,7 @@ Interactive documentation is available at [`/swagger-ui.html`](http://localhost:
 | **Reports** | `POST /api/report/markdown`, `/report/html`, `/report/docx`, `/report/json` | Analysis reports in Markdown, HTML, DOCX, JSON |
 | **Explanation** | `POST /api/explain/{nodeCode}`, `POST /api/explain` | Explanation traces for scored nodes |
 | **Architecture DSL** | `POST /api/dsl/commit`, `GET /api/dsl/history`, `POST /api/dsl/merge` | Versioned DSL documents with JGit-backed branching and merge |
+| **Architecture Summary** | `GET /api/architecture/summary`, `GET /api/architecture/metadata/{nodeCode}` | Architecture summary with next steps and node graph metadata |
 | **Quality** | `GET /api/relations/metrics`, `/metrics/by-type` | Relation quality dashboard metrics |
 | **Admin** | `GET /api/diagnostics`, `GET /api/ai-status` | LLM diagnostics and system status |
 
@@ -248,7 +249,7 @@ docker run -p 8080:8080 -e GEMINI_API_KEY=your-key ghcr.io/carstenartur/taxonomy
 
 ```bash
 mvn compile           # Compile only
-mvn test              # Unit + Spring context tests (~667 tests, no Docker needed)
+mvn test              # Unit + Spring context tests (~716 tests, no Docker needed)
 mvn verify            # Unit + integration tests (requires Docker for container tests)
 ```
 
@@ -260,7 +261,7 @@ mvn verify            # Unit + integration tests (requires Docker for container 
 Taxonomy/
 ├── taxonomy-domain/               # Pure domain types (DTOs, enums) — no framework dependencies
 │   └── src/main/java/com/taxonomy/
-│       ├── dto/                   # Data transfer objects (40 DTOs)
+│       ├── dto/                   # Data transfer objects (43 DTOs)
 │       └── model/                 # Domain enums (RelationType, HypothesisStatus, ProposalStatus)
 ├── taxonomy-dsl/                  # Architecture DSL core — no framework dependencies
 │   └── src/main/java/com/taxonomy/dsl/

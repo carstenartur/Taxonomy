@@ -78,7 +78,7 @@ Pure data types shared across modules:
 
 | Package | Contents |
 |---|---|
-| `com.taxonomy.dto` | 44 DTOs (Data Transfer Objects) — `TaxonomyNodeDto`, `AnalysisResult`, `ArchitectureRecommendation`, `GapAnalysisView`, `SavedAnalysis`, etc. |
+| `com.taxonomy.dto` | 43 DTOs (Data Transfer Objects) — `TaxonomyNodeDto`, `AnalysisResult`, `ArchitectureRecommendation`, `GapAnalysisView`, `SavedAnalysis`, etc. |
 | `com.taxonomy.model` | 3 domain enums — `RelationType` (10 values), `HypothesisStatus`, `ProposalStatus` |
 
 ### taxonomy-dsl
@@ -112,17 +112,17 @@ The main Spring Boot application:
 
 | Directory | Contents |
 |---|---|
-| `controller/` | 14 REST controllers |
-| `service/` | 38 service classes — LLM, search, architecture, graph, proposals, reports, etc. |
-| `model/` | 9 JPA entities — `TaxonomyNode`, `TaxonomyRelation`, `RelationProposal`, `RelationHypothesis`, etc. |
-| `repository/` | 8 Spring Data JPA repositories |
-| `config/` | 11 configuration classes — rate limiting, Hibernate Search analysers, OpenAPI, actuator security |
+| `controller/` | 15 REST controllers |
+| `service/` | 41 service classes — LLM, search, architecture, graph, proposals, reports, etc. |
+| `model/` | 10 JPA entities — `TaxonomyNode`, `TaxonomyRelation`, `RelationProposal`, `RelationHypothesis`, `ArchitectureCommitIndex`, etc. |
+| `repository/` | 10 Spring Data JPA repositories |
+| `config/` | 13 configuration classes — rate limiting, Hibernate Search analysers, OpenAPI, actuator security |
 | `search/` | Hibernate Search configuration |
 | `dsl/storage/` | JGit DFS storage backed by Hibernate — `DslGitRepository`, `HibernateRepository`, etc. |
 | `dsl/storage/jgit/` | JPA entities for Git storage — `GitPackEntity`, `GitReflogEntity` |
 | `resources/data/` | Excel workbook, CSV fallback, JSON taxonomy |
 | `resources/prompts/` | 10 LLM prompt templates |
-| `resources/static/js/` | 11 JavaScript modules (6,600 lines) |
+| `resources/static/js/` | 11 JavaScript modules (~7,200 lines) |
 | `resources/templates/` | Single Thymeleaf template (`index.html`) |
 
 ---
