@@ -342,6 +342,101 @@ class DslGitRepositoryTest {
         assertNull(result, "Merge from non-existent branch should return null");
     }
 
+    // ── Revert ────────────────────────────────────────────────────
+
+    @Test
+    void revertUndoesSpecificCommit() throws IOException {
+        // Setup: draft has v1 then v2
+        repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        String v2CommitId = repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "add BP-1481");
+
+        // Revert the v2 commit (should restore v1 content)
+        String revertId = repo.revert(v2CommitId, "draft");
+        assertNotNull(revertId, "Revert should succeed");
+
+        // Draft should now have v1 content again
+        String currentDsl = repo.getDslAtHead("draft");
+        assertEquals(SAMPLE_DSL, currentDsl, "Revert should restore original content");
+
+        // Should have 3 commits (initial, v2, revert)
+        assertEquals(3, repo.getDslHistory("draft").size());
+    }
+
+    @Test
+    void revertInitialCommitReturnsNull() throws IOException {
+        String initialId = repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+
+        String result = repo.revert(initialId, "draft");
+        assertNull(result, "Cannot revert initial commit (no parent)");
+    }
+
+    @Test
+    void revertOnNonexistentBranchReturnsNull() throws IOException {
+        String commitId = repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "v2");
+
+        String result = repo.revert(commitId, "nonexistent");
+        assertNull(result, "Revert on non-existent branch should return null");
+    }
+
+    // ── Undo last ───────────────────────────────────────────────────
+
+    @Test
+    void undoLastRemovesLastCommit() throws IOException {
+        String v1Id = repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "add BP-1481");
+
+        String newHeadId = repo.undoLast("draft");
+        assertNotNull(newHeadId, "Undo should succeed");
+        assertEquals(v1Id, newHeadId, "HEAD should point to the first commit");
+
+        // Content should be back to v1
+        assertEquals(SAMPLE_DSL, repo.getDslAtHead("draft"));
+
+        // Should have 1 commit
+        assertEquals(1, repo.getDslHistory("draft").size());
+    }
+
+    @Test
+    void undoLastOnSingleCommitReturnsNull() throws IOException {
+        repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+
+        String result = repo.undoLast("draft");
+        assertNull(result, "Cannot undo the only commit");
+    }
+
+    @Test
+    void undoLastOnNonexistentBranchReturnsNull() throws IOException {
+        String result = repo.undoLast("nonexistent");
+        assertNull(result, "Undo on non-existent branch should return null");
+    }
+
+    // ── Restore ─────────────────────────────────────────────────────
+
+    @Test
+    void restoreCreatesNewCommitWithOldContent() throws IOException {
+        String v1Id = repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        repo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "add BP-1481");
+
+        // Restore to v1 content
+        String restoreId = repo.restore(v1Id, "draft");
+        assertNotNull(restoreId, "Restore should succeed");
+
+        // Content should match v1
+        assertEquals(SAMPLE_DSL, repo.getDslAtHead("draft"));
+
+        // Should have 3 commits (initial, v2, restored)
+        assertEquals(3, repo.getDslHistory("draft").size());
+    }
+
+    @Test
+    void restoreFromInvalidCommitReturnsNull() throws IOException {
+        repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+
+        String result = repo.restore("0000000000000000000000000000000000000000", "draft");
+        assertNull(result, "Restore from invalid commit should return null");
+    }
+
     // ── isDatabaseBacked ────────────────────────────────────────────
 
     @Test

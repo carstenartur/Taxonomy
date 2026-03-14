@@ -113,3 +113,16 @@ button[data-guard].guard-blocked {
     margin-left: 8px;
     vertical-align: middle;
 }
+
+/* ── Versions Timeline ─────────────────────────────────── */
+.timeline-entry {
+    border-left: 2px solid #dee2e6;
+}
+
+.timeline-dot {
+    background-color: #6c757d;
+}
+
+.timeline-dot-current {
+    background-color: #0d6efd;
+}

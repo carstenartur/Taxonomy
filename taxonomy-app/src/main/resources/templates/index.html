@@ -46,6 +46,9 @@
                 <a class="nav-link" data-page="export" href="#export">&#128229; Export</a>
             </li>
             <li class="nav-item">
+                <a class="nav-link" data-page="versions" href="#versions">&#128339; Versions</a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link" data-page="dsl-editor" href="#dsl-editor">&#128221; DSL</a>
             </li>
             <li class="nav-item">
@@ -566,6 +569,76 @@
             </div><!-- /tab-export -->
 
             <!-- ============================================================
+                 TAB: VERSIONS
+                 ============================================================ -->
+            <div id="tab-versions" class="tab-pane-content d-none">
+
+                <!-- Undo / Redo bar -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-body d-flex align-items-center gap-3 py-2">
+                        <button id="versionsUndoBtn" class="btn btn-outline-warning btn-sm" title="Undo last change on this branch">
+                            &#8617; Undo last change
+                        </button>
+                        <span id="versionsUndoInfo" class="text-muted small"></span>
+                        <div class="ms-auto d-flex align-items-center gap-2">
+                            <label for="versionsBranchSelect" class="form-label mb-0 small text-muted">Branch:</label>
+                            <select id="versionsBranchSelect" class="form-select form-select-sm" style="width:auto;min-width:120px;"></select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub-tabs -->
+                <ul class="nav nav-tabs mb-3" id="versionsSubTabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-versions-tab="history" href="#">&#128339; History</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-versions-tab="save" href="#">&#128190; Save Version</a>
+                    </li>
+                </ul>
+
+                <!-- Sub-tab: History Timeline -->
+                <div id="versions-history" class="versions-sub-pane">
+                    <div class="card shadow-sm">
+                        <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                            <span>&#128339; Version History</span>
+                            <button id="versionsRefreshBtn" class="btn btn-sm btn-outline-secondary" title="Refresh history">&#128260; Refresh</button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div id="versionsTimeline" class="p-3">
+                                <div class="text-muted small">Loading version history…</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub-tab: Save Version -->
+                <div id="versions-save" class="versions-sub-pane d-none">
+                    <div class="card shadow-sm">
+                        <div class="card-header fw-semibold">&#128190; Save Version</div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">
+                                Create a named version (snapshot) of the current DSL state.
+                            </p>
+                            <div class="mb-2">
+                                <label for="versionTitle" class="form-label small">Title</label>
+                                <input id="versionTitle" type="text" class="form-control form-control-sm"
+                                       placeholder="e.g. Baseline after review round 2">
+                            </div>
+                            <div class="mb-3">
+                                <label for="versionDescription" class="form-label small">Description (optional)</label>
+                                <textarea id="versionDescription" class="form-control form-control-sm" rows="2"
+                                          placeholder="Brief summary of what changed"></textarea>
+                            </div>
+                            <button id="versionsSaveBtn" class="btn btn-primary btn-sm">&#128190; Save Version</button>
+                            <span id="versionsSaveStatus" class="ms-2 small"></span>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /tab-versions -->
+
+            <!-- ============================================================
                  TAB: DSL EDITOR
                  ============================================================ -->
             <div id="tab-dsl-editor" class="tab-pane-content d-none">
@@ -930,6 +1003,7 @@
 <script th:src="@{/js/taxonomy-git-status.js}"></script>
 <script th:src="@{/js/taxonomy-viewcontext.js}"></script>
 <script th:src="@{/js/taxonomy-action-guards.js}"></script>
+<script th:src="@{/js/taxonomy-versions.js}"></script>
 <script th:src="@{/js/taxonomy-export.js}"></script>
 <script th:src="@{/js/taxonomy-import.js}"></script>
 <script th:src="@{/js/taxonomy-graph.js}"></script>
@@ -1095,8 +1169,8 @@
 <script>
 (function () {
     'use strict';
-    var PAGES = ['analyze', 'architecture', 'graph', 'relations', 'export', 'dsl-editor', 'help', 'admin', 'preferences'];
-    var FULL_WIDTH_PAGES = ['relations', 'export', 'help', 'admin', 'preferences'];
+    var PAGES = ['analyze', 'architecture', 'graph', 'relations', 'export', 'versions', 'dsl-editor', 'help', 'admin', 'preferences'];
+    var FULL_WIDTH_PAGES = ['relations', 'export', 'versions', 'help', 'admin', 'preferences'];
 
     function activatePage(pageName) {
         if (PAGES.indexOf(pageName) === -1) { pageName = 'analyze'; }
@@ -1162,6 +1236,11 @@
                 }
                 window.TaxonomyViewContext.fetchAndRender(containerId, branch);
             }
+        }
+
+        // Load version history when Versions tab is activated
+        if (pageName === 'versions' && window.TaxonomyVersions) {
+            window.TaxonomyVersions.loadTimeline();
         }
     }
 
