@@ -255,6 +255,42 @@ When the limit is exceeded, the server returns HTTP `429 Too Many Requests`. The
 
 ---
 
+## Login Brute-Force Protection
+
+| Variable | Property | Type | Default | Description |
+|---|---|---|---|---|
+| `TAXONOMY_LOGIN_RATE_LIMIT` | `taxonomy.security.login-rate-limit.enabled` | Boolean | `true` | Enable/disable login brute-force protection. |
+| `TAXONOMY_LOGIN_MAX_ATTEMPTS` | `taxonomy.security.login-rate-limit.max-attempts` | Integer | `5` | Maximum failed login attempts before lockout. |
+| `TAXONOMY_LOGIN_LOCKOUT_SECONDS` | `taxonomy.security.login-rate-limit.lockout-seconds` | Integer | `300` | Lockout duration in seconds after exceeding max attempts. |
+
+When locked out, the server returns HTTP `423 Locked` with a JSON body containing the retry-after time. Disable with `TAXONOMY_LOGIN_RATE_LIMIT=false` for development.
+
+---
+
+## Password Policy
+
+| Variable | Property | Type | Default | Description |
+|---|---|---|---|---|
+| `TAXONOMY_REQUIRE_PASSWORD_CHANGE` | `taxonomy.security.require-password-change` | Boolean | `false` | When `true`, users with the default password are redirected to `/change-password`. |
+
+---
+
+## Swagger Access Control
+
+| Variable | Property | Type | Default | Description |
+|---|---|---|---|---|
+| `TAXONOMY_SWAGGER_PUBLIC` | `taxonomy.security.swagger-public` | Boolean | `true` | When `true`, Swagger UI is accessible without authentication. Set to `false` in production to require authentication. |
+
+---
+
+## Security Audit Logging
+
+| Variable | Property | Type | Default | Description |
+|---|---|---|---|---|
+| `TAXONOMY_AUDIT_LOGGING` | `taxonomy.security.audit-logging` | Boolean | `false` | When `true`, logs authentication events (login success/failure, user management actions). |
+
+---
+
 ## OpenAPI / Swagger UI
 
 The application exposes interactive API documentation via [springdoc-openapi](https://springdoc.org/).

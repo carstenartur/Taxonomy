@@ -413,9 +413,68 @@ curl -u admin:admin "http://localhost:8080/api/diagnostics"
 | `401` | Unauthorized | Missing or incorrect credentials |
 | `403` | Forbidden | Insufficient role (e.g., USER trying to delete a relation) |
 | `404` | Not Found | Invalid node code or proposal ID |
+| `423` | Locked | Too many failed login attempts — IP is temporarily locked out |
 | `429` | Too Many Requests | Rate limit exceeded (configurable via `TAXONOMY_RATE_LIMIT_PER_MINUTE`) |
 | `503` | Service Unavailable | Taxonomy still loading — poll `/api/status/startup` |
 | `500` | Server Error | LLM timeout, export I/O error |
+
+---
+
+## User Management (Admin-only)
+
+All user management endpoints require `ROLE_ADMIN` and use HTTP Basic authentication.
+
+### List Users
+
+```bash
+curl -u admin:password http://localhost:8080/api/admin/users
+```
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "username": "admin",
+    "displayName": "Administrator",
+    "email": null,
+    "enabled": true,
+    "roles": ["ROLE_ADMIN", "ROLE_ARCHITECT", "ROLE_USER"]
+  }
+]
+```
+
+### Create User
+
+```bash
+curl -u admin:password -X POST http://localhost:8080/api/admin/users \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"securepass123","roles":["USER","ARCHITECT"],"displayName":"Alice","email":"alice@example.com"}'
+```
+
+### Update User
+
+```bash
+curl -u admin:password -X PUT http://localhost:8080/api/admin/users/2 \
+  -H "Content-Type: application/json" \
+  -d '{"displayName":"Alice Updated","roles":["USER","ARCHITECT","ADMIN"]}'
+```
+
+### Change User Password
+
+```bash
+curl -u admin:password -X PUT http://localhost:8080/api/admin/users/2/password \
+  -H "Content-Type: application/json" \
+  -d '{"password":"newpass123"}'
+```
+
+### Disable User (Soft Delete)
+
+```bash
+curl -u admin:password -X DELETE http://localhost:8080/api/admin/users/2
+```
+
+> **Safety:** The last remaining admin user cannot be disabled. Attempting to do so returns HTTP 400.
 
 ---
 
