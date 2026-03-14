@@ -78,17 +78,17 @@
             '</span>'
         );
 
-        // Branch count
+        // Branch count (shown as "variants")
         if (state.branches && state.branches.length > 0) {
             parts.push('<span class="git-sep">│</span>');
-            parts.push('<span class="git-indicator">' + state.branches.length + ' branch' +
-                (state.branches.length !== 1 ? 'es' : '') + '</span>');
+            parts.push('<span class="git-indicator">' + state.branches.length + ' variant' +
+                (state.branches.length !== 1 ? 's' : '') + '</span>');
         }
 
-        // Commit count
+        // Commit count (shown as "versions")
         if (state.totalCommits > 0) {
             parts.push('<span class="git-sep">│</span>');
-            parts.push('<span class="git-indicator">' + state.totalCommits + ' commit' +
+            parts.push('<span class="git-indicator">' + state.totalCommits + ' version' +
                 (state.totalCommits !== 1 ? 's' : '') + '</span>');
         }
 
