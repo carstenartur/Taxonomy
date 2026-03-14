@@ -74,6 +74,45 @@ huggingface-cli download sentence-transformers/all-MiniLM-L6-v2 --local-dir /opt
 
 ---
 
+## Authentication & Security
+
+The application uses **Spring Security** with form-based login (browser) and HTTP Basic authentication (REST clients). A default `admin` user is created on first startup.
+
+### Default User
+
+| Username | Password | Roles |
+|---|---|---|
+| `admin` | Value of `TAXONOMY_ADMIN_PASSWORD` (default: `admin`) | USER, ARCHITECT, ADMIN |
+
+### Roles and Permissions
+
+| Role | Permissions |
+|---|---|
+| **ROLE_USER** | Read all API endpoints (`GET /api/**`), run analysis (`POST /api/analyze`, `POST /api/justify-leaf`), export (`POST /api/export/**`), access GUI |
+| **ROLE_ARCHITECT** | Everything in ROLE_USER, plus write access to relations (`POST/PUT/DELETE /api/relations/**`), DSL (`POST/PUT/DELETE /api/dsl/**`), and Git operations (`POST/PUT/DELETE /api/git/**`) |
+| **ROLE_ADMIN** | Everything in ROLE_ARCHITECT, plus admin endpoints (`/admin/**`, `/api/admin/**`) |
+
+### CSRF Protection
+
+CSRF protection is **enabled** for browser sessions but **disabled** for `/api/**` paths. This means REST clients authenticated via HTTP Basic do not need to include a CSRF token.
+
+### REST API Authentication
+
+REST clients must authenticate using **HTTP Basic**:
+
+```bash
+curl -u admin:admin http://localhost:8080/api/taxonomy
+```
+
+### Public Endpoints (No Authentication Required)
+
+- `/login`, `/error`
+- `/actuator/health`, `/actuator/health/**`, `/actuator/info`
+- `/v3/api-docs/**`, `/swagger-ui/**`, `/swagger-ui.html`
+- Static assets: `/css/**`, `/js/**`, `/images/**`, `/webjars/**`
+
+---
+
 ## Administration
 
 | Variable | Property | Type | Default | Description |

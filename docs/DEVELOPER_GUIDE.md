@@ -207,8 +207,9 @@ Test file naming conventions:
 1. Create or extend a controller in `taxonomy-app/src/main/java/com/taxonomy/controller/`.
 2. If the endpoint returns a new DTO, add it to `taxonomy-domain/src/main/java/com/taxonomy/dto/`.
 3. If the endpoint needs a new service, add it to `taxonomy-app/src/main/java/com/taxonomy/service/`.
-4. Add tests (typically using `@SpringBootTest` + `@AutoConfigureMockMvc`).
-5. If the endpoint is admin-only, check for the `X-Admin-Token` header (see `ApiController.getDiagnostics` for an example).
+4. Add tests (typically using `@SpringBootTest` + `@AutoConfigureMockMvc` + `@WithMockUser(roles = "ADMIN")`).
+5. If the endpoint is admin-only, add it under `/api/admin/` (protected by `ROLE_ADMIN` in `SecurityConfig`).
+6. If the endpoint modifies architecture data (relations, DSL), place it under `/api/relations/`, `/api/dsl/`, or `/api/git/` — write operations on these paths require `ROLE_ARCHITECT` or `ROLE_ADMIN`.
 
 ---
 
@@ -296,6 +297,26 @@ The application uses Hibernate Search 8 with a Lucene 9 backend for full-text an
 - JGit storage tests (`DslGitRepositoryTest`) are pure JUnit 5 with database-backed `HibernateRepository`.
 - Integration tests requiring Docker follow the `*IT.java` naming pattern.
 - Tests **never** call real LLM APIs — use `LlmService` mocking instead.
+
+### Test Security Setup
+
+Spring Boot 4 does **not** auto-apply `SecurityMockMvcConfigurers.springSecurity()` to MockMvc. The project provides `TestSecuritySupport` (in test sources) which registers a `MockMvcBuilderCustomizer` bean to:
+
+1. Apply the Spring Security filter chain to all MockMvc requests.
+2. Auto-apply CSRF tokens to test requests.
+
+All MockMvc test classes must use `@WithMockUser(roles = "ADMIN")` (or a more restrictive role) to simulate an authenticated user. Without this annotation, requests will return HTTP 401/403.
+
+```java
+@SpringBootTest
+@AutoConfigureMockMvc
+@WithMockUser(roles = "ADMIN")
+class MyControllerTest {
+    @Autowired
+    private MockMvc mockMvc;
+    // tests here
+}
+```
 
 ---
 

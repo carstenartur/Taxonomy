@@ -128,7 +128,7 @@ The UI is a single Bootstrap 5 page rendered by Thymeleaf. The left panel shows 
 
 <img src="docs/images/01-full-page-layout.png" alt="Full page layout" width="800">
 
-Five view modes are available for the taxonomy tree:
+Six view modes are available for the taxonomy tree:
 
 | Mode | Description |
 |---|---|
@@ -137,6 +137,7 @@ Five view modes are available for the taxonomy tree:
 | **Sunburst** | Radial hierarchical chart |
 | **Tree** | D3 tree layout |
 | **Decision Map** | Force-directed graph layout |
+| **Summary** | Layered architecture overview (appears after analysis with Architecture View enabled) |
 
 Additional panels: Graph Explorer (upstream/downstream/failure-impact queries), Relation Proposals (AI-generated proposals with accept/reject), and an Admin panel for LLM diagnostics and prompt template editing.
 

@@ -13,6 +13,7 @@ This document describes the architecture of the Taxonomy Architecture Analyzer �
 - [Data Loading](#data-loading)
 - [CI / CD](#ci--cd)
 - [Database](#database)
+- [Security Architecture](#security-architecture)
 - [Export Formats](#export-formats)
 - [Detailed Architecture Diagrams](#detailed-architecture-diagrams)
 
@@ -242,6 +243,25 @@ The API is currently **unversioned** — all endpoints use the `/api/` prefix wi
 The application is designed for **single-tenant, self-hosted deployment** where the browser UI is always co-deployed with the server, eliminating the multi-client version-skew problem that typically motivates API versioning. The **OpenAPI specification** (`/v3/api-docs`) serves as the machine-readable contract for any external integrations.
 
 If the API needs to support multiple concurrent versions in future, the recommended path is URL-based versioning (`/api/v2/...`) with separate OpenAPI groups per version.
+
+## Security Architecture
+
+The application uses **Spring Security** with a three-role authorisation model:
+
+| Role | Permissions |
+|---|---|
+| `ROLE_USER` | Read all API endpoints, run analysis, export diagrams, access GUI |
+| `ROLE_ARCHITECT` | Everything in USER, plus write access to relations, DSL, and Git operations |
+| `ROLE_ADMIN` | Everything in ARCHITECT, plus admin endpoints (`/admin/**`, `/api/admin/**`) |
+
+**Authentication methods:**
+
+- **Form login** — browser sessions via the `/login` page (CSRF-protected)
+- **HTTP Basic** — stateless REST clients (CSRF disabled for `/api/**`)
+
+A default `admin` user (with all three roles) is seeded on first startup via `SecurityDataInitializer`. The password is configurable through `TAXONOMY_ADMIN_PASSWORD` (default: `admin`).
+
+**Public endpoints** (no authentication required): `/login`, `/error`, `/actuator/health/**`, `/v3/api-docs/**`, `/swagger-ui/**`, and static assets.
 
 ---
 

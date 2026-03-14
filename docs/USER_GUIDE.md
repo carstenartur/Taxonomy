@@ -72,7 +72,7 @@ The **Taxonomy Architecture Analyzer** is a web application that helps Architect
 
 Open your web browser and navigate to the application URL (for example `http://localhost:8080` when running locally, or the deployed URL provided by your administrator).
 
-The application loads as a single page. No login is required for standard use; administrator features require unlocking admin mode (see [Section 12](#12-administration)).
+The application loads as a single page. A login page is presented on first access — sign in with the default credentials (`admin` / `admin`) or with the password configured via the `TAXONOMY_ADMIN_PASSWORD` environment variable. After login, all standard features are available; administrator features additionally require unlocking admin mode (see [Section 12](#12-administration)).
 
 **First-time users** will see a **Welcome overlay** with a 3-step guide explaining how to get started:
 1. Describe your requirement in the text area

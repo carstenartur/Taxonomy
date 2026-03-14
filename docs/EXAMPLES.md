@@ -62,7 +62,7 @@ Click an export button to download the architecture as ArchiMate XML, Visio `.vs
 ### REST API equivalent
 
 ```bash
-curl -X POST http://localhost:8080/api/analyze \
+curl -u admin:admin -X POST http://localhost:8080/api/analyze \
   -d "businessText=Provide+secure+voice+and+video+communications+for+deployed+forces" \
   -d "includeArchitectureView=true"
 ```
@@ -83,7 +83,7 @@ curl -X POST http://localhost:8080/api/analyze \
 ### REST API
 
 ```bash
-curl "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
+curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
 ```
 
 ### Example result
@@ -114,7 +114,7 @@ curl "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
 ### REST API
 
 ```bash
-curl -X POST http://localhost:8080/api/gap/analyze \
+curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "businessText": "Maritime surveillance data sharing",
@@ -172,26 +172,26 @@ Click **Accept** to add the relation to the knowledge graph, or **Reject** to di
 
 ```bash
 # Generate proposals for a node
-curl -X POST http://localhost:8080/api/proposals/propose \
+curl -u admin:admin -X POST http://localhost:8080/api/proposals/propose \
   -H "Content-Type: application/json" \
   -d '{"sourceCode": "CR-1047", "relationType": "SUPPORTS"}'
 
 # List pending proposals
-curl "http://localhost:8080/api/proposals/pending"
+curl -u admin:admin "http://localhost:8080/api/proposals/pending"
 
 # Accept a proposal
-curl -X POST "http://localhost:8080/api/proposals/42/accept"
+curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/accept"
 
 # Reject a proposal
-curl -X POST "http://localhost:8080/api/proposals/42/reject"
+curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/reject"
 
 # Bulk accept/reject
-curl -X POST http://localhost:8080/api/proposals/bulk \
+curl -u admin:admin -X POST http://localhost:8080/api/proposals/bulk \
   -H "Content-Type: application/json" \
   -d '{"ids": [42, 43, 44], "action": "ACCEPT"}'
 
 # Revert a decision
-curl -X POST "http://localhost:8080/api/proposals/42/revert"
+curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/revert"
 ```
 
 ---
@@ -203,7 +203,7 @@ curl -X POST "http://localhost:8080/api/proposals/42/revert"
 ### REST API
 
 ```bash
-curl -X POST http://localhost:8080/api/recommend \
+curl -u admin:admin -X POST http://localhost:8080/api/recommend \
   -H "Content-Type: application/json" \
   -d '{
     "businessText": "Secure satellite communications for remote operations",
@@ -234,7 +234,7 @@ curl -X POST http://localhost:8080/api/recommend \
 ### ArchiMate XML
 
 ```bash
-curl -X POST http://localhost:8080/api/diagram/archimate \
+curl -u admin:admin -X POST http://localhost:8080/api/diagram/archimate \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}' \
   -o architecture.xml
@@ -245,7 +245,7 @@ The resulting XML file can be imported into **Archi**, **BiZZdesign**, **MEGA**,
 ### Visio
 
 ```bash
-curl -X POST http://localhost:8080/api/diagram/visio \
+curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}' \
   -o architecture.vsdx
@@ -254,7 +254,7 @@ curl -X POST http://localhost:8080/api/diagram/visio \
 ### Mermaid
 
 ```bash
-curl -X POST http://localhost:8080/api/diagram/mermaid \
+curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}'
 ```
