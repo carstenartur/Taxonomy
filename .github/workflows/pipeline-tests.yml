@@ -29,7 +29,7 @@ jobs:
           key: djl-minilm-v2-${{ runner.os }}
 
       - name: Build JAR
-        run: mvn package -DskipTests -q
+        run: mvn install -DskipTests -q
 
       - name: Run Pipeline Tests
         run: mvn failsafe:integration-test failsafe:verify -DrunOnnxTests -Dit.test=LocalOnnxPipelineIT -pl taxonomy-app

@@ -27,7 +27,8 @@ import org.springframework.security.test.context.support.WithMockUser;
     "deepseek.api.key=",
     "qwen.api.key=",
     "llama.api.key=",
-    "mistral.api.key="
+    "mistral.api.key=",
+    "embedding.enabled=false"
 })
 @WithMockUser(roles = "ADMIN")
 class TaxonomyApplicationTests {
