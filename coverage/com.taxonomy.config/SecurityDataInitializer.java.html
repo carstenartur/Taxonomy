@@ -59,11 +59,17 @@ public class SecurityDataInitializer implements ApplicationRunner {
 <span class="fc" id="L59">            userRepository.save(admin);</span>
 <span class="fc" id="L60">            log.info(&quot;Created default admin user (username=admin). Change the password immediately.&quot;);</span>
         }
-<span class="fc" id="L62">    }</span>
+
+        // Warn if the default password is still in use
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (&quot;admin&quot;.equals(adminPassword)) {</span>
+<span class="fc" id="L65">            log.warn(&quot;SECURITY WARNING: Default admin password 'admin' is in use. &quot;</span>
+                    + &quot;Set TAXONOMY_ADMIN_PASSWORD environment variable to change it.&quot;);
+        }
+<span class="fc" id="L68">    }</span>
 
     private AppRole findOrCreateRole(String name) {
-<span class="fc" id="L65">        return roleRepository.findByName(name)</span>
-<span class="fc" id="L66">                .orElseGet(() -&gt; roleRepository.save(new AppRole(name)));</span>
+<span class="fc" id="L71">        return roleRepository.findByName(name)</span>
+<span class="fc" id="L72">                .orElseGet(() -&gt; roleRepository.save(new AppRole(name)));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
