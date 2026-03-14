@@ -188,7 +188,7 @@ Interactive documentation is available at [`/swagger-ui.html`](http://localhost:
 | **Relations** | `GET /api/relations`, `POST /api/relations`, `DELETE /api/relations/{id}` | Relation CRUD and browsing |
 | **Gap Analysis** | `POST /api/gap/analyze` | Identify missing relations and coverage gaps |
 | **Recommendations** | `POST /api/recommend` | Architecture element and relation recommendations |
-| **Patterns** | `POST /api/patterns/detect` | Detect standard architecture patterns |
+| **Patterns** | `GET /api/patterns/detect`, `POST /api/patterns/detect` | Detect standard architecture patterns (single node or scored set) |
 | **Coverage** | `POST /api/coverage/record`, `GET /api/coverage/statistics` | Requirement coverage tracking |
 | **Export** | `POST /api/diagram/archimate`, `/diagram/visio`, `/diagram/mermaid` | Diagram export in multiple formats |
 | **Reports** | `POST /api/report/markdown`, `/report/html`, `/report/docx`, `/report/json` | Analysis reports in Markdown, HTML, DOCX, JSON |

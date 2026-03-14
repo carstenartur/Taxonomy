@@ -92,7 +92,7 @@ A numeric value (0–100) that represents how relevant a taxonomy node is to a g
 
 ## Anchor Node
 
-A node selected as a starting point for building an architecture view. By default, nodes with a score ≥ 70 are chosen as anchors. If fewer than two anchors are found, the threshold falls back to ≥ 50.
+A node selected as a starting point for building an architecture view. By default, nodes with a score ≥ 70 are chosen as anchors. If fewer than three anchors are found, the threshold falls back to ≥ 50 (top 3).
 
 ---
 

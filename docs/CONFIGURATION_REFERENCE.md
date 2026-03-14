@@ -12,6 +12,7 @@ Values are set via environment variables (recommended for production) or in
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
 | `LLM_PROVIDER` | `llm.provider` | Enum | *(auto-detect)* | Force a specific LLM provider. Values: `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL`, `LOCAL_ONNX`. When not set, the provider is auto-detected from the first available API key (see priority order below). |
+| `LLM_MOCK` | `llm.mock` | Boolean | `false` | When `true`, the LLM service returns hardcoded realistic scores instead of calling a real LLM provider. Intended for CI pipelines, screenshot generation, and offline testing. No API key is required when mock mode is active. |
 | `GEMINI_API_KEY` | `gemini.api.key` | String | *(empty)* | Google Gemini API key. Obtain from [aistudio.google.com](https://aistudio.google.com). |
 | `OPENAI_API_KEY` | `openai.api.key` | String | *(empty)* | OpenAI API key. |
 | `DEEPSEEK_API_KEY` | `deepseek.api.key` | String | *(empty)* | DeepSeek API key. |
@@ -78,6 +79,7 @@ huggingface-cli download sentence-transformers/all-MiniLM-L6-v2 --local-dir /opt
 | Variable | Property | Type | Default | Description |
 |---|---|---|---|---|
 | `ADMIN_PASSWORD` | `admin.token` | String | *(must be set for non-local deployments)* | Password to protect admin-only panels (LLM Diagnostics, Prompt Templates, Communication Log). **For any deployment exposed beyond a fully trusted local machine, this MUST be set to a strong, non-empty value.** When left empty, all admin panels are accessible to everyone and this behaviour is intended for isolated development environments only. When set, users must click the 🔒 button and enter the password. |
+| `TAXONOMY_ADMIN_PASSWORD` | `taxonomy.admin-password` | String | `admin` | Password for the built-in `admin` user (Spring Security login). Used for form login (browser) and HTTP Basic authentication (REST clients). Change this from the default for any non-local deployment. |
 
 ### Configuring the Admin Password
 
