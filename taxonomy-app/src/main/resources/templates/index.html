@@ -50,6 +50,9 @@
             <li id="adminNavTab" class="nav-item admin-only">
                 <a class="nav-link text-warning" data-page="admin" href="#admin">&#9881;&#65039; Admin</a>
             </li>
+            <li id="preferencesNavTab" class="nav-item admin-only">
+                <a class="nav-link text-warning" data-page="preferences" href="#preferences">&#9881;&#65039; Preferences</a>
+            </li>
         </ul>
     </div>
 </div>
@@ -704,6 +707,141 @@
                 </div>
             </div><!-- /tab-help -->
 
+            <!-- ============================================================
+                 TAB: PREFERENCES
+                 ============================================================ -->
+            <div id="tab-preferences" class="tab-pane-content d-none">
+
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <h5 class="mb-0">&#9881;&#65039; Application Preferences</h5>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button id="prefSaveBtn" class="btn btn-primary btn-sm">&#128190; Save</button>
+                        <button id="prefResetBtn" class="btn btn-outline-secondary btn-sm">&#8617;&#65039; Reset to Defaults</button>
+                    </div>
+                </div>
+                <div id="prefStatusMsg" class="alert d-none mb-3" role="alert"></div>
+
+                <!-- Section 1: LLM Configuration -->
+                <div class="card mb-3">
+                    <div class="card-header fw-semibold">&#129302; LLM Configuration</div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="pref-llm-rpm" class="form-label">LLM Requests per Minute (RPM)
+                                    <span class="text-muted small">(Gemini free tier: 5)</span></label>
+                                <input type="number" class="form-control" id="pref-llm-rpm"
+                                       data-pref-key="llm.rpm" min="0" max="1000"/>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="pref-llm-timeout" class="form-label">LLM Request Timeout (seconds)</label>
+                                <input type="number" class="form-control" id="pref-llm-timeout"
+                                       data-pref-key="llm.timeout.seconds" min="5" max="600"/>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="pref-rate-limit" class="form-label">Server Rate Limit (requests/IP/minute)</label>
+                                <input type="number" class="form-control" id="pref-rate-limit"
+                                       data-pref-key="rate-limit.per-minute" min="0" max="1000"/>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="pref-min-score" class="form-label">Minimum Relevance Score (0–100)</label>
+                                <input type="number" class="form-control" id="pref-min-score"
+                                       data-pref-key="analysis.min-relevance-score" min="0" max="100"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: JGit / DSL Configuration -->
+                <div class="card mb-3">
+                    <div class="card-header fw-semibold">&#128194; JGit / DSL Configuration</div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="pref-dsl-branch" class="form-label">Default Branch</label>
+                                <input type="text" class="form-control" id="pref-dsl-branch"
+                                       data-pref-key="dsl.default-branch"/>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="pref-dsl-project" class="form-label">Project Name</label>
+                                <input type="text" class="form-control" id="pref-dsl-project"
+                                       data-pref-key="dsl.project-name"/>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="pref-dsl-autosave" class="form-label">Auto-Save Interval (seconds, 0 = disabled)</label>
+                                <input type="number" class="form-control" id="pref-dsl-autosave"
+                                       data-pref-key="dsl.auto-save.interval-seconds" min="0" max="86400"/>
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="pref-dsl-push-on-commit"
+                                           data-pref-key="dsl.remote.push-on-commit"/>
+                                    <label class="form-check-label" for="pref-dsl-push-on-commit">
+                                        Push to Remote after each Commit
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label for="pref-dsl-remote-url" class="form-label">Remote Git URL</label>
+                                <input type="text" class="form-control" id="pref-dsl-remote-url"
+                                       data-pref-key="dsl.remote.url" placeholder="https://github.com/org/repo.git"/>
+                            </div>
+                            <div class="col-12">
+                                <label for="pref-dsl-remote-token" class="form-label">Remote Git Token
+                                    <span class="text-muted small">(stored securely, last 4 chars shown)</span></label>
+                                <input type="password" class="form-control" id="pref-dsl-remote-token"
+                                       data-pref-key="dsl.remote.token" autocomplete="new-password"
+                                       placeholder="Leave blank to keep existing token"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 3: Size Limits -->
+                <div class="card mb-3">
+                    <div class="card-header fw-semibold">&#128200; Size Limits</div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="pref-max-business-text" class="form-label">Max Business Text Length</label>
+                                <input type="number" class="form-control" id="pref-max-business-text"
+                                       data-pref-key="limits.max-business-text" min="100" max="100000"/>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="pref-max-arch-nodes" class="form-label">Max Architecture Nodes</label>
+                                <input type="number" class="form-control" id="pref-max-arch-nodes"
+                                       data-pref-key="limits.max-architecture-nodes" min="1" max="1000"/>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="pref-max-export-nodes" class="form-label">Max Export Nodes</label>
+                                <input type="number" class="form-control" id="pref-max-export-nodes"
+                                       data-pref-key="limits.max-export-nodes" min="1" max="10000"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- History section (collapsible) -->
+                <details id="prefHistorySection" class="mt-2">
+                    <summary class="fw-semibold" style="cursor:pointer;">&#128203; Preferences Change History</summary>
+                    <div class="mt-2 table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead class="table-dark">
+                            <tr>
+                                <th class="small">Commit</th>
+                                <th class="small">Author</th>
+                                <th class="small">Time</th>
+                                <th class="small">Message</th>
+                            </tr>
+                            </thead>
+                            <tbody id="prefHistoryBody">
+                            <tr><td colspan="4" class="text-muted small">Open to load history.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </details>
+
+            </div><!-- /tab-preferences -->
+
         </div><!-- /rightPanel -->
     </div><!-- /row -->
 </div><!-- /container-fluid -->
@@ -898,8 +1036,8 @@
 <script>
 (function () {
     'use strict';
-    var PAGES = ['analyze', 'architecture', 'graph', 'relations', 'export', 'dsl-editor', 'help', 'admin'];
-    var FULL_WIDTH_PAGES = ['relations', 'export', 'help', 'admin'];
+    var PAGES = ['analyze', 'architecture', 'graph', 'relations', 'export', 'dsl-editor', 'help', 'admin', 'preferences'];
+    var FULL_WIDTH_PAGES = ['relations', 'export', 'help', 'admin', 'preferences'];
 
     function activatePage(pageName) {
         if (PAGES.indexOf(pageName) === -1) { pageName = 'analyze'; }
@@ -1009,6 +1147,154 @@
     setInterval(updateSystemStatus, 15000);
     document.addEventListener('DOMContentLoaded', updateSystemStatus);
     updateSystemStatus();
+}());
+</script>
+
+<!-- ── Preferences Tab Script ───────────────────────────────────────────── -->
+<script>
+(function () {
+    'use strict';
+
+    var currentPrefs = {};
+
+    function loadPreferences() {
+        fetch('/api/preferences')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                currentPrefs = data;
+                populateForm(data);
+            })
+            .catch(function (e) {
+                showPrefStatus('Could not load preferences: ' + e.message, 'danger');
+            });
+    }
+
+    function populateForm(data) {
+        document.querySelectorAll('[data-pref-key]').forEach(function (el) {
+            var key = el.getAttribute('data-pref-key');
+            var val = data[key];
+            if (val === undefined || val === null) return;
+            if (el.type === 'checkbox') {
+                el.checked = (val === true || val === 'true');
+            } else if (el.type === 'password') {
+                el.placeholder = val ? String(val) : 'Leave blank to keep existing token';
+                el.value = '';
+            } else {
+                el.value = String(val);
+            }
+        });
+    }
+
+    function collectChanges() {
+        var changes = {};
+        document.querySelectorAll('[data-pref-key]').forEach(function (el) {
+            var key = el.getAttribute('data-pref-key');
+            if (el.type === 'checkbox') {
+                changes[key] = el.checked;
+            } else if (el.type === 'password') {
+                if (el.value !== '') {
+                    changes[key] = el.value;
+                }
+            } else if (el.type === 'number') {
+                var n = parseInt(el.value, 10);
+                if (!isNaN(n)) { changes[key] = n; }
+            } else {
+                changes[key] = el.value;
+            }
+        });
+        return changes;
+    }
+
+    function showPrefStatus(msg, type) {
+        var el = document.getElementById('prefStatusMsg');
+        el.textContent = msg;
+        el.className = 'alert alert-' + type + ' mb-3';
+        el.classList.remove('d-none');
+        setTimeout(function () { el.classList.add('d-none'); }, 5000);
+    }
+
+    function savePreferences() {
+        var changes = collectChanges();
+        fetch('/api/preferences', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(changes)
+        })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function (data) {
+                currentPrefs = data;
+                populateForm(data);
+                showPrefStatus('Preferences saved successfully.', 'success');
+            })
+            .catch(function (e) {
+                showPrefStatus('Save failed: ' + e.message, 'danger');
+            });
+    }
+
+    function resetPreferences() {
+        if (!confirm('Reset all preferences to application defaults?')) return;
+        fetch('/api/preferences/reset', { method: 'POST' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function (data) {
+                currentPrefs = data;
+                populateForm(data);
+                showPrefStatus('Preferences reset to defaults.', 'info');
+            })
+            .catch(function (e) {
+                showPrefStatus('Reset failed: ' + e.message, 'danger');
+            });
+    }
+
+    function loadHistory() {
+        fetch('/api/preferences/history')
+            .then(function (r) { return r.json(); })
+            .then(function (commits) {
+                var tbody = document.getElementById('prefHistoryBody');
+                if (!commits || commits.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-muted small">No history yet.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = commits.map(function (c) {
+                    var ts = c.timestamp ? new Date(c.timestamp).toLocaleString() : '';
+                    var sha = c.commitId ? c.commitId.substring(0, 7) : '';
+                    return '<tr><td class="font-monospace small">' + sha + '</td>'
+                        + '<td class="small">' + escapeHtml(c.author || '') + '</td>'
+                        + '<td class="small text-nowrap">' + ts + '</td>'
+                        + '<td class="small">' + escapeHtml(c.message || '') + '</td></tr>';
+                }).join('');
+            })
+            .catch(function () {});
+    }
+
+    function escapeHtml(s) {
+        return s.replace(/[&<>"']/g, function (c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var saveBtn  = document.getElementById('prefSaveBtn');
+        var resetBtn = document.getElementById('prefResetBtn');
+        var histSect = document.getElementById('prefHistorySection');
+
+        if (saveBtn)  saveBtn.addEventListener('click',  savePreferences);
+        if (resetBtn) resetBtn.addEventListener('click', resetPreferences);
+        if (histSect) histSect.addEventListener('toggle', function () {
+            if (histSect.open) loadHistory();
+        });
+    });
+
+    document.querySelectorAll('#mainNavTabs .nav-link').forEach(function (link) {
+        if (link.getAttribute('data-page') === 'preferences') {
+            link.addEventListener('click', loadPreferences);
+        }
+    });
 }());
 </script>
 </body>

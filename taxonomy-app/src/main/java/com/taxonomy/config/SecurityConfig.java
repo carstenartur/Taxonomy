@@ -36,6 +36,7 @@ public class SecurityConfig {
 
                 // Admin-only
                 .requestMatchers("/admin/**", "/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/preferences/**").hasRole("ADMIN")
 
                 // Write operations on architecture endpoints — ARCHITECT or ADMIN
                 .requestMatchers(HttpMethod.POST,   "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN")
