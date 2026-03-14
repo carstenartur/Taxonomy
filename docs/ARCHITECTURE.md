@@ -339,7 +339,7 @@ flowchart TB
         ArchiEx["ArchiMate XML"]
         Mermaid["Mermaid Flowchart"]
         Reports["Reports<br/>(MD, HTML, DOCX, JSON)"]
-        JSONAPI["REST API<br/>(106+ endpoints)"]
+        JSONAPI["REST API<br/>(97 endpoints)"]
     end
 
     Excel --> TaxSvc

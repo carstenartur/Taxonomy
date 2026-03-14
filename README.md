@@ -310,7 +310,7 @@ Taxonomy/
 | **[Concepts & Glossary](docs/CONCEPTS.md)** | Key terms and definitions |
 | **[Examples](docs/EXAMPLES.md)** | Worked examples for analysis, impact, gap analysis, proposals |
 | **[Architecture](docs/ARCHITECTURE.md)** | System design, pipeline, module structure, DSL storage |
-| **[API Reference](docs/API_REFERENCE.md)** | Full REST API documentation (74 endpoints) |
+| **[API Reference](docs/API_REFERENCE.md)** | Full REST API documentation (97 endpoints) |
 | **[Configuration](docs/CONFIGURATION_REFERENCE.md)** | Environment variables and settings |
 | **[Deployment](docs/DEPLOYMENT_GUIDE.md)** | Docker, Render.com, health checks |
 | **[Developer Guide](docs/DEVELOPER_GUIDE.md)** | Module architecture, testing, how to extend the system |
