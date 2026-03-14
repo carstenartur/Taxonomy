@@ -112,7 +112,10 @@ public class ApqcExcelParser implements ExternalParser {
     private String getCellValueAsString(Cell cell) {
         if (cell == null) return null;
         return switch (cell.getCellType()) {
-            case STRING -> cell.getStringCellValue().trim();
+            case STRING -> {
+                RichTextString rts = cell.getRichStringCellValue();
+                yield rts != null ? rts.getString().trim() : cell.getStringCellValue().trim();
+            }
             case NUMERIC -> {
                 double num = cell.getNumericCellValue();
                 if (num == Math.floor(num) && !Double.isInfinite(num)) {
@@ -121,6 +124,26 @@ public class ApqcExcelParser implements ExternalParser {
                 yield String.valueOf(num);
             }
             case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
+            case FORMULA -> {
+                try {
+                    yield switch (cell.getCachedFormulaResultType()) {
+                        case STRING  -> {
+                            RichTextString rts = cell.getRichStringCellValue();
+                            yield rts != null ? rts.getString().trim() : cell.getStringCellValue().trim();
+                        }
+                        case NUMERIC -> {
+                            double num = cell.getNumericCellValue();
+                            yield (num == Math.floor(num) && !Double.isInfinite(num))
+                                    ? String.valueOf((long) num)
+                                    : String.valueOf(num);
+                        }
+                        case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
+                        default      -> null;
+                    };
+                } catch (Exception e) {
+                    yield null;
+                }
+            }
             default -> null;
         };
     }

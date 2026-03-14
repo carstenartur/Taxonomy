@@ -539,11 +539,28 @@ public class TaxonomyService {
         Cell cell = row.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
         if (cell == null) return null;
         String val = switch (cell.getCellType()) {
-            case STRING  -> cell.getStringCellValue();
+            case STRING -> {
+                RichTextString rts = cell.getRichStringCellValue();
+                yield rts != null ? rts.getString() : cell.getStringCellValue();
+            }
             case NUMERIC -> String.valueOf((long) cell.getNumericCellValue());
             case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
-            case FORMULA -> cell.getCellFormula();
-            default      -> null;
+            case FORMULA -> {
+                try {
+                    yield switch (cell.getCachedFormulaResultType()) {
+                        case STRING  -> {
+                            RichTextString rts = cell.getRichStringCellValue();
+                            yield rts != null ? rts.getString() : cell.getStringCellValue();
+                        }
+                        case NUMERIC -> String.valueOf((long) cell.getNumericCellValue());
+                        case BOOLEAN -> String.valueOf(cell.getBooleanCellValue());
+                        default      -> cell.getCellFormula();
+                    };
+                } catch (Exception e) {
+                    yield cell.getCellFormula();
+                }
+            }
+            default -> null;
         };
         return (val == null || val.isBlank()) ? null : val.trim();
     }
