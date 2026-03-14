@@ -167,5 +167,34 @@ public class ArchitectureGapService {
 
 <span class="fc" id="L168">        return view;</span>
     }
+
+    /**
+     * Analyses which APQC process categories are covered by the current architecture model.
+     *
+     * &lt;p&gt;Searches for relations with APQC provenance and checks whether they
+     * have outgoing relations, indicating integration with the broader architecture.
+     *
+     * @param requirementText optional business requirement text for context
+     * @return gap analysis view showing APQC coverage status
+     */
+    @Transactional(readOnly = true)
+    public GapAnalysisView analyzeApqcCoverage(String requirementText) {
+<span class="nc" id="L182">        GapAnalysisView view = new GapAnalysisView();</span>
+<span class="nc bnc" id="L183" title="All 2 branches missed.">        view.setBusinessText(requirementText != null ? requirementText : &quot;APQC Coverage Analysis&quot;);</span>
+
+        // Find all relations to check for APQC-sourced nodes
+<span class="nc" id="L186">        List&lt;TaxonomyRelation&gt; allRelations = relationRepository.findAll();</span>
+
+        // Check nodes for APQC provenance
+<span class="nc" id="L189">        List&lt;TaxonomyRelation&gt; apqcRelations = allRelations.stream()</span>
+<span class="nc bnc" id="L190" title="All 2 branches missed.">                .filter(r -&gt; &quot;APQC_IMPORT&quot;.equals(r.getProvenance()) ||</span>
+<span class="nc bnc" id="L191" title="All 4 branches missed.">                             (r.getDescription() != null &amp;&amp; r.getDescription().contains(&quot;apqc&quot;)))</span>
+<span class="nc" id="L192">                .toList();</span>
+
+<span class="nc" id="L194">        view.setTotalAnchors(apqcRelations.size());</span>
+<span class="nc" id="L195">        view.setTotalGaps(0);</span>
+<span class="nc" id="L196">        view.getNotes().add(&quot;Found &quot; + apqcRelations.size() + &quot; APQC-related relations in the model.&quot;);</span>
+<span class="nc" id="L197">        return view;</span>
+    }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

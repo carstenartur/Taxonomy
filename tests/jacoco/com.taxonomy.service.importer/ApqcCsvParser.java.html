@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ApqcCsvParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service.importer</a> &gt; <span class="el_source">ApqcCsvParser.java</span></div><h1>ApqcCsvParser.java</h1><pre class="source lang-java linenums">package com.taxonomy.service.importer;
+
+import com.taxonomy.dsl.mapping.ExternalElement;
+import com.taxonomy.dsl.mapping.ExternalRelation;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Parses APQC Process Classification Framework (PCF) CSV files into
+ * {@link ExternalElement}s and {@link ExternalRelation}s.
+ *
+ * &lt;p&gt;Expected CSV structure:
+ * &lt;pre&gt;
+ * PCF ID,Name,Level,Description
+ * 1.0,Develop Vision and Strategy,1,
+ * 1.1,Define the business concept,2,
+ * 1.1.1,Assess the external environment,3,...
+ * &lt;/pre&gt;
+ *
+ * &lt;p&gt;Parent–child relations are derived from the PCF ID hierarchy
+ * (e.g., 1.1 is a child of 1.0).
+ */
+<span class="fc" id="L30">public class ApqcCsvParser implements ExternalParser {</span>
+
+<span class="fc" id="L32">    private static final String[] LEVEL_TYPES = {</span>
+        &quot;Category&quot;, &quot;ProcessGroup&quot;, &quot;Process&quot;, &quot;Activity&quot;, &quot;Task&quot;
+    };
+
+    @Override
+    public String fileFormat() {
+<span class="fc" id="L38">        return &quot;csv&quot;;</span>
+    }
+
+    @Override
+    public ParsedExternalModel parse(InputStream input) throws Exception {
+<span class="fc" id="L43">        List&lt;ExternalElement&gt; elements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L44">        List&lt;ExternalRelation&gt; relations = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L45">        Map&lt;String, String&gt; idByPcfId = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc" id="L47">        try (BufferedReader reader = new BufferedReader(</span>
+                new InputStreamReader(input, StandardCharsets.UTF_8))) {
+
+<span class="fc" id="L50">            String headerLine = reader.readLine();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (headerLine == null) {</span>
+<span class="fc" id="L52">                return new ParsedExternalModel(elements, relations);</span>
+            }
+
+            // Parse header to find column indices
+<span class="fc" id="L56">            String[] headers = splitCsvLine(headerLine);</span>
+<span class="fc" id="L57">            int pcfIdCol = findColumn(headers, &quot;PCF ID&quot;, &quot;Id&quot;, &quot;ID&quot;, &quot;pcf_id&quot;);</span>
+<span class="fc" id="L58">            int nameCol = findColumn(headers, &quot;Name&quot;, &quot;name&quot;, &quot;Process Name&quot;, &quot;Title&quot;);</span>
+<span class="fc" id="L59">            int levelCol = findColumn(headers, &quot;Level&quot;, &quot;level&quot;, &quot;Hierarchy Level&quot;);</span>
+<span class="fc" id="L60">            int descCol = findColumn(headers, &quot;Description&quot;, &quot;description&quot;, &quot;Desc&quot;);</span>
+
+            String line;
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            while ((line = reader.readLine()) != null) {</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">                if (line.isBlank()) continue;</span>
+
+<span class="fc" id="L66">                String[] fields = splitCsvLine(line);</span>
+<span class="fc" id="L67">                String pcfId = safeGet(fields, pcfIdCol);</span>
+<span class="fc" id="L68">                String name = safeGet(fields, nameCol);</span>
+<span class="fc" id="L69">                String levelStr = safeGet(fields, levelCol);</span>
+<span class="fc" id="L70">                String description = safeGet(fields, descCol);</span>
+
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">                if (pcfId == null || pcfId.isBlank()) continue;</span>
+
+                // Determine level from explicit column or PCF ID dot count
+<span class="fc" id="L75">                int level = parseLevel(levelStr, pcfId);</span>
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">                String type = level &gt;= 1 &amp;&amp; level &lt;= LEVEL_TYPES.length</span>
+<span class="pc" id="L77">                        ? LEVEL_TYPES[level - 1] : &quot;Category&quot;;</span>
+
+<span class="fc" id="L79">                String elementId = &quot;apqc-&quot; + pcfId.replace(&quot;.&quot;, &quot;-&quot;);</span>
+<span class="fc" id="L80">                Map&lt;String, String&gt; props = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L81">                props.put(&quot;pcfId&quot;, pcfId);</span>
+<span class="fc" id="L82">                String parentPcfId = deriveParentPcfId(pcfId);</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">                if (parentPcfId != null) {</span>
+<span class="fc" id="L84">                    props.put(&quot;parentId&quot;, &quot;apqc-&quot; + parentPcfId.replace(&quot;.&quot;, &quot;-&quot;));</span>
+                }
+
+<span class="fc" id="L87">                elements.add(new ExternalElement(elementId, type, name, description, props));</span>
+<span class="fc" id="L88">                idByPcfId.put(pcfId, elementId);</span>
+
+                // Create parent-child relation
+<span class="pc bpc" id="L91" title="1 of 4 branches missed.">                if (parentPcfId != null &amp;&amp; idByPcfId.containsKey(parentPcfId)) {</span>
+<span class="fc" id="L92">                    relations.add(new ExternalRelation(</span>
+<span class="fc" id="L93">                            idByPcfId.get(parentPcfId), elementId, &quot;ParentChild&quot;, Map.of()));</span>
+                }
+<span class="fc" id="L95">            }</span>
+<span class="fc" id="L96">        }</span>
+
+<span class="fc" id="L98">        return new ParsedExternalModel(elements, relations);</span>
+    }
+
+    private int findColumn(String[] headers, String... candidates) {
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        for (String candidate : candidates) {</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">            for (int i = 0; i &lt; headers.length; i++) {</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                if (headers[i].trim().equalsIgnoreCase(candidate)) {</span>
+<span class="fc" id="L105">                    return i;</span>
+                }
+            }
+        }
+<span class="nc" id="L109">        return -1;</span>
+    }
+
+    private String safeGet(String[] fields, int index) {
+<span class="pc bpc" id="L113" title="2 of 4 branches missed.">        if (index &lt; 0 || index &gt;= fields.length) return null;</span>
+<span class="fc" id="L114">        String value = fields[index].trim();</span>
+        // Remove surrounding quotes
+<span class="pc bpc" id="L116" title="3 of 6 branches missed.">        if (value.length() &gt;= 2 &amp;&amp; value.startsWith(&quot;\&quot;&quot;) &amp;&amp; value.endsWith(&quot;\&quot;&quot;)) {</span>
+<span class="nc" id="L117">            value = value.substring(1, value.length() - 1);</span>
+        }
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        return value.isEmpty() ? null : value;</span>
+    }
+
+    private int parseLevel(String levelStr, String pcfId) {
+<span class="pc bpc" id="L123" title="2 of 4 branches missed.">        if (levelStr != null &amp;&amp; !levelStr.isBlank()) {</span>
+            try {
+<span class="fc" id="L125">                return Integer.parseInt(levelStr.trim());</span>
+<span class="nc" id="L126">            } catch (NumberFormatException ignored) {</span>
+                // Fall through to dot counting
+            }
+        }
+        // Derive level from PCF ID dot count: &quot;1.0&quot; = 1 dot = level 1, &quot;1.1.1&quot; = 2 dots = level 3
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        long dots = pcfId.chars().filter(c -&gt; c == '.').count();</span>
+<span class="nc" id="L132">        return (int) dots + 1;</span>
+    }
+
+    private String deriveParentPcfId(String pcfId) {
+<span class="fc" id="L136">        int lastDot = pcfId.lastIndexOf('.');</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        if (lastDot &lt;= 0) return null;</span>
+<span class="fc" id="L138">        return pcfId.substring(0, lastDot);</span>
+    }
+
+    /**
+     * Simple CSV line splitter that handles quoted fields.
+     */
+    static String[] splitCsvLine(String line) {
+<span class="fc" id="L145">        List&lt;String&gt; fields = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L146">        StringBuilder current = new StringBuilder();</span>
+<span class="fc" id="L147">        boolean inQuotes = false;</span>
+
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        for (int i = 0; i &lt; line.length(); i++) {</span>
+<span class="fc" id="L150">            char c = line.charAt(i);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            if (c == '&quot;') {</span>
+<span class="pc bpc" id="L152" title="1 of 6 branches missed.">                if (inQuotes &amp;&amp; i + 1 &lt; line.length() &amp;&amp; line.charAt(i + 1) == '&quot;') {</span>
+<span class="nc" id="L153">                    current.append('&quot;');</span>
+<span class="nc" id="L154">                    i++;</span>
+                } else {
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                    inQuotes = !inQuotes;</span>
+                }
+<span class="fc bfc" id="L158" title="All 4 branches covered.">            } else if (c == ',' &amp;&amp; !inQuotes) {</span>
+<span class="fc" id="L159">                fields.add(current.toString());</span>
+<span class="fc" id="L160">                current.setLength(0);</span>
+            } else {
+<span class="fc" id="L162">                current.append(c);</span>
+            }
+        }
+<span class="fc" id="L165">        fields.add(current.toString());</span>
+
+<span class="fc" id="L167">        return fields.toArray(new String[0]);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
