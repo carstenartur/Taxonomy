@@ -1125,3 +1125,28 @@
 .admin-unlocked #mainNavTabs .admin-only {
     display: list-item;
 }
+
+/* ── Help documentation styles ─────────────────────────────────────────── */
+.help-doc-content h1 { font-size: 1.5rem; border-bottom: 2px solid #0d6efd; padding-bottom: 0.3rem; margin-top: 1.5rem; }
+.help-doc-content h2 { font-size: 1.3rem; border-bottom: 1px solid #dee2e6; padding-bottom: 0.2rem; margin-top: 1.3rem; }
+.help-doc-content h3 { font-size: 1.15rem; margin-top: 1rem; }
+.help-doc-content code { background: #f8f9fa; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.85em; }
+.help-doc-content pre { background: #f8f9fa; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.82rem; }
+.help-doc-content pre code { background: none; padding: 0; }
+.help-doc-content table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+.help-doc-content th, .help-doc-content td { border: 1px solid #dee2e6; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+.help-doc-content th { background: #f8f9fa; font-weight: 600; }
+.help-doc-content img { max-width: 100%; height: auto; border: 1px solid #dee2e6; border-radius: 4px; margin: 0.5rem 0; }
+.help-doc-content blockquote { border-left: 4px solid #0d6efd; padding-left: 1rem; color: #6c757d; margin: 1rem 0; }
+
+/* Dark mode */
+[data-bs-theme="dark"] .help-doc-content code { background: #2b3035; }
+[data-bs-theme="dark"] .help-doc-content pre { background: #2b3035; }
+[data-bs-theme="dark"] .help-doc-content th { background: #2b3035; }
+[data-bs-theme="dark"] .help-doc-content th, [data-bs-theme="dark"] .help-doc-content td { border-color: #444; }
+[data-bs-theme="dark"] .help-doc-content img { border-color: #444; }
+
+#helpToc .list-group-item { cursor: pointer; font-size: 0.85rem; padding: 0.5rem 0.75rem; }
+#helpToc .list-group-item:hover { background: #f0f0f0; }
+#helpToc .list-group-item.active { background: #0d6efd; color: #fff; border-color: #0d6efd; }
+[data-bs-theme="dark"] #helpToc .list-group-item:hover { background: #2b3035; }
