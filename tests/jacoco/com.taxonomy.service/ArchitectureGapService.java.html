@@ -171,30 +171,80 @@ public class ArchitectureGapService {
     /**
      * Analyses which APQC process categories are covered by the current architecture model.
      *
-     * &lt;p&gt;Searches for relations with APQC provenance and checks whether they
-     * have outgoing relations, indicating integration with the broader architecture.
+     * &lt;p&gt;Searches for nodes whose code patterns suggest APQC provenance (imported
+     * via the APQC pipeline) and checks whether they have outgoing relations,
+     * indicating integration with the broader architecture.
      *
      * @param requirementText optional business requirement text for context
-     * @return gap analysis view showing APQC coverage status
+     * @return APQC coverage result with per-level statistics
      */
     @Transactional(readOnly = true)
-    public GapAnalysisView analyzeApqcCoverage(String requirementText) {
-<span class="nc" id="L182">        GapAnalysisView view = new GapAnalysisView();</span>
-<span class="nc bnc" id="L183" title="All 2 branches missed.">        view.setBusinessText(requirementText != null ? requirementText : &quot;APQC Coverage Analysis&quot;);</span>
-
+    public ApqcCoverageResult analyzeApqcCoverage(String requirementText) {
         // Find all relations to check for APQC-sourced nodes
-<span class="nc" id="L186">        List&lt;TaxonomyRelation&gt; allRelations = relationRepository.findAll();</span>
+<span class="fc" id="L184">        List&lt;TaxonomyRelation&gt; allRelations = relationRepository.findAll();</span>
 
-        // Check nodes for APQC provenance
-<span class="nc" id="L189">        List&lt;TaxonomyRelation&gt; apqcRelations = allRelations.stream()</span>
-<span class="nc bnc" id="L190" title="All 2 branches missed.">                .filter(r -&gt; &quot;APQC_IMPORT&quot;.equals(r.getProvenance()) ||</span>
-<span class="nc bnc" id="L191" title="All 4 branches missed.">                             (r.getDescription() != null &amp;&amp; r.getDescription().contains(&quot;apqc&quot;)))</span>
-<span class="nc" id="L192">                .toList();</span>
+        // Check relations for APQC provenance
+<span class="fc" id="L187">        List&lt;TaxonomyRelation&gt; apqcRelations = allRelations.stream()</span>
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">                .filter(r -&gt; &quot;APQC_IMPORT&quot;.equals(r.getProvenance()) ||</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">                             &quot;dsl-materialize&quot;.equals(r.getProvenance()) ||</span>
+<span class="pc bnc" id="L190" title="All 4 branches missed.">                             (r.getDescription() != null &amp;&amp; r.getDescription().toLowerCase().contains(&quot;apqc&quot;)))</span>
+<span class="fc" id="L191">                .toList();</span>
 
-<span class="nc" id="L194">        view.setTotalAnchors(apqcRelations.size());</span>
-<span class="nc" id="L195">        view.setTotalGaps(0);</span>
-<span class="nc" id="L196">        view.getNotes().add(&quot;Found &quot; + apqcRelations.size() + &quot; APQC-related relations in the model.&quot;);</span>
-<span class="nc" id="L197">        return view;</span>
+        // Identify unique APQC-related node codes from source and target
+<span class="fc" id="L194">        Set&lt;String&gt; apqcNodeCodes = apqcRelations.stream()</span>
+<span class="fc" id="L195">                .flatMap(rel -&gt; java.util.stream.Stream.of(rel.getSourceNode(), rel.getTargetNode()))</span>
+<span class="fc" id="L196">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L197">                .map(TaxonomyNode::getCode)</span>
+<span class="fc" id="L198">                .collect(Collectors.toCollection(LinkedHashSet::new));</span>
+
+        // Group by taxonomy root (which maps to APQC levels via the import profile)
+<span class="fc" id="L201">        Map&lt;String, Integer&gt; coverageByLevel = new LinkedHashMap&lt;&gt;();</span>
+        // APQC mapping: CP=Category, BP=ProcessGroup, CR=Process, CI=Activity, BR=Task
+<span class="fc" id="L203">        Map&lt;String, String&gt; rootToLevel = Map.of(</span>
+                &quot;CP&quot;, &quot;Category&quot;, &quot;BP&quot;, &quot;ProcessGroup&quot;, &quot;CR&quot;, &quot;Process&quot;,
+                &quot;CI&quot;, &quot;Activity&quot;, &quot;BR&quot;, &quot;Task&quot;);
+
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        for (String code : apqcNodeCodes) {</span>
+<span class="fc" id="L208">            Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(code);</span>
+<span class="fc" id="L209">            nodeOpt.ifPresent(node -&gt; {</span>
+<span class="fc" id="L210">                String level = rootToLevel.getOrDefault(node.getTaxonomyRoot(), &quot;Unknown&quot;);</span>
+<span class="fc" id="L211">                coverageByLevel.merge(level, 1, Integer::sum);</span>
+<span class="fc" id="L212">            });</span>
+<span class="fc" id="L213">        }</span>
+
+        // Count categories that have at least one relation (covered)
+<span class="fc" id="L216">        int totalCategories = coverageByLevel.values().stream().mapToInt(Integer::intValue).sum();</span>
+<span class="fc" id="L217">        Set&lt;String&gt; coveredRoots = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">        for (TaxonomyRelation rel : apqcRelations) {</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">            if (rel.getSourceNode() != null) coveredRoots.add(rel.getSourceNode().getTaxonomyRoot());</span>
+<span class="pc bpc" id="L220" title="1 of 2 branches missed.">            if (rel.getTargetNode() != null) coveredRoots.add(rel.getTargetNode().getTaxonomyRoot());</span>
+<span class="fc" id="L221">        }</span>
+
+        // Count categories with outgoing relations as &quot;covered&quot;
+<span class="fc" id="L224">        int coveredCategories = 0;</span>
+<span class="fc" id="L225">        List&lt;String&gt; uncoveredCategories = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        for (String levelName : rootToLevel.values()) {</span>
+<span class="fc" id="L227">            int count = coverageByLevel.getOrDefault(levelName, 0);</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">            if (count &gt; 0) {</span>
+<span class="fc" id="L229">                coveredCategories++;</span>
+            } else {
+<span class="fc" id="L231">                uncoveredCategories.add(levelName);</span>
+            }
+<span class="fc" id="L233">        }</span>
+
+<span class="pc bpc" id="L235" title="1 of 2 branches missed.">        double coveragePercent = rootToLevel.size() &gt; 0</span>
+<span class="fc" id="L236">                ? (coveredCategories * 100.0) / rootToLevel.size()</span>
+<span class="pc" id="L237">                : 0.0;</span>
+
+<span class="fc" id="L239">        log.info(&quot;APQC coverage analysis: {} categories, {} covered, {}%&quot;,</span>
+<span class="fc" id="L240">                totalCategories, coveredCategories, String.format(&quot;%.1f&quot;, coveragePercent));</span>
+
+<span class="fc" id="L242">        return new ApqcCoverageResult(</span>
+                totalCategories,
+                coveredCategories,
+                coveragePercent,
+                uncoveredCategories,
+                coverageByLevel);
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
