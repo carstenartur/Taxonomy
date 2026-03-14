@@ -1,306 +1,145 @@
-# Taxonomy Architecture Analyzer — Curl Examples
+# Taxonomy Architecture Analyzer — Curl Workflow Examples
 
-Quick-reference curl examples for common workflows. All examples assume the application runs on `http://localhost:8080`.
+End-to-end curl workflows for common tasks. For the full endpoint reference, see [API Reference](API_REFERENCE.md)
+or [Swagger UI](http://localhost:8080/swagger-ui.html).
 
-**Authentication:** All API endpoints require authentication. Use HTTP Basic with the default credentials (`admin:admin`) or with the password configured via `TAXONOMY_ADMIN_PASSWORD`. Public endpoints (health, Swagger) do not require authentication.
-
-```bash
-# All examples below use -u admin:admin for HTTP Basic auth.
-# Replace with your configured credentials if TAXONOMY_ADMIN_PASSWORD is set.
-```
-
-For the full interactive API reference, see [Swagger UI](http://localhost:8080/swagger-ui.html) or the [API Reference](API_REFERENCE.md) which includes endpoint descriptions, request/response examples, and error codes.
+**Authentication:** All API endpoints require HTTP Basic auth (`-u admin:admin`).
 
 ---
 
-## Taxonomy & Status
+## Workflow 1: Analyze a Requirement and Export ArchiMate
+
+Analyze a business requirement, then export the resulting architecture as ArchiMate XML.
 
 ```bash
-# Get full taxonomy tree
-curl -u admin:admin http://localhost:8080/api/taxonomy
-
-# Check AI/LLM provider status
-curl -u admin:admin http://localhost:8080/api/ai-status
-
-# Check startup status
-curl -u admin:admin http://localhost:8080/api/status/startup
-```
-
-## Analysis
-
-```bash
-# Standard analysis (POST, JSON body)
+# Step 1 — Analyze the requirement
 curl -u admin:admin -X POST http://localhost:8080/api/analyze \
   -H "Content-Type: application/json" \
-  -d '{"businessText":"Provide secure voice communications","includeArchitectureView":true}'
+  -d '{"businessText":"Provide secure voice communications for deployed forces","includeArchitectureView":true}'
 
-# Streaming analysis (SSE)
-curl -u admin:admin -N "http://localhost:8080/api/analyze-stream?businessText=voice+comms+for+deployed+forces"
-
-# Interactive mode — analyze children of a specific node
-curl -u admin:admin "http://localhost:8080/api/analyze-node?parentCode=C3_ROOT&businessText=voice+comms"
-
-# Leaf justification
-curl -u admin:admin -X POST http://localhost:8080/api/justify-leaf \
+# Step 2 — Export the architecture as ArchiMate XML
+curl -u admin:admin -X POST http://localhost:8080/api/diagram/archimate \
   -H "Content-Type: application/json" \
-  -d '{"nodeCode":"CR-1047","businessText":"Secure voice communications","scores":{"CR-1047":87},"reasons":{"CR-1047":"Matched on voice"}}'
+  -d '{"businessText":"Provide secure voice communications for deployed forces"}' \
+  --output architecture.xml
+
+# Alternative exports:
+# Visio
+curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
+  -H "Content-Type: application/json" \
+  -d '{"businessText":"Provide secure voice communications for deployed forces"}' \
+  --output architecture.vsdx
+
+# Mermaid
+curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
+  -H "Content-Type: application/json" \
+  -d '{"businessText":"Provide secure voice communications for deployed forces"}'
 ```
 
-## Search
+---
+
+## Workflow 2: Analyze → Gap Analysis → Recommendation
+
+Identify architecture gaps and get AI-generated recommendations.
 
 ```bash
-# Full-text search
-curl -u admin:admin "http://localhost:8080/api/search?q=voice+communications&maxResults=20"
+# Step 1 — Analyze the requirement
+curl -u admin:admin -X POST http://localhost:8080/api/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"businessText":"Secure voice communications","includeArchitectureView":true}'
 
-# Semantic search (requires embedding enabled)
-curl -u admin:admin "http://localhost:8080/api/search/semantic?q=voice+communications&maxResults=20"
+# Step 2 — Run gap analysis on the scored nodes
+curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"scores":{"CP":85,"BP":72},"businessText":"Secure voice communications","minScore":50}'
 
-# Hybrid search (RRF)
-curl -u admin:admin "http://localhost:8080/api/search/hybrid?q=voice+communications&maxResults=20"
-
-# Find similar nodes
-curl -u admin:admin "http://localhost:8080/api/search/similar/CR-1047?topK=5"
-
-# Graph-semantic search
-curl -u admin:admin "http://localhost:8080/api/search/graph?q=voice+communications&maxResults=20"
-
-# Check embedding status
-curl -u admin:admin http://localhost:8080/api/embedding/status
+# Step 3 — Get architecture recommendations
+curl -u admin:admin -X POST http://localhost:8080/api/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"scores":{"CP":85,"BP":72},"businessText":"Secure voice communications","minScore":50}'
 ```
 
-## Graph Explorer
+---
+
+## Workflow 3: Propose Relations → Review → Verify in Graph
+
+Generate relation proposals, accept or reject them, and verify the result in the graph.
 
 ```bash
-# Upstream neighbourhood
-curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/upstream?maxHops=2"
-
-# Downstream neighbourhood
-curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/downstream?maxHops=2"
-
-# Failure impact analysis
-curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact?maxHops=3"
-
-# Enriched failure impact (with requirement coverage correlation)
-curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/enriched-failure-impact?maxHops=3"
-
-# Requirement impact analysis
-curl -u admin:admin -X POST http://localhost:8080/api/graph/impact \
-  -H "Content-Type: application/json" \
-  -d '{"scores":{"CR-1047":87,"CP-1022":72},"businessText":"Secure voice","maxHops":2}'
-```
-
-## Relations & Proposals
-
-```bash
-# List all relations
-curl -u admin:admin http://localhost:8080/api/relations
-
-# List relations filtered by type
-curl -u admin:admin "http://localhost:8080/api/relations?type=REALIZES"
-
-# Relations for a specific node
-curl -u admin:admin http://localhost:8080/api/node/CP-1023/relations
-
-# Get relation count
-curl -u admin:admin http://localhost:8080/api/relations/count
-
-# Create a relation manually
-curl -u admin:admin -X POST http://localhost:8080/api/relations \
-  -H "Content-Type: application/json" \
-  -d '{"sourceCode":"CP-1023","targetCode":"CR-1047","relationType":"REALIZES","provenance":"MANUAL"}'
-
-# Trigger relation proposals
+# Step 1 — Trigger relation proposals for a node
 curl -u admin:admin -X POST http://localhost:8080/api/proposals/propose \
   -H "Content-Type: application/json" \
   -d '{"sourceCode":"CR-1047","relationType":"SUPPORTS","limit":"10"}'
 
-# List all proposals
-curl -u admin:admin http://localhost:8080/api/proposals
-
-# List pending proposals only
+# Step 2 — Review pending proposals
 curl -u admin:admin http://localhost:8080/api/proposals/pending
 
-# Accept a proposal
+# Step 3 — Accept a proposal (replace 1 with the actual proposal ID)
 curl -u admin:admin -X POST http://localhost:8080/api/proposals/1/accept
 
-# Reject a proposal
-curl -u admin:admin -X POST http://localhost:8080/api/proposals/1/reject
+# Step 4 — Verify the new relation in the graph
+curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/downstream?maxHops=2"
 
-# Revert a decision
-curl -u admin:admin -X POST http://localhost:8080/api/proposals/1/revert
-
-# Bulk accept/reject
+# Alternatively: bulk accept/reject multiple proposals
 curl -u admin:admin -X POST http://localhost:8080/api/proposals/bulk \
   -H "Content-Type: application/json" \
   -d '{"ids":[1,2,3],"action":"ACCEPT"}'
 ```
 
-## Quality & Coverage
+---
+
+## Workflow 4: DSL Export → Edit → Commit → Diff → Merge
+
+Export the architecture as DSL text, edit it, commit changes, and merge branches.
 
 ```bash
-# Quality dashboard
-curl -u admin:admin http://localhost:8080/api/relations/metrics
+# Step 1 — Export the current architecture as DSL text
+curl -u admin:admin http://localhost:8080/api/dsl/export
 
-# Quality by type
-curl -u admin:admin http://localhost:8080/api/relations/metrics/by-type
-
-# Quality by provenance
-curl -u admin:admin http://localhost:8080/api/relations/metrics/by-provenance
-
-# Top rejected proposals
-curl -u admin:admin "http://localhost:8080/api/relations/metrics/top-rejected?limit=10"
-
-# Record requirement coverage
-curl -u admin:admin -X POST http://localhost:8080/api/coverage/record \
+# Step 2 — Commit edited DSL to a feature branch
+curl -u admin:admin -X POST http://localhost:8080/api/dsl/commit \
   -H "Content-Type: application/json" \
-  -d '{"requirementId":"REQ-101","requirementText":"Secure comms","scores":{"CP-1023":85,"BP-1327":72},"minScore":50}'
+  -d '{"dslText":"element CP-1023 type Capability {\n  title: \"Communication and Information System Capabilities\";\n}","branch":"feature/add-comms","message":"Add CP-1023 capability"}'
 
-# Coverage statistics
-curl -u admin:admin http://localhost:8080/api/coverage/statistics
+# Step 3 — Compare branches
+curl -u admin:admin "http://localhost:8080/api/dsl/diff?sourceBranch=feature/add-comms&targetBranch=main"
 
-# Coverage density map
-curl -u admin:admin http://localhost:8080/api/coverage/density
+# Step 4 — Merge the feature branch into main
+curl -u admin:admin -X POST http://localhost:8080/api/dsl/merge \
+  -H "Content-Type: application/json" \
+  -d '{"sourceBranch":"feature/add-comms","targetBranch":"main"}'
 
-# Coverage for a specific node
-curl -u admin:admin http://localhost:8080/api/coverage/node/CP-1023
+# Step 5 — View commit history
+curl -u admin:admin "http://localhost:8080/api/dsl/history?branch=main"
 ```
 
-## Gap Analysis, Recommendations & Patterns
+---
+
+## Quick Reference: Individual Endpoints
+
+For one-off commands not part of a workflow, see the [API Reference](API_REFERENCE.md). Common examples:
 
 ```bash
-# Gap analysis
-curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"scores":{"CP":85,"BP":72},"businessText":"Secure voice","minScore":50}'
+# Get full taxonomy tree
+curl -u admin:admin http://localhost:8080/api/taxonomy
 
-# Architecture recommendation
-curl -u admin:admin -X POST http://localhost:8080/api/recommend \
-  -H "Content-Type: application/json" \
-  -d '{"scores":{"CP":85,"BP":72},"businessText":"Secure voice","minScore":50}'
+# Full-text search
+curl -u admin:admin "http://localhost:8080/api/search?q=voice+communications&maxResults=20"
 
-# Pattern detection (by node)
-curl -u admin:admin "http://localhost:8080/api/patterns/detect?nodeCode=CP"
+# Semantic search
+curl -u admin:admin "http://localhost:8080/api/search/semantic?q=voice+communications&maxResults=20"
 
-# Pattern detection (by scores)
-curl -u admin:admin -X POST http://localhost:8080/api/patterns/detect \
-  -H "Content-Type: application/json" \
-  -d '{"scores":{"CP":85,"BP":72},"minScore":50}'
-```
+# Check AI/LLM provider status
+curl -u admin:admin http://localhost:8080/api/ai-status
 
-## Export & Import
+# Upstream graph exploration
+curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/upstream?maxHops=2"
 
-```bash
-# Export scores as JSON
-curl -u admin:admin -X POST http://localhost:8080/api/scores/export \
-  -H "Content-Type: application/json" \
-  -d '{"requirement":"Secure voice","scores":{"CO":90,"CR":70},"reasons":{"CO":"Voice in scope"},"provider":"GEMINI"}'
+# Failure impact analysis
+curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact?maxHops=3"
 
-# Import scores from JSON
-curl -u admin:admin -X POST http://localhost:8080/api/scores/import \
-  -H "Content-Type: application/json" \
-  -d '{"version":1,"requirement":"Secure voice","scores":{"CO":90,"CR":70}}'
-
-# Export Visio diagram
-curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
-  -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice"}' --output architecture.vsdx
-
-# Export ArchiMate XML
-curl -u admin:admin -X POST http://localhost:8080/api/diagram/archimate \
-  -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice"}' --output architecture.xml
-
-# Export Mermaid flowchart
-curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
-  -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice"}'
-
-# Export report (Markdown, HTML, DOCX, JSON)
+# Export report as Markdown
 curl -u admin:admin -X POST http://localhost:8080/api/report/markdown \
   -H "Content-Type: application/json" \
   -d '{"businessText":"Secure voice","scores":{"CP-1023":92}}' --output report.md
-
-curl -u admin:admin -X POST http://localhost:8080/api/report/html \
-  -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice","scores":{"CP-1023":92}}' --output report.html
-
-# Import ArchiMate XML model
-curl -u admin:admin -X POST http://localhost:8080/api/import/archimate \
-  -F "file=@model.xml"
-```
-
-## Architecture DSL
-
-```bash
-# Export current architecture as DSL text
-curl -u admin:admin http://localhost:8080/api/dsl/export
-
-# Get current architecture as JSON
-curl -u admin:admin http://localhost:8080/api/dsl/current
-
-# Parse DSL text
-curl -u admin:admin -X POST http://localhost:8080/api/dsl/parse \
-  -H "Content-Type: text/plain" \
-  -d 'meta {
-  language: "taxdsl";
-  version: "2.0";
-}
-element CP-1023 type Capability {
-  title: "Communication and Information System Capabilities";
-}'
-
-# Validate DSL text
-curl -u admin:admin -X POST http://localhost:8080/api/dsl/validate \
-  -H "Content-Type: text/plain" \
-  -d 'element CP-1023 type Capability { }'
-
-# Commit DSL to a branch
-curl -u admin:admin -X POST http://localhost:8080/api/dsl/commit \
-  -H "Content-Type: application/json" \
-  -d '{"dslText":"element CP-1023 type Capability {\n  title: \"Communication and Information System Capabilities\";\n}","branch":"main","message":"Add CP-1023"}'
-
-# List branches
-curl -u admin:admin http://localhost:8080/api/dsl/branches
-
-# Get commit history
-curl -u admin:admin "http://localhost:8080/api/dsl/history?branch=main"
-
-# Architecture summary
-curl -u admin:admin http://localhost:8080/api/architecture/summary
-
-# Get node graph metadata
-curl -u admin:admin http://localhost:8080/api/architecture/metadata/CP-1023
-
-# Recompute derived graph metadata for all nodes
-curl -u admin:admin -X POST http://localhost:8080/api/architecture/metadata/recompute
-```
-
-## Administration
-
-```bash
-# Check admin auth status
-curl -u admin:admin http://localhost:8080/api/admin/status
-
-# Verify admin password
-curl -u admin:admin -X POST http://localhost:8080/api/admin/verify \
-  -H "Content-Type: application/json" \
-  -d '{"password":"your_admin_password"}'
-
-# Get LLM diagnostics (requires admin token)
-curl -u admin:admin http://localhost:8080/api/diagnostics \
-  -H "X-Admin-Token: your_admin_password"
-
-# List prompt templates (requires admin token)
-curl -u admin:admin http://localhost:8080/api/prompts \
-  -H "X-Admin-Token: your_admin_password"
-
-# Explanation trace for a single node
-curl -u admin:admin -X POST http://localhost:8080/api/explain/CP-1023 \
-  -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice","scores":{"CP-1023":92}}'
-
-# Explanation traces for all scored nodes
-curl -u admin:admin -X POST http://localhost:8080/api/explain \
-  -H "Content-Type: application/json" \
-  -d '{"businessText":"Secure voice","scores":{"CP-1023":92,"CO-1011":88}}'
 ```

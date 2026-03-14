@@ -53,6 +53,12 @@ The system scores every taxonomy node, selects the most relevant elements (score
 
 <img src="docs/images/01-full-page-layout.png" alt="Full page layout" width="700">
 
+<details>
+<summary><strong>Export buttons</strong></summary>
+
+<img src="docs/images/23-export-buttons.png" alt="Export buttons" width="700">
+</details>
+
 ---
 
 ## Key Features
@@ -95,6 +101,8 @@ mvn spring-boot:run
 
 Open <http://localhost:8080> and log in with `admin` / `admin`.
 
+**→ Now follow the [Core Workflow](#core-workflow-ui) above to run your first analysis.**
+
 ### Docker
 
 ```bash
@@ -114,20 +122,9 @@ mvn verify            # Unit + integration tests (requires Docker)
 
 ## REST API
 
-Interactive docs: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) — all endpoints require authentication via HTTP Basic (`-u admin:admin`).
+Interactive documentation: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html)
 
-| Area | Key Endpoints |
-|---|---|
-| **Analysis** | `POST /api/analyze` · `GET /api/analyze-stream` · `POST /api/justify-leaf` |
-| **Search** | `GET /api/search` · `/search/semantic` · `/search/hybrid` · `/search/graph` |
-| **Graph** | `GET /api/graph/node/{code}/upstream` · `/downstream` · `/failure-impact` |
-| **Relations** | `GET /api/relations` · `POST /api/relations` · `DELETE /api/relations/{id}` |
-| **Proposals** | `POST /api/proposals/propose` · `GET /api/proposals` · `POST /api/proposals/bulk` |
-| **Export** | `POST /api/diagram/archimate` · `/diagram/visio` · `/diagram/mermaid` |
-| **DSL** | `POST /api/dsl/commit` · `GET /api/dsl/history` · `POST /api/dsl/merge` |
-| **Reports** | `POST /api/report/markdown` · `/report/html` · `/report/docx` · `/report/json` |
-
-> Full reference: [docs/API_REFERENCE.md](docs/API_REFERENCE.md) · Curl examples: [docs/CURL_EXAMPLES.md](docs/CURL_EXAMPLES.md)
+All endpoints require HTTP Basic authentication (`-u admin:admin`). For the full reference with request/response examples, see [API Reference](docs/API_REFERENCE.md). For end-to-end curl workflows, see [Curl Workflow Examples](docs/CURL_EXAMPLES.md).
 
 ---
 
@@ -150,13 +147,13 @@ Taxonomy/
 | Document | Description |
 |---|---|
 | **[User Guide](docs/USER_GUIDE.md)** | End-user guide with screenshots and workflow walkthroughs |
-| **[Security](docs/SECURITY.md)** | Authentication, roles, permissions, deployment hardening |
-| **[API Reference](docs/API_REFERENCE.md)** | REST API quick-reference with request/response examples |
-| **[Concepts & Glossary](docs/CONCEPTS.md)** | Key terms and domain model |
 | **[Examples](docs/EXAMPLES.md)** | Worked examples for analysis, impact, proposals, export |
-| **[Architecture](docs/ARCHITECTURE.md)** | System design, modules, DSL storage, pipelines |
+| **[Concepts & Glossary](docs/CONCEPTS.md)** | Key terms and domain model |
+| **[API Reference](docs/API_REFERENCE.md)** | REST API quick-reference with request/response examples |
 | **[Configuration](docs/CONFIGURATION_REFERENCE.md)** | Environment variables and settings |
 | **[Deployment](docs/DEPLOYMENT_GUIDE.md)** | Docker, Render.com, health checks |
+| **[Security](docs/SECURITY.md)** | Authentication, roles, permissions, deployment hardening |
+| **[Architecture](docs/ARCHITECTURE.md)** | System design, modules, DSL storage, pipelines |
 | **[Developer Guide](docs/DEVELOPER_GUIDE.md)** | Module architecture, testing, extending the system |
 
 ## Contributing

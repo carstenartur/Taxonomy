@@ -18,7 +18,8 @@ The system scores every taxonomy node (0–100), highlights the most relevant el
 
 **Ready for more?** Continue reading for the full guide, or jump to [Architecture View](#7-architecture-view) to understand how the architecture is generated.
 
-> **New users:** Start with the core workflow (Analyze → Architecture → Export). Advanced features like Graph Explorer, DSL Editor, and Gap Analysis are described in later sections.
+> 💡 **New users:** Start with the core workflow (Analyze → Architecture → Export).
+> Advanced features like Graph Explorer, DSL Editor, and Gap Analysis are described in later sections.
 
 ---
 
