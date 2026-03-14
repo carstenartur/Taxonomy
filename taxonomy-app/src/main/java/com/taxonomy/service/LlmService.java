@@ -338,19 +338,51 @@ public class LlmService {
     }
 
     /**
+     * Returns the three-state availability level.
+     *
+     * <ul>
+     *   <li>{@link com.taxonomy.dto.AiAvailabilityLevel#FULL} – mock mode active, or a cloud
+     *       provider with a configured API key is the active provider.</li>
+     *   <li>{@link com.taxonomy.dto.AiAvailabilityLevel#LIMITED} – either the active provider
+     *       is explicitly set to {@link LlmProvider#LOCAL_ONNX}, or no cloud API key is
+     *       configured and the local embedding model loaded successfully (implicit fallback).</li>
+     *   <li>{@link com.taxonomy.dto.AiAvailabilityLevel#UNAVAILABLE} – no API key configured
+     *       and the local embedding model is not available.</li>
+     * </ul>
+     */
+    public com.taxonomy.dto.AiAvailabilityLevel getAvailabilityLevel() {
+        if (llmMock) return com.taxonomy.dto.AiAvailabilityLevel.FULL;
+        LlmProvider provider = getActiveProvider();
+        if (provider == LlmProvider.LOCAL_ONNX) {
+            return localEmbeddingService.isAvailable()
+                    ? com.taxonomy.dto.AiAvailabilityLevel.LIMITED
+                    : com.taxonomy.dto.AiAvailabilityLevel.UNAVAILABLE;
+        }
+        if (hasAnyCloudApiKey()) return com.taxonomy.dto.AiAvailabilityLevel.FULL;
+        // No cloud key configured and not explicitly set to LOCAL_ONNX — fall back to
+        // LOCAL_ONNX if the embedding model loaded successfully, otherwise UNAVAILABLE.
+        return localEmbeddingService.isAvailable()
+                ? com.taxonomy.dto.AiAvailabilityLevel.LIMITED
+                : com.taxonomy.dto.AiAvailabilityLevel.UNAVAILABLE;
+    }
+
+    /** Returns {@code true} if at least one cloud LLM API key is configured. */
+    private boolean hasAnyCloudApiKey() {
+        return (geminiApiKey   != null && !geminiApiKey.isBlank())
+            || (openaiApiKey   != null && !openaiApiKey.isBlank())
+            || (deepseekApiKey != null && !deepseekApiKey.isBlank())
+            || (qwenApiKey     != null && !qwenApiKey.isBlank())
+            || (llamaApiKey    != null && !llamaApiKey.isBlank())
+            || (mistralApiKey  != null && !mistralApiKey.isBlank());
+    }
+
+    /**
      * Returns {@code true} if at least one provider has a configured API key,
      * or if the active provider is {@link LlmProvider#LOCAL_ONNX} (which requires no key),
      * or if mock mode is active.
      */
     public boolean isAvailable() {
-        if (llmMock) return true;
-        if (getActiveProvider() == LlmProvider.LOCAL_ONNX) return true;
-        return (geminiApiKey  != null && !geminiApiKey.isBlank())
-            || (openaiApiKey  != null && !openaiApiKey.isBlank())
-            || (deepseekApiKey != null && !deepseekApiKey.isBlank())
-            || (qwenApiKey    != null && !qwenApiKey.isBlank())
-            || (llamaApiKey   != null && !llamaApiKey.isBlank())
-            || (mistralApiKey != null && !mistralApiKey.isBlank());
+        return getAvailabilityLevel() != com.taxonomy.dto.AiAvailabilityLevel.UNAVAILABLE;
     }
 
     /**

@@ -115,16 +115,21 @@ class TaxonomyApplicationTests {
         mockMvc.perform(get("/api/ai-status").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.level").isString())
                 .andExpect(jsonPath("$.available").isBoolean())
+                .andExpect(jsonPath("$.limited").isBoolean())
                 .andExpect(jsonPath("$.availableProviders").isArray());
     }
 
     @Test
     void aiStatusEndpointReturnsUnavailableWhenNoKeyConfigured() throws Exception {
-        // In CI / test environment no API key is set, so available should be false
+        // In CI / test environment no API key is set and embedding is disabled,
+        // so the level should be UNAVAILABLE and available should be false
         mockMvc.perform(get("/api/ai-status").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.level").value("UNAVAILABLE"))
                 .andExpect(jsonPath("$.available").value(false))
+                .andExpect(jsonPath("$.limited").value(false))
                 .andExpect(jsonPath("$.provider", org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.availableProviders").isArray())
                 .andExpect(jsonPath("$.availableProviders[0]").value("LOCAL_ONNX"));

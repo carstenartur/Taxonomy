@@ -134,8 +134,11 @@ class LocalOnnxPipelineIT {
         HttpResponse<String> historyResp = httpGet("/api/dsl/history");
         assertThat(historyResp.statusCode()).isEqualTo(200);
         JsonNode historyBody = MAPPER.readTree(historyResp.body());
-        assertThat(historyBody.isArray()).isTrue();
-        assertThat(historyBody.size()).isGreaterThan(0);
+        // /api/dsl/history returns a wrapped object with a "commits" array (changed in PR #172)
+        assertThat(historyBody.isObject()).isTrue();
+        assertThat(historyBody.has("commits")).isTrue();
+        assertThat(historyBody.get("commits").isArray()).isTrue();
+        assertThat(historyBody.get("commits").size()).isGreaterThan(0);
     }
 
     @Test
@@ -172,5 +175,10 @@ class LocalOnnxPipelineIT {
         assertThat(resp.statusCode()).isEqualTo(200);
         JsonNode body = MAPPER.readTree(resp.body());
         assertThat(body.has("available")).isTrue();
+        assertThat(body.has("level")).isTrue();
+        // In LOCAL_ONNX pipeline, embedding is enabled so level should be LIMITED
+        assertThat(body.get("level").textValue()).isEqualTo("LIMITED");
+        assertThat(body.get("available").booleanValue()).isTrue();
+        assertThat(body.get("limited").booleanValue()).isTrue();
     }
 }
