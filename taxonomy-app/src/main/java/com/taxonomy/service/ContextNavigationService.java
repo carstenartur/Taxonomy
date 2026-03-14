@@ -1,6 +1,5 @@
 package com.taxonomy.service;
 
-import com.taxonomy.dsl.storage.DslCommit;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dto.ContextHistoryEntry;
 import com.taxonomy.dto.ContextMode;
@@ -8,6 +7,7 @@ import com.taxonomy.dto.ContextRef;
 import com.taxonomy.dto.NavigationReason;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -32,18 +32,20 @@ import java.util.UUID;
 public class ContextNavigationService {
 
     private static final Logger log = LoggerFactory.getLogger(ContextNavigationService.class);
-    private static final int MAX_HISTORY = 50;
 
     private final DslGitRepository gitRepository;
     private final RepositoryStateService stateService;
+    private final int maxHistory;
 
     private volatile ContextRef currentContext;
     private final Deque<ContextHistoryEntry> history = new ArrayDeque<>();
 
     public ContextNavigationService(DslGitRepository gitRepository,
-                                    RepositoryStateService stateService) {
+                                    RepositoryStateService stateService,
+                                    @Value("${taxonomy.context.max-history:50}") int maxHistory) {
         this.gitRepository = gitRepository;
         this.stateService = stateService;
+        this.maxHistory = maxHistory;
         // Initialise with default editable context on draft branch
         this.currentContext = buildEditableContext("draft");
     }
@@ -286,7 +288,7 @@ public class ContextNavigationService {
 
     private void recordNavigation(String fromId, String toId, NavigationReason reason) {
         history.addLast(new ContextHistoryEntry(fromId, toId, reason, Instant.now()));
-        while (history.size() > MAX_HISTORY) {
+        while (history.size() > maxHistory) {
             history.pollFirst();
         }
     }

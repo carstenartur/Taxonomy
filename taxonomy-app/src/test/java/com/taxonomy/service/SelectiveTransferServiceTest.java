@@ -66,7 +66,7 @@ class SelectiveTransferServiceTest {
     void setUp() {
         gitRepo = new DslGitRepository();
         var stateService = new RepositoryStateService(gitRepo);
-        navService = new ContextNavigationService(gitRepo, stateService);
+        navService = new ContextNavigationService(gitRepo, stateService, 50);
         transferService = new SelectiveTransferService(gitRepo, navService);
     }
 

@@ -40,7 +40,7 @@ class ContextNavigationServiceTest {
     void setUp() {
         gitRepo = new DslGitRepository();
         stateService = new RepositoryStateService(gitRepo);
-        navService = new ContextNavigationService(gitRepo, stateService);
+        navService = new ContextNavigationService(gitRepo, stateService, 50);
     }
 
     // ── getCurrentContext ────────────────────────────────────────────

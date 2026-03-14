@@ -96,7 +96,7 @@ window.TaxonomyHistorySearch = (function () {
                 html += '<p class="mb-0 mt-1 small text-muted">' + escapeHtml(r.matchedText) + '</p>';
             }
             if (r.matchedElementId) {
-                html += '<small class="text-info">Elements: ' + escapeHtml(r.matchedElementId) + '</small>';
+                html += '<small class="text-info">Matched: ' + escapeHtml(r.matchedElementId) + '</small>';
             }
 
             html += '</div>';

@@ -17,7 +17,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -194,8 +193,8 @@ public class SelectiveTransferService {
     private List<String> findViewsReferencing(CanonicalArchitectureModel model, String elementId) {
         return model.getViews().stream()
                 .filter(v -> {
-                    Optional<String> includes = Optional.ofNullable(v.getTitle());
-                    return includes.isPresent(); // simplified: return all view titles
+                    List<String> includes = v.getIncludes();
+                    return includes != null && includes.contains(elementId);
                 })
                 .map(v -> v.getTitle())
                 .limit(5)
