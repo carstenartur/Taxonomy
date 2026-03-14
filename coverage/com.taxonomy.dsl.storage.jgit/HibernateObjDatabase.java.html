@@ -191,8 +191,8 @@ public class HibernateObjDatabase extends DfsObjDatabase {
 <span class="fc" id="L191">                    .setParameter(&quot;repo&quot;, repositoryName)</span>
 <span class="fc" id="L192">                    .setParameter(&quot;name&quot;, queryName)</span>
 <span class="fc" id="L193">                    .setParameter(&quot;ext&quot;, queryExt).uniqueResult();</span>
-<span class="fc bfc" id="L194" title="All 2 branches covered.">            if (entity == null) {</span>
-<span class="fc" id="L195">                throw new FileNotFoundException(desc.getFileName(ext));</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">            if (entity == null) {</span>
+<span class="nc" id="L195">                throw new FileNotFoundException(desc.getFileName(ext));</span>
             }
 <span class="fc" id="L197">            return new ByteArrayReadableChannel(entity.getData());</span>
         }

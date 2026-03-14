@@ -55,7 +55,7 @@ public class RepositoryStateGuard {
         }
 
         // Block if branch doesn't exist (for operations that require existing branch)
-<span class="pc bpc" id="L58" title="1 of 4 branches missed.">        if (!&quot;commit&quot;.equals(operationType) &amp;&amp; state.headCommit() == null) {</span>
+<span class="fc bfc" id="L58" title="All 4 branches covered.">        if (!&quot;commit&quot;.equals(operationType) &amp;&amp; state.headCommit() == null) {</span>
 <span class="fc" id="L59">            blocks.add(&quot;Branch '&quot; + branch + &quot;' does not exist or has no commits.&quot;);</span>
         }
 
