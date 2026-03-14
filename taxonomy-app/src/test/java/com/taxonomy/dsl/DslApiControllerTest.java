@@ -123,7 +123,11 @@ class DslApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_PLAIN))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("CP-1023")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Capability")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Capability")))
+                // Canonical format: 2-space indentation
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("  title:")))
+                // Canonical format: semicolons after values
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"Test\";")));
     }
 
     @Test

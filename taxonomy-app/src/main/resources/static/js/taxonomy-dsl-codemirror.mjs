@@ -87,7 +87,8 @@ const taxDslMode = {
             if (RELATION_TYPES.has(word))  return 'operatorKeyword';
             if (STATUS_VALUES.has(word))   return 'bool';
             if (PROPERTY_KEYS.has(word))   return 'propertyName';
-            // Taxonomy codes like CP-1023, BR-0042, REQ-001
+            // Taxonomy codes: 2-letter prefix + 4 digits (e.g. CP-1023, BP-1327)
+            // Also matches extended IDs like REQ-001, EV-001 used in DSL for requirements/evidence
             if (/^[A-Z]{2,4}-\d+$/.test(word)) return 'variableName';
             return null;
         }
@@ -109,7 +110,7 @@ function taxDslCompletions(context) {
     const trimmed = before.trimStart();
 
     // After 'element <ID> type '
-    if (/^element\s+\S+\s+type\s+[\w-]*$/.test(trimmed)) {
+    if (/^element\s+[A-Z]{2,4}-\d+\s+type\s+[\w-]*$/.test(trimmed)) {
         return {
             from: word.from,
             options: [...DOMAIN_TYPES].map(t => ({ label: t, type: 'type' }))
@@ -125,7 +126,7 @@ function taxDslCompletions(context) {
     }
 
     // After 'relation <ID> ' — suggest relation types
-    if (/^relation\s+\S+\s+[\w-]*$/.test(trimmed)) {
+    if (/^relation\s+[A-Z]{2,4}-\d+\s+[\w-]*$/.test(trimmed)) {
         return {
             from: word.from,
             options: [...RELATION_TYPES].map(t => ({ label: t, type: 'keyword' }))
