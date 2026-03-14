@@ -12,17 +12,17 @@ tests but is not yet fully verified.
 Full multi-database support means end-to-end coverage across:
 
 ### Application Layer
-- [x] Database-specific Hibernate dialect auto-detection (via Spring profiles: `hsqldb`, `mssql`, `postgres`)
-- [x] Connection pool configuration per database type (HikariCP for MSSQL/PostgreSQL, SimpleDriverDataSource for HSQLDB)
+- [x] Database-specific Hibernate dialect auto-detection (via Spring profiles: `hsqldb`, `mssql`, `postgres`, `oracle`)
+- [x] Connection pool configuration per database type (HikariCP for MSSQL/PostgreSQL/Oracle, SimpleDriverDataSource for HSQLDB)
 - [ ] DDL generation validation for all supported databases
 - [x] Database-specific SQL compatibility (`@Nationalized` → `nvarchar`, `@Lob` → `nvarchar(max)` / `varbinary(max)`)
 
 ### Testing
 - [ ] All external database integration tests passing in CI (PostgreSQL, MSSQL, Oracle)
-- [ ] Fix Oracle integration tests (currently returning HTTP 500/503 — likely DDL or dialect issues)
+- [x] Fix Oracle integration tests (Spring profile `oracle` + application-oracle.properties)
 - [x] Fix MSSQL integration tests (pinned container image, added `loginTimeout`, Spring profile)
 - [x] PostgreSQL integration tests verified
-- [x] Add database-specific CI workflow (MSSQL and PostgreSQL jobs in `ci-cd.yml`)
+- [x] Include all DB integration tests (MSSQL, PostgreSQL, Oracle) in the main CI job (`ci-cd.yml`)
 
 ### GUI / Frontend
 - [ ] Database connection status indicator in the UI
@@ -32,7 +32,8 @@ Full multi-database support means end-to-end coverage across:
 ### Documentation
 - [x] Configuration guide for MSSQL (`docs/MSSQL-SETUP.md`)
 - [x] Configuration guide for PostgreSQL (`docs/POSTGRESQL-SETUP.md`)
-- [x] Docker Compose examples for each database (`docker-compose-mssql.yml`, `docker-compose-postgres.yml`)
+- [x] Configuration guide for Oracle (`docs/ORACLE-SETUP.md`)
+- [x] Docker Compose examples for each database (`docker-compose-mssql.yml`, `docker-compose-postgres.yml`, `docker-compose-oracle.yml`)
 - [ ] Migration guide from HSQLDB to production databases
 - [ ] Performance considerations per database
 

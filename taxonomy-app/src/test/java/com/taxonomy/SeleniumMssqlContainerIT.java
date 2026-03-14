@@ -9,8 +9,8 @@ import org.testcontainers.mssqlserver.MSSQLServerContainer;
 /**
  * Selenium UI + REST tests against <strong>Microsoft SQL Server</strong>.
  * <p>
- * Tagged with {@code db-mssql} — excluded from the default {@code mvn verify}.
- * Execute explicitly with:
+ * Tagged with {@code db-mssql} — included in the default {@code mvn verify}
+ * run (requires Docker). Execute explicitly with:
  * <pre>
  * mvn verify -DexcludedGroups=real-llm -Dit.test=SeleniumMssqlContainerIT
  * </pre>
