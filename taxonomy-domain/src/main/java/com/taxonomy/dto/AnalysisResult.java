@@ -31,6 +31,9 @@ public class AnalysisResult {
     /** Provisional (not-yet-persisted) relation hypotheses generated from scores. */
     private List<RelationHypothesisDto> provisionalRelations = new ArrayList<>();
 
+    /** Git commit provenance and projection/index freshness metadata. */
+    private ViewContext viewContext;
+
     public AnalysisResult() {}
 
     public AnalysisResult(Map<String, Integer> scores, List<TaxonomyNodeDto> tree) {
@@ -61,4 +64,7 @@ public class AnalysisResult {
 
     public List<RelationHypothesisDto> getProvisionalRelations() { return provisionalRelations; }
     public void setProvisionalRelations(List<RelationHypothesisDto> provisionalRelations) { this.provisionalRelations = provisionalRelations; }
+
+    public ViewContext getViewContext() { return viewContext; }
+    public void setViewContext(ViewContext viewContext) { this.viewContext = viewContext; }
 }

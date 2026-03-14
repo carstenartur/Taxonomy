@@ -200,7 +200,8 @@
         showStatus('Loading history for incremental materialization…', 'info');
         fetch('/api/dsl/history?branch=' + encodeURIComponent(branch))
             .then(function (r) { return r.json(); })
-            .then(function (docs) {
+            .then(function (response) {
+                var docs = response.commits || response;
                 if (docs.length < 2) {
                     showStatus('Need at least 2 commits on branch "' + branch + '" for incremental materialization', 'error');
                     return;
@@ -285,7 +286,8 @@
         if (!historyBody) return;
         fetch('/api/dsl/history?branch=' + encodeURIComponent(branch || 'draft'))
             .then(function (r) { return r.json(); })
-            .then(function (docs) {
+            .then(function (response) {
+                var docs = response.commits || response;
                 renderHistory(docs);
             })
             .catch(function () {

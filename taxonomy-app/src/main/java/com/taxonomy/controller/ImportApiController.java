@@ -2,6 +2,7 @@ package com.taxonomy.controller;
 
 import com.taxonomy.dto.FrameworkImportResult;
 import com.taxonomy.dto.ProfileInfo;
+import com.taxonomy.service.RepositoryStateService;
 import com.taxonomy.service.importer.FrameworkImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -12,7 +13,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * REST API for generic framework import.
@@ -32,9 +35,12 @@ public class ImportApiController {
     private static final Logger log = LoggerFactory.getLogger(ImportApiController.class);
 
     private final FrameworkImportService importService;
+    private final RepositoryStateService repositoryStateService;
 
-    public ImportApiController(FrameworkImportService importService) {
+    public ImportApiController(FrameworkImportService importService,
+                               RepositoryStateService repositoryStateService) {
         this.importService = importService;
+        this.repositoryStateService = repositoryStateService;
     }
 
     /**
@@ -74,7 +80,7 @@ public class ImportApiController {
     @Operation(summary = "Import framework model",
                description = "Parse, map, and materialize the file into the database")
     @PostMapping(value = "/{profileId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<FrameworkImportResult> importFile(
+    public ResponseEntity<Map<String, Object>> importFile(
             @PathVariable String profileId,
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "branch", required = false, defaultValue = "main") String branch) {
@@ -83,7 +89,10 @@ public class ImportApiController {
         }
         try {
             FrameworkImportResult result = importService.importFile(profileId, file.getInputStream(), branch);
-            return ResponseEntity.ok(result);
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("result", result);
+            response.put("viewContext", repositoryStateService.getViewContext(branch));
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Import failed for profile {} with file {}", profileId, file.getOriginalFilename(), e);
             return ResponseEntity.badRequest().build();

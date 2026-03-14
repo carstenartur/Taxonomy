@@ -115,6 +115,7 @@ class ImportApiControllerTest {
         mockMvc.perform(multipart("/api/import/apqc").file(file)
                         .param("branch", "test-branch"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.profileId").value("apqc"));
+                .andExpect(jsonPath("$.result.profileId").value("apqc"))
+                .andExpect(jsonPath("$.viewContext").exists());
     }
 }

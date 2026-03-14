@@ -372,16 +372,20 @@ class DslApiControllerTest {
 
         mockMvc.perform(get("/api/dsl/history").param("branch", "history-test"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(2));
+                .andExpect(jsonPath("$.commits").isArray())
+                .andExpect(jsonPath("$.commits.length()").value(2))
+                .andExpect(jsonPath("$.currentBranch").value("history-test"))
+                .andExpect(jsonPath("$.headCommit").isNotEmpty())
+                .andExpect(jsonPath("$.viewContext").exists());
     }
 
     @Test
     void getHistoryEmptyBranchReturnsEmptyList() throws Exception {
         mockMvc.perform(get("/api/dsl/history").param("branch", "nonexistent-branch"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(0));
+                .andExpect(jsonPath("$.commits").isArray())
+                .andExpect(jsonPath("$.commits.length()").value(0))
+                .andExpect(jsonPath("$.viewContext").exists());
     }
 
     @Test

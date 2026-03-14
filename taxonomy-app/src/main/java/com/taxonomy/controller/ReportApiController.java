@@ -2,6 +2,7 @@ package com.taxonomy.controller;
 
 import com.taxonomy.dto.ArchitectureReport;
 import com.taxonomy.service.ArchitectureReportService;
+import com.taxonomy.service.RepositoryStateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,9 +30,12 @@ import java.util.Map;
 public class ReportApiController {
 
     private final ArchitectureReportService reportService;
+    private final RepositoryStateService repositoryStateService;
 
-    public ReportApiController(ArchitectureReportService reportService) {
+    public ReportApiController(ArchitectureReportService reportService,
+                               RepositoryStateService repositoryStateService) {
         this.reportService = reportService;
+        this.repositoryStateService = repositoryStateService;
     }
 
     /**
@@ -119,6 +123,7 @@ public class ReportApiController {
 
         ArchitectureReport report = reportService.generateReport(
                 request.scores(), request.businessText(), request.minScore());
+        report.setViewContext(repositoryStateService.getViewContext("draft"));
         return ResponseEntity.ok(report);
     }
 }

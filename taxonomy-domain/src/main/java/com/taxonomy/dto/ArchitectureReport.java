@@ -25,6 +25,9 @@ public class ArchitectureReport {
     private List<RelationProposalDto> pendingProposals = new ArrayList<>();
     private String mermaidDiagram;
 
+    /** Git commit provenance and projection/index freshness metadata. */
+    private ViewContext viewContext;
+
     public ArchitectureReport() {
         this.generatedAt = Instant.now();
     }
@@ -57,4 +60,7 @@ public class ArchitectureReport {
 
     public String getMermaidDiagram() { return mermaidDiagram; }
     public void setMermaidDiagram(String mermaidDiagram) { this.mermaidDiagram = mermaidDiagram; }
+
+    public ViewContext getViewContext() { return viewContext; }
+    public void setViewContext(ViewContext viewContext) { this.viewContext = viewContext; }
 }
