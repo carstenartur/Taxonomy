@@ -1111,17 +1111,18 @@
         if (PAGES.indexOf(hash) !== -1) { activatePage(hash); }
     });
 
+    // Register help page (keeps help before admin; preferences added by main branch)
+    PAGES.splice(PAGES.indexOf('admin'), 0, 'help');
+    FULL_WIDTH_PAGES.splice(FULL_WIDTH_PAGES.indexOf('admin'), 0, 'help');
+    if (PAGES.indexOf('preferences') === -1) { PAGES.push('preferences'); }
+    if (FULL_WIDTH_PAGES.indexOf('preferences') === -1) { FULL_WIDTH_PAGES.push('preferences'); }
+
     // Initialise from URL hash
     var initialHash = window.location.hash.replace('#', '');
     activatePage(PAGES.indexOf(initialHash) !== -1 ? initialHash : 'analyze');
 
     // Expose globally so other scripts can navigate
     window.navigateToPage = activatePage;
-    // Register help page (keeps help before admin; preferences added by main branch)
-    PAGES.splice(PAGES.indexOf('admin'), 0, 'help');
-    FULL_WIDTH_PAGES.splice(FULL_WIDTH_PAGES.indexOf('admin'), 0, 'help');
-    if (PAGES.indexOf('preferences') === -1) { PAGES.push('preferences'); }
-    if (FULL_WIDTH_PAGES.indexOf('preferences') === -1) { FULL_WIDTH_PAGES.push('preferences'); }
 }());
 </script>
 
