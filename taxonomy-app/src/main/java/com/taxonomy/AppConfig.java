@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
@@ -13,12 +14,25 @@ import java.util.concurrent.Executors;
 @Configuration
 public class AppConfig {
 
+    /**
+     * Exposes the HTTP request factory as a bean so that {@code LlmService} can update
+     * the read timeout at runtime when the {@code llm.timeout.seconds} preference changes.
+     *
+     * <p>The initial value is taken from the {@code taxonomy.llm.timeout-seconds} property
+     * (default: 30 seconds). The value may be overridden at runtime via the Preferences API.
+     */
     @Bean
-    public RestTemplate restTemplate() {
+    public SimpleClientHttpRequestFactory llmRequestFactory(
+            @Value("${taxonomy.llm.timeout-seconds:30}") int timeoutSeconds) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(10_000);  // 10 seconds
-        factory.setReadTimeout(60_000);     // 60 seconds
-        return new RestTemplate(factory);
+        factory.setConnectTimeout(10_000);
+        factory.setReadTimeout(timeoutSeconds * 1000);
+        return factory;
+    }
+
+    @Bean
+    public RestTemplate restTemplate(SimpleClientHttpRequestFactory llmRequestFactory) {
+        return new RestTemplate(llmRequestFactory);
     }
 
     @Bean(destroyMethod = "shutdown")
