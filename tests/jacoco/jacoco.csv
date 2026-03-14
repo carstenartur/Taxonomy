@@ -29,7 +29,7 @@ Taxonomy Application,com.taxonomy.controller,PatternDetectionApiController.Patte
 Taxonomy Application,com.taxonomy.controller,RecommendationApiController,1,23,1,1,0,8,1,2,0,2
 Taxonomy Application,com.taxonomy.controller,ReportApiController.ReportRequest,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.controller,RecommendationApiController.RecommendationRequest,0,12,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.controller,ApiController,398,1070,72,80,84,231,61,47,2,30
+Taxonomy Application,com.taxonomy.controller,ApiController,432,1120,77,85,95,246,65,48,2,30
 Taxonomy Application,com.taxonomy.controller,GapAnalysisApiController.GapAnalysisRequest,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.controller,ExplanationTraceApiController,2,43,2,2,0,14,2,3,0,3
 Taxonomy Application,com.taxonomy.controller,GitStateController,0,40,0,0,0,10,0,5,0,5
@@ -82,7 +82,7 @@ Taxonomy Application,com.taxonomy.service,ArchitecturePatternService,25,491,12,4
 Taxonomy Application,com.taxonomy.service,AnalysisRelationGenerator.ScoredNode,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.service,DerivedMetadataService,42,164,3,17,9,39,5,11,2,4
 Taxonomy Application,com.taxonomy.service,SearchService,11,186,2,2,4,37,2,6,0,6
-Taxonomy Application,com.taxonomy.service,LocalEmbeddingService,414,150,23,15,90,41,25,14,8,12
+Taxonomy Application,com.taxonomy.service,LocalEmbeddingService,412,152,22,16,90,41,24,15,8,12
 Taxonomy Application,com.taxonomy.service,RequirementArchitectureViewService,118,665,18,60,24,140,14,35,1,9
 Taxonomy Application,com.taxonomy.service,AppInitializationStateService,0,77,0,4,0,13,0,10,0,8
 Taxonomy Application,com.taxonomy.service,ConflictDetectionService.CherryPickPreview,0,18,0,0,0,1,0,1,0,1
@@ -131,7 +131,7 @@ Taxonomy Application,com.taxonomy.service,RelationValidationService.ValidationRe
 Taxonomy Application,com.taxonomy.service,ConflictDetectionService,90,243,2,12,12,49,2,9,0,4
 Taxonomy Application,com.taxonomy.service,TaxonomyService,365,1143,64,79,96,276,51,49,3,23
 Taxonomy Application,com.taxonomy.service,LlmResponseParser,409,157,45,9,81,27,30,10,7,6
-Taxonomy Application,com.taxonomy.service,LlmService,1957,916,244,86,404,203,179,32,16,21
+Taxonomy Application,com.taxonomy.service,LlmService,1962,1006,255,101,399,224,190,37,16,24
 Taxonomy Application,com.taxonomy.service,ArchitectureRecommendationService,21,359,7,23,6,80,7,13,0,5
 Taxonomy Application,com.taxonomy.service,SavedAnalysisService,2,170,1,21,0,40,1,16,0,6
 Taxonomy Application,com.taxonomy.service.importer,FrameworkImportService,38,334,2,8,7,68,2,11,0,8
