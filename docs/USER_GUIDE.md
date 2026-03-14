@@ -632,6 +632,8 @@ Click **📤 Load Scores** (always visible in the toolbar, next to the export bu
 
 This enables **offline review** and **reproducibility** — you can share a scored result with a colleague who can open it without needing an API key.
 
+> 📖 For importing architecture models from external frameworks (UAF, APQC, C4/Structurizr), see **[Framework Import](FRAMEWORK_IMPORT.md)**.
+
 ### When Export Buttons Appear
 
 The export buttons only appear after analysis has been run and at least one taxonomy node has a score greater than 0. If you navigate away or refresh the page, scores are lost and the buttons disappear. A hint message **"📋 Analyze first to enable exports"** is shown when exports are unavailable. Re-run the analysis or use **📤 Load Scores** to restore the export buttons.
@@ -1093,6 +1095,8 @@ The DSL is stored in a **JGit repository** backed by the application database (n
 - **Cherry-pick** — Port specific changes between branches
 - **Merge** — Combine branches with three-way merge support
 
+> 📖 For a comprehensive guide to branching, merge previews, conflict detection, staleness tracking, and the full Git REST API, see **[Git Integration](GIT_INTEGRATION.md)**.
+
 ### Materialization
 
 DSL documents are **materialized** into the application database. This creates `TaxonomyRelation` entities from DSL relations, making them visible in the Graph Explorer, Relation Proposals, and Architecture View.
@@ -1132,6 +1136,9 @@ See the [API Reference](API_REFERENCE.md#21-architecture-dsl) for full endpoint 
 ## 12. Administration
 
 Administration features are hidden behind a password-protected admin mode. A standard user does not need to access these features.
+
+> 📖 For a comprehensive guide to all AI providers, per-request provider override, mock mode, diagnostics API, and rate limiting, see **[AI Providers](AI_PROVIDERS.md)**.
+> For runtime preference management (LLM settings, DSL config, size limits), see **[Preferences](PREFERENCES.md)**.
 
 ### AI Status Indicator (🟢 / 🔴 in Navbar)
 

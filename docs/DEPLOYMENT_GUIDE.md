@@ -240,3 +240,30 @@ Additional health indicators:
 - The DJL model download requires internet access on first run
 - For air-gapped deployments, see the [Configuration Reference](CONFIGURATION_REFERENCE.md)
   section on pre-downloading the embedding model
+
+---
+
+## 5. Database Backends
+
+By default, the application uses an embedded HSQLDB database (in-memory, no setup required). For production deployments, switch to a persistent database:
+
+| Database | Profile | Docker Compose File |
+|---|---|---|
+| PostgreSQL 14+ | `postgres` | `docker-compose-postgres.yml` |
+| SQL Server 2019+ | `mssql` | `docker-compose-mssql.yml` |
+| Oracle 19c+ / 23c | `oracle` | `docker-compose-oracle.yml` |
+
+```bash
+# Example: Run with PostgreSQL
+docker compose -f docker-compose-postgres.yml up
+```
+
+To migrate from HSQLDB to a production database:
+
+1. Set `SPRING_PROFILES_ACTIVE` to the target profile
+2. Configure `TAXONOMY_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`
+3. Use `TAXONOMY_DDL_AUTO=create` on first run, then switch to `update`
+
+The taxonomy data is always loaded from the bundled Excel workbook at startup, so no data migration is needed for the taxonomy itself. Architecture DSL data stored in the Git repository will need to be re-created.
+
+See [Database Setup](DATABASE_SETUP.md) for detailed instructions for each database, including troubleshooting and integration tests.

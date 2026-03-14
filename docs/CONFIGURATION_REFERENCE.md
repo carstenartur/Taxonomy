@@ -382,3 +382,48 @@ The `/actuator/health` endpoint includes a custom `taxonomy` component that repo
 
 Health component details are only shown when `management.endpoint.health.show-components=when-authorized`
 and the request includes a valid `X-Admin-Token` header.
+
+---
+
+## Runtime Preferences
+
+In addition to environment variables, several settings can be changed at runtime through the Preferences API without restarting the application:
+
+| Preference Key | Type | Default | Description |
+|---|---|---|---|
+| `llm.rpm` | int | `5` | Outgoing LLM API requests per minute |
+| `llm.timeout.seconds` | int | `30` | HTTP read timeout for LLM calls |
+| `rate-limit.per-minute` | int | `10` | Incoming rate limit for analysis endpoints |
+| `analysis.min-relevance-score` | int | `70` | Minimum score threshold for analysis results |
+| `dsl.default-branch` | string | `draft` | Active DSL branch for materialization |
+| `dsl.project-name` | string | `Taxonomy Architecture` | Project display name |
+| `dsl.auto-save.interval-seconds` | int | `0` | Auto-save frequency (0 = disabled) |
+| `dsl.remote.url` | string | *(empty)* | Remote Git URL for push/pull |
+| `dsl.remote.token` | string | *(empty)* | Remote Git authentication token |
+| `dsl.remote.push-on-commit` | boolean | `false` | Auto-push after local commits |
+| `limits.max-business-text` | int | `5000` | Max characters in requirement text |
+| `limits.max-architecture-nodes` | int | `50` | Max nodes in architecture view |
+| `limits.max-export-nodes` | int | `200` | Max nodes in export |
+
+See [Preferences](PREFERENCES.md) for the REST API and audit trail.
+
+---
+
+## Framework Import Configuration
+
+The framework import pipeline is configured through mapping profiles. Available profiles can be listed at runtime:
+
+```bash
+curl -u admin:password http://localhost:8080/api/import/profiles
+```
+
+| Profile ID | Framework | File Format |
+|---|---|---|
+| `uaf` | UAF / DoDAF | XMI / XML |
+| `apqc` | APQC PCF | CSV |
+| `apqc-excel` | APQC PCF | XLSX (Excel) |
+| `c4` | C4 / Structurizr | DSL |
+
+No additional environment variables are needed for framework import — profiles are registered automatically at startup.
+
+See [Framework Import](FRAMEWORK_IMPORT.md) for detailed mapping tables and usage.
