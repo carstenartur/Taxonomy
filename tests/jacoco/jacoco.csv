@@ -31,7 +31,7 @@ Taxonomy Application,com.taxonomy.controller,UserManagementController,240,300,38
 Taxonomy Application,com.taxonomy.controller,RecommendationApiController,1,23,1,1,0,8,1,2,0,2
 Taxonomy Application,com.taxonomy.controller,ReportApiController.ReportRequest,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.controller,RecommendationApiController.RecommendationRequest,0,12,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.controller,ApiController,432,1120,77,85,95,246,65,48,2,30
+Taxonomy Application,com.taxonomy.controller,ApiController,432,1121,77,85,95,247,65,48,2,30
 Taxonomy Application,com.taxonomy.controller,GapAnalysisApiController.GapAnalysisRequest,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.controller,ExplanationTraceApiController,2,43,2,2,0,14,2,3,0,3
 Taxonomy Application,com.taxonomy.controller,GitStateController,0,40,0,0,0,10,0,5,0,5
@@ -139,7 +139,7 @@ Taxonomy Application,com.taxonomy.service,RelationValidationService.ValidationRe
 Taxonomy Application,com.taxonomy.service,ConflictDetectionService,90,243,2,12,12,49,2,9,0,4
 Taxonomy Application,com.taxonomy.service,TaxonomyService,407,1151,71,80,103,277,56,49,3,23
 Taxonomy Application,com.taxonomy.service,LlmResponseParser,409,157,45,9,81,27,30,10,7,6
-Taxonomy Application,com.taxonomy.service,LlmService,1962,1006,255,101,399,224,190,37,16,24
+Taxonomy Application,com.taxonomy.service,LlmService,1980,1017,261,103,404,228,195,38,17,25
 Taxonomy Application,com.taxonomy.service,ArchitectureRecommendationService,21,359,7,23,6,80,7,13,0,5
 Taxonomy Application,com.taxonomy.service,SavedAnalysisService,2,170,1,21,0,40,1,16,0,6
 Taxonomy Application,com.taxonomy.service,ContextCompareService,98,253,4,14,19,52,4,12,0,7
