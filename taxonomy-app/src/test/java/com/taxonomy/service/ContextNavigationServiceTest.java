@@ -51,9 +51,11 @@ class ContextNavigationServiceTest {
 
     // ── getCurrentContext ────────────────────────────────────────────
 
+    private static final String USER = "testuser";
+
     @Test
     void initialContextIsDraftEditable() {
-        ContextRef ctx = navService.getCurrentContext();
+        ContextRef ctx = navService.getCurrentContext(USER);
 
         assertNotNull(ctx);
         assertEquals("draft", ctx.branch());
@@ -64,7 +66,7 @@ class ContextNavigationServiceTest {
 
     @Test
     void initialContextHasUuid() {
-        ContextRef ctx = navService.getCurrentContext();
+        ContextRef ctx = navService.getCurrentContext(USER);
         assertNotNull(ctx.contextId());
         assertFalse(ctx.contextId().isBlank());
     }
@@ -75,7 +77,7 @@ class ContextNavigationServiceTest {
     void openReadOnlyCreatesReadOnlyContext() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        ContextRef ctx = navService.openReadOnly("draft", null, null, null);
+        ContextRef ctx = navService.openReadOnly(USER, "draft", null, null, null);
 
         assertEquals(ContextMode.READ_ONLY, ctx.mode());
         assertEquals("draft", ctx.branch());
@@ -86,7 +88,7 @@ class ContextNavigationServiceTest {
     void openReadOnlyWithSearchQuery() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        ContextRef ctx = navService.openReadOnly("draft", null, "CP-1023", "CP-1023");
+        ContextRef ctx = navService.openReadOnly(USER, "draft", null, "CP-1023", "CP-1023");
 
         assertEquals(ContextMode.READ_ONLY, ctx.mode());
         assertEquals("CP-1023", ctx.openedFromSearch());
@@ -97,7 +99,7 @@ class ContextNavigationServiceTest {
     void openReadOnlyWithSpecificCommit() throws IOException {
         String commitId = gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        ContextRef ctx = navService.openReadOnly("draft", commitId, null, null);
+        ContextRef ctx = navService.openReadOnly(USER, "draft", commitId, null, null);
 
         assertEquals(commitId, ctx.commitId());
     }
@@ -106,9 +108,9 @@ class ContextNavigationServiceTest {
     void openReadOnlyRecordsNavigation() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        navService.openReadOnly("draft", null, "test query", null);
+        navService.openReadOnly(USER, "draft", null, "test query", null);
 
-        List<ContextHistoryEntry> history = navService.getHistory();
+        List<ContextHistoryEntry> history = navService.getHistory(USER);
         assertEquals(1, history.size());
         assertEquals(NavigationReason.SEARCH_OPEN, history.get(0).reason());
     }
@@ -117,9 +119,9 @@ class ContextNavigationServiceTest {
     void openReadOnlyWithoutSearchRecordsManualSwitch() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        navService.openReadOnly("draft", null, null, null);
+        navService.openReadOnly(USER, "draft", null, null, null);
 
-        List<ContextHistoryEntry> history = navService.getHistory();
+        List<ContextHistoryEntry> history = navService.getHistory(USER);
         assertEquals(1, history.size());
         assertEquals(NavigationReason.MANUAL_SWITCH, history.get(0).reason());
     }
@@ -131,7 +133,7 @@ class ContextNavigationServiceTest {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
         gitRepo.createBranch("feature", "draft");
 
-        ContextRef ctx = navService.switchContext("feature", null);
+        ContextRef ctx = navService.switchContext(USER, "feature", null);
 
         assertEquals(ContextMode.EDITABLE, ctx.mode());
         assertEquals("feature", ctx.branch());
@@ -142,9 +144,9 @@ class ContextNavigationServiceTest {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
         gitRepo.createBranch("feature", "draft");
 
-        navService.switchContext("feature", null);
+        navService.switchContext(USER, "feature", null);
 
-        List<ContextHistoryEntry> history = navService.getHistory();
+        List<ContextHistoryEntry> history = navService.getHistory(USER);
         assertEquals(1, history.size());
         assertEquals(NavigationReason.MANUAL_SWITCH, history.get(0).reason());
     }
@@ -155,8 +157,8 @@ class ContextNavigationServiceTest {
     void returnToOriginRestoresOriginalBranch() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        navService.openReadOnly("draft", null, null, null);
-        ContextRef returned = navService.returnToOrigin();
+        navService.openReadOnly(USER, "draft", null, null, null);
+        ContextRef returned = navService.returnToOrigin(USER);
 
         assertEquals("draft", returned.branch());
         assertEquals(ContextMode.EDITABLE, returned.mode());
@@ -164,8 +166,8 @@ class ContextNavigationServiceTest {
 
     @Test
     void returnToOriginWithNoOriginReturnsCurrent() {
-        ContextRef ctx = navService.getCurrentContext();
-        ContextRef returned = navService.returnToOrigin();
+        ContextRef ctx = navService.getCurrentContext(USER);
+        ContextRef returned = navService.returnToOrigin(USER);
 
         // Should return the same context since there is no origin
         assertEquals(ctx.contextId(), returned.contextId());
@@ -174,11 +176,11 @@ class ContextNavigationServiceTest {
     @Test
     void returnToOriginRecordsReturnReason() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
-        navService.openReadOnly("draft", null, null, null);
+        navService.openReadOnly(USER, "draft", null, null, null);
 
-        navService.returnToOrigin();
+        navService.returnToOrigin(USER);
 
-        List<ContextHistoryEntry> history = navService.getHistory();
+        List<ContextHistoryEntry> history = navService.getHistory(USER);
         assertEquals(2, history.size());
         assertEquals(NavigationReason.RETURN, history.get(1).reason());
     }
@@ -189,8 +191,8 @@ class ContextNavigationServiceTest {
     void backNavigatesToPreviousContext() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        navService.openReadOnly("draft", null, null, null);
-        ContextRef back = navService.back();
+        navService.openReadOnly(USER, "draft", null, null, null);
+        ContextRef back = navService.back(USER);
 
         assertEquals("draft", back.branch());
         assertEquals(ContextMode.EDITABLE, back.mode());
@@ -198,8 +200,8 @@ class ContextNavigationServiceTest {
 
     @Test
     void backOnEmptyHistoryReturnsCurrent() {
-        ContextRef current = navService.getCurrentContext();
-        ContextRef back = navService.back();
+        ContextRef current = navService.getCurrentContext(USER);
+        ContextRef back = navService.back(USER);
 
         assertEquals(current.contextId(), back.contextId());
     }
@@ -208,18 +210,18 @@ class ContextNavigationServiceTest {
     void backRemovesLastHistoryEntry() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        navService.openReadOnly("draft", null, null, null);
-        assertEquals(1, navService.getHistory().size());
+        navService.openReadOnly(USER, "draft", null, null, null);
+        assertEquals(1, navService.getHistory(USER).size());
 
-        navService.back();
-        assertEquals(0, navService.getHistory().size());
+        navService.back(USER);
+        assertEquals(0, navService.getHistory(USER).size());
     }
 
     // ── getHistory ──────────────────────────────────────────────────
 
     @Test
     void emptyHistoryByDefault() {
-        assertTrue(navService.getHistory().isEmpty());
+        assertTrue(navService.getHistory(USER).isEmpty());
     }
 
     @Test
@@ -227,20 +229,20 @@ class ContextNavigationServiceTest {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
         gitRepo.createBranch("feature", "draft");
 
-        navService.openReadOnly("draft", null, null, null);
-        navService.switchContext("feature", null);
-        navService.openReadOnly("draft", null, "query", null);
+        navService.openReadOnly(USER, "draft", null, null, null);
+        navService.switchContext(USER, "feature", null);
+        navService.openReadOnly(USER, "draft", null, "query", null);
 
-        assertEquals(3, navService.getHistory().size());
+        assertEquals(3, navService.getHistory(USER).size());
     }
 
     @Test
     void historyEntriesHaveTimestamps() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        navService.openReadOnly("draft", null, null, null);
+        navService.openReadOnly(USER, "draft", null, null, null);
 
-        ContextHistoryEntry entry = navService.getHistory().get(0);
+        ContextHistoryEntry entry = navService.getHistory(USER).get(0);
         assertNotNull(entry.createdAt());
         assertNotNull(entry.fromContextId());
         assertNotNull(entry.toContextId());
@@ -252,7 +254,7 @@ class ContextNavigationServiceTest {
     void createVariantCreatesNewBranch() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        ContextRef variant = navService.createVariantFromCurrent("my-variant");
+        ContextRef variant = navService.createVariantFromCurrent(USER, "my-variant");
 
         assertEquals("my-variant", variant.branch());
         assertEquals(ContextMode.EDITABLE, variant.mode());
@@ -263,9 +265,9 @@ class ContextNavigationServiceTest {
     void createVariantRecordsNavigation() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        navService.createVariantFromCurrent("my-variant");
+        navService.createVariantFromCurrent(USER, "my-variant");
 
-        List<ContextHistoryEntry> history = navService.getHistory();
+        List<ContextHistoryEntry> history = navService.getHistory(USER);
         assertEquals(1, history.size());
         assertEquals(NavigationReason.VARIANT_CREATED, history.get(0).reason());
     }
@@ -273,9 +275,9 @@ class ContextNavigationServiceTest {
     @Test
     void createVariantPreservesOrigin() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
-        String initialId = navService.getCurrentContext().contextId();
+        String initialId = navService.getCurrentContext(USER).contextId();
 
-        ContextRef variant = navService.createVariantFromCurrent("my-variant");
+        ContextRef variant = navService.createVariantFromCurrent(USER, "my-variant");
 
         assertEquals(initialId, variant.originContextId());
         assertEquals("draft", variant.originBranch());
@@ -285,16 +287,16 @@ class ContextNavigationServiceTest {
 
     @Test
     void initialContextIsNotReadOnly() {
-        assertFalse(navService.isReadOnly());
+        assertFalse(navService.isReadOnly(USER));
     }
 
     @Test
     void readOnlyContextIsReadOnly() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        navService.openReadOnly("draft", null, null, null);
+        navService.openReadOnly(USER, "draft", null, null, null);
 
-        assertTrue(navService.isReadOnly());
+        assertTrue(navService.isReadOnly(USER));
     }
 
     @Test
@@ -302,22 +304,22 @@ class ContextNavigationServiceTest {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
         // First go to read-only
-        navService.openReadOnly("draft", null, null, null);
-        assertTrue(navService.isReadOnly());
+        navService.openReadOnly(USER, "draft", null, null, null);
+        assertTrue(navService.isReadOnly(USER));
 
         // Then switch to editable
-        navService.switchContext("draft", null);
-        assertFalse(navService.isReadOnly());
+        navService.switchContext(USER, "draft", null);
+        assertFalse(navService.isReadOnly(USER));
     }
 
     @Test
     void returnToOriginResetsReadOnly() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        navService.openReadOnly("draft", null, null, null);
-        assertTrue(navService.isReadOnly());
+        navService.openReadOnly(USER, "draft", null, null, null);
+        assertTrue(navService.isReadOnly(USER));
 
-        navService.returnToOrigin();
-        assertFalse(navService.isReadOnly());
+        navService.returnToOrigin(USER);
+        assertFalse(navService.isReadOnly(USER));
     }
 }

@@ -24,6 +24,7 @@ import com.taxonomy.service.HypothesisService;
 import com.taxonomy.service.SavedAnalysisService;
 import com.taxonomy.service.SearchService;
 import com.taxonomy.service.TaxonomyService;
+import com.taxonomy.service.WorkspaceResolver;
 import com.taxonomy.archimate.ArchiMateModel;
 import com.taxonomy.export.ArchiMateDiagramService;
 import com.taxonomy.export.ArchiMateXmlExporter;
@@ -80,6 +81,7 @@ public class ApiController {
     private final AnalysisRelationGenerator analysisRelationGenerator;
     private final HypothesisService hypothesisService;
     private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
 
     @Value("${admin.token:}")
     private String adminPassword;
@@ -99,8 +101,9 @@ public class ApiController {
                          MermaidExportService mermaidExportService,
                          SavedAnalysisService savedAnalysisService,
                          AnalysisRelationGenerator analysisRelationGenerator,
-                         HypothesisService hypothesisService,
-                         RepositoryStateService repositoryStateService) {
+                          HypothesisService hypothesisService,
+                         RepositoryStateService repositoryStateService,
+                         WorkspaceResolver workspaceResolver) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.searchService = searchService;
@@ -121,6 +124,7 @@ public class ApiController {
         this.analysisRelationGenerator = analysisRelationGenerator;
         this.hypothesisService = hypothesisService;
         this.repositoryStateService = repositoryStateService;
+        this.workspaceResolver = workspaceResolver;
     }
 
     @Operation(summary = "Get full taxonomy tree", description = "Returns the complete taxonomy hierarchy as a nested tree of nodes", tags = {"Taxonomy"})
@@ -230,7 +234,8 @@ public class ApiController {
                                 result.getProvisionalRelations()));
             }
 
-            result.setViewContext(repositoryStateService.getViewContext("draft"));
+            result.setViewContext(repositoryStateService.getViewContext(
+                    workspaceResolver.resolveCurrentUsername(), "draft"));
 
             return ResponseEntity.ok(result);
         } finally {

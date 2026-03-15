@@ -43,17 +43,6 @@ public class RepositoryStateGuard {
     ) {}
 
     /**
-     * Check whether a write operation is safe for the default user.
-     *
-     * @param branch        the target branch
-     * @param operationType the type of operation
-     * @return the operation check result
-     */
-    public OperationCheck checkWriteOperation(String branch, String operationType) {
-        return checkWriteOperation(WorkspaceManager.DEFAULT_USER, branch, operationType);
-    }
-
-    /**
      * Check whether a write operation is safe for a specific user.
      *
      * @param username      the user attempting the operation

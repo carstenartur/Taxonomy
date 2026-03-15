@@ -47,9 +47,11 @@ class RepositoryStateServiceTest {
 
     // ── getState ────────────────────────────────────────────────────
 
+    private static final String USER = "testuser";
+
     @Test
     void getStateOnEmptyBranchReturnsDefaults() {
-        RepositoryState state = stateService.getState("draft");
+        RepositoryState state = stateService.getState(USER, "draft");
 
         assertEquals("draft", state.currentBranch());
         assertNull(state.headCommit());
@@ -67,7 +69,7 @@ class RepositoryStateServiceTest {
     void getStateReturnsHeadInfo() throws IOException {
         String commitId = gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        RepositoryState state = stateService.getState("draft");
+        RepositoryState state = stateService.getState(USER, "draft");
 
         assertEquals("draft", state.currentBranch());
         assertEquals(commitId, state.headCommit());
@@ -83,7 +85,7 @@ class RepositoryStateServiceTest {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
         gitRepo.createBranch("review", "draft");
 
-        RepositoryState state = stateService.getState("draft");
+        RepositoryState state = stateService.getState(USER, "draft");
 
         assertEquals(2, state.branches().size());
         assertTrue(state.branches().contains("draft"));
@@ -95,16 +97,16 @@ class RepositoryStateServiceTest {
     @Test
     void projectionNotStaleWhenNoProjectionRecorded() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
-        RepositoryState state = stateService.getState("draft");
+        RepositoryState state = stateService.getState(USER, "draft");
         assertFalse(state.projectionStale(), "No projection recorded → not stale");
     }
 
     @Test
     void projectionNotStaleWhenRecordedAtHead() throws IOException {
         String commitId = gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
-        stateService.recordProjection(commitId, "draft");
+        stateService.recordProjection(USER, commitId, "draft");
 
-        RepositoryState state = stateService.getState("draft");
+        RepositoryState state = stateService.getState(USER, "draft");
         assertFalse(state.projectionStale());
         assertEquals(commitId, state.projectionCommit());
         assertEquals("draft", state.projectionBranch());
@@ -114,24 +116,24 @@ class RepositoryStateServiceTest {
     @Test
     void projectionStaleAfterNewCommit() throws IOException {
         String first = gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "first");
-        stateService.recordProjection(first, "draft");
+        stateService.recordProjection(USER, first, "draft");
 
         // New commit moves HEAD ahead of projection
         gitRepo.commitDsl("draft", SAMPLE_DSL, "bob", "second");
 
-        RepositoryState state = stateService.getState("draft");
+        RepositoryState state = stateService.getState(USER, "draft");
         assertTrue(state.projectionStale(), "HEAD moved → projection is stale");
     }
 
     @Test
     void isProjectionStaleBranch() throws IOException {
         String first = gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "first");
-        stateService.recordProjection(first, "draft");
+        stateService.recordProjection(USER, first, "draft");
 
-        assertFalse(stateService.isProjectionStale("draft"));
+        assertFalse(stateService.isProjectionStale(USER, "draft"));
 
         gitRepo.commitDsl("draft", SAMPLE_DSL, "bob", "second");
-        assertTrue(stateService.isProjectionStale("draft"));
+        assertTrue(stateService.isProjectionStale(USER, "draft"));
     }
 
     // ── Index tracking ──────────────────────────────────────────────
@@ -139,16 +141,16 @@ class RepositoryStateServiceTest {
     @Test
     void indexNotStaleWhenNoIndexRecorded() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
-        RepositoryState state = stateService.getState("draft");
+        RepositoryState state = stateService.getState(USER, "draft");
         assertFalse(state.indexStale(), "No index recorded → not stale");
     }
 
     @Test
     void indexNotStaleWhenRecordedAtHead() throws IOException {
         String commitId = gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
-        stateService.recordIndexBuild(commitId);
+        stateService.recordIndexBuild(USER, commitId);
 
-        RepositoryState state = stateService.getState("draft");
+        RepositoryState state = stateService.getState(USER, "draft");
         assertFalse(state.indexStale());
         assertEquals(commitId, state.indexCommit());
     }
@@ -156,11 +158,11 @@ class RepositoryStateServiceTest {
     @Test
     void indexStaleAfterNewCommit() throws IOException {
         String first = gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "first");
-        stateService.recordIndexBuild(first);
+        stateService.recordIndexBuild(USER, first);
 
         gitRepo.commitDsl("draft", SAMPLE_DSL, "bob", "second");
 
-        RepositoryState state = stateService.getState("draft");
+        RepositoryState state = stateService.getState(USER, "draft");
         assertTrue(state.indexStale(), "HEAD moved → index is stale");
     }
 
@@ -168,26 +170,26 @@ class RepositoryStateServiceTest {
 
     @Test
     void noOperationByDefault() {
-        RepositoryState state = stateService.getState("draft");
+        RepositoryState state = stateService.getState(USER, "draft");
         assertFalse(state.operationInProgress());
         assertNull(state.operationKind());
     }
 
     @Test
     void operationInProgressAfterBegin() {
-        stateService.beginOperation("merge");
+        stateService.beginOperation(USER, "merge");
 
-        RepositoryState state = stateService.getState("draft");
+        RepositoryState state = stateService.getState(USER, "draft");
         assertTrue(state.operationInProgress());
         assertEquals("merge", state.operationKind());
     }
 
     @Test
     void operationClearedAfterEnd() {
-        stateService.beginOperation("cherry-pick");
-        stateService.endOperation();
+        stateService.beginOperation(USER, "cherry-pick");
+        stateService.endOperation(USER);
 
-        RepositoryState state = stateService.getState("draft");
+        RepositoryState state = stateService.getState(USER, "draft");
         assertFalse(state.operationInProgress());
         assertNull(state.operationKind());
     }
@@ -197,10 +199,10 @@ class RepositoryStateServiceTest {
     @Test
     void getViewContextReturnsMetadata() throws IOException {
         String commitId = gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
-        stateService.recordProjection(commitId, "draft");
-        stateService.recordIndexBuild(commitId);
+        stateService.recordProjection(USER, commitId, "draft");
+        stateService.recordIndexBuild(USER, commitId);
 
-        ViewContext ctx = stateService.getViewContext("draft");
+        ViewContext ctx = stateService.getViewContext(USER, "draft");
 
         assertEquals(commitId, ctx.basedOnCommit());
         assertEquals("draft", ctx.basedOnBranch());
@@ -211,7 +213,7 @@ class RepositoryStateServiceTest {
 
     @Test
     void getViewContextOnEmptyBranch() {
-        ViewContext ctx = stateService.getViewContext("nonexistent");
+        ViewContext ctx = stateService.getViewContext(USER, "nonexistent");
         assertNull(ctx.basedOnCommit());
         assertEquals("nonexistent", ctx.basedOnBranch());
     }
@@ -221,10 +223,10 @@ class RepositoryStateServiceTest {
     @Test
     void getProjectionStateReturnsFullDiagnostics() throws IOException {
         String commitId = gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
-        stateService.recordProjection(commitId, "draft");
-        stateService.recordIndexBuild(commitId);
+        stateService.recordProjection(USER, commitId, "draft");
+        stateService.recordIndexBuild(USER, commitId);
 
-        ProjectionState ps = stateService.getProjectionState("draft");
+        ProjectionState ps = stateService.getProjectionState(USER, "draft");
 
         assertEquals(commitId, ps.projectionCommit());
         assertEquals("draft", ps.projectionBranch());
@@ -238,13 +240,13 @@ class RepositoryStateServiceTest {
     @Test
     void getProjectionStateDetectsStaleness() throws IOException {
         String first = gitRepo.commitDsl("draft", SAMPLE_DSL, "alice", "first");
-        stateService.recordProjection(first, "draft");
-        stateService.recordIndexBuild(first);
+        stateService.recordProjection(USER, first, "draft");
+        stateService.recordIndexBuild(USER, first);
 
         // Move HEAD ahead
         gitRepo.commitDsl("draft", SAMPLE_DSL, "bob", "second");
 
-        ProjectionState ps = stateService.getProjectionState("draft");
+        ProjectionState ps = stateService.getProjectionState(USER, "draft");
         assertTrue(ps.projectionStale());
         assertTrue(ps.indexStale());
     }

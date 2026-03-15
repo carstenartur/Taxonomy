@@ -70,7 +70,9 @@ class SelectiveTransferServiceTest {
         var workspaceManager = new WorkspaceManager(wsRepo, 50);
         var stateService = new RepositoryStateService(gitRepo, workspaceManager);
         navService = new ContextNavigationService(gitRepo, stateService, workspaceManager, 50);
-        transferService = new SelectiveTransferService(gitRepo, navService);
+        var workspaceResolver = mock(WorkspaceResolver.class);
+        org.mockito.Mockito.when(workspaceResolver.resolveCurrentUsername()).thenReturn("testuser");
+        transferService = new SelectiveTransferService(gitRepo, navService, workspaceResolver);
     }
 
     @Test

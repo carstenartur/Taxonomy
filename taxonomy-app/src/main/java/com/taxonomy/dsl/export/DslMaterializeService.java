@@ -12,6 +12,7 @@ import com.taxonomy.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.repository.RelationHypothesisRepository;
 import com.taxonomy.service.RepositoryStateService;
 import com.taxonomy.service.TaxonomyRelationService;
+import com.taxonomy.service.WorkspaceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
@@ -50,6 +51,8 @@ public class DslMaterializeService {
     private final ArchitectureDslDocumentRepository documentRepository;
     @Nullable
     private final RepositoryStateService repositoryStateService;
+    @Nullable
+    private final WorkspaceResolver workspaceResolver;
 
     private final TaxDslParser parser = new TaxDslParser();
     private final AstToModelMapper astMapper = new AstToModelMapper();
@@ -59,11 +62,13 @@ public class DslMaterializeService {
     public DslMaterializeService(TaxonomyRelationService relationService,
                                   RelationHypothesisRepository hypothesisRepository,
                                   ArchitectureDslDocumentRepository documentRepository,
-                                  @Nullable RepositoryStateService repositoryStateService) {
+                                  @Nullable RepositoryStateService repositoryStateService,
+                                  @Nullable WorkspaceResolver workspaceResolver) {
         this.relationService = relationService;
         this.hypothesisRepository = hypothesisRepository;
         this.documentRepository = documentRepository;
         this.repositoryStateService = repositoryStateService;
+        this.workspaceResolver = workspaceResolver;
     }
 
     /**
@@ -158,7 +163,9 @@ public class DslMaterializeService {
 
         // Track projection state for staleness detection
         if (repositoryStateService != null && commitId != null) {
-            repositoryStateService.recordProjection(commitId, branch);
+            String username = workspaceResolver != null
+                    ? workspaceResolver.resolveCurrentUsername() : "anonymous";
+            repositoryStateService.recordProjection(username, commitId, branch);
         }
 
         return new MaterializeResult(true, List.of(), validation.getWarnings(),

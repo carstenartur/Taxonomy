@@ -45,48 +45,6 @@ public class RepositoryStateService {
         this.workspaceManager = workspaceManager;
     }
 
-    // ── Default-user overloads (backward compatible) ────────────────
-
-    /** @see #getState(String, String) */
-    public RepositoryState getState(String branch) {
-        return getState(WorkspaceManager.DEFAULT_USER, branch);
-    }
-
-    /** @see #getViewContext(String, String) */
-    public ViewContext getViewContext(String branch) {
-        return getViewContext(WorkspaceManager.DEFAULT_USER, branch);
-    }
-
-    /** @see #recordProjection(String, String, String) */
-    public void recordProjection(String commitId, String branch) {
-        recordProjection(WorkspaceManager.DEFAULT_USER, commitId, branch);
-    }
-
-    /** @see #recordIndexBuild(String, String) */
-    public void recordIndexBuild(String commitId) {
-        recordIndexBuild(WorkspaceManager.DEFAULT_USER, commitId);
-    }
-
-    /** @see #isProjectionStale(String, String) */
-    public boolean isProjectionStale(String branch) {
-        return isProjectionStale(WorkspaceManager.DEFAULT_USER, branch);
-    }
-
-    /** @see #getProjectionState(String, String) */
-    public ProjectionState getProjectionState(String branch) {
-        return getProjectionState(WorkspaceManager.DEFAULT_USER, branch);
-    }
-
-    /** @see #beginOperation(String, String) */
-    public void beginOperation(String kind) {
-        beginOperation(WorkspaceManager.DEFAULT_USER, kind);
-    }
-
-    /** @see #endOperation(String) */
-    public void endOperation() {
-        endOperation(WorkspaceManager.DEFAULT_USER);
-    }
-
     // ── Workspace-aware methods ─────────────────────────────────────
 
     /**

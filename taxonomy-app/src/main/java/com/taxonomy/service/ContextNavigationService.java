@@ -47,49 +47,6 @@ public class ContextNavigationService {
         this.maxHistory = maxHistory;
     }
 
-    // ── Default-user overloads (backward compatible) ────────────────
-
-    /** @see #getCurrentContext(String) */
-    public ContextRef getCurrentContext() {
-        return getCurrentContext(WorkspaceManager.DEFAULT_USER);
-    }
-
-    /** @see #openReadOnly(String, String, String, String, String) */
-    public ContextRef openReadOnly(String branch, String commitId,
-                                   String searchQuery, String elementId) {
-        return openReadOnly(WorkspaceManager.DEFAULT_USER, branch, commitId, searchQuery, elementId);
-    }
-
-    /** @see #switchContext(String, String, String) */
-    public ContextRef switchContext(String branch, String commitId) {
-        return switchContext(WorkspaceManager.DEFAULT_USER, branch, commitId);
-    }
-
-    /** @see #returnToOrigin(String) */
-    public ContextRef returnToOrigin() {
-        return returnToOrigin(WorkspaceManager.DEFAULT_USER);
-    }
-
-    /** @see #back(String) */
-    public ContextRef back() {
-        return back(WorkspaceManager.DEFAULT_USER);
-    }
-
-    /** @see #getHistory(String) */
-    public List<ContextHistoryEntry> getHistory() {
-        return getHistory(WorkspaceManager.DEFAULT_USER);
-    }
-
-    /** @see #createVariantFromCurrent(String, String) */
-    public ContextRef createVariantFromCurrent(String variantName) throws IOException {
-        return createVariantFromCurrent(WorkspaceManager.DEFAULT_USER, variantName);
-    }
-
-    /** @see #isReadOnly(String) */
-    public boolean isReadOnly() {
-        return isReadOnly(WorkspaceManager.DEFAULT_USER);
-    }
-
     // ── Workspace-aware methods ─────────────────────────────────────
 
     /**
