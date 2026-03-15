@@ -348,7 +348,7 @@
             body.classList.add('admin-unlocked');
             if (adminNavTab) { adminNavTab.style.display = ''; }
             if (lockBtn) {
-                lockBtn.innerHTML = '<span aria-hidden="true">\u{1F513}</span><span class="visually-hidden">Admin Mode</span>';
+                lockBtn.innerHTML = '<span aria-hidden="true">🔓</span><span class="visually-hidden">Admin Mode</span>';
                 lockBtn.title = 'Admin mode active — click to lock';
                 lockBtn.setAttribute('aria-label', 'Admin mode — unlocked. Click to lock.');
                 lockBtn.classList.remove('d-none');
@@ -357,7 +357,7 @@
             body.classList.remove('admin-unlocked');
             if (adminNavTab) { adminNavTab.style.display = 'none'; }
             if (lockBtn) {
-                lockBtn.innerHTML = '<span aria-hidden="true">\u{1F510}</span><span class="visually-hidden">Admin Mode</span>';
+                lockBtn.innerHTML = '<span aria-hidden="true">🔐</span><span class="visually-hidden">Admin Mode</span>';
                 lockBtn.title = 'Click to unlock admin mode';
                 lockBtn.setAttribute('aria-label', 'Admin mode — locked. Click to unlock.');
                 lockBtn.classList.remove('d-none');
