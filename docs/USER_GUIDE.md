@@ -43,6 +43,8 @@ The system scores every taxonomy node (0–100), highlights the most relevant el
     - [Architecture Recommendation](#11e-architecture-recommendation)
     - [Architecture Pattern Detection](#11f-architecture-pattern-detection)
     - [Architecture DSL](#11g-architecture-dsl)
+    - [Versions Tab](#11h-versions-tab)
+    - [Git Status and Context Bar](#11i-git-status-and-context-bar)
 12. [Administration](#12-administration)
 13. [Relation Types Reference](#13-relation-types-reference)
 14. [Tips and Best Practices](#14-tips-and-best-practices)
@@ -1087,49 +1089,145 @@ After accepting proposals, the exported DSL includes `relation` blocks alongside
 
 ### Version Control
 
-The DSL is stored in a **JGit repository** backed by the application database (no filesystem required). This provides full Git semantics:
+The DSL is stored in a **Git repository** managed entirely inside the application — no external Git server or filesystem is required. This means every change you make is tracked automatically.
 
-- **Branching** — Create feature branches to experiment with architecture changes
-- **Commit history** — Full audit trail of who changed what and when
-- **Diff** — Compare any two versions (semantic diff showing added/removed/changed elements, or unified text diff)
-- **Cherry-pick** — Port specific changes between branches
-- **Merge** — Combine branches with three-way merge support
+You interact with version control through the GUI — there is no need to use Git commands. The key concepts:
+
+- **Branches** — Use branches to experiment with architecture changes without affecting the main version. You can switch branches, create new ones, and merge them.
+- **Commits** — Every time you save a version or commit in the DSL Editor, a snapshot is recorded. You can browse, compare, restore, or undo commits at any time.
+- **Undo / Restore** — Made a mistake? Use the **Undo** button to remove the last change, or **Restore** to go back to any previous version.
+
+For details on how to use these features step by step, see [§11h Versions Tab](#11h-versions-tab) below.
 
 > 📖 For a comprehensive guide to branching, merge previews, conflict detection, staleness tracking, and the full Git REST API, see **[Git Integration](GIT_INTEGRATION.md)**.
 
 ### Materialization
 
-DSL documents are **materialized** into the application database. This creates `TaxonomyRelation` entities from DSL relations, making them visible in the Graph Explorer, Relation Proposals, and Architecture View.
+When you edit the DSL and commit changes, the architecture model in your DSL text needs to be **materialized** (applied) to the application database so that other parts of the application — the Graph Explorer, Relations Browser, and Architecture View — reflect those changes.
 
-Two materialization modes are available:
+- **Full materialization** replaces all relations in the database with the content from the DSL.
+- **Incremental materialization** applies only the differences (delta) between the current database state and the DSL, which is faster for large models.
 
-| Mode | Endpoint | Description |
-|---|---|---|
-| **Full** | `POST /api/dsl/materialize` | Replaces all relations with DSL content |
-| **Incremental** | `POST /api/dsl/materialize-incremental` | Only applies the delta between two versions |
+Both options are available in the DSL Editor panel. After materializing, the Git Status Bar at the top of the page will update to show the projection is **fresh** (in sync).
 
 ### Hypotheses
 
-Relations generated during LLM analysis are stored as **hypotheses** — provisional relations that require human review before becoming permanent. Hypotheses follow a lifecycle:
+When the AI analyses a business requirement, it generates **hypotheses** — provisional relations that need your review before becoming permanent:
 
-```
-PENDING → ACCEPTED (creates TaxonomyRelation)
-        → REJECTED (marked as rejected)
-        → APPLIED (session-only, not persisted)
-```
-
-The Hypotheses API (`/api/dsl/hypotheses`) allows querying, accepting, and rejecting hypotheses, with supporting evidence available for each.
+1. The AI proposes a relation (e.g., "CP-1023 REALIZES BP-1327").
+2. You review it in the **Relations** tab using the Accept / Reject buttons.
+3. **Accepted** hypotheses become real architecture relations and appear in the Graph Explorer and DSL.
+4. **Rejected** hypotheses are marked as rejected and excluded from future exports.
 
 ### Commit History Search
 
-Commit history is indexed into Hibernate Search for full-text search. You can:
+You can search through the full commit history directly in the Versions Tab. The search covers:
 
-- Search across all commit messages and change content
-- Find all commits that affected a specific element
-- Find all commits that affected a specific relation
-- View aggregated change history for an element
+- **Commit messages** — Find commits by description (e.g., "review round 2").
+- **Changed elements** — Find all commits that affected a specific element or relation.
 
-See the [API Reference](API_REFERENCE.md#21-architecture-dsl) for full endpoint documentation.
+See [§11h Versions Tab](#11h-versions-tab) for how to use the search in the GUI.
+
+---
+
+## 11h. Versions Tab
+
+The **🕓 Versions** tab provides a visual interface for browsing, managing, and reverting architecture versions. Click **🕓 Versions** in the top navigation bar to open it.
+
+![Versions Tab — History timeline](images/41-versions-tab-history.png)
+
+### Branch Selector
+
+At the top-right of the Versions tab, you will see a **Branch** dropdown. This shows all available branches in the architecture repository.
+
+- **Select a branch** to view its commit history.
+- The default branch is `draft` — this is where new architecture changes are saved.
+- If you have created variant branches (e.g., for experimentation), you can switch between them here.
+
+### History Timeline
+
+The **🕓 History** sub-tab displays a timeline of all commits on the selected branch. Each entry shows:
+
+- **Commit message** — What was changed (e.g., "Baseline after review round 2").
+- **Timestamp and author** — When and by whom the change was made.
+- **Short commit ID** — A 7-character identifier for the commit (e.g., `a3f8c2d`).
+
+Each timeline entry has four action buttons:
+
+| Button | Action |
+|---|---|
+| **👁 View** | Opens a modal showing the full DSL text at that version |
+| **🔍 Compare** | Shows a diff between that version and the current HEAD |
+| **↩ Restore** | Replaces the current state with that version (creates a new commit) |
+| **❌ Revert** | Creates a new commit that undoes the changes introduced by that specific commit |
+
+### Undo Last Change
+
+At the top of the Versions tab, the **↩ Undo last change** button removes the most recent commit from the branch history. This is useful when you made a mistake and want to quickly go back one step.
+
+- The text next to the button shows the message of the last commit, so you know what you are undoing.
+- A confirmation dialog appears before the undo is executed.
+
+### Saving a Named Version
+
+Click the **💾 Save Version** sub-tab to create a named snapshot of the current architecture state.
+
+![Versions Tab — Save Version](images/42-versions-tab-save.png)
+
+1. Enter a **Title** (required) — for example, "Baseline after review round 2".
+2. Optionally add a **Description** with more detail about what changed.
+3. Click **💾 Save Version**.
+4. A success message with the commit ID confirms that the version was saved.
+
+This is equivalent to making a Git commit with a descriptive message. You can later find this version in the History timeline and restore it if needed.
+
+### Refreshing the Timeline
+
+Click the **🔄 Refresh** button in the History card header to reload the timeline. This is useful if another user or process has made changes.
+
+---
+
+## 11i. Git Status and Context Bar
+
+Two horizontal bars at the top of the page provide at-a-glance information about the current architecture state.
+
+### Git Status Bar
+
+The **Git Status Bar** appears just below the navigation bar. It displays:
+
+![Git Status Bar](images/43-git-status-bar.png)
+
+| Indicator | Meaning |
+|---|---|
+| **🔀 Branch name** | The currently active branch (e.g., `draft`) |
+| **Commit SHA** | The short ID of the latest commit (e.g., `a3f8c2d`) |
+| **Projection: fresh / STALE** | Whether the database relations match the latest Git commit. A green dot means **fresh** (in sync); a red dot means **STALE** (you need to materialize). |
+| **Index: fresh / STALE** | Whether the search index matches the latest Git commit |
+| **N variants** | How many branches exist |
+| **N versions** | Total number of commits on the current branch |
+
+When the projection shows **STALE**, it means the DSL has been changed but not yet materialized into the database. Go to the DSL Editor and click **Materialize** to bring the database up to date.
+
+### Context Navigation Bar
+
+The **Context Bar** appears below the Git Status Bar when you are navigating between different architecture contexts (e.g., viewing a historical version, exploring a variant branch, or comparing branches).
+
+![Context Navigation Bar](images/44-context-bar.png)
+
+The Context Bar shows:
+
+- **Mode badge** — `EDITABLE` (green), `READ-ONLY` (yellow), or `TEMPORARY` (grey)
+- **Branch name** and **commit ID** — Which version you are currently viewing
+- **Origin indicator** — If you navigated from another context, shows where you came from
+
+Navigation buttons in the Context Bar:
+
+| Button | Action |
+|---|---|
+| **← Back** | Go back to the previous context (like browser back, but for architecture versions) |
+| **↺ Origin** | Jump directly back to where you started navigating |
+| **+ Variant** | Create a new branch from the current context |
+| **↔ Compare** | Open a comparison dialog to diff two branches or commits |
 
 ---
 
