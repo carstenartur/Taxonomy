@@ -1395,4 +1395,162 @@ class ScreenshotGeneratorIT {
         saveElementScreenshot(driver.findElement(By.id("contextBar")),
                 "44-context-bar.png");
     }
+
+    // ── Screenshots 45–51: Workspace UI Elements ──────────────────────────────
+
+    @Test
+    @Order(45)
+    void captureWorkspaceUserBadge() throws IOException {
+        navigateToTab("analyze");
+        // The workspace badge is populated by taxonomy-workspace-sync.js
+        // and taxonomy.js; force it visible with sample content
+        js("var badge = document.getElementById('workspaceUserBadge');" +
+           "if (badge) {" +
+           "  badge.textContent = 'admin @ draft';" +
+           "  badge.classList.remove('d-none');" +
+           "}");
+        wait(5).until(d -> {
+            WebElement badge = d.findElement(By.id("workspaceUserBadge"));
+            return badge.isDisplayed() && !badge.getText().isEmpty();
+        });
+        saveElementScreenshot(driver.findElement(By.cssSelector(".navbar")),
+                "45-workspace-user-badge.png");
+    }
+
+    @Test
+    @Order(46)
+    void captureVariantCreationModal() throws IOException {
+        navigateToTab("versions");
+        // Open the Create Variant modal
+        showModalViaDOM("createVariantModal");
+        // Pre-fill the variant name input for the screenshot
+        js("var input = document.getElementById('variantNameInput');" +
+           "if (input) { input.value = 'feature-voice-services'; input.dispatchEvent(new Event('input')); }");
+        saveScreenshot("46-variant-creation-modal.png");
+        closeModalViaDOM("createVariantModal");
+    }
+
+    @Test
+    @Order(47)
+    void captureVariantsBrowserTab() throws IOException {
+        navigateToTab("versions");
+        // Switch to the Variants sub-tab
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'variants');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-variants') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        // Wait for the variants browser to load
+        wait(15).until(d -> {
+            String html = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('variantsBrowser');" +
+                    "return el ? el.innerHTML : '';");
+            return html != null && !html.contains("Loading variants");
+        });
+        saveScreenshot("47-variants-browser-tab.png");
+        // Reset to History sub-tab
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+    }
+
+    @Test
+    @Order(48)
+    void captureCompareModalBranches() throws IOException {
+        // Open the compare modal
+        showModalViaDOM("contextCompareModal");
+        // Populate the branch dropdowns with sample data if they are empty
+        js("var leftSel = document.getElementById('compareLeftBranch');" +
+           "var rightSel = document.getElementById('compareRightBranch');" +
+           "if (leftSel && leftSel.options.length <= 1) {" +
+           "  leftSel.innerHTML = '<option value=\"draft\">draft</option>" +
+           "<option value=\"feature-voice\">feature-voice</option>';" +
+           "  leftSel.value = 'draft';" +
+           "}" +
+           "if (rightSel && rightSel.options.length <= 1) {" +
+           "  rightSel.innerHTML = '<option value=\"draft\">draft</option>" +
+           "<option value=\"feature-voice\">feature-voice</option>';" +
+           "  rightSel.value = 'feature-voice';" +
+           "}");
+        saveScreenshot("48-compare-modal-branches.png");
+        closeModalViaDOM("contextCompareModal");
+    }
+
+    @Test
+    @Order(49)
+    void captureCopyBackButton() throws IOException {
+        navigateToTab("analyze");
+        // Simulate a read-only context in the context bar with a Copy Back button
+        js("var bar = document.getElementById('contextBar');" +
+           "if (bar) {" +
+           "  bar.innerHTML = '<div class=\"context-bar d-flex align-items-center gap-2 px-3 py-1 border-bottom bg-light\">" +
+           "<span class=\"badge bg-warning text-dark\">READ-ONLY</span>" +
+           "<strong>feature-voice</strong>" +
+           "<code class=\"text-muted small\">a3f8c2d</code>" +
+           "<span class=\"text-muted small\">from draft</span>" +
+           "<span class=\"ms-auto d-flex align-items-center gap-1\">" +
+           "<button class=\"btn btn-sm btn-outline-secondary\">&#8592; Back</button>" +
+           "<button class=\"btn btn-sm btn-outline-primary\">&#8634; Origin</button>" +
+           "<button class=\"btn btn-sm btn-outline-warning\">&#128228; Copy Back</button>" +
+           "<button class=\"btn btn-sm btn-outline-success\">&#43; Variant</button>" +
+           "<button class=\"btn btn-sm btn-outline-info\">&#8596; Compare</button>" +
+           "</span></div>';" +
+           "  bar.classList.remove('d-none');" +
+           "}");
+        saveElementScreenshot(driver.findElement(By.id("contextBar")),
+                "49-copy-back-button.png");
+    }
+
+    @Test
+    @Order(50)
+    void captureReadOnlyModeBadge() throws IOException {
+        navigateToTab("analyze");
+        // Inject a READ-ONLY badge into the git status bar
+        js("var bar = document.getElementById('gitStatusBar');" +
+           "if (bar) {" +
+           "  var span = document.createElement('span');" +
+           "  span.id = 'readOnlyBadgeScreenshot';" +
+           "  span.innerHTML = '<span class=\"git-sep\">│</span>" +
+           "<span class=\"git-indicator\"><span class=\"badge bg-warning text-dark\" style=\"font-size:0.7rem;\">READ-ONLY</span></span>';" +
+           "  bar.appendChild(span);" +
+           "}");
+        wait(5).until(d -> {
+            WebElement bar = d.findElement(By.id("gitStatusBar"));
+            return bar.isDisplayed() && bar.getText().contains("READ-ONLY");
+        });
+        saveElementScreenshot(driver.findElement(By.id("gitStatusBar")),
+                "50-read-only-mode-badge.png");
+        // Clean up injected badge
+        js("var el = document.getElementById('readOnlyBadgeScreenshot'); if (el) el.remove();");
+    }
+
+    @Test
+    @Order(51)
+    void captureContextBarWithOrigin() throws IOException {
+        navigateToTab("analyze");
+        // Render a context bar showing origin info and return button
+        js("var bar = document.getElementById('contextBar');" +
+           "if (bar) {" +
+           "  bar.innerHTML = '<div class=\"context-bar d-flex align-items-center gap-2 px-3 py-1 border-bottom bg-light\">" +
+           "<span class=\"badge bg-success\">EDITABLE</span>" +
+           "<strong>draft</strong>" +
+           "<code class=\"text-muted small\">b7e4f1a</code>" +
+           "<span class=\"text-muted small\">from feature-voice</span>" +
+           "<span class=\"ms-auto d-flex align-items-center gap-1\">" +
+           "<button class=\"btn btn-sm btn-outline-secondary\">&#8592; Back</button>" +
+           "<button class=\"btn btn-sm btn-outline-primary\">&#8634; Origin</button>" +
+           "<button class=\"btn btn-sm btn-outline-success\">&#43; Variant</button>" +
+           "<button class=\"btn btn-sm btn-outline-info\">&#8596; Compare</button>" +
+           "</span></div>';" +
+           "  bar.classList.remove('d-none');" +
+           "}");
+        saveElementScreenshot(driver.findElement(By.id("contextBar")),
+                "51-context-bar-with-origin.png");
+    }
 }

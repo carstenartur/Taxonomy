@@ -152,9 +152,16 @@ Taxonomy/
 | **[API Reference](docs/API_REFERENCE.md)** | REST API quick-reference with request/response examples |
 | **[Configuration](docs/CONFIGURATION_REFERENCE.md)** | Environment variables and settings |
 | **[Deployment](docs/DEPLOYMENT_GUIDE.md)** | Docker, Render.com, health checks |
+| **[Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md)** | Pre-deployment verification checklist |
 | **[Security](docs/SECURITY.md)** | Authentication, roles, permissions, deployment hardening |
 | **[Architecture](docs/ARCHITECTURE.md)** | System design, modules, DSL storage, pipelines |
 | **[Developer Guide](docs/DEVELOPER_GUIDE.md)** | Module architecture, testing, extending the system |
+| **[Keycloak Setup](docs/KEYCLOAK_SETUP.md)** | SSO/OIDC integration with Keycloak |
+| **[SSO Integration](docs/SSO_INTEGRATION.md)** | Single Sign-On configuration and setup |
+| **[AI Transparency](docs/AI_TRANSPARENCY.md)** | AI/LLM usage transparency documentation |
+| **[Data Protection](docs/DATA_PROTECTION.md)** | GDPR and data protection compliance |
+| **[Operations Guide](docs/OPERATIONS_GUIDE.md)** | Operational procedures and monitoring |
+| **[Knowledge Conservation](docs/USE_CASE_WISSENSKONSERVIERUNG.md)** | Use case: architecture knowledge preservation |
 
 ## Contributing
 

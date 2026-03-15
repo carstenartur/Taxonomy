@@ -478,6 +478,164 @@ curl -u admin:password -X DELETE http://localhost:8080/api/admin/users/2
 
 ---
 
+## Workspace Management
+
+All workspace endpoints require authentication (HTTP Basic). Each user automatically gets a personal workspace on first access.
+
+### Get Current Workspace
+
+```bash
+curl -u alice:password http://localhost:8080/api/workspace/current
+```
+
+**Response:**
+```json
+{
+  "workspaceId": "a1b2c3d4-...",
+  "username": "alice",
+  "displayName": "alice's workspace",
+  "currentBranch": "draft",
+  "baseBranch": "draft",
+  "shared": false,
+  "currentContext": { "branch": "draft", "mode": "EDITABLE" },
+  "createdAt": "2026-03-15T10:00:00Z",
+  "lastAccessedAt": "2026-03-15T12:00:00Z"
+}
+```
+
+### List Active Workspaces (Admin)
+
+```bash
+curl -u admin:password http://localhost:8080/api/workspace/active
+```
+
+### Workspace Statistics
+
+```bash
+curl -u admin:password http://localhost:8080/api/workspace/stats
+```
+
+**Response:** `{ "activeWorkspaces": 3 }`
+
+### Evict Workspace (Admin)
+
+```bash
+curl -u admin:password -X POST "http://localhost:8080/api/workspace/evict?username=alice"
+```
+
+### Compare Branches
+
+```bash
+curl -u alice:password -X POST "http://localhost:8080/api/workspace/compare?leftBranch=draft&rightBranch=feature-x"
+```
+
+**Response:**
+```json
+{
+  "left": { "branch": "draft", "mode": "EDITABLE" },
+  "right": { "branch": "feature-x", "mode": "READ_ONLY" },
+  "summary": {
+    "elementsAdded": 2,
+    "elementsChanged": 1,
+    "elementsRemoved": 0,
+    "relationsAdded": 1,
+    "relationsChanged": 0,
+    "relationsRemoved": 0
+  },
+  "changes": [
+    {
+      "changeType": "ADD",
+      "objectType": "ELEMENT",
+      "objectId": "CP-1023",
+      "description": "Element CP-1023 added (Capability)",
+      "before": null,
+      "after": "Secure Voice Service"
+    }
+  ],
+  "rawDslDiff": "..."
+}
+```
+
+### Sync from Shared Repository
+
+```bash
+curl -u alice:password -X POST "http://localhost:8080/api/workspace/sync-from-shared?userBranch=feature-x"
+```
+
+**Response:** `{ "success": true, "branch": "feature-x", "mergeCommit": "abc1234...", "syncedAt": "2026-03-15T10:00:00Z" }`
+
+### Publish to Shared Repository
+
+```bash
+curl -u alice:password -X POST "http://localhost:8080/api/workspace/publish?userBranch=feature-x"
+```
+
+**Response:** `{ "success": true, "branch": "feature-x", "mergeCommit": "def5678...", "publishedAt": "2026-03-15T10:05:00Z" }`
+
+### Get Sync State
+
+```bash
+curl -u alice:password http://localhost:8080/api/workspace/sync-state
+```
+
+**Response:**
+```json
+{
+  "syncStatus": "AHEAD",
+  "unpublishedCommitCount": 3,
+  "lastSyncTimestamp": "2026-03-15T10:00:00Z",
+  "lastPublishTimestamp": null
+}
+```
+
+### Get Navigation History
+
+```bash
+curl -u alice:password http://localhost:8080/api/workspace/history
+```
+
+### Get Local Changes
+
+```bash
+curl -u alice:password "http://localhost:8080/api/workspace/local-changes?branch=feature-x"
+```
+
+**Response:** `{ "branch": "feature-x", "changeCount": 3, "hasUnpublishedChanges": true }`
+
+### Check Dirty State
+
+```bash
+curl -u alice:password http://localhost:8080/api/workspace/dirty
+```
+
+**Response:** `{ "username": "alice", "dirty": true, "syncStatus": "AHEAD" }`
+
+### Get Projection State
+
+```bash
+curl -u alice:password http://localhost:8080/api/workspace/projection
+```
+
+**Response:**
+```json
+{
+  "username": "alice",
+  "lastProjectionCommit": "abc1234",
+  "lastProjectionBranch": "draft",
+  "lastProjectionTimestamp": "2026-03-15T10:00:00Z",
+  "lastIndexCommit": "abc1234",
+  "lastIndexTimestamp": "2026-03-15T10:00:00Z",
+  "persistedProjectionCommit": "abc1234",
+  "persistedProjectionBranch": "draft",
+  "persistedProjectionTimestamp": "2026-03-15T10:00:00Z",
+  "persistedIndexCommit": "abc1234",
+  "persistedIndexTimestamp": "2026-03-15T10:00:00Z",
+  "stale": false
+}
+```
+
+---
+
 ## Additional References
 
 | Document | Contents |

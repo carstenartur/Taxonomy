@@ -39,6 +39,7 @@ Generated PNG files are written to `docs/images/` and must be committed to the r
 | `01` – `14` | No | Basic UI — page layout, all 5 view modes, panels, modals |
 | `15` – `40` | Yes (mock mode) | Scored states, architecture views, search, DSL editor, proposals |
 | `41` – `44` | No | Versions Tab, Git Status Bar, Context Bar |
+| `45` – `51` | No | Workspace UI: User Badge, Variant Modal, Variants Browser, Compare Modal, Copy Back, Read-Only, Context Bar with Origin |
 
 LLM-dependent tests are skipped gracefully with `Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null)` when no key is present.
 

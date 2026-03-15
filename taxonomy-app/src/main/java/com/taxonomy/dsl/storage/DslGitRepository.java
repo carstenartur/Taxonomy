@@ -710,6 +710,69 @@ public class DslGitRepository {
     }
 
     /**
+     * Compute ahead/behind counts between two branches using merge-base.
+     *
+     * <p>Returns a two-element array: {@code [ahead, behind]} where:
+     * <ul>
+     *   <li>{@code ahead} = number of commits in {@code branch} not in {@code baseBranch}</li>
+     *   <li>{@code behind} = number of commits in {@code baseBranch} not in {@code branch}</li>
+     * </ul>
+     *
+     * <p>This uses JGit's {@code RevWalk.isMergedInto()} and commit walking
+     * relative to the merge-base to produce accurate counts, unlike the simple
+     * total-commit-count heuristic.
+     *
+     * @param branch     the branch to compare (e.g. user's branch)
+     * @param baseBranch the reference branch (e.g. shared "draft")
+     * @return {@code int[]{ahead, behind}}, or {@code int[]{0, 0}} if either branch is missing
+     * @throws IOException on JGit errors
+     */
+    public int[] getAheadBehindCounts(String branch, String baseBranch) throws IOException {
+        Ref branchRef = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + branch);
+        Ref baseRef = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + baseBranch);
+
+        if (branchRef == null || baseRef == null) {
+            return new int[]{0, 0};
+        }
+
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            RevCommit branchHead = walk.parseCommit(branchRef.getObjectId());
+            RevCommit baseHead = walk.parseCommit(baseRef.getObjectId());
+
+            // If same commit, no divergence
+            if (branchHead.equals(baseHead)) {
+                return new int[]{0, 0};
+            }
+
+            // Count commits reachable from branch but not from base (ahead)
+            int ahead = countCommitsNotIn(walk, branchHead, baseHead);
+
+            // Reset walk for the reverse count
+            walk.reset();
+
+            // Count commits reachable from base but not from branch (behind)
+            int behind = countCommitsNotIn(walk, baseHead, branchHead);
+
+            return new int[]{ahead, behind};
+        }
+    }
+
+    /**
+     * Count commits reachable from {@code tip} but not from {@code exclude}.
+     */
+    private int countCommitsNotIn(RevWalk walk, RevCommit tip, RevCommit exclude)
+            throws IOException {
+        walk.reset();
+        walk.markStart(tip);
+        walk.markUninteresting(exclude);
+        int count = 0;
+        for (RevCommit ignored : walk) {
+            count++;
+        }
+        return count;
+    }
+
+    /**
      * Get the {@link DslCommit} metadata for the HEAD of a branch.
      *
      * @param branch the branch name
