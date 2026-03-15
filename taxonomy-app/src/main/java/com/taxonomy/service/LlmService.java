@@ -659,6 +659,11 @@ public class LlmService {
             LlmProvider provider = getActiveProvider();
 
             if (provider == LlmProvider.LOCAL_ONNX) {
+                if (!localEmbeddingService.isAvailable()) {
+                    log.warn("⚠️ LOCAL_ONNX embedding model is not available; returning empty scores");
+                    recordFailure("LOCAL_ONNX embedding model is not available");
+                    return ScoreParseResult.empty(nodes);
+                }
                 log.info("LOCAL_ONNX — computing cosine-similarity scores for {} nodes", nodes.size());
                 Map<String, Integer> scores = normalizeToParent(
                         localEmbeddingService.scoreNodes(businessText, nodes), parentScore);
@@ -722,6 +727,11 @@ public class LlmService {
         LlmProvider provider = getActiveProvider();
 
         if (provider == LlmProvider.LOCAL_ONNX) {
+            if (!localEmbeddingService.isAvailable()) {
+                log.warn("⚠️ LOCAL_ONNX embedding model is not available; returning zero scores");
+                recordFailure("LOCAL_ONNX embedding model is not available");
+                return responseParser.zeroScores(nodes);
+            }
             log.info("LOCAL_ONNX — computing cosine-similarity scores for {} nodes", nodes.size());
             Map<String, Integer> scores = normalizeToParent(
                     localEmbeddingService.scoreNodes(businessText, nodes), parentScore);
@@ -779,6 +789,17 @@ public class LlmService {
 
         // ── Local embedding path ──────────────────────────────────────────────
         if (provider == LlmProvider.LOCAL_ONNX) {
+            if (!localEmbeddingService.isAvailable()) {
+                String errorMsg = "LOCAL_ONNX embedding model is not available. "
+                        + "Semantic scoring is disabled.";
+                detail.setError(errorMsg);
+                detail.setScores(responseParser.zeroScores(nodes));
+                detail.setPrompt("(local embedding – no prompt sent)");
+                detail.setRawResponse("");
+                detail.setDurationMs(0);
+                recordFailure(errorMsg);
+                return detail;
+            }
             long start = System.currentTimeMillis();
             Map<String, Integer> scores = normalizeToParent(
                     localEmbeddingService.scoreNodes(businessText, nodes), parentScore);

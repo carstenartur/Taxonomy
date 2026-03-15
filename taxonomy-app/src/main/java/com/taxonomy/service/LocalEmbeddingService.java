@@ -180,12 +180,42 @@ public class LocalEmbeddingService {
         if (!url.startsWith("djl://") && !url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("file:")) {
             resolvedUrl = "file://" + url;
         }
+
+        // DJL requires a serving.properties file to recognize a local model directory.
+        // Auto-generate one if the URL points to a local directory that lacks it.
+        ensureServingProperties(url);
+
         return Criteria.builder()
                 .optApplication(Application.NLP.TEXT_EMBEDDING)
                 .setTypes(String.class, float[].class)
                 .optModelUrls(resolvedUrl)
                 .optEngine("OnnxRuntime")
                 .build().loadModel();
+    }
+
+    /**
+     * If {@code url} points to a local directory that contains an ONNX model file but no
+     * {@code serving.properties}, this method generates a minimal one so that DJL can
+     * discover the model.
+     */
+    private void ensureServingProperties(String url) {
+        try {
+            String path = url.startsWith("file://") ? url.substring("file://".length()) : url;
+            java.nio.file.Path dir = java.nio.file.Path.of(path);
+            if (!java.nio.file.Files.isDirectory(dir)) return;
+            java.nio.file.Path servingProps = dir.resolve("serving.properties");
+            if (java.nio.file.Files.exists(servingProps)) return;
+            // Only generate if there is actually an ONNX model file present
+            boolean hasOnnx = java.nio.file.Files.list(dir)
+                    .anyMatch(p -> p.getFileName().toString().endsWith(".onnx"));
+            if (!hasOnnx) return;
+            String content = "engine=OnnxRuntime\noption.modelName=model\n"
+                    + "translatorFactory=ai.djl.huggingface.tokenizers.HuggingFaceTokenizer\n";
+            java.nio.file.Files.writeString(servingProps, content);
+            log.info("Auto-generated serving.properties in {}", dir);
+        } catch (Exception e) {
+            log.warn("Could not auto-generate serving.properties: {}", e.getMessage());
+        }
     }
 
     // ── Index status ──────────────────────────────────────────────────────────
