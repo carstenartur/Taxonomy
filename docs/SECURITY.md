@@ -299,9 +299,135 @@ The `ChangePasswordController` handles the flow and redirects back to the main p
 
 ---
 
+## Keycloak / OIDC Integration (Planned)
+
+For enterprise and government deployments, the application supports integration with **Keycloak** as an external identity provider via OpenID Connect (OIDC):
+
+- **Keycloak as Identity Broker** — federates with government SAML/OIDC identity providers
+- **JWT-based API authentication** — replaces HTTP Basic for REST clients
+- **Centralized user management** — no separate user database required
+- **SSO/SLO support** — Single Sign-On and Single Logout across applications
+
+The existing three-role model (USER, ARCHITECT, ADMIN) maps directly to Keycloak realm roles.
+
+See [Keycloak Setup](KEYCLOAK_SETUP.md) and [SSO Integration](SSO_INTEGRATION.md) for configuration details.
+
+---
+
+## Network Topology (Production)
+
+Recommended production deployment with defense-in-depth:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  DMZ                                                          │
+│  ┌────────────────┐                                           │
+│  │  Reverse Proxy  │  ← TLS termination, rate limiting        │
+│  │  (nginx/Caddy)  │  ← WAF rules (optional)                  │
+│  └───────┬────────┘                                           │
+│          │ :8080 (plaintext, internal only)                    │
+├──────────┼────────────────────────────────────────────────────┤
+│  Application Zone                                              │
+│  ┌───────▼────────┐     ┌──────────────┐                      │
+│  │  Taxonomy App   │────▶│  Keycloak     │  ← OIDC/SAML       │
+│  │  (Spring Boot)  │     │  (optional)   │                     │
+│  └───────┬────────┘     └──────┬───────┘                      │
+│          │                      │                              │
+├──────────┼──────────────────────┼─────────────────────────────┤
+│  Data Zone (no direct external access)                         │
+│  ┌───────▼────────┐     ┌──────▼───────┐                      │
+│  │  PostgreSQL     │     │  LDAP / AD    │  ← User directory   │
+│  │  (Data Store)   │     │  (optional)   │                     │
+│  └────────────────┘     └──────────────┘                      │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Network Rules
+
+| Source | Destination | Port | Protocol | Purpose |
+|---|---|---|---|---|
+| Internet | Reverse Proxy | 443 | HTTPS | User access |
+| Reverse Proxy | Taxonomy App | 8080 | HTTP | Proxied requests |
+| Taxonomy App | PostgreSQL | 5432 | TCP | Database |
+| Taxonomy App | Keycloak | 8180 | HTTP/HTTPS | OIDC token validation |
+| Taxonomy App | LLM API | 443 | HTTPS | AI analysis (optional) |
+| Keycloak | LDAP/AD | 389/636 | LDAP/LDAPS | User federation |
+
+---
+
+## Hardening Measures
+
+### Application Hardening
+
+| Measure | Status | Configuration |
+|---|---|---|
+| **HTTPS enforced** | ✅ Via reverse proxy | HSTS header sent by application |
+| **CSRF protection** | ✅ Default enabled | Thymeleaf auto-inserts tokens |
+| **Brute-force protection** | ✅ Default enabled | `TAXONOMY_LOGIN_RATE_LIMIT=true` |
+| **Password hashing** | ✅ BCrypt | Spring Security default |
+| **Security headers** | ✅ Always enabled | X-Content-Type-Options, X-Frame-Options, HSTS, Referrer-Policy |
+| **Input validation** | ✅ Size limits | `TAXONOMY_LIMITS_MAX_BUSINESS_TEXT=5000` |
+| **Audit logging** | ✅ Production profile | `TAXONOMY_AUDIT_LOGGING=true` |
+| **Swagger disabled** | ✅ Production profile | `TAXONOMY_SPRINGDOC_ENABLED=false` |
+| **Admin panel protection** | ✅ Dual-layer | Role-based + token-based |
+
+### JVM Hardening
+
+```bash
+# Recommended JAVA_OPTS for production
+JAVA_OPTS="-XX:+UseG1GC \
+  -XX:MaxRAMPercentage=75.0 \
+  -Djava.security.egd=file:/dev/urandom \
+  -Dfile.encoding=UTF-8"
+```
+
+### Container Hardening
+
+```dockerfile
+# Run as non-root user
+RUN addgroup -S taxonomy && adduser -S taxonomy -G taxonomy
+USER taxonomy
+
+# Read-only filesystem (data volume is writable)
+# Use: docker run --read-only --tmpfs /tmp -v taxonomy-data:/app/data
+```
+
+### Database Hardening
+
+- Use dedicated database user with minimum privileges (SELECT, INSERT, UPDATE, DELETE on application tables)
+- Enable TLS for database connections
+- Restrict network access to the database server
+- Enable database audit logging
+
+---
+
+## SBOM (Software Bill of Materials)
+
+A CycloneDX SBOM is generated automatically during the build:
+
+```bash
+mvn package
+# Output: target/taxonomy-sbom.json and target/taxonomy-sbom.xml
+```
+
+The SBOM lists all direct and transitive dependencies with:
+- Package name and version
+- License information
+- Cryptographic hashes
+
+Review the SBOM as part of the BSI IT-Grundschutz software supply chain requirements.
+
+---
+
 ## Related Documentation
 
 - [Configuration Reference](CONFIGURATION_REFERENCE.md) — full list of environment variables including security settings
 - [Deployment Guide](DEPLOYMENT_GUIDE.md) — Docker and Render.com deployment with security considerations
+- [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) — government deployment checklist
+- [Keycloak Setup](KEYCLOAK_SETUP.md) — Keycloak integration guide
+- [SSO Integration](SSO_INTEGRATION.md) — SAML/OIDC federation for government SSO
+- [Data Protection](DATA_PROTECTION.md) — GDPR/DSGVO documentation
+- [AI Transparency](AI_TRANSPARENCY.md) — AI model transparency and data flows
+- [Operations Guide](OPERATIONS_GUIDE.md) — monitoring, backup, recovery
 - [API Reference](API_REFERENCE.md) — endpoint authentication requirements
 - [Preferences](PREFERENCES.md) — runtime configuration with audit trail
