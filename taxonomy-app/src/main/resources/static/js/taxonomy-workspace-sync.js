@@ -132,8 +132,11 @@ window.TaxonomyWorkspaceSync = (function () {
                 escapeHtml(formatTimestamp(state.lastPublishTimestamp)) + '</td></tr>';
         }
         if (state.lastSyncedCommitId) {
+            var commitAbbrev = state.lastSyncedCommitId.length >= 7
+                ? state.lastSyncedCommitId.substring(0, 7)
+                : state.lastSyncedCommitId;
             html += '<tr><td class="text-muted small">Synced commit</td><td class="small"><code>' +
-                escapeHtml(state.lastSyncedCommitId.substring(0, 7)) + '</code></td></tr>';
+                escapeHtml(commitAbbrev) + '</code></td></tr>';
         }
         if (state.unpublishedCommitCount > 0) {
             html += '<tr><td class="text-muted small">Unpublished</td><td class="small">' +

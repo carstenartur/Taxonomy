@@ -2,7 +2,9 @@ package com.taxonomy.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.model.SyncState;
+import com.taxonomy.model.UserWorkspace;
 import com.taxonomy.repository.SyncStateRepository;
+import com.taxonomy.repository.UserWorkspaceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -32,14 +34,14 @@ public class SyncIntegrationService {
 
     private final SyncStateRepository syncStateRepository;
     private final DslGitRepository gitRepository;
-    private final WorkspaceManager workspaceManager;
+    private final UserWorkspaceRepository workspaceRepository;
 
     public SyncIntegrationService(SyncStateRepository syncStateRepository,
                                   DslGitRepository gitRepository,
-                                  WorkspaceManager workspaceManager) {
+                                  UserWorkspaceRepository workspaceRepository) {
         this.syncStateRepository = syncStateRepository;
         this.gitRepository = gitRepository;
-        this.workspaceManager = workspaceManager;
+        this.workspaceRepository = workspaceRepository;
     }
 
     /**
@@ -62,7 +64,11 @@ public class SyncIntegrationService {
         log.info("Creating sync state for user '{}'", username);
         SyncState state = new SyncState();
         state.setUsername(username);
-        state.setWorkspaceId(UUID.randomUUID().toString());
+        // Link to existing UserWorkspace if available; otherwise generate a new ID
+        String wsId = workspaceRepository.findByUsernameAndSharedFalse(username)
+                .map(UserWorkspace::getWorkspaceId)
+                .orElseGet(() -> UUID.randomUUID().toString());
+        state.setWorkspaceId(wsId);
         state.setSyncStatus("UP_TO_DATE");
         state.setUnpublishedCommitCount(0);
         state.setCreatedAt(Instant.now());
@@ -94,6 +100,12 @@ public class SyncIntegrationService {
                 username, SHARED_BRANCH, userBranch);
 
         String mergeCommit = gitRepository.merge(SHARED_BRANCH, userBranch);
+
+        if (mergeCommit == null) {
+            log.warn("User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)",
+                    username, SHARED_BRANCH, userBranch);
+            throw new IOException("Sync failed: merge returned null (branch missing or conflict)");
+        }
 
         // Update sync state
         try {
@@ -131,6 +143,12 @@ public class SyncIntegrationService {
                 username, userBranch, SHARED_BRANCH);
 
         String mergeCommit = gitRepository.merge(userBranch, SHARED_BRANCH);
+
+        if (mergeCommit == null) {
+            log.warn("User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)",
+                    username, userBranch, SHARED_BRANCH);
+            throw new IOException("Publish failed: merge returned null (branch missing or conflict)");
+        }
 
         // Update sync state
         try {

@@ -23,7 +23,6 @@ import static org.mockito.Mockito.*;
 class SyncIntegrationServiceTest {
 
     private DslGitRepository gitRepo;
-    private WorkspaceManager workspaceManager;
     private SyncStateRepository syncStateRepo;
     private SyncIntegrationService syncService;
 
@@ -43,9 +42,9 @@ class SyncIntegrationServiceTest {
     void setUp() {
         gitRepo = new DslGitRepository();
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
-        workspaceManager = new WorkspaceManager(wsRepo, 50);
+        when(wsRepo.findByUsernameAndSharedFalse(anyString())).thenReturn(Optional.empty());
         syncStateRepo = mock(SyncStateRepository.class);
-        syncService = new SyncIntegrationService(syncStateRepo, gitRepo, workspaceManager);
+        syncService = new SyncIntegrationService(syncStateRepo, gitRepo, wsRepo);
 
         // Default: no existing sync state, save returns the argument
         when(syncStateRepo.findByUsername(anyString())).thenReturn(Optional.empty());
@@ -101,11 +100,12 @@ class SyncIntegrationServiceTest {
         assertNotNull(mergeCommit);
         // Verify sync state was persisted with updated fields
         verify(syncStateRepo, atLeastOnce()).save(argThat(state -> {
-            if (state.getLastSyncedCommitId() != null) {
-                assertEquals("UP_TO_DATE", state.getSyncStatus());
-                assertNotNull(state.getLastSyncTimestamp());
-                return true;
+            // Only match the post-sync save (not the initial creation save)
+            if (state.getLastSyncedCommitId() == null) {
+                return false;
             }
+            assertEquals("UP_TO_DATE", state.getSyncStatus());
+            assertNotNull(state.getLastSyncTimestamp());
             return true;
         }));
     }
@@ -125,12 +125,13 @@ class SyncIntegrationServiceTest {
         assertNotNull(mergeCommit);
         // Verify sync state was persisted with publish fields
         verify(syncStateRepo, atLeastOnce()).save(argThat(state -> {
-            if (state.getLastPublishedCommitId() != null) {
-                assertEquals("UP_TO_DATE", state.getSyncStatus());
-                assertEquals(0, state.getUnpublishedCommitCount());
-                assertNotNull(state.getLastPublishTimestamp());
-                return true;
+            // Only match the post-publish save (not the initial creation save)
+            if (state.getLastPublishedCommitId() == null) {
+                return false;
             }
+            assertEquals("UP_TO_DATE", state.getSyncStatus());
+            assertEquals(0, state.getUnpublishedCommitCount());
+            assertNotNull(state.getLastPublishTimestamp());
             return true;
         }));
     }

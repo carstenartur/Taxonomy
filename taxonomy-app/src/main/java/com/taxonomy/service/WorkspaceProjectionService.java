@@ -1,7 +1,9 @@
 package com.taxonomy.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.model.UserWorkspace;
 import com.taxonomy.model.WorkspaceProjection;
+import com.taxonomy.repository.UserWorkspaceRepository;
 import com.taxonomy.repository.WorkspaceProjectionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,13 +35,16 @@ public class WorkspaceProjectionService {
     private final WorkspaceProjectionRepository projectionRepository;
     private final WorkspaceManager workspaceManager;
     private final DslGitRepository gitRepository;
+    private final UserWorkspaceRepository workspaceRepository;
 
     public WorkspaceProjectionService(WorkspaceProjectionRepository projectionRepository,
                                       WorkspaceManager workspaceManager,
-                                      DslGitRepository gitRepository) {
+                                      DslGitRepository gitRepository,
+                                      UserWorkspaceRepository workspaceRepository) {
         this.projectionRepository = projectionRepository;
         this.workspaceManager = workspaceManager;
         this.gitRepository = gitRepository;
+        this.workspaceRepository = workspaceRepository;
     }
 
     /**
@@ -61,7 +66,11 @@ public class WorkspaceProjectionService {
         log.info("Creating projection record for user '{}'", username);
         WorkspaceProjection projection = new WorkspaceProjection();
         projection.setUsername(username);
-        projection.setWorkspaceId(UUID.randomUUID().toString());
+        // Link to existing UserWorkspace if available; otherwise generate a new ID
+        String wsId = workspaceRepository.findByUsernameAndSharedFalse(username)
+                .map(UserWorkspace::getWorkspaceId)
+                .orElseGet(() -> UUID.randomUUID().toString());
+        projection.setWorkspaceId(wsId);
         projection.setStale(false);
         projection.setCreatedAt(Instant.now());
         try {
@@ -148,8 +157,9 @@ public class WorkspaceProjectionService {
         String projCommit = ws.getLastProjectionCommit();
 
         // Also check persistent record for a more recent commit
+        WorkspaceProjection projection = null;
         try {
-            WorkspaceProjection projection = getOrCreateProjection(username);
+            projection = getOrCreateProjection(username);
             String persistedCommit = projection.getProjectionCommitId();
             if (persistedCommit != null) {
                 projCommit = persistedCommit;
@@ -169,7 +179,14 @@ public class WorkspaceProjectionService {
             if (headCommit == null) {
                 return false;
             }
-            return !headCommit.equals(projCommit);
+            boolean stale = !headCommit.equals(projCommit);
+            // Persist the computed stale flag back to the entity
+            if (projection != null && projection.isStale() != stale) {
+                projection.setStale(stale);
+                projection.setUpdatedAt(Instant.now());
+                projectionRepository.save(projection);
+            }
+            return stale;
         } catch (IOException e) {
             log.warn("Could not resolve HEAD for branch '{}': {}", branch, e.getMessage());
             return false;

@@ -43,9 +43,10 @@ class WorkspaceProjectionServiceTest {
     void setUp() {
         gitRepo = new DslGitRepository();
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
+        when(wsRepo.findByUsernameAndSharedFalse(anyString())).thenReturn(Optional.empty());
         workspaceManager = new WorkspaceManager(wsRepo, 50);
         projectionRepo = mock(WorkspaceProjectionRepository.class);
-        projectionService = new WorkspaceProjectionService(projectionRepo, workspaceManager, gitRepo);
+        projectionService = new WorkspaceProjectionService(projectionRepo, workspaceManager, gitRepo, wsRepo);
     }
 
     // ── Projection creation ─────────────────────────────────────────
@@ -147,11 +148,16 @@ class WorkspaceProjectionServiceTest {
         existing.setUsername("alice");
         existing.setProjectionCommitId(first);
         when(projectionRepo.findByUsername("alice")).thenReturn(Optional.of(existing));
+        when(projectionRepo.save(any(WorkspaceProjection.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
         // Advance HEAD with a new commit
         gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "second");
 
         assertTrue(projectionService.isProjectionStale("alice", "draft"));
+        // Verify the stale flag was persisted
+        assertTrue(existing.isStale());
+        verify(projectionRepo).save(existing);
     }
 
     // ── Projection info ─────────────────────────────────────────────

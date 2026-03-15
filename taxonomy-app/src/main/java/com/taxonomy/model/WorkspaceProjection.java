@@ -19,8 +19,9 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "workspace_projection", indexes = {
-    @Index(name = "idx_projection_username", columnList = "username"),
     @Index(name = "idx_projection_workspace", columnList = "workspace_id")
+}, uniqueConstraints = {
+    @UniqueConstraint(name = "uq_projection_username", columnNames = "username")
 })
 public class WorkspaceProjection {
 
@@ -28,7 +29,7 @@ public class WorkspaceProjection {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String username;
 
     @Column(name = "workspace_id", nullable = false, unique = true)

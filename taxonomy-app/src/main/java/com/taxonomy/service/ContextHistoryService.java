@@ -72,9 +72,31 @@ public class ContextHistoryService {
             historyRepository.save(record);
             log.debug("User '{}': recorded navigation {} -> {} (reason: {})",
                     username, fromContextId, toContextId, reason);
+
+            // Enforce 50-entry cap: delete oldest entries beyond the limit
+            trimHistory(username);
         } catch (Exception e) {
             // Non-fatal: navigation history is informational
             log.warn("Could not record navigation for user '{}': {}",
+                    username, e.getMessage());
+        }
+    }
+
+    private static final int MAX_HISTORY_ENTRIES = 50;
+
+    private void trimHistory(String username) {
+        try {
+            List<ContextHistoryRecord> all =
+                    historyRepository.findByUsernameOrderByCreatedAtDesc(username);
+            if (all.size() > MAX_HISTORY_ENTRIES) {
+                List<ContextHistoryRecord> toDelete =
+                        all.subList(MAX_HISTORY_ENTRIES, all.size());
+                historyRepository.deleteAll(toDelete);
+                log.debug("User '{}': trimmed {} old history entries",
+                        username, toDelete.size());
+            }
+        } catch (Exception e) {
+            log.warn("Could not trim history for user '{}': {}",
                     username, e.getMessage());
         }
     }

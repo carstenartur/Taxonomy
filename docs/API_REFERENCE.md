@@ -562,7 +562,7 @@ curl -u alice:password -X POST "http://localhost:8080/api/workspace/compare?left
 curl -u alice:password -X POST "http://localhost:8080/api/workspace/sync-from-shared?userBranch=feature-x"
 ```
 
-**Response:** `{ "success": true, "message": "Synced from shared branch ...", "syncedFromCommit": "abc1234" }`
+**Response:** `{ "success": true, "branch": "feature-x", "mergeCommit": "abc1234...", "syncedAt": "2026-03-15T10:00:00Z" }`
 
 ### Publish to Shared Repository
 
@@ -570,7 +570,7 @@ curl -u alice:password -X POST "http://localhost:8080/api/workspace/sync-from-sh
 curl -u alice:password -X POST "http://localhost:8080/api/workspace/publish?userBranch=feature-x"
 ```
 
-**Response:** `{ "success": true, "message": "Published to shared branch ...", "publishedCommit": "def5678" }`
+**Response:** `{ "success": true, "branch": "feature-x", "mergeCommit": "def5678...", "publishedAt": "2026-03-15T10:05:00Z" }`
 
 ### Get Sync State
 
@@ -608,7 +608,7 @@ curl -u alice:password "http://localhost:8080/api/workspace/local-changes?branch
 curl -u alice:password http://localhost:8080/api/workspace/dirty
 ```
 
-**Response:** `{ "dirty": true, "branch": "feature-x" }`
+**Response:** `{ "username": "alice", "dirty": true, "syncStatus": "AHEAD" }`
 
 ### Get Projection State
 
@@ -619,11 +619,18 @@ curl -u alice:password http://localhost:8080/api/workspace/projection
 **Response:**
 ```json
 {
-  "projectionCommitId": "abc1234",
-  "projectionBranch": "draft",
-  "projectionStale": false,
-  "indexCommitId": "abc1234",
-  "indexStale": false
+  "username": "alice",
+  "lastProjectionCommit": "abc1234",
+  "lastProjectionBranch": "draft",
+  "lastProjectionTimestamp": "2026-03-15T10:00:00Z",
+  "lastIndexCommit": "abc1234",
+  "lastIndexTimestamp": "2026-03-15T10:00:00Z",
+  "persistedProjectionCommit": "abc1234",
+  "persistedProjectionBranch": "draft",
+  "persistedProjectionTimestamp": "2026-03-15T10:00:00Z",
+  "persistedIndexCommit": "abc1234",
+  "persistedIndexTimestamp": "2026-03-15T10:00:00Z",
+  "stale": false
 }
 ```
 
