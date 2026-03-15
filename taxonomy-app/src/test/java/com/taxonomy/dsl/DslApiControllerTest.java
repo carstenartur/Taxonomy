@@ -110,6 +110,36 @@ class DslApiControllerTest {
     }
 
     @Test
+    void formatDslReturnsFormattedText() throws Exception {
+        String unformatted = """
+                element CP-1023 type Capability {
+                  title: "Test";
+                }
+                """;
+
+        mockMvc.perform(post("/api/dsl/format")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(unformatted))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_PLAIN))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("CP-1023")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Capability")))
+                // Canonical format: 2-space indentation
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("  title:")))
+                // Canonical format: semicolons after values
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"Test\";")));
+    }
+
+    @Test
+    void formatEmptyDslReturnsText() throws Exception {
+        mockMvc.perform(post("/api/dsl/format")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(""))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_PLAIN));
+    }
+
+    @Test
     void listHypothesesReturnsArray() throws Exception {
         mockMvc.perform(get("/api/dsl/hypotheses"))
                 .andExpect(status().isOk())

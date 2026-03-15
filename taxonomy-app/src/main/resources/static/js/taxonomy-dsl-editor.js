@@ -7,22 +7,43 @@
  *  - Browsing commit history & computing diffs
  *  - Managing branches (list, create, fork)
  *  - Materialising DSL into the database (full & incremental)
+ *
+ * The editor uses CodeMirror 6 (loaded via taxonomy-dsl-codemirror.mjs).
+ * window.dslCmView is the EditorView instance once the module has initialised.
  */
 (function () {
     'use strict';
 
     // ── DOM references ──────────────────────────────────────────────
-    var editor, parseBtn, validateBtn, commitBtn, materializeBtn, loadCurrentBtn;
+    var parseBtn, validateBtn, formatBtn, commitBtn, materializeBtn, loadCurrentBtn;
     var branchSelect, newBranchBtn, authorInput, messageInput;
     var validationOutput, historyBody, diffOutput, statusArea;
     var materializeIncrBtn, mergeBtn;
+    var editorContainer;
 
     document.addEventListener('DOMContentLoaded', init);
 
+    // ── CodeMirror helpers ──────────────────────────────────────────
+    function getEditorContent() {
+        var view = window.dslCmView;
+        return view ? view.state.doc.toString() : '';
+    }
+
+    function setEditorContent(text) {
+        var view = window.dslCmView;
+        if (view) {
+            view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+        }
+    }
+
+    // Expose format callback so the CodeMirror Shift+Alt+F keymap can call it
+    window.dslFormatContent = function () { formatDsl(); };
+
     function init() {
-        editor            = document.getElementById('dslEditorTextarea');
+        editorContainer   = document.getElementById('dslEditorContainer');
         parseBtn          = document.getElementById('dslParseBtn');
         validateBtn       = document.getElementById('dslValidateBtn');
+        formatBtn         = document.getElementById('dslFormatBtn');
         commitBtn         = document.getElementById('dslCommitBtn');
         materializeBtn    = document.getElementById('dslMaterializeBtn');
         materializeIncrBtn = document.getElementById('dslMaterializeIncrBtn');
@@ -37,11 +58,12 @@
         diffOutput        = document.getElementById('dslDiffOutput');
         statusArea        = document.getElementById('dslStatusArea');
 
-        if (!editor) return; // tab not rendered yet
+        if (!editorContainer) return; // tab not rendered yet
 
         // Bind buttons
         if (parseBtn)          parseBtn.addEventListener('click', parseDsl);
         if (validateBtn)       validateBtn.addEventListener('click', validateDsl);
+        if (formatBtn)         formatBtn.addEventListener('click', formatDsl);
         if (commitBtn)         commitBtn.addEventListener('click', commitDsl);
         if (materializeBtn)    materializeBtn.addEventListener('click', materializeDsl);
         if (materializeIncrBtn) materializeIncrBtn.addEventListener('click', materializeIncremental);
@@ -50,9 +72,13 @@
         if (mergeBtn)          mergeBtn.addEventListener('click', mergeBranch);
         if (branchSelect)      branchSelect.addEventListener('change', onBranchChange);
 
-        // Initial load
+        // Initial load — defer content load until CodeMirror is ready
         loadBranches();
-        loadCurrent();
+        if (window.dslCmView) {
+            loadCurrent();
+        } else {
+            editorContainer.addEventListener('cm-ready', loadCurrent, { once: true });
+        }
     }
 
     // ── Status helper ───────────────────────────────────────────────
@@ -73,7 +99,7 @@
         fetch('/api/dsl/export')
             .then(function (r) { return r.text(); })
             .then(function (text) {
-                if (editor) editor.value = text;
+                setEditorContent(text);
                 showStatus('Loaded current architecture DSL (' + text.length + ' chars)', 'success');
             })
             .catch(function (e) { showStatus('Failed to load: ' + e.message, 'error'); });
@@ -81,12 +107,11 @@
 
     // ── Parse ───────────────────────────────────────────────────────
     function parseDsl() {
-        if (!editor) return;
         showStatus('Parsing…', 'info');
         fetch('/api/dsl/parse', {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
-            body: editor.value
+            body: getEditorContent()
         })
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -98,12 +123,11 @@
 
     // ── Validate ────────────────────────────────────────────────────
     function validateDsl() {
-        if (!editor) return;
         showStatus('Validating…', 'info');
         fetch('/api/dsl/validate', {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
-            body: editor.value
+            body: getEditorContent()
         })
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -111,6 +135,22 @@
                 showStatus(data.valid ? '✅ Valid DSL' : '❌ Validation errors', data.valid ? 'success' : 'error');
             })
             .catch(function (e) { showStatus('Validate error: ' + e.message, 'error'); });
+    }
+
+    // ── Format ──────────────────────────────────────────────────────
+    function formatDsl() {
+        showStatus('Formatting…', 'info');
+        fetch('/api/dsl/format', {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: getEditorContent()
+        })
+            .then(function (r) { return r.text(); })
+            .then(function (formatted) {
+                setEditorContent(formatted);
+                showStatus('✨ Formatted', 'success');
+            })
+            .catch(function (e) { showStatus('Format error: ' + e.message, 'error'); });
     }
 
     function renderValidation(data) {
@@ -140,7 +180,6 @@
 
     // ── Commit ──────────────────────────────────────────────────────
     function commitDsl() {
-        if (!editor) return;
         var branch = branchSelect ? branchSelect.value : 'draft';
         var author = authorInput ? authorInput.value.trim() : '';
         var message = messageInput ? messageInput.value.trim() : '';
@@ -152,7 +191,7 @@
         fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
-            body: editor.value
+            body: getEditorContent()
         })
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -170,7 +209,6 @@
 
     // ── Materialize (full) ──────────────────────────────────────────
     function materializeDsl() {
-        if (!editor) return;
         var branch = branchSelect ? branchSelect.value : '';
         showStatus('Materializing…', 'info');
         var url = '/api/dsl/materialize';
@@ -178,7 +216,7 @@
         fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
-            body: editor.value
+            body: getEditorContent()
         })
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -354,8 +392,8 @@
                 return r.json();
             })
             .then(function (data) {
-                if (data.dslText && editor) {
-                    editor.value = data.dslText;
+                if (data.dslText) {
+                    setEditorContent(data.dslText);
                     showStatus('Loaded commit ' + commitId.substring(0, 8), 'success');
                 } else {
                     showStatus('Commit ' + commitId.substring(0, 8) + ' has no DSL content', 'error');
