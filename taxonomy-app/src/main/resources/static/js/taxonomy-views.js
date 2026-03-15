@@ -91,6 +91,7 @@
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
      */
     function renderSunburst(container, data, scores) {
+        container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
             container.innerHTML = '<div class="alert alert-warning mt-2">D3.js is required for this view. Please check your internet connection.</div>';
             return;
@@ -246,6 +247,7 @@
         });
         obs.observe(container);
         container._taxObserver = obs;
+        container.setAttribute('data-view-rendered', 'sunburst');
     }
 
     // ── Top-down Tree Diagram ──────────────────────────────────────────────────
@@ -257,6 +259,7 @@
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
      */
     function renderTreeDiagram(container, data, scores) {
+        container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
             container.innerHTML = '<div class="alert alert-warning mt-2">D3.js is required for this view. Please check your internet connection.</div>';
             return;
@@ -440,6 +443,7 @@
         });
         obs.observe(container);
         container._taxObserver = obs;
+        container.setAttribute('data-view-rendered', 'tree');
     }
 
     // ── Decision Map ──────────────────────────────────────────────────────────
@@ -453,6 +457,7 @@
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
      */
     function renderDecisionMap(container, data, scores) {
+        container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
             container.innerHTML = '<div class="alert alert-warning mt-2">D3.js is required for this view. Please check your internet connection.</div>';
             return;
@@ -546,6 +551,7 @@
             noDataMsg.textContent = 'No scored nodes yet. Run an analysis to see the Decision Map.';
             container.appendChild(noDataMsg);
             renderDecisionTable(container, allScored, nameMap, pathMap, levelMap, isLeafSet, rankMap);
+            container.setAttribute('data-view-rendered', 'decision');
             return;
         }
 
@@ -761,6 +767,7 @@
 
         // ── Results table ────────────────────────────────────────────────────
         renderDecisionTable(container, allScored, nameMap, pathMap, levelMap, isLeafSet, rankMap);
+        container.setAttribute('data-view-rendered', 'decision');
     }
 
     /**
@@ -878,6 +885,7 @@
      * @param {Object|null} scores    - Map of node code → match percentage, or null.
      */
     function renderTreeCanvas(container, data, scores) {
+        container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
             container.innerHTML = '<div class="alert alert-warning mt-2">D3.js is required for this view. Please check your internet connection.</div>';
             return;
@@ -1124,6 +1132,7 @@
         });
         obs.observe(container);
         container._taxObserver = obs;
+        container.setAttribute('data-view-rendered', 'tree-canvas');
     }
 
     // ── SVG-on-Demand Export (Phase 2) ─────────────────────────────────────────

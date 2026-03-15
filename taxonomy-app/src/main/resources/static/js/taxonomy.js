@@ -758,14 +758,17 @@
     // ── Master render dispatcher ──────────────────────────────────────────────
     function renderView(data, scores) {
         if (!data || data.length === 0) { return; }
+        document.getElementById('taxonomyTree').removeAttribute('data-view-rendered');
         switch (currentView) {
             case 'list':
                 renderTree(data, scores);
                 if (scores) { expandMatched(scores); }
+                document.getElementById('taxonomyTree').setAttribute('data-view-rendered', 'list');
                 break;
             case 'tabs':
                 renderTabsView(data, scores);
                 if (scores) { expandMatched(scores); }
+                document.getElementById('taxonomyTree').setAttribute('data-view-rendered', 'tabs');
                 break;
             case 'sunburst':
                 if (window.TaxonomyViews) {
