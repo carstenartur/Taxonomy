@@ -43,6 +43,8 @@ The system scores every taxonomy node (0–100), highlights the most relevant el
     - [Architecture Recommendation](#11e-architecture-recommendation)
     - [Architecture Pattern Detection](#11f-architecture-pattern-detection)
     - [Architecture DSL](#11g-architecture-dsl)
+    - [Versions Tab](#11h-versions-tab)
+    - [Context Navigation](#11i-context-navigation)
 12. [Administration](#12-administration)
 13. [Relation Types Reference](#13-relation-types-reference)
 14. [Tips and Best Practices](#14-tips-and-best-practices)
@@ -193,10 +195,13 @@ Tips for good requirements:
 ### Standard Analysis
 
 1. Type your requirement in the textarea.
-2. Make sure the **Interactive Mode** checkbox is **unchecked** for a standard (full-tree) analysis.
-3. Click the **Analyze with AI** button.
-4. A progress indicator appears in the Status Area. The taxonomy tree in the left panel will start showing colour-coded score bars as results arrive.
-5. When analysis is complete, the Status Area shows a summary message and the export buttons become available.
+2. Optionally select an **AI Provider** from the dropdown to override the default provider for this request (e.g. switch between Google Gemini, OpenAI, or LOCAL_ONNX).
+3. Make sure the **Interactive Mode** checkbox is **unchecked** for a standard (full-tree) analysis.
+4. Click the **Analyze with AI** button.
+5. A progress indicator appears in the Status Area. The taxonomy tree in the left panel will start showing colour-coded score bars as results arrive.
+6. When analysis is complete, the Status Area shows a summary message and the export buttons become available.
+
+> 💡 The provider dropdown is populated from `GET /api/ai-status` and shows all providers that have a configured API key, plus LOCAL_ONNX which is always available.
 
 ![Scored taxonomy tree](images/15-scored-taxonomy-tree.png)
 
@@ -1071,15 +1076,50 @@ These guarantees mean that **the same architecture always serializes to the same
 
 ### DSL Editor Panel
 
-The DSL Editor tab in the application provides:
+The DSL Editor uses **CodeMirror 6** as a full-featured code editor with TaxDSL-specific extensions. The toolbar provides:
 
 1. **Load Current** — Export the current architecture state as DSL text
 2. **Edit** — Modify the DSL text directly in the editor
 3. **Validate** — Check the DSL for errors and warnings
-4. **Commit** — Save changes to the Git-backed repository with a commit message
-5. **Branch management** — Create branches, cherry-pick, and merge
+4. **Format** — Reformat the DSL text into canonical form (also available via `Shift+Alt+F`)
+5. **Commit** — Save changes to the Git-backed repository with a commit message
+6. **Branch management** — Create branches, cherry-pick, and merge
 
 ![DSL Editor panel](images/34-dsl-editor-panel.png)
+
+#### Syntax Highlighting
+
+The editor provides colour-coded syntax highlighting for TaxDSL:
+
+| Token category | Examples | Colour |
+|---|---|---|
+| Block keywords | `element`, `relation`, `mapping`, `view`, `evidence`, `requirement`, `meta` | Bold keyword colour |
+| Domain types | `Capability`, `Process`, `CoreService`, `Application`, etc. | Type colour |
+| Relation types | `REALIZES`, `SUPPORTS`, `CONSUMES`, `USES`, etc. | Relation colour |
+| Taxonomy IDs | `CP-1023`, `BR-1327` | ID colour |
+| Status values | `accepted`, `proposed`, `rejected` | Status colour |
+| Comments | `// single-line comment` | Comment colour (grey) |
+| Strings | `"quoted text"` | String colour |
+
+#### Autocompletion
+
+Context-aware autocompletion triggers automatically or via `Ctrl+Space`:
+
+- **Block keywords** — `element`, `relation`, `mapping`, `view`, `evidence`, `requirement`, `meta`, `constraint`, `decision`, `pattern`
+- **Domain types** — `Capability`, `Process`, `CoreService`, `COIService`, `CommunicationsService`, `UserApplication`, `InformationProduct`, `BusinessRole`
+- **Relation types** — All 10 supported relation types (REALIZES, SUPPORTS, etc.)
+- **Status values** — `accepted`, `proposed`, `rejected`, `deprecated`
+
+#### Live Validation
+
+Validation runs automatically as you type (debounced). Errors and warnings appear as:
+
+- **Gutter icons** — Red/yellow markers in the line number gutter
+- **Inline diagnostics** — Underlined text with hover tooltips explaining the issue
+
+#### Dark Mode
+
+The editor automatically switches between light and dark themes based on the browser's colour scheme preference. The dark theme uses the **One Dark** colour palette from CodeMirror 6.
 
 After accepting proposals, the exported DSL includes `relation` blocks alongside `element` blocks, showing the full architecture data model:
 
@@ -1133,6 +1173,88 @@ See the [API Reference](API_REFERENCE.md#21-architecture-dsl) for full endpoint 
 
 ---
 
+## 11h. Versions Tab
+
+The **🕓 Versions** tab sits next to the DSL Editor tab and provides a visual timeline of all commits on the current branch. It is designed for quickly reviewing, undoing, or restoring past architecture versions.
+
+### History Timeline
+
+The Versions tab displays a chronological list of commits with:
+
+- **Commit ID** (abbreviated SHA)
+- **Author** and **timestamp**
+- **Commit message**
+- **Action buttons** for each entry
+
+Scroll through the timeline to browse the full history of architecture changes on the selected branch.
+
+### Undo and Restore
+
+Each commit in the timeline provides action buttons:
+
+| Button | Action | Description |
+|---|---|---|
+| **Undo** | `POST /api/dsl/undo` | Removes the last commit from the branch by resetting the branch HEAD to its parent. Cannot undo the initial commit. |
+| **Revert** | `POST /api/dsl/revert` | Creates a **new** commit that reverses the changes of a specific commit, preserving history. Uses three-way merge. |
+| **Restore** | `POST /api/dsl/restore` | Creates a new commit with the DSL content from an older commit. This is a forward-moving "restore to version" operation. |
+
+> 💡 **Undo** rewrites history (removes the commit), while **Revert** and **Restore** are non-destructive — they add new commits that reverse or replay earlier content.
+
+---
+
+## 11i. Context Navigation
+
+**Context Navigation** lets you browse and compare **versioned snapshots** of your architecture without leaving the main interface. Every branch and commit can be opened as a separate "context" — similar to tabs in a file manager — with full read-only browsing, comparison, and selective transfer capabilities.
+
+### Context Bar
+
+When a non-default context is active, a **Context Bar** appears at the top of the page showing:
+
+| Element | Description |
+|---|---|
+| **Mode badge** | Shows the current mode: **EDITABLE** (normal working context), **READ_ONLY** (viewing a snapshot), or **TEMPORARY** (comparison/preview) |
+| **Branch and commit** | Identifies the current context by branch name and commit SHA |
+| **Back button** | Navigate to the previous context in history (like the browser back button) |
+| **Return to Origin** | Jump directly back to the context from which the current context was opened |
+| **Create Variant** | Create a new branch from the current context for experimental changes |
+| **Compare** | Open the Compare View to diff the current context against another branch |
+
+### Versioned Search
+
+The **Versioned Search** extends the commit history search with version-aware metadata. Access it via `GET /api/dsl/history/search-versioned`. Each search result is enriched with:
+
+- **Branch badges** — Shows which branch the commit belongs to
+- **Recency tags** — Indicates whether the result is the latest on the current branch or the latest overall
+- **Lineage indicator** — Whether the commit is on the current branch's lineage
+- **Action buttons** — Context-sensitive actions for each result:
+  - **Open Read-Only** — View the architecture at that point in time
+  - **Switch** — Change the working context to that commit
+  - **Create Variant** — Fork a new branch from that commit
+  - **Compare** — Diff that commit against the current context
+
+### Compare View
+
+The Compare View shows differences between two architecture contexts at three levels:
+
+1. **Summary** — Counts of elements and relations added, changed, and removed
+2. **Semantic Changes** — Individual changes categorised as ADD, REMOVE, or MODIFY for elements and relations, with before/after values
+3. **Raw DSL Diff** — A unified text diff of the serialized DSL for a line-by-line comparison
+
+### Selective Transfer (Cherry-Pick)
+
+When viewing a comparison, you can selectively transfer individual elements or relations from one context to another:
+
+1. Select the items to transfer using checkboxes
+2. Click **Preview Transfer** to see what will change, including any conflicts
+3. Review conflicts — the preview shows the existing value in the target and the incoming value from the source
+4. Click **Apply Transfer** to create a new commit in the target context with the selected changes
+
+Transfer supports three modes: **Copy** (overwrite conflicts), **Cherry-Pick** (apply the commit), and **Merge Selected** (merge only the selected items).
+
+> 📖 For full API details on context navigation endpoints, see the [API Reference](API_REFERENCE.md#context-navigation).
+
+---
+
 ## 12. Administration
 
 Administration features are hidden behind a password-protected admin mode. A standard user does not need to access these features.
@@ -1140,14 +1262,15 @@ Administration features are hidden behind a password-protected admin mode. A sta
 > 📖 For a comprehensive guide to all AI providers, per-request provider override, mock mode, diagnostics API, and rate limiting, see **[AI Providers](AI_PROVIDERS.md)**.
 > For runtime preference management (LLM settings, DSL config, size limits), see **[Preferences](PREFERENCES.md)**.
 
-### AI Status Indicator (🟢 / 🔴 in Navbar)
+### AI Status Indicator (🟢 / 🟡 / 🔴 in Navbar)
 
-The badge in the navigation bar shows whether an LLM provider is connected:
+The badge in the navigation bar shows the current AI availability level:
 
-| Badge | State | Meaning |
+| Badge | Level | Meaning |
 |---|---|---|
-| 🟢 **AI: [Provider Name]** | Available (green) | AI analysis and justification features are active. The badge shows the active provider (e.g. "Google Gemini"). |
-| 🔴 **AI: Unavailable** | Unavailable (red) | No LLM API key is configured. The **Analyze with AI** button is disabled. An inline warning below the button explains which environment variables to set. |
+| 🟢 **AI: [Provider Name]** | FULL (green) | A cloud LLM provider with an API key is active. The badge shows the provider name (e.g. "Google Gemini"). Full analysis and justification features are available. |
+| 🟡 **AI: LOCAL_ONNX** | LIMITED (yellow) | Only the local ONNX embedding model is available. Semantic search and similarity work, but full LLM analysis may produce lower-quality results. |
+| 🔴 **AI: Unavailable** | UNAVAILABLE (red) | No AI capabilities at all. The **Analyze with AI** button is disabled. An inline warning below the button explains which environment variables to set. |
 | ⚠️ **AI: Unknown** | Error (yellow) | The status check failed (network error or server starting up). The badge refreshes automatically every 30 seconds. |
 
 If you see a red badge, either:
@@ -1193,6 +1316,33 @@ The **Prompt Templates Editor** (admin only, collapsible) allows you to customis
 4. Click **Save** to save your changes, or **Reset** to restore the built-in default.
 
 ![Prompt Template Editor](images/25-prompt-template-editor.png)
+
+### Changing Your Password
+
+Authenticated users can change their password at any time by navigating to `/change-password`:
+
+1. Enter your **current password**.
+2. Enter a **new password** (minimum 8 characters).
+3. Enter the new password again to **confirm**.
+4. Click **Change Password**.
+
+If the application is configured with `TAXONOMY_REQUIRE_PASSWORD_CHANGE=true`, users with the default password are automatically redirected to this page on first login.
+
+### User Management (ADMIN only)
+
+Administrators can manage users via the REST API at `/api/admin/users`:
+
+| Action | Endpoint | Description |
+|---|---|---|
+| List users | `GET /api/admin/users` | Returns all users (without password hashes) |
+| Create user | `POST /api/admin/users` | Create a new user with username, password, roles |
+| Update user | `PUT /api/admin/users/{id}` | Update display name, email, roles, enabled status |
+| Change password | `PUT /api/admin/users/{id}/password` | Set a new password for a user |
+| Disable user | `DELETE /api/admin/users/{id}` | Soft-delete (disable) a user |
+
+> ⚠️ The last remaining admin user cannot be disabled, and the ADMIN role cannot be removed from the last admin. Passwords must be at least 8 characters.
+
+See [Security](SECURITY.md#managing-users) for detailed safety rules and [API Reference](API_REFERENCE.md#user-management-admin-only) for request/response formats.
 
 ---
 
@@ -1263,6 +1413,8 @@ The system uses 10 relation types, each corresponding to a specific relationship
 | **COI** | Community of Interest — a group that shares information under a common governance framework |
 | **Compatibility matrix** | A rule set defining which relation types are valid between taxonomy root pairs |
 | **Confidence score** | A 0–100 % value indicating how strongly the AI believes a proposed relation is correct |
+| **Context** | A versioned snapshot of the architecture identified by a branch and optional commit, opened for browsing or editing |
+| **Context Navigation** | Feature for browsing versioned architecture snapshots with back/forward history, compare, and selective transfer |
 | **Coverage gap** | A node that has requirement coverage but lacks expected architectural neighbours |
 | **Enriched failure impact** | Failure impact analysis that includes requirement coverage data and risk scoring |
 | **Graph Explorer** | The right-panel tool for running upstream, downstream, and failure-impact queries on the relation graph |
@@ -1279,6 +1431,8 @@ The system uses 10 relation types, each corresponding to a specific relationship
 | **Proposal** | An AI-generated candidate relation awaiting human review in the Relation Proposals panel |
 | **Relation** | A confirmed, directed link between two taxonomy nodes stored in the knowledge base |
 | **Risk score** | An aggregated metric combining requirement count and relevance for failure-impact analysis |
+| **Selective transfer** | Cherry-picking individual elements or relations from one architecture version to another |
+| **Semantic change** | A structural change (ADD, REMOVE, MODIFY) to an element or relation between two architecture versions |
 | **Stale results** | Analysis scores that no longer correspond to the current requirement text (shown with a yellow warning) |
 | **Taxonomy node** | A single element in the C3 Taxonomy Catalogue (capability, service, role, information product, etc.) |
 | **TOGAF** | The Open Group Architecture Framework — a widely used enterprise-architecture methodology |

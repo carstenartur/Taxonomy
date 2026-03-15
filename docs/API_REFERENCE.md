@@ -21,7 +21,9 @@ Interactive docs: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) (w
 - [Reports](#reports)
 - [Gap Analysis & Recommendations](#gap-analysis--recommendations)
 - [Architecture DSL](#architecture-dsl)
+- [Context Navigation](#context-navigation)
 - [Administration](#administration)
+- [User Management (Admin-only)](#user-management-admin-only)
 - [Error Responses](#error-responses)
 
 ---
@@ -73,7 +75,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/analyze \
 |---|---|---|---|
 | `businessText` | string | ✅ | Free-text requirement to analyze |
 | `includeArchitectureView` | boolean | — | Generate architecture view (default: false) |
-| `maxArchitectureNodes` | integer | — | Max nodes in architecture view |
+| `maxArchitectureNodes` | integer | — | Max nodes in architecture view (default: 20) |
+| `provider` | string | — | LLM provider override for this request (e.g. `GEMINI`, `OPENAI`, `DEEPSEEK`, `QWEN`, `LLAMA`, `MISTRAL`, `LOCAL_ONNX`). If omitted, uses the globally configured provider. |
 
 ### Streaming analysis (Server-Sent Events)
 
@@ -384,6 +387,246 @@ curl -u admin:admin -X POST "http://localhost:8080/api/dsl/branches?name=review&
 curl -u admin:admin -X POST "http://localhost:8080/api/dsl/merge?fromBranch=review&intoBranch=accepted"
 ```
 
+### Format DSL text
+
+```
+POST /api/dsl/format
+```
+
+Parses the input DSL, maps it through the canonical model, and re-serializes it into deterministic, Git-diff-friendly output.
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/dsl/format \
+  -H "Content-Type: text/plain" \
+  -d 'element CP-1023 type Capability { title: "CIS"; }'
+```
+
+**Response (200):** Formatted DSL text (Content-Type: text/plain).
+
+### Revert a commit
+
+```
+POST /api/dsl/revert?commitId={sha}&branch=draft
+```
+
+Creates a new commit that reverses the changes of the specified commit using three-way merge.
+
+```bash
+curl -u admin:admin -X POST "http://localhost:8080/api/dsl/revert?commitId=abc123&branch=draft"
+```
+
+**Response (200):**
+
+```json
+{ "commitId": "def456", "branch": "draft", "revertedCommit": "abc123" }
+```
+
+### Undo the last commit
+
+```
+POST /api/dsl/undo?branch=draft
+```
+
+Resets the branch to its parent commit, removing the last commit from history. Cannot undo the initial commit.
+
+```bash
+curl -u admin:admin -X POST "http://localhost:8080/api/dsl/undo?branch=draft"
+```
+
+**Response (200):**
+
+```json
+{ "commitId": "parent-sha", "branch": "draft" }
+```
+
+### Restore a version
+
+```
+POST /api/dsl/restore?commitId={sha}&branch=draft
+```
+
+Creates a new commit with the DSL content from an older commit. This is a forward-moving "restore to version" operation.
+
+```bash
+curl -u admin:admin -X POST "http://localhost:8080/api/dsl/restore?commitId=abc123&branch=draft"
+```
+
+**Response (200):**
+
+```json
+{ "commitId": "new-sha", "branch": "draft", "restoredFrom": "abc123" }
+```
+
+### Versioned search
+
+```
+GET /api/dsl/history/search-versioned?query={text}&currentBranch=draft&maxResults=50
+```
+
+Full-text search across commit history, enriched with version-context metadata.
+
+```bash
+curl -u admin:admin "http://localhost:8080/api/dsl/history/search-versioned?query=communication&currentBranch=draft"
+```
+
+**Response (200):**
+
+```json
+[
+  {
+    "commitId": "abc123",
+    "branch": "draft",
+    "timestamp": "2026-01-15T10:30:00Z",
+    "matchedElementId": "CP-1023",
+    "matchedText": "Added communication capability",
+    "relevanceScore": 0.0,
+    "onCurrentLineage": true,
+    "latestOnCurrentBranch": true,
+    "latestOverall": true,
+    "contextOpenActions": ["OPEN_READ_ONLY", "CREATE_VARIANT", "COMPARE"]
+  }
+]
+```
+
+---
+
+## Context Navigation
+
+Context Navigation provides version-aware browsing of architecture snapshots. GET endpoints are accessible to any authenticated user; POST endpoints require ARCHITECT or ADMIN role.
+
+### Get current context
+
+```bash
+curl -u admin:admin http://localhost:8080/api/context/current
+```
+
+**Response (200):**
+
+```json
+{
+  "contextId": "ctx-001",
+  "branch": "draft",
+  "commitId": "abc123",
+  "timestamp": "2026-01-15T10:30:00Z",
+  "mode": "EDITABLE",
+  "originContextId": null,
+  "originBranch": null,
+  "originCommitId": null,
+  "openedFromSearch": null,
+  "matchedElementId": null,
+  "dirty": false
+}
+```
+
+### Open a context
+
+```bash
+curl -u admin:admin -X POST "http://localhost:8080/api/context/open?branch=review&readOnly=true"
+```
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `branch` | string | — | Branch to open (default: `draft`) |
+| `commitId` | string | — | Specific commit SHA (defaults to HEAD) |
+| `readOnly` | boolean | — | If `true`, write operations are blocked (default: `true`) |
+| `searchQuery` | string | — | Original search query (for breadcrumb display) |
+| `elementId` | string | — | Element that triggered the navigation |
+
+### Navigate back
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/context/back
+```
+
+Returns to the previous context in navigation history (like the browser back button).
+
+### Return to origin
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/context/return-to-origin
+```
+
+Jumps directly back to the context from which the current context was originally opened.
+
+### Get navigation history
+
+```bash
+curl -u admin:admin http://localhost:8080/api/context/history
+```
+
+**Response (200):**
+
+```json
+[
+  {
+    "fromContextId": "ctx-001",
+    "toContextId": "ctx-002",
+    "reason": "SEARCH_OPEN",
+    "createdAt": "2026-01-15T10:31:00Z"
+  }
+]
+```
+
+Navigation reasons: `SEARCH_OPEN`, `COMPARE`, `VARIANT_CREATED`, `RETURN`, `MANUAL_SWITCH`.
+
+### Create a variant
+
+```bash
+curl -u admin:admin -X POST "http://localhost:8080/api/context/variant?name=experiment-1"
+```
+
+Creates a new Git branch from the current context and switches to it.
+
+### Compare contexts
+
+```bash
+curl -u admin:admin "http://localhost:8080/api/context/compare?leftBranch=draft&rightBranch=review"
+```
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `leftBranch` | string | ✅ | Left side branch |
+| `leftCommit` | string | — | Specific commit SHA (defaults to HEAD) |
+| `rightBranch` | string | ✅ | Right side branch |
+| `rightCommit` | string | — | Specific commit SHA (defaults to HEAD) |
+
+**Response (200):**
+
+```json
+{
+  "left": { "contextId": "...", "branch": "draft", ... },
+  "right": { "contextId": "...", "branch": "review", ... },
+  "summary": {
+    "elementsAdded": 2, "elementsChanged": 1, "elementsRemoved": 0,
+    "relationsAdded": 3, "relationsChanged": 0, "relationsRemoved": 1
+  },
+  "changes": [
+    { "changeType": "ADD", "category": "ELEMENT", "id": "CP-1050", "description": "Added element", "beforeValue": null, "afterValue": "..." }
+  ],
+  "rawDslDiff": "--- left\n+++ right\n@@ ... @@\n..."
+}
+```
+
+### Preview selective transfer
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/context/copy-back/preview \
+  -H "Content-Type: application/json" \
+  -d '{"sourceContextId": "ctx-002", "targetContextId": "ctx-001", "selectedElementIds": ["CP-1050"], "selectedRelationIds": [], "mode": "COPY"}'
+```
+
+**Response (200):** Preview including conflicts, affected views, and the resulting changes.
+
+### Apply selective transfer
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/context/copy-back/apply \
+  -H "Content-Type: application/json" \
+  -d '{"sourceContextId": "ctx-002", "targetContextId": "ctx-001", "selectedElementIds": ["CP-1050"], "selectedRelationIds": [], "mode": "COPY"}'
+```
+
+Transfer modes: `COPY` (overwrite conflicts), `CHERRY_PICK` (apply commit), `MERGE_SELECTED` (merge only selected items).
+
 ---
 
 ## Administration
@@ -392,6 +635,29 @@ curl -u admin:admin -X POST "http://localhost:8080/api/dsl/merge?fromBranch=revi
 
 ```bash
 curl -u admin:admin "http://localhost:8080/api/ai-status"
+```
+
+**Response (200):**
+
+```json
+{
+  "level": "FULL",
+  "available": true,
+  "limited": false,
+  "provider": "Google Gemini",
+  "availableProviders": ["Google Gemini", "LOCAL_ONNX"]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `level` | string | AI availability level: `FULL`, `LIMITED`, or `UNAVAILABLE` |
+| `available` | boolean | `true` for FULL and LIMITED, `false` for UNAVAILABLE (backward-compatible) |
+| `limited` | boolean | `true` only when level is LIMITED (local ONNX only) |
+| `provider` | string | Active provider name (null when UNAVAILABLE) |
+| `availableProviders` | array | List of all providers with configured API keys (always includes LOCAL_ONNX) |
+
+```bash
 curl -u admin:admin "http://localhost:8080/api/status/startup"
 curl -u admin:admin "http://localhost:8080/api/embedding/status"
 ```
