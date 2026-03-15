@@ -76,6 +76,9 @@ window.TaxonomyMergeResolution = (function () {
                     return;
                 }
                 populateConflictModal(data);
+                // Ensure title is set for merge context
+                var titleEl = document.getElementById('mergeConflictModalLabel');
+                if (titleEl) titleEl.textContent = '\u26A0\uFE0F Merge Conflict \u2014 Manual Resolution Required';
                 showModal('mergeConflictModal');
             })
             .catch(function (err) {
@@ -106,6 +109,9 @@ window.TaxonomyMergeResolution = (function () {
                     return;
                 }
                 populateConflictModal(data);
+                // Update modal title for cherry-pick context
+                var titleEl = document.getElementById('mergeConflictModalLabel');
+                if (titleEl) titleEl.textContent = '\u26A0\uFE0F Cherry-Pick Conflict \u2014 Manual Resolution Required';
                 showModal('mergeConflictModal');
             })
             .catch(function (err) {
@@ -122,8 +128,9 @@ window.TaxonomyMergeResolution = (function () {
         var theirsContent = document.getElementById('conflictTheirsContent');
         var resolved = document.getElementById('conflictResolvedContent');
 
-        if (oursLabel) oursLabel.textContent = 'Ours (' + escapeHtml(data.oursLabel || 'target') + ')';
-        if (theirsLabel) theirsLabel.textContent = 'Theirs (' + escapeHtml(data.theirsLabel || 'source') + ')';
+        // textContent already escapes HTML, so use raw labels (no escapeHtml)
+        if (oursLabel) oursLabel.textContent = 'Ours (' + (data.oursLabel || 'target') + ')';
+        if (theirsLabel) theirsLabel.textContent = 'Theirs (' + (data.theirsLabel || 'source') + ')';
         if (oursContent) oursContent.textContent = data.oursContent || '';
         if (theirsContent) theirsContent.textContent = data.theirsContent || '';
         if (resolved) resolved.value = data.oursContent || '';

@@ -171,6 +171,13 @@ public class ConflictDetectionService {
                 return null; // No conflict
             }
 
+            // Non-conflict failures (branch not found, errors) should not
+            // be presented as conflicts — return null so the controller
+            // responds with conflict:false and the UI shows a warning toast.
+            if (preview.fromCommit() == null || preview.intoCommit() == null) {
+                return null;
+            }
+
             String oursContent = gitRepository.getDslAtHead(intoBranch);
             String theirsContent = gitRepository.getDslAtHead(fromBranch);
 
@@ -200,6 +207,12 @@ public class ConflictDetectionService {
             CherryPickPreview preview = previewCherryPick(commitId, targetBranch);
             if (preview.canCherryPick()) {
                 return null; // No conflict
+            }
+
+            // Non-conflict failures (missing target branch, invalid commit)
+            // should not be presented as conflicts.
+            if (preview.targetCommit() == null) {
+                return null;
             }
 
             String oursContent = gitRepository.getDslAtHead(targetBranch);

@@ -666,9 +666,9 @@ public class DslApiController {
 
     @PostMapping("/merge/resolve")
     @Operation(summary = "Merge with manually resolved content",
-            description = "Commits the user-provided resolved DSL content to the target branch, " +
-                    "then merges the source branch. This resolves a merge conflict by " +
-                    "accepting the user's manually edited content.")
+            description = "Commits the user-provided resolved DSL content to the target branch. " +
+                    "This resolves a merge conflict by accepting the user's manually edited content " +
+                    "as a new commit on the target branch.")
     public ResponseEntity<Map<String, Object>> mergeResolve(
             @RequestParam String fromBranch,
             @RequestParam String intoBranch,
@@ -745,7 +745,7 @@ public class DslApiController {
             if (!deleted) {
                 Map<String, Object> error = new LinkedHashMap<>();
                 error.put("error", "Branch '" + name + "' not found");
-                return ResponseEntity.notFound().build();
+                return ResponseEntity.status(404).body(error);
             }
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("deleted", name);

@@ -959,7 +959,8 @@ class DslApiControllerTest {
     @Test
     void deleteBranch_nonexistent() throws Exception {
         mockMvc.perform(delete("/api/dsl/branch").param("name", "nonexistent-xyz"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("Branch 'nonexistent-xyz' not found"));
     }
 
     // ── Merge conflict details ──────────────────────────────────────
@@ -996,10 +997,21 @@ class DslApiControllerTest {
                   title: "Resolve Test";
                 }
                 """;
+        // Create both source and target branches for a realistic scenario
         mockMvc.perform(post("/api/dsl/commit")
                 .contentType(MediaType.TEXT_PLAIN)
                 .content(dsl)
                 .param("branch", "resolve-target"));
+
+        mockMvc.perform(post("/api/dsl/branches")
+                .param("name", "resolve-source")
+                .param("fromBranch", "resolve-target"));
+
+        // Simulate divergent content on source
+        mockMvc.perform(post("/api/dsl/commit")
+                .contentType(MediaType.TEXT_PLAIN)
+                .content(dsl.replace("Resolve Test", "Source Version"))
+                .param("branch", "resolve-source"));
 
         String resolvedDsl = """
                 element CP-1023 type Capability {

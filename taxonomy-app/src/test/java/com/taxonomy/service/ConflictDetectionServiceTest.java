@@ -151,12 +151,10 @@ class ConflictDetectionServiceTest {
 
     @Test
     void getMergeConflictDetails_branchNotFound() {
-        // When source branch doesn't exist, preview returns canMerge=false,
-        // but getDslAtHead returns null for both → ConflictDetails with empty content
+        // When source branch doesn't exist, preview returns canMerge=false
+        // with fromCommit=null. This is not a real conflict, so null is returned.
         var details = conflictService.getMergeConflictDetails("nonexistent", "draft");
-        // No conflict details when source branch doesn't exist (preview canMerge=false but no real content)
-        assertNotNull(details);
-        assertEquals("merge", details.conflictType());
+        assertNull(details);
     }
 
     @Test

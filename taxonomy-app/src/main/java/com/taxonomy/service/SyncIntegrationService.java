@@ -282,7 +282,8 @@ public class SyncIntegrationService {
                     throw new IOException("Merge failed — conflict could not be auto-resolved. " +
                             "Try KEEP_MINE or TAKE_SHARED strategy instead.");
                 }
-                updateSyncStateAfterResolve(username, "UP_TO_DATE");
+                updateSyncStateAfterResolve(username, "UP_TO_DATE",
+                        gitRepository.getHeadCommit(SHARED_BRANCH), null);
                 return "Merged shared into your branch: " + abbreviateSha(mergeCommit);
 
             case KEEP_MINE:
@@ -296,7 +297,8 @@ public class SyncIntegrationService {
                         throw new IOException("Could not force-publish user branch to shared");
                     }
                 }
-                updateSyncStateAfterResolve(username, "UP_TO_DATE");
+                updateSyncStateAfterResolve(username, "UP_TO_DATE",
+                        null, publishCommit);
                 return "Published your changes to shared: " + abbreviateSha(publishCommit);
 
             case TAKE_SHARED:
@@ -309,7 +311,8 @@ public class SyncIntegrationService {
                 if (restoreCommit == null) {
                     throw new IOException("Could not restore user branch from shared");
                 }
-                updateSyncStateAfterResolve(username, "UP_TO_DATE");
+                updateSyncStateAfterResolve(username, "UP_TO_DATE",
+                        sharedHead, null);
                 return "Replaced your branch with shared content: " + abbreviateSha(restoreCommit);
 
             default:
@@ -317,13 +320,21 @@ public class SyncIntegrationService {
         }
     }
 
-    private void updateSyncStateAfterResolve(String username, String status) {
+    private void updateSyncStateAfterResolve(String username, String status,
+                                              String syncedCommitId, String publishedCommitId) {
         try {
             SyncState state = getSyncState(username);
             state.setSyncStatus(status);
             state.setUnpublishedCommitCount(0);
             state.setLastSyncTimestamp(Instant.now());
             state.setUpdatedAt(Instant.now());
+            if (syncedCommitId != null) {
+                state.setLastSyncedCommitId(syncedCommitId);
+            }
+            if (publishedCommitId != null) {
+                state.setLastPublishedCommitId(publishedCommitId);
+                state.setLastPublishTimestamp(Instant.now());
+            }
             syncStateRepository.save(state);
         } catch (Exception e) {
             log.warn("Could not update sync state after resolve for user '{}': {}",

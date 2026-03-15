@@ -206,8 +206,17 @@ window.TaxonomyActionGuards = (function () {
                     return;
                 }
                 if (!preview.canMerge) {
-                    // Conflict detected — open conflict resolution modal
-                    if (window.TaxonomyMergeResolution) {
+                    // Distinguish real conflicts from non-conflict failures
+                    // (e.g. branch not found, errors) by checking for null commits
+                    var hasWarnings = preview.warnings && preview.warnings.length > 0;
+                    var isBranchError = !preview.fromCommit || !preview.intoCommit;
+
+                    if (isBranchError) {
+                        // Non-conflict failure — show warning, not conflict modal
+                        var warnMsg = hasWarnings ? preview.warnings.join('; ') :
+                            'Merge from "' + fromBranch + '" into "' + intoBranch + '" cannot proceed.';
+                        showMergePreviewModal(warnMsg, 'danger', fromBranch, intoBranch, null);
+                    } else if (window.TaxonomyMergeResolution) {
                         window.TaxonomyMergeResolution.showMergeConflict(fromBranch, intoBranch);
                     } else {
                         showMergePreviewModal(
@@ -297,8 +306,16 @@ window.TaxonomyActionGuards = (function () {
                     return;
                 }
                 if (!preview.canCherryPick) {
-                    // Conflict detected — open conflict resolution modal
-                    if (window.TaxonomyMergeResolution) {
+                    // Distinguish real conflicts from non-conflict failures
+                    var hasWarnings = preview.warnings && preview.warnings.length > 0;
+                    var isInputError = !preview.targetCommit;
+
+                    if (isInputError) {
+                        // Non-conflict failure — show warning, not conflict modal
+                        var warnMsg = hasWarnings ? preview.warnings.join('; ') :
+                            'Cherry-pick of ' + commitId.substring(0, 7) + ' cannot proceed.';
+                        showCherryPickPreviewModal(warnMsg, 'danger', commitId, targetBranch, null);
+                    } else if (window.TaxonomyMergeResolution) {
                         window.TaxonomyMergeResolution.showCherryPickConflict(commitId, targetBranch);
                     } else {
                         showCherryPickPreviewModal(

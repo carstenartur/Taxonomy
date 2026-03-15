@@ -227,8 +227,17 @@ window.TaxonomyVariants = (function () {
         }
 
         fetch('/api/dsl/branch?name=' + encodeURIComponent(branch), { method: 'DELETE' })
-            .then(function (r) { return r.json(); })
+            .then(function (r) {
+                if (!r.ok && r.status === 404) {
+                    if (window.TaxonomyOperationResult) {
+                        window.TaxonomyOperationResult.showError('Delete Failed', 'Branch "' + branch + '" not found.');
+                    }
+                    return null;
+                }
+                return r.json();
+            })
             .then(function (result) {
+                if (!result) return;
                 if (result.error) {
                     if (window.TaxonomyOperationResult) {
                         window.TaxonomyOperationResult.showError('Delete Failed', result.error);
