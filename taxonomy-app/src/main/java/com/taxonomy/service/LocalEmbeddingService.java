@@ -175,10 +175,15 @@ public class LocalEmbeddingService {
     }
 
     private ZooModel<String, float[]> loadFromUrl(String url) throws Exception {
+        // Local directory paths need the file:// prefix for DJL
+        String resolvedUrl = url;
+        if (!url.startsWith("djl://") && !url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("file:")) {
+            resolvedUrl = "file://" + url;
+        }
         return Criteria.builder()
                 .optApplication(Application.NLP.TEXT_EMBEDDING)
                 .setTypes(String.class, float[].class)
-                .optModelUrls(url)
+                .optModelUrls(resolvedUrl)
                 .optEngine("OnnxRuntime")
                 .build().loadModel();
     }

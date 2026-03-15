@@ -33,8 +33,20 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
+      - name: Download embedding model
+        run: |
+          mkdir -p models/bge-small-en-v1.5
+          cd models/bge-small-en-v1.5
+          curl -fsL -o model.onnx https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx
+          curl -fsL -o tokenizer.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json
+          curl -fsL -o tokenizer_config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json
+          curl -fsL -o special_tokens_map.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/special_tokens_map.json
+          curl -fsL -o config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json
+
       - name: Build and run tests
         run: mvn -q verify -DexcludedGroups="real-llm"
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
 
       - name: Generate documentation screenshots
         if: ${{ github.event.inputs.generate-screenshots == 'true' }}
