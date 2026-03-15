@@ -170,37 +170,40 @@ public class SyncIntegrationService {
     }
 
     /**
-     * Count unpublished commits on the user's branch since the last sync.
+     * Count unpublished commits on the user's branch relative to the shared branch.
      *
-     * <p>Uses the last synced commit as a reference point. If both branches
-     * share the same HEAD, there are no local changes. Otherwise, counts
-     * the difference in total commits as an approximation. This heuristic
-     * works best when branches diverge linearly from the same ancestor.
+     * <p>Uses merge-base computation to accurately determine ahead/behind counts.
+     * The sync status is set to:
+     * <ul>
+     *   <li>{@code UP_TO_DATE} — both branches are at the same commit</li>
+     *   <li>{@code AHEAD} — user has commits not in the shared branch</li>
+     *   <li>{@code BEHIND} — shared branch has commits the user hasn't pulled</li>
+     *   <li>{@code DIVERGED} — both sides have unique commits</li>
+     * </ul>
      *
      * @param username   the authenticated user's username
      * @param userBranch the user's branch to check
-     * @return the number of unpublished commits (approximate)
+     * @return the number of unpublished commits (ahead count)
      * @throws IOException if Git operations fail
      */
     public int getLocalChanges(String username, String userBranch) throws IOException {
-        String userHead = gitRepository.getHeadCommit(userBranch);
-        String sharedHead = gitRepository.getHeadCommit(SHARED_BRANCH);
+        int[] aheadBehind = gitRepository.getAheadBehindCounts(userBranch, SHARED_BRANCH);
+        int ahead = aheadBehind[0];
+        int behind = aheadBehind[1];
 
-        // If both HEADs are the same, no local changes
-        if (userHead != null && userHead.equals(sharedHead)) {
-            updateUnpublishedCount(username, 0, "UP_TO_DATE");
-            return 0;
+        String status;
+        if (ahead == 0 && behind == 0) {
+            status = "UP_TO_DATE";
+        } else if (ahead > 0 && behind == 0) {
+            status = "AHEAD";
+        } else if (ahead == 0 && behind > 0) {
+            status = "BEHIND";
+        } else {
+            status = "DIVERGED";
         }
 
-        // Approximate: compare commit counts on each branch
-        int userCommits = gitRepository.getCommitCount(userBranch);
-        int sharedCommits = gitRepository.getCommitCount(SHARED_BRANCH);
-        int localChanges = Math.max(0, userCommits - sharedCommits);
-
-        String status = localChanges > 0 ? "AHEAD" : "UP_TO_DATE";
-        updateUnpublishedCount(username, localChanges, status);
-
-        return localChanges;
+        updateUnpublishedCount(username, ahead, status);
+        return ahead;
     }
 
     private void updateUnpublishedCount(String username, int count, String status) {

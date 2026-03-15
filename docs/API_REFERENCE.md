@@ -600,7 +600,7 @@ curl -u alice:password http://localhost:8080/api/workspace/history
 curl -u alice:password "http://localhost:8080/api/workspace/local-changes?branch=feature-x"
 ```
 
-**Response:** `{ "changeCount": 3, "branch": "feature-x" }`
+**Response:** `{ "branch": "feature-x", "changeCount": 3, "hasUnpublishedChanges": true }`
 
 ### Check Dirty State
 
