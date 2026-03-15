@@ -104,12 +104,12 @@ public class ContextCompareService {
 <span class="fc" id="L104">                    null, el.getTitle()));</span>
 <span class="fc" id="L105">        }</span>
 
-<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        for (ArchitectureElement el : diff.removedElements()) {</span>
-<span class="nc" id="L108">            changes.add(new SemanticChange(</span>
-<span class="nc" id="L109">                    &quot;REMOVE&quot;, &quot;ELEMENT&quot;, el.getId(),</span>
-<span class="nc" id="L110">                    &quot;Element &quot; + el.getId() + &quot; removed (&quot; + el.getType() + &quot;)&quot;,</span>
-<span class="nc" id="L111">                    el.getTitle(), null));</span>
-<span class="nc" id="L112">        }</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        for (ArchitectureElement el : diff.removedElements()) {</span>
+<span class="fc" id="L108">            changes.add(new SemanticChange(</span>
+<span class="fc" id="L109">                    &quot;REMOVE&quot;, &quot;ELEMENT&quot;, el.getId(),</span>
+<span class="fc" id="L110">                    &quot;Element &quot; + el.getId() + &quot; removed (&quot; + el.getType() + &quot;)&quot;,</span>
+<span class="fc" id="L111">                    el.getTitle(), null));</span>
+<span class="fc" id="L112">        }</span>
 
 <span class="fc bfc" id="L114" title="All 2 branches covered.">        for (ModelDiff.ElementChange change : diff.changedElements()) {</span>
 <span class="fc" id="L115">            changes.add(new SemanticChange(</span>

@@ -319,8 +319,8 @@ public class DslGitRepository {
 
 <span class="pc bpc" id="L320" title="1 of 2 branches missed.">        CanonicalArchitectureModel beforeModel = beforeDsl != null</span>
 <span class="pc" id="L321">                ? astMapper.map(parser.parse(beforeDsl)) : null;</span>
-<span class="pc bpc" id="L322" title="1 of 2 branches missed.">        CanonicalArchitectureModel afterModel = afterDsl != null</span>
-<span class="pc" id="L323">                ? astMapper.map(parser.parse(afterDsl)) : null;</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        CanonicalArchitectureModel afterModel = afterDsl != null</span>
+<span class="fc" id="L323">                ? astMapper.map(parser.parse(afterDsl)) : null;</span>
 
 <span class="fc" id="L325">        return differ.diff(beforeModel, afterModel);</span>
     }
@@ -710,6 +710,69 @@ public class DslGitRepository {
     }
 
     /**
+     * Compute ahead/behind counts between two branches using merge-base.
+     *
+     * &lt;p&gt;Returns a two-element array: {@code [ahead, behind]} where:
+     * &lt;ul&gt;
+     *   &lt;li&gt;{@code ahead} = number of commits in {@code branch} not in {@code baseBranch}&lt;/li&gt;
+     *   &lt;li&gt;{@code behind} = number of commits in {@code baseBranch} not in {@code branch}&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * &lt;p&gt;This uses JGit's {@code RevWalk.isMergedInto()} and commit walking
+     * relative to the merge-base to produce accurate counts, unlike the simple
+     * total-commit-count heuristic.
+     *
+     * @param branch     the branch to compare (e.g. user's branch)
+     * @param baseBranch the reference branch (e.g. shared &quot;draft&quot;)
+     * @return {@code int[]{ahead, behind}}, or {@code int[]{0, 0}} if either branch is missing
+     * @throws IOException on JGit errors
+     */
+    public int[] getAheadBehindCounts(String branch, String baseBranch) throws IOException {
+<span class="fc" id="L731">        Ref branchRef = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + branch);</span>
+<span class="fc" id="L732">        Ref baseRef = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + baseBranch);</span>
+
+<span class="pc bpc" id="L734" title="2 of 4 branches missed.">        if (branchRef == null || baseRef == null) {</span>
+<span class="nc" id="L735">            return new int[]{0, 0};</span>
+        }
+
+<span class="fc" id="L738">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L739">            RevCommit branchHead = walk.parseCommit(branchRef.getObjectId());</span>
+<span class="fc" id="L740">            RevCommit baseHead = walk.parseCommit(baseRef.getObjectId());</span>
+
+            // If same commit, no divergence
+<span class="pc bpc" id="L743" title="1 of 2 branches missed.">            if (branchHead.equals(baseHead)) {</span>
+<span class="fc" id="L744">                return new int[]{0, 0};</span>
+            }
+
+            // Count commits reachable from branch but not from base (ahead)
+<span class="nc" id="L748">            int ahead = countCommitsNotIn(walk, branchHead, baseHead);</span>
+
+            // Reset walk for the reverse count
+<span class="nc" id="L751">            walk.reset();</span>
+
+            // Count commits reachable from base but not from branch (behind)
+<span class="nc" id="L754">            int behind = countCommitsNotIn(walk, baseHead, branchHead);</span>
+
+<span class="nc" id="L756">            return new int[]{ahead, behind};</span>
+<span class="fc" id="L757">        }</span>
+    }
+
+    /**
+     * Count commits reachable from {@code tip} but not from {@code exclude}.
+     */
+    private int countCommitsNotIn(RevWalk walk, RevCommit tip, RevCommit exclude)
+            throws IOException {
+<span class="nc" id="L765">        walk.reset();</span>
+<span class="nc" id="L766">        walk.markStart(tip);</span>
+<span class="nc" id="L767">        walk.markUninteresting(exclude);</span>
+<span class="nc" id="L768">        int count = 0;</span>
+<span class="nc bnc" id="L769" title="All 2 branches missed.">        for (RevCommit ignored : walk) {</span>
+<span class="nc" id="L770">            count++;</span>
+<span class="nc" id="L771">        }</span>
+<span class="nc" id="L772">        return count;</span>
+    }
+
+    /**
      * Get the {@link DslCommit} metadata for the HEAD of a branch.
      *
      * @param branch the branch name
@@ -717,35 +780,35 @@ public class DslGitRepository {
      * @throws IOException on JGit errors
      */
     public DslCommit getHeadCommitInfo(String branch) throws IOException {
-<span class="fc" id="L720">        String refName = Constants.R_HEADS + branch;</span>
-<span class="fc" id="L721">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
-<span class="fc bfc" id="L722" title="All 2 branches covered.">        if (ref == null) return null;</span>
+<span class="fc" id="L783">        String refName = Constants.R_HEADS + branch;</span>
+<span class="fc" id="L784">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L785" title="All 2 branches covered.">        if (ref == null) return null;</span>
 
-<span class="fc" id="L724">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
-<span class="fc" id="L725">            RevCommit c = walk.parseCommit(ref.getObjectId());</span>
-<span class="fc" id="L726">            PersonIdent authorIdent = c.getAuthorIdent();</span>
-<span class="fc" id="L727">            return new DslCommit(</span>
-<span class="fc" id="L728">                    c.name(),</span>
-<span class="fc" id="L729">                    authorIdent.getName(),</span>
-<span class="fc" id="L730">                    Instant.ofEpochSecond(c.getCommitTime()),</span>
-<span class="fc" id="L731">                    c.getFullMessage());</span>
+<span class="fc" id="L787">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L788">            RevCommit c = walk.parseCommit(ref.getObjectId());</span>
+<span class="fc" id="L789">            PersonIdent authorIdent = c.getAuthorIdent();</span>
+<span class="fc" id="L790">            return new DslCommit(</span>
+<span class="fc" id="L791">                    c.name(),</span>
+<span class="fc" id="L792">                    authorIdent.getName(),</span>
+<span class="fc" id="L793">                    Instant.ofEpochSecond(c.getCommitTime()),</span>
+<span class="fc" id="L794">                    c.getFullMessage());</span>
         }
     }
 
     // ── Internal helpers ────────────────────────────────────────────
 
     private String readDslFromTree(RevTree tree) throws IOException {
-<span class="fc" id="L738">        try (TreeWalk tw = TreeWalk.forPath(gitRepo, DSL_FILENAME, tree)) {</span>
-<span class="pc bpc" id="L739" title="1 of 2 branches missed.">            if (tw == null) return null;</span>
-<span class="fc" id="L740">            ObjectId blobId = tw.getObjectId(0);</span>
-<span class="fc" id="L741">            ObjectLoader loader = gitRepo.open(blobId, Constants.OBJ_BLOB);</span>
-<span class="fc" id="L742">            return new String(loader.getBytes(), StandardCharsets.UTF_8);</span>
-<span class="nc bnc" id="L743" title="All 2 branches missed.">        }</span>
+<span class="fc" id="L801">        try (TreeWalk tw = TreeWalk.forPath(gitRepo, DSL_FILENAME, tree)) {</span>
+<span class="pc bpc" id="L802" title="1 of 2 branches missed.">            if (tw == null) return null;</span>
+<span class="fc" id="L803">            ObjectId blobId = tw.getObjectId(0);</span>
+<span class="fc" id="L804">            ObjectLoader loader = gitRepo.open(blobId, Constants.OBJ_BLOB);</span>
+<span class="fc" id="L805">            return new String(loader.getBytes(), StandardCharsets.UTF_8);</span>
+<span class="nc bnc" id="L806" title="All 2 branches missed.">        }</span>
     }
 
     /** Expose the underlying JGit repository (for advanced operations). */
     public Repository getGitRepository() {
-<span class="fc" id="L748">        return gitRepo;</span>
+<span class="fc" id="L811">        return gitRepo;</span>
     }
 
     /**
@@ -754,7 +817,7 @@ public class DslGitRepository {
      * @return true if backed by HibernateRepository (persistent)
      */
     public boolean isDatabaseBacked() {
-<span class="fc" id="L757">        return gitRepo instanceof HibernateRepository;</span>
+<span class="fc" id="L820">        return gitRepo instanceof HibernateRepository;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
