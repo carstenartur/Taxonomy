@@ -261,7 +261,7 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
         js("arguments[0].click();", analyzeBtn);
         wait(120).until(ExpectedConditions.textMatches(
-                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error")));
+                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable")));
     }
 
     private void js(String script, Object... args) {
@@ -753,9 +753,8 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
         js("arguments[0].click();", analyzeBtn);
 
-        // Wait for the analysis to complete — runAnalysis() POSTs and waits for JSON response
         wait(120).until(ExpectedConditions.textMatches(
-                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error")));
+                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable")));
         // Navigate to Architecture tab to see the panel
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
@@ -1085,20 +1084,23 @@ class ScreenshotGeneratorIT {
     @Order(34)
     void captureDslEditorPanel() throws IOException {
         navigateToTab("dsl-editor");
-        // Directly fetch DSL export and populate textarea (bypasses stale JS init after tab navigation)
+        // Fetch DSL export and populate CodeMirror 6 editor (dslEditorContainer + window.dslCmView)
         js("fetch('/api/dsl/export').then(r => r.text()).then(t => {" +
-           "  var ta = document.getElementById('dslEditorTextarea');" +
-           "  if (ta && t && t.trim().length > 0) { ta.value = t; }" +
+           "  var view = window.dslCmView;" +
+           "  if (view && t && t.trim().length > 0) {" +
+           "    view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: t}});" +
+           "  }" +
            "});");
         try {
             wait(15).until(d -> {
-                WebElement ta = d.findElement(By.id("dslEditorTextarea"));
-                String val = ta.getAttribute("value");
-                return val != null && !val.isBlank() && val.length() > 50;
+                String content = (String) ((JavascriptExecutor) d).executeScript(
+                        "var v = window.dslCmView; return v ? v.state.doc.toString() : '';");
+                return content != null && !content.isBlank() && content.length() > 50;
             });
         } catch (org.openqa.selenium.TimeoutException e) {
-            // Fallback: inject representative DSL for the screenshot
-            js("document.getElementById('dslEditorTextarea').value = '" + FALLBACK_DSL_TEXT + "';");
+            // Fallback: inject representative DSL into CodeMirror editor
+            js("var view = window.dslCmView;" +
+               "if (view) view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: '" + FALLBACK_DSL_TEXT + "'}});");
         }
         saveScreenshot("34-dsl-editor-panel.png");
     }
@@ -1259,8 +1261,7 @@ class ScreenshotGeneratorIT {
         js("arguments[0].click();", analyzeBtn);
 
         wait(120).until(ExpectedConditions.textMatches(
-                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error")));
-        // Navigate to architecture tab
+                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable")));
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")),
@@ -1301,18 +1302,21 @@ class ScreenshotGeneratorIT {
         navigateToTab("dsl-editor");
         // Fetch the DSL export which should now include relation blocks from accepted proposals
         js("fetch('/api/dsl/export').then(r => r.text()).then(t => {" +
-           "  var ta = document.getElementById('dslEditorTextarea');" +
-           "  if (ta && t && t.trim().length > 0) { ta.value = t; }" +
+           "  var view = window.dslCmView;" +
+           "  if (view && t && t.trim().length > 0) {" +
+           "    view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: t}});" +
+           "  }" +
            "});");
         try {
             wait(15).until(d -> {
-                WebElement ta = d.findElement(By.id("dslEditorTextarea"));
-                String val = ta.getAttribute("value");
-                return val != null && !val.isBlank() && val.contains("relation");
+                String content = (String) ((JavascriptExecutor) d).executeScript(
+                        "var v = window.dslCmView; return v ? v.state.doc.toString() : '';");
+                return content != null && !content.isBlank() && content.contains("relation");
             });
         } catch (org.openqa.selenium.TimeoutException e) {
-            // Fallback: inject DSL with relation blocks for the screenshot
-            js("document.getElementById('dslEditorTextarea').value = '" + FALLBACK_DSL_TEXT + "';");
+            // Fallback: inject DSL with relation blocks into CodeMirror editor
+            js("var view = window.dslCmView;" +
+               "if (view) view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: '" + FALLBACK_DSL_TEXT + "'}});");
         }
         saveScreenshot("40-dsl-editor-with-relations.png");
     }
@@ -1434,16 +1438,17 @@ class ScreenshotGeneratorIT {
     @Order(47)
     void captureVariantsBrowserTab() throws IOException {
         navigateToTab("versions");
-        // Switch to the Variants sub-tab
+        // Switch to the Variants sub-tab and trigger refresh via the module API
         js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
            "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'variants');" +
            "});" +
            "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
            "  if (p.id === 'versions-variants') { p.classList.remove('d-none'); }" +
            "  else { p.classList.add('d-none'); }" +
-           "});");
+           "});" +
+           "if (window.TaxonomyVariants) window.TaxonomyVariants.refresh();");
         // Wait for the variants browser to load
-        wait(15).until(d -> {
+        wait(30).until(d -> {
             String html = (String) ((JavascriptExecutor) d).executeScript(
                     "var el = document.getElementById('variantsBrowser');" +
                     "return el ? el.innerHTML : '';");
