@@ -311,14 +311,18 @@ class TaxonomyApplicationTests {
     }
 
     @Test
-    void analyzeNodeEndpointIncludesErrorFieldWhenNoKeyConfigured() throws Exception {
-        // In CI / test environment no API key is set — error field should be non-null
+    void analyzeNodeEndpointReturnsValidResponseStructure() throws Exception {
+        // When LOCAL_ONNX is the active provider (LLM_PROVIDER=LOCAL_ONNX in CI) no error is
+        // set and scores are returned.  When a cloud provider is active without a key, an error
+        // string is returned.  Either way the response must have the expected structure.
         mockMvc.perform(get("/api/analyze-node")
                         .param("parentCode", "BP")
                         .param("businessText", "Test business requirement")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.error").isString());
+                .andExpect(jsonPath("$.scores").exists())
+                .andExpect(jsonPath("$.provider").isString())
+                .andExpect(jsonPath("$.durationMs").isNumber());
     }
 
     @Test
