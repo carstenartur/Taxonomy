@@ -1344,6 +1344,14 @@ Administrators can manage users via the REST API at `/api/admin/users`:
 
 See [Security](SECURITY.md#managing-users) for detailed safety rules and [API Reference](API_REFERENCE.md#user-management-admin-only) for request/response formats.
 
+### About / Legal
+
+The application includes legal and attribution information:
+
+- **License** — The project is released under the MIT License. See [LICENSE](../LICENSE) for the full text.
+- **Copyright** — Copyright 2026 Carsten Hammer. See [NOTICE](../NOTICE).
+- **Third-party software** — A complete list of third-party libraries and their licenses is available in [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md).
+
 ---
 
 ## 13. Relation Types Reference

@@ -47,6 +47,8 @@ Three roles control access to features:
 | `POST/PUT/DELETE /api/relations/**` | ❌ | ✅ | ✅ |
 | `POST/PUT/DELETE /api/dsl/**` | ❌ | ✅ | ✅ |
 | `POST/PUT/DELETE /api/git/**` | ❌ | ✅ | ✅ |
+| `GET /api/context/**` (read) | ✅ | ✅ | ✅ |
+| `POST /api/context/**` (write) | ❌ | ✅ | ✅ |
 | `/admin/**`, `/api/admin/**` | ❌ | ❌ | ✅ |
 
 ---

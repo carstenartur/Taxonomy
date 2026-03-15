@@ -63,13 +63,15 @@ Response:
 
 ```json
 {
+  "level": "FULL",
   "available": true,
+  "limited": false,
   "provider": "Google Gemini",
   "availableProviders": ["Google Gemini", "LOCAL_ONNX"]
 }
 ```
 
-The `availableProviders` list always includes `LOCAL_ONNX`. Additional providers appear when their API keys are configured.
+The `level` field is the primary indicator — use it instead of `available` for precise state handling. The `availableProviders` list always includes `LOCAL_ONNX`. Additional providers appear when their API keys are configured.
 
 ---
 
@@ -87,13 +89,22 @@ This allows users to compare results across different providers without changing
 
 ## AI Status Indicator
 
-The navigation bar shows a badge indicating the current AI status:
+The navigation bar shows a badge indicating the current AI availability level:
 
-| Badge | State | Meaning |
+| Badge | Level | Meaning |
 |---|---|---|
-| 🟢 **AI: [Provider Name]** | Available | AI analysis is active. Shows the provider name (e.g. "Google Gemini"). |
-| 🔴 **AI: Unavailable** | Unavailable | No LLM API key configured. The **Analyze with AI** button is disabled. |
+| 🟢 **AI: [Provider Name]** | FULL | A cloud LLM provider with an API key is active. Full analysis and justification features are available. |
+| 🟡 **AI: LOCAL_ONNX** | LIMITED | Only the local ONNX embedding model is available. Semantic search and similarity work, but full LLM analysis may produce lower-quality results. |
+| 🔴 **AI: Unavailable** | UNAVAILABLE | No AI capabilities at all. The **Analyze with AI** button is disabled. |
 | ⚠️ **AI: Unknown** | Error | Status check failed (network error or server starting up). Auto-refreshes every 30 seconds. |
+
+The 3-state availability model is represented by the `AiAvailabilityLevel` enum:
+
+| Level | `available` | `limited` | Description |
+|---|---|---|---|
+| **FULL** | `true` | `false` | Cloud LLM with API key active — complete analysis capabilities |
+| **LIMITED** | `true` | `true` | Only local ONNX embedding available — semantic search works, LLM analysis is degraded |
+| **UNAVAILABLE** | `false` | `false` | No AI capabilities at all |
 
 If you see a red badge:
 - Set one of the LLM API keys (`GEMINI_API_KEY`, `OPENAI_API_KEY`, etc.) and restart, or

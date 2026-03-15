@@ -291,6 +291,14 @@ When locked out, the server returns HTTP `423 Locked` with a JSON body containin
 
 ---
 
+## Context Navigation
+
+| Variable | Property | Type | Default | Description |
+|---|---|---|---|---|
+| `TAXONOMY_CONTEXT_MAX_HISTORY` | `taxonomy.context.max-history` | Integer | `50` | Maximum number of entries in the per-session context navigation history. When exceeded, the oldest entry is removed. |
+
+---
+
 ## OpenAPI / Swagger UI
 
 The application exposes interactive API documentation via [springdoc-openapi](https://springdoc.org/).
