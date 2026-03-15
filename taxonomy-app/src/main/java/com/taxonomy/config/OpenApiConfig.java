@@ -58,6 +58,7 @@ public class OpenApiConfig {
                         new Tag().name("ArchiMate Import").description("Import ArchiMate 3.x XML models into the taxonomy knowledge base"),
                         new Tag().name("Administration").description("Admin status, diagnostics, and prompt template management"),
                         new Tag().name("Embedding").description("Embedding model status and configuration"),
-                        new Tag().name("Status").description("Application startup and initialisation status")));
+                        new Tag().name("Status").description("Application startup and initialisation status"),
+                        new Tag().name("About").description("Application version, build info, license, and third-party notices")));
     }
 }

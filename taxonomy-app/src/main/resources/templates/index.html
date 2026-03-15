@@ -14,10 +14,11 @@
 <nav class="navbar navbar-dark bg-dark mb-0">
     <div class="container-fluid">
         <span class="navbar-brand fw-bold">
-            &#127756; Taxonomy Architecture Analyzer &mdash; Baseline 7
+            &#127756; Taxonomy Architecture Analyzer &mdash; <span id="navbarVersion">v1.1.1</span>
         </span>
         <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" title="Shows the current AI/LLM provider status: green = available, yellow = unknown (status check failed), red = no API key configured"></span>
         <span id="embeddingStatusBadge" class="badge bg-secondary ms-2 d-none" title="Embedding model status for semantic search"></span>
+        <button id="aboutBtn" class="btn btn-sm btn-outline-light me-2" title="About this application" aria-label="About">&#8505;&#65039;</button>
         <button id="darkModeToggle" class="btn btn-sm btn-outline-light me-2" title="Toggle dark/light theme" aria-label="Toggle theme">&#127769;</button>
         <button id="adminLockBtn" class="btn btn-sm btn-outline-light d-none" title="Open admin mode to access diagnostic panels and prompt templates" style="font-size:1.1rem;">&#128274;</button>
     </div>
@@ -1022,6 +1023,7 @@
 <script th:src="@{/js/taxonomy-help.js}"></script>
 <script th:src="@{/js/taxonomy-dsl-editor.js}"></script>
 <script type="module" th:src="@{/js/taxonomy-dsl-codemirror.mjs}"></script>
+<script th:src="@{/js/taxonomy-about.js}"></script>
 <script th:src="@{/js/taxonomy.js}"></script>
 
 <!-- Propose Relations Modal -->
@@ -1090,6 +1092,56 @@
                 <p class="text-muted">Loading&hellip;</p>
             </div>
             <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- About Modal -->
+<div class="modal fade" id="aboutModal" tabindex="-1" aria-labelledby="aboutModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="aboutModalLabel">&#8505;&#65039; About Taxonomy Architecture Analyzer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Tabs -->
+                <ul class="nav nav-tabs mb-3" id="aboutModalTabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-about-tab="info" href="#">&#128196; About</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-about-tab="notices" href="#">&#128220; Open Source Notices</a>
+                    </li>
+                </ul>
+                <!-- About tab -->
+                <div id="about-info-pane">
+                    <table class="table table-sm table-borderless">
+                        <tbody>
+                            <tr><th scope="row" class="w-25">Product</th><td>Taxonomy Architecture Analyzer</td></tr>
+                            <tr><th scope="row">Version</th><td id="aboutVersion"><span class="text-muted small">Loading…</span></td></tr>
+                            <tr><th scope="row">Build time</th><td id="aboutBuildTime"><span class="text-muted small">Loading…</span></td></tr>
+                            <tr><th scope="row">Commit</th><td id="aboutCommit"><span class="text-muted small">Loading…</span></td></tr>
+                            <tr><th scope="row">Branch</th><td id="aboutBranch"><span class="text-muted small">Loading…</span></td></tr>
+                            <tr><th scope="row">License</th><td><a href="/LICENSE" target="_blank">MIT License</a></td></tr>
+                            <tr><th scope="row">Copyright</th><td>Copyright 2026 Carsten Hammer</td></tr>
+                            <tr><th scope="row">Source</th><td><a href="https://github.com/carstenartur/Taxonomy" target="_blank" rel="noopener">github.com/carstenartur/Taxonomy</a></td></tr>
+                            <tr><th scope="row">API Docs</th><td><a href="/swagger-ui.html" target="_blank">Swagger UI</a></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Notices tab -->
+                <div id="about-notices-pane" class="d-none">
+                    <p class="small text-muted">This product contains third-party open-source software. Full text: <a href="/THIRD-PARTY-NOTICES.md" target="_blank">THIRD-PARTY-NOTICES.md</a></p>
+                    <pre id="aboutThirdPartyContent" class="small bg-light p-2 rounded" style="max-height:400px;overflow-y:auto;white-space:pre-wrap;"><span class="text-muted">Loading…</span></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="/NOTICE" target="_blank" class="btn btn-sm btn-outline-secondary">NOTICE</a>
+                <a href="/LICENSE" target="_blank" class="btn btn-sm btn-outline-secondary">LICENSE</a>
+                <a href="/THIRD-PARTY-NOTICES.md" target="_blank" class="btn btn-sm btn-outline-secondary">Third-Party Notices</a>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
