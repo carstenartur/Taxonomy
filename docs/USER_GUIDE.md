@@ -1189,6 +1189,8 @@ Click the **🔄 Refresh** button in the History card header to reload the timel
 
 Click the **🔀 Variants** sub-tab to see all architecture variant branches. Each variant shows:
 
+![Variants Browser Tab](images/47-variants-browser-tab.png)
+
 - **Branch name** — The name of the variant (e.g., `feature-voice-services`)
 - **Latest commit** — The most recent change on that variant
 - **Commit count** — How many commits exist on the variant
@@ -1203,9 +1205,13 @@ Available actions for each variant:
 
 To create a new variant, click **+ New Variant** in the card header. This opens a modal where you enter the variant name. The new variant is forked from the current branch.
 
+![Variant Creation Modal](images/46-variant-creation-modal.png)
+
 ### Copy Back (Read-Only Contexts)
 
 When viewing a variant in **READ-ONLY** mode, a **📤 Copy Back** button appears in the Context Bar. This allows you to selectively transfer elements and relations from the read-only variant back to your editable workspace — useful for cherry-picking ideas from experimental branches.
+
+![Copy Back Button](images/49-copy-back-button.png)
 
 ### Sync with Shared Repository
 
@@ -1222,6 +1228,8 @@ The sync state panel shows:
 ### Workspace User Badge
 
 In the navbar (top-right), the **workspace badge** shows your username and current branch. The badge colour changes to indicate state:
+
+![Workspace User Badge](images/45-workspace-user-badge.png)
 
 - **Blue** — Normal, workspace is clean
 - **Yellow** — Workspace has unsaved/unpublished changes (dirty state)
@@ -1417,12 +1425,18 @@ The system uses 10 relation types, each corresponding to a specific relationship
 | **Match Legend** | The colour scale on the right panel showing what each shade of green corresponds to in terms of score |
 | **NAF** | NATO Architecture Framework — the standard for describing NATO architectures |
 | **Pattern detection** | Checking whether predefined architecture patterns are complete or partially present in the relation graph |
+| **Projection** | A per-user materialized snapshot of the DSL model; becomes "stale" when HEAD advances beyond the snapshot commit |
 | **Proposal** | An AI-generated candidate relation awaiting human review in the Relation Proposals panel |
+| **Publish** | Merge your workspace branch into the shared integration branch, making your changes available to the team |
 | **Relation** | A confirmed, directed link between two taxonomy nodes stored in the knowledge base |
 | **Risk score** | An aggregated metric combining requirement count and relevance for failure-impact analysis |
+| **Shared branch** | The canonical team-wide branch (called `draft` by default) that all users synchronize with |
 | **Stale results** | Analysis scores that no longer correspond to the current requirement text (shown with a yellow warning) |
+| **Sync** | Pull the latest changes from the shared branch into your workspace branch; the opposite of "Publish" |
 | **Taxonomy node** | A single element in the C3 Taxonomy Catalogue (capability, service, role, information product, etc.) |
 | **TOGAF** | The Open Group Architecture Framework — a widely used enterprise-architecture methodology |
+| **Variant** | A named branch in the version-controlled DSL repository, used to explore alternative architecture designs without affecting the shared branch |
+| **Workspace** | An isolated editing environment for each user, providing independent context navigation, projection tracking, and branch-level isolation |
 
 ---
 

@@ -34,6 +34,7 @@ window.TaxonomyWorkspaceSync = (function () {
                 syncState = state;
                 renderSyncIndicator(state);
                 renderDirtyIndicator();
+                renderSyncStatePanel(state);
             })
             .catch(function () {
                 // silently ignore — non-critical
@@ -93,6 +94,64 @@ window.TaxonomyWorkspaceSync = (function () {
             badge.classList.remove('bg-warning');
             badge.classList.add('bg-info');
             badge.title = 'Current workspace / user';
+        }
+    }
+
+    // ── Sync State Panel (inside Versions → Sync tab) ─────────────
+
+    function renderSyncStatePanel(state) {
+        var panel = document.getElementById('syncStatePanel');
+        if (!panel) return;
+
+        var status = state.syncStatus || 'UP_TO_DATE';
+        var badgeClass = 'bg-success';
+        var statusLabel = 'Up to date';
+        if (status === 'BEHIND') {
+            badgeClass = 'bg-warning text-dark';
+            statusLabel = 'Behind shared repository';
+        } else if (status === 'AHEAD') {
+            badgeClass = 'bg-info text-dark';
+            statusLabel = state.unpublishedCommitCount + ' unpublished commit' +
+                (state.unpublishedCommitCount !== 1 ? 's' : '');
+        } else if (status === 'DIVERGED') {
+            badgeClass = 'bg-danger';
+            statusLabel = 'Diverged — both sides have changes';
+        }
+
+        var html = '<div class="d-flex align-items-center gap-2 mb-2">';
+        html += '<span class="badge ' + badgeClass + '">' + escapeHtml(statusLabel) + '</span>';
+        html += '</div>';
+
+        html += '<table class="table table-sm table-borderless mb-0" style="max-width:400px;">';
+        if (state.lastSyncTimestamp) {
+            html += '<tr><td class="text-muted small">Last synced</td><td class="small">' +
+                escapeHtml(formatTimestamp(state.lastSyncTimestamp)) + '</td></tr>';
+        }
+        if (state.lastPublishTimestamp) {
+            html += '<tr><td class="text-muted small">Last published</td><td class="small">' +
+                escapeHtml(formatTimestamp(state.lastPublishTimestamp)) + '</td></tr>';
+        }
+        if (state.lastSyncedCommitId) {
+            html += '<tr><td class="text-muted small">Synced commit</td><td class="small"><code>' +
+                escapeHtml(state.lastSyncedCommitId.substring(0, 7)) + '</code></td></tr>';
+        }
+        if (state.unpublishedCommitCount > 0) {
+            html += '<tr><td class="text-muted small">Unpublished</td><td class="small">' +
+                state.unpublishedCommitCount + ' commit' +
+                (state.unpublishedCommitCount !== 1 ? 's' : '') + '</td></tr>';
+        }
+        html += '</table>';
+
+        panel.innerHTML = html;
+    }
+
+    function formatTimestamp(ts) {
+        if (!ts) return '—';
+        try {
+            var d = new Date(ts);
+            return d.toLocaleString();
+        } catch (e) {
+            return String(ts);
         }
     }
 

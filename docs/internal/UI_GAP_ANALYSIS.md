@@ -1,6 +1,6 @@
 # UI Gap Analysis
 
-**Status:** In progress — updated 15 March 2026  
+**Status:** Updated — 15 March 2026  
 **Related Issues:** #180 (Multi-User Workspace Model), #182 (UI Refactor for Workspace)
 
 ---
@@ -21,7 +21,7 @@ The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.ht
 
 | Element | Location | Module | Status |
 |---|---|---|---|
-| Workspace User Badge | Navbar | `taxonomy.js` | ✅ Shows `user@branch` |
+| Workspace User Badge | Navbar | `taxonomy.js` | ✅ Shows `user@branch`, yellow when dirty |
 | Context Navigation Bar | Below Git Status | `taxonomy-context-bar.js` | ✅ Mode, branch, commit, origin, navigation |
 | Read-Only Mode Badge | Git Status Bar | `taxonomy-git-status.js` | ✅ READ-ONLY badge when applicable |
 | Action Guards | All guarded buttons | `taxonomy-action-guards.js` | ✅ Disables buttons in read-only/operation-in-progress |
@@ -31,7 +31,9 @@ The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.ht
 | Copy Back Button | Context Bar (read-only) | `taxonomy-context-bar.js` | ✅ Selective transfer from read-only to editable |
 | Sync Status Indicator | Git Status Bar | `taxonomy-workspace-sync.js` | ✅ Shows sync state (synced/behind/ahead/diverged) |
 | Dirty State Indicator | Workspace Badge | `taxonomy-workspace-sync.js` | ✅ Changes badge color when dirty |
-| Sync Sub-Tab | Versions → Sync tab | `taxonomy-workspace-sync.js` | ✅ Sync from shared / Publish buttons |
+| Sync Sub-Tab | Versions → Sync tab | `taxonomy-workspace-sync.js` | ✅ Sync state panel + sync/publish buttons |
+| Sync State Panel | Versions → Sync → detail panel | `taxonomy-workspace-sync.js` | ✅ Shows status badge, timestamps, commit SHAs |
+| Local Changes Panel | Versions → Sync → below state | `taxonomy-workspace-sync.js` | ✅ Unpublished commit count + action buttons |
 
 ---
 
@@ -52,7 +54,7 @@ The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.ht
 |---|---|---|---|
 | 1 | `taxonomy.js` | Main entry, tab routing, status polling | ✅ |
 | 2 | `taxonomy-git-status.js` | Git status bar polling/rendering | ✅ |
-| 3 | `taxonomy-workspace-sync.js` | Sync status, dirty state, local changes | ✅ |
+| 3 | `taxonomy-workspace-sync.js` | Sync status, dirty state, local changes, sync state panel | ✅ |
 | 4 | `taxonomy-context-bar.js` | Context navigation bar | ✅ |
 | 5 | `taxonomy-context-compare.js` | Compare dialog | ✅ |
 | 6 | `taxonomy-context-transfer.js` | Copy-back transfer dialog | ✅ |
@@ -84,10 +86,25 @@ The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.ht
 |---|---|---|
 | Workspace Badge | `GET /api/workspace/current` | WorkspaceInfo (branch, user, context) |
 | Git Status Bar | `GET /api/git/state` | RepositoryState (branch, HEAD, staleness, operations) |
-| Sync Indicator | `GET /api/workspace/sync-state` | Sync status, unpublished count |
+| Sync Indicator | `GET /api/workspace/sync-state` | Sync status, unpublished count, timestamps |
+| Sync State Panel | `GET /api/workspace/sync-state` | Full sync state with timestamps and commit SHAs |
 | Context Bar | `GET /api/context/current` | ContextRef (mode, branch, commit, origin, dirty) |
 | Compare Dialog | `POST /api/workspace/compare` | ContextComparison (summary, changes, diff) |
 | Variants Browser | `GET /api/git/state` | List of branches with commit info |
 | Local Changes | `GET /api/workspace/local-changes` | Change count per branch |
 | Dirty Check | `GET /api/workspace/dirty` | Boolean dirty flag |
 | Projection State | `GET /api/workspace/projection` | Projection commit, staleness |
+
+---
+
+## 6. Screenshot Coverage
+
+| # | Screenshot | Test | Status |
+|---|---|---|---|
+| 45 | `45-workspace-user-badge.png` | `captureWorkspaceUserBadge()` | ✅ Test added |
+| 46 | `46-variant-creation-modal.png` | `captureVariantCreationModal()` | ✅ Test added |
+| 47 | `47-variants-browser-tab.png` | `captureVariantsBrowserTab()` | ✅ Test added |
+| 48 | `48-compare-modal-branches.png` | `captureCompareModalBranches()` | ✅ Test added |
+| 49 | `49-copy-back-button.png` | `captureCopyBackButton()` | ✅ Test added |
+| 50 | `50-read-only-mode-badge.png` | `captureReadOnlyModeBadge()` | ✅ Test added |
+| 51 | `51-context-bar-with-origin.png` | `captureContextBarWithOrigin()` | ✅ Test added |
