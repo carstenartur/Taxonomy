@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SyncState.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.model</a> &gt; <span class="el_source">SyncState.java</span></div><h1>SyncState.java</h1><pre class="source lang-java linenums">package com.taxonomy.model;
+
+import jakarta.persistence.*;
+
+import java.time.Instant;
+
+/**
+ * Tracks the synchronization state between a user's workspace and the
+ * shared integration repository.
+ *
+ * &lt;p&gt;This entity records the last commit that was pulled from the shared
+ * repository ({@code lastSyncedCommitId}) and the last commit the user
+ * published back ({@code lastPublishedCommitId}), together with their
+ * timestamps.
+ *
+ * &lt;p&gt;The {@code syncStatus} field summarises the relationship between the
+ * user's workspace and the shared repo:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code UP_TO_DATE} — both sides are at the same state&lt;/li&gt;
+ *   &lt;li&gt;{@code BEHIND} — the shared repo has commits the user has not pulled&lt;/li&gt;
+ *   &lt;li&gt;{@code AHEAD} — the user has unpublished local commits&lt;/li&gt;
+ *   &lt;li&gt;{@code DIVERGED} — both sides have diverged&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@Entity
+@Table(name = &quot;sync_state&quot;, indexes = {
+    @Index(name = &quot;idx_sync_username&quot;, columnList = &quot;username&quot;),
+    @Index(name = &quot;idx_sync_workspace&quot;, columnList = &quot;workspace_id&quot;)
+}, uniqueConstraints = {
+    @UniqueConstraint(name = &quot;uq_sync_username&quot;, columnNames = &quot;username&quot;)
+})
+public class SyncState {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    @Column(name = &quot;workspace_id&quot;, nullable = false, unique = true)
+    private String workspaceId;
+
+    @Column(name = &quot;last_synced_commit_id&quot;)
+    private String lastSyncedCommitId;
+
+    @Column(name = &quot;last_sync_timestamp&quot;)
+    private Instant lastSyncTimestamp;
+
+    @Column(name = &quot;last_published_commit_id&quot;)
+    private String lastPublishedCommitId;
+
+    @Column(name = &quot;last_publish_timestamp&quot;)
+    private Instant lastPublishTimestamp;
+
+<span class="fc" id="L56">    @Column(name = &quot;sync_status&quot;, nullable = false)</span>
+    private String syncStatus = &quot;UP_TO_DATE&quot;;
+
+<span class="fc" id="L59">    @Column(name = &quot;unpublished_commit_count&quot;, nullable = false)</span>
+    private int unpublishedCommitCount = 0;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;updated_at&quot;)
+    private Instant updatedAt;
+
+<span class="fc" id="L68">    public SyncState() {</span>
+<span class="fc" id="L69">    }</span>
+
+    public Long getId() {
+<span class="nc" id="L72">        return id;</span>
+    }
+
+    public void setId(Long id) {
+<span class="nc" id="L76">        this.id = id;</span>
+<span class="nc" id="L77">    }</span>
+
+    public String getUsername() {
+<span class="fc" id="L80">        return username;</span>
+    }
+
+    public void setUsername(String username) {
+<span class="fc" id="L84">        this.username = username;</span>
+<span class="fc" id="L85">    }</span>
+
+    public String getWorkspaceId() {
+<span class="fc" id="L88">        return workspaceId;</span>
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L92">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L93">    }</span>
+
+    public String getLastSyncedCommitId() {
+<span class="fc" id="L96">        return lastSyncedCommitId;</span>
+    }
+
+    public void setLastSyncedCommitId(String lastSyncedCommitId) {
+<span class="fc" id="L100">        this.lastSyncedCommitId = lastSyncedCommitId;</span>
+<span class="fc" id="L101">    }</span>
+
+    public Instant getLastSyncTimestamp() {
+<span class="fc" id="L104">        return lastSyncTimestamp;</span>
+    }
+
+    public void setLastSyncTimestamp(Instant lastSyncTimestamp) {
+<span class="fc" id="L108">        this.lastSyncTimestamp = lastSyncTimestamp;</span>
+<span class="fc" id="L109">    }</span>
+
+    public String getLastPublishedCommitId() {
+<span class="fc" id="L112">        return lastPublishedCommitId;</span>
+    }
+
+    public void setLastPublishedCommitId(String lastPublishedCommitId) {
+<span class="fc" id="L116">        this.lastPublishedCommitId = lastPublishedCommitId;</span>
+<span class="fc" id="L117">    }</span>
+
+    public Instant getLastPublishTimestamp() {
+<span class="fc" id="L120">        return lastPublishTimestamp;</span>
+    }
+
+    public void setLastPublishTimestamp(Instant lastPublishTimestamp) {
+<span class="fc" id="L124">        this.lastPublishTimestamp = lastPublishTimestamp;</span>
+<span class="fc" id="L125">    }</span>
+
+    public String getSyncStatus() {
+<span class="fc" id="L128">        return syncStatus;</span>
+    }
+
+    public void setSyncStatus(String syncStatus) {
+<span class="fc" id="L132">        this.syncStatus = syncStatus;</span>
+<span class="fc" id="L133">    }</span>
+
+    public int getUnpublishedCommitCount() {
+<span class="fc" id="L136">        return unpublishedCommitCount;</span>
+    }
+
+    public void setUnpublishedCommitCount(int unpublishedCommitCount) {
+<span class="fc" id="L140">        this.unpublishedCommitCount = unpublishedCommitCount;</span>
+<span class="fc" id="L141">    }</span>
+
+    public Instant getCreatedAt() {
+<span class="fc" id="L144">        return createdAt;</span>
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+<span class="fc" id="L148">        this.createdAt = createdAt;</span>
+<span class="fc" id="L149">    }</span>
+
+    public Instant getUpdatedAt() {
+<span class="nc" id="L152">        return updatedAt;</span>
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+<span class="fc" id="L156">        this.updatedAt = updatedAt;</span>
+<span class="fc" id="L157">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

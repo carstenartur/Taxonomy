@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContextHistoryService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.service</a> &gt; <span class="el_source">ContextHistoryService.java</span></div><h1>ContextHistoryService.java</h1><pre class="source lang-java linenums">package com.taxonomy.service;
+
+import com.taxonomy.model.ContextHistoryRecord;
+import com.taxonomy.repository.ContextHistoryRecordRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.List;
+
+/**
+ * Manages persistent context navigation history with origin tracking.
+ *
+ * &lt;p&gt;Each navigation event captures the source and destination contexts,
+ * branches, and commits, together with the reason for the navigation
+ * (e.g. {@code &quot;COMPARE&quot;}, {@code &quot;SEARCH_OPEN&quot;}, {@code &quot;MANUAL_SWITCH&quot;}).
+ *
+ * &lt;p&gt;The {@code originContextId} field supports &quot;return-to-origin&quot;
+ * navigation: when a user drills into history or a comparison, the
+ * original context is preserved so they can jump back to where they
+ * started.
+ *
+ * &lt;p&gt;History is capped at 50 entries per user to prevent unbounded growth.
+ */
+@Service
+public class ContextHistoryService {
+
+<span class="fc" id="L29">    private static final Logger log = LoggerFactory.getLogger(ContextHistoryService.class);</span>
+
+    private final ContextHistoryRecordRepository historyRepository;
+
+<span class="fc" id="L33">    public ContextHistoryService(ContextHistoryRecordRepository historyRepository) {</span>
+<span class="fc" id="L34">        this.historyRepository = historyRepository;</span>
+<span class="fc" id="L35">    }</span>
+
+    /**
+     * Record a navigation event in the user's persistent history.
+     *
+     * @param username        the authenticated user's username
+     * @param fromContextId   the context the user navigated away from (may be null)
+     * @param toContextId     the context the user navigated to
+     * @param fromBranch      the branch the user was on before navigation (may be null)
+     * @param toBranch        the branch the user navigated to
+     * @param fromCommitId    the commit SHA before navigation (may be null)
+     * @param toCommitId      the commit SHA after navigation (may be null)
+     * @param reason          the reason for navigation (e.g. &quot;COMPARE&quot;, &quot;SEARCH_OPEN&quot;)
+     * @param originContextId the original context for return-to-origin support (may be null)
+     */
+    public void recordNavigation(String username,
+                                 String fromContextId,
+                                 String toContextId,
+                                 String fromBranch,
+                                 String toBranch,
+                                 String fromCommitId,
+                                 String toCommitId,
+                                 String reason,
+                                 String originContextId) {
+        try {
+<span class="fc" id="L60">            ContextHistoryRecord record = new ContextHistoryRecord();</span>
+<span class="fc" id="L61">            record.setUsername(username);</span>
+<span class="fc" id="L62">            record.setFromContextId(fromContextId);</span>
+<span class="fc" id="L63">            record.setToContextId(toContextId);</span>
+<span class="fc" id="L64">            record.setFromBranch(fromBranch);</span>
+<span class="fc" id="L65">            record.setToBranch(toBranch);</span>
+<span class="fc" id="L66">            record.setFromCommitId(fromCommitId);</span>
+<span class="fc" id="L67">            record.setToCommitId(toCommitId);</span>
+<span class="fc" id="L68">            record.setReason(reason);</span>
+<span class="fc" id="L69">            record.setOriginContextId(originContextId);</span>
+<span class="fc" id="L70">            record.setCreatedAt(Instant.now());</span>
+
+<span class="fc" id="L72">            historyRepository.save(record);</span>
+<span class="fc" id="L73">            log.debug(&quot;User '{}': recorded navigation {} -&gt; {} (reason: {})&quot;,</span>
+                    username, fromContextId, toContextId, reason);
+
+            // Enforce 50-entry cap: delete oldest entries beyond the limit
+<span class="fc" id="L77">            trimHistory(username);</span>
+<span class="nc" id="L78">        } catch (Exception e) {</span>
+            // Non-fatal: navigation history is informational
+<span class="nc" id="L80">            log.warn(&quot;Could not record navigation for user '{}': {}&quot;,</span>
+<span class="nc" id="L81">                    username, e.getMessage());</span>
+<span class="fc" id="L82">        }</span>
+<span class="fc" id="L83">    }</span>
+
+    private static final int MAX_HISTORY_ENTRIES = 50;
+
+    private void trimHistory(String username) {
+        try {
+<span class="fc" id="L89">            long count = historyRepository.countByUsername(username);</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">            if (count &lt;= MAX_HISTORY_ENTRIES) {</span>
+<span class="fc" id="L91">                return; // Nothing to trim</span>
+            }
+            // Only load old entries when trimming is needed
+<span class="nc" id="L94">            List&lt;ContextHistoryRecord&gt; all =</span>
+<span class="nc" id="L95">                    historyRepository.findByUsernameOrderByCreatedAtDesc(username);</span>
+<span class="nc" id="L96">            List&lt;ContextHistoryRecord&gt; toDelete =</span>
+<span class="nc" id="L97">                    all.subList(MAX_HISTORY_ENTRIES, all.size());</span>
+<span class="nc" id="L98">            historyRepository.deleteAll(toDelete);</span>
+<span class="nc" id="L99">            log.debug(&quot;User '{}': trimmed {} old history entries&quot;,</span>
+<span class="nc" id="L100">                    username, toDelete.size());</span>
+<span class="nc" id="L101">        } catch (Exception e) {</span>
+<span class="nc" id="L102">            log.warn(&quot;Could not trim history for user '{}': {}&quot;,</span>
+<span class="nc" id="L103">                    username, e.getMessage());</span>
+<span class="nc" id="L104">        }</span>
+<span class="nc" id="L105">    }</span>
+
+    /**
+     * Get the user's recent navigation history (max 50 entries).
+     *
+     * &lt;p&gt;Results are ordered by creation time, newest first.
+     *
+     * @param username the authenticated user's username
+     * @return list of history records, newest first (never null)
+     */
+    public List&lt;ContextHistoryRecord&gt; getHistory(String username) {
+        try {
+<span class="fc" id="L117">            return historyRepository.findTop50ByUsernameOrderByCreatedAtDesc(username);</span>
+<span class="nc" id="L118">        } catch (Exception e) {</span>
+<span class="nc" id="L119">            log.warn(&quot;Could not retrieve history for user '{}': {}&quot;, username, e.getMessage());</span>
+<span class="nc" id="L120">            return List.of();</span>
+        }
+    }
+
+    /**
+     * Delete all navigation history for a user.
+     *
+     * &lt;p&gt;This is a destructive operation. It removes all persistent history
+     * records for the specified user.
+     *
+     * @param username the user whose history to clear
+     */
+    public void clearHistory(String username) {
+        try {
+<span class="fc" id="L134">            historyRepository.deleteByUsername(username);</span>
+<span class="fc" id="L135">            log.info(&quot;Cleared navigation history for user '{}'&quot;, username);</span>
+<span class="nc" id="L136">        } catch (Exception e) {</span>
+<span class="nc" id="L137">            log.warn(&quot;Could not clear history for user '{}': {}&quot;, username, e.getMessage());</span>
+<span class="fc" id="L138">        }</span>
+<span class="fc" id="L139">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

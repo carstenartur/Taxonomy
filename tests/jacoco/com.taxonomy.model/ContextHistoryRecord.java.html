@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ContextHistoryRecord.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.model</a> &gt; <span class="el_source">ContextHistoryRecord.java</span></div><h1>ContextHistoryRecord.java</h1><pre class="source lang-java linenums">package com.taxonomy.model;
+
+import jakarta.persistence.*;
+
+import java.time.Instant;
+
+/**
+ * Persists navigation history with origin tracking and return-to-origin support.
+ *
+ * &lt;p&gt;Each record captures a single navigation event — the context and branch
+ * the user moved away from, the context and branch they moved to, and the
+ * reason for the navigation (e.g. {@code &quot;SWITCH_BRANCH&quot;},
+ * {@code &quot;OPEN_HISTORY&quot;}, {@code &quot;COMPARE&quot;}, {@code &quot;SEARCH&quot;}).
+ *
+ * &lt;p&gt;The {@code originContextId} field supports &quot;return-to-origin&quot;
+ * navigation: when a user drills into history or a comparison, the
+ * original context is preserved so they can jump back to where they
+ * started.
+ *
+ * &lt;p&gt;Note: a DTO called {@code ContextHistoryEntry} already exists in
+ * {@code taxonomy-domain}; this entity uses the name
+ * {@code ContextHistoryRecord} to avoid ambiguity.
+ */
+@Entity
+@Table(name = &quot;context_history_record&quot;, indexes = {
+    @Index(name = &quot;idx_history_username&quot;, columnList = &quot;username&quot;),
+    @Index(name = &quot;idx_history_created&quot;, columnList = &quot;created_at&quot;)
+})
+public class ContextHistoryRecord {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String username;
+
+    @Column(name = &quot;from_context_id&quot;)
+    private String fromContextId;
+
+    @Column(name = &quot;to_context_id&quot;)
+    private String toContextId;
+
+    @Column(name = &quot;from_branch&quot;)
+    private String fromBranch;
+
+    @Column(name = &quot;to_branch&quot;)
+    private String toBranch;
+
+    @Column(name = &quot;from_commit_id&quot;)
+    private String fromCommitId;
+
+    @Column(name = &quot;to_commit_id&quot;)
+    private String toCommitId;
+
+    @Column
+    private String reason;
+
+    @Column(name = &quot;origin_context_id&quot;)
+    private String originContextId;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+<span class="fc" id="L65">    public ContextHistoryRecord() {</span>
+<span class="fc" id="L66">    }</span>
+
+    public Long getId() {
+<span class="nc" id="L69">        return id;</span>
+    }
+
+    public void setId(Long id) {
+<span class="nc" id="L73">        this.id = id;</span>
+<span class="nc" id="L74">    }</span>
+
+    public String getUsername() {
+<span class="fc" id="L77">        return username;</span>
+    }
+
+    public void setUsername(String username) {
+<span class="fc" id="L81">        this.username = username;</span>
+<span class="fc" id="L82">    }</span>
+
+    public String getFromContextId() {
+<span class="fc" id="L85">        return fromContextId;</span>
+    }
+
+    public void setFromContextId(String fromContextId) {
+<span class="fc" id="L89">        this.fromContextId = fromContextId;</span>
+<span class="fc" id="L90">    }</span>
+
+    public String getToContextId() {
+<span class="fc" id="L93">        return toContextId;</span>
+    }
+
+    public void setToContextId(String toContextId) {
+<span class="fc" id="L97">        this.toContextId = toContextId;</span>
+<span class="fc" id="L98">    }</span>
+
+    public String getFromBranch() {
+<span class="fc" id="L101">        return fromBranch;</span>
+    }
+
+    public void setFromBranch(String fromBranch) {
+<span class="fc" id="L105">        this.fromBranch = fromBranch;</span>
+<span class="fc" id="L106">    }</span>
+
+    public String getToBranch() {
+<span class="fc" id="L109">        return toBranch;</span>
+    }
+
+    public void setToBranch(String toBranch) {
+<span class="fc" id="L113">        this.toBranch = toBranch;</span>
+<span class="fc" id="L114">    }</span>
+
+    public String getFromCommitId() {
+<span class="fc" id="L117">        return fromCommitId;</span>
+    }
+
+    public void setFromCommitId(String fromCommitId) {
+<span class="fc" id="L121">        this.fromCommitId = fromCommitId;</span>
+<span class="fc" id="L122">    }</span>
+
+    public String getToCommitId() {
+<span class="fc" id="L125">        return toCommitId;</span>
+    }
+
+    public void setToCommitId(String toCommitId) {
+<span class="fc" id="L129">        this.toCommitId = toCommitId;</span>
+<span class="fc" id="L130">    }</span>
+
+    public String getReason() {
+<span class="fc" id="L133">        return reason;</span>
+    }
+
+    public void setReason(String reason) {
+<span class="fc" id="L137">        this.reason = reason;</span>
+<span class="fc" id="L138">    }</span>
+
+    public String getOriginContextId() {
+<span class="fc" id="L141">        return originContextId;</span>
+    }
+
+    public void setOriginContextId(String originContextId) {
+<span class="fc" id="L145">        this.originContextId = originContextId;</span>
+<span class="fc" id="L146">    }</span>
+
+    public Instant getCreatedAt() {
+<span class="fc" id="L149">        return createdAt;</span>
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+<span class="fc" id="L153">        this.createdAt = createdAt;</span>
+<span class="fc" id="L154">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
