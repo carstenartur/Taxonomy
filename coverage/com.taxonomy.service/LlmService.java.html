@@ -397,7 +397,7 @@ public class LlmService {
 <span class="nc" id="L397">            case QWEN        -&gt; &quot;Qwen&quot;;</span>
 <span class="nc" id="L398">            case LLAMA       -&gt; &quot;Llama&quot;;</span>
 <span class="nc" id="L399">            case MISTRAL     -&gt; &quot;Mistral&quot;;</span>
-<span class="nc" id="L400">            case LOCAL_ONNX  -&gt; &quot;Local (all-MiniLM-L6-v2)&quot;;</span>
+<span class="nc" id="L400">            case LOCAL_ONNX  -&gt; &quot;Local (bge-small-en-v1.5)&quot;;</span>
         };
     }
 
@@ -785,7 +785,7 @@ public class LlmService {
 <span class="nc" id="L785">            detail.setDurationMs(System.currentTimeMillis() - start);</span>
 <span class="nc" id="L786">            detail.setScores(scores);</span>
 <span class="nc" id="L787">            detail.setPrompt(&quot;(local embedding – no prompt sent)&quot;);</span>
-<span class="nc" id="L788">            detail.setRawResponse(&quot;(cosine similarity scores computed via all-MiniLM-L6-v2)&quot;);</span>
+<span class="nc" id="L788">            detail.setRawResponse(&quot;(cosine similarity scores computed via bge-small-en-v1.5)&quot;);</span>
 <span class="nc" id="L789">            recordSuccess();</span>
 <span class="nc" id="L790">            return detail;</span>
         }

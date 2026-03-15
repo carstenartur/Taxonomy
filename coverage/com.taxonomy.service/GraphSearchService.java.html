@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
  *
  * &lt;h2&gt;Algorithm&lt;/h2&gt;
  * &lt;ol&gt;
- *   &lt;li&gt;Embed the query text with DJL / all-MiniLM-L6-v2.&lt;/li&gt;
+ *   &lt;li&gt;Embed the query text with DJL / bge-small-en-v1.5.&lt;/li&gt;
  *   &lt;li&gt;Search {@link TaxonomyNode} index with {@code f.knn()} — finds conceptually
  *       similar nodes.&lt;/li&gt;
  *   &lt;li&gt;Search {@link TaxonomyRelation} index with {@code f.knn()} — finds relations
@@ -62,7 +62,7 @@ public class GraphSearchService {
         }
 
         try {
-<span class="nc" id="L65">            float[] queryVector = embeddingService.embed(queryText);</span>
+<span class="nc" id="L65">            float[] queryVector = embeddingService.embedQuery(queryText);</span>
 <span class="nc" id="L66">            SearchSession session = Search.session(entityManager);</span>
 
             // 1. Search TaxonomyNode index by KNN
