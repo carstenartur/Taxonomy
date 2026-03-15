@@ -4,22 +4,26 @@ import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dto.ProjectionState;
 import com.taxonomy.dto.RepositoryState;
 import com.taxonomy.dto.ViewContext;
+import com.taxonomy.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 /**
  * Unit tests for {@link RepositoryStateService}.
  *
  * <p>Uses an in-memory DslGitRepository — no Spring context required.
+ * Tests verify per-user workspace isolation via the WorkspaceManager.
  */
 class RepositoryStateServiceTest {
 
     private DslGitRepository gitRepo;
     private RepositoryStateService stateService;
+    private WorkspaceManager workspaceManager;
 
     private static final String SAMPLE_DSL = """
             meta {
@@ -36,7 +40,9 @@ class RepositoryStateServiceTest {
     @BeforeEach
     void setUp() {
         gitRepo = new DslGitRepository();
-        stateService = new RepositoryStateService(gitRepo);
+        UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
+        workspaceManager = new WorkspaceManager(wsRepo, 50);
+        stateService = new RepositoryStateService(gitRepo, workspaceManager);
     }
 
     // ── getState ────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import com.taxonomy.dto.ContextHistoryEntry;
 import com.taxonomy.dto.ContextMode;
 import com.taxonomy.dto.ContextRef;
 import com.taxonomy.dto.NavigationReason;
+import com.taxonomy.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -12,17 +13,20 @@ import java.io.IOException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 /**
  * Unit tests for {@link ContextNavigationService}.
  *
  * <p>Uses an in-memory DslGitRepository — no Spring context required.
+ * Tests verify per-user workspace isolation via the WorkspaceManager.
  */
 class ContextNavigationServiceTest {
 
     private DslGitRepository gitRepo;
     private RepositoryStateService stateService;
     private ContextNavigationService navService;
+    private WorkspaceManager workspaceManager;
 
     private static final String SAMPLE_DSL = """
             meta {
@@ -39,8 +43,10 @@ class ContextNavigationServiceTest {
     @BeforeEach
     void setUp() {
         gitRepo = new DslGitRepository();
-        stateService = new RepositoryStateService(gitRepo);
-        navService = new ContextNavigationService(gitRepo, stateService, 50);
+        UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
+        workspaceManager = new WorkspaceManager(wsRepo, 50);
+        stateService = new RepositoryStateService(gitRepo, workspaceManager);
+        navService = new ContextNavigationService(gitRepo, stateService, workspaceManager, 50);
     }
 
     // ── getCurrentContext ────────────────────────────────────────────

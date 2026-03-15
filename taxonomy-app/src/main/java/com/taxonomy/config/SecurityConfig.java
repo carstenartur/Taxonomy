@@ -67,6 +67,10 @@ public class SecurityConfig {
                 auth.requestMatchers(HttpMethod.GET,    "/api/context/**").authenticated();
                 auth.requestMatchers(HttpMethod.POST,   "/api/context/**").hasAnyRole("ARCHITECT", "ADMIN");
 
+                // Workspace — reads for any user, writes for ADMIN
+                auth.requestMatchers(HttpMethod.GET,    "/api/workspace/**").authenticated();
+                auth.requestMatchers(HttpMethod.POST,   "/api/workspace/**").hasRole("ADMIN");
+
                 auth.requestMatchers(HttpMethod.POST,   "/api/export/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
 
                 // Reading API — any authenticated user

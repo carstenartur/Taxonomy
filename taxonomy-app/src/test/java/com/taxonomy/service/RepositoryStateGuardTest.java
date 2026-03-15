@@ -1,17 +1,20 @@
 package com.taxonomy.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 /**
  * Unit tests for {@link RepositoryStateGuard}.
  *
  * <p>Uses an in-memory DslGitRepository — no Spring context required.
+ * Tests verify per-user workspace isolation via the WorkspaceManager.
  */
 class RepositoryStateGuardTest {
 
@@ -34,7 +37,9 @@ class RepositoryStateGuardTest {
     @BeforeEach
     void setUp() {
         gitRepo = new DslGitRepository();
-        stateService = new RepositoryStateService(gitRepo);
+        UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
+        WorkspaceManager workspaceManager = new WorkspaceManager(wsRepo, 50);
+        stateService = new RepositoryStateService(gitRepo, workspaceManager);
         guard = new RepositoryStateGuard(stateService, null);
     }
 

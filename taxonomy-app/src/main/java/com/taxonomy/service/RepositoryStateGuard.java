@@ -13,6 +13,9 @@ import java.util.List;
  * <p>Before committing, materializing, cherry-picking, or merging, this
  * component checks whether the operation is safe and returns warnings
  * or blocks. Also blocks writes when the current context is read-only.
+ *
+ * <p>All checks are workspace-aware: each user's operation state and
+ * read-only status are independent.
  */
 @Component
 public class RepositoryStateGuard {
@@ -40,24 +43,36 @@ public class RepositoryStateGuard {
     ) {}
 
     /**
-     * Check whether a write operation is safe to perform.
+     * Check whether a write operation is safe for the default user.
      *
+     * @param branch        the target branch
+     * @param operationType the type of operation
+     * @return the operation check result
+     */
+    public OperationCheck checkWriteOperation(String branch, String operationType) {
+        return checkWriteOperation(WorkspaceManager.DEFAULT_USER, branch, operationType);
+    }
+
+    /**
+     * Check whether a write operation is safe for a specific user.
+     *
+     * @param username      the user attempting the operation
      * @param branch        the target branch
      * @param operationType the type of operation (e.g. "commit", "materialize", "cherry-pick", "merge")
      * @return the operation check result
      */
-    public OperationCheck checkWriteOperation(String branch, String operationType) {
+    public OperationCheck checkWriteOperation(String username, String branch, String operationType) {
         List<String> warnings = new ArrayList<>();
         List<String> blocks = new ArrayList<>();
 
-        // Block if current context is read-only
-        if (contextNavigationService != null && contextNavigationService.isReadOnly()) {
+        // Block if current context is read-only (per-user check)
+        if (contextNavigationService != null && contextNavigationService.isReadOnly(username)) {
             blocks.add("Current context is read-only. Switch to an editable context before making changes.");
         }
 
-        var state = stateService.getState(branch);
+        var state = stateService.getState(username, branch);
 
-        // Block if an operation is already in progress
+        // Block if an operation is already in progress (per-user check)
         if (state.operationInProgress()) {
             blocks.add("A " + state.operationKind() + " operation is already in progress. " +
                     "Complete or cancel it before starting a new operation.");
@@ -68,14 +83,14 @@ public class RepositoryStateGuard {
             blocks.add("Branch '" + branch + "' does not exist or has no commits.");
         }
 
-        // Warn if projection is stale
-        ProjectionState ps = stateService.getProjectionState(branch);
+        // Warn if projection is stale (per-user check)
+        ProjectionState ps = stateService.getProjectionState(username, branch);
         if (ps.projectionStale()) {
             warnings.add("DB projection is stale — it was built from a different commit than HEAD. " +
                     "Consider re-materializing before this operation.");
         }
 
-        // Warn if index is stale
+        // Warn if index is stale (per-user check)
         if (ps.indexStale()) {
             warnings.add("Search index is stale — search results may not reflect latest changes.");
         }
