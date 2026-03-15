@@ -14,6 +14,7 @@ Taxonomy Application,com.taxonomy.controller,ChangePasswordController,97,15,14,0
 Taxonomy Application,com.taxonomy.controller,ExplanationTraceApiController.ExplainRequest,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.controller,GraphQueryApiController,135,165,19,11,24,37,12,11,0,8
 Taxonomy Application,com.taxonomy.controller,QualityApiController,0,27,0,0,0,7,0,5,0,5
+Taxonomy Application,com.taxonomy.controller,AboutController,26,129,5,5,9,24,6,4,1,4
 Taxonomy Application,com.taxonomy.controller,CoverageApiController,1,53,1,1,0,15,1,7,0,7
 Taxonomy Application,com.taxonomy.controller,ApiController.new AnalysisEventCallback() {...},55,106,2,2,12,21,4,5,2,5
 Taxonomy Application,com.taxonomy.controller,TaxonomyController,0,19,0,0,0,6,0,2,0,2
@@ -62,7 +63,7 @@ Taxonomy Application,com.taxonomy.config,CsvKeywordAnalyzer,0,24,0,0,0,5,0,3,0,3
 Taxonomy Application,com.taxonomy.config,RateLimitFilter.WindowCounter,25,30,3,3,6,6,2,3,0,2
 Taxonomy Application,com.taxonomy.config,SecurityAuditListener,50,0,2,0,13,0,6,0,5,0
 Taxonomy Application,com.taxonomy.config,SecurityDataInitializer,0,99,2,2,0,24,2,5,0,5
-Taxonomy Application,com.taxonomy.config,OpenApiConfig,0,246,0,0,0,35,0,2,0,2
+Taxonomy Application,com.taxonomy.config,OpenApiConfig,0,256,0,0,0,36,0,2,0,2
 Taxonomy Application,com.taxonomy.config,ActuatorSecurityFilter,45,24,11,3,12,8,6,3,0,2
 Taxonomy Application,com.taxonomy.config,DslAnalyzer,0,18,0,0,0,4,0,2,0,2
 Taxonomy Application,com.taxonomy.config,TaxonomyHealthIndicator,1,73,1,1,0,15,1,2,0,2
