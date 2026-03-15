@@ -181,7 +181,7 @@ public class LocalEmbeddingService {
             resolvedUrl = "file://" + url;
         }
 
-        // DJL requires a serving.properties file to recognise a local model directory.
+        // DJL requires a serving.properties file to recognize a local model directory.
         // Auto-generate one if the URL points to a local directory that lacks it.
         ensureServingProperties(url);
 

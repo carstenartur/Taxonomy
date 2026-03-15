@@ -38,7 +38,7 @@ jobs:
           curl -fsL -o tokenizer_config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json
           curl -fsL -o special_tokens_map.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/special_tokens_map.json
           curl -fsL -o config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json
-          # DJL requires serving.properties to recognise a local model directory
+          # DJL requires serving.properties to recognize a local model directory
           cat > serving.properties <<EOF
           engine=OnnxRuntime
           option.modelName=model
