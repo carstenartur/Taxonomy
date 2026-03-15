@@ -21,6 +21,16 @@
     let currentProposalFilter = 'PENDING';
     let pendingProposalNodeCode = null; // node code for propose modal
 
+    // ── Accessibility helpers (WCAG 4.1.3) ────────────────────────────────────
+    function announceStatus(message) {
+        var el = document.getElementById('a11yStatus');
+        if (el) { el.textContent = ''; requestAnimationFrame(function () { el.textContent = message; }); }
+    }
+    function announceAlert(message) {
+        var el = document.getElementById('a11yAlert');
+        if (el) { el.textContent = ''; requestAnimationFrame(function () { el.textContent = message; }); }
+    }
+
     // ── Bootstrap ─────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function () {
         loadTaxonomy();
@@ -338,16 +348,18 @@
             body.classList.add('admin-unlocked');
             if (adminNavTab) { adminNavTab.style.display = ''; }
             if (lockBtn) {
-                lockBtn.textContent = '🔓';
+                lockBtn.innerHTML = '<span aria-hidden="true">\u{1F513}</span><span class="visually-hidden">Admin Mode</span>';
                 lockBtn.title = 'Admin mode active — click to lock';
+                lockBtn.setAttribute('aria-label', 'Admin mode — unlocked. Click to lock.');
                 lockBtn.classList.remove('d-none');
             }
         } else {
             body.classList.remove('admin-unlocked');
             if (adminNavTab) { adminNavTab.style.display = 'none'; }
             if (lockBtn) {
-                lockBtn.textContent = '🔐';
+                lockBtn.innerHTML = '<span aria-hidden="true">\u{1F510}</span><span class="visually-hidden">Admin Mode</span>';
                 lockBtn.title = 'Click to unlock admin mode';
+                lockBtn.setAttribute('aria-label', 'Admin mode — locked. Click to unlock.');
                 lockBtn.classList.remove('d-none');
             }
         }
@@ -417,6 +429,10 @@
             }
             const bsModal = new bootstrap.Modal(modal);
             bsModal.show();
+            // Return focus to trigger when modal closes (WCAG 2.4.3)
+            modal.addEventListener('hidden.bs.modal', function () {
+                lockBtn.focus();
+            }, { once: true });
         });
 
         const unlockBtn = document.getElementById('adminUnlockBtn');
@@ -922,6 +938,75 @@
         cleanupD3(container);
         container.innerHTML = '';
         nodes.forEach(node => container.appendChild(buildNodeEl(node, scores)));
+        initTreeKeyboardNavigation(container);
+    }
+
+    // ── Keyboard navigation for treeview (WCAG 2.1.1, 2.4.3) ─────────────────
+    function initTreeKeyboardNavigation(tree) {
+        if (!tree) return;
+        tree.addEventListener('keydown', function (e) {
+            var current = document.activeElement;
+            if (!current || current.getAttribute('role') !== 'treeitem') return;
+
+            var allItems = Array.from(tree.querySelectorAll('[role="treeitem"]')).filter(function (el) {
+                // Only include visible items
+                var p = el;
+                while (p && p !== tree) {
+                    if (p.style && p.style.display === 'none') return false;
+                    p = p.parentElement;
+                }
+                return true;
+            });
+            var idx = allItems.indexOf(current);
+
+            switch (e.key) {
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (idx < allItems.length - 1) allItems[idx + 1].focus();
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (idx > 0) allItems[idx - 1].focus();
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    if (current.getAttribute('aria-expanded') === 'false') {
+                        var toggle = current.querySelector(':scope > .tax-node-header > .tax-toggle');
+                        if (toggle) { toggle.click(); }
+                    } else {
+                        var firstChild = current.querySelector('[role="group"] > [role="treeitem"]');
+                        if (firstChild) firstChild.focus();
+                    }
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    if (current.getAttribute('aria-expanded') === 'true') {
+                        var collapseToggle = current.querySelector(':scope > .tax-node-header > .tax-toggle');
+                        if (collapseToggle) { collapseToggle.click(); }
+                    } else {
+                        var parent = current.parentElement ? current.parentElement.closest('[role="treeitem"]') : null;
+                        if (parent) parent.focus();
+                    }
+                    break;
+                case 'Enter':
+                case ' ':
+                    e.preventDefault();
+                    var headerEl = current.querySelector(':scope > .tax-node-header');
+                    if (headerEl) headerEl.click();
+                    break;
+                case 'Home':
+                    e.preventDefault();
+                    if (allItems.length > 0) allItems[0].focus();
+                    break;
+                case 'End':
+                    e.preventDefault();
+                    if (allItems.length > 0) allItems[allItems.length - 1].focus();
+                    break;
+            }
+        });
+        // First root item gets tabindex="0" so it's in the tab order
+        var firstItem = tree.querySelector('[role="treeitem"]');
+        if (firstItem) firstItem.setAttribute('tabindex', '0');
     }
 
     // ── Render tabbed list view ────────────────────────────────────────────────
@@ -1019,20 +1104,37 @@
         wrapper.className = 'tax-node tax-level-' + node.level;
         wrapper.dataset.code = node.code;
 
+        // ARIA treeview role (WCAG 4.1.2)
+        wrapper.setAttribute('role', 'treeitem');
+        wrapper.setAttribute('tabindex', '-1');
+        var ariaLabel = node.code + ' ' + (node.name || '');
+        if (pct !== null && pct > 0) {
+            ariaLabel += ', Score: ' + pct + ' percent';
+            if (reason) { ariaLabel += ', Reason: ' + reason; }
+        } else if (pct !== null) {
+            ariaLabel += ', Score: 0 percent';
+        }
+        wrapper.setAttribute('aria-label', ariaLabel);
+        if (hasChildren) {
+            wrapper.setAttribute('aria-expanded', 'false');
+        }
+
         // Header row
         const header = document.createElement('div');
         header.className = 'tax-node-header';
 
-        // Apply green background based on match percentage
+        // Apply green background based on match percentage (M11: contrast-safe)
         if (pct !== null && pct > 0) {
             const alpha = Math.min(pct / 100, 1).toFixed(2);
             header.style.backgroundColor = 'rgba(0,128,0,' + alpha + ')';
-            if (pct >= 60) header.style.color = '#fff';
+            if (pct >= 75) { header.style.color = '#fff'; }
+            else { header.style.color = '#1a1a1a'; }
         }
 
         // Toggle arrow
         const toggle = document.createElement('span');
         toggle.className = 'tax-toggle';
+        toggle.setAttribute('aria-hidden', 'true');
         if (hasChildren) {
             toggle.textContent = '▶';
             toggle.addEventListener('click', function (e) {
@@ -1062,6 +1164,7 @@
             const badge = document.createElement('span');
             badge.className = 'tax-pct';
             badge.textContent = pct + '%';
+            badge.setAttribute('aria-hidden', 'true');
             header.appendChild(badge);
         }
 
@@ -1089,6 +1192,7 @@
         if (hasChildren) {
             const childContainer = document.createElement('div');
             childContainer.className = 'tax-children';
+            childContainer.setAttribute('role', 'group');
             childContainer.style.display = 'none'; // collapsed by default
             node.children.forEach(child => childContainer.appendChild(buildNodeEl(child, scores)));
             wrapper.appendChild(childContainer);
@@ -1175,6 +1279,8 @@
 
         children.style.display = isHidden ? '' : 'none';
         toggleEl.textContent = isHidden ? '▼' : '▶';
+        // Update ARIA expanded state (WCAG 4.1.2)
+        wrapper.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
     }
 
     function evaluateNodeChildren(parentCode, wrapper, toggle) {
@@ -1381,6 +1487,10 @@
         document.querySelectorAll('.tax-toggle').forEach(el => {
             if (el.textContent === '▶') el.textContent = '▼';
         });
+        // Update ARIA expanded state
+        document.querySelectorAll('[role="treeitem"][aria-expanded]').forEach(el => {
+            el.setAttribute('aria-expanded', 'true');
+        });
     }
 
     function collapseAll() {
@@ -1389,6 +1499,10 @@
         });
         document.querySelectorAll('.tax-toggle').forEach(el => {
             if (el.textContent === '▼') el.textContent = '▶';
+        });
+        // Update ARIA expanded state
+        document.querySelectorAll('[role="treeitem"][aria-expanded]').forEach(el => {
+            el.setAttribute('aria-expanded', 'false');
         });
     }
 
@@ -2125,12 +2239,15 @@
         if (pct > 0) {
             const alpha = Math.min(pct / 100, 1).toFixed(2);
             header.style.backgroundColor = 'rgba(0,128,0,' + alpha + ')';
-            if (pct >= 60) { header.style.color = '#fff'; }
+            // Contrast-safe text color (WCAG 1.4.3)
+            if (pct >= 75) { header.style.color = '#fff'; }
+            else { header.style.color = '#1a1a1a'; }
 
             let badge = header.querySelector('.tax-pct');
             if (!badge) {
                 badge = document.createElement('span');
                 badge.className = 'tax-pct';
+                badge.setAttribute('aria-hidden', 'true');
                 header.appendChild(badge);
             }
             badge.textContent = pct + '%';
@@ -2151,6 +2268,17 @@
             header.style.backgroundColor = '';
             header.style.color = '';
         }
+
+        // Update ARIA label with score info (WCAG 4.1.2)
+        var nameEl = header.querySelector('.tax-name');
+        var ariaLabel = code + ' ' + (nameEl ? nameEl.textContent : '');
+        if (pct > 0) {
+            ariaLabel += ', Score: ' + pct + ' percent';
+            if (reason) { ariaLabel += ', Reason: ' + reason; }
+        } else {
+            ariaLabel += ', Score: 0 percent';
+        }
+        el.setAttribute('aria-label', ariaLabel);
     }
 
     /** Expand a node in the DOM and all of its ancestors. */
@@ -2162,6 +2290,7 @@
             children.style.display = '';
             const toggle = el.querySelector(':scope > .tax-node-header > .tax-toggle');
             if (toggle) toggle.textContent = '▼';
+            el.setAttribute('aria-expanded', 'true');
         }
         // Also make sure all ancestors are visible
         let parent = el.parentElement;
@@ -2172,6 +2301,7 @@
                 if (pNode) {
                     const t = pNode.querySelector(':scope > .tax-node-header > .tax-toggle');
                     if (t) t.textContent = '▼';
+                    pNode.setAttribute('aria-expanded', 'true');
                 }
             }
             parent = parent.parentElement;
@@ -2227,6 +2357,9 @@
     function showStatus(type, msg) {
         document.getElementById('statusArea').innerHTML =
             '<div class="alert alert-' + type + ' py-2">' + escapeHtml(msg) + '</div>';
+        // Announce status to screen readers (WCAG 4.1.3)
+        if (type === 'danger') { announceAlert(msg); }
+        else { announceStatus(msg); }
     }
 
     function clearStatus() {
