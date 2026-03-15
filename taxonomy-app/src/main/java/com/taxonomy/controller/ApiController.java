@@ -135,10 +135,11 @@ public class ApiController {
     @Operation(summary = "Check AI availability", description = "Returns whether an LLM provider is available and which one is active", tags = {"Administration"})
     @GetMapping("/ai-status")
     public ResponseEntity<AiStatusResponse> aiStatus() {
-        boolean available = llmService.isAvailable();
-        String provider = available ? llmService.getActiveProviderName() : null;
+        com.taxonomy.dto.AiAvailabilityLevel level = llmService.getAvailabilityLevel();
+        String provider = level != com.taxonomy.dto.AiAvailabilityLevel.UNAVAILABLE
+                ? llmService.getActiveProviderName() : null;
         List<String> availableProviders = llmService.getAvailableProviders();
-        return ResponseEntity.ok(new AiStatusResponse(available, provider, availableProviders));
+        return ResponseEntity.ok(new AiStatusResponse(level, provider, availableProviders));
     }
 
     @Operation(summary = "Startup status", description = "Returns the initialization state of the taxonomy data. Poll this endpoint after receiving a 503 to know when the app is ready.", tags = {"Status"})
