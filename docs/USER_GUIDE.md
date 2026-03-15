@@ -43,13 +43,13 @@ The system scores every taxonomy node (0–100), highlights the most relevant el
     - [Architecture Recommendation](#11e-architecture-recommendation)
     - [Architecture Pattern Detection](#11f-architecture-pattern-detection)
     - [Architecture DSL](#11g-architecture-dsl)
-    - [Versions Tab](#11h-versions-tab)
-    - [Git Status and Context Bar](#11i-git-status-and-context-bar)
-12. [Administration](#12-administration)
-13. [Relation Types Reference](#13-relation-types-reference)
-14. [Tips and Best Practices](#14-tips-and-best-practices)
-15. [Glossary](#15-glossary)
-16. [Troubleshooting](#16-troubleshooting)
+12. [Versions Tab](#12-versions-tab)
+13. [Git Status and Context Bar](#13-git-status-and-context-bar)
+14. [Administration](#14-administration)
+15. [Relation Types Reference](#15-relation-types-reference)
+16. [Tips and Best Practices](#16-tips-and-best-practices)
+17. [Glossary](#17-glossary)
+18. [Troubleshooting](#18-troubleshooting)
 
 ---
 
@@ -97,7 +97,7 @@ The **Taxonomy Architecture Analyzer** is a web application that helps Architect
 
 Open your web browser and navigate to the application URL (for example `http://localhost:8080` when running locally, or the deployed URL provided by your administrator).
 
-The application loads as a single page. A login page is presented on first access — sign in with the default credentials (`admin` / `admin`) or with the password configured via the `TAXONOMY_ADMIN_PASSWORD` environment variable. After login, all standard features are available; administrator features additionally require unlocking admin mode (see [Section 12](#12-administration)).
+The application loads as a single page. A login page is presented on first access — sign in with the default credentials (`admin` / `admin`) or with the password configured via the `TAXONOMY_ADMIN_PASSWORD` environment variable. After login, all standard features are available; administrator features additionally require unlocking admin mode (see [Section 14](#14-administration)).
 
 **First-time users** will see a **Welcome overlay** with a 3-step guide explaining how to get started:
 1. Describe your requirement in the text area
@@ -1041,7 +1041,7 @@ view hospital-comms-overview {
 
 ### Relation Types
 
-See [§13 Relation Types Reference](#13-relation-types-reference) for the full list of 10 relation types and their compatibility rules.
+See [§15 Relation Types Reference](#15-relation-types-reference) for the full list of 10 relation types and their compatibility rules.
 
 ### Extension Attributes
 
@@ -1097,7 +1097,7 @@ You interact with version control through the GUI — there is no need to use Gi
 - **Commits** — Every time you save a version or commit in the DSL Editor, a snapshot is recorded. You can browse, compare, restore, or undo commits at any time.
 - **Undo / Restore** — Made a mistake? Use the **Undo** button to remove the last change, or **Restore** to go back to any previous version.
 
-For details on how to use these features step by step, see [§11h Versions Tab](#11h-versions-tab) below.
+For details on how to use these features step by step, see [§12 Versions Tab](#12-versions-tab) below.
 
 > 📖 For a comprehensive guide to branching, merge previews, conflict detection, staleness tracking, and the full Git REST API, see **[Git Integration](GIT_INTEGRATION.md)**.
 
@@ -1126,11 +1126,11 @@ You can search through the full commit history directly in the Versions Tab. The
 - **Commit messages** — Find commits by description (e.g., "review round 2").
 - **Changed elements** — Find all commits that affected a specific element or relation.
 
-See [§11h Versions Tab](#11h-versions-tab) for how to use the search in the GUI.
+See [§12 Versions Tab](#12-versions-tab) for how to use the search in the GUI.
 
 ---
 
-## 11h. Versions Tab
+## 12. Versions Tab
 
 The **🕓 Versions** tab provides a visual interface for browsing, managing, and reverting architecture versions. Click **🕓 Versions** in the top navigation bar to open it.
 
@@ -1187,7 +1187,7 @@ Click the **🔄 Refresh** button in the History card header to reload the timel
 
 ---
 
-## 11i. Git Status and Context Bar
+## 13. Git Status and Context Bar
 
 Two horizontal bars at the top of the page provide at-a-glance information about the current architecture state.
 
@@ -1231,7 +1231,7 @@ Navigation buttons in the Context Bar:
 
 ---
 
-## 12. Administration
+## 14. Administration
 
 Administration features are hidden behind a password-protected admin mode. A standard user does not need to access these features.
 
@@ -1294,7 +1294,7 @@ The **Prompt Templates Editor** (admin only, collapsible) allows you to customis
 
 ---
 
-## 13. Relation Types Reference
+## 15. Relation Types Reference
 
 The system uses 10 relation types, each corresponding to a specific relationship in the NATO Architecture Framework (NAF) or The Open Group Architecture Framework (TOGAF).
 
@@ -1313,7 +1313,7 @@ The system uses 10 relation types, each corresponding to a specific relationship
 
 ---
 
-## 14. Tips and Best Practices
+## 16. Tips and Best Practices
 
 ### Writing Effective Requirements
 
@@ -1345,7 +1345,7 @@ The system uses 10 relation types, each corresponding to a specific relationship
 
 ---
 
-## 15. Glossary
+## 17. Glossary
 
 | Term | Definition |
 |---|---|
@@ -1383,7 +1383,7 @@ The system uses 10 relation types, each corresponding to a specific relationship
 
 ---
 
-## 16. Troubleshooting
+## 18. Troubleshooting
 
 ### The "Analyze with AI" button is disabled or greyed out
 

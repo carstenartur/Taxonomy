@@ -246,6 +246,6 @@ See [Configuration Reference](CONFIGURATION_REFERENCE.md) for the complete list 
 
 - [Configuration Reference](CONFIGURATION_REFERENCE.md) — All environment variables and startup configuration
 - [Preferences](PREFERENCES.md) — Runtime preference management
-- [User Guide](USER_GUIDE.md) — AI Status Indicator and Admin Mode (§12)
+- [User Guide](USER_GUIDE.md) — AI Status Indicator and Admin Mode (§14)
 - [Security](SECURITY.md) — Authentication and access control
 - [API Reference](API_REFERENCE.md) — Full REST API documentation
