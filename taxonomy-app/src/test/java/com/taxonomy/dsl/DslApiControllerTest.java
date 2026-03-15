@@ -926,4 +926,93 @@ class DslApiControllerTest {
                 .andExpect(jsonPath("$.viewContext.basedOnBranch").value("vc-history"))
                 .andExpect(jsonPath("$.viewContext.basedOnCommit").isNotEmpty());
     }
+
+    // ── Branch deletion ─────────────────────────────────────────────
+
+    @Test
+    void deleteBranch_success() throws Exception {
+        // First create a branch
+        String dsl = """
+                element CP-1023 type Capability {
+                  title: "Branch Delete Test";
+                }
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                .contentType(MediaType.TEXT_PLAIN)
+                .content(dsl)
+                .param("branch", "deletable-branch"));
+
+        // Delete it
+        mockMvc.perform(delete("/api/dsl/branch").param("name", "deletable-branch"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deleted").value("deletable-branch"))
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void deleteBranch_protectedBranch() throws Exception {
+        mockMvc.perform(delete("/api/dsl/branch").param("name", "draft"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Cannot delete protected branch: draft"));
+    }
+
+    @Test
+    void deleteBranch_nonexistent() throws Exception {
+        mockMvc.perform(delete("/api/dsl/branch").param("name", "nonexistent-xyz"))
+                .andExpect(status().isNotFound());
+    }
+
+    // ── Merge conflict details ──────────────────────────────────────
+
+    @Test
+    void mergeConflictDetails_noConflict() throws Exception {
+        String dsl = """
+                element CP-1023 type Capability {
+                  title: "Conflict Test";
+                }
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                .contentType(MediaType.TEXT_PLAIN)
+                .content(dsl)
+                .param("branch", "conflict-base"));
+
+        mockMvc.perform(post("/api/dsl/branches")
+                .param("name", "conflict-target")
+                .param("fromBranch", "conflict-base"));
+
+        mockMvc.perform(get("/api/dsl/merge/conflicts")
+                        .param("from", "conflict-base")
+                        .param("into", "conflict-target"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.conflict").value(false));
+    }
+
+    // ── Merge resolve ───────────────────────────────────────────────
+
+    @Test
+    void mergeResolve_commitsResolvedContent() throws Exception {
+        String dsl = """
+                element CP-1023 type Capability {
+                  title: "Resolve Test";
+                }
+                """;
+        mockMvc.perform(post("/api/dsl/commit")
+                .contentType(MediaType.TEXT_PLAIN)
+                .content(dsl)
+                .param("branch", "resolve-target"));
+
+        String resolvedDsl = """
+                element CP-1023 type Capability {
+                  title: "Manually Resolved";
+                }
+                """;
+        mockMvc.perform(post("/api/dsl/merge/resolve")
+                        .param("fromBranch", "resolve-source")
+                        .param("intoBranch", "resolve-target")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(resolvedDsl))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.commitId").isNotEmpty())
+                .andExpect(jsonPath("$.resolution").value("manual"));
+    }
 }

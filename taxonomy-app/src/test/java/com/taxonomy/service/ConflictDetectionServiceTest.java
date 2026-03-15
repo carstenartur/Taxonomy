@@ -135,4 +135,46 @@ class ConflictDetectionServiceTest {
         assertFalse(result.canCherryPick());
         assertFalse(result.warnings().isEmpty());
     }
+
+    // ── Conflict details ────────────────────────────────────────────
+
+    @Test
+    void getMergeConflictDetails_noConflict() throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        gitRepo.createBranch("review", "draft");
+        gitRepo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "v2");
+
+        var details = conflictService.getMergeConflictDetails("draft", "review");
+        // Fast-forward case — no conflict
+        assertNull(details);
+    }
+
+    @Test
+    void getMergeConflictDetails_branchNotFound() {
+        // When source branch doesn't exist, preview returns canMerge=false,
+        // but getDslAtHead returns null for both → ConflictDetails with empty content
+        var details = conflictService.getMergeConflictDetails("nonexistent", "draft");
+        // No conflict details when source branch doesn't exist (preview canMerge=false but no real content)
+        assertNotNull(details);
+        assertEquals("merge", details.conflictType());
+    }
+
+    @Test
+    void getCherryPickConflictDetails_noConflict() throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        gitRepo.createBranch("review", "draft");
+        String v2Commit = gitRepo.commitDsl("draft", SAMPLE_DSL_V2, "tester", "v2");
+
+        var details = conflictService.getCherryPickConflictDetails(v2Commit, "review");
+        // Clean cherry-pick — no conflict
+        assertNull(details);
+    }
+
+    @Test
+    void getCherryPickConflictDetails_invalidCommit() {
+        var details = conflictService.getCherryPickConflictDetails(
+                "0000000000000000000000000000000000000000", "draft");
+        // Invalid commit → null
+        assertNull(details);
+    }
 }

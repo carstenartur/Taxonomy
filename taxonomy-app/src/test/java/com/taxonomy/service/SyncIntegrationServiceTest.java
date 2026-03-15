@@ -153,4 +153,49 @@ class SyncIntegrationServiceTest {
         // New sync state defaults to UP_TO_DATE with 0 unpublished
         assertFalse(syncService.isDirty("alice"));
     }
+
+    // ── Diverged resolution ─────────────────────────────────────────
+
+    @Test
+    void resolveDiverged_mergeStrategy() throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "system", "initial");
+        gitRepo.createBranch("alice-branch", "draft");
+        // Create divergence: both sides have unique commits
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "system", "shared change");
+        gitRepo.commitDsl("alice-branch", SAMPLE_DSL, "alice", "user change");
+
+        String result = syncService.resolveDiverged("alice", "alice-branch",
+                SyncIntegrationService.DivergedStrategy.MERGE);
+
+        assertNotNull(result);
+        assertTrue(result.contains("Merged"));
+    }
+
+    @Test
+    void resolveDiverged_takeSharedStrategy() throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "system", "initial");
+        gitRepo.createBranch("alice-branch", "draft");
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "system", "shared change");
+        gitRepo.commitDsl("alice-branch", SAMPLE_DSL, "alice", "user change");
+
+        String result = syncService.resolveDiverged("alice", "alice-branch",
+                SyncIntegrationService.DivergedStrategy.TAKE_SHARED);
+
+        assertNotNull(result);
+        assertTrue(result.contains("Replaced"));
+    }
+
+    @Test
+    void resolveDiverged_keepMineStrategy() throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "system", "initial");
+        gitRepo.createBranch("alice-branch", "draft");
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "system", "shared change");
+        gitRepo.commitDsl("alice-branch", SAMPLE_DSL, "alice", "user change");
+
+        String result = syncService.resolveDiverged("alice", "alice-branch",
+                SyncIntegrationService.DivergedStrategy.KEEP_MINE);
+
+        assertNotNull(result);
+        assertTrue(result.contains("Published"));
+    }
 }
