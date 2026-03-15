@@ -13,6 +13,7 @@ window.TaxonomyContextCompare = (function () {
 
     /**
      * Show the compare dialog, pre-filled with the current context.
+     * Loads available branches into dropdown selectors.
      *
      * @param {object} currentContext — the current ContextRef
      */
@@ -22,15 +23,53 @@ window.TaxonomyContextCompare = (function () {
 
         var leftBranch = document.getElementById('compareLeftBranch');
         var rightBranch = document.getElementById('compareRightBranch');
-        if (leftBranch && currentContext) {
-            leftBranch.value = currentContext.branch || 'draft';
-        }
-        if (rightBranch) {
-            rightBranch.value = 'draft';
-        }
+
+        // Populate branch selectors
+        populateBranchSelectors(function () {
+            if (leftBranch && currentContext) {
+                leftBranch.value = currentContext.branch || 'draft';
+            }
+            if (rightBranch) {
+                rightBranch.value = 'draft';
+            }
+        });
+
+        // Clear previous results
+        var results = document.getElementById('contextCompareResults');
+        if (results) results.innerHTML = '';
 
         var bsModal = new bootstrap.Modal(modal);
         bsModal.show();
+    }
+
+    /**
+     * Populate branch selector dropdowns from API.
+     *
+     * @param {function} callback — called after branches are loaded
+     */
+    function populateBranchSelectors(callback) {
+        fetch('/api/git/branches')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var branches = data.branches || data || [];
+                ['compareLeftBranch', 'compareRightBranch'].forEach(function (id) {
+                    var sel = document.getElementById(id);
+                    if (!sel) return;
+                    var current = sel.value || 'draft';
+                    sel.innerHTML = '';
+                    branches.forEach(function (b) {
+                        var opt = document.createElement('option');
+                        opt.value = b;
+                        opt.textContent = b;
+                        sel.appendChild(opt);
+                    });
+                    sel.value = current;
+                });
+                if (callback) callback();
+            })
+            .catch(function () {
+                if (callback) callback();
+            });
     }
 
     /**

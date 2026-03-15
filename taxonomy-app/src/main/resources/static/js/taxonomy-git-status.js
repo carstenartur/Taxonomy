@@ -27,7 +27,11 @@
     // ── Polling ─────────────────────────────────────────────────────
 
     function pollGitState() {
-        fetch('/api/git/state?branch=draft')
+        // Use the current context's branch if available, otherwise default to 'draft'
+        var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
+        var branch = (ctx && ctx.branch) ? ctx.branch : 'draft';
+
+        fetch('/api/git/state?branch=' + encodeURIComponent(branch))
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
@@ -97,6 +101,13 @@
             parts.push('<span class="git-sep">│</span>');
             parts.push('<span class="git-operation">&#128308; ' +
                 escapeHtml(state.operationKind || 'operation') + ' in progress</span>');
+        }
+
+        // Context mode indicator
+        var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
+        if (ctx && ctx.mode === 'READ_ONLY') {
+            parts.push('<span class="git-sep">│</span>');
+            parts.push('<span class="git-indicator"><span class="badge bg-warning text-dark" style="font-size:0.7rem;">READ-ONLY</span></span>');
         }
 
         statusBar.innerHTML = parts.join(' ');
