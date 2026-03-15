@@ -1553,4 +1553,360 @@ class ScreenshotGeneratorIT {
         saveElementScreenshot(driver.findElement(By.id("contextBar")),
                 "51-context-bar-with-origin.png");
     }
+
+    // ── Screenshots 52–68: New GUI Dialogs ────────────────────────────────────
+
+    @Test
+    @Order(52)
+    void captureMergeConflictModal() throws IOException {
+        navigateToTab("analyze");
+        showModalViaDOM("mergeConflictModal");
+        // Populate conflict modal with sample content
+        js("document.getElementById('conflictOursLabel').textContent = 'Ours (draft)';" +
+           "document.getElementById('conflictTheirsLabel').textContent = 'Theirs (feature-voice)';" +
+           "document.getElementById('conflictOursContent').textContent = " +
+           "'element CP-1023 type Capability {\\n  title: \"Secure Voice\";\\n}';" +
+           "document.getElementById('conflictTheirsContent').textContent = " +
+           "'element CP-1023 type Capability {\\n  title: \"Secure Voice Service\";\\n}';" +
+           "document.getElementById('conflictResolvedContent').value = " +
+           "'element CP-1023 type Capability {\\n  title: \"Secure Voice Service\";\\n}';");
+        saveScreenshot("52-merge-conflict-modal.png");
+        closeModalViaDOM("mergeConflictModal");
+    }
+
+    @Test
+    @Order(53)
+    void captureMergeConflictResolved() throws IOException, InterruptedException {
+        navigateToTab("analyze");
+        // Simulate a toast notification for resolved conflict
+        js("var toastEl = document.getElementById('operationToast');" +
+           "var titleEl = document.getElementById('operationToastTitle');" +
+           "var bodyEl = document.getElementById('operationToastBody');" +
+           "if (toastEl && titleEl && bodyEl) {" +
+           "  titleEl.textContent = '\\u2705 Merge Conflict Resolved';" +
+           "  bodyEl.textContent = 'Content committed successfully: a3f8c2d';" +
+           "  var header = toastEl.querySelector('.toast-header');" +
+           "  if (header) { header.className = 'toast-header bg-success text-white'; }" +
+           "  toastEl.classList.add('show');" +
+           "}");
+        Thread.sleep(1000);
+        saveScreenshot("53-merge-conflict-resolved.png");
+        js("var toastEl = document.getElementById('operationToast');" +
+           "if (toastEl) toastEl.classList.remove('show');");
+    }
+
+    @Test
+    @Order(54)
+    void captureCherryPickConflictModal() throws IOException {
+        navigateToTab("analyze");
+        showModalViaDOM("mergeConflictModal");
+        // Populate as cherry-pick conflict
+        js("document.getElementById('mergeConflictModalLabel').textContent = " +
+           "'\\u26A0\\uFE0F Cherry-Pick Conflict — Manual Resolution Required';" +
+           "document.getElementById('conflictOursLabel').textContent = 'Ours (review)';" +
+           "document.getElementById('conflictTheirsLabel').textContent = 'Theirs (commit a3f8c2d)';" +
+           "document.getElementById('conflictOursContent').textContent = " +
+           "'element CP-1023 type Capability {\\n  title: \"Secure Voice\";\\n}';" +
+           "document.getElementById('conflictTheirsContent').textContent = " +
+           "'element CP-1023 type Capability {\\n  title: \"Encrypted Voice\";\\n}';" +
+           "document.getElementById('conflictResolvedContent').value = '';");
+        saveScreenshot("54-cherry-pick-conflict-modal.png");
+        closeModalViaDOM("mergeConflictModal");
+        // Reset title
+        js("document.getElementById('mergeConflictModalLabel').textContent = " +
+           "'\\u26A0\\uFE0F Merge Conflict — Manual Resolution Required';");
+    }
+
+    @Test
+    @Order(55)
+    void captureSyncDivergedState() throws IOException {
+        navigateToTab("versions");
+        // Switch to Sync sub-tab
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'sync');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-sync') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        // Inject diverged state
+        js("var panel = document.getElementById('syncStatePanel');" +
+           "if (panel) {" +
+           "  panel.innerHTML = '<div class=\"d-flex align-items-center gap-2 mb-2\">" +
+           "<span class=\"badge bg-danger\">Diverged — both sides have changes</span>" +
+           "<button class=\"btn btn-sm btn-outline-danger ms-2\">Resolve…</button>" +
+           "</div>" +
+           "<table class=\"table table-sm table-borderless mb-0\" style=\"max-width:400px;\">" +
+           "<tr><td class=\"text-muted small\">Last synced</td><td class=\"small\">3/15/2026, 2:30:00 PM</td></tr>" +
+           "<tr><td class=\"text-muted small\">Unpublished</td><td class=\"small\">3 commits</td></tr>" +
+           "</table>';" +
+           "}");
+        saveScreenshot("55-sync-diverged-state.png");
+    }
+
+    @Test
+    @Order(56)
+    void captureSyncResolveModal() throws IOException {
+        showModalViaDOM("syncDivergedModal");
+        saveScreenshot("56-sync-resolve-modal.png");
+        closeModalViaDOM("syncDivergedModal");
+    }
+
+    @Test
+    @Order(57)
+    void captureVariantDeleteConfirm() throws IOException {
+        navigateToTab("versions");
+        // Switch to Variants sub-tab and inject a variant with delete button
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'variants');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-variants') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        // Inject sample variant list with delete button
+        js("var browser = document.getElementById('variantsBrowser');" +
+           "if (browser) {" +
+           "  browser.innerHTML = '<div class=\"list-group\">" +
+           "<div class=\"list-group-item list-group-item-primary\">" +
+           "<div class=\"d-flex justify-content-between align-items-center\">" +
+           "<div><strong>draft</strong> <span class=\"badge bg-primary ms-1\">active</span> <span class=\"badge bg-secondary ms-1\">main</span></div>" +
+           "<div class=\"d-flex gap-1\"><button class=\"btn btn-outline-info btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#8596; Compare</button></div>" +
+           "</div></div>" +
+           "<div class=\"list-group-item\">" +
+           "<div class=\"d-flex justify-content-between align-items-center\">" +
+           "<div><strong>feature-voice</strong></div>" +
+           "<div class=\"d-flex gap-1\">" +
+           "<button class=\"btn btn-outline-primary btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#8594; Switch</button>" +
+           "<button class=\"btn btn-outline-info btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#8596; Compare</button>" +
+           "<button class=\"btn btn-outline-warning btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#128256; Merge</button>" +
+           "<button class=\"btn btn-outline-danger btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#128465; Delete</button>" +
+           "</div></div></div></div>';" +
+           "}");
+        saveScreenshot("57-variant-delete-confirm.png");
+    }
+
+    @Test
+    @Order(58)
+    void captureMergeSuccessToast() throws IOException, InterruptedException {
+        navigateToTab("analyze");
+        // Show a success toast for merge
+        js("var toastEl = document.getElementById('operationToast');" +
+           "var titleEl = document.getElementById('operationToastTitle');" +
+           "var bodyEl = document.getElementById('operationToastBody');" +
+           "if (toastEl && titleEl && bodyEl) {" +
+           "  titleEl.textContent = '\\u2705 Merge Successful';" +
+           "  bodyEl.textContent = 'Merged \"feature-voice\" into \"draft\" → a3f8c2d';" +
+           "  var header = toastEl.querySelector('.toast-header');" +
+           "  if (header) { header.className = 'toast-header bg-success text-white'; }" +
+           "  toastEl.classList.add('show');" +
+           "}");
+        Thread.sleep(1000);
+        saveScreenshot("58-merge-success-toast.png");
+        js("var toastEl = document.getElementById('operationToast');" +
+           "if (toastEl) toastEl.classList.remove('show');");
+    }
+
+    @Test
+    @Order(59)
+    void captureCherryPickSuccessToast() throws IOException, InterruptedException {
+        navigateToTab("analyze");
+        // Show a success toast for cherry-pick
+        js("var toastEl = document.getElementById('operationToast');" +
+           "var titleEl = document.getElementById('operationToastTitle');" +
+           "var bodyEl = document.getElementById('operationToastBody');" +
+           "if (toastEl && titleEl && bodyEl) {" +
+           "  titleEl.textContent = '\\u2705 Cherry-Pick Successful';" +
+           "  bodyEl.textContent = 'Applied onto \"review\" → b7e4f1a';" +
+           "  var header = toastEl.querySelector('.toast-header');" +
+           "  if (header) { header.className = 'toast-header bg-success text-white'; }" +
+           "  toastEl.classList.add('show');" +
+           "}");
+        Thread.sleep(1000);
+        saveScreenshot("59-cherry-pick-success-toast.png");
+        js("var toastEl = document.getElementById('operationToast');" +
+           "if (toastEl) toastEl.classList.remove('show');");
+    }
+
+    @Test
+    @Order(60)
+    void captureMergePreviewModal() throws IOException {
+        navigateToTab("analyze");
+        showModalViaDOM("mergePreviewModal");
+        // Inject preview content
+        js("var content = document.getElementById('mergePreviewContent');" +
+           "if (content) {" +
+           "  content.innerHTML = '<div class=\"alert alert-success mb-0\">" +
+           "<strong>From:</strong> feature-voice <strong>→ Into:</strong> draft" +
+           "<hr class=\"my-2\">Merge preview: commits to merge from \"feature-voice\" into \"draft\". No conflicts detected.</div>';" +
+           "}" +
+           "var btn = document.getElementById('mergePreviewProceedBtn');" +
+           "if (btn) btn.classList.remove('d-none');");
+        saveScreenshot("60-merge-preview-modal.png");
+        closeModalViaDOM("mergePreviewModal");
+    }
+
+    @Test
+    @Order(61)
+    void captureMergePreviewFastForward() throws IOException {
+        navigateToTab("analyze");
+        showModalViaDOM("mergePreviewModal");
+        // Inject fast-forward preview
+        js("var content = document.getElementById('mergePreviewContent');" +
+           "if (content) {" +
+           "  content.innerHTML = '<div class=\"alert alert-success mb-0\">" +
+           "<strong>From:</strong> feature-voice <strong>→ Into:</strong> draft" +
+           "<hr class=\"my-2\">\\u2705 Fast-forward merge possible. No conflicts detected.</div>';" +
+           "}" +
+           "var btn = document.getElementById('mergePreviewProceedBtn');" +
+           "if (btn) btn.classList.remove('d-none');");
+        saveScreenshot("61-merge-preview-fast-forward.png");
+        closeModalViaDOM("mergePreviewModal");
+    }
+
+    @Test
+    @Order(62)
+    void captureCherryPickPreviewModal() throws IOException {
+        navigateToTab("analyze");
+        showModalViaDOM("cherryPickPreviewModal");
+        // Inject cherry-pick preview content
+        js("var content = document.getElementById('cherryPickPreviewContent');" +
+           "if (content) {" +
+           "  content.innerHTML = '<div class=\"alert alert-success mb-0\">" +
+           "<strong>Commit:</strong> a3f8c2d <strong>→ Branch:</strong> review" +
+           "<hr class=\"my-2\">\\u2705 Cherry-pick looks clean. Apply commit a3f8c2d onto \"review\"?</div>';" +
+           "}" +
+           "var btn = document.getElementById('cherryPickPreviewProceedBtn');" +
+           "if (btn) btn.classList.remove('d-none');");
+        saveScreenshot("62-cherry-pick-preview-modal.png");
+        closeModalViaDOM("cherryPickPreviewModal");
+    }
+
+    @Test
+    @Order(63)
+    void captureSyncTabUpToDate() throws IOException {
+        navigateToTab("versions");
+        // Switch to Sync sub-tab
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'sync');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-sync') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        js("var panel = document.getElementById('syncStatePanel');" +
+           "if (panel) {" +
+           "  panel.innerHTML = '<div class=\"d-flex align-items-center gap-2 mb-2\">" +
+           "<span class=\"badge bg-success\">Up to date</span></div>" +
+           "<table class=\"table table-sm table-borderless mb-0\" style=\"max-width:400px;\">" +
+           "<tr><td class=\"text-muted small\">Last synced</td><td class=\"small\">3/15/2026, 2:30:00 PM</td></tr>" +
+           "<tr><td class=\"text-muted small\">Synced commit</td><td class=\"small\"><code>a3f8c2d</code></td></tr>" +
+           "</table>';" +
+           "}");
+        saveScreenshot("63-sync-tab-up-to-date.png");
+    }
+
+    @Test
+    @Order(64)
+    void captureSyncTabAhead() throws IOException {
+        navigateToTab("versions");
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'sync');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-sync') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        js("var panel = document.getElementById('syncStatePanel');" +
+           "if (panel) {" +
+           "  panel.innerHTML = '<div class=\"d-flex align-items-center gap-2 mb-2\">" +
+           "<span class=\"badge bg-info text-dark\">3 unpublished commits</span></div>" +
+           "<table class=\"table table-sm table-borderless mb-0\" style=\"max-width:400px;\">" +
+           "<tr><td class=\"text-muted small\">Unpublished</td><td class=\"small\">3 commits</td></tr>" +
+           "</table>';" +
+           "}");
+        saveScreenshot("64-sync-tab-ahead.png");
+    }
+
+    @Test
+    @Order(65)
+    void captureSyncTabBehind() throws IOException {
+        navigateToTab("versions");
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'sync');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-sync') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        js("var panel = document.getElementById('syncStatePanel');" +
+           "if (panel) {" +
+           "  panel.innerHTML = '<div class=\"d-flex align-items-center gap-2 mb-2\">" +
+           "<span class=\"badge bg-warning text-dark\">Behind shared repository</span></div>" +
+           "<table class=\"table table-sm table-borderless mb-0\" style=\"max-width:400px;\">" +
+           "<tr><td class=\"text-muted small\">Last synced</td><td class=\"small\">3/14/2026, 10:00:00 AM</td></tr>" +
+           "</table>';" +
+           "}");
+        saveScreenshot("65-sync-tab-behind.png");
+    }
+
+    @Test
+    @Order(66)
+    void captureVersionsTimeline() throws IOException {
+        navigateToTab("versions");
+        // Switch to History sub-tab
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        // Wait for the timeline to be populated
+        wait(10).until(d -> {
+            String html = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('versionsTimeline');" +
+                    "return el ? el.innerHTML : '';");
+            return html != null && !html.contains("Loading version history");
+        });
+        saveScreenshot("66-versions-timeline.png");
+    }
+
+    @Test
+    @Order(67)
+    void captureVersionRestoreConfirm() throws IOException {
+        navigateToTab("versions");
+        // Inject a simulated restore confirmation dialog
+        js("var timeline = document.getElementById('versionsTimeline');" +
+           "if (timeline) {" +
+           "  var card = document.createElement('div');" +
+           "  card.className = 'alert alert-warning mt-2';" +
+           "  card.innerHTML = '<strong>Restore Version?</strong><br>" +
+           "This will create a new commit restoring the DSL content from commit <code>a3f8c2d</code>.<br>" +
+           "<div class=\"mt-2\"><button class=\"btn btn-sm btn-warning me-1\">\\u21A9 Restore</button>" +
+           "<button class=\"btn btn-sm btn-secondary\">Cancel</button></div>';" +
+           "  timeline.prepend(card);" +
+           "}");
+        saveScreenshot("67-version-restore-confirm.png");
+    }
+
+    @Test
+    @Order(68)
+    void captureDiffView() throws IOException {
+        navigateToTab("dsl-editor");
+        // Inject a diff view into the DSL editor area
+        js("var area = document.getElementById('dslDiffOutput');" +
+           "if (area) {" +
+           "  area.textContent = '--- a/architecture.taxdsl\\n" +
+           "+++ b/architecture.taxdsl\\n" +
+           "@@ -1,5 +1,6 @@\\n" +
+           " element CP-1023 type Capability {\\n" +
+           "-  title: \"Secure Voice\";\\n" +
+           "+  title: \"Secure Voice Service\";\\n" +
+           "+  description: \"Encrypted real-time voice communication\";\\n" +
+           " }\\n';" +
+           "  area.style.display = 'block';" +
+           "}");
+        saveScreenshot("68-diff-view.png");
+    }
 }
