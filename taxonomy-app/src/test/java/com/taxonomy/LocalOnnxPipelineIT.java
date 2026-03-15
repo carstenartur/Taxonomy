@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration tests that validate the full LOCAL_ONNX data pipeline using the
- * embedded all-MiniLM-L6-v2 model. No Selenium needed — pure REST API calls.
+ * embedded bge-small-en-v1.5 model. No Selenium needed — pure REST API calls.
  * <p>
  * Opt-in: only runs when the {@code runOnnxTests} system property is set.
  * Run with: {@code mvn verify -DrunOnnxTests -Dit.test=LocalOnnxPipelineIT}

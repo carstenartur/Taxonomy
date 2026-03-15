@@ -26,7 +26,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 
 /**
  * Tests for the semantic/hybrid search infrastructure introduced in Phase 3 of the
- * offline embedding plan (all-MiniLM-L6-v2 via DJL / Lucene KNN).
+ * offline embedding plan (bge-small-en-v1.5 via DJL / Lucene KNN).
  *
  * <p>Note: The DJL model is NOT loaded in unit tests (embedding.enabled=true but the
  * model download is not triggered). All semantic endpoints gracefully return empty lists

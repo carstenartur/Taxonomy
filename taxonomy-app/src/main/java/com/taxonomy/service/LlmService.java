@@ -397,7 +397,7 @@ public class LlmService {
             case QWEN        -> "Qwen";
             case LLAMA       -> "Llama";
             case MISTRAL     -> "Mistral";
-            case LOCAL_ONNX  -> "Local (all-MiniLM-L6-v2)";
+            case LOCAL_ONNX  -> "Local (bge-small-en-v1.5)";
         };
     }
 
@@ -785,7 +785,7 @@ public class LlmService {
             detail.setDurationMs(System.currentTimeMillis() - start);
             detail.setScores(scores);
             detail.setPrompt("(local embedding – no prompt sent)");
-            detail.setRawResponse("(cosine similarity scores computed via all-MiniLM-L6-v2)");
+            detail.setRawResponse("(cosine similarity scores computed via bge-small-en-v1.5)");
             recordSuccess();
             return detail;
         }

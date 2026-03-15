@@ -10,6 +10,6 @@ public enum LlmProvider {
     QWEN,
     LLAMA,
     MISTRAL,
-    /** Local embedding model (all-MiniLM-L6-v2) via DJL / ONNX Runtime. No API key required. */
+    /** Local embedding model (bge-small-en-v1.5) via DJL / ONNX Runtime. No API key required. */
     LOCAL_ONNX
 }
