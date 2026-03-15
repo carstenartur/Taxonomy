@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
  *   <li>{@code TAXONOMY_EMBEDDING_MODEL_DIR} — path to a pre-downloaded model directory;
  *       empty = DJL auto-download to {@code ~/.djl.ai/}.</li>
  *   <li>{@code TAXONOMY_EMBEDDING_MODEL_NAME} — DJL model URL;
- *       default {@code djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2}.</li>
+ *       default {@code djl://ai.djl.huggingface/sentence-transformers/all-MiniLM-L6-v2}.</li>
  * </ul>
  *
  * <h2>Graceful degradation</h2>
@@ -60,11 +60,11 @@ public class LocalEmbeddingService {
 
     /** Default DJL model-zoo URL for the ONNX export of all-MiniLM-L6-v2. */
     static final String DEFAULT_MODEL_URL =
-            "djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2";
+            "djl://ai.djl.huggingface/sentence-transformers/all-MiniLM-L6-v2";
 
     /** Fallback URL used when the {@code djl://} protocol fails (e.g. URL truncation in Alpine). */
     static final String FALLBACK_MODEL_URL =
-            "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2";
+            "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx";
 
     /**
      * Raw cosine-similarity threshold below which a node receives score 0.
@@ -80,7 +80,7 @@ public class LocalEmbeddingService {
     @Value("${embedding.model.dir:}")
     private String modelDir;
 
-    @Value("${embedding.model.name:djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2}")
+    @Value("${embedding.model.name:djl://ai.djl.huggingface/sentence-transformers/all-MiniLM-L6-v2}")
     private String modelName;
 
     // ── DJL model (lazy) ──────────────────────────────────────────────────────
