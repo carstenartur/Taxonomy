@@ -1185,6 +1185,47 @@ This is equivalent to making a Git commit with a descriptive message. You can la
 
 Click the **🔄 Refresh** button in the History card header to reload the timeline. This is useful if another user or process has made changes.
 
+### Variants Browser
+
+Click the **🔀 Variants** sub-tab to see all architecture variant branches. Each variant shows:
+
+- **Branch name** — The name of the variant (e.g., `feature-voice-services`)
+- **Latest commit** — The most recent change on that variant
+- **Commit count** — How many commits exist on the variant
+
+Available actions for each variant:
+
+| Button | Action |
+|---|---|
+| **Switch** | Switch to that variant for editing (opens a new context) |
+| **Compare** | Compare the variant with another branch (semantic diff) |
+| **Merge** | Merge changes from that variant into the current branch |
+
+To create a new variant, click **+ New Variant** in the card header. This opens a modal where you enter the variant name. The new variant is forked from the current branch.
+
+### Copy Back (Read-Only Contexts)
+
+When viewing a variant in **READ-ONLY** mode, a **📤 Copy Back** button appears in the Context Bar. This allows you to selectively transfer elements and relations from the read-only variant back to your editable workspace — useful for cherry-picking ideas from experimental branches.
+
+### Sync with Shared Repository
+
+Click the **🔄 Sync** sub-tab to manage synchronization between your workspace and the shared team repository:
+
+- **Sync from Shared** — Pulls the latest changes from the shared `draft` branch into your workspace branch. This is equivalent to `git merge` from the shared branch.
+- **Publish to Shared** — Pushes your workspace changes to the shared branch. This is equivalent to `git merge` into the shared branch.
+
+The sync state panel shows:
+- **Sync status** — `UP_TO_DATE` (in sync), `BEHIND` (shared has newer changes), `AHEAD` (you have unpublished changes), or `DIVERGED` (both have changed)
+- **Unpublished commit count** — Number of your commits not yet published to shared
+- **Last sync/publish timestamps** — When you last synced or published
+
+### Workspace User Badge
+
+In the navbar (top-right), the **workspace badge** shows your username and current branch. The badge colour changes to indicate state:
+
+- **Blue** — Normal, workspace is clean
+- **Yellow** — Workspace has unsaved/unpublished changes (dirty state)
+
 ---
 
 ## 13. Git Status and Context Bar
@@ -1205,6 +1246,7 @@ The **Git Status Bar** appears just below the navigation bar. It displays:
 | **Index: fresh / STALE** | Whether the search index matches the latest Git commit |
 | **N variants** | How many branches exist |
 | **N versions** | Total number of commits on the current branch |
+| **Sync: status** | Synchronisation state with the shared repository (synced / behind / ahead / diverged) |
 
 When the projection shows **STALE**, it means the DSL has been changed but not yet materialized into the database. Go to the DSL Editor and click **Materialize** to bring the database up to date.
 
@@ -1226,6 +1268,7 @@ Navigation buttons in the Context Bar:
 |---|---|
 | **← Back** | Go back to the previous context (like browser back, but for architecture versions) |
 | **↺ Origin** | Jump directly back to where you started navigating |
+| **📤 Copy Back** | Copy elements from a read-only context back to your editable workspace (only shown in READ-ONLY mode) |
 | **+ Variant** | Create a new branch from the current context |
 | **↔ Compare** | Open a comparison dialog to diff two branches or commits |
 

@@ -299,6 +299,65 @@ See [Git Integration](GIT_INTEGRATION.md) for the full REST API and usage guide.
 
 ---
 
+## Multi-User Workspace Architecture
+
+The system supports concurrent multi-user editing through a workspace isolation model:
+
+```
+                    ┌──────────────────────────┐
+                    │   Shared Git Repository   │
+                    │   (DslGitRepository)      │
+                    │   Branch: draft (shared)  │
+                    └──────────┬───────────────┘
+                               │
+                ┌──────────────┼──────────────┐
+                │              │              │
+         ┌──────▼─────┐ ┌─────▼──────┐ ┌─────▼──────┐
+         │  Alice's    │ │  Bob's     │ │  Carol's   │
+         │  Workspace  │ │  Workspace │ │  Workspace │
+         │  Branch:    │ │  Branch:   │ │  Branch:   │
+         │  feature-a  │ │  feature-b │ │  draft     │
+         └──────┬──────┘ └─────┬──────┘ └─────┬──────┘
+                │              │              │
+         ┌──────▼─────┐ ┌─────▼──────┐ ┌─────▼──────┐
+         │ Projection │ │ Projection │ │ Projection │
+         │ (Alice)    │ │ (Bob)      │ │ (Carol)    │
+         └────────────┘ └────────────┘ └────────────┘
+```
+
+### Components
+
+| Component | Responsibility |
+|---|---|
+| **WorkspaceManager** | In-memory cache of per-user `UserWorkspaceState` instances (ConcurrentHashMap) |
+| **UserWorkspaceState** | Volatile per-user state: context, history, projection tracking, operation state |
+| **UserWorkspace** (entity) | Persistent workspace metadata: branch, timestamps, shared flag |
+| **WorkspaceProjection** (entity) | Per-user projection state: commit SHAs, timestamps, staleness |
+| **ContextHistoryRecord** (entity) | Persistent navigation history with origin tracking |
+| **SyncState** (entity) | Tracks sync state between workspace and shared repository |
+| **WorkspaceResolver** | Extracts username from Spring Security context |
+
+### Isolation Model
+
+1. **Branch isolation** — Each user works on their own Git branch. The shared `draft` branch is the integration point.
+2. **State isolation** — Navigation context, projection tracking, and operation state are per-user.
+3. **Sync workflow** — Users pull from shared (sync) and push to shared (publish) explicitly.
+
+### Data Flow
+
+```
+Browser → WorkspaceResolver (extract user)
+       → WorkspaceManager (get/create state)
+       → Service (workspace-aware method with username parameter)
+       → DslGitRepository (branch-scoped Git operations)
+```
+
+All workspace-aware services accept a `username` parameter to isolate state. Controllers resolve the username via `WorkspaceResolver.resolveCurrentUsername()`.
+
+See [Concepts](CONCEPTS.md) for definitions of Workspace, Variant, Projection, and Sync.
+
+---
+
 ## ViewContext and Action Guards
 
 Every API response that modifies the DSL includes a `ViewContext` object containing the current repository state. This enables the frontend to display accurate status information without an extra round trip.

@@ -28,6 +28,13 @@ This document explains the key terms used throughout the Taxonomy Architecture A
 - [Relation Evidence](#relation-evidence)
 - [Explanation Trace](#explanation-trace)
 - [Canonical Architecture Model](#canonical-architecture-model)
+- [Framework Mapping](#framework-mapping)
+- [Quality Analysis](#quality-analysis)
+- [Gap Analysis](#gap-analysis)
+- [Workspace](#workspace)
+- [Variant](#variant)
+- [Workspace Projection](#workspace-projection)
+- [Synchronisation (Sync)](#synchronisation-sync)
 
 ---
 
@@ -275,3 +282,65 @@ Gap analysis identifies missing architecture coverage by comparing the current m
 API endpoint: `GET /api/gap/apqc-coverage` returns `ApqcCoverageResult` with coverage statistics.
 
 See [User Guide](USER_GUIDE.md) § 11e for the Gap Analysis panel.
+
+---
+
+## Workspace
+
+An isolated editing environment for a single user. Each workspace provides:
+
+- **Independent context navigation** — browser-like back/forward through architecture versions
+- **Projection tracking** — per-user materialization state so one user's refresh doesn't affect another
+- **Operation isolation** — merge, cherry-pick, and revert operations are tracked per workspace
+- **Branch-level isolation** — the underlying Git repository is shared, but each user works on their own branch
+
+Workspaces are created lazily on first access and persist across sessions. The in-memory state (current context, navigation history) is held by `WorkspaceManager`; persistent metadata (branch, timestamps) is stored in the `user_workspace` table.
+
+See [Architecture](ARCHITECTURE.md) § Multi-User Workspace for the design overview.
+
+---
+
+## Variant
+
+A named branch in the Git-backed DSL repository. Variants allow users to explore alternative architecture designs without affecting the main (shared) branch. Key operations:
+
+| Operation | Description |
+|---|---|
+| **Create** | Fork a new branch from the current context |
+| **Switch** | Open a different variant for editing |
+| **Compare** | Semantic diff between two variants |
+| **Merge** | Integrate changes from one variant into another |
+| **Copy Back** | Selectively transfer elements from a read-only variant to the editable workspace |
+
+Variants are displayed in the **Variants** sub-tab of the Versions tab. Each variant shows its branch name, latest commit, and commit count.
+
+---
+
+## Workspace Projection
+
+A per-user materialized view of the DSL model at a specific commit. The projection converts the text-based DSL into database entities (taxonomy nodes, relations) that power the UI and search index.
+
+Each user's projection is tracked independently:
+
+- **Projection commit** — the SHA of the commit that was last materialized
+- **Index commit** — the SHA of the commit the search index was last built from
+- **Staleness** — the projection is stale when HEAD has advanced beyond the projection commit
+
+This allows multiple users to work on different branches without interfering with each other's materialized state.
+
+---
+
+## Synchronisation (Sync)
+
+The process of exchanging changes between a user's workspace and the shared integration repository. Two main operations:
+
+| Operation | Direction | Description |
+|---|---|---|
+| **Sync from Shared** | Shared → User | Merges the latest shared branch changes into the user's branch |
+| **Publish** | User → Shared | Merges the user's branch changes into the shared branch |
+
+The sync state tracks:
+- **Status**: `UP_TO_DATE`, `BEHIND` (shared has newer commits), `AHEAD` (user has unpublished commits), `DIVERGED` (both have changed)
+- **Unpublished commit count**: Number of user commits not yet merged into shared
+
+See [User Guide](USER_GUIDE.md) § 11 for the Sync sub-tab in the Versions tab.
