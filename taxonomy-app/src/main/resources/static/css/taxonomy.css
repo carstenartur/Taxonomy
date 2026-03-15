@@ -1,3 +1,30 @@
+/* ── Skip-Link (BITV 2.0 / WCAG 2.4.1) ──────────────────────── */
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: #0d6efd;
+    color: #fff;
+    padding: 0.5rem 1rem;
+    z-index: 9999;
+    transition: top 0.2s;
+    text-decoration: none;
+}
+.skip-link:focus {
+    top: 0;
+}
+
+/* ── Treeview Focus (WCAG 2.4.7) ──────────────────────────────── */
+[role="treeitem"]:focus {
+    outline: 3px solid #0d6efd;
+    outline-offset: 2px;
+    border-radius: 3px;
+}
+[role="treeitem"]:focus-visible {
+    outline: 3px solid #0d6efd;
+    outline-offset: 2px;
+}
+
 /* ── Taxonomy tree ──────────────────────────────────────────── */
 .tax-node {
     font-size: 0.875rem;

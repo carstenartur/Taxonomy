@@ -462,39 +462,39 @@
             html += '<strong>' + data.totalChanges + ' change(s)</strong><br>';
         }
 
-        if (data.addedElements > 0) html += '<span class="text-success">+ ' + data.addedElements + ' element(s) added</span><br>';
-        if (data.removedElements > 0) html += '<span class="text-danger">− ' + data.removedElements + ' element(s) removed</span><br>';
-        if (data.changedElements > 0) html += '<span class="text-warning">~ ' + data.changedElements + ' element(s) changed</span><br>';
-        if (data.addedRelations > 0) html += '<span class="text-success">+ ' + data.addedRelations + ' relation(s) added</span><br>';
-        if (data.removedRelations > 0) html += '<span class="text-danger">− ' + data.removedRelations + ' relation(s) removed</span><br>';
-        if (data.changedRelations > 0) html += '<span class="text-warning">~ ' + data.changedRelations + ' relation(s) changed</span><br>';
+        if (data.addedElements > 0) html += '<span class="text-success"><span aria-hidden="true">✅</span> + ' + data.addedElements + ' element(s) added</span><br>';
+        if (data.removedElements > 0) html += '<span class="text-danger"><span aria-hidden="true">❌</span> − ' + data.removedElements + ' element(s) removed</span><br>';
+        if (data.changedElements > 0) html += '<span class="text-warning"><span aria-hidden="true">⚠️</span> ~ ' + data.changedElements + ' element(s) changed</span><br>';
+        if (data.addedRelations > 0) html += '<span class="text-success"><span aria-hidden="true">✅</span> + ' + data.addedRelations + ' relation(s) added</span><br>';
+        if (data.removedRelations > 0) html += '<span class="text-danger"><span aria-hidden="true">❌</span> − ' + data.removedRelations + ' relation(s) removed</span><br>';
+        if (data.changedRelations > 0) html += '<span class="text-warning"><span aria-hidden="true">⚠️</span> ~ ' + data.changedRelations + ' relation(s) changed</span><br>';
 
         // Show details if present
         if (data.details) {
             var d = data.details;
             if (d.addedElements && d.addedElements.length > 0) {
-                html += '<details class="mt-2"><summary class="text-success">Added Elements</summary><ul>';
+                html += '<details class="mt-2"><summary class="text-success"><span aria-hidden="true">+</span> Added Elements (' + d.addedElements.length + ')</summary><ul>';
                 d.addedElements.forEach(function (e) {
                     html += '<li><code>' + escapeHtml(e.id) + '</code> ' + escapeHtml(e.title || '') + ' <small class="text-muted">(' + escapeHtml(e.type || '') + ')</small></li>';
                 });
                 html += '</ul></details>';
             }
             if (d.removedElements && d.removedElements.length > 0) {
-                html += '<details class="mt-1"><summary class="text-danger">Removed Elements</summary><ul>';
+                html += '<details class="mt-1"><summary class="text-danger"><span aria-hidden="true">−</span> Removed Elements (' + d.removedElements.length + ')</summary><ul>';
                 d.removedElements.forEach(function (e) {
                     html += '<li><code>' + escapeHtml(e.id) + '</code> ' + escapeHtml(e.title || '') + '</li>';
                 });
                 html += '</ul></details>';
             }
             if (d.addedRelations && d.addedRelations.length > 0) {
-                html += '<details class="mt-1"><summary class="text-success">Added Relations</summary><ul>';
+                html += '<details class="mt-1"><summary class="text-success"><span aria-hidden="true">+</span> Added Relations (' + d.addedRelations.length + ')</summary><ul>';
                 d.addedRelations.forEach(function (r) {
                     html += '<li><code>' + escapeHtml(r.sourceId) + '</code> —[' + escapeHtml(r.relationType) + ']→ <code>' + escapeHtml(r.targetId) + '</code></li>';
                 });
                 html += '</ul></details>';
             }
             if (d.removedRelations && d.removedRelations.length > 0) {
-                html += '<details class="mt-1"><summary class="text-danger">Removed Relations</summary><ul>';
+                html += '<details class="mt-1"><summary class="text-danger"><span aria-hidden="true">−</span> Removed Relations (' + d.removedRelations.length + ')</summary><ul>';
                 d.removedRelations.forEach(function (r) {
                     html += '<li><code>' + escapeHtml(r.sourceId) + '</code> —[' + escapeHtml(r.relationType) + ']→ <code>' + escapeHtml(r.targetId) + '</code></li>';
                 });
