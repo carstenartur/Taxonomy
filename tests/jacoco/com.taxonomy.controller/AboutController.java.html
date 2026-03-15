@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AboutController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.controller</a> &gt; <span class="el_source">AboutController.java</span></div><h1>AboutController.java</h1><pre class="source lang-java linenums">package com.taxonomy.controller;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.info.BuildProperties;
+import org.springframework.boot.info.GitProperties;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * REST API for application version, build info, license, and third-party notices.
+ */
+@RestController
+@RequestMapping(&quot;/api/about&quot;)
+@Tag(name = &quot;About&quot;)
+public class AboutController {
+
+<span class="fc" id="L31">    private static final Logger log = LoggerFactory.getLogger(AboutController.class);</span>
+
+    private final BuildProperties buildProperties;
+    private final GitProperties gitProperties;
+
+    @Autowired(required = false)
+<span class="fc" id="L37">    public AboutController(BuildProperties buildProperties, GitProperties gitProperties) {</span>
+<span class="fc" id="L38">        this.buildProperties = buildProperties;</span>
+<span class="fc" id="L39">        this.gitProperties = gitProperties;</span>
+<span class="fc" id="L40">    }</span>
+
+<span class="nc" id="L42">    public AboutController() {</span>
+<span class="nc" id="L43">        this.buildProperties = null;</span>
+<span class="nc" id="L44">        this.gitProperties = null;</span>
+<span class="nc" id="L45">    }</span>
+
+    @GetMapping
+    @Operation(summary = &quot;Application info&quot;, description = &quot;Returns version, build time, git commit, license, and copyright information.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; about() {
+<span class="fc" id="L50">        Map&lt;String, Object&gt; info = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L51">        info.put(&quot;product&quot;, &quot;Taxonomy Architecture Analyzer&quot;);</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        info.put(&quot;version&quot;, buildProperties != null ? buildProperties.getVersion() : &quot;unknown&quot;);</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">        info.put(&quot;buildTime&quot;, buildProperties != null ? buildProperties.getTime() : null);</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        info.put(&quot;commit&quot;, gitProperties != null ? gitProperties.getShortCommitId() : &quot;unknown&quot;);</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">        info.put(&quot;commitTime&quot;, gitProperties != null ? gitProperties.getCommitTime() : null);</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        info.put(&quot;branch&quot;, gitProperties != null ? gitProperties.getBranch() : &quot;unknown&quot;);</span>
+<span class="fc" id="L57">        info.put(&quot;license&quot;, &quot;MIT&quot;);</span>
+<span class="fc" id="L58">        info.put(&quot;copyright&quot;, &quot;Copyright 2026 Carsten Hammer&quot;);</span>
+<span class="fc" id="L59">        info.put(&quot;sourceUrl&quot;, &quot;https://github.com/carstenartur/Taxonomy&quot;);</span>
+<span class="fc" id="L60">        info.put(&quot;apiDocsUrl&quot;, &quot;/swagger-ui.html&quot;);</span>
+<span class="fc" id="L61">        info.put(&quot;thirdPartyNoticesUrl&quot;, &quot;/THIRD-PARTY-NOTICES.md&quot;);</span>
+<span class="fc" id="L62">        return ResponseEntity.ok(info);</span>
+    }
+
+    @GetMapping(&quot;/third-party&quot;)
+    @Operation(summary = &quot;Third-party notices&quot;, description = &quot;Returns the content of THIRD-PARTY-NOTICES.md.&quot;)
+    public ResponseEntity&lt;String&gt; thirdParty() {
+        try {
+<span class="fc" id="L69">            ClassPathResource resource = new ClassPathResource(&quot;static/THIRD-PARTY-NOTICES.md&quot;);</span>
+<span class="fc" id="L70">            try (InputStream is = resource.getInputStream()) {</span>
+<span class="fc" id="L71">                String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);</span>
+<span class="fc" id="L72">                return ResponseEntity.ok()</span>
+<span class="fc" id="L73">                        .contentType(MediaType.parseMediaType(&quot;text/markdown;charset=UTF-8&quot;))</span>
+<span class="fc" id="L74">                        .body(content);</span>
+            }
+<span class="nc" id="L76">        } catch (IOException e) {</span>
+<span class="nc" id="L77">            log.warn(&quot;THIRD-PARTY-NOTICES.md not found on classpath: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L78">            return ResponseEntity.ok()</span>
+<span class="nc" id="L79">                    .contentType(MediaType.TEXT_PLAIN)</span>
+<span class="nc" id="L80">                    .body(&quot;Third-party notices file not available.&quot;);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
