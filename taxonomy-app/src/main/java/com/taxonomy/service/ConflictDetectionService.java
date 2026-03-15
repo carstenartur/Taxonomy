@@ -135,6 +135,91 @@ public class ConflictDetectionService {
     }
 
     /**
+     * Details about a merge or cherry-pick conflict, including the content
+     * from both sides so the UI can display a side-by-side resolution view.
+     *
+     * @param conflictType  "merge" or "cherry-pick"
+     * @param oursLabel     label for "our" side (e.g. target branch name)
+     * @param theirsLabel   label for "their" side (e.g. source branch name)
+     * @param oursContent   DSL content from the target branch HEAD
+     * @param theirsContent DSL content from the source branch HEAD (or cherry-pick commit)
+     * @param baseContent   DSL content from the common ancestor (may be null)
+     */
+    public record ConflictDetails(
+            String conflictType,
+            String oursLabel,
+            String theirsLabel,
+            String oursContent,
+            String theirsContent,
+            String baseContent
+    ) {}
+
+    /**
+     * Get conflict details for a merge that would conflict.
+     *
+     * <p>Returns the DSL content from both sides so the UI can display
+     * a side-by-side comparison for manual resolution.
+     *
+     * @param fromBranch the source branch
+     * @param intoBranch the target branch
+     * @return conflict details, or null if no conflict detected
+     */
+    public ConflictDetails getMergeConflictDetails(String fromBranch, String intoBranch) {
+        try {
+            MergePreview preview = previewMerge(fromBranch, intoBranch);
+            if (preview.canMerge()) {
+                return null; // No conflict
+            }
+
+            String oursContent = gitRepository.getDslAtHead(intoBranch);
+            String theirsContent = gitRepository.getDslAtHead(fromBranch);
+
+            return new ConflictDetails(
+                    "merge",
+                    intoBranch,
+                    fromBranch,
+                    oursContent != null ? oursContent : "",
+                    theirsContent != null ? theirsContent : "",
+                    null
+            );
+        } catch (Exception e) {
+            log.error("Failed to get merge conflict details '{}' → '{}'", fromBranch, intoBranch, e);
+            return null;
+        }
+    }
+
+    /**
+     * Get conflict details for a cherry-pick that would conflict.
+     *
+     * @param commitId     the commit to cherry-pick
+     * @param targetBranch the target branch
+     * @return conflict details, or null if no conflict detected
+     */
+    public ConflictDetails getCherryPickConflictDetails(String commitId, String targetBranch) {
+        try {
+            CherryPickPreview preview = previewCherryPick(commitId, targetBranch);
+            if (preview.canCherryPick()) {
+                return null; // No conflict
+            }
+
+            String oursContent = gitRepository.getDslAtHead(targetBranch);
+            String theirsContent = gitRepository.getDslAtCommit(commitId);
+
+            return new ConflictDetails(
+                    "cherry-pick",
+                    targetBranch,
+                    "commit " + commitId.substring(0, Math.min(7, commitId.length())),
+                    oursContent != null ? oursContent : "",
+                    theirsContent != null ? theirsContent : "",
+                    null
+            );
+        } catch (Exception e) {
+            log.error("Failed to get cherry-pick conflict details {} → '{}'", commitId, targetBranch, e);
+            return null;
+        }
+    }
+
+    /**
      * Preview a cherry-pick to check for conflicts.
      *
      * @param commitId     the commit to cherry-pick

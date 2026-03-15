@@ -251,6 +251,41 @@ public class WorkspaceController {
         return ResponseEntity.ok(result);
     }
 
+    // ── Diverged resolution ─────────────────────────────────────────
+
+    @PostMapping("/resolve-diverged")
+    @Operation(summary = "Resolve a diverged sync state",
+            description = "Resolves a diverged state between user and shared branches. " +
+                    "Strategies: MERGE (attempt merge), KEEP_MINE (publish local), " +
+                    "TAKE_SHARED (overwrite local with shared).")
+    public ResponseEntity<Map<String, Object>> resolveDiverged(
+            @RequestParam String strategy,
+            @RequestParam(required = false) String userBranch) {
+        String user = workspaceResolver.resolveCurrentUsername();
+        String branch = resolveBranch(user, userBranch);
+        try {
+            SyncIntegrationService.DivergedStrategy parsedStrategy =
+                    SyncIntegrationService.DivergedStrategy.valueOf(strategy.toUpperCase());
+            String message = syncIntegrationService.resolveDiverged(user, branch, parsedStrategy);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("success", true);
+            result.put("strategy", parsedStrategy.name());
+            result.put("branch", branch);
+            result.put("message", message);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Invalid strategy: " + strategy,
+                    "validStrategies", List.of("MERGE", "KEEP_MINE", "TAKE_SHARED")
+            ));
+        } catch (IOException e) {
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "error", "Diverged resolution failed",
+                    "message", e.getMessage()
+            ));
+        }
+    }
+
     // ── Projection ──────────────────────────────────────────────────
 
     @GetMapping("/projection")

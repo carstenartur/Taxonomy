@@ -648,6 +648,121 @@ public class DslApiController {
         return ResponseEntity.ok(conflictDetectionService.previewCherryPick(commitId, targetBranch));
     }
 
+    // ── Conflict details & resolution ───────────────────────────────
+
+    @GetMapping("/merge/conflicts")
+    @Operation(summary = "Get merge conflict details",
+            description = "Returns the DSL content from both sides of a conflicting merge, " +
+                    "enabling the UI to display a side-by-side resolution view.")
+    public ResponseEntity<?> getMergeConflictDetails(
+            @RequestParam String from,
+            @RequestParam String into) {
+        var details = conflictDetectionService.getMergeConflictDetails(from, into);
+        if (details == null) {
+            return ResponseEntity.ok(Map.of("conflict", false, "message", "No conflict detected"));
+        }
+        return ResponseEntity.ok(details);
+    }
+
+    @PostMapping("/merge/resolve")
+    @Operation(summary = "Merge with manually resolved content",
+            description = "Commits the user-provided resolved DSL content to the target branch, " +
+                    "then merges the source branch. This resolves a merge conflict by " +
+                    "accepting the user's manually edited content.")
+    public ResponseEntity<Map<String, Object>> mergeResolve(
+            @RequestParam String fromBranch,
+            @RequestParam String intoBranch,
+            @RequestBody String resolvedContent) {
+        try {
+            // Commit the resolved content to the target branch
+            String username = workspaceResolver.resolveCurrentUsername();
+            String commitId = gitRepository.commitDsl(intoBranch, resolvedContent,
+                    username, "Resolve merge conflict: " + fromBranch + " → " + intoBranch);
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("commitId", commitId);
+            result.put("fromBranch", fromBranch);
+            result.put("intoBranch", intoBranch);
+            result.put("resolution", "manual");
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Merge resolution failed", e);
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Merge resolution failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    @GetMapping("/cherry-pick/conflicts")
+    @Operation(summary = "Get cherry-pick conflict details",
+            description = "Returns the DSL content from both sides of a conflicting cherry-pick.")
+    public ResponseEntity<?> getCherryPickConflictDetails(
+            @RequestParam String commitId,
+            @RequestParam(defaultValue = "review") String targetBranch) {
+        var details = conflictDetectionService.getCherryPickConflictDetails(commitId, targetBranch);
+        if (details == null) {
+            return ResponseEntity.ok(Map.of("conflict", false, "message", "No conflict detected"));
+        }
+        return ResponseEntity.ok(details);
+    }
+
+    @PostMapping("/cherry-pick/resolve")
+    @Operation(summary = "Cherry-pick with manually resolved content",
+            description = "Commits the user-provided resolved DSL content to the target branch, " +
+                    "resolving a cherry-pick conflict.")
+    public ResponseEntity<Map<String, Object>> cherryPickResolve(
+            @RequestParam String commitId,
+            @RequestParam String targetBranch,
+            @RequestBody String resolvedContent) {
+        try {
+            String username = workspaceResolver.resolveCurrentUsername();
+            String newCommitId = gitRepository.commitDsl(targetBranch, resolvedContent,
+                    username, "Resolve cherry-pick conflict: " + commitId.substring(0, Math.min(7, commitId.length())));
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("commitId", newCommitId);
+            result.put("targetBranch", targetBranch);
+            result.put("cherryPickedFrom", commitId);
+            result.put("resolution", "manual");
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Cherry-pick resolution failed", e);
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Cherry-pick resolution failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
+    // ── Branch deletion ─────────────────────────────────────────────
+
+    @DeleteMapping("/branch")
+    @Operation(summary = "Delete a branch",
+            description = "Deletes a Git branch. Protected branches (draft, accepted, main) " +
+                    "cannot be deleted.")
+    public ResponseEntity<Map<String, Object>> deleteBranch(@RequestParam String name) {
+        try {
+            boolean deleted = gitRepository.deleteBranch(name);
+            if (!deleted) {
+                Map<String, Object> error = new LinkedHashMap<>();
+                error.put("error", "Branch '" + name + "' not found");
+                return ResponseEntity.notFound().build();
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("deleted", name);
+            result.put("success", true);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (IOException e) {
+            log.error("Branch deletion failed", e);
+            Map<String, Object> error = new LinkedHashMap<>();
+            error.put("error", "Branch deletion failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(error);
+        }
+    }
+
     @GetMapping("/operation/check")
     @Operation(summary = "Check whether a write operation is safe",
             description = "Returns warnings (e.g. stale projection) and blocks (e.g. operation in progress) " +

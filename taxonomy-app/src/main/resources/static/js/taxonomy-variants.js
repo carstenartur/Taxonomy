@@ -84,6 +84,9 @@ window.TaxonomyVariants = (function () {
                 html += '<button class="btn btn-outline-warning btn-sm py-0 px-1" style="font-size:0.7rem;" '
                     + 'onclick="TaxonomyVariants.mergeFrom(\'' + escapeAttr(branch) + '\')" title="Merge this variant into current">'
                     + '&#128256; Merge</button>';
+                html += '<button class="btn btn-outline-danger btn-sm py-0 px-1" style="font-size:0.7rem;" '
+                    + 'onclick="TaxonomyVariants.deleteBranch(\'' + escapeAttr(branch) + '\')" title="Delete this variant">'
+                    + '&#128465; Delete</button>';
             }
             html += '</div>';
 
@@ -188,15 +191,65 @@ window.TaxonomyVariants = (function () {
             .then(function (r) { return r.json(); })
             .then(function (result) {
                 if (result.error) {
-                    alert('Merge failed: ' + result.error);
+                    if (window.TaxonomyOperationResult) {
+                        window.TaxonomyOperationResult.showError('Merge Failed', result.error);
+                    } else {
+                        alert('Merge failed: ' + result.error);
+                    }
                 } else {
+                    if (window.TaxonomyOperationResult) {
+                        window.TaxonomyOperationResult.showSuccess('Merge Successful',
+                            'Merged "' + fromBranch + '" into "' + intoBranch + '" → ' +
+                            (result.commitId || '').substring(0, 7));
+                    }
                     if (window.TaxonomyContextBar) window.TaxonomyContextBar.fetchAndRender('contextBar');
                     if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
                     refresh();
                 }
             })
             .catch(function (err) {
-                alert('Merge failed: ' + err.message);
+                if (window.TaxonomyOperationResult) {
+                    window.TaxonomyOperationResult.showError('Merge Failed', err.message);
+                } else {
+                    alert('Merge failed: ' + err.message);
+                }
+            });
+    }
+
+    /**
+     * Delete a variant (branch).
+     *
+     * @param {string} branch — branch name to delete
+     */
+    function deleteBranch(branch) {
+        if (!confirm('Delete variant "' + branch + '"?\n\nThis cannot be undone.')) {
+            return;
+        }
+
+        fetch('/api/dsl/branch?name=' + encodeURIComponent(branch), { method: 'DELETE' })
+            .then(function (r) { return r.json(); })
+            .then(function (result) {
+                if (result.error) {
+                    if (window.TaxonomyOperationResult) {
+                        window.TaxonomyOperationResult.showError('Delete Failed', result.error);
+                    } else {
+                        alert('Delete failed: ' + result.error);
+                    }
+                } else {
+                    if (window.TaxonomyOperationResult) {
+                        window.TaxonomyOperationResult.showSuccess('Variant Deleted',
+                            'Branch "' + branch + '" has been deleted.');
+                    }
+                    if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
+                    refresh();
+                }
+            })
+            .catch(function (err) {
+                if (window.TaxonomyOperationResult) {
+                    window.TaxonomyOperationResult.showError('Delete Failed', err.message);
+                } else {
+                    alert('Delete failed: ' + err.message);
+                }
             });
     }
 
@@ -215,6 +268,7 @@ window.TaxonomyVariants = (function () {
         refresh: refresh,
         switchTo: switchTo,
         compareTo: compareTo,
-        mergeFrom: mergeFrom
+        mergeFrom: mergeFrom,
+        deleteBranch: deleteBranch
     };
 }());

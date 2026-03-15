@@ -242,6 +242,97 @@ public class SyncIntegrationService {
 
     // ── Internal helpers ────────────────────────────────────────────
 
+    /**
+     * Resolution strategy for a diverged sync state.
+     */
+    public enum DivergedStrategy {
+        /** Merge the shared branch into the user's branch. */
+        MERGE,
+        /** Keep the user's branch, discard shared changes. */
+        KEEP_MINE,
+        /** Replace the user's branch with the shared branch. */
+        TAKE_SHARED
+    }
+
+    /**
+     * Resolve a diverged state between user's branch and the shared branch.
+     *
+     * <p>Three strategies are available:
+     * <ul>
+     *   <li>{@code MERGE} — merge shared into user branch (may fail if conflicts persist)</li>
+     *   <li>{@code KEEP_MINE} — force-update shared from user (publish forcefully)</li>
+     *   <li>{@code TAKE_SHARED} — force-update user from shared (overwrite local changes)</li>
+     * </ul>
+     *
+     * @param username   the authenticated user's username
+     * @param userBranch the user's branch
+     * @param strategy   the resolution strategy
+     * @return a description of what was done
+     * @throws IOException if a Git operation fails
+     */
+    public String resolveDiverged(String username, String userBranch, DivergedStrategy strategy)
+            throws IOException {
+        log.info("User '{}': resolving DIVERGED state with strategy {} on branch '{}'",
+                username, strategy, userBranch);
+
+        switch (strategy) {
+            case MERGE:
+                String mergeCommit = gitRepository.merge(SHARED_BRANCH, userBranch);
+                if (mergeCommit == null) {
+                    throw new IOException("Merge failed — conflict could not be auto-resolved. " +
+                            "Try KEEP_MINE or TAKE_SHARED strategy instead.");
+                }
+                updateSyncStateAfterResolve(username, "UP_TO_DATE");
+                return "Merged shared into your branch: " + abbreviateSha(mergeCommit);
+
+            case KEEP_MINE:
+                // Force publish: merge user → shared
+                String publishCommit = gitRepository.merge(userBranch, SHARED_BRANCH);
+                if (publishCommit == null) {
+                    // If merge fails, restore from user's HEAD
+                    String userHead = gitRepository.getHeadCommit(userBranch);
+                    publishCommit = gitRepository.restore(userHead, SHARED_BRANCH);
+                    if (publishCommit == null) {
+                        throw new IOException("Could not force-publish user branch to shared");
+                    }
+                }
+                updateSyncStateAfterResolve(username, "UP_TO_DATE");
+                return "Published your changes to shared: " + abbreviateSha(publishCommit);
+
+            case TAKE_SHARED:
+                // Force sync: restore user branch from shared HEAD
+                String sharedHead = gitRepository.getHeadCommit(SHARED_BRANCH);
+                if (sharedHead == null) {
+                    throw new IOException("Shared branch has no commits");
+                }
+                String restoreCommit = gitRepository.restore(sharedHead, userBranch);
+                if (restoreCommit == null) {
+                    throw new IOException("Could not restore user branch from shared");
+                }
+                updateSyncStateAfterResolve(username, "UP_TO_DATE");
+                return "Replaced your branch with shared content: " + abbreviateSha(restoreCommit);
+
+            default:
+                throw new IllegalArgumentException("Unknown strategy: " + strategy);
+        }
+    }
+
+    private void updateSyncStateAfterResolve(String username, String status) {
+        try {
+            SyncState state = getSyncState(username);
+            state.setSyncStatus(status);
+            state.setUnpublishedCommitCount(0);
+            state.setLastSyncTimestamp(Instant.now());
+            state.setUpdatedAt(Instant.now());
+            syncStateRepository.save(state);
+        } catch (Exception e) {
+            log.warn("Could not update sync state after resolve for user '{}': {}",
+                    username, e.getMessage());
+        }
+    }
+
+    // ── Internal helpers (private) ──────────────────────────────────
+
     private String abbreviateSha(String commitId) {
         if (commitId == null) return "null";
         return commitId.substring(0, Math.min(7, commitId.length()));

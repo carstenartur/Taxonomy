@@ -538,9 +538,16 @@
             .then(function (data) {
                 if (data.error) {
                     showStatus('Cherry-pick failed: ' + data.error, 'error');
+                    if (window.TaxonomyOperationResult) {
+                        window.TaxonomyOperationResult.showError('Cherry-Pick Failed', data.error);
+                    }
                     return;
                 }
                 showStatus('✅ Cherry-picked onto "' + data.targetBranch + '" → ' + data.commitId.substring(0, 8), 'success');
+                if (window.TaxonomyOperationResult) {
+                    window.TaxonomyOperationResult.showSuccess('Cherry-Pick Successful',
+                        'Applied onto "' + data.targetBranch + '" → ' + data.commitId.substring(0, 8));
+                }
                 loadBranches();
             })
             .catch(function (e) { showStatus('Cherry-pick error: ' + e.message, 'error'); });
@@ -572,9 +579,16 @@
             .then(function (data) {
                 if (data.error) {
                     showStatus('Merge failed: ' + data.error, 'error');
+                    if (window.TaxonomyOperationResult) {
+                        window.TaxonomyOperationResult.showError('Merge Failed', data.error);
+                    }
                     return;
                 }
                 showStatus('✅ Merged "' + data.fromBranch + '" into "' + data.intoBranch + '" → ' + data.commitId.substring(0, 8), 'success');
+                if (window.TaxonomyOperationResult) {
+                    window.TaxonomyOperationResult.showSuccess('Merge Successful',
+                        'Merged "' + data.fromBranch + '" into "' + data.intoBranch + '" → ' + data.commitId.substring(0, 8));
+                }
                 loadBranches();
             })
             .catch(function (e) { showStatus('Merge error: ' + e.message, 'error'); });

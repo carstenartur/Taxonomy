@@ -1060,6 +1060,8 @@
 <script th:src="@{/js/taxonomy-context-compare.js}"></script>
 <script th:src="@{/js/taxonomy-context-transfer.js}"></script>
 <script th:src="@{/js/taxonomy-action-guards.js}"></script>
+<script th:src="@{/js/taxonomy-merge-resolution.js}"></script>
+<script th:src="@{/js/taxonomy-operation-result.js}"></script>
 <script th:src="@{/js/taxonomy-versions.js}"></script>
 <script th:src="@{/js/taxonomy-variants.js}"></script>
 <script th:src="@{/js/taxonomy-export.js}"></script>
@@ -1547,6 +1549,132 @@
                 <button class="btn btn-primary btn-sm" onclick="TaxonomyContextTransfer.applyTransfer()">Apply Transfer</button>
                 <div id="transferPreviewResults" class="mt-3"></div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Merge Preview Modal ──────────────────────────────────────────────── -->
+<div class="modal fade" id="mergePreviewModal" tabindex="-1" aria-labelledby="mergePreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="mergePreviewModalLabel">&#128256; Merge Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="mergePreviewContent">
+                    <div class="text-muted">Loading preview…</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="mergePreviewProceedBtn">Proceed with Merge</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Cherry-Pick Preview Modal ────────────────────────────────────────── -->
+<div class="modal fade" id="cherryPickPreviewModal" tabindex="-1" aria-labelledby="cherryPickPreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="cherryPickPreviewModalLabel">&#127826; Cherry-Pick Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="cherryPickPreviewContent">
+                    <div class="text-muted">Loading preview…</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="cherryPickPreviewProceedBtn">Proceed with Cherry-Pick</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Merge Conflict Resolution Modal ──────────────────────────────────── -->
+<div class="modal fade" id="mergeConflictModal" tabindex="-1" aria-labelledby="mergeConflictModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="mergeConflictModalLabel">&#9888;&#65039; Merge Conflict — Manual Resolution Required</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-3">
+                    The merge cannot be completed automatically. Review the content from both sides
+                    and edit the resolved version below.
+                </p>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 id="conflictOursLabel">Ours (target)</h6>
+                        <pre id="conflictOursContent" class="border rounded p-2 bg-light" style="max-height:300px; overflow:auto; font-size:0.75rem;"></pre>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 id="conflictTheirsLabel">Theirs (source)</h6>
+                        <pre id="conflictTheirsContent" class="border rounded p-2 bg-light" style="max-height:300px; overflow:auto; font-size:0.75rem;"></pre>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <h6>Resolved Content</h6>
+                    <textarea id="conflictResolvedContent" class="form-control font-monospace" rows="10"
+                              style="font-size:0.75rem;" placeholder="Edit the resolved content here…"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-outline-info" id="conflictUseOursBtn">Use Ours</button>
+                <button type="button" class="btn btn-outline-info" id="conflictUseTheirsBtn">Use Theirs</button>
+                <button type="button" class="btn btn-primary" id="conflictResolveBtn">&#10004; Resolve &amp; Commit</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Sync Diverged Resolution Modal ───────────────────────────────────── -->
+<div class="modal fade" id="syncDivergedModal" tabindex="-1" aria-labelledby="syncDivergedModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="syncDivergedModalLabel">&#128260; Resolve Diverged State</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Your workspace and the shared repository have diverged — both sides have changes
+                    that the other doesn't. Choose a resolution strategy:</p>
+                <div class="list-group">
+                    <button type="button" class="list-group-item list-group-item-action" data-diverged-strategy="MERGE">
+                        <strong>&#128256; Merge</strong><br>
+                        <small class="text-muted">Attempt to merge shared changes into your branch. May fail if conflicts exist.</small>
+                    </button>
+                    <button type="button" class="list-group-item list-group-item-action" data-diverged-strategy="KEEP_MINE">
+                        <strong>&#128228; Keep Mine</strong><br>
+                        <small class="text-muted">Publish your version to the shared repository, overwriting shared changes.</small>
+                    </button>
+                    <button type="button" class="list-group-item list-group-item-action" data-diverged-strategy="TAKE_SHARED">
+                        <strong>&#128229; Take Shared</strong><br>
+                        <small class="text-muted">Replace your local branch with the shared version, discarding your changes.</small>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Operation Result Toast Container ─────────────────────────────────── -->
+<div id="operationToastContainer" class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:1090;">
+    <div id="operationToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000">
+        <div class="toast-header">
+            <strong class="me-auto" id="operationToastTitle">Operation Result</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body" id="operationToastBody">
         </div>
     </div>
 </div>
