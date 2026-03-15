@@ -19,6 +19,7 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "workspace_projection", indexes = {
+    @Index(name = "idx_projection_username", columnList = "username"),
     @Index(name = "idx_projection_workspace", columnList = "workspace_id")
 }, uniqueConstraints = {
     @UniqueConstraint(name = "uq_projection_username", columnNames = "username")

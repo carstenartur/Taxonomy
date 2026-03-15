@@ -86,15 +86,18 @@ public class ContextHistoryService {
 
     private void trimHistory(String username) {
         try {
+            long count = historyRepository.countByUsername(username);
+            if (count <= MAX_HISTORY_ENTRIES) {
+                return; // Nothing to trim
+            }
+            // Only load old entries when trimming is needed
             List<ContextHistoryRecord> all =
                     historyRepository.findByUsernameOrderByCreatedAtDesc(username);
-            if (all.size() > MAX_HISTORY_ENTRIES) {
-                List<ContextHistoryRecord> toDelete =
-                        all.subList(MAX_HISTORY_ENTRIES, all.size());
-                historyRepository.deleteAll(toDelete);
-                log.debug("User '{}': trimmed {} old history entries",
-                        username, toDelete.size());
-            }
+            List<ContextHistoryRecord> toDelete =
+                    all.subList(MAX_HISTORY_ENTRIES, all.size());
+            historyRepository.deleteAll(toDelete);
+            log.debug("User '{}': trimmed {} old history entries",
+                    username, toDelete.size());
         } catch (Exception e) {
             log.warn("Could not trim history for user '{}': {}",
                     username, e.getMessage());

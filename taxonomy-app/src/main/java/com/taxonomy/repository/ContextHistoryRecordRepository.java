@@ -17,6 +17,8 @@ public interface ContextHistoryRecordRepository extends JpaRepository<ContextHis
 
     List<ContextHistoryRecord> findTop50ByUsernameOrderByCreatedAtDesc(String username);
 
+    long countByUsername(String username);
+
     @Transactional
     void deleteByUsername(String username);
 }

@@ -24,6 +24,7 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "sync_state", indexes = {
+    @Index(name = "idx_sync_username", columnList = "username"),
     @Index(name = "idx_sync_workspace", columnList = "workspace_id")
 }, uniqueConstraints = {
     @UniqueConstraint(name = "uq_sync_username", columnNames = "username")
