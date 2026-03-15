@@ -80,7 +80,7 @@ This is a significant effort (~200+ translatable strings across HTML and 11 JS m
 ### UX Documentation (completed)
 - [x] Stale-results warning behaviour — documented in USER_GUIDE.md §6
 - [x] Error handling for LLM timeout/rate-limit — documented in USER_GUIDE.md §4 and API_REFERENCE.md §16
-- [x] AI Status badge states — documented in USER_GUIDE.md §12
+- [x] AI Status badge states — documented in USER_GUIDE.md §14
 - [x] Score colour coding thresholds — documented in USER_GUIDE.md §4
 - [x] Streaming progress indicator phases — documented in USER_GUIDE.md §4
 - [x] Export button visibility rule — documented in USER_GUIDE.md §4 and §10

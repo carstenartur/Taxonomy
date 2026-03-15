@@ -95,7 +95,7 @@
             <version>8.2.2.Final</version>
         </dependency>
 
-        <!-- DJL: Deep Java Library for local model inference (all-MiniLM-L6-v2 / ONNX) -->
+        <!-- DJL: Deep Java Library for local model inference (bge-small-en-v1.5 / ONNX) -->
         <dependency>
             <groupId>ai.djl</groupId>
             <artifactId>api</artifactId>

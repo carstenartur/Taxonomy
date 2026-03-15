@@ -45,23 +45,24 @@ key or internet connection is required (after the first model download).
 |---|---|---|---|---|
 | `TAXONOMY_EMBEDDING_ENABLED` | `embedding.enabled` | Boolean | `true` | Set to `false` to disable embedding and all semantic search globally. |
 | `TAXONOMY_EMBEDDING_MODEL_DIR` | `embedding.model.dir` | Path | *(empty)* | Absolute path to a pre-downloaded model directory. When empty, DJL downloads the model automatically on first use. |
-| `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | String | `djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2` | DJL model URL or HuggingFace model name. Change only if you want a different embedding model. |
+| `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | String | `djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5` | DJL model URL or HuggingFace model name. Change only if you want a different embedding model. |
+| `TAXONOMY_EMBEDDING_QUERY_PREFIX` | `embedding.query.prefix` | String | `Represent this sentence for searching relevant passages: ` | Prefix prepended to query texts for asymmetric retrieval. Set to empty string to disable (e.g. when using a symmetric model). |
 
 ### Pre-Downloading the Embedding Model (Air-Gapped Deployments)
 
-For environments without internet access, pre-download the `all-MiniLM-L6-v2` model:
+For environments without internet access, pre-download the `bge-small-en-v1.5` model:
 
 ```bash
 # 1. On a machine with internet access, run the app once to trigger the download:
 LLM_PROVIDER=LOCAL_ONNX mvn spring-boot:run
-# The model is cached under ~/.djl.ai/cache/ (approximately 23 MB)
+# The model is cached under ~/.djl.ai/cache/ (approximately 33 MB)
 
 # 2. Copy the cached model directory to the target machine:
-scp -r ~/.djl.ai/cache/repo/model/ai/djl/huggingface/onnxruntime/all-MiniLM-L6-v2/ \
-    target-machine:/opt/models/all-MiniLM-L6-v2/
+scp -r ~/.djl.ai/cache/repo/model/ai/djl/huggingface/BAAI/bge-small-en-v1.5/ \
+    target-machine:/opt/models/bge-small-en-v1.5/
 
 # 3. Set the environment variable on the target machine:
-export TAXONOMY_EMBEDDING_MODEL_DIR=/opt/models/all-MiniLM-L6-v2
+export TAXONOMY_EMBEDDING_MODEL_DIR=/opt/models/bge-small-en-v1.5
 ```
 
 Alternatively, download the model directly from HuggingFace:
@@ -69,7 +70,7 @@ Alternatively, download the model directly from HuggingFace:
 ```bash
 # Download model files
 pip install huggingface-hub
-huggingface-cli download sentence-transformers/all-MiniLM-L6-v2 --local-dir /opt/models/all-MiniLM-L6-v2
+huggingface-cli download BAAI/bge-small-en-v1.5 --local-dir /opt/models/bge-small-en-v1.5
 ```
 
 ---

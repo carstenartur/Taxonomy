@@ -1316,4 +1316,83 @@ class ScreenshotGeneratorIT {
         }
         saveScreenshot("40-dsl-editor-with-relations.png");
     }
+
+    // ── Screenshots 41–44: Versions Tab, Git Status Bar, Context Bar ──────────
+
+    @Test
+    @Order(41)
+    void captureVersionsTabHistory() throws IOException {
+        navigateToTab("versions");
+        // Wait for the version history timeline to load (contains timeline entries or "No versions")
+        wait(15).until(d -> {
+            String html = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('versionsTimeline');" +
+                    "return el ? el.innerHTML : '';");
+            return html != null && !html.contains("Loading version history");
+        });
+        // Ensure the History sub-tab is active
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        saveScreenshot("41-versions-tab-history.png");
+    }
+
+    @Test
+    @Order(42)
+    void captureVersionsTabSaveVersion() throws IOException {
+        navigateToTab("versions");
+        // Switch to the Save Version sub-tab
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'save');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-save') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        // Fill in example data for the screenshot
+        js("var t = document.getElementById('versionTitle');" +
+           "if (t) { t.value = 'Baseline after review round 2'; t.dispatchEvent(new Event('input')); }" +
+           "var d = document.getElementById('versionDescription');" +
+           "if (d) { d.value = 'Incorporates feedback from architecture board meeting'; d.dispatchEvent(new Event('input')); }");
+        saveScreenshot("42-versions-tab-save.png");
+        // Reset to History sub-tab
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+    }
+
+    @Test
+    @Order(43)
+    void captureGitStatusBar() throws IOException {
+        // Navigate to the Analyze tab (default) so the full layout is visible
+        navigateToTab("analyze");
+        // Wait for the Git status bar to become visible (it polls /api/git/state)
+        wait(15).until(d -> {
+            WebElement bar = d.findElement(By.id("gitStatusBar"));
+            return bar.isDisplayed() && !bar.getText().isEmpty();
+        });
+        saveElementScreenshot(driver.findElement(By.id("gitStatusBar")),
+                "43-git-status-bar.png");
+    }
+
+    @Test
+    @Order(44)
+    void captureContextBar() throws IOException {
+        // The context bar polls /api/context/current. Wait for it to render.
+        wait(15).until(d -> {
+            WebElement bar = d.findElement(By.id("contextBar"));
+            String html = bar.getAttribute("innerHTML");
+            return html != null && !html.isEmpty() && html.contains("context-bar");
+        });
+        saveElementScreenshot(driver.findElement(By.id("contextBar")),
+                "44-context-bar.png");
+    }
 }

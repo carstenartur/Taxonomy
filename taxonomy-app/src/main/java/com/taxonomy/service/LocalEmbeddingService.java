@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 
 /**
  * Local embedding service that scores taxonomy nodes against a business requirement using
- * the {@code sentence-transformers/all-MiniLM-L6-v2} ONNX model loaded via DJL.
+ * the {@code BAAI/bge-small-en-v1.5} ONNX model loaded via DJL.
  *
  * <h2>Architecture</h2>
  * <p>The DJL model is <em>lazily initialised</em> on first use — application startup is not
@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
  *   <li>{@code TAXONOMY_EMBEDDING_MODEL_DIR} — path to a pre-downloaded model directory;
  *       empty = DJL auto-download to {@code ~/.djl.ai/}.</li>
  *   <li>{@code TAXONOMY_EMBEDDING_MODEL_NAME} — DJL model URL;
- *       default {@code djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2}.</li>
+ *       default {@code djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5}.</li>
  * </ul>
  *
  * <h2>Graceful degradation</h2>
@@ -58,13 +58,21 @@ public class LocalEmbeddingService {
 
     private static final Logger log = LoggerFactory.getLogger(LocalEmbeddingService.class);
 
-    /** Default DJL model-zoo URL for the ONNX export of all-MiniLM-L6-v2. */
+    /** Default DJL model-zoo URL for the ONNX export of bge-small-en-v1.5. */
     static final String DEFAULT_MODEL_URL =
-            "djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2";
+            "djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5";
 
     /** Fallback URL used when the {@code djl://} protocol fails (e.g. URL truncation in Alpine). */
     static final String FALLBACK_MODEL_URL =
-            "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2";
+            "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx";
+
+    /**
+     * Default query prefix for asymmetric retrieval with BGE models.
+     * Prepended to query texts (but not document texts) so the model produces
+     * retrieval-oriented embeddings that work better for search and scoring.
+     */
+    static final String DEFAULT_QUERY_PREFIX =
+            "Represent this sentence for searching relevant passages: ";
 
     /**
      * Raw cosine-similarity threshold below which a node receives score 0.
@@ -80,8 +88,11 @@ public class LocalEmbeddingService {
     @Value("${embedding.model.dir:}")
     private String modelDir;
 
-    @Value("${embedding.model.name:djl://ai.djl.huggingface.onnxruntime/all-MiniLM-L6-v2}")
+    @Value("${embedding.model.name:djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5}")
     private String modelName;
+
+    @Value("${embedding.query.prefix:Represent this sentence for searching relevant passages: }")
+    private String queryPrefix;
 
     // ── DJL model (lazy) ──────────────────────────────────────────────────────
 
@@ -132,10 +143,10 @@ public class LocalEmbeddingService {
             synchronized (modelLock) {
                 if (model == null) {
                     String url = effectiveModelUrl();
-                    log.info("Loading all-MiniLM-L6-v2 via DJL / ONNX Runtime from {} …", url);
+                    log.info("Loading embedding model via DJL / ONNX Runtime from {} …", url);
                     try {
                         model = loadFromUrl(url);
-                        log.info("all-MiniLM-L6-v2 loaded successfully.");
+                        log.info("Embedding model loaded successfully.");
                     } catch (Exception primary) {
                         // When the djl:// protocol fails (e.g. URL truncation in Alpine),
                         // try loading directly from HuggingFace before giving up.
@@ -144,7 +155,7 @@ public class LocalEmbeddingService {
                                     primary.getMessage());
                             try {
                                 model = loadFromUrl(FALLBACK_MODEL_URL);
-                                log.info("all-MiniLM-L6-v2 loaded from HuggingFace fallback.");
+                                log.info("Embedding model loaded from HuggingFace fallback.");
                             } catch (Exception fallback) {
                                 log.error("Fallback also failed: {}", fallback.getMessage());
                                 modelLoadFailed = true;
@@ -193,7 +204,8 @@ public class LocalEmbeddingService {
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
-     * Returns the DJL embedding vector for {@code text}.
+     * Returns the DJL embedding vector for {@code text} (document embedding, no prefix).
+     * Used for indexing taxonomy nodes — call {@link #embedQuery(String)} for search queries.
      *
      * @throws Exception if the model cannot be loaded or inference fails
      */
@@ -201,6 +213,19 @@ public class LocalEmbeddingService {
         try (Predictor<String, float[]> predictor = getModel().newPredictor()) {
             return predictor.predict(text);
         }
+    }
+
+    /**
+     * Returns the DJL embedding vector for a <em>query</em> text, prepending the
+     * configured query prefix ({@code embedding.query.prefix}) for asymmetric retrieval.
+     * BGE models produce better search results when the query is prefixed.
+     *
+     * @throws Exception if the model cannot be loaded or inference fails
+     */
+    public float[] embedQuery(String text) throws Exception {
+        String prefixed = (queryPrefix != null && !queryPrefix.isEmpty())
+                ? queryPrefix + text : text;
+        return embed(prefixed);
     }
 
     /**
@@ -223,7 +248,7 @@ public class LocalEmbeddingService {
         if (!isAvailable()) return scores;
 
         try {
-            float[] queryVector = embed(businessText);
+            float[] queryVector = embedQuery(businessText);
             List<String> nodeCodes = nodes.stream()
                     .map(TaxonomyNode::getCode).collect(Collectors.toList());
 
@@ -269,7 +294,7 @@ public class LocalEmbeddingService {
     public List<TaxonomyNodeDto> semanticSearch(String queryText, int topK) {
         if (!isAvailable()) return Collections.emptyList();
         try {
-            float[] queryVector = embed(queryText);
+            float[] queryVector = embedQuery(queryText);
             SearchSession session = Search.session(entityManager);
             List<TaxonomyNode> hits = session.search(TaxonomyNode.class)
                     .where(f -> f.knn(topK).field("embedding").matching(queryVector))

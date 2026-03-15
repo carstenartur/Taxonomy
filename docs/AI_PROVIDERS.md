@@ -36,7 +36,7 @@ The `LlmService` is the central component for AI analysis. It supports 7 provide
 | **Qwen** (Alibaba) | qwen-plus | `QWEN_API_KEY` | Yes |
 | **Llama** | llama3.1-70b | `LLAMA_API_KEY` | Yes |
 | **Mistral** | mistral-small-latest | `MISTRAL_API_KEY` | Yes |
-| **LOCAL_ONNX** | all-MiniLM-L6-v2 | — | No (runs locally) |
+| **LOCAL_ONNX** | bge-small-en-v1.5 | — | No (runs locally) |
 
 `LOCAL_ONNX` uses a local embedding model and does not require any API key. It is always available as a fallback.
 
@@ -246,6 +246,6 @@ See [Configuration Reference](CONFIGURATION_REFERENCE.md) for the complete list 
 
 - [Configuration Reference](CONFIGURATION_REFERENCE.md) — All environment variables and startup configuration
 - [Preferences](PREFERENCES.md) — Runtime preference management
-- [User Guide](USER_GUIDE.md) — AI Status Indicator and Admin Mode (§12)
+- [User Guide](USER_GUIDE.md) — AI Status Indicator and Admin Mode (§14)
 - [Security](SECURITY.md) — Authentication and access control
 - [API Reference](API_REFERENCE.md) — Full REST API documentation

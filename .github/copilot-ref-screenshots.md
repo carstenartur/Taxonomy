@@ -37,7 +37,8 @@ Generated PNG files are written to `docs/images/` and must be committed to the r
 | Range | Requires LLM? | Description |
 |---|---|---|
 | `01` – `14` | No | Basic UI — page layout, all 5 view modes, panels, modals |
-| `15` – `26` | Yes (`GEMINI_API_KEY`) | LLM-dependent states — scored tree, architecture view, admin panels, etc. |
+| `15` – `40` | Yes (mock mode) | Scored states, architecture views, search, DSL editor, proposals |
+| `41` – `44` | No | Versions Tab, Git Status Bar, Context Bar |
 
 LLM-dependent tests are skipped gracefully with `Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null)` when no key is present.
 
@@ -101,3 +102,12 @@ To trigger it manually from the GitHub UI: **Actions → Generate Documentation 
 | Node toggle buttons | `.tax-toggle` |
 | Leaf Justify buttons | `.tax-justify-btn` |
 | Match Legend card | `//div[contains(@class,'card')]//small[contains(text(),'Match legend')]/ancestor::div[contains(@class,'card')]` (XPath) |
+| Git Status Bar | `#gitStatusBar` |
+| Context Navigation Bar | `#contextBar` |
+| Versions Tab pane | `#tab-versions` |
+| Versions Timeline | `#versionsTimeline` |
+| Versions Undo button | `#versionsUndoBtn` |
+| Versions Branch selector | `#versionsBranchSelect` |
+| Save Version button | `#versionsSaveBtn` |
+| Version Title input | `#versionTitle` |
+| Version Description textarea | `#versionDescription` |
