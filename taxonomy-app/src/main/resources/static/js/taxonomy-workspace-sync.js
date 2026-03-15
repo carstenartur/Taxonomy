@@ -121,7 +121,8 @@ window.TaxonomyWorkspaceSync = (function () {
         var html = '<div class="d-flex align-items-center gap-2 mb-2">';
         html += '<span class="badge ' + badgeClass + '">' + escapeHtml(statusLabel) + '</span>';
         if (status === 'DIVERGED') {
-            html += '<button class="btn btn-sm btn-outline-danger ms-2" onclick="TaxonomyMergeResolution.resolveDiverged(\'MERGE\')" '
+            html += '<button class="btn btn-sm btn-outline-danger ms-2" '
+                + 'onclick="var el = document.getElementById(\'syncDivergedModal\'); if (el &amp;&amp; typeof bootstrap !== \'undefined\') { new bootstrap.Modal(el).show(); }" '
                 + 'title="Open diverged resolution dialog">Resolve…</button>';
         }
         html += '</div>';
