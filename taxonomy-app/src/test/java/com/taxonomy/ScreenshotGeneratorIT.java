@@ -56,6 +56,10 @@ class ScreenshotGeneratorIT {
             "element CR type CoreService {\\n  title: \"Core Services\";\\n}\\n\\n" +
             "relation CP REALIZES CR {\\n  status: accepted;\\n}\\n";
 
+    /** Regex matching any terminal analysis status (success, error, or unavailable). */
+    private static final java.util.regex.Pattern ANALYSIS_DONE_PATTERN =
+            java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable|0 matches");
+
     /**
      * Fallback search results HTML injected when the embedding model is unavailable and semantic
      * or hybrid search returns no results. Matches the structure produced by
@@ -261,7 +265,7 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
         js("arguments[0].click();", analyzeBtn);
         wait(120).until(ExpectedConditions.textMatches(
-                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable|0 matches")));
+                By.id("statusArea"), ANALYSIS_DONE_PATTERN));
     }
 
     private void js(String script, Object... args) {
@@ -755,7 +759,7 @@ class ScreenshotGeneratorIT {
 
         // Wait for the analysis to complete — runAnalysis() POSTs and waits for JSON response
         wait(120).until(ExpectedConditions.textMatches(
-                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable|0 matches")));
+                By.id("statusArea"), ANALYSIS_DONE_PATTERN));
         // Navigate to Architecture tab to see the panel
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
@@ -1262,7 +1266,7 @@ class ScreenshotGeneratorIT {
         js("arguments[0].click();", analyzeBtn);
 
         wait(120).until(ExpectedConditions.textMatches(
-                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable|0 matches")));
+                By.id("statusArea"), ANALYSIS_DONE_PATTERN));
         // Navigate to architecture tab
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
