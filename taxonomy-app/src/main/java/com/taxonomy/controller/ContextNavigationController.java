@@ -8,6 +8,7 @@ import com.taxonomy.dto.TransferSelection;
 import com.taxonomy.service.ContextCompareService;
 import com.taxonomy.service.ContextNavigationService;
 import com.taxonomy.service.SelectiveTransferService;
+import com.taxonomy.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -26,6 +27,10 @@ import java.util.Map;
  * <p>Provides browser-like navigation through architecture versions:
  * open read-only snapshots, switch branches, compare contexts, and
  * selectively transfer elements between versions.
+ *
+ * <p>All navigation state is isolated per authenticated user via the
+ * workspace manager. Each user has their own context, history, and
+ * navigation trail.
  */
 @RestController
 @RequestMapping("/api/context")
@@ -37,13 +42,16 @@ public class ContextNavigationController {
     private final ContextNavigationService navigationService;
     private final ContextCompareService compareService;
     private final SelectiveTransferService transferService;
+    private final WorkspaceResolver workspaceResolver;
 
     public ContextNavigationController(ContextNavigationService navigationService,
                                        ContextCompareService compareService,
-                                       SelectiveTransferService transferService) {
+                                       SelectiveTransferService transferService,
+                                       WorkspaceResolver workspaceResolver) {
         this.navigationService = navigationService;
         this.compareService = compareService;
         this.transferService = transferService;
+        this.workspaceResolver = workspaceResolver;
     }
 
     // ── Phase 1: Context Navigation ─────────────────────────────────
@@ -52,7 +60,8 @@ public class ContextNavigationController {
     @Operation(summary = "Get the current architecture context",
             description = "Returns the active context including branch, commit, mode, and origin info.")
     public ResponseEntity<ContextRef> getCurrentContext() {
-        return ResponseEntity.ok(navigationService.getCurrentContext());
+        String user = workspaceResolver.resolveCurrentUsername();
+        return ResponseEntity.ok(navigationService.getCurrentContext(user));
     }
 
     @PostMapping("/open")
@@ -65,12 +74,13 @@ public class ContextNavigationController {
             @RequestParam(defaultValue = "true") boolean readOnly,
             @RequestParam(required = false) String searchQuery,
             @RequestParam(required = false) String elementId) {
+        String user = workspaceResolver.resolveCurrentUsername();
         if (readOnly) {
             return ResponseEntity.ok(
-                    navigationService.openReadOnly(branch, commitId, searchQuery, elementId));
+                    navigationService.openReadOnly(user, branch, commitId, searchQuery, elementId));
         } else {
             return ResponseEntity.ok(
-                    navigationService.switchContext(branch, commitId));
+                    navigationService.switchContext(user, branch, commitId));
         }
     }
 
@@ -78,21 +88,24 @@ public class ContextNavigationController {
     @Operation(summary = "Return to the origin context",
             description = "Navigates back to the context from which the current context was opened.")
     public ResponseEntity<ContextRef> returnToOrigin() {
-        return ResponseEntity.ok(navigationService.returnToOrigin());
+        String user = workspaceResolver.resolveCurrentUsername();
+        return ResponseEntity.ok(navigationService.returnToOrigin(user));
     }
 
     @PostMapping("/back")
     @Operation(summary = "Go one step back in navigation history",
             description = "Like the browser back button — returns to the previous context.")
     public ResponseEntity<ContextRef> back() {
-        return ResponseEntity.ok(navigationService.back());
+        String user = workspaceResolver.resolveCurrentUsername();
+        return ResponseEntity.ok(navigationService.back(user));
     }
 
     @GetMapping("/history")
     @Operation(summary = "Get the navigation history",
             description = "Returns the list of context navigations (newest last).")
     public ResponseEntity<List<ContextHistoryEntry>> getHistory() {
-        return ResponseEntity.ok(navigationService.getHistory());
+        String user = workspaceResolver.resolveCurrentUsername();
+        return ResponseEntity.ok(navigationService.getHistory(user));
     }
 
     @PostMapping("/variant")
@@ -101,7 +114,8 @@ public class ContextNavigationController {
     public ResponseEntity<Map<String, Object>> createVariant(
             @RequestParam String name) {
         try {
-            ContextRef variant = navigationService.createVariantFromCurrent(name);
+            String user = workspaceResolver.resolveCurrentUsername();
+            ContextRef variant = navigationService.createVariantFromCurrent(user, name);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("context", variant);
             result.put("branch", variant.branch());

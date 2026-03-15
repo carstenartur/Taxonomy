@@ -3,6 +3,7 @@ package com.taxonomy.controller;
 import com.taxonomy.dto.ArchitectureReport;
 import com.taxonomy.service.ArchitectureReportService;
 import com.taxonomy.service.RepositoryStateService;
+import com.taxonomy.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,11 +32,14 @@ public class ReportApiController {
 
     private final ArchitectureReportService reportService;
     private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
 
     public ReportApiController(ArchitectureReportService reportService,
-                               RepositoryStateService repositoryStateService) {
+                               RepositoryStateService repositoryStateService,
+                               WorkspaceResolver workspaceResolver) {
         this.reportService = reportService;
         this.repositoryStateService = repositoryStateService;
+        this.workspaceResolver = workspaceResolver;
     }
 
     /**
@@ -123,7 +127,8 @@ public class ReportApiController {
 
         ArchitectureReport report = reportService.generateReport(
                 request.scores(), request.businessText(), request.minScore());
-        report.setViewContext(repositoryStateService.getViewContext("draft"));
+        report.setViewContext(repositoryStateService.getViewContext(
+                workspaceResolver.resolveCurrentUsername(), "draft"));
         return ResponseEntity.ok(report);
     }
 }
