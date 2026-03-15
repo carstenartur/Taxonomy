@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.controller</a> &gt; <span class="el_source">WorkspaceController.java</span></div><h1>WorkspaceController.java</h1><pre class="source lang-java linenums">package com.taxonomy.controller;
+
+import com.taxonomy.dto.WorkspaceInfo;
+import com.taxonomy.service.WorkspaceManager;
+import com.taxonomy.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * REST API for workspace management.
+ *
+ * &lt;p&gt;Provides endpoints to query the current user's workspace, list all active
+ * workspaces (admin), and manage workspace lifecycle. Each authenticated user
+ * automatically gets a personal workspace on first access.
+ */
+@RestController
+@RequestMapping(&quot;/api/workspace&quot;)
+@Tag(name = &quot;Workspace Management&quot;)
+public class WorkspaceController {
+
+    private final WorkspaceManager workspaceManager;
+    private final WorkspaceResolver workspaceResolver;
+
+    public WorkspaceController(WorkspaceManager workspaceManager,
+<span class="fc" id="L30">                               WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L31">        this.workspaceManager = workspaceManager;</span>
+<span class="fc" id="L32">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L33">    }</span>
+
+    @GetMapping(&quot;/current&quot;)
+    @Operation(summary = &quot;Get the current user's workspace&quot;,
+            description = &quot;Returns workspace metadata including current branch, context, &quot; +
+                    &quot;and timestamps for the authenticated user.&quot;)
+    public ResponseEntity&lt;WorkspaceInfo&gt; getCurrentWorkspace() {
+<span class="nc" id="L40">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="nc" id="L41">        return ResponseEntity.ok(workspaceManager.getWorkspaceInfo(user));</span>
+    }
+
+    @GetMapping(&quot;/active&quot;)
+    @Operation(summary = &quot;List all active workspaces&quot;,
+            description = &quot;Returns all currently active (in-memory) workspaces. &quot; +
+                    &quot;Useful for admin monitoring of concurrent users.&quot;)
+    public ResponseEntity&lt;List&lt;WorkspaceInfo&gt;&gt; listActiveWorkspaces() {
+<span class="nc" id="L49">        return ResponseEntity.ok(workspaceManager.listActiveWorkspaces());</span>
+    }
+
+    @GetMapping(&quot;/stats&quot;)
+    @Operation(summary = &quot;Workspace statistics&quot;,
+            description = &quot;Returns basic statistics about active workspaces.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getStats() {
+<span class="nc" id="L56">        return ResponseEntity.ok(Map.of(</span>
+<span class="nc" id="L57">                &quot;activeWorkspaces&quot;, workspaceManager.getActiveWorkspaceCount()</span>
+        ));
+    }
+
+    @PostMapping(&quot;/evict&quot;)
+    @Operation(summary = &quot;Evict a user's workspace from memory&quot;,
+            description = &quot;Removes the in-memory workspace state for the specified user. &quot; +
+                    &quot;The workspace will be recreated on next access. &quot; +
+                    &quot;Admin-only operation for maintenance.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; evictWorkspace(
+            @RequestParam String username) {
+<span class="nc" id="L68">        workspaceManager.evictWorkspace(username);</span>
+<span class="nc" id="L69">        return ResponseEntity.ok(Map.of(</span>
+                &quot;evicted&quot;, username,
+<span class="nc" id="L71">                &quot;success&quot;, true</span>
+        ));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

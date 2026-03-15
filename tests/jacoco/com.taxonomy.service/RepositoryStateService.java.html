@@ -25,68 +25,70 @@ import java.util.List;
  *   &lt;li&gt;Index commit — the commit the search index was built from&lt;/li&gt;
  *   &lt;li&gt;Operation state — whether a multi-step merge/cherry-pick is in progress&lt;/li&gt;
  * &lt;/ul&gt;
+ *
+ * &lt;p&gt;All mutable state (projection tracking, operation tracking) is isolated
+ * per user via {@link WorkspaceManager}. Overloaded methods without a
+ * {@code username} parameter use {@link WorkspaceManager#DEFAULT_USER}
+ * for backward compatibility with tests and unauthenticated callers.
  */
 @Service
 public class RepositoryStateService {
 
-<span class="fc" id="L32">    private static final Logger log = LoggerFactory.getLogger(RepositoryStateService.class);</span>
+<span class="fc" id="L37">    private static final Logger log = LoggerFactory.getLogger(RepositoryStateService.class);</span>
 
     private final DslGitRepository gitRepository;
+    private final WorkspaceManager workspaceManager;
 
-    // Tracked state — updated by DslMaterializeService after each materialization
-    private volatile String lastProjectionCommit;
-    private volatile String lastProjectionBranch;
-    private volatile Instant lastProjectionTimestamp;
-    private volatile String lastIndexCommit;
-    private volatile Instant lastIndexTimestamp;
+    public RepositoryStateService(DslGitRepository gitRepository,
+<span class="fc" id="L43">                                  WorkspaceManager workspaceManager) {</span>
+<span class="fc" id="L44">        this.gitRepository = gitRepository;</span>
+<span class="fc" id="L45">        this.workspaceManager = workspaceManager;</span>
+<span class="fc" id="L46">    }</span>
 
-    // Operation tracking (for multi-step merge/cherry-pick UI)
-    private volatile String operationKind;  // null = no operation
-
-<span class="fc" id="L46">    public RepositoryStateService(DslGitRepository gitRepository) {</span>
-<span class="fc" id="L47">        this.gitRepository = gitRepository;</span>
-<span class="fc" id="L48">    }</span>
+    // ── Workspace-aware methods ─────────────────────────────────────
 
     /**
-     * Build the full repository state snapshot for a branch.
+     * Build the full repository state snapshot for a user and branch.
      *
-     * @param branch the branch to query (e.g. &quot;draft&quot;)
+     * @param username the user whose workspace state to include
+     * @param branch   the branch to query (e.g. &quot;draft&quot;)
      * @return the full repository state
      */
-    public RepositoryState getState(String branch) {
+    public RepositoryState getState(String username, String branch) {
+<span class="fc" id="L58">        UserWorkspaceState ws = resolveState(username);</span>
         try {
-<span class="fc" id="L58">            DslCommit headInfo = gitRepository.getHeadCommitInfo(branch);</span>
-<span class="fc" id="L59">            List&lt;String&gt; branches = gitRepository.getBranchNames();</span>
-<span class="fc" id="L60">            int commitCount = gitRepository.getCommitCount(branch);</span>
-<span class="fc bfc" id="L61" title="All 2 branches covered.">            String headCommit = headInfo != null ? headInfo.commitId() : null;</span>
+<span class="fc" id="L60">            DslCommit headInfo = gitRepository.getHeadCommitInfo(branch);</span>
+<span class="fc" id="L61">            List&lt;String&gt; branches = gitRepository.getBranchNames();</span>
+<span class="fc" id="L62">            int commitCount = gitRepository.getCommitCount(branch);</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            String headCommit = headInfo != null ? headInfo.commitId() : null;</span>
 
-<span class="fc" id="L63">            boolean projStale = isProjectionStaleForCommit(headCommit);</span>
-<span class="fc" id="L64">            boolean idxStale = isIndexStale(headCommit);</span>
+<span class="fc" id="L65">            boolean projStale = isProjectionStaleForCommit(ws, headCommit);</span>
+<span class="fc" id="L66">            boolean idxStale = isIndexStale(ws, headCommit);</span>
 
-<span class="fc" id="L66">            return new RepositoryState(</span>
+<span class="fc" id="L68">            return new RepositoryState(</span>
                     branch,
                     headCommit,
-<span class="fc bfc" id="L69" title="All 2 branches covered.">                    headInfo != null ? headInfo.timestamp() : null,</span>
-<span class="fc bfc" id="L70" title="All 2 branches covered.">                    headInfo != null ? headInfo.author() : null,</span>
-<span class="fc bfc" id="L71" title="All 4 branches covered.">                    headInfo != null ? headInfo.message() : null,</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                    headInfo != null ? headInfo.timestamp() : null,</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                    headInfo != null ? headInfo.author() : null,</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                    headInfo != null ? headInfo.message() : null,</span>
                     branches,
-                    operationKind != null,
-                    operationKind,
-                    lastProjectionCommit,
-                    lastProjectionBranch,
-                    lastProjectionTimestamp,
+<span class="fc" id="L75">                    ws.isOperationInProgress(),</span>
+<span class="fc" id="L76">                    ws.getOperationKind(),</span>
+<span class="fc" id="L77">                    ws.getLastProjectionCommit(),</span>
+<span class="fc" id="L78">                    ws.getLastProjectionBranch(),</span>
+<span class="fc" id="L79">                    ws.getLastProjectionTimestamp(),</span>
                     projStale,
-                    lastIndexCommit,
+<span class="fc" id="L81">                    ws.getLastIndexCommit(),</span>
                     idxStale,
                     commitCount,
-<span class="fc" id="L82">                    gitRepository.isDatabaseBacked()</span>
+<span class="fc" id="L84">                    gitRepository.isDatabaseBacked()</span>
             );
-<span class="nc" id="L84">        } catch (IOException e) {</span>
-<span class="nc" id="L85">            log.error(&quot;Failed to build repository state for branch '{}'&quot;, branch, e);</span>
-<span class="nc" id="L86">            return new RepositoryState(</span>
-<span class="nc" id="L87">                    branch, null, null, null, null, List.of(),</span>
+<span class="nc" id="L86">        } catch (IOException e) {</span>
+<span class="nc" id="L87">            log.error(&quot;Failed to build repository state for user '{}', branch '{}'&quot;, username, branch, e);</span>
+<span class="nc" id="L88">            return new RepositoryState(</span>
+<span class="nc" id="L89">                    branch, null, null, null, null, List.of(),</span>
                     false, null, null, null, null, false, null, false, 0,
-<span class="nc" id="L89">                    gitRepository.isDatabaseBacked()</span>
+<span class="nc" id="L91">                    gitRepository.isDatabaseBacked()</span>
             );
         }
     }
@@ -94,147 +96,154 @@ public class RepositoryStateService {
     /**
      * Build a {@link ViewContext} for inclusion in API responses.
      *
-     * &lt;p&gt;The {@code includesProvisionalRelations} flag is set to {@code true} because
-     * the architecture data may always include provisional (unreviewed) relations
-     * from DSL materialization. A future enhancement could check the actual branch
-     * to distinguish between draft (provisional) and accepted (reviewed only) data.
-     *
-     * @param branch the branch the data is based on
+     * @param username the user whose workspace state to include
+     * @param branch   the branch the data is based on
      * @return the view context metadata
      */
-    public ViewContext getViewContext(String branch) {
+    public ViewContext getViewContext(String username, String branch) {
+<span class="fc" id="L104">        UserWorkspaceState ws = resolveState(username);</span>
         try {
-<span class="fc" id="L107">            DslCommit headInfo = gitRepository.getHeadCommitInfo(branch);</span>
-<span class="fc bfc" id="L108" title="All 2 branches covered.">            String headCommit = headInfo != null ? headInfo.commitId() : null;</span>
+<span class="fc" id="L106">            DslCommit headInfo = gitRepository.getHeadCommitInfo(branch);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            String headCommit = headInfo != null ? headInfo.commitId() : null;</span>
 
-<span class="fc" id="L110">            return new ViewContext(</span>
+<span class="fc" id="L109">            return new ViewContext(</span>
                     headCommit,
                     branch,
-<span class="fc bfc" id="L113" title="All 2 branches covered.">                    headInfo != null ? headInfo.timestamp() : null,</span>
-                    true, // architecture data always may include provisional relations
-<span class="fc" id="L115">                    isProjectionStaleForCommit(headCommit),</span>
-<span class="fc" id="L116">                    isIndexStale(headCommit)</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                    headInfo != null ? headInfo.timestamp() : null,</span>
+                    true,
+<span class="fc" id="L114">                    isProjectionStaleForCommit(ws, headCommit),</span>
+<span class="fc" id="L115">                    isIndexStale(ws, headCommit)</span>
             );
-<span class="nc" id="L118">        } catch (IOException e) {</span>
-<span class="nc" id="L119">            log.error(&quot;Failed to build view context for branch '{}'&quot;, branch, e);</span>
-<span class="nc" id="L120">            return new ViewContext(null, branch, null, true, false, false);</span>
+<span class="nc" id="L117">        } catch (IOException e) {</span>
+<span class="nc" id="L118">            log.error(&quot;Failed to build view context for user '{}', branch '{}'&quot;, username, branch, e);</span>
+<span class="nc" id="L119">            return new ViewContext(null, branch, null, true, false, false);</span>
         }
     }
 
     /**
-     * Record that a materialization completed successfully.
+     * Record that a materialization completed successfully for a user's workspace.
      *
-     * &lt;p&gt;Called by {@code DslMaterializeService} after a successful materialization
-     * to track which commit the DB projection is based on.
-     *
+     * @param username the user whose projection to record
      * @param commitId the commit SHA that was materialized
      * @param branch   the branch that was materialized
      */
-    public void recordProjection(String commitId, String branch) {
-<span class="fc" id="L134">        this.lastProjectionCommit = commitId;</span>
-<span class="fc" id="L135">        this.lastProjectionBranch = branch;</span>
-<span class="fc" id="L136">        this.lastProjectionTimestamp = Instant.now();</span>
-<span class="fc" id="L137">        log.info(&quot;Recorded projection: branch='{}', commit='{}'&quot;, branch, abbreviateSha(commitId));</span>
-<span class="fc" id="L138">    }</span>
+    public void recordProjection(String username, String commitId, String branch) {
+<span class="fc" id="L131">        UserWorkspaceState ws = resolveState(username);</span>
+<span class="fc" id="L132">        ws.recordProjection(commitId, branch);</span>
+<span class="fc" id="L133">        log.info(&quot;User '{}': recorded projection: branch='{}', commit='{}'&quot;,</span>
+<span class="fc" id="L134">                username, branch, abbreviateSha(commitId));</span>
+<span class="fc" id="L135">    }</span>
 
     /**
-     * Record that a search index rebuild completed successfully.
+     * Record that a search index rebuild completed for a user's workspace.
      *
-     * &lt;p&gt;Called by the search index infrastructure after a successful reindex.
-     *
+     * @param username the user whose index to record
      * @param commitId the commit SHA the index was built from
      */
-    public void recordIndexBuild(String commitId) {
-<span class="fc" id="L148">        this.lastIndexCommit = commitId;</span>
-<span class="fc" id="L149">        this.lastIndexTimestamp = Instant.now();</span>
-<span class="fc" id="L150">        log.info(&quot;Recorded index build: commit='{}'&quot;, abbreviateSha(commitId));</span>
-<span class="fc" id="L151">    }</span>
+    public void recordIndexBuild(String username, String commitId) {
+<span class="fc" id="L144">        UserWorkspaceState ws = resolveState(username);</span>
+<span class="fc" id="L145">        ws.recordIndexBuild(commitId);</span>
+<span class="fc" id="L146">        log.info(&quot;User '{}': recorded index build: commit='{}'&quot;,</span>
+<span class="fc" id="L147">                username, abbreviateSha(commitId));</span>
+<span class="fc" id="L148">    }</span>
 
     /**
-     * Check if the DB projection is stale (HEAD has moved past the projection commit).
+     * Check if the DB projection is stale for a user's workspace.
      *
-     * @param branch the branch to check
+     * @param username the user to check
+     * @param branch   the branch to check
      * @return true if projection is stale
      */
-    public boolean isProjectionStale(String branch) {
+    public boolean isProjectionStale(String username, String branch) {
+<span class="fc" id="L158">        UserWorkspaceState ws = resolveState(username);</span>
         try {
-<span class="fc" id="L161">            String headCommit = gitRepository.getHeadCommit(branch);</span>
-<span class="fc" id="L162">            return isProjectionStaleForCommit(headCommit);</span>
-<span class="nc" id="L163">        } catch (IOException e) {</span>
-<span class="nc" id="L164">            log.error(&quot;Failed to check projection staleness for branch '{}'&quot;, branch, e);</span>
+<span class="fc" id="L160">            String headCommit = gitRepository.getHeadCommit(branch);</span>
+<span class="fc" id="L161">            return isProjectionStaleForCommit(ws, headCommit);</span>
+<span class="nc" id="L162">        } catch (IOException e) {</span>
+<span class="nc" id="L163">            log.error(&quot;Failed to check projection staleness for user '{}', branch '{}'&quot;,</span>
+                    username, branch, e);
 <span class="nc" id="L165">            return false;</span>
         }
     }
 
     /**
-     * Get the full projection state for diagnostics.
+     * Get the full projection state for a user's workspace.
      *
-     * @param branch the branch to check against
+     * @param username the user to check
+     * @param branch   the branch to check against
      * @return the projection state
      */
-    public ProjectionState getProjectionState(String branch) {
+    public ProjectionState getProjectionState(String username, String branch) {
+<span class="fc" id="L177">        UserWorkspaceState ws = resolveState(username);</span>
         try {
-<span class="fc" id="L177">            String headCommit = gitRepository.getHeadCommit(branch);</span>
-<span class="fc" id="L178">            return new ProjectionState(</span>
-                    lastProjectionCommit,
-                    lastProjectionBranch,
-                    lastProjectionTimestamp,
-                    lastIndexCommit,
-                    lastIndexTimestamp,
-<span class="fc" id="L184">                    isProjectionStaleForCommit(headCommit),</span>
-<span class="fc" id="L185">                    isIndexStale(headCommit)</span>
+<span class="fc" id="L179">            String headCommit = gitRepository.getHeadCommit(branch);</span>
+<span class="fc" id="L180">            return new ProjectionState(</span>
+<span class="fc" id="L181">                    ws.getLastProjectionCommit(),</span>
+<span class="fc" id="L182">                    ws.getLastProjectionBranch(),</span>
+<span class="fc" id="L183">                    ws.getLastProjectionTimestamp(),</span>
+<span class="fc" id="L184">                    ws.getLastIndexCommit(),</span>
+<span class="fc" id="L185">                    ws.getLastIndexTimestamp(),</span>
+<span class="fc" id="L186">                    isProjectionStaleForCommit(ws, headCommit),</span>
+<span class="fc" id="L187">                    isIndexStale(ws, headCommit)</span>
             );
-<span class="nc" id="L187">        } catch (IOException e) {</span>
-<span class="nc" id="L188">            log.error(&quot;Failed to get projection state for branch '{}'&quot;, branch, e);</span>
-<span class="nc" id="L189">            return new ProjectionState(</span>
-                    lastProjectionCommit, lastProjectionBranch, lastProjectionTimestamp,
-                    lastIndexCommit, lastIndexTimestamp, false, false
+<span class="nc" id="L189">        } catch (IOException e) {</span>
+<span class="nc" id="L190">            log.error(&quot;Failed to get projection state for user '{}', branch '{}'&quot;,</span>
+                    username, branch, e);
+<span class="nc" id="L192">            return new ProjectionState(</span>
+<span class="nc" id="L193">                    ws.getLastProjectionCommit(), ws.getLastProjectionBranch(),</span>
+<span class="nc" id="L194">                    ws.getLastProjectionTimestamp(),</span>
+<span class="nc" id="L195">                    ws.getLastIndexCommit(), ws.getLastIndexTimestamp(), false, false</span>
             );
         }
     }
 
     /**
-     * Mark the start of a multi-step operation (e.g. merge, cherry-pick).
+     * Mark the start of a multi-step operation for a user's workspace.
      *
-     * @param kind the operation kind (&quot;merge&quot;, &quot;cherry-pick&quot;, &quot;revert&quot;)
+     * @param username the user performing the operation
+     * @param kind     the operation kind (&quot;merge&quot;, &quot;cherry-pick&quot;, &quot;revert&quot;)
      */
-    public void beginOperation(String kind) {
-<span class="fc" id="L202">        this.operationKind = kind;</span>
-<span class="fc" id="L203">        log.info(&quot;Operation started: {}&quot;, kind);</span>
-<span class="fc" id="L204">    }</span>
+    public void beginOperation(String username, String kind) {
+<span class="fc" id="L207">        resolveState(username).beginOperation(kind);</span>
+<span class="fc" id="L208">        log.info(&quot;User '{}': operation started: {}&quot;, username, kind);</span>
+<span class="fc" id="L209">    }</span>
 
     /**
-     * Mark the end of a multi-step operation.
+     * Mark the end of a multi-step operation for a user's workspace.
+     *
+     * @param username the user whose operation ended
      */
-    public void endOperation() {
-<span class="fc" id="L210">        log.info(&quot;Operation ended: {}&quot;, operationKind);</span>
-<span class="fc" id="L211">        this.operationKind = null;</span>
-<span class="fc" id="L212">    }</span>
+    public void endOperation(String username) {
+<span class="fc" id="L217">        UserWorkspaceState ws = resolveState(username);</span>
+<span class="fc" id="L218">        log.info(&quot;User '{}': operation ended: {}&quot;, username, ws.getOperationKind());</span>
+<span class="fc" id="L219">        ws.endOperation();</span>
+<span class="fc" id="L220">    }</span>
 
     // ── Internal helpers ────────────────────────────────────────────
 
-    private boolean isProjectionStaleForCommit(String headCommit) {
-<span class="fc bfc" id="L217" title="All 4 branches covered.">        if (headCommit == null || lastProjectionCommit == null) {</span>
-            // Deliberate: if no projection has been recorded yet (e.g. fresh startup),
-            // we treat the state as &quot;not stale&quot; rather than &quot;unknown&quot;. This avoids
-            // false warnings during initial setup before the first materialization.
-<span class="fc" id="L221">            return false;</span>
-        }
-<span class="fc bfc" id="L223" title="All 2 branches covered.">        return !headCommit.equals(lastProjectionCommit);</span>
+    private UserWorkspaceState resolveState(String username) {
+<span class="fc" id="L225">        return workspaceManager.getOrCreateWorkspace(username);</span>
     }
 
-    private boolean isIndexStale(String headCommit) {
-<span class="fc bfc" id="L227" title="All 4 branches covered.">        if (headCommit == null || lastIndexCommit == null) {</span>
-            // Same rationale as isProjectionStaleForCommit: absence of tracking
-            // data is treated as fresh to avoid false warnings at startup.
-<span class="fc" id="L230">            return false;</span>
+    private boolean isProjectionStaleForCommit(UserWorkspaceState ws, String headCommit) {
+<span class="fc" id="L229">        String projCommit = ws.getLastProjectionCommit();</span>
+<span class="fc bfc" id="L230" title="All 4 branches covered.">        if (headCommit == null || projCommit == null) {</span>
+<span class="fc" id="L231">            return false;</span>
         }
-<span class="fc bfc" id="L232" title="All 2 branches covered.">        return !headCommit.equals(lastIndexCommit);</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        return !headCommit.equals(projCommit);</span>
+    }
+
+    private boolean isIndexStale(UserWorkspaceState ws, String headCommit) {
+<span class="fc" id="L237">        String idxCommit = ws.getLastIndexCommit();</span>
+<span class="fc bfc" id="L238" title="All 4 branches covered.">        if (headCommit == null || idxCommit == null) {</span>
+<span class="fc" id="L239">            return false;</span>
+        }
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        return !headCommit.equals(idxCommit);</span>
     }
 
     private String abbreviateSha(String commitId) {
-<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        if (commitId == null) return &quot;null&quot;;</span>
-<span class="fc" id="L237">        return commitId.substring(0, Math.min(7, commitId.length()));</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">        if (commitId == null) return &quot;null&quot;;</span>
+<span class="fc" id="L246">        return commitId.substring(0, Math.min(7, commitId.length()));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
