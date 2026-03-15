@@ -115,6 +115,87 @@ curl -u admin:admin "http://localhost:8080/api/dsl/history?branch=main"
 
 ---
 
+## Workflow 5: Git State Monitoring & Staleness Detection
+
+Check repository state, detect stale projections, and monitor branch status.
+
+```bash
+# Step 1 — Check full repository state for the draft branch
+curl -u admin:admin "http://localhost:8080/api/git/state?branch=draft"
+
+# Step 2 — Quick staleness check (used by UI polling every 10s)
+curl -u admin:admin "http://localhost:8080/api/git/stale?branch=draft"
+
+# Step 3 — Detailed projection/index freshness
+curl -u admin:admin "http://localhost:8080/api/git/projection?branch=draft"
+
+# Step 4 — List all branches
+curl -u admin:admin "http://localhost:8080/api/git/branches"
+```
+
+---
+
+## Workflow 6: Context Navigation — Browse, Compare, Transfer
+
+Open versioned architecture snapshots, compare branches, and selectively transfer changes.
+
+```bash
+# Step 1 — Check current context
+curl -u admin:admin http://localhost:8080/api/context/current
+
+# Step 2 — Open a read-only context for the "main" branch
+curl -u admin:admin -X POST "http://localhost:8080/api/context/open?branch=main&readOnly=true"
+
+# Step 3 — Compare two branches
+curl -u admin:admin "http://localhost:8080/api/context/compare?leftBranch=draft&rightBranch=main"
+
+# Step 4 — Create a variant branch from the current context
+curl -u admin:admin -X POST "http://localhost:8080/api/context/variant?name=experiment-1"
+
+# Step 5 — Preview selective transfer
+curl -u admin:admin -X POST http://localhost:8080/api/context/copy-back/preview \
+  -H "Content-Type: application/json" \
+  -d '{"sourceContextId":"ctx-002","targetContextId":"ctx-001","selectedElementIds":["CP-1023"],"selectedRelationIds":[],"mode":"COPY"}'
+
+# Step 6 — Apply the transfer
+curl -u admin:admin -X POST http://localhost:8080/api/context/copy-back/apply \
+  -H "Content-Type: application/json" \
+  -d '{"sourceContextId":"ctx-002","targetContextId":"ctx-001","selectedElementIds":["CP-1023"],"selectedRelationIds":[],"mode":"COPY"}'
+
+# Step 7 — Navigate back to the previous context
+curl -u admin:admin -X POST http://localhost:8080/api/context/back
+
+# Step 8 — Return to the origin context
+curl -u admin:admin -X POST http://localhost:8080/api/context/return-to-origin
+
+# Step 9 — View navigation history
+curl -u admin:admin http://localhost:8080/api/context/history
+```
+
+---
+
+## Workflow 7: Preferences Management (Admin)
+
+View, update, and audit runtime preferences.
+
+```bash
+# Step 1 — View all current preferences
+curl -u admin:admin http://localhost:8080/api/preferences
+
+# Step 2 — Update LLM rate limit and timeout
+curl -u admin:admin -X PUT http://localhost:8080/api/preferences \
+  -H "Content-Type: application/json" \
+  -d '{"llm.rpm":"10","llm.timeout.seconds":"45"}'
+
+# Step 3 — View the change history (Git log)
+curl -u admin:admin http://localhost:8080/api/preferences/history
+
+# Step 4 — Reset all preferences to defaults
+curl -u admin:admin -X POST http://localhost:8080/api/preferences/reset
+```
+
+---
+
 ## Quick Reference: Individual Endpoints
 
 For one-off commands not part of a workflow, see the [API Reference](API_REFERENCE.md). Common examples:
@@ -142,4 +223,27 @@ curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact
 curl -u admin:admin -X POST http://localhost:8080/api/report/markdown \
   -H "Content-Type: application/json" \
   -d '{"businessText":"Hospital communications","scores":{"CP-1023":92}}' --output report.md
+
+# Git repository state
+curl -u admin:admin "http://localhost:8080/api/git/state?branch=draft"
+
+# Quick staleness check
+curl -u admin:admin "http://localhost:8080/api/git/stale?branch=draft"
+
+# View all preferences (admin)
+curl -u admin:admin http://localhost:8080/api/preferences
+
+# Browse documentation table of contents
+curl -u admin:admin http://localhost:8080/help
+
+# Format DSL text
+curl -u admin:admin -X POST http://localhost:8080/api/dsl/format \
+  -H "Content-Type: text/plain" \
+  -d 'element CP-1023 type Capability { title: "CIS"; }'
+
+# Undo last commit
+curl -u admin:admin -X POST "http://localhost:8080/api/dsl/undo?branch=draft"
+
+# Versioned search
+curl -u admin:admin "http://localhost:8080/api/dsl/history/search-versioned?query=communication&currentBranch=draft"
 ```

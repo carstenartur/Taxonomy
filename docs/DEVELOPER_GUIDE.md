@@ -16,6 +16,7 @@ This guide is intended for developers contributing to the Taxonomy Architecture 
 - [Adding a New LLM Provider](#adding-a-new-llm-provider)
 - [DSL and JGit Storage](#dsl-and-jgit-storage)
 - [Hibernate Search and Lucene](#hibernate-search-and-lucene)
+- [Frontend Development](#frontend-development)
 - [Testing Conventions](#testing-conventions)
 - [Common Pitfalls](#common-pitfalls)
 
@@ -287,6 +288,119 @@ The application uses Hibernate Search 8 with a Lucene 9 backend for full-text an
 | `german` | Standard German analyser for German-language fields |
 
 **Indexed entities:** `TaxonomyNode` (full-text + KNN), `TaxonomyRelation` (full-text + KNN), `ArchitectureCommitIndex` (full-text).
+
+---
+
+## Frontend Development
+
+The frontend is a single-page application built with plain JavaScript (no build tool, no npm). All files are served as static resources from `taxonomy-app/src/main/resources/static/`.
+
+### File Structure
+
+```
+static/
+├── js/
+│   ├── taxonomy.js                    Main entry point (tab switching, navigation)
+│   ├── taxonomy-analysis.js           AI analysis workflow
+│   ├── taxonomy-views.js              Tree/sunburst/tabs/decision/summary views
+│   ├── taxonomy-graph.js              D3 force-directed graph explorer
+│   ├── taxonomy-dsl-editor.js         DSL editor (CodeMirror 6 integration)
+│   ├── taxonomy-dsl-codemirror.mjs    ES module for CodeMirror 6 setup
+│   ├── taxonomy-versions.js           Version history timeline
+│   ├── taxonomy-search.js             Full-text/semantic/hybrid search
+│   ├── taxonomy-relations.js          Relations browser + proposal queue
+│   ├── taxonomy-export.js             Export buttons (SVG, PNG, Visio, etc.)
+│   ├── taxonomy-coverage.js           Requirement coverage panel
+│   ├── taxonomy-quality.js            Quality dashboard
+│   ├── taxonomy-import.js             Framework import
+│   ├── taxonomy-help.js               In-app help browser
+│   ├── taxonomy-git-status.js         Repository state polling
+│   ├── taxonomy-action-guards.js      Write-operation safety guards
+│   ├── taxonomy-viewcontext.js        Commit provenance display
+│   ├── taxonomy-context-bar.js        Context navigation bar
+│   ├── taxonomy-context-compare.js    Context comparison view
+│   ├── taxonomy-context-transfer.js   Selective transfer UI
+│   ├── taxonomy-history-search.js     Versioned commit search
+│   └── taxonomy-onboarding.js         First-time user experience
+├── css/
+│   ├── taxonomy.css                   Main stylesheet
+│   └── git-status.css                 Git status indicator styles
+└── images/                            Static images
+```
+
+### Adding a New UI Module
+
+1. Create `static/js/taxonomy-myfeature.js` following the IIFE pattern:
+
+```javascript
+(function () {
+    'use strict';
+
+    document.addEventListener('DOMContentLoaded', init);
+
+    function init() {
+        // Initialise DOM references and event listeners
+    }
+
+    // Public API — exposed for other modules
+    window.TaxonomyMyFeature = {
+        refresh: refresh
+    };
+})();
+```
+
+2. Add a `<script>` tag in `templates/index.html`.
+3. If the feature needs a tab, add it to the `PAGES` array (and `FULL_WIDTH_PAGES` if appropriate).
+4. Call backend APIs with `fetch()` — the browser session handles authentication.
+
+### Adding a New Tab
+
+The tab system is driven by the `PAGES` array in the main JavaScript. To add a new tab:
+
+1. Add the tab button in `index.html` (within the right-panel tab bar):
+   ```html
+   <button class="btn btn-outline-secondary btn-sm" onclick="showPage('mytab')">🔧 My Tab</button>
+   ```
+
+2. Add the content container:
+   ```html
+   <div id="mytab-content" class="page-content" style="display:none;">
+     <!-- Tab content here -->
+   </div>
+   ```
+
+3. Register the page in the JavaScript PAGES array.
+
+### API Communication
+
+All API calls use the Fetch API:
+
+```javascript
+fetch('/api/my-endpoint', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: 'value' })
+})
+.then(response => response.json())
+.then(data => { /* update UI */ })
+.catch(error => { console.error('Error:', error); });
+```
+
+Authentication is handled automatically by the browser session cookie. CSRF tokens from Thymeleaf meta tags are included for browser-based requests.
+
+### CodeMirror 6 (DSL Editor)
+
+The DSL editor uses CodeMirror 6 loaded as an ES module from `esm.sh` CDN. The configuration is in `taxonomy-dsl-codemirror.mjs`:
+
+- **Syntax highlighting:** Custom `StreamLanguage` for TaxDSL keywords, types, relations, IDs, strings, and comments
+- **Autocompletion:** Context-aware completions for block keywords, domain types, relation types, and status values
+- **Live validation:** Debounced lint via `POST /api/dsl/validate` with gutter icons for errors/warnings
+- **Dark mode:** Automatic theme switching via `Compartment` and `matchMedia('(prefers-color-scheme: dark)')`
+- **Format shortcut:** `Shift+Alt+F` delegates to `window.dslFormatContent()`
+
+The CodeMirror `EditorView` is exposed as `window.dslCmView` and a `'cm-ready'` custom event is dispatched on `#dslEditorContainer` once initialised.
+
+> For the full frontend architecture with module interaction diagrams, see [Architecture](ARCHITECTURE.md#frontend-architecture).
 
 ---
 

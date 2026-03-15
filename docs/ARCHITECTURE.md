@@ -19,6 +19,7 @@ This document describes the architecture of the Taxonomy Architecture Analyzer �
 - [Framework Mapping Layer](#framework-mapping-layer)
 - [Export Formats](#export-formats)
 - [Detailed Architecture Diagrams](#detailed-architecture-diagrams)
+- [Frontend Architecture](#frontend-architecture)
 
 ---
 
@@ -489,3 +490,99 @@ graph LR
     style export fill:#FFF3E0
     style app fill:#FCE4EC
 ```
+
+---
+
+## Frontend Architecture
+
+The frontend is a **single-page application** rendered by a single Thymeleaf template (`index.html`). All client-side logic is implemented in 20 JavaScript modules using the **IIFE (Immediately Invoked Function Expression)** pattern with `window.*` namespace exports for inter-module communication.
+
+### Module Overview
+
+```mermaid
+graph TD
+    subgraph Core
+        views["taxonomy-views.js<br/>(59 KB — Tree, Sunburst,<br/>Tabs, Decision, Summary)"]
+        analysis["taxonomy-analysis.js<br/>(35 KB — AI scoring,<br/>streaming, results)"]
+        graph["taxonomy-graph.js<br/>(32 KB — D3 force graph,<br/>upstream/downstream)"]
+    end
+
+    subgraph DSL & Git
+        dslEditor["taxonomy-dsl-editor.js<br/>(30 KB — CodeMirror 6,<br/>commit, branch, merge)"]
+        versions["taxonomy-versions.js<br/>(20 KB — History timeline,<br/>undo, revert, restore)"]
+        gitStatus["taxonomy-git-status.js<br/>(5 KB — Polls /api/git/stale)"]
+        actionGuards["taxonomy-action-guards.js<br/>(10 KB — Write-op safety)"]
+        viewcontext["taxonomy-viewcontext.js<br/>(5 KB — Commit provenance)"]
+    end
+
+    subgraph Context Navigation
+        contextBar["taxonomy-context-bar.js<br/>(6 KB — Mode badge, nav buttons)"]
+        historySearch["taxonomy-history-search.js<br/>(6 KB — Versioned commit search)"]
+        contextCompare["taxonomy-context-compare.js<br/>(7 KB — 3-level diff view)"]
+        contextTransfer["taxonomy-context-transfer.js<br/>(6 KB — Selective cherry-pick)"]
+    end
+
+    subgraph Features
+        search["taxonomy-search.js<br/>(12 KB — Full-text, semantic,<br/>hybrid, similar)"]
+        relations["taxonomy-relations.js<br/>(13 KB — Browse, create,<br/>delete relations)"]
+        exportMod["taxonomy-export.js<br/>(16 KB — SVG, PNG, Visio,<br/>ArchiMate, Mermaid)"]
+        coverage["taxonomy-coverage.js<br/>(10 KB — Requirement coverage)"]
+        quality["taxonomy-quality.js<br/>(6 KB — Quality dashboard)"]
+        importMod["taxonomy-import.js<br/>(8 KB — Framework import)"]
+        help["taxonomy-help.js<br/>(12 KB — In-app help browser)"]
+        onboarding["taxonomy-onboarding.js<br/>(3 KB — First-time UX)"]
+    end
+
+    dslEditor --> gitStatus
+    dslEditor --> actionGuards
+    contextBar --> historySearch
+    contextBar --> contextCompare
+    contextCompare --> contextTransfer
+```
+
+### Module Responsibilities
+
+| Module | Size | Responsibility |
+|---|---|---|
+| `taxonomy-views.js` | 59 KB | All taxonomy visualisations: tree, tabs, sunburst chart, decision map, summary view. Manages view switching and expand/collapse. |
+| `taxonomy-analysis.js` | 35 KB | AI analysis workflow: requirement input, provider selection, SSE streaming, score display, interactive mode, analysis log. |
+| `taxonomy-graph.js` | 32 KB | D3 force-directed graph and table views for upstream, downstream, failure impact, and enriched failure impact queries. |
+| `taxonomy-dsl-editor.js` | 30 KB | DSL editing with CodeMirror 6 integration, validation, formatting, commit, branch management, merge, cherry-pick, materialisation. |
+| `taxonomy-versions.js` | 20 KB | Version history timeline tab — commit log, undo, revert, restore operations. |
+| `taxonomy-export.js` | 16 KB | Export buttons for SVG, PNG, PDF, CSV, JSON, Visio (.vsdx), ArchiMate XML, Mermaid. Save/load analysis. |
+| `taxonomy-relations.js` | 13 KB | Relations browser: list, create, delete relations. Proposal queue with accept/reject/bulk actions. |
+| `taxonomy-search.js` | 12 KB | Search panel: full-text, semantic, hybrid, graph, and similar-node search modes. |
+| `taxonomy-help.js` | 12 KB | In-app help browser: fetches documentation from `/help` API, renders HTML, handles navigation. |
+| `taxonomy-coverage.js` | 10 KB | Requirement coverage panel: metrics, top covered nodes, gap candidates, analysis recording. |
+| `taxonomy-action-guards.js` | 10 KB | Repository state guards: checks for stale projection, pending operations, and write-op safety before DSL mutations. |
+| `taxonomy-import.js` | 8 KB | Framework import: UAF, APQC, C4 profile selection and file upload. |
+| `taxonomy-context-compare.js` | 7 KB | Context comparison: summary → semantic changes → raw DSL diff. |
+| `taxonomy-history-search.js` | 6 KB | Versioned commit history search with branch badges, recency tags, and context-open actions. |
+| `taxonomy-context-bar.js` | 6 KB | Context navigation bar: mode badge (EDITABLE/READ_ONLY/TEMPORARY), back, return-to-origin, variant, compare buttons. |
+| `taxonomy-context-transfer.js` | 6 KB | Selective transfer UI: element/relation selection, conflict preview, apply transfer. |
+| `taxonomy-quality.js` | 6 KB | Quality dashboard: summary metrics, by-relation-type breakdown, top rejected proposals. |
+| `taxonomy-git-status.js` | 5 KB | Polls `/api/git/stale` every 10 seconds, updates staleness indicators in the UI. |
+| `taxonomy-viewcontext.js` | 5 KB | Renders HEAD commit provenance metadata (timestamp, author, message) in the UI. |
+| `taxonomy-onboarding.js` | 3 KB | First-time user experience: guided tour and feature highlights. |
+
+### Frontend Patterns
+
+**Module pattern:** All modules use the IIFE pattern, exposing their public API via `window.TaxonomyModuleName`:
+
+```javascript
+(function () {
+    'use strict';
+    // private state and functions
+    document.addEventListener('DOMContentLoaded', init);
+    window.TaxonomyVersions = { refresh: refresh };
+})();
+```
+
+**Communication:** Modules communicate via:
+- Direct function calls on `window.*` exports (e.g., `window.TaxonomyVersions.refresh()`)
+- Custom DOM events on shared containers (e.g., `'cm-ready'` on `#dslEditorContainer`)
+- Shared DOM elements (e.g., reading `#branchSelect` value)
+
+**API calls:** All backend communication uses the Fetch API with HTTP Basic authentication inherited from the browser session. CSRF tokens are included automatically for GUI-originated requests.
+
+**CodeMirror 6:** The DSL editor uses CodeMirror 6 loaded as an ES module (`taxonomy-dsl-codemirror.mjs`) with custom TaxDSL syntax highlighting, autocompletion, live validation, and dark mode support.

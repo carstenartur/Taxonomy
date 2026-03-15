@@ -22,8 +22,11 @@ Interactive docs: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) (w
 - [Gap Analysis & Recommendations](#gap-analysis--recommendations)
 - [Architecture DSL](#architecture-dsl)
 - [Context Navigation](#context-navigation)
+- [Git Repository State](#git-repository-state)
 - [Administration](#administration)
+- [Preferences (Admin-only)](#preferences-admin-only)
 - [User Management (Admin-only)](#user-management-admin-only)
+- [Help / Documentation](#help--documentation)
 - [Error Responses](#error-responses)
 
 ---
@@ -629,6 +632,101 @@ Transfer modes: `COPY` (overwrite conflicts), `CHERRY_PICK` (apply commit), `MER
 
 ---
 
+## Git Repository State
+
+Endpoints for querying the Git repository state, projection/index freshness, and branch information. Used by the UI to detect stale projections and display repository status.
+
+### Full repository state
+
+```
+GET /api/git/state?branch=draft
+```
+
+Returns the complete repository state snapshot for a branch, including HEAD commit info, all branches, projection/index freshness, and any in-progress operations.
+
+```bash
+curl -u admin:admin "http://localhost:8080/api/git/state?branch=draft"
+```
+
+**Response (200):**
+
+```json
+{
+  "branch": "draft",
+  "headCommit": "abc1234",
+  "headTimestamp": "2026-03-15T10:30:00Z",
+  "headAuthor": "admin",
+  "headMessage": "Add CP-1023 capability",
+  "branches": ["draft", "main", "feature/comms"],
+  "projectionCommit": "abc1234",
+  "projectionStale": false,
+  "indexCommit": "abc1234",
+  "indexStale": false
+}
+```
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `branch` | string | — | Branch to query (default: `draft`) |
+
+### Projection and index freshness
+
+```
+GET /api/git/projection?branch=draft
+```
+
+Returns which commit the DB projection and search index are built from, and whether they are stale relative to HEAD.
+
+```bash
+curl -u admin:admin "http://localhost:8080/api/git/projection?branch=draft"
+```
+
+**Response (200):**
+
+```json
+{
+  "projectionCommit": "abc1234",
+  "projectionStale": false,
+  "indexCommit": "abc1234",
+  "indexStale": false
+}
+```
+
+### List all branches
+
+```
+GET /api/git/branches?branch=draft
+```
+
+Returns all Git branches in the repository with their HEAD commit SHA and basic metadata.
+
+```bash
+curl -u admin:admin "http://localhost:8080/api/git/branches"
+```
+
+### Quick staleness check
+
+```
+GET /api/git/stale?branch=draft
+```
+
+Lightweight endpoint returning only staleness flags. Used for periodic polling from the UI (every 10 seconds).
+
+```bash
+curl -u admin:admin "http://localhost:8080/api/git/stale?branch=draft"
+```
+
+**Response (200):**
+
+```json
+{
+  "projectionStale": false,
+  "indexStale": false
+}
+```
+
+---
+
 ## Administration
 
 ### System status
@@ -667,6 +765,142 @@ curl -u admin:admin "http://localhost:8080/api/embedding/status"
 ```bash
 curl -u admin:admin "http://localhost:8080/api/diagnostics"
 ```
+
+---
+
+## Preferences (Admin-only)
+
+Runtime-configurable preferences with a JGit-backed audit trail. Every `PUT` creates a Git commit recording who changed what and when. All endpoints require `ROLE_ADMIN`.
+
+> For details on all available preference keys, see [Preferences](PREFERENCES.md).
+
+### Get all preferences
+
+```
+GET /api/preferences
+```
+
+Returns all current preference values. Sensitive values (e.g., remote Git tokens) are masked in the response.
+
+```bash
+curl -u admin:admin http://localhost:8080/api/preferences
+```
+
+**Response (200):**
+
+```json
+{
+  "llm.rpm": "5",
+  "llm.timeout.seconds": "30",
+  "rate-limit.per-minute": "10",
+  "analysis.min-relevance-score": "70",
+  "dsl.default-branch": "draft",
+  "dsl.project-name": "Taxonomy Architecture",
+  "limits.max-business-text": "5000",
+  "limits.max-architecture-nodes": "50",
+  "limits.max-export-nodes": "200"
+}
+```
+
+### Update preferences
+
+```
+PUT /api/preferences
+```
+
+Updates one or more preferences. Creates a Git commit for audit trail.
+
+```bash
+curl -u admin:admin -X PUT http://localhost:8080/api/preferences \
+  -H "Content-Type: application/json" \
+  -d '{"llm.rpm": "10", "llm.timeout.seconds": "45"}'
+```
+
+### Reset to defaults
+
+```
+POST /api/preferences/reset
+```
+
+Resets all preferences to their built-in defaults. Creates a Git commit recording the reset.
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/preferences/reset
+```
+
+### Preference change history
+
+```
+GET /api/preferences/history
+```
+
+Returns the Git log of all preference changes, including timestamps, authors, and what changed.
+
+```bash
+curl -u admin:admin http://localhost:8080/api/preferences/history
+```
+
+---
+
+## Help / Documentation
+
+The Help system serves rendered Markdown documentation from the `docs/` directory. These endpoints are accessible to any authenticated user.
+
+### Table of contents
+
+```
+GET /help
+```
+
+Returns a JSON array of all available documentation pages with metadata.
+
+```bash
+curl -u admin:admin http://localhost:8080/help
+```
+
+**Response (200):**
+
+```json
+[
+  { "filename": "USER_GUIDE", "title": "User Guide", "icon": "📖", "audience": "Everyone" },
+  { "filename": "CONCEPTS", "title": "Concepts", "icon": "💡", "audience": "Everyone" },
+  { "filename": "API_REFERENCE", "title": "API Reference", "icon": "🔌", "audience": "Integrators" }
+]
+```
+
+### Render a documentation page
+
+```
+GET /help/{docName}
+```
+
+Renders the specified Markdown document as HTML. The response is cached after first render.
+
+```bash
+curl -u admin:admin http://localhost:8080/help/USER_GUIDE
+```
+
+**Response (200):** HTML string of the rendered Markdown.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `docName` | string | Document filename without extension. Must match a registered document (e.g., `USER_GUIDE`, `API_REFERENCE`, `SECURITY`). |
+
+Returns `400` if the document name contains invalid characters, `404` if not found.
+
+### Serve documentation image
+
+```
+GET /help/images/{imageName}
+```
+
+Serves images referenced in documentation files (PNG, JPEG, etc.).
+
+```bash
+curl -u admin:admin http://localhost:8080/help/images/15-scored-taxonomy-tree.png --output screenshot.png
+```
+
+Returns `400` for invalid filenames, `404` for missing images.
 
 ---
 
