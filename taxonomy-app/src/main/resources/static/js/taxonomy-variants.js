@@ -115,24 +115,45 @@ window.TaxonomyVariants = (function () {
      * @param {string} branch — branch to compare
      */
     function compareTo(branch) {
-        if (window.TaxonomyContextCompare) {
-            var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
-            var currentBranch = ctx ? ctx.branch : 'draft';
+        var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
+        var currentBranch = ctx ? ctx.branch : 'draft';
 
-            // Show compare dialog with the branches pre-filled
-            var modal = document.getElementById('contextCompareModal');
-            if (modal) {
-                var leftSel = document.getElementById('compareLeftBranch');
-                var rightSel = document.getElementById('compareRightBranch');
+        var leftSel = document.getElementById('compareLeftBranch');
+        var rightSel = document.getElementById('compareRightBranch');
 
-                // Populate selectors then set values
-                window.TaxonomyContextCompare.showDialog(ctx);
-                setTimeout(function () {
-                    if (leftSel) leftSel.value = currentBranch;
-                    if (rightSel) rightSel.value = branch;
-                }, 300);
-            }
-        }
+        // Populate branch selectors, then set values and show modal
+        fetch('/api/git/branches')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var branches = data.branches || data || [];
+                [leftSel, rightSel].forEach(function (sel) {
+                    if (!sel) return;
+                    sel.innerHTML = '';
+                    branches.forEach(function (b) {
+                        var opt = document.createElement('option');
+                        opt.value = b;
+                        opt.textContent = b;
+                        sel.appendChild(opt);
+                    });
+                });
+                if (leftSel) leftSel.value = currentBranch;
+                if (rightSel) rightSel.value = branch;
+
+                var results = document.getElementById('contextCompareResults');
+                if (results) results.innerHTML = '';
+
+                var modal = document.getElementById('contextCompareModal');
+                if (modal && typeof bootstrap !== 'undefined') {
+                    var bsModal = new bootstrap.Modal(modal);
+                    bsModal.show();
+                }
+            })
+            .catch(function () {
+                // Fallback: just open the dialog
+                if (window.TaxonomyContextCompare) {
+                    window.TaxonomyContextCompare.showDialog(ctx);
+                }
+            });
     }
 
     /**
