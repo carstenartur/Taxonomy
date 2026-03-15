@@ -35,14 +35,17 @@ public class SelectiveTransferService {
 
     private final DslGitRepository gitRepository;
     private final ContextNavigationService contextNavigationService;
+    private final WorkspaceResolver workspaceResolver;
     private final TaxDslParser parser = new TaxDslParser();
     private final AstToModelMapper astMapper = new AstToModelMapper();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
 
     public SelectiveTransferService(DslGitRepository gitRepository,
-                                    ContextNavigationService contextNavigationService) {
+                                    ContextNavigationService contextNavigationService,
+                                    WorkspaceResolver workspaceResolver) {
         this.gitRepository = gitRepository;
         this.contextNavigationService = contextNavigationService;
+        this.workspaceResolver = workspaceResolver;
     }
 
     /**
@@ -105,7 +108,8 @@ public class SelectiveTransferService {
         var doc = parser.parse(gitRepository.getDslAtCommit(selection.targetContextId()));
         String mergedDsl = serializer.serialize(doc);
 
-        String targetBranch = contextNavigationService.getCurrentContext().branch();
+        String targetBranch = contextNavigationService.getCurrentContext(
+                workspaceResolver.resolveCurrentUsername()).branch();
         String commitId = gitRepository.commitDsl(
                 targetBranch, mergedDsl, "system",
                 "Selective transfer: " + selection.selectedElementIds().size() + " elements, "

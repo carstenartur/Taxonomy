@@ -3,6 +3,7 @@ package com.taxonomy.controller;
 import com.taxonomy.dto.FrameworkImportResult;
 import com.taxonomy.dto.ProfileInfo;
 import com.taxonomy.service.RepositoryStateService;
+import com.taxonomy.service.WorkspaceResolver;
 import com.taxonomy.service.importer.FrameworkImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -36,11 +37,14 @@ public class ImportApiController {
 
     private final FrameworkImportService importService;
     private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
 
     public ImportApiController(FrameworkImportService importService,
-                               RepositoryStateService repositoryStateService) {
+                               RepositoryStateService repositoryStateService,
+                               WorkspaceResolver workspaceResolver) {
         this.importService = importService;
         this.repositoryStateService = repositoryStateService;
+        this.workspaceResolver = workspaceResolver;
     }
 
     /**
@@ -91,7 +95,8 @@ public class ImportApiController {
             FrameworkImportResult result = importService.importFile(profileId, file.getInputStream(), branch);
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("result", result);
-            response.put("viewContext", repositoryStateService.getViewContext(branch));
+            response.put("viewContext", repositoryStateService.getViewContext(
+                    workspaceResolver.resolveCurrentUsername(), branch));
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Import failed for profile {} with file {}", profileId, file.getOriginalFilename(), e);

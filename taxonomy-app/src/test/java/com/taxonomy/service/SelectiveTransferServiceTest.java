@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 /**
  * Unit tests for {@link SelectiveTransferService}.
@@ -65,9 +66,13 @@ class SelectiveTransferServiceTest {
     @BeforeEach
     void setUp() {
         gitRepo = new DslGitRepository();
-        var stateService = new RepositoryStateService(gitRepo);
-        navService = new ContextNavigationService(gitRepo, stateService, 50);
-        transferService = new SelectiveTransferService(gitRepo, navService);
+        var wsRepo = mock(com.taxonomy.repository.UserWorkspaceRepository.class);
+        var workspaceManager = new WorkspaceManager(wsRepo, 50);
+        var stateService = new RepositoryStateService(gitRepo, workspaceManager);
+        navService = new ContextNavigationService(gitRepo, stateService, workspaceManager, 50);
+        var workspaceResolver = mock(WorkspaceResolver.class);
+        org.mockito.Mockito.when(workspaceResolver.resolveCurrentUsername()).thenReturn("testuser");
+        transferService = new SelectiveTransferService(gitRepo, navService, workspaceResolver);
     }
 
     @Test
