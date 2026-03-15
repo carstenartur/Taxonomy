@@ -9,7 +9,7 @@ Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateObjDatabase.ByteArra
 Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateRepository,8,36,0,0,3,8,3,3,3,3
 Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateObjDatabase,76,244,5,11,25,55,9,12,5,8
 Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateRepository.Builder,5,10,0,0,1,3,1,1,1,1
-Taxonomy Application,com.taxonomy.controller,ReportApiController,9,168,6,10,3,34,6,7,0,5
+Taxonomy Application,com.taxonomy.controller,ReportApiController,9,174,6,10,3,36,6,7,0,5
 Taxonomy Application,com.taxonomy.controller,ChangePasswordController,97,15,14,0,25,6,8,3,1,3
 Taxonomy Application,com.taxonomy.controller,ExplanationTraceApiController.ExplainRequest,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.controller,GraphQueryApiController,135,165,19,11,24,37,12,11,0,8
@@ -19,12 +19,13 @@ Taxonomy Application,com.taxonomy.controller,CoverageApiController,1,53,1,1,0,15
 Taxonomy Application,com.taxonomy.controller,ApiController.new AnalysisEventCallback() {...},55,106,2,2,12,21,4,5,2,5
 Taxonomy Application,com.taxonomy.controller,TaxonomyController,0,19,0,0,0,6,0,2,0,2
 Taxonomy Application,com.taxonomy.controller,RelationApiController,4,116,6,10,2,29,6,8,0,6
-Taxonomy Application,com.taxonomy.controller,ImportApiController,47,65,1,3,7,16,1,6,0,5
+Taxonomy Application,com.taxonomy.controller,ImportApiController,47,71,1,3,7,18,1,6,0,5
+Taxonomy Application,com.taxonomy.controller,WorkspaceController,35,9,0,0,8,4,4,1,4,1
 Taxonomy Application,com.taxonomy.controller,ProposalApiController,134,185,23,19,34,51,16,15,1,9
 Taxonomy Application,com.taxonomy.controller,GapAnalysisApiController,0,32,0,2,0,10,0,4,0,3
 Taxonomy Application,com.taxonomy.controller,ArchiMateImportController,20,25,0,2,5,8,0,4,0,3
 Taxonomy Application,com.taxonomy.controller,HelpController,88,303,18,8,20,35,13,8,1,7
-Taxonomy Application,com.taxonomy.controller,DslApiController,634,1319,42,38,150,270,41,43,15,29
+Taxonomy Application,com.taxonomy.controller,DslApiController,637,1340,42,38,151,277,41,43,15,29
 Taxonomy Application,com.taxonomy.controller,HelpController.DocEntry,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.controller,PatternDetectionApiController,1,29,1,1,0,9,1,3,0,3
 Taxonomy Application,com.taxonomy.controller,PatternDetectionApiController.PatternDetectionRequest,0,9,0,0,0,1,0,1,0,1
@@ -32,14 +33,14 @@ Taxonomy Application,com.taxonomy.controller,UserManagementController,240,300,38
 Taxonomy Application,com.taxonomy.controller,RecommendationApiController,1,23,1,1,0,8,1,2,0,2
 Taxonomy Application,com.taxonomy.controller,ReportApiController.ReportRequest,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.controller,RecommendationApiController.RecommendationRequest,0,12,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.controller,ApiController,432,1121,77,85,95,247,65,48,2,30
+Taxonomy Application,com.taxonomy.controller,ApiController,432,1127,77,85,95,249,65,48,2,30
 Taxonomy Application,com.taxonomy.controller,GapAnalysisApiController.GapAnalysisRequest,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.controller,ExplanationTraceApiController,2,43,2,2,0,14,2,3,0,3
-Taxonomy Application,com.taxonomy.controller,GitStateController,0,40,0,0,0,10,0,5,0,5
+Taxonomy Application,com.taxonomy.controller,GitStateController,0,63,0,0,0,15,0,5,0,5
 Taxonomy Application,com.taxonomy.controller,CoverageApiController.RecordCoverageRequest,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.controller,PreferencesController,67,10,4,0,17,4,6,2,4,2
 Taxonomy Application,com.taxonomy.controller,ArchitectureSummaryApiController,0,77,0,0,0,24,0,6,0,6
-Taxonomy Application,com.taxonomy.controller,ContextNavigationController,147,95,5,3,33,20,6,9,3,8
+Taxonomy Application,com.taxonomy.controller,ContextNavigationController,152,124,5,3,34,26,6,9,3,8
 Taxonomy Application,com.taxonomy.model,RequirementCoverage,0,39,0,0,0,15,0,8,0,8
 Taxonomy Application,com.taxonomy.model,TaxonomyNode,51,168,2,0,14,47,13,44,12,44
 Taxonomy Application,com.taxonomy.model,FloatArrayConverter,0,68,0,8,0,13,0,7,0,3
@@ -47,6 +48,7 @@ Taxonomy Application,com.taxonomy.model,RelationEvidence,55,32,1,1,16,10,17,8,16
 Taxonomy Application,com.taxonomy.model,TaxonomyRelation,33,50,2,0,9,15,8,14,7,14
 Taxonomy Application,com.taxonomy.model,AppRole,11,12,0,0,5,6,3,3,3,3
 Taxonomy Application,com.taxonomy.model,ArchitectureDslDocument,8,58,1,1,2,18,3,16,2,16
+Taxonomy Application,com.taxonomy.model,UserWorkspace,31,44,0,0,11,21,10,9,10,9
 Taxonomy Application,com.taxonomy.model,RelationHypothesis,8,68,1,1,2,21,3,18,2,18
 Taxonomy Application,com.taxonomy.model,RelationProposal,8,75,1,1,2,23,3,20,2,20
 Taxonomy Application,com.taxonomy.model,AppUser,4,56,0,0,2,23,1,14,1,14
@@ -54,7 +56,7 @@ Taxonomy Application,com.taxonomy.model,ArchitectureCommitIndex,8,79,1,1,2,24,3,
 Taxonomy Application,com.taxonomy.config,LoginRateLimitFilter.FailureTracker,101,0,10,0,24,0,10,0,5,0
 Taxonomy Application,com.taxonomy.config,SpringContextHolder,13,4,1,1,6,1,3,1,2,1
 Taxonomy Application,com.taxonomy.config,HibernateSearchAnalysisConfigurer,0,44,0,0,0,7,0,2,0,2
-Taxonomy Application,com.taxonomy.config,SecurityConfig,19,481,1,1,1,42,1,9,0,9
+Taxonomy Application,com.taxonomy.config,SecurityConfig,19,506,1,1,1,44,1,9,0,9
 Taxonomy Application,com.taxonomy.config,ExportConfig,0,27,0,0,0,7,0,7,0,7
 Taxonomy Application,com.taxonomy.config,RateLimitFilter,17,102,6,14,3,27,5,11,0,6
 Taxonomy Application,com.taxonomy.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0,4,0,2,0
@@ -78,11 +80,11 @@ Taxonomy Application,com.taxonomy.search,RelationEmbeddingBinder,0,37,0,0,0,12,0
 Taxonomy Application,com.taxonomy.search,NodeEmbeddingBinder.Bridge,150,53,27,7,28,12,16,4,0,3
 Taxonomy Application,com.taxonomy.dsl.export,DslMaterializeService.MaterializeResult,0,21,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.dsl.export,TaxDslExportService,0,133,0,6,0,32,0,6,0,3
-Taxonomy Application,com.taxonomy.dsl.export,DslMaterializeService,231,373,26,22,41,77,18,14,1,7
+Taxonomy Application,com.taxonomy.dsl.export,DslMaterializeService,232,385,27,23,41,80,19,14,1,7
 Taxonomy Application,com.taxonomy,TaxonomyApplication,8,0,0,0,3,0,2,0,2,0
 Taxonomy Application,com.taxonomy,AppConfig,0,57,0,0,0,16,0,5,0,5
 Taxonomy Application,com.taxonomy.service,PropagationResult,0,27,0,0,0,10,0,5,0,5
-Taxonomy Application,com.taxonomy.service,SelectiveTransferService,238,184,25,15,41,46,20,12,5,7
+Taxonomy Application,com.taxonomy.service,SelectiveTransferService,241,187,25,15,42,47,20,12,5,7
 Taxonomy Application,com.taxonomy.service,AppInitializationStateService.State,0,33,0,0,0,6,0,1,0,1
 Taxonomy Application,com.taxonomy.service,TaxonomyRelationService,44,231,2,6,6,53,3,13,2,10
 Taxonomy Application,com.taxonomy.service,ArchiMateXmlImporter.ParsedRelationship,0,15,0,0,0,1,0,1,0,1
@@ -104,7 +106,7 @@ Taxonomy Application,com.taxonomy.service,RelationCandidateService,6,138,5,5,0,2
 Taxonomy Application,com.taxonomy.service,ArchiMateXmlImporter,110,416,33,45,28,99,28,21,1,9
 Taxonomy Application,com.taxonomy.service,ArchitectureGraphQueryServiceImpl.TraversalResult,0,15,0,0,0,6,0,1,0,1
 Taxonomy Application,com.taxonomy.service,RankFusionUtil,0,74,0,2,0,16,0,4,0,3
-Taxonomy Application,com.taxonomy.service,RepositoryStateGuard,8,75,3,11,1,19,2,7,0,2
+Taxonomy Application,com.taxonomy.service,RepositoryStateGuard,0,86,0,14,0,20,0,9,0,2
 Taxonomy Application,com.taxonomy.service,LlmResponseParser.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
 Taxonomy Application,com.taxonomy.service,LlmResponseParser.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
 Taxonomy Application,com.taxonomy.service,LlmResponseParser.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
@@ -117,8 +119,10 @@ Taxonomy Application,com.taxonomy.service,HypothesisService,24,583,10,30,5,116,1
 Taxonomy Application,com.taxonomy.service,ArchitectureGapService,36,571,16,44,6,116,13,27,0,10
 Taxonomy Application,com.taxonomy.service,RelationReviewService,94,162,6,2,20,35,4,8,0,8
 Taxonomy Application,com.taxonomy.service,PropagationResult.TraversedRelation,0,27,0,0,0,10,0,5,0,5
+Taxonomy Application,com.taxonomy.service,UserWorkspaceState,5,122,1,3,1,37,1,21,0,20
 Taxonomy Application,com.taxonomy.service,ArchiMateXmlImporter.ParsedElement,0,15,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.service,RepositoryStateService,76,240,1,27,14,50,1,26,0,13
+Taxonomy Application,com.taxonomy.service,RepositoryStateService,124,289,1,25,17,71,1,26,0,14
+Taxonomy Application,com.taxonomy.service,WorkspaceManager,25,164,3,9,7,47,4,14,1,11
 Taxonomy Application,com.taxonomy.service,ArchitectureGraphQueryServiceImpl,62,963,23,84,13,197,19,55,0,20
 Taxonomy Application,com.taxonomy.service,RelationProposalService,139,289,8,7,24,64,10,10,3,9
 Taxonomy Application,com.taxonomy.service,ArchitecturePatternService.PatternStep,0,20,0,0,0,2,0,2,0,2
@@ -131,10 +135,11 @@ Taxonomy Application,com.taxonomy.service,ArchitectureGraphQueryServiceImpl.Dire
 Taxonomy Application,com.taxonomy.service,RelationTraversalService,36,65,3,5,7,17,3,5,1,3
 Taxonomy Application,com.taxonomy.service,GraphSearchService,318,22,19,1,68,7,20,3,10,3
 Taxonomy Application,com.taxonomy.service,RelationValidationService,21,138,3,7,4,33,4,6,1,4
-Taxonomy Application,com.taxonomy.service,ContextNavigationService,21,359,6,16,5,92,6,19,0,14
+Taxonomy Application,com.taxonomy.service,ContextNavigationService,16,393,5,15,4,94,5,19,0,14
 Taxonomy Application,com.taxonomy.service,DatabaseUserDetailsService,46,6,2,0,11,3,4,1,3,1
 Taxonomy Application,com.taxonomy.service,CommitIndexService,99,313,5,17,34,86,5,20,1,13
 Taxonomy Application,com.taxonomy.service,ArchitectureReportService,266,1325,46,110,38,255,42,46,0,10
+Taxonomy Application,com.taxonomy.service,WorkspaceResolver,2,19,3,3,1,5,3,2,0,2
 Taxonomy Application,com.taxonomy.service,EnrichedImpactService,26,238,2,8,4,52,2,7,0,4
 Taxonomy Application,com.taxonomy.service,RelationValidationService.ValidationResult,0,35,0,0,0,10,0,6,0,6
 Taxonomy Application,com.taxonomy.service,ConflictDetectionService,90,243,2,12,12,49,2,9,0,4

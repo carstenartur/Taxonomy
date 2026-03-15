@@ -13,6 +13,9 @@ import java.util.List;
  * &lt;p&gt;Before committing, materializing, cherry-picking, or merging, this
  * component checks whether the operation is safe and returns warnings
  * or blocks. Also blocks writes when the current context is read-only.
+ *
+ * &lt;p&gt;All checks are workspace-aware: each user's operation state and
+ * read-only status are independent.
  */
 @Component
 public class RepositoryStateGuard {
@@ -21,10 +24,10 @@ public class RepositoryStateGuard {
     private final @Nullable ContextNavigationService contextNavigationService;
 
     public RepositoryStateGuard(RepositoryStateService stateService,
-<span class="fc" id="L24">                                @Nullable ContextNavigationService contextNavigationService) {</span>
-<span class="fc" id="L25">        this.stateService = stateService;</span>
-<span class="fc" id="L26">        this.contextNavigationService = contextNavigationService;</span>
-<span class="fc" id="L27">    }</span>
+<span class="fc" id="L27">                                @Nullable ContextNavigationService contextNavigationService) {</span>
+<span class="fc" id="L28">        this.stateService = stateService;</span>
+<span class="fc" id="L29">        this.contextNavigationService = contextNavigationService;</span>
+<span class="fc" id="L30">    }</span>
 
     /**
      * Result of a write-operation safety check.
@@ -33,55 +36,56 @@ public class RepositoryStateGuard {
      * @param warnings non-fatal issues the user should be aware of
      * @param blocks   fatal issues that prevent the operation
      */
-<span class="fc" id="L36">    public record OperationCheck(</span>
+<span class="fc" id="L39">    public record OperationCheck(</span>
             boolean allowed,
             List&lt;String&gt; warnings,
             List&lt;String&gt; blocks
     ) {}
 
     /**
-     * Check whether a write operation is safe to perform.
+     * Check whether a write operation is safe for a specific user.
      *
+     * @param username      the user attempting the operation
      * @param branch        the target branch
      * @param operationType the type of operation (e.g. &quot;commit&quot;, &quot;materialize&quot;, &quot;cherry-pick&quot;, &quot;merge&quot;)
      * @return the operation check result
      */
-    public OperationCheck checkWriteOperation(String branch, String operationType) {
-<span class="fc" id="L50">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L51">        List&lt;String&gt; blocks = new ArrayList&lt;&gt;();</span>
+    public OperationCheck checkWriteOperation(String username, String branch, String operationType) {
+<span class="fc" id="L54">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L55">        List&lt;String&gt; blocks = new ArrayList&lt;&gt;();</span>
 
-        // Block if current context is read-only
-<span class="pc bpc" id="L54" title="3 of 4 branches missed.">        if (contextNavigationService != null &amp;&amp; contextNavigationService.isReadOnly()) {</span>
-<span class="nc" id="L55">            blocks.add(&quot;Current context is read-only. Switch to an editable context before making changes.&quot;);</span>
+        // Block if current context is read-only (per-user check)
+<span class="fc bfc" id="L58" title="All 4 branches covered.">        if (contextNavigationService != null &amp;&amp; contextNavigationService.isReadOnly(username)) {</span>
+<span class="fc" id="L59">            blocks.add(&quot;Current context is read-only. Switch to an editable context before making changes.&quot;);</span>
         }
 
-<span class="fc" id="L58">        var state = stateService.getState(branch);</span>
+<span class="fc" id="L62">        var state = stateService.getState(username, branch);</span>
 
-        // Block if an operation is already in progress
-<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (state.operationInProgress()) {</span>
-<span class="fc" id="L62">            blocks.add(&quot;A &quot; + state.operationKind() + &quot; operation is already in progress. &quot; +</span>
+        // Block if an operation is already in progress (per-user check)
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (state.operationInProgress()) {</span>
+<span class="fc" id="L66">            blocks.add(&quot;A &quot; + state.operationKind() + &quot; operation is already in progress. &quot; +</span>
                     &quot;Complete or cancel it before starting a new operation.&quot;);
         }
 
         // Block if branch doesn't exist (for operations that require existing branch)
-<span class="fc bfc" id="L67" title="All 4 branches covered.">        if (!&quot;commit&quot;.equals(operationType) &amp;&amp; state.headCommit() == null) {</span>
-<span class="fc" id="L68">            blocks.add(&quot;Branch '&quot; + branch + &quot;' does not exist or has no commits.&quot;);</span>
+<span class="fc bfc" id="L71" title="All 4 branches covered.">        if (!&quot;commit&quot;.equals(operationType) &amp;&amp; state.headCommit() == null) {</span>
+<span class="fc" id="L72">            blocks.add(&quot;Branch '&quot; + branch + &quot;' does not exist or has no commits.&quot;);</span>
         }
 
-        // Warn if projection is stale
-<span class="fc" id="L72">        ProjectionState ps = stateService.getProjectionState(branch);</span>
-<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (ps.projectionStale()) {</span>
-<span class="fc" id="L74">            warnings.add(&quot;DB projection is stale — it was built from a different commit than HEAD. &quot; +</span>
+        // Warn if projection is stale (per-user check)
+<span class="fc" id="L76">        ProjectionState ps = stateService.getProjectionState(username, branch);</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (ps.projectionStale()) {</span>
+<span class="fc" id="L78">            warnings.add(&quot;DB projection is stale — it was built from a different commit than HEAD. &quot; +</span>
                     &quot;Consider re-materializing before this operation.&quot;);
         }
 
-        // Warn if index is stale
-<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (ps.indexStale()) {</span>
-<span class="fc" id="L80">            warnings.add(&quot;Search index is stale — search results may not reflect latest changes.&quot;);</span>
+        // Warn if index is stale (per-user check)
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (ps.indexStale()) {</span>
+<span class="fc" id="L84">            warnings.add(&quot;Search index is stale — search results may not reflect latest changes.&quot;);</span>
         }
 
-<span class="fc" id="L83">        boolean allowed = blocks.isEmpty();</span>
-<span class="fc" id="L84">        return new OperationCheck(allowed, warnings, blocks);</span>
+<span class="fc" id="L87">        boolean allowed = blocks.isEmpty();</span>
+<span class="fc" id="L88">        return new OperationCheck(allowed, warnings, blocks);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

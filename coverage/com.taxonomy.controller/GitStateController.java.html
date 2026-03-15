@@ -3,6 +3,7 @@
 import com.taxonomy.dto.ProjectionState;
 import com.taxonomy.dto.RepositoryState;
 import com.taxonomy.service.RepositoryStateService;
+import com.taxonomy.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
@@ -15,7 +16,7 @@ import java.util.Map;
  *
  * &lt;p&gt;Exposes the current branch, HEAD commit, projection/index freshness,
  * and branch overview. All data comes from {@link RepositoryStateService}
- * which combines JGit repository metadata with projection tracking.
+ * which combines JGit repository metadata with per-user projection tracking.
  */
 @RestController
 @RequestMapping(&quot;/api/git&quot;)
@@ -23,10 +24,13 @@ import java.util.Map;
 public class GitStateController {
 
     private final RepositoryStateService stateService;
+    private final WorkspaceResolver workspaceResolver;
 
-<span class="fc" id="L27">    public GitStateController(RepositoryStateService stateService) {</span>
-<span class="fc" id="L28">        this.stateService = stateService;</span>
-<span class="fc" id="L29">    }</span>
+    public GitStateController(RepositoryStateService stateService,
+<span class="fc" id="L30">                              WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L31">        this.stateService = stateService;</span>
+<span class="fc" id="L32">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L33">    }</span>
 
     @GetMapping(&quot;/state&quot;)
     @Operation(summary = &quot;Full repository state including projection/index staleness&quot;,
@@ -35,7 +39,8 @@ public class GitStateController {
                     &quot;and any in-progress operations.&quot;)
     public ResponseEntity&lt;RepositoryState&gt; getState(
             @RequestParam(defaultValue = &quot;draft&quot;) String branch) {
-<span class="fc" id="L38">        return ResponseEntity.ok(stateService.getState(branch));</span>
+<span class="fc" id="L42">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L43">        return ResponseEntity.ok(stateService.getState(user, branch));</span>
     }
 
     @GetMapping(&quot;/projection&quot;)
@@ -44,7 +49,8 @@ public class GitStateController {
                     &quot;built from, and whether they are stale relative to HEAD.&quot;)
     public ResponseEntity&lt;ProjectionState&gt; getProjectionState(
             @RequestParam(defaultValue = &quot;draft&quot;) String branch) {
-<span class="fc" id="L47">        return ResponseEntity.ok(stateService.getProjectionState(branch));</span>
+<span class="fc" id="L52">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L53">        return ResponseEntity.ok(stateService.getProjectionState(user, branch));</span>
     }
 
     @GetMapping(&quot;/branches&quot;)
@@ -53,8 +59,8 @@ public class GitStateController {
                     &quot;HEAD commit SHA and basic metadata.&quot;)
     public ResponseEntity&lt;RepositoryState&gt; listBranches(
             @RequestParam(defaultValue = &quot;draft&quot;) String branch) {
-        // Reuse full state which includes branch list
-<span class="fc" id="L57">        return ResponseEntity.ok(stateService.getState(branch));</span>
+<span class="fc" id="L62">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L63">        return ResponseEntity.ok(stateService.getState(user, branch));</span>
     }
 
     @GetMapping(&quot;/stale&quot;)
@@ -63,10 +69,11 @@ public class GitStateController {
                     &quot;Useful for periodic polling from the UI.&quot;)
     public ResponseEntity&lt;Map&lt;String, Boolean&gt;&gt; isStale(
             @RequestParam(defaultValue = &quot;draft&quot;) String branch) {
-<span class="fc" id="L66">        ProjectionState ps = stateService.getProjectionState(branch);</span>
-<span class="fc" id="L67">        return ResponseEntity.ok(Map.of(</span>
-<span class="fc" id="L68">                &quot;projectionStale&quot;, ps.projectionStale(),</span>
-<span class="fc" id="L69">                &quot;indexStale&quot;, ps.indexStale()</span>
+<span class="fc" id="L72">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L73">        ProjectionState ps = stateService.getProjectionState(user, branch);</span>
+<span class="fc" id="L74">        return ResponseEntity.ok(Map.of(</span>
+<span class="fc" id="L75">                &quot;projectionStale&quot;, ps.projectionStale(),</span>
+<span class="fc" id="L76">                &quot;indexStale&quot;, ps.indexStale()</span>
         ));
     }
 }

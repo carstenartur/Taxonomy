@@ -8,6 +8,7 @@ import com.taxonomy.dto.TransferSelection;
 import com.taxonomy.service.ContextCompareService;
 import com.taxonomy.service.ContextNavigationService;
 import com.taxonomy.service.SelectiveTransferService;
+import com.taxonomy.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -26,25 +27,32 @@ import java.util.Map;
  * &lt;p&gt;Provides browser-like navigation through architecture versions:
  * open read-only snapshots, switch branches, compare contexts, and
  * selectively transfer elements between versions.
+ *
+ * &lt;p&gt;All navigation state is isolated per authenticated user via the
+ * workspace manager. Each user has their own context, history, and
+ * navigation trail.
  */
 @RestController
 @RequestMapping(&quot;/api/context&quot;)
 @Tag(name = &quot;Context Navigation&quot;)
 public class ContextNavigationController {
 
-<span class="fc" id="L35">    private static final Logger log = LoggerFactory.getLogger(ContextNavigationController.class);</span>
+<span class="fc" id="L40">    private static final Logger log = LoggerFactory.getLogger(ContextNavigationController.class);</span>
 
     private final ContextNavigationService navigationService;
     private final ContextCompareService compareService;
     private final SelectiveTransferService transferService;
+    private final WorkspaceResolver workspaceResolver;
 
     public ContextNavigationController(ContextNavigationService navigationService,
                                        ContextCompareService compareService,
-<span class="fc" id="L43">                                       SelectiveTransferService transferService) {</span>
-<span class="fc" id="L44">        this.navigationService = navigationService;</span>
-<span class="fc" id="L45">        this.compareService = compareService;</span>
-<span class="fc" id="L46">        this.transferService = transferService;</span>
-<span class="fc" id="L47">    }</span>
+                                       SelectiveTransferService transferService,
+<span class="fc" id="L50">                                       WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L51">        this.navigationService = navigationService;</span>
+<span class="fc" id="L52">        this.compareService = compareService;</span>
+<span class="fc" id="L53">        this.transferService = transferService;</span>
+<span class="fc" id="L54">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L55">    }</span>
 
     // ── Phase 1: Context Navigation ─────────────────────────────────
 
@@ -52,7 +60,8 @@ public class ContextNavigationController {
     @Operation(summary = &quot;Get the current architecture context&quot;,
             description = &quot;Returns the active context including branch, commit, mode, and origin info.&quot;)
     public ResponseEntity&lt;ContextRef&gt; getCurrentContext() {
-<span class="fc" id="L55">        return ResponseEntity.ok(navigationService.getCurrentContext());</span>
+<span class="fc" id="L63">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L64">        return ResponseEntity.ok(navigationService.getCurrentContext(user));</span>
     }
 
     @PostMapping(&quot;/open&quot;)
@@ -65,12 +74,13 @@ public class ContextNavigationController {
             @RequestParam(defaultValue = &quot;true&quot;) boolean readOnly,
             @RequestParam(required = false) String searchQuery,
             @RequestParam(required = false) String elementId) {
-<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (readOnly) {</span>
-<span class="fc" id="L69">            return ResponseEntity.ok(</span>
-<span class="fc" id="L70">                    navigationService.openReadOnly(branch, commitId, searchQuery, elementId));</span>
+<span class="fc" id="L77">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (readOnly) {</span>
+<span class="fc" id="L79">            return ResponseEntity.ok(</span>
+<span class="fc" id="L80">                    navigationService.openReadOnly(user, branch, commitId, searchQuery, elementId));</span>
         } else {
-<span class="fc" id="L72">            return ResponseEntity.ok(</span>
-<span class="fc" id="L73">                    navigationService.switchContext(branch, commitId));</span>
+<span class="fc" id="L82">            return ResponseEntity.ok(</span>
+<span class="fc" id="L83">                    navigationService.switchContext(user, branch, commitId));</span>
         }
     }
 
@@ -78,21 +88,24 @@ public class ContextNavigationController {
     @Operation(summary = &quot;Return to the origin context&quot;,
             description = &quot;Navigates back to the context from which the current context was opened.&quot;)
     public ResponseEntity&lt;ContextRef&gt; returnToOrigin() {
-<span class="fc" id="L81">        return ResponseEntity.ok(navigationService.returnToOrigin());</span>
+<span class="fc" id="L91">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L92">        return ResponseEntity.ok(navigationService.returnToOrigin(user));</span>
     }
 
     @PostMapping(&quot;/back&quot;)
     @Operation(summary = &quot;Go one step back in navigation history&quot;,
             description = &quot;Like the browser back button — returns to the previous context.&quot;)
     public ResponseEntity&lt;ContextRef&gt; back() {
-<span class="fc" id="L88">        return ResponseEntity.ok(navigationService.back());</span>
+<span class="fc" id="L99">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L100">        return ResponseEntity.ok(navigationService.back(user));</span>
     }
 
     @GetMapping(&quot;/history&quot;)
     @Operation(summary = &quot;Get the navigation history&quot;,
             description = &quot;Returns the list of context navigations (newest last).&quot;)
     public ResponseEntity&lt;List&lt;ContextHistoryEntry&gt;&gt; getHistory() {
-<span class="fc" id="L95">        return ResponseEntity.ok(navigationService.getHistory());</span>
+<span class="fc" id="L107">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L108">        return ResponseEntity.ok(navigationService.getHistory(user));</span>
     }
 
     @PostMapping(&quot;/variant&quot;)
@@ -101,15 +114,16 @@ public class ContextNavigationController {
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; createVariant(
             @RequestParam String name) {
         try {
-<span class="nc" id="L104">            ContextRef variant = navigationService.createVariantFromCurrent(name);</span>
-<span class="nc" id="L105">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L106">            result.put(&quot;context&quot;, variant);</span>
-<span class="nc" id="L107">            result.put(&quot;branch&quot;, variant.branch());</span>
-<span class="nc" id="L108">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L109">        } catch (IOException e) {</span>
-<span class="nc" id="L110">            log.error(&quot;Failed to create variant '{}'&quot;, name, e);</span>
-<span class="nc" id="L111">            return ResponseEntity.internalServerError().body(</span>
-<span class="nc" id="L112">                    Map.of(&quot;error&quot;, &quot;Failed to create variant: &quot; + e.getMessage()));</span>
+<span class="nc" id="L117">            String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="nc" id="L118">            ContextRef variant = navigationService.createVariantFromCurrent(user, name);</span>
+<span class="nc" id="L119">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L120">            result.put(&quot;context&quot;, variant);</span>
+<span class="nc" id="L121">            result.put(&quot;branch&quot;, variant.branch());</span>
+<span class="nc" id="L122">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L123">        } catch (IOException e) {</span>
+<span class="nc" id="L124">            log.error(&quot;Failed to create variant '{}'&quot;, name, e);</span>
+<span class="nc" id="L125">            return ResponseEntity.internalServerError().body(</span>
+<span class="nc" id="L126">                    Map.of(&quot;error&quot;, &quot;Failed to create variant: &quot; + e.getMessage()));</span>
         }
     }
 
@@ -126,23 +140,23 @@ public class ContextNavigationController {
             @RequestParam String rightBranch,
             @RequestParam(required = false) String rightCommit) {
         try {
-<span class="fc" id="L129">            ContextRef left = new ContextRef(</span>
+<span class="fc" id="L143">            ContextRef left = new ContextRef(</span>
                     null, leftBranch, leftCommit, null, null,
                     null, null, null, null, null, false);
-<span class="fc" id="L132">            ContextRef right = new ContextRef(</span>
+<span class="fc" id="L146">            ContextRef right = new ContextRef(</span>
                     null, rightBranch, rightCommit, null, null,
                     null, null, null, null, null, false);
 
             ContextComparison comparison;
-<span class="pc bpc" id="L137" title="3 of 4 branches missed.">            if (leftCommit != null &amp;&amp; rightCommit != null) {</span>
-<span class="nc" id="L138">                comparison = compareService.compareContexts(left, right);</span>
+<span class="pc bpc" id="L151" title="3 of 4 branches missed.">            if (leftCommit != null &amp;&amp; rightCommit != null) {</span>
+<span class="nc" id="L152">                comparison = compareService.compareContexts(left, right);</span>
             } else {
-<span class="fc" id="L140">                comparison = compareService.compareBranches(left, right);</span>
+<span class="fc" id="L154">                comparison = compareService.compareBranches(left, right);</span>
             }
-<span class="fc" id="L142">            return ResponseEntity.ok(comparison);</span>
-<span class="nc" id="L143">        } catch (IOException e) {</span>
-<span class="nc" id="L144">            log.error(&quot;Compare failed&quot;, e);</span>
-<span class="nc" id="L145">            return ResponseEntity.internalServerError().build();</span>
+<span class="fc" id="L156">            return ResponseEntity.ok(comparison);</span>
+<span class="nc" id="L157">        } catch (IOException e) {</span>
+<span class="nc" id="L158">            log.error(&quot;Compare failed&quot;, e);</span>
+<span class="nc" id="L159">            return ResponseEntity.internalServerError().build();</span>
         }
     }
 
@@ -155,17 +169,17 @@ public class ContextNavigationController {
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; previewTransfer(
             @RequestBody TransferSelection selection) {
         try {
-<span class="nc" id="L158">            List&lt;TransferConflict&gt; conflicts = transferService.previewTransfer(selection);</span>
-<span class="nc" id="L159">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L160">            result.put(&quot;conflicts&quot;, conflicts);</span>
-<span class="nc bnc" id="L161" title="All 2 branches missed.">            result.put(&quot;hasConflicts&quot;, !conflicts.isEmpty());</span>
-<span class="nc" id="L162">            result.put(&quot;selectedElements&quot;, selection.selectedElementIds().size());</span>
-<span class="nc" id="L163">            result.put(&quot;selectedRelations&quot;, selection.selectedRelationIds().size());</span>
-<span class="nc" id="L164">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L165">        } catch (IOException e) {</span>
-<span class="nc" id="L166">            log.error(&quot;Transfer preview failed&quot;, e);</span>
-<span class="nc" id="L167">            return ResponseEntity.internalServerError().body(</span>
-<span class="nc" id="L168">                    Map.of(&quot;error&quot;, &quot;Transfer preview failed: &quot; + e.getMessage()));</span>
+<span class="nc" id="L172">            List&lt;TransferConflict&gt; conflicts = transferService.previewTransfer(selection);</span>
+<span class="nc" id="L173">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L174">            result.put(&quot;conflicts&quot;, conflicts);</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">            result.put(&quot;hasConflicts&quot;, !conflicts.isEmpty());</span>
+<span class="nc" id="L176">            result.put(&quot;selectedElements&quot;, selection.selectedElementIds().size());</span>
+<span class="nc" id="L177">            result.put(&quot;selectedRelations&quot;, selection.selectedRelationIds().size());</span>
+<span class="nc" id="L178">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L179">        } catch (IOException e) {</span>
+<span class="nc" id="L180">            log.error(&quot;Transfer preview failed&quot;, e);</span>
+<span class="nc" id="L181">            return ResponseEntity.internalServerError().body(</span>
+<span class="nc" id="L182">                    Map.of(&quot;error&quot;, &quot;Transfer preview failed: &quot; + e.getMessage()));</span>
         }
     }
 
@@ -176,15 +190,15 @@ public class ContextNavigationController {
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; applyTransfer(
             @RequestBody TransferSelection selection) {
         try {
-<span class="nc" id="L179">            String commitId = transferService.applyTransfer(selection);</span>
-<span class="nc" id="L180">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L181">            result.put(&quot;commitId&quot;, commitId);</span>
-<span class="nc" id="L182">            result.put(&quot;success&quot;, true);</span>
-<span class="nc" id="L183">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L184">        } catch (IOException e) {</span>
-<span class="nc" id="L185">            log.error(&quot;Transfer failed&quot;, e);</span>
-<span class="nc" id="L186">            return ResponseEntity.internalServerError().body(</span>
-<span class="nc" id="L187">                    Map.of(&quot;error&quot;, &quot;Transfer failed: &quot; + e.getMessage()));</span>
+<span class="nc" id="L193">            String commitId = transferService.applyTransfer(selection);</span>
+<span class="nc" id="L194">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L195">            result.put(&quot;commitId&quot;, commitId);</span>
+<span class="nc" id="L196">            result.put(&quot;success&quot;, true);</span>
+<span class="nc" id="L197">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L198">        } catch (IOException e) {</span>
+<span class="nc" id="L199">            log.error(&quot;Transfer failed&quot;, e);</span>
+<span class="nc" id="L200">            return ResponseEntity.internalServerError().body(</span>
+<span class="nc" id="L201">                    Map.of(&quot;error&quot;, &quot;Transfer failed: &quot; + e.getMessage()));</span>
         }
     }
 }

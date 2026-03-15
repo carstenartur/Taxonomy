@@ -3,6 +3,7 @@
 import com.taxonomy.dto.FrameworkImportResult;
 import com.taxonomy.dto.ProfileInfo;
 import com.taxonomy.service.RepositoryStateService;
+import com.taxonomy.service.WorkspaceResolver;
 import com.taxonomy.service.importer.FrameworkImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -32,16 +33,19 @@ import java.util.Map;
 @Tag(name = &quot;Framework Import&quot;)
 public class ImportApiController {
 
-<span class="fc" id="L35">    private static final Logger log = LoggerFactory.getLogger(ImportApiController.class);</span>
+<span class="fc" id="L36">    private static final Logger log = LoggerFactory.getLogger(ImportApiController.class);</span>
 
     private final FrameworkImportService importService;
     private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
 
     public ImportApiController(FrameworkImportService importService,
-<span class="fc" id="L41">                               RepositoryStateService repositoryStateService) {</span>
-<span class="fc" id="L42">        this.importService = importService;</span>
-<span class="fc" id="L43">        this.repositoryStateService = repositoryStateService;</span>
-<span class="fc" id="L44">    }</span>
+                               RepositoryStateService repositoryStateService,
+<span class="fc" id="L44">                               WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L45">        this.importService = importService;</span>
+<span class="fc" id="L46">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L47">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L48">    }</span>
 
     /**
      * Returns all available import profiles with their supported types and file formats.
@@ -50,7 +54,7 @@ public class ImportApiController {
                description = &quot;Returns all registered import profiles (UAF, APQC, C4, etc.)&quot;)
     @GetMapping(&quot;/profiles&quot;)
     public ResponseEntity&lt;List&lt;ProfileInfo&gt;&gt; listProfiles() {
-<span class="fc" id="L53">        return ResponseEntity.ok(importService.getAvailableProfiles());</span>
+<span class="fc" id="L57">        return ResponseEntity.ok(importService.getAvailableProfiles());</span>
     }
 
     /**
@@ -62,15 +66,15 @@ public class ImportApiController {
     public ResponseEntity&lt;FrameworkImportResult&gt; preview(
             @PathVariable String profileId,
             @RequestParam(&quot;file&quot;) MultipartFile file) {
-<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
-<span class="fc" id="L66">            return ResponseEntity.badRequest().build();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
+<span class="fc" id="L70">            return ResponseEntity.badRequest().build();</span>
         }
         try {
-<span class="fc" id="L69">            FrameworkImportResult result = importService.preview(profileId, file.getInputStream());</span>
-<span class="fc" id="L70">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L71">        } catch (Exception e) {</span>
-<span class="nc" id="L72">            log.error(&quot;Preview failed for profile {} with file {}&quot;, profileId, file.getOriginalFilename(), e);</span>
-<span class="nc" id="L73">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L73">            FrameworkImportResult result = importService.preview(profileId, file.getInputStream());</span>
+<span class="fc" id="L74">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L75">        } catch (Exception e) {</span>
+<span class="nc" id="L76">            log.error(&quot;Preview failed for profile {} with file {}&quot;, profileId, file.getOriginalFilename(), e);</span>
+<span class="nc" id="L77">            return ResponseEntity.badRequest().build();</span>
         }
     }
 
@@ -84,18 +88,19 @@ public class ImportApiController {
             @PathVariable String profileId,
             @RequestParam(&quot;file&quot;) MultipartFile file,
             @RequestParam(value = &quot;branch&quot;, required = false, defaultValue = &quot;main&quot;) String branch) {
-<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (file.isEmpty()) {</span>
-<span class="nc" id="L88">            return ResponseEntity.badRequest().build();</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (file.isEmpty()) {</span>
+<span class="nc" id="L92">            return ResponseEntity.badRequest().build();</span>
         }
         try {
-<span class="fc" id="L91">            FrameworkImportResult result = importService.importFile(profileId, file.getInputStream(), branch);</span>
-<span class="fc" id="L92">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L93">            response.put(&quot;result&quot;, result);</span>
-<span class="fc" id="L94">            response.put(&quot;viewContext&quot;, repositoryStateService.getViewContext(branch));</span>
-<span class="fc" id="L95">            return ResponseEntity.ok(response);</span>
-<span class="nc" id="L96">        } catch (Exception e) {</span>
-<span class="nc" id="L97">            log.error(&quot;Import failed for profile {} with file {}&quot;, profileId, file.getOriginalFilename(), e);</span>
-<span class="nc" id="L98">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L95">            FrameworkImportResult result = importService.importFile(profileId, file.getInputStream(), branch);</span>
+<span class="fc" id="L96">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L97">            response.put(&quot;result&quot;, result);</span>
+<span class="fc" id="L98">            response.put(&quot;viewContext&quot;, repositoryStateService.getViewContext(</span>
+<span class="fc" id="L99">                    workspaceResolver.resolveCurrentUsername(), branch));</span>
+<span class="fc" id="L100">            return ResponseEntity.ok(response);</span>
+<span class="nc" id="L101">        } catch (Exception e) {</span>
+<span class="nc" id="L102">            log.error(&quot;Import failed for profile {} with file {}&quot;, profileId, file.getOriginalFilename(), e);</span>
+<span class="nc" id="L103">            return ResponseEntity.badRequest().build();</span>
         }
     }
 }
