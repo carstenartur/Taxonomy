@@ -84,13 +84,13 @@ window.TaxonomyWorkspaceSync = (function () {
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
         if (ctx && ctx.dirty) {
             if (!badge.textContent.includes('●')) {
-                badge.innerHTML = '● ' + badge.textContent;
+                badge.textContent = '● ' + badge.textContent;
                 badge.classList.remove('bg-info');
                 badge.classList.add('bg-warning');
                 badge.title = 'Workspace has unsaved changes';
             }
         } else {
-            badge.innerHTML = badge.textContent.replace('● ', '');
+            badge.textContent = badge.textContent.replace('● ', '');
             badge.classList.remove('bg-warning');
             badge.classList.add('bg-info');
             badge.title = 'Current workspace / user';
