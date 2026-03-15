@@ -16,6 +16,8 @@ This document provides transparency about the AI/LLM components used in the Taxo
 8. [Limitations and Risks](#limitations-and-risks)
 9. [Diagnostics and Monitoring](#diagnostics-and-monitoring)
 10. [Configuration for Government Use](#configuration-for-government-use)
+11. [EU AI Act Compliance Timeline](#eu-ai-act-compliance-timeline)
+12. [BSI Compliance](#bsi-compliance)
 
 ---
 
@@ -295,9 +297,52 @@ GEMINI_API_KEY=your-key
 
 ---
 
+## EU AI Act Compliance Timeline
+
+The following table maps the EU AI Act (Regulation (EU) 2024/1689) obligations to the Taxonomy Architecture Analyzer and their respective effective dates:
+
+| Obligation | Effective Date | Status | Assessment |
+|---|---|---|---|
+| **Prohibited AI practices** (Art. 5) | 02.02.2025 ✅ | ✅ Not affected | No social scoring, emotion recognition, or manipulative techniques |
+| **AI Literacy** (Art. 4) | 02.02.2025 ✅ | ✅ Documented | Operators must ensure AI-competent personnel — see [AI Literacy Concept](AI_LITERACY_CONCEPT.md) |
+| **GPAI model obligations** (Art. 51–56) | 02.08.2025 ✅ | ✅ Not affected | Taxonomy *uses* GPAI but does not *provide* GPAI models — provider responsibility applies |
+| **Full applicability** (Art. 6–49) | 02.08.2026 | ✅ Compliant | Minimal Risk classification — no registration required; transparency obligations met |
+
+### GPAI Provider Responsibility Mapping
+
+Since the Taxonomy Architecture Analyzer consumes General Purpose AI (GPAI) models but does not develop or distribute them, the GPAI-specific obligations under Art. 51–56 apply to the model providers, not to the Taxonomy application:
+
+| GPAI Obligation | Responsible Party | Taxonomy Role |
+|---|---|---|
+| Technical documentation (Art. 53) | LLM Provider (Google, OpenAI, Mistral, etc.) | Consumer — no obligation |
+| Copyright compliance (Art. 53) | LLM Provider | Consumer — no obligation |
+| Downstream information (Art. 53) | LLM Provider | Recipient — document provider info in [AI Providers](AI_PROVIDERS.md) |
+| Systemic risk assessment (Art. 55) | LLM Provider (if applicable) | Consumer — no obligation |
+
+### AI Literacy Obligations
+
+Since 02.02.2025, Art. 4 requires operators to ensure that personnel interacting with AI systems have sufficient AI literacy. The Taxonomy Architecture Analyzer addresses this through:
+
+- **[AI Literacy Concept](AI_LITERACY_CONCEPT.md)** — training concept with role-specific curricula
+- **Explanation Traces** — every AI output includes justification text
+- **Human-in-the-Loop design** — no autonomous actions; all outputs require human review
+
+---
+
+## BSI Compliance
+
+For German federal administration deployments, the BSI (Bundesamt für Sicherheit in der Informationstechnik) has published criteria for AI systems in government use. The Taxonomy Architecture Analyzer's compliance is documented in:
+
+- **[BSI KI Checklist](BSI_KI_CHECKLIST.md)** — detailed mapping of BSI criteria to Taxonomy implementation
+
+---
+
 ## Related Documentation
 
 - [AI Providers](AI_PROVIDERS.md) — detailed provider configuration and API keys
+- [AI Literacy Concept](AI_LITERACY_CONCEPT.md) — training concept per EU AI Act Art. 4
+- [BSI KI Checklist](BSI_KI_CHECKLIST.md) — BSI criteria checklist for AI models
 - [Data Protection](DATA_PROTECTION.md) — personal data processing and GDPR compliance
 - [Security](SECURITY.md) — authentication, authorization, and security architecture
 - [Configuration Reference](CONFIGURATION_REFERENCE.md) — all environment variables
+- [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — digital sovereignty and openCode compatibility

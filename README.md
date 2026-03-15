@@ -163,6 +163,30 @@ Taxonomy/
 | **[Operations Guide](docs/OPERATIONS_GUIDE.md)** | Operational procedures and monitoring |
 | **[Knowledge Conservation](docs/USE_CASE_WISSENSKONSERVIERUNG.md)** | Use case: architecture knowledge preservation |
 
+## Government Readiness (Behördentauglichkeit)
+
+The Taxonomy Architecture Analyzer includes comprehensive documentation for deployment in German government and public administration environments:
+
+| Document | Description |
+|---|---|
+| **[BSI KI Checklist](docs/BSI_KI_CHECKLIST.md)** | BSI criteria checklist for AI models in federal administration |
+| **[AI Literacy Concept](docs/AI_LITERACY_CONCEPT.md)** | Training concept per EU AI Act Art. 4 (AI Literacy) |
+| **[Accessibility / BITV 2.0](docs/ACCESSIBILITY.md)** | BITV 2.0 / WCAG 2.1 accessibility concept and action plan |
+| **[Digital Sovereignty](docs/DIGITAL_SOVEREIGNTY.md)** | Digital sovereignty, openCode compatibility, DVC architecture |
+| **[Administration Integration](docs/VERWALTUNGSINTEGRATION.md)** | FIM / 115 / XÖV integration roadmap |
+| **[AI Transparency](docs/AI_TRANSPARENCY.md)** | EU AI Act compliance, data flows, explainability |
+| **[Data Protection](docs/DATA_PROTECTION.md)** | GDPR/DSGVO compliance, BfDI guidelines |
+| **[Security](docs/SECURITY.md)** | Authentication, roles, hardening, workspace access rights |
+| **[Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md)** | Government/enterprise deployment verification checklist |
+| **[Knowledge Conservation](docs/USE_CASE_WISSENSKONSERVIERUNG.md)** | Use case: architecture knowledge preservation for government |
+
+**Key capabilities for government use:**
+- 🔒 **Air-gapped operation** — `LLM_PROVIDER=LOCAL_ONNX` for fully offline deployment
+- 🇪🇺 **EU data residency** — Mistral (France/EU) as cloud LLM alternative
+- 📋 **SBOM** — CycloneDX Software Bill of Materials generated at build time
+- 🏛️ **Open Source** — MIT license, full source code, no vendor lock-in
+- 🔐 **SSO/OIDC** — Keycloak integration for government identity providers
+
 ## Contributing
 
 1. Fork the repository

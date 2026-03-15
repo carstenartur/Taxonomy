@@ -95,6 +95,33 @@ docker run -d \
 
 ---
 
+## BSI AI Compliance
+
+- [ ] **BSI KI Checklist reviewed** — all criteria from [BSI KI Checklist](BSI_KI_CHECKLIST.md) verified for the deployment environment
+- [ ] **AI provider selection documented** — rationale for chosen LLM provider recorded (data residency, security classification)
+- [ ] **Bias monitoring process defined** — schedule for comparative analysis across providers (see BSI Checklist recommendations)
+- [ ] **Review cycle established** — monthly SBOM review, quarterly provider comparison, annual full KI audit
+
+---
+
+## Accessibility (BITV 2.0)
+
+- [ ] **Accessibility concept reviewed** — [Barrierefreiheitskonzept](ACCESSIBILITY.md) reviewed and adapted for deployment context
+- [ ] **axe/Lighthouse audit passed** — automated accessibility audit with acceptable score
+- [ ] **Keyboard navigation verified** — all core functions reachable via keyboard
+- [ ] **Barrierefreiheitserklärung published** — accessibility statement per § 12b BGG for the deployment URL
+- [ ] **Feedback mechanism established** — contact point for accessibility issues communicated to users
+
+---
+
+## AI Literacy
+
+- [ ] **AI Literacy training completed** — all users trained per [AI Literacy Concept](AI_LITERACY_CONCEPT.md) before system use
+- [ ] **Training attendance documented** — participant list with dates retained for compliance
+- [ ] **Refresher training scheduled** — annual refresher or upon significant system changes
+
+---
+
 ## Compliance Documents Provided
 
 | Document | Location |
@@ -102,6 +129,11 @@ docker run -d \
 | Security Architecture | [docs/SECURITY.md](SECURITY.md) |
 | Data Protection | [docs/DATA_PROTECTION.md](DATA_PROTECTION.md) |
 | AI Transparency | [docs/AI_TRANSPARENCY.md](AI_TRANSPARENCY.md) |
+| BSI KI Checklist | [docs/BSI_KI_CHECKLIST.md](BSI_KI_CHECKLIST.md) |
+| AI Literacy Concept | [docs/AI_LITERACY_CONCEPT.md](AI_LITERACY_CONCEPT.md) |
+| Accessibility Concept | [docs/ACCESSIBILITY.md](ACCESSIBILITY.md) |
+| Digital Sovereignty | [docs/DIGITAL_SOVEREIGNTY.md](DIGITAL_SOVEREIGNTY.md) |
+| Administration Integration | [docs/VERWALTUNGSINTEGRATION.md](VERWALTUNGSINTEGRATION.md) |
 | Operations Guide | [docs/OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md) |
 | SSO Integration | [docs/SSO_INTEGRATION.md](SSO_INTEGRATION.md) |
 | Third-Party Notices | [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) |
@@ -125,3 +157,7 @@ docker run -d \
 - [Deployment Guide](DEPLOYMENT_GUIDE.md) — detailed deployment instructions (Docker, Render.com)
 - [Configuration Reference](CONFIGURATION_REFERENCE.md) — all environment variables
 - [Security](SECURITY.md) — security architecture
+- [BSI KI Checklist](BSI_KI_CHECKLIST.md) — BSI criteria checklist for AI models
+- [AI Literacy Concept](AI_LITERACY_CONCEPT.md) — AI literacy training concept
+- [Accessibility](ACCESSIBILITY.md) — BITV 2.0 / WCAG 2.1 accessibility concept
+- [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — digital sovereignty and openCode compatibility

@@ -15,6 +15,7 @@ This document describes the personal data processing activities of the Taxonomy 
 7. [Technical and Organizational Measures](#technical-and-organizational-measures)
 8. [Data Subject Rights](#data-subject-rights)
 9. [Data Protection Impact Assessment](#data-protection-impact-assessment)
+10. [BfDI Guidelines for AI in Federal Administration](#bfdi-guidelines-for-ai-in-federal-administration)
 
 ---
 
@@ -205,9 +206,36 @@ A Data Protection Impact Assessment (DPIA) according to GDPR Art. 35 may be requ
 
 ---
 
+## BfDI Guidelines for AI in Federal Administration
+
+The German Federal Commissioner for Data Protection and Freedom of Information (BfDI) has published guidance for the use of AI/LLM systems in the federal administration. The following table maps BfDI requirements to the Taxonomy Architecture Analyzer implementation:
+
+| BfDI Requirement | Taxonomy Implementation | Status |
+|---|---|---|
+| **No training with personal data** | No custom model training; prompts should not contain personally identifiable information (PII) | ✅ Fulfilled |
+| **Logging of AI usage** | LLM Communication Log in admin panel (prompts, responses, timestamps, token counts); Audit logging for security events | ✅ Fulfilled |
+| **Data protection supervisory authority remains responsible** | Referenced in DPIA recommendation above; supervisory authority jurisdiction not affected by AI usage | ✅ Fulfilled |
+| **Transparency obligation towards data subjects** | [AI Transparency](AI_TRANSPARENCY.md) documents all AI components, data flows, and limitations | ✅ Fulfilled |
+| **Data must not leave Germany/EU** | `LOCAL_ONNX` for fully local processing; `MISTRAL` (France/EU) for cloud-based EU data residency | ✅ Fulfilled |
+| **Purpose limitation** | AI used exclusively for architecture analysis; no profiling, scoring of individuals, or decision automation | ✅ Fulfilled |
+| **Data minimization** | Only taxonomy node names/descriptions and business requirement text sent to LLM; no user account data or IP addresses | ✅ Fulfilled |
+
+### Recommendations for Government Operators
+
+1. **Use `LLM_PROVIDER=LOCAL_ONNX`** for maximum data protection — no data leaves the application server
+2. **If cloud LLM is required**, prefer EU-based providers (Mistral) and establish a **data processing agreement (DPA)** with the provider
+3. **Instruct users** not to include personal data in business requirement texts (see [AI Literacy Concept](AI_LITERACY_CONCEPT.md))
+4. **Enable audit logging** (`TAXONOMY_AUDIT_LOGGING=true`) for compliance documentation
+5. **Conduct a DPIA** if personal data may be included in analysis inputs
+
+---
+
 ## Related Documentation
 
 - [Security](SECURITY.md) — authentication, authorization, and security architecture
 - [AI Transparency](AI_TRANSPARENCY.md) — AI model details and data flows
+- [AI Literacy Concept](AI_LITERACY_CONCEPT.md) — AI literacy training concept per EU AI Act Art. 4
+- [BSI KI Checklist](BSI_KI_CHECKLIST.md) — BSI criteria checklist for AI models
 - [Operations Guide](OPERATIONS_GUIDE.md) — backup, recovery, and log management
 - [Configuration Reference](CONFIGURATION_REFERENCE.md) — all environment variables
+- [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — digital sovereignty and data residency

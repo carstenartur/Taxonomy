@@ -419,6 +419,30 @@ Review the SBOM as part of the BSI IT-Grundschutz software supply chain requirem
 
 ---
 
+## Workspace Access Rights
+
+When multi-user workspace isolation is enabled (see [Workspace Design](internal/WORKSPACE_DESIGN.md)), the following access control matrix applies to workspace operations:
+
+| Action | USER | ARCHITECT | ADMIN | Workspace Owner |
+|---|:---:|:---:|:---:|:---:|
+| Create workspace | ✅ | ✅ | ✅ | — |
+| Read own workspace | ✅ | ✅ | ✅ | ✅ |
+| Read other user's workspace | ❌ | ❌ | ✅ | ❌ |
+| Share workspace | ❌ | ✅ | ✅ | ✅ |
+| Commit DSL in workspace | ❌ | ✅ | ✅ | ✅ (if ARCHITECT) |
+| Publish workspace to shared | ❌ | ✅ | ✅ | ✅ (if ARCHITECT) |
+| Sync from shared | ✅ | ✅ | ✅ | ✅ |
+| Delete workspace | ❌ | ❌ | ✅ | ✅ (own only) |
+| View workspace statistics | ✅ | ✅ | ✅ | ✅ |
+
+**Key principles:**
+- **Branch-level isolation**: Each user works on their own Git branch within the workspace
+- **Explicit sync**: Changes flow between workspaces only through explicit publish/sync actions
+- **Shared draft branch**: The `draft` branch serves as the shared collaboration space
+- **ADMIN override**: Administrators can access all workspaces for troubleshooting and auditing
+
+---
+
 ## Related Documentation
 
 - [Configuration Reference](CONFIGURATION_REFERENCE.md) — full list of environment variables including security settings
@@ -428,6 +452,8 @@ Review the SBOM as part of the BSI IT-Grundschutz software supply chain requirem
 - [SSO Integration](SSO_INTEGRATION.md) — SAML/OIDC federation for government SSO
 - [Data Protection](DATA_PROTECTION.md) — GDPR/DSGVO documentation
 - [AI Transparency](AI_TRANSPARENCY.md) — AI model transparency and data flows
+- [BSI KI Checklist](BSI_KI_CHECKLIST.md) — BSI criteria checklist for AI models
+- [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — digital sovereignty and openCode compatibility
 - [Operations Guide](OPERATIONS_GUIDE.md) — monitoring, backup, recovery
 - [API Reference](API_REFERENCE.md) — endpoint authentication requirements
 - [Preferences](PREFERENCES.md) — runtime configuration with audit trail
