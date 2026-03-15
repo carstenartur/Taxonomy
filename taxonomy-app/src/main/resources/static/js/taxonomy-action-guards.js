@@ -17,6 +17,7 @@ window.TaxonomyActionGuards = (function () {
 
     // Guard rule definitions: which operations are blocked / warned
     var BLOCK_ON_OPERATION = ['commit', 'merge', 'cherry-pick', 'import', 'materialize'];
+    var BLOCK_ON_READ_ONLY = ['commit', 'merge', 'cherry-pick', 'import', 'materialize'];
     var WARN_ON_PROJECTION_STALE = ['export', 'accept-hypothesis'];
     var WARN_ON_INDEX_STALE = ['analyze'];
 
@@ -89,6 +90,16 @@ window.TaxonomyActionGuards = (function () {
 
         // Restore original title (may be overwritten below by a guard message)
         restoreOriginalTitle(btn);
+
+        // Check blocks: read-only context blocks write operations
+        var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
+        if (ctx && ctx.mode === 'READ_ONLY' && BLOCK_ON_READ_ONLY.indexOf(guardType) !== -1) {
+            btn.classList.add('guard-blocked');
+            btn.setAttribute('title', 'Blocked: Context is read-only — return to origin or switch context first');
+            btn.disabled = true;
+            btn.setAttribute(GUARD_BLOCKED_ATTR, 'true');
+            return;
+        }
 
         // Check blocks: operation in progress blocks write operations
         if (state.operationInProgress && BLOCK_ON_OPERATION.indexOf(guardType) !== -1) {

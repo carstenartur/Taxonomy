@@ -124,12 +124,9 @@ window.TaxonomyHistorySearch = (function () {
     }
 
     function createVariant(branch) {
-        var name = prompt('Enter variant name:');
-        if (!name) return;
-        fetch('/api/context/variant?name=' + encodeURIComponent(name), { method: 'POST' })
-            .then(function () {
-                if (window.TaxonomyContextBar) window.TaxonomyContextBar.fetchAndRender('contextBar');
-            });
+        if (window.TaxonomyContextBar) {
+            window.TaxonomyContextBar.showVariantDialog();
+        }
     }
 
     function compare(commitId) {

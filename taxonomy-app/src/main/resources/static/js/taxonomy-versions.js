@@ -75,6 +75,10 @@ window.TaxonomyVersions = (function () {
                 pane.classList.add('d-none');
             }
         });
+        // Auto-refresh variants when switching to that sub-tab
+        if (tabName === 'variants' && window.TaxonomyVariants) {
+            window.TaxonomyVariants.refresh();
+        }
     }
 
     // ── Load branches ───────────────────────────────────────────────
@@ -176,6 +180,9 @@ window.TaxonomyVersions = (function () {
             '<button class="btn btn-outline-danger btn-sm py-0 px-1" style="font-size:0.7rem;" ' +
             'data-action="revert" data-commit="' + escapeAttr(commit.commitId) + '" title="Revert this commit">' +
             '&#10060; Revert</button>' +
+            '<button class="btn btn-outline-success btn-sm py-0 px-1" style="font-size:0.7rem;" ' +
+            'data-action="variant" data-commit="' + escapeAttr(commit.commitId) + '" data-branch="' + escapeAttr(currentBranch) + '" title="Create variant from this version">' +
+            '&#43; Variant</button>' +
             '</div>' +
             '</div>' +
             '</div>';
@@ -200,6 +207,9 @@ window.TaxonomyVersions = (function () {
                 break;
             case 'revert':
                 revertVersion(commitId);
+                break;
+            case 'variant':
+                createVariantFromVersion(commitId, btn.getAttribute('data-branch'));
                 break;
         }
     }
@@ -293,6 +303,21 @@ window.TaxonomyVersions = (function () {
                 }
             })
             .catch(function (err) { alert('Revert failed: ' + err.message); });
+    }
+
+    // ── Create variant from version ────────────────────────────────
+
+    function createVariantFromVersion(commitId, branch) {
+        // First, open this version as a read-only context, then offer to create variant
+        fetch('/api/context/open?branch=' + encodeURIComponent(branch || currentBranch)
+            + '&commitId=' + encodeURIComponent(commitId)
+            + '&readOnly=false', { method: 'POST' })
+            .then(function () {
+                if (window.TaxonomyContextBar) {
+                    window.TaxonomyContextBar.fetchAndRender('contextBar');
+                    window.TaxonomyContextBar.showVariantDialog();
+                }
+            });
     }
 
     // ── Undo ────────────────────────────────────────────────────────

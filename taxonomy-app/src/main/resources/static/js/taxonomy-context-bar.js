@@ -82,12 +82,15 @@ window.TaxonomyContextBar = (function () {
         }
 
         // Navigation buttons
-        html += '<span class="ms-auto">';
+        html += '<span class="ms-auto d-flex align-items-center gap-1">';
         if (ctx.originContextId) {
-            html += '<button class="btn btn-sm btn-outline-secondary me-1" onclick="TaxonomyContextBar.back()" title="Go back">&#8592; Back</button>';
-            html += '<button class="btn btn-sm btn-outline-primary me-1" onclick="TaxonomyContextBar.returnToOrigin()" title="Return to origin">&#8634; Origin</button>';
+            html += '<button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyContextBar.back()" title="Go back">&#8592; Back</button>';
+            html += '<button class="btn btn-sm btn-outline-primary" onclick="TaxonomyContextBar.returnToOrigin()" title="Return to origin">&#8634; Origin</button>';
         }
-        html += '<button class="btn btn-sm btn-outline-success me-1" onclick="TaxonomyContextBar.showVariantDialog()" title="Create variant">&#43; Variant</button>';
+        if (ctx.mode === 'READ_ONLY') {
+            html += '<button class="btn btn-sm btn-outline-warning" onclick="TaxonomyContextBar.showTransferDialog()" title="Copy elements back to your editable context">&#128228; Copy Back</button>';
+        }
+        html += '<button class="btn btn-sm btn-outline-success" onclick="TaxonomyContextBar.showVariantDialog()" title="Create variant">&#43; Variant</button>';
         html += '<button class="btn btn-sm btn-outline-info" onclick="TaxonomyContextBar.showCompareDialog()" title="Compare contexts">&#8596; Compare</button>';
         html += '</span>';
 
@@ -121,18 +124,47 @@ window.TaxonomyContextBar = (function () {
     }
 
     /**
-     * Show the variant creation dialog.
+     * Show the variant creation dialog using a proper Bootstrap modal.
      */
     function showVariantDialog() {
-        var name = prompt('Enter variant name:');
-        if (!name) return;
+        var modal = document.getElementById('createVariantModal');
+        if (!modal) return;
+        var nameInput = document.getElementById('variantNameInput');
+        if (nameInput) nameInput.value = '';
+        var statusEl = document.getElementById('variantCreateStatus');
+        if (statusEl) { statusEl.textContent = ''; statusEl.className = ''; }
+        var bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+        if (nameInput) setTimeout(function () { nameInput.focus(); }, 300);
+    }
+
+    /**
+     * Create a variant (called from the modal).
+     */
+    function createVariant() {
+        var nameInput = document.getElementById('variantNameInput');
+        var statusEl = document.getElementById('variantCreateStatus');
+        var name = nameInput ? nameInput.value.trim() : '';
+        if (!name) {
+            if (statusEl) {
+                statusEl.textContent = 'Please enter a variant name.';
+                statusEl.className = 'small text-danger mt-2';
+            }
+            return;
+        }
         fetch('/api/context/variant?name=' + encodeURIComponent(name), { method: 'POST' })
             .then(function (r) { return r.json(); })
             .then(function (result) {
                 if (result.error) {
-                    alert('Error: ' + result.error);
+                    if (statusEl) {
+                        statusEl.textContent = 'Error: ' + result.error;
+                        statusEl.className = 'small text-danger mt-2';
+                    }
                 } else {
+                    var modal = bootstrap.Modal.getInstance(document.getElementById('createVariantModal'));
+                    if (modal) modal.hide();
                     fetchAndRender('contextBar');
+                    if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
                 }
             });
     }
@@ -145,6 +177,21 @@ window.TaxonomyContextBar = (function () {
             window.TaxonomyContextCompare.showDialog(currentContext);
         } else {
             alert('Compare feature not yet loaded.');
+        }
+    }
+
+    /**
+     * Show the selective transfer dialog, pre-filled from current context.
+     */
+    function showTransferDialog() {
+        if (window.TaxonomyContextTransfer) {
+            var sourceCommit = currentContext ? currentContext.commitId : '';
+            var targetCommit = '';
+            // If we have an origin, use it as the target
+            if (currentContext && currentContext.originCommitId) {
+                targetCommit = currentContext.originCommitId;
+            }
+            window.TaxonomyContextTransfer.showDialog(sourceCommit, targetCommit);
         }
     }
 
@@ -172,7 +219,9 @@ window.TaxonomyContextBar = (function () {
         back: back,
         returnToOrigin: returnToOrigin,
         showVariantDialog: showVariantDialog,
+        createVariant: createVariant,
         showCompareDialog: showCompareDialog,
+        showTransferDialog: showTransferDialog,
         getCurrentContext: getCurrentContext
     };
 }());
