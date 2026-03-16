@@ -11,7 +11,7 @@
     </parent>
     <groupId>com.taxonomy</groupId>
     <artifactId>taxonomy</artifactId>
-    <version>1.1.1</version>
+    <version>1.1.2-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>Taxonomy Architecture Analyzer</name>
     <modules>
