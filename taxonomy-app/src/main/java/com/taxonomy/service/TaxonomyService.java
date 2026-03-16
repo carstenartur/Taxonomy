@@ -490,12 +490,12 @@ public class TaxonomyService {
             String code        = cellString(row, 0);
             String uuid        = cellString(row, 1);
             String name        = cellString(row, 2);
-            String description = cellString(row, 3);
+            String description = cellString(row, 3, false);
             String parentCode  = cellString(row, 4);
             String dataset     = cellString(row, 5);
             String externalId  = cellString(row, 6);
             String source      = cellString(row, 7);
-            String reference   = cellString(row, 8);
+            String reference   = cellString(row, 8, false);
             String orderStr    = cellString(row, 9);
             String state       = cellString(row, 10);
             String levelStr    = cellString(row, 11);
@@ -536,6 +536,10 @@ public class TaxonomyService {
     }
 
     private String cellString(Row row, int col) {
+        return cellString(row, col, true);
+    }
+
+    private String cellString(Row row, int col, boolean trim) {
         Cell cell = row.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
         if (cell == null) return null;
         String val = switch (cell.getCellType()) {
@@ -562,7 +566,8 @@ public class TaxonomyService {
             }
             default -> null;
         };
-        return (val == null || val.isBlank()) ? null : val.trim();
+        if (val == null || val.isBlank()) return null;
+        return trim ? val.trim() : val.strip();
     }
 
     private String truncate(String s, int maxLen) {

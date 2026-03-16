@@ -60,7 +60,7 @@ public class ApqcExcelParser implements ExternalParser {
                 String pcfId = getCellString(row, pcfIdCol);
                 String name = getCellString(row, nameCol);
                 String levelStr = getCellString(row, levelCol);
-                String description = getCellString(row, descCol);
+                String description = getCellString(row, descCol, false);
 
                 if (pcfId == null || pcfId.isBlank()) continue;
 
@@ -104,17 +104,26 @@ public class ApqcExcelParser implements ExternalParser {
     }
 
     private String getCellString(Row row, int colIndex) {
+        return getCellString(row, colIndex, true);
+    }
+
+    private String getCellString(Row row, int colIndex, boolean trim) {
         if (colIndex < 0) return null;
         Cell cell = row.getCell(colIndex);
-        return getCellValueAsString(cell);
+        return getCellValueAsString(cell, trim);
     }
 
     private String getCellValueAsString(Cell cell) {
+        return getCellValueAsString(cell, true);
+    }
+
+    private String getCellValueAsString(Cell cell, boolean trim) {
         if (cell == null) return null;
         return switch (cell.getCellType()) {
             case STRING -> {
                 RichTextString rts = cell.getRichStringCellValue();
-                yield (rts != null ? rts.getString() : cell.getStringCellValue()).trim();
+                String s = rts != null ? rts.getString() : cell.getStringCellValue();
+                yield trim ? s.trim() : s.strip();
             }
             case NUMERIC -> {
                 double num = cell.getNumericCellValue();

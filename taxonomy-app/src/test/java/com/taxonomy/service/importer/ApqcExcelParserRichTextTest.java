@@ -118,4 +118,32 @@ class ApqcExcelParserRichTextTest {
             assertThat(desc).contains("Line three");
         }
     }
+
+    @Test
+    void bulletPointIndentationIsPreserved() throws Exception {
+        try (XSSFWorkbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet();
+            // Header row
+            Row header = sheet.createRow(0);
+            header.createCell(0).setCellValue("PCF ID");
+            header.createCell(1).setCellValue("Name");
+            header.createCell(2).setCellValue("Level");
+            header.createCell(3).setCellValue("Description");
+            // Data row with indented bullet points (Alt+Enter in Excel)
+            Row row = sheet.createRow(1);
+            row.createCell(0).setCellValue("4.0");
+            row.createCell(1).setCellValue("Manage Topics");
+            row.createCell(2).setCellValue("1");
+            row.createCell(3).setCellValue("Main topic\n  \u2022 Sub-item 1\n  \u2022 Sub-item 2\n    - Detail A");
+
+            ExternalParser.ParsedExternalModel result = parser.parse(toInputStream(wb));
+
+            assertThat(result.elements()).hasSize(1);
+            String desc = result.elements().get(0).description();
+            assertThat(desc).contains("Main topic");
+            assertThat(desc).contains("\n  \u2022 Sub-item 1");
+            assertThat(desc).contains("\n  \u2022 Sub-item 2");
+            assertThat(desc).contains("\n    - Detail A");
+        }
+    }
 }
