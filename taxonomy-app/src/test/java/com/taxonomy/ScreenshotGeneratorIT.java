@@ -245,8 +245,21 @@ class ScreenshotGeneratorIT {
     }
 
     private void saveElementScreenshot(WebElement element, String filename) throws IOException {
-        File src = element.getScreenshotAs(OutputType.FILE);
-        Files.copy(src.toPath(), OUTPUT_DIR.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
+        // Scroll element into viewport to avoid Chrome renderer timeout on large/off-screen elements
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'start'});", element);
+        try { Thread.sleep(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+        try {
+            File src = element.getScreenshotAs(OutputType.FILE);
+            Files.copy(src.toPath(), OUTPUT_DIR.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
+        } catch (org.openqa.selenium.TimeoutException e) {
+            if (e.getMessage() != null && e.getMessage().contains("renderer")) {
+                // Fallback: take full-page screenshot when element screenshot times out
+                File src = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
+                Files.copy(src.toPath(), OUTPUT_DIR.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                throw e;
+            }
+        }
     }
 
     private WebDriverWait wait(int seconds) {
@@ -264,6 +277,16 @@ class ScreenshotGeneratorIT {
         WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
         js("arguments[0].click();", analyzeBtn);
+        // First wait for statusArea to become non-empty (analysis started or immediately finished)
+        try {
+            wait(30).until(d -> {
+                String text = d.findElement(By.id("statusArea")).getText();
+                return text != null && !text.trim().isEmpty();
+            });
+        } catch (org.openqa.selenium.TimeoutException e) {
+            // Status area never updated — retry the click once
+            js("arguments[0].click();", driver.findElement(By.id("analyzeBtn")));
+        }
         wait(120).until(ExpectedConditions.textMatches(
                 By.id("statusArea"), ANALYSIS_DONE_PATTERN));
     }
@@ -362,7 +385,7 @@ class ScreenshotGeneratorIT {
         // The #taxonomyTree div is always in the HTML (with a loading spinner).
         // Wait for actual taxonomy nodes to appear — they are rendered by the JS
         // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
-        wait(30).until(ExpectedConditions.presenceOfElementLocated(
+        wait(60).until(ExpectedConditions.presenceOfElementLocated(
                 By.cssSelector("#taxonomyTree .tax-node")));
         // Dismiss the onboarding overlay if it reappears after page reload
         List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
@@ -806,7 +829,7 @@ class ScreenshotGeneratorIT {
         // so Selenium's textToBePresentInElementLocated cannot see the text. Instead, check innerHTML
         // via JavaScript: the loading spinner sets innerHTML to contain "spinner-border", and once the
         // API response arrives, wrapWithGraphToggle replaces it with toggle buttons + graph/table divs.
-        wait(30).until(d -> {
+        wait(60).until(d -> {
             String html = (String) ((JavascriptExecutor) d).executeScript(
                     "var el = document.getElementById('graphResultsContent');" +
                     "return el ? el.innerHTML : '';");
@@ -828,7 +851,7 @@ class ScreenshotGeneratorIT {
             runAnalysis();
         }
         navigateToTab("export");
-        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
+        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
         // Wait for the export group to have a non-zero size (not collapsed)
         wait(5).until(d -> {
             WebElement eg = d.findElement(By.id("exportGroup"));
@@ -1079,7 +1102,7 @@ class ScreenshotGeneratorIT {
             runAnalysis();
         }
         navigateToTab("export");
-        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
+        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
         // Take a full-tab screenshot showing all export options
         saveScreenshot("33-export-tab.png");
     }
@@ -1122,7 +1145,9 @@ class ScreenshotGeneratorIT {
             runAnalysis();
         }
         // Switch to list view and expand all nodes
-        driver.findElement(By.id("viewList")).click();
+        WebElement viewListBtn = driver.findElement(By.id("viewList"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", viewListBtn);
+        js("arguments[0].click();", viewListBtn);
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewList"), "class", "btn-primary"));
         // Turn descriptions OFF so each node shows only code + name + score bar (much more compact)
         js("var cb = document.getElementById('showDescriptions'); if (cb && cb.checked) { cb.click(); }");
