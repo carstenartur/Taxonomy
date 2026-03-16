@@ -132,6 +132,22 @@ class ApqcCsvParserTest {
     }
 
     @Test
+    void bulletPointIndentationIsPreservedInDescription() throws Exception {
+        // Description field is parsed with trim=false (uses strip() instead of trim()).
+        // strip() handles Unicode whitespace (e.g. \u2028 Line Separator) at the outer
+        // boundary while leaving internal spaces—which carry indentation meaning—intact.
+        String unicodeLs = "\u2028"; // Line Separator (> \u0020, so trim() would keep it)
+        String csv = "PCF ID,Name,Level,Description\n"
+                + "5.0,Manage Topics,1," + unicodeLs + "Main topic  \u2022 Sub-item" + unicodeLs + "\n";
+        ExternalParser.ParsedExternalModel result = parser.parse(
+                new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)));
+        assertThat(result.elements()).hasSize(1);
+        // strip() removes the outer \u2028 characters; inner content is preserved as-is
+        assertThat(result.elements().get(0).description())
+                .isEqualTo("Main topic  \u2022 Sub-item");
+    }
+
+    @Test
     void hierarchyRelationLinkage() throws Exception {
         try (InputStream is = getClass().getResourceAsStream("/testdata/apqc-sample.csv")) {
             ExternalParser.ParsedExternalModel result = parser.parse(is);

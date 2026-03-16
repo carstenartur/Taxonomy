@@ -67,7 +67,7 @@ public class ApqcCsvParser implements ExternalParser {
                 String pcfId = safeGet(fields, pcfIdCol);
                 String name = safeGet(fields, nameCol);
                 String levelStr = safeGet(fields, levelCol);
-                String description = safeGet(fields, descCol);
+                String description = safeGet(fields, descCol, false);
 
                 if (pcfId == null || pcfId.isBlank()) continue;
 
@@ -110,8 +110,12 @@ public class ApqcCsvParser implements ExternalParser {
     }
 
     private String safeGet(String[] fields, int index) {
+        return safeGet(fields, index, true);
+    }
+
+    private String safeGet(String[] fields, int index, boolean trim) {
         if (index < 0 || index >= fields.length) return null;
-        String value = fields[index].trim();
+        String value = trim ? fields[index].trim() : fields[index].strip();
         // Remove surrounding quotes
         if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
             value = value.substring(1, value.length() - 1);
