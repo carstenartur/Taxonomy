@@ -186,9 +186,12 @@ class ScreenshotGeneratorIT {
                 .withExposedPorts(8080)
                 .withEnv("ADMIN_PASSWORD", "testpassword123")
                 .withEnv("LLM_MOCK", "true")
-                .withStartupTimeout(Duration.ofSeconds(120))
-                // Use /actuator/health (public) as the container readiness check.
-                .waitingFor(Wait.forHttp("/actuator/health").forStatusCode(200).forPort(8080));
+                .withStartupTimeout(Duration.ofSeconds(180))
+                // Wait for the taxonomy to be fully loaded and search index built.
+                // The app logs "Async taxonomy initialization complete." once
+                // AppInitializationStateService transitions to READY.
+                .waitingFor(Wait.forLogMessage(".*Async taxonomy initialization complete\\..*\\n", 1)
+                        .withStartupTimeout(Duration.ofSeconds(180)));
 
         app = appContainer;
         app.start();
@@ -211,14 +214,14 @@ class ScreenshotGeneratorIT {
 
         // Load the application and wait for the taxonomy tree to be FULLY RENDERED
         driver.get("http://app:8080/");
-        new WebDriverWait(driver, Duration.ofSeconds(30))
+        new WebDriverWait(driver, Duration.ofSeconds(15))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // The #taxonomyTree div is always in the HTML (with a loading spinner).
         // Wait for actual taxonomy nodes to appear — they are rendered by the JS
         // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
-        // Use 60s here because this is the first load after container startup —
-        // the taxonomy Excel import may still be running in the background.
-        new WebDriverWait(driver, Duration.ofSeconds(60))
+        // The container startup waited for "Async taxonomy initialization complete" log message,
+        // so taxonomy data is already available — 15s is sufficient for the JS fetch + render.
+        new WebDriverWait(driver, Duration.ofSeconds(15))
                 .until(ExpectedConditions.presenceOfElementLocated(
                         By.cssSelector("#taxonomyTree .tax-node")));
         // Dismiss the onboarding overlay if it is present (it blocks clicks on all UI elements)
@@ -246,8 +249,7 @@ class ScreenshotGeneratorIT {
 
     private void saveElementScreenshot(WebElement element, String filename) throws IOException {
         // Scroll element into viewport to avoid Chrome renderer timeout on large/off-screen elements
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'start'});", element);
-        try { Thread.sleep(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", element);
         try {
             File src = element.getScreenshotAs(OutputType.FILE);
             Files.copy(src.toPath(), OUTPUT_DIR.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
@@ -293,6 +295,17 @@ class ScreenshotGeneratorIT {
 
     private void js(String script, Object... args) {
         ((JavascriptExecutor) driver).executeScript(script, args);
+    }
+
+    /** Scrolls the element into the viewport and clicks via JavaScript — prevents ElementClickIntercepted. */
+    private void safeClick(WebElement element) {
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", element);
+        js("arguments[0].click();", element);
+    }
+
+    /** Finds the element by locator, scrolls it into view and clicks via JavaScript. */
+    private void safeClick(By locator) {
+        safeClick(driver.findElement(locator));
     }
 
     /**
@@ -381,11 +394,13 @@ class ScreenshotGeneratorIT {
     /** Reloads the page and waits for the taxonomy tree to be fully rendered. */
     private void resetPageState() {
         driver.get("http://app:8080/");
-        wait(30).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // The #taxonomyTree div is always in the HTML (with a loading spinner).
         // Wait for actual taxonomy nodes to appear — they are rendered by the JS
         // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
-        wait(60).until(ExpectedConditions.presenceOfElementLocated(
+        // The container startup already waited for full initialization (log-message strategy),
+        // so taxonomy data is available — 15s is enough for the JS fetch + render.
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(
                 By.cssSelector("#taxonomyTree .tax-node")));
         // Dismiss the onboarding overlay if it reappears after page reload
         List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
@@ -468,9 +483,9 @@ class ScreenshotGeneratorIT {
     @Order(1)
     void captureFullPageLayout() throws IOException {
         driver.get("http://app:8080/");
-        wait(30).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // Wait for actual taxonomy nodes to be rendered (not just the container div with loading spinner)
-        wait(60).until(ExpectedConditions.presenceOfElementLocated(
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(
                 By.cssSelector("#taxonomyTree .tax-node")));
         // Dismiss the onboarding overlay if present
         List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
@@ -486,7 +501,7 @@ class ScreenshotGeneratorIT {
     @Order(2)
     void captureLeftPanelListView() throws IOException {
         // Use Expand All to make the tree show nodes with their action buttons
-        driver.findElement(By.id("expandAll")).click();
+        safeClick(By.id("expandAll"));
         wait(5).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-toggle")));
         // Take element screenshot of just the left panel card
         saveElementScreenshot(
@@ -519,40 +534,40 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(5)
     void captureTabsView() throws IOException {
-        driver.findElement(By.id("viewTabs")).click();
+        safeClick(By.id("viewTabs"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewTabs"), "class", "btn-primary"));
         saveScreenshot("05-tabs-view.png");
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
     }
 
     @Test
     @Order(6)
     void captureSunburstView() throws IOException {
-        driver.findElement(By.id("viewSunburst")).click();
+        safeClick(By.id("viewSunburst"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
         wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "sunburst"));
         saveScreenshot("06-sunburst-view.png");
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
     }
 
     @Test
     @Order(7)
     void captureTreeView() throws IOException {
-        driver.findElement(By.id("viewTree")).click();
+        safeClick(By.id("viewTree"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewTree"), "class", "btn-primary"));
         wait(10).until(ExpectedConditions.attributeContains(By.id("taxonomyTree"), "data-view-rendered", "tree"));
         saveScreenshot("07-tree-view.png");
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
     }
 
     @Test
     @Order(8)
     void captureDecisionMapView() throws IOException {
-        driver.findElement(By.id("viewDecision")).click();
+        safeClick(By.id("viewDecision"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewDecision"), "class", "btn-primary"));
         wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "decision"));
         saveScreenshot("08-decision-map-view.png");
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
     }
 
     @Test
@@ -769,7 +784,7 @@ class ScreenshotGeneratorIT {
         // Switch to a non-list/tabs view (sunburst) so that clicking Analyze calls runAnalysis()
         // instead of runStreamingAnalysis(). Only runAnalysis() (POST /api/analyze) sends
         // includeArchitectureView:true and renders the architectureViewPanel on completion.
-        driver.findElement(By.id("viewSunburst")).click();
+        safeClick(By.id("viewSunburst"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
 
         WebElement textarea = driver.findElement(By.id("businessText"));
@@ -789,7 +804,7 @@ class ScreenshotGeneratorIT {
 
         // Reset: navigate back to analyze, switch back to list view and uncheck architecture view
         navigateToTab("analyze");
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
         if (archCb.isSelected()) {
             js("arguments[0].click();", archCb);
         }
@@ -825,11 +840,10 @@ class ScreenshotGeneratorIT {
         js("arguments[0].click();", failureBtn);
 
         // Wait for the failure impact results to load.
-        // The results are rendered inside graphViewTable (display:none by default) by wrapWithGraphToggle(),
-        // so Selenium's textToBePresentInElementLocated cannot see the text. Instead, check innerHTML
-        // via JavaScript: the loading spinner sets innerHTML to contain "spinner-border", and once the
-        // API response arrives, wrapWithGraphToggle replaces it with toggle buttons + graph/table divs.
-        wait(60).until(d -> {
+        // Phase 1: wait for graphResultsContent to exist and have content (spinner or results)
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("graphResultsContent")));
+        // Phase 2: wait for the spinner to be replaced by graph/table results
+        wait(30).until(d -> {
             String html = (String) ((JavascriptExecutor) d).executeScript(
                     "var el = document.getElementById('graphResultsContent');" +
                     "return el ? el.innerHTML : '';");
@@ -851,7 +865,9 @@ class ScreenshotGeneratorIT {
             runAnalysis();
         }
         navigateToTab("export");
-        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
+        // Two-phase wait: first ensure the element exists in the DOM, then wait for CSS visibility
+        wait(10).until(ExpectedConditions.presenceOfElementLocated(By.id("exportGroup")));
+        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
         // Wait for the export group to have a non-zero size (not collapsed)
         wait(5).until(d -> {
             WebElement eg = d.findElement(By.id("exportGroup"));
@@ -1102,7 +1118,9 @@ class ScreenshotGeneratorIT {
             runAnalysis();
         }
         navigateToTab("export");
-        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
+        // Two-phase wait: first ensure the element exists in the DOM, then wait for CSS visibility
+        wait(10).until(ExpectedConditions.presenceOfElementLocated(By.id("exportGroup")));
+        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
         // Take a full-tab screenshot showing all export options
         saveScreenshot("33-export-tab.png");
     }
@@ -1145,9 +1163,7 @@ class ScreenshotGeneratorIT {
             runAnalysis();
         }
         // Switch to list view and expand all nodes
-        WebElement viewListBtn = driver.findElement(By.id("viewList"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", viewListBtn);
-        js("arguments[0].click();", viewListBtn);
+        safeClick(By.id("viewList"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewList"), "class", "btn-primary"));
         // Turn descriptions OFF so each node shows only code + name + score bar (much more compact)
         js("var cb = document.getElementById('showDescriptions'); if (cb && cb.checked) { cb.click(); }");
@@ -1278,7 +1294,7 @@ class ScreenshotGeneratorIT {
         }
 
         // Switch to sunburst view so Analyze calls POST /api/analyze (not streaming)
-        driver.findElement(By.id("viewSunburst")).click();
+        safeClick(By.id("viewSunburst"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
 
         WebElement textarea = driver.findElement(By.id("businessText"));
@@ -1298,7 +1314,7 @@ class ScreenshotGeneratorIT {
 
         // Reset: switch back to list view and uncheck architecture view
         navigateToTab("analyze");
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
         archCb = driver.findElement(By.id("includeArchitectureView"));
         if (archCb.isSelected()) {
             js("arguments[0].click();", archCb);
@@ -1316,13 +1332,13 @@ class ScreenshotGeneratorIT {
             runAnalysis();
         }
         // Switch to sunburst view — scores are already computed, so the sunburst will be coloured
-        driver.findElement(By.id("viewSunburst")).click();
+        safeClick(By.id("viewSunburst"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
         // Wait for the sunburst SVG to actually finish rendering
         wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "sunburst"));
         saveScreenshot("39-scored-sunburst.png");
         // Reset to list view
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
     }
 
     @Test
