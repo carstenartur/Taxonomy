@@ -56,6 +56,10 @@ class ScreenshotGeneratorIT {
             "element CR type CoreService {\\n  title: \"Core Services\";\\n}\\n\\n" +
             "relation CP REALIZES CR {\\n  status: accepted;\\n}\\n";
 
+    /** Regex matching any terminal analysis status (success, error, or unavailable). */
+    private static final java.util.regex.Pattern ANALYSIS_DONE_PATTERN =
+            java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable|0 matches");
+
     /**
      * Fallback search results HTML injected when the embedding model is unavailable and semantic
      * or hybrid search returns no results. Matches the structure produced by
@@ -261,7 +265,7 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
         js("arguments[0].click();", analyzeBtn);
         wait(120).until(ExpectedConditions.textMatches(
-                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable")));
+                By.id("statusArea"), ANALYSIS_DONE_PATTERN));
     }
 
     private void js(String script, Object... args) {
@@ -754,7 +758,7 @@ class ScreenshotGeneratorIT {
         js("arguments[0].click();", analyzeBtn);
 
         wait(120).until(ExpectedConditions.textMatches(
-                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable")));
+                By.id("statusArea"), ANALYSIS_DONE_PATTERN));
         // Navigate to Architecture tab to see the panel
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
@@ -1261,7 +1265,7 @@ class ScreenshotGeneratorIT {
         js("arguments[0].click();", analyzeBtn);
 
         wait(120).until(ExpectedConditions.textMatches(
-                By.id("statusArea"), java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable")));
+                By.id("statusArea"), ANALYSIS_DONE_PATTERN));
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")),
@@ -1438,21 +1442,23 @@ class ScreenshotGeneratorIT {
     @Order(47)
     void captureVariantsBrowserTab() throws IOException {
         navigateToTab("versions");
-        // Switch to the Variants sub-tab and trigger refresh via the module API
+        // Switch to the Variants sub-tab
         js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
            "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'variants');" +
            "});" +
            "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
            "  if (p.id === 'versions-variants') { p.classList.remove('d-none'); }" +
            "  else { p.classList.add('d-none'); }" +
-           "});" +
-           "if (window.TaxonomyVariants) window.TaxonomyVariants.refresh();");
+           "});");
+        // Explicitly trigger variant loading — the pane was hidden (d-none) so auto-load may not fire
+        js("if (window.TaxonomyVariants) { window.TaxonomyVariants.refresh(); }");
         // Wait for the variants browser to load
         wait(30).until(d -> {
             String html = (String) ((JavascriptExecutor) d).executeScript(
                     "var el = document.getElementById('variantsBrowser');" +
                     "return el ? el.innerHTML : '';");
-            return html != null && !html.contains("Loading variants");
+            return html != null && html.length() > 0
+                    && !html.contains("Loading variants");
         });
         saveScreenshot("47-variants-browser-tab.png");
         // Reset to History sub-tab
