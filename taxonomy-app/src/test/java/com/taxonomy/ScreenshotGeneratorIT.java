@@ -188,9 +188,14 @@ class ScreenshotGeneratorIT {
                 .withEnv("LLM_MOCK", "true")
                 .withStartupTimeout(Duration.ofSeconds(180))
                 // Wait for the taxonomy to be fully loaded and search index built.
-                // The app logs "Async taxonomy initialization complete." once
-                // AppInitializationStateService transitions to READY.
-                .waitingFor(Wait.forLogMessage(".*Async taxonomy initialization complete\\..*\\n", 1)
+                // The /api/status/startup endpoint returns {"status":"ready"} once
+                // AppInitializationStateService transitions to READY — works for both
+                // synchronous (default) and asynchronous initialization modes.
+                .waitingFor(Wait.forHttp("/api/status/startup")
+                        .forStatusCode(200)
+                        .forPort(8080)
+                        .withBasicCredentials("admin", "admin")
+                        .forResponsePredicate(body -> body.contains("\"status\":\"ready\""))
                         .withStartupTimeout(Duration.ofSeconds(180)));
 
         app = appContainer;
@@ -219,7 +224,7 @@ class ScreenshotGeneratorIT {
         // The #taxonomyTree div is always in the HTML (with a loading spinner).
         // Wait for actual taxonomy nodes to appear — they are rendered by the JS
         // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
-        // The container startup waited for "Async taxonomy initialization complete" log message,
+        // The container startup waited for /api/status/startup to return "ready",
         // so taxonomy data is already available — 15s is sufficient for the JS fetch + render.
         new WebDriverWait(driver, Duration.ofSeconds(15))
                 .until(ExpectedConditions.presenceOfElementLocated(
@@ -398,7 +403,7 @@ class ScreenshotGeneratorIT {
         // The #taxonomyTree div is always in the HTML (with a loading spinner).
         // Wait for actual taxonomy nodes to appear — they are rendered by the JS
         // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
-        // The container startup already waited for full initialization (log-message strategy),
+        // The container startup already waited for /api/status/startup to return "ready",
         // so taxonomy data is available — 15s is enough for the JS fetch + render.
         wait(15).until(ExpectedConditions.presenceOfElementLocated(
                 By.cssSelector("#taxonomyTree .tax-node")));
