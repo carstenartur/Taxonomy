@@ -490,12 +490,12 @@ public class TaxonomyService {
 <span class="fc" id="L490">            String code        = cellString(row, 0);</span>
 <span class="fc" id="L491">            String uuid        = cellString(row, 1);</span>
 <span class="fc" id="L492">            String name        = cellString(row, 2);</span>
-<span class="fc" id="L493">            String description = cellString(row, 3);</span>
+<span class="fc" id="L493">            String description = cellString(row, 3, false);</span>
 <span class="fc" id="L494">            String parentCode  = cellString(row, 4);</span>
 <span class="fc" id="L495">            String dataset     = cellString(row, 5);</span>
 <span class="fc" id="L496">            String externalId  = cellString(row, 6);</span>
 <span class="fc" id="L497">            String source      = cellString(row, 7);</span>
-<span class="fc" id="L498">            String reference   = cellString(row, 8);</span>
+<span class="fc" id="L498">            String reference   = cellString(row, 8, false);</span>
 <span class="fc" id="L499">            String orderStr    = cellString(row, 9);</span>
 <span class="fc" id="L500">            String state       = cellString(row, 10);</span>
 <span class="fc" id="L501">            String levelStr    = cellString(row, 11);</span>
@@ -536,111 +536,116 @@ public class TaxonomyService {
 <span class="fc" id="L536">    }</span>
 
     private String cellString(Row row, int col) {
-<span class="fc" id="L539">        Cell cell = row.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);</span>
-<span class="fc bfc" id="L540" title="All 2 branches covered.">        if (cell == null) return null;</span>
-<span class="pc bpc" id="L541" title="4 of 5 branches missed.">        String val = switch (cell.getCellType()) {</span>
+<span class="fc" id="L539">        return cellString(row, col, true);</span>
+    }
+
+    private String cellString(Row row, int col, boolean trim) {
+<span class="fc" id="L543">        Cell cell = row.getCell(col, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);</span>
+<span class="fc bfc" id="L544" title="All 2 branches covered.">        if (cell == null) return null;</span>
+<span class="pc bpc" id="L545" title="4 of 5 branches missed.">        String val = switch (cell.getCellType()) {</span>
             case STRING -&gt; {
-<span class="fc" id="L543">                RichTextString rts = cell.getRichStringCellValue();</span>
-<span class="pc bpc" id="L544" title="1 of 2 branches missed.">                yield rts != null ? rts.getString() : cell.getStringCellValue();</span>
+<span class="fc" id="L547">                RichTextString rts = cell.getRichStringCellValue();</span>
+<span class="pc bpc" id="L548" title="1 of 2 branches missed.">                yield rts != null ? rts.getString() : cell.getStringCellValue();</span>
             }
-<span class="nc" id="L546">            case NUMERIC -&gt; String.valueOf((long) cell.getNumericCellValue());</span>
-<span class="nc" id="L547">            case BOOLEAN -&gt; String.valueOf(cell.getBooleanCellValue());</span>
+<span class="nc" id="L550">            case NUMERIC -&gt; String.valueOf((long) cell.getNumericCellValue());</span>
+<span class="nc" id="L551">            case BOOLEAN -&gt; String.valueOf(cell.getBooleanCellValue());</span>
             case FORMULA -&gt; {
                 try {
-<span class="nc bnc" id="L550" title="All 4 branches missed.">                    yield switch (cell.getCachedFormulaResultType()) {</span>
+<span class="nc bnc" id="L554" title="All 4 branches missed.">                    yield switch (cell.getCachedFormulaResultType()) {</span>
                         case STRING -&gt; {
-<span class="nc" id="L552">                            RichTextString rts = cell.getRichStringCellValue();</span>
-<span class="nc bnc" id="L553" title="All 2 branches missed.">                            yield rts != null ? rts.getString() : cell.getStringCellValue();</span>
+<span class="nc" id="L556">                            RichTextString rts = cell.getRichStringCellValue();</span>
+<span class="nc bnc" id="L557" title="All 2 branches missed.">                            yield rts != null ? rts.getString() : cell.getStringCellValue();</span>
                         }
-<span class="nc" id="L555">                        case NUMERIC -&gt; String.valueOf((long) cell.getNumericCellValue());</span>
-<span class="nc" id="L556">                        case BOOLEAN -&gt; String.valueOf(cell.getBooleanCellValue());</span>
-<span class="nc" id="L557">                        default -&gt; cell.getCellFormula();</span>
+<span class="nc" id="L559">                        case NUMERIC -&gt; String.valueOf((long) cell.getNumericCellValue());</span>
+<span class="nc" id="L560">                        case BOOLEAN -&gt; String.valueOf(cell.getBooleanCellValue());</span>
+<span class="nc" id="L561">                        default -&gt; cell.getCellFormula();</span>
                     };
-<span class="nc" id="L559">                } catch (Exception e) {</span>
-<span class="nc" id="L560">                    yield cell.getCellFormula();</span>
+<span class="nc" id="L563">                } catch (Exception e) {</span>
+<span class="nc" id="L564">                    yield cell.getCellFormula();</span>
                 }
             }
-<span class="pc" id="L563">            default -&gt; null;</span>
+<span class="pc" id="L567">            default -&gt; null;</span>
         };
-<span class="pc bpc" id="L565" title="2 of 4 branches missed.">        return (val == null || val.isBlank()) ? null : val.trim();</span>
+<span class="pc bpc" id="L569" title="2 of 4 branches missed.">        if (val == null || val.isBlank()) return null;</span>
+<span class="fc bfc" id="L570" title="All 2 branches covered.">        return trim ? val.trim() : val.strip();</span>
     }
 
     private String truncate(String s, int maxLen) {
-<span class="fc bfc" id="L569" title="All 2 branches covered.">        if (s == null) return null;</span>
-<span class="pc bpc" id="L570" title="1 of 2 branches missed.">        return s.length() &lt;= maxLen ? s : s.substring(0, maxLen);</span>
+<span class="fc bfc" id="L574" title="All 2 branches covered.">        if (s == null) return null;</span>
+<span class="pc bpc" id="L575" title="1 of 2 branches missed.">        return s.length() &lt;= maxLen ? s : s.substring(0, maxLen);</span>
     }
 
     // ---- read-side methods ----
 
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNodeDto&gt; getFullTree() {
-<span class="fc" id="L577">        List&lt;TaxonomyNode&gt; roots = repository.findByParentIsNullOrderByCodeAsc();</span>
-<span class="fc" id="L578">        List&lt;TaxonomyNodeDto&gt; dtos = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L579" title="All 2 branches covered.">        for (TaxonomyNode root : roots) {</span>
-<span class="fc" id="L580">            dtos.add(toDto(root));</span>
-<span class="fc" id="L581">        }</span>
-<span class="fc" id="L582">        return dtos;</span>
+<span class="fc" id="L582">        List&lt;TaxonomyNode&gt; roots = repository.findByParentIsNullOrderByCodeAsc();</span>
+<span class="fc" id="L583">        List&lt;TaxonomyNodeDto&gt; dtos = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L584" title="All 2 branches covered.">        for (TaxonomyNode root : roots) {</span>
+<span class="fc" id="L585">            dtos.add(toDto(root));</span>
+<span class="fc" id="L586">        }</span>
+<span class="fc" id="L587">        return dtos;</span>
     }
 
     public TaxonomyNodeDto toDto(TaxonomyNode node) {
-<span class="fc" id="L586">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
-<span class="fc" id="L587">        dto.setId(node.getId());</span>
-<span class="fc" id="L588">        dto.setCode(node.getCode());</span>
-<span class="fc" id="L589">        dto.setUuid(node.getUuid());</span>
-<span class="fc" id="L590">        dto.setNameEn(node.getNameEn());</span>
-<span class="fc" id="L591">        dto.setNameDe(node.getNameDe());</span>
-<span class="fc" id="L592">        dto.setDescriptionEn(node.getDescriptionEn());</span>
-<span class="fc" id="L593">        dto.setDescriptionDe(node.getDescriptionDe());</span>
-<span class="fc" id="L594">        dto.setParentCode(node.getParentCode());</span>
-<span class="fc" id="L595">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
-<span class="fc" id="L596">        dto.setLevel(node.getLevel());</span>
-<span class="fc" id="L597">        dto.setDataset(node.getDataset());</span>
-<span class="fc" id="L598">        dto.setExternalId(node.getExternalId());</span>
-<span class="fc" id="L599">        dto.setSource(node.getSource());</span>
-<span class="fc" id="L600">        dto.setReference(node.getReference());</span>
-<span class="fc" id="L601">        dto.setSortOrder(node.getSortOrder());</span>
-<span class="fc" id="L602">        dto.setState(node.getState());</span>
-<span class="fc" id="L603">        List&lt;TaxonomyNodeDto&gt; childDtos = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L604" title="All 2 branches covered.">        for (TaxonomyNode child : node.getChildren()) {</span>
-<span class="fc" id="L605">            childDtos.add(toDto(child));</span>
-<span class="fc" id="L606">        }</span>
-<span class="fc" id="L607">        dto.setChildren(childDtos);</span>
-<span class="fc" id="L608">        List&lt;TaxonomyRelationDto&gt; outgoing = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L609" title="All 2 branches covered.">        for (TaxonomyRelation rel : node.getOutgoingRelations()) {</span>
-<span class="fc" id="L610">            outgoing.add(relationToDto(rel));</span>
+<span class="fc" id="L591">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
+<span class="fc" id="L592">        dto.setId(node.getId());</span>
+<span class="fc" id="L593">        dto.setCode(node.getCode());</span>
+<span class="fc" id="L594">        dto.setUuid(node.getUuid());</span>
+<span class="fc" id="L595">        dto.setNameEn(node.getNameEn());</span>
+<span class="fc" id="L596">        dto.setNameDe(node.getNameDe());</span>
+<span class="fc" id="L597">        dto.setDescriptionEn(node.getDescriptionEn());</span>
+<span class="fc" id="L598">        dto.setDescriptionDe(node.getDescriptionDe());</span>
+<span class="fc" id="L599">        dto.setParentCode(node.getParentCode());</span>
+<span class="fc" id="L600">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
+<span class="fc" id="L601">        dto.setLevel(node.getLevel());</span>
+<span class="fc" id="L602">        dto.setDataset(node.getDataset());</span>
+<span class="fc" id="L603">        dto.setExternalId(node.getExternalId());</span>
+<span class="fc" id="L604">        dto.setSource(node.getSource());</span>
+<span class="fc" id="L605">        dto.setReference(node.getReference());</span>
+<span class="fc" id="L606">        dto.setSortOrder(node.getSortOrder());</span>
+<span class="fc" id="L607">        dto.setState(node.getState());</span>
+<span class="fc" id="L608">        List&lt;TaxonomyNodeDto&gt; childDtos = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L609" title="All 2 branches covered.">        for (TaxonomyNode child : node.getChildren()) {</span>
+<span class="fc" id="L610">            childDtos.add(toDto(child));</span>
 <span class="fc" id="L611">        }</span>
-<span class="fc" id="L612">        dto.setOutgoingRelations(outgoing);</span>
-<span class="fc" id="L613">        List&lt;TaxonomyRelationDto&gt; incoming = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L614" title="All 2 branches covered.">        for (TaxonomyRelation rel : node.getIncomingRelations()) {</span>
-<span class="fc" id="L615">            incoming.add(relationToDto(rel));</span>
+<span class="fc" id="L612">        dto.setChildren(childDtos);</span>
+<span class="fc" id="L613">        List&lt;TaxonomyRelationDto&gt; outgoing = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L614" title="All 2 branches covered.">        for (TaxonomyRelation rel : node.getOutgoingRelations()) {</span>
+<span class="fc" id="L615">            outgoing.add(relationToDto(rel));</span>
 <span class="fc" id="L616">        }</span>
-<span class="fc" id="L617">        dto.setIncomingRelations(incoming);</span>
-<span class="fc" id="L618">        return dto;</span>
+<span class="fc" id="L617">        dto.setOutgoingRelations(outgoing);</span>
+<span class="fc" id="L618">        List&lt;TaxonomyRelationDto&gt; incoming = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L619" title="All 2 branches covered.">        for (TaxonomyRelation rel : node.getIncomingRelations()) {</span>
+<span class="fc" id="L620">            incoming.add(relationToDto(rel));</span>
+<span class="fc" id="L621">        }</span>
+<span class="fc" id="L622">        dto.setIncomingRelations(incoming);</span>
+<span class="fc" id="L623">        return dto;</span>
     }
 
     private TaxonomyRelationDto relationToDto(TaxonomyRelation relation) {
-<span class="fc" id="L622">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
-<span class="fc" id="L623">        dto.setId(relation.getId());</span>
-<span class="fc" id="L624">        dto.setSourceCode(relation.getSourceNode().getCode());</span>
-<span class="fc" id="L625">        dto.setSourceName(relation.getSourceNode().getNameEn());</span>
-<span class="fc" id="L626">        dto.setTargetCode(relation.getTargetNode().getCode());</span>
-<span class="fc" id="L627">        dto.setTargetName(relation.getTargetNode().getNameEn());</span>
-<span class="fc" id="L628">        dto.setRelationType(relation.getRelationType().name());</span>
-<span class="fc" id="L629">        dto.setDescription(relation.getDescription());</span>
-<span class="fc" id="L630">        dto.setProvenance(relation.getProvenance());</span>
-<span class="fc" id="L631">        dto.setWeight(relation.getWeight());</span>
-<span class="fc" id="L632">        dto.setBidirectional(relation.isBidirectional());</span>
-<span class="fc" id="L633">        return dto;</span>
+<span class="fc" id="L627">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
+<span class="fc" id="L628">        dto.setId(relation.getId());</span>
+<span class="fc" id="L629">        dto.setSourceCode(relation.getSourceNode().getCode());</span>
+<span class="fc" id="L630">        dto.setSourceName(relation.getSourceNode().getNameEn());</span>
+<span class="fc" id="L631">        dto.setTargetCode(relation.getTargetNode().getCode());</span>
+<span class="fc" id="L632">        dto.setTargetName(relation.getTargetNode().getNameEn());</span>
+<span class="fc" id="L633">        dto.setRelationType(relation.getRelationType().name());</span>
+<span class="fc" id="L634">        dto.setDescription(relation.getDescription());</span>
+<span class="fc" id="L635">        dto.setProvenance(relation.getProvenance());</span>
+<span class="fc" id="L636">        dto.setWeight(relation.getWeight());</span>
+<span class="fc" id="L637">        dto.setBidirectional(relation.isBidirectional());</span>
+<span class="fc" id="L638">        return dto;</span>
     }
 
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNode&gt; getRootNodes() {
-<span class="fc" id="L638">        return repository.findByParentIsNullOrderByCodeAsc();</span>
+<span class="fc" id="L643">        return repository.findByParentIsNullOrderByCodeAsc();</span>
     }
 
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNode&gt; getChildrenOf(String parentCode) {
-<span class="fc" id="L643">        return repository.findByParentCodeOrderByNameEnAsc(parentCode);</span>
+<span class="fc" id="L648">        return repository.findByParentCodeOrderByNameEnAsc(parentCode);</span>
     }
 
     /**
@@ -648,7 +653,7 @@ public class TaxonomyService {
      */
     @Transactional(readOnly = true)
     public TaxonomyNode getNodeByCode(String code) {
-<span class="fc" id="L651">        return repository.findByCode(code).orElse(null);</span>
+<span class="fc" id="L656">        return repository.findByCode(code).orElse(null);</span>
     }
 
     /**
@@ -657,29 +662,29 @@ public class TaxonomyService {
      */
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNode&gt; getPathToRoot(String code) {
-<span class="nc" id="L660">        TaxonomyNode node = repository.findByCode(code).orElse(null);</span>
-<span class="nc bnc" id="L661" title="All 2 branches missed.">        if (node == null) return List.of();</span>
-<span class="nc" id="L662">        LinkedList&lt;TaxonomyNode&gt; path = new LinkedList&lt;&gt;();</span>
-<span class="nc" id="L663">        TaxonomyNode current = node;</span>
-<span class="nc bnc" id="L664" title="All 2 branches missed.">        while (current != null) {</span>
-<span class="nc" id="L665">            path.addFirst(current);</span>
-<span class="nc" id="L666">            String parentCode = current.getParentCode();</span>
-<span class="nc bnc" id="L667" title="All 4 branches missed.">            if (parentCode == null || parentCode.isBlank()) break;</span>
-<span class="nc" id="L668">            current = repository.findByCode(parentCode).orElse(null);</span>
-<span class="nc" id="L669">        }</span>
-<span class="nc" id="L670">        return List.copyOf(path);</span>
+<span class="nc" id="L665">        TaxonomyNode node = repository.findByCode(code).orElse(null);</span>
+<span class="nc bnc" id="L666" title="All 2 branches missed.">        if (node == null) return List.of();</span>
+<span class="nc" id="L667">        LinkedList&lt;TaxonomyNode&gt; path = new LinkedList&lt;&gt;();</span>
+<span class="nc" id="L668">        TaxonomyNode current = node;</span>
+<span class="nc bnc" id="L669" title="All 2 branches missed.">        while (current != null) {</span>
+<span class="nc" id="L670">            path.addFirst(current);</span>
+<span class="nc" id="L671">            String parentCode = current.getParentCode();</span>
+<span class="nc bnc" id="L672" title="All 4 branches missed.">            if (parentCode == null || parentCode.isBlank()) break;</span>
+<span class="nc" id="L673">            current = repository.findByCode(parentCode).orElse(null);</span>
+<span class="nc" id="L674">        }</span>
+<span class="nc" id="L675">        return List.copyOf(path);</span>
     }
 
     public TaxonomyNodeDto applyScores(TaxonomyNodeDto dto, Map&lt;String, Integer&gt; scores) {
-<span class="fc bfc" id="L674" title="All 2 branches covered.">        if (scores.containsKey(dto.getCode())) {</span>
-<span class="fc" id="L675">            dto.setMatchPercentage(scores.get(dto.getCode()));</span>
+<span class="fc bfc" id="L679" title="All 2 branches covered.">        if (scores.containsKey(dto.getCode())) {</span>
+<span class="fc" id="L680">            dto.setMatchPercentage(scores.get(dto.getCode()));</span>
         }
-<span class="fc" id="L677">        List&lt;TaxonomyNodeDto&gt; updatedChildren = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L678" title="All 2 branches covered.">        for (TaxonomyNodeDto child : dto.getChildren()) {</span>
-<span class="fc" id="L679">            updatedChildren.add(applyScores(child, scores));</span>
-<span class="fc" id="L680">        }</span>
-<span class="fc" id="L681">        dto.setChildren(updatedChildren);</span>
-<span class="fc" id="L682">        return dto;</span>
+<span class="fc" id="L682">        List&lt;TaxonomyNodeDto&gt; updatedChildren = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L683" title="All 2 branches covered.">        for (TaxonomyNodeDto child : dto.getChildren()) {</span>
+<span class="fc" id="L684">            updatedChildren.add(applyScores(child, scores));</span>
+<span class="fc" id="L685">        }</span>
+<span class="fc" id="L686">        dto.setChildren(updatedChildren);</span>
+<span class="fc" id="L687">        return dto;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

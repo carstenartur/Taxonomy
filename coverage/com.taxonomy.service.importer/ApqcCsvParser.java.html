@@ -67,7 +67,7 @@ import java.util.Map;
 <span class="fc" id="L67">                String pcfId = safeGet(fields, pcfIdCol);</span>
 <span class="fc" id="L68">                String name = safeGet(fields, nameCol);</span>
 <span class="fc" id="L69">                String levelStr = safeGet(fields, levelCol);</span>
-<span class="fc" id="L70">                String description = safeGet(fields, descCol);</span>
+<span class="fc" id="L70">                String description = safeGet(fields, descCol, false);</span>
 
 <span class="pc bpc" id="L72" title="2 of 4 branches missed.">                if (pcfId == null || pcfId.isBlank()) continue;</span>
 
@@ -110,61 +110,65 @@ import java.util.Map;
     }
 
     private String safeGet(String[] fields, int index) {
-<span class="pc bpc" id="L113" title="2 of 4 branches missed.">        if (index &lt; 0 || index &gt;= fields.length) return null;</span>
-<span class="fc" id="L114">        String value = fields[index].trim();</span>
+<span class="fc" id="L113">        return safeGet(fields, index, true);</span>
+    }
+
+    private String safeGet(String[] fields, int index, boolean trim) {
+<span class="pc bpc" id="L117" title="2 of 4 branches missed.">        if (index &lt; 0 || index &gt;= fields.length) return null;</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        String value = trim ? fields[index].trim() : fields[index].strip();</span>
         // Remove surrounding quotes
-<span class="pc bpc" id="L116" title="3 of 6 branches missed.">        if (value.length() &gt;= 2 &amp;&amp; value.startsWith(&quot;\&quot;&quot;) &amp;&amp; value.endsWith(&quot;\&quot;&quot;)) {</span>
-<span class="nc" id="L117">            value = value.substring(1, value.length() - 1);</span>
+<span class="pc bpc" id="L120" title="3 of 6 branches missed.">        if (value.length() &gt;= 2 &amp;&amp; value.startsWith(&quot;\&quot;&quot;) &amp;&amp; value.endsWith(&quot;\&quot;&quot;)) {</span>
+<span class="nc" id="L121">            value = value.substring(1, value.length() - 1);</span>
         }
-<span class="fc bfc" id="L119" title="All 2 branches covered.">        return value.isEmpty() ? null : value;</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        return value.isEmpty() ? null : value;</span>
     }
 
     private int parseLevel(String levelStr, String pcfId) {
-<span class="pc bpc" id="L123" title="2 of 4 branches missed.">        if (levelStr != null &amp;&amp; !levelStr.isBlank()) {</span>
+<span class="pc bpc" id="L127" title="2 of 4 branches missed.">        if (levelStr != null &amp;&amp; !levelStr.isBlank()) {</span>
             try {
-<span class="fc" id="L125">                return Integer.parseInt(levelStr.trim());</span>
-<span class="nc" id="L126">            } catch (NumberFormatException ignored) {</span>
+<span class="fc" id="L129">                return Integer.parseInt(levelStr.trim());</span>
+<span class="nc" id="L130">            } catch (NumberFormatException ignored) {</span>
                 // Fall through to dot counting
             }
         }
         // Derive level from PCF ID dot count: &quot;1.0&quot; = 1 dot = level 1, &quot;1.1.1&quot; = 2 dots = level 3
-<span class="nc bnc" id="L131" title="All 2 branches missed.">        long dots = pcfId.chars().filter(c -&gt; c == '.').count();</span>
-<span class="nc" id="L132">        return (int) dots + 1;</span>
+<span class="nc bnc" id="L135" title="All 2 branches missed.">        long dots = pcfId.chars().filter(c -&gt; c == '.').count();</span>
+<span class="nc" id="L136">        return (int) dots + 1;</span>
     }
 
     private String deriveParentPcfId(String pcfId) {
-<span class="fc" id="L136">        int lastDot = pcfId.lastIndexOf('.');</span>
-<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        if (lastDot &lt;= 0) return null;</span>
-<span class="fc" id="L138">        return pcfId.substring(0, lastDot);</span>
+<span class="fc" id="L140">        int lastDot = pcfId.lastIndexOf('.');</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        if (lastDot &lt;= 0) return null;</span>
+<span class="fc" id="L142">        return pcfId.substring(0, lastDot);</span>
     }
 
     /**
      * Simple CSV line splitter that handles quoted fields.
      */
     static String[] splitCsvLine(String line) {
-<span class="fc" id="L145">        List&lt;String&gt; fields = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L146">        StringBuilder current = new StringBuilder();</span>
-<span class="fc" id="L147">        boolean inQuotes = false;</span>
+<span class="fc" id="L149">        List&lt;String&gt; fields = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L150">        StringBuilder current = new StringBuilder();</span>
+<span class="fc" id="L151">        boolean inQuotes = false;</span>
 
-<span class="fc bfc" id="L149" title="All 2 branches covered.">        for (int i = 0; i &lt; line.length(); i++) {</span>
-<span class="fc" id="L150">            char c = line.charAt(i);</span>
-<span class="fc bfc" id="L151" title="All 2 branches covered.">            if (c == '&quot;') {</span>
-<span class="pc bpc" id="L152" title="1 of 6 branches missed.">                if (inQuotes &amp;&amp; i + 1 &lt; line.length() &amp;&amp; line.charAt(i + 1) == '&quot;') {</span>
-<span class="nc" id="L153">                    current.append('&quot;');</span>
-<span class="nc" id="L154">                    i++;</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        for (int i = 0; i &lt; line.length(); i++) {</span>
+<span class="fc" id="L154">            char c = line.charAt(i);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">            if (c == '&quot;') {</span>
+<span class="pc bpc" id="L156" title="1 of 6 branches missed.">                if (inQuotes &amp;&amp; i + 1 &lt; line.length() &amp;&amp; line.charAt(i + 1) == '&quot;') {</span>
+<span class="nc" id="L157">                    current.append('&quot;');</span>
+<span class="nc" id="L158">                    i++;</span>
                 } else {
-<span class="fc bfc" id="L156" title="All 2 branches covered.">                    inQuotes = !inQuotes;</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">                    inQuotes = !inQuotes;</span>
                 }
-<span class="fc bfc" id="L158" title="All 4 branches covered.">            } else if (c == ',' &amp;&amp; !inQuotes) {</span>
-<span class="fc" id="L159">                fields.add(current.toString());</span>
-<span class="fc" id="L160">                current.setLength(0);</span>
+<span class="fc bfc" id="L162" title="All 4 branches covered.">            } else if (c == ',' &amp;&amp; !inQuotes) {</span>
+<span class="fc" id="L163">                fields.add(current.toString());</span>
+<span class="fc" id="L164">                current.setLength(0);</span>
             } else {
-<span class="fc" id="L162">                current.append(c);</span>
+<span class="fc" id="L166">                current.append(c);</span>
             }
         }
-<span class="fc" id="L165">        fields.add(current.toString());</span>
+<span class="fc" id="L169">        fields.add(current.toString());</span>
 
-<span class="fc" id="L167">        return fields.toArray(new String[0]);</span>
+<span class="fc" id="L171">        return fields.toArray(new String[0]);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
