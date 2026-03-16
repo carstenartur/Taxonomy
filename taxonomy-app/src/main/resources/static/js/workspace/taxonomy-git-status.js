@@ -127,12 +127,7 @@
 
     // ── Helpers ──────────────────────────────────────────────────────
 
-    function escapeHtml(s) {
-        if (!s) return '';
-        return s.replace(/[&<>"']/g, function (c) {
-            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
-        });
-    }
+    var escapeHtml = TaxonomyUtils.escapeHtml;
 
     // Expose for other modules
     window.TaxonomyGitStatus = {

@@ -177,11 +177,7 @@
         div.innerHTML = html;
     }
 
-    function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
+    var escapeHtml = TaxonomyUtils.escapeHtml;
 
     // ── Initialization ─────────────────────────────────────────────────────────
 

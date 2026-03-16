@@ -171,9 +171,7 @@
         });
     }
 
-    function escapeHtml(str) {
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
+    var escapeHtml = TaxonomyUtils.escapeHtml;
 
     /* ── Search / filter ───────────────────────────────────────────────── */
     if (searchInput) {

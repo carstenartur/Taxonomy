@@ -8,12 +8,7 @@
 window.TaxonomyViewContext = (function () {
     'use strict';
 
-    function escapeHtml(s) {
-        if (!s) return '';
-        return s.replace(/[&<>"']/g, function (c) {
-            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
-        });
-    }
+    var escapeHtml = TaxonomyUtils.escapeHtml;
 
     /**
      * Render a ViewContext badge into a DOM container.

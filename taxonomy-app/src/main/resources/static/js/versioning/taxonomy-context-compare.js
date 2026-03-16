@@ -187,14 +187,7 @@ window.TaxonomyContextCompare = (function () {
         container.innerHTML = html;
     }
 
-    function escapeHtml(str) {
-        if (!str) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-    }
+    var escapeHtml = TaxonomyUtils.escapeHtml;
 
     return {
         showDialog: showDialog,
