@@ -74,7 +74,9 @@ jobs:
 
       - name: Generate Surefire HTML report
         if: always()
-        run: mvn surefire-report:report-only --no-transfer-progress -DskipTests
+        run: |
+          mvn surefire-report:report-only --no-transfer-progress -DskipTests
+          mvn site --no-transfer-progress -DskipTests -DgenerateReports=false -pl taxonomy-app
 
       - name: Generate badge JSON files
         if: always()
@@ -108,8 +110,8 @@ jobs:
           except Exception as e:
               print(f"Coverage badge generation failed: {e}")
               badge = {"schemaVersion": 1, "label": "coverage", "message": "unknown", "color": "lightgrey"}
-          os.makedirs('target/site/jacoco', exist_ok=True)
-          with open('target/site/jacoco/badge.json', 'w') as f:
+          os.makedirs('taxonomy-app/target/site/jacoco', exist_ok=True)
+          with open('taxonomy-app/target/site/jacoco/badge.json', 'w') as f:
               json.dump(badge, f)
 
           # --- Tests badge ---
@@ -131,8 +133,8 @@ jobs:
           except Exception as e:
               print(f"Tests badge generation failed: {e}")
               badge = {"schemaVersion": 1, "label": "tests", "message": "unknown", "color": "lightgrey"}
-          os.makedirs('target/site', exist_ok=True)
-          with open('target/site/badge.json', 'w') as f:
+          os.makedirs('taxonomy-app/target/site', exist_ok=True)
+          with open('taxonomy-app/target/site/badge.json', 'w') as f:
               json.dump(badge, f)
           EOF
 
