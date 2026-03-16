@@ -135,6 +135,104 @@ public class ConflictDetectionService {
     }
 
     /**
+     * Details about a merge or cherry-pick conflict, including the content
+     * from both sides so the UI can display a side-by-side resolution view.
+     *
+     * @param conflictType  &quot;merge&quot; or &quot;cherry-pick&quot;
+     * @param oursLabel     label for &quot;our&quot; side (e.g. target branch name)
+     * @param theirsLabel   label for &quot;their&quot; side (e.g. source branch name)
+     * @param oursContent   DSL content from the target branch HEAD
+     * @param theirsContent DSL content from the source branch HEAD (or cherry-pick commit)
+     * @param baseContent   DSL content from the common ancestor (may be null)
+     */
+<span class="nc" id="L148">    public record ConflictDetails(</span>
+            String conflictType,
+            String oursLabel,
+            String theirsLabel,
+            String oursContent,
+            String theirsContent,
+            String baseContent
+    ) {}
+
+    /**
+     * Get conflict details for a merge that would conflict.
+     *
+     * &lt;p&gt;Returns the DSL content from both sides so the UI can display
+     * a side-by-side comparison for manual resolution.
+     *
+     * @param fromBranch the source branch
+     * @param intoBranch the target branch
+     * @return conflict details, or null if no conflict detected
+     */
+    public ConflictDetails getMergeConflictDetails(String fromBranch, String intoBranch) {
+        try {
+<span class="fc" id="L169">            MergePreview preview = previewMerge(fromBranch, intoBranch);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            if (preview.canMerge()) {</span>
+<span class="fc" id="L171">                return null; // No conflict</span>
+            }
+
+            // Non-conflict failures (branch not found, errors) should not
+            // be presented as conflicts — return null so the controller
+            // responds with conflict:false and the UI shows a warning toast.
+<span class="pc bpc" id="L177" title="3 of 4 branches missed.">            if (preview.fromCommit() == null || preview.intoCommit() == null) {</span>
+<span class="fc" id="L178">                return null;</span>
+            }
+
+<span class="nc" id="L181">            String oursContent = gitRepository.getDslAtHead(intoBranch);</span>
+<span class="nc" id="L182">            String theirsContent = gitRepository.getDslAtHead(fromBranch);</span>
+
+<span class="nc" id="L184">            return new ConflictDetails(</span>
+                    &quot;merge&quot;,
+                    intoBranch,
+                    fromBranch,
+<span class="nc bnc" id="L188" title="All 2 branches missed.">                    oursContent != null ? oursContent : &quot;&quot;,</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">                    theirsContent != null ? theirsContent : &quot;&quot;,</span>
+                    null
+            );
+<span class="nc" id="L192">        } catch (Exception e) {</span>
+<span class="nc" id="L193">            log.error(&quot;Failed to get merge conflict details '{}' → '{}'&quot;, fromBranch, intoBranch, e);</span>
+<span class="nc" id="L194">            return null;</span>
+        }
+    }
+
+    /**
+     * Get conflict details for a cherry-pick that would conflict.
+     *
+     * @param commitId     the commit to cherry-pick
+     * @param targetBranch the target branch
+     * @return conflict details, or null if no conflict detected
+     */
+    public ConflictDetails getCherryPickConflictDetails(String commitId, String targetBranch) {
+        try {
+<span class="fc" id="L207">            CherryPickPreview preview = previewCherryPick(commitId, targetBranch);</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">            if (preview.canCherryPick()) {</span>
+<span class="fc" id="L209">                return null; // No conflict</span>
+            }
+
+            // Non-conflict failures (missing target branch, invalid commit)
+            // should not be presented as conflicts.
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">            if (preview.targetCommit() == null) {</span>
+<span class="fc" id="L215">                return null;</span>
+            }
+
+<span class="nc" id="L218">            String oursContent = gitRepository.getDslAtHead(targetBranch);</span>
+<span class="nc" id="L219">            String theirsContent = gitRepository.getDslAtCommit(commitId);</span>
+
+<span class="nc" id="L221">            return new ConflictDetails(</span>
+                    &quot;cherry-pick&quot;,
+                    targetBranch,
+<span class="nc" id="L224">                    &quot;commit &quot; + commitId.substring(0, Math.min(7, commitId.length())),</span>
+<span class="nc bnc" id="L225" title="All 2 branches missed.">                    oursContent != null ? oursContent : &quot;&quot;,</span>
+<span class="nc bnc" id="L226" title="All 2 branches missed.">                    theirsContent != null ? theirsContent : &quot;&quot;,</span>
+                    null
+            );
+<span class="nc" id="L229">        } catch (Exception e) {</span>
+<span class="nc" id="L230">            log.error(&quot;Failed to get cherry-pick conflict details {} → '{}'&quot;, commitId, targetBranch, e);</span>
+<span class="nc" id="L231">            return null;</span>
+        }
+    }
+
+    /**
      * Preview a cherry-pick to check for conflicts.
      *
      * @param commitId     the commit to cherry-pick
@@ -143,39 +241,39 @@ public class ConflictDetectionService {
      */
     public CherryPickPreview previewCherryPick(String commitId, String targetBranch) {
         try {
-<span class="fc" id="L146">            var repo = gitRepository.getGitRepository();</span>
-<span class="fc" id="L147">            String targetRefName = Constants.R_HEADS + targetBranch;</span>
-<span class="fc" id="L148">            Ref targetRef = repo.getRefDatabase().exactRef(targetRefName);</span>
+<span class="fc" id="L244">            var repo = gitRepository.getGitRepository();</span>
+<span class="fc" id="L245">            String targetRefName = Constants.R_HEADS + targetBranch;</span>
+<span class="fc" id="L246">            Ref targetRef = repo.getRefDatabase().exactRef(targetRefName);</span>
 
-<span class="fc bfc" id="L150" title="All 2 branches covered.">            if (targetRef == null) {</span>
-<span class="fc" id="L151">                return new CherryPickPreview(false, commitId, targetBranch, null,</span>
-<span class="fc" id="L152">                        List.of(&quot;Target branch '&quot; + targetBranch + &quot;' not found&quot;));</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">            if (targetRef == null) {</span>
+<span class="fc" id="L249">                return new CherryPickPreview(false, commitId, targetBranch, null,</span>
+<span class="fc" id="L250">                        List.of(&quot;Target branch '&quot; + targetBranch + &quot;' not found&quot;));</span>
             }
 
-<span class="fc" id="L155">            String targetCommit = targetRef.getObjectId().name();</span>
+<span class="fc" id="L253">            String targetCommit = targetRef.getObjectId().name();</span>
 
-<span class="fc" id="L157">            try (RevWalk walk = new RevWalk(repo)) {</span>
-<span class="fc" id="L158">                RevCommit pickCommit = walk.parseCommit(</span>
-<span class="fc" id="L159">                        org.eclipse.jgit.lib.ObjectId.fromString(commitId));</span>
-<span class="fc" id="L160">                RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());</span>
+<span class="fc" id="L255">            try (RevWalk walk = new RevWalk(repo)) {</span>
+<span class="fc" id="L256">                RevCommit pickCommit = walk.parseCommit(</span>
+<span class="fc" id="L257">                        org.eclipse.jgit.lib.ObjectId.fromString(commitId));</span>
+<span class="fc" id="L258">                RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());</span>
 
                 // Try three-way merge (dry run) — mirrors the merge order used
                 // in DslGitRepository.cherryPick() for consistent conflict prediction
-<span class="fc" id="L164">                ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(repo, true);</span>
-<span class="fc" id="L165">                boolean success = merger.merge(targetHead, pickCommit);</span>
+<span class="fc" id="L262">                ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(repo, true);</span>
+<span class="fc" id="L263">                boolean success = merger.merge(targetHead, pickCommit);</span>
 
-<span class="pc bpc" id="L167" title="1 of 2 branches missed.">                if (success) {</span>
-<span class="fc" id="L168">                    return new CherryPickPreview(true, commitId, targetBranch, targetCommit,</span>
-<span class="fc" id="L169">                            List.of());</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">                if (success) {</span>
+<span class="fc" id="L266">                    return new CherryPickPreview(true, commitId, targetBranch, targetCommit,</span>
+<span class="fc" id="L267">                            List.of());</span>
                 } else {
-<span class="nc" id="L171">                    return new CherryPickPreview(false, commitId, targetBranch, targetCommit,</span>
-<span class="nc" id="L172">                            List.of(&quot;Cherry-pick would result in conflicts&quot;));</span>
+<span class="nc" id="L269">                    return new CherryPickPreview(false, commitId, targetBranch, targetCommit,</span>
+<span class="nc" id="L270">                            List.of(&quot;Cherry-pick would result in conflicts&quot;));</span>
                 }
-<span class="fc" id="L174">            }</span>
-<span class="nc" id="L175">        } catch (Exception e) {</span>
-<span class="nc" id="L176">            log.error(&quot;Failed to preview cherry-pick {} → '{}'&quot;, commitId, targetBranch, e);</span>
-<span class="nc" id="L177">            return new CherryPickPreview(false, commitId, targetBranch, null,</span>
-<span class="nc" id="L178">                    List.of(&quot;Error: &quot; + e.getMessage()));</span>
+<span class="fc" id="L272">            }</span>
+<span class="nc" id="L273">        } catch (Exception e) {</span>
+<span class="nc" id="L274">            log.error(&quot;Failed to preview cherry-pick {} → '{}'&quot;, commitId, targetBranch, e);</span>
+<span class="nc" id="L275">            return new CherryPickPreview(false, commitId, targetBranch, null,</span>
+<span class="nc" id="L276">                    List.of(&quot;Error: &quot; + e.getMessage()));</span>
         }
     }
 }

@@ -469,13 +469,13 @@ public class DslGitRepository {
 <span class="fc" id="L469">            RevCommit intoCommit = walk.parseCommit(intoRef.getObjectId());</span>
 
             // Fast-forward check
-<span class="pc bpc" id="L472" title="1 of 2 branches missed.">            if (walk.isMergedInto(fromCommit, intoCommit)) {</span>
-<span class="nc" id="L473">                log.info(&quot;Already merged: '{}' is ancestor of '{}'&quot;, fromBranch, intoBranch);</span>
-<span class="nc" id="L474">                return intoCommit.name();</span>
+<span class="fc bfc" id="L472" title="All 2 branches covered.">            if (walk.isMergedInto(fromCommit, intoCommit)) {</span>
+<span class="fc" id="L473">                log.info(&quot;Already merged: '{}' is ancestor of '{}'&quot;, fromBranch, intoBranch);</span>
+<span class="fc" id="L474">                return intoCommit.name();</span>
             }
 
             // Can we fast-forward?
-<span class="pc bpc" id="L478" title="1 of 2 branches missed.">            if (walk.isMergedInto(intoCommit, fromCommit)) {</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">            if (walk.isMergedInto(intoCommit, fromCommit)) {</span>
                 // Fast-forward: just move the target ref
 <span class="fc" id="L480">                RefUpdate ru = gitRepo.updateRef(intoRefName);</span>
 <span class="fc" id="L481">                ru.setNewObjectId(fromCommit);</span>
@@ -486,34 +486,34 @@ public class DslGitRepository {
             }
 
             // Three-way merge
-<span class="nc" id="L489">            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);</span>
-<span class="nc" id="L490">            boolean success = merger.merge(intoCommit, fromCommit);</span>
+<span class="fc" id="L489">            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);</span>
+<span class="fc" id="L490">            boolean success = merger.merge(intoCommit, fromCommit);</span>
 
-<span class="nc bnc" id="L492" title="All 2 branches missed.">            if (!success) {</span>
+<span class="pc bpc" id="L492" title="1 of 2 branches missed.">            if (!success) {</span>
 <span class="nc" id="L493">                log.warn(&quot;Merge conflict: '{}' into '{}'&quot;, fromBranch, intoBranch);</span>
 <span class="nc" id="L494">                return null;</span>
             }
 
             // Create merge commit with two parents
-<span class="nc" id="L498">            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
-<span class="nc" id="L499">                CommitBuilder mergeCommit = new CommitBuilder();</span>
-<span class="nc" id="L500">                mergeCommit.setTreeId(merger.getResultTreeId());</span>
-<span class="nc" id="L501">                mergeCommit.setParentIds(intoCommit, fromCommit);</span>
-<span class="nc" id="L502">                PersonIdent ident = new PersonIdent(&quot;taxonomy&quot;, &quot;taxonomy@system&quot;);</span>
-<span class="nc" id="L503">                mergeCommit.setAuthor(ident);</span>
-<span class="nc" id="L504">                mergeCommit.setCommitter(ident);</span>
-<span class="nc" id="L505">                mergeCommit.setMessage(&quot;Merge branch '&quot; + fromBranch + &quot;' into &quot; + intoBranch);</span>
+<span class="fc" id="L498">            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
+<span class="fc" id="L499">                CommitBuilder mergeCommit = new CommitBuilder();</span>
+<span class="fc" id="L500">                mergeCommit.setTreeId(merger.getResultTreeId());</span>
+<span class="fc" id="L501">                mergeCommit.setParentIds(intoCommit, fromCommit);</span>
+<span class="fc" id="L502">                PersonIdent ident = new PersonIdent(&quot;taxonomy&quot;, &quot;taxonomy@system&quot;);</span>
+<span class="fc" id="L503">                mergeCommit.setAuthor(ident);</span>
+<span class="fc" id="L504">                mergeCommit.setCommitter(ident);</span>
+<span class="fc" id="L505">                mergeCommit.setMessage(&quot;Merge branch '&quot; + fromBranch + &quot;' into &quot; + intoBranch);</span>
 
-<span class="nc" id="L507">                ObjectId mergeCommitId = inserter.insert(mergeCommit);</span>
-<span class="nc" id="L508">                inserter.flush();</span>
+<span class="fc" id="L507">                ObjectId mergeCommitId = inserter.insert(mergeCommit);</span>
+<span class="fc" id="L508">                inserter.flush();</span>
 
-<span class="nc" id="L510">                RefUpdate ru = gitRepo.updateRef(intoRefName);</span>
-<span class="nc" id="L511">                ru.setNewObjectId(mergeCommitId);</span>
-<span class="nc" id="L512">                ru.setForceUpdate(true);</span>
-<span class="nc" id="L513">                ru.update();</span>
+<span class="fc" id="L510">                RefUpdate ru = gitRepo.updateRef(intoRefName);</span>
+<span class="fc" id="L511">                ru.setNewObjectId(mergeCommitId);</span>
+<span class="fc" id="L512">                ru.setForceUpdate(true);</span>
+<span class="fc" id="L513">                ru.update();</span>
 
-<span class="nc" id="L515">                log.info(&quot;Merged '{}' into '{}': {}&quot;, fromBranch, intoBranch, mergeCommitId.name());</span>
-<span class="nc" id="L516">                return mergeCommitId.name();</span>
+<span class="fc" id="L515">                log.info(&quot;Merged '{}' into '{}': {}&quot;, fromBranch, intoBranch, mergeCommitId.name());</span>
+<span class="fc" id="L516">                return mergeCommitId.name();</span>
             }
 <span class="pc" id="L518">        }</span>
     }
@@ -818,6 +818,42 @@ public class DslGitRepository {
      */
     public boolean isDatabaseBacked() {
 <span class="fc" id="L820">        return gitRepo instanceof HibernateRepository;</span>
+    }
+
+    /**
+     * Delete a branch from the repository.
+     *
+     * &lt;p&gt;Removes the branch reference. The underlying Git objects (commits,
+     * trees, blobs) are not garbage-collected — they remain reachable via
+     * other branches or the reflog.
+     *
+     * @param branchName the branch to delete (must not be a protected branch)
+     * @return true if the branch was deleted, false if it did not exist
+     * @throws IOException on JGit errors
+     * @throws IllegalArgumentException if the branch is protected
+     */
+    public boolean deleteBranch(String branchName) throws IOException {
+<span class="fc bfc" id="L836" title="All 6 branches covered.">        if (&quot;draft&quot;.equals(branchName) || &quot;accepted&quot;.equals(branchName) || &quot;main&quot;.equals(branchName)) {</span>
+<span class="fc" id="L837">            throw new IllegalArgumentException(&quot;Cannot delete protected branch: &quot; + branchName);</span>
+        }
+
+<span class="fc" id="L840">        String refName = Constants.R_HEADS + branchName;</span>
+<span class="fc" id="L841">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L842" title="All 2 branches covered.">        if (ref == null) {</span>
+<span class="fc" id="L843">            return false;</span>
+        }
+
+<span class="fc" id="L846">        RefUpdate ru = gitRepo.updateRef(refName);</span>
+<span class="fc" id="L847">        ru.setForceUpdate(true);</span>
+<span class="fc" id="L848">        RefUpdate.Result result = ru.delete();</span>
+<span class="pc bpc" id="L849" title="3 of 4 branches missed.">        boolean deleted = (result == RefUpdate.Result.FORCED || result == RefUpdate.Result.FAST_FORWARD);</span>
+
+<span class="pc bpc" id="L851" title="1 of 2 branches missed.">        if (deleted) {</span>
+<span class="fc" id="L852">            log.info(&quot;Deleted branch '{}'&quot;, branchName);</span>
+        } else {
+<span class="nc" id="L854">            log.warn(&quot;Failed to delete branch '{}': {}&quot;, branchName, result);</span>
+        }
+<span class="fc" id="L856">        return deleted;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

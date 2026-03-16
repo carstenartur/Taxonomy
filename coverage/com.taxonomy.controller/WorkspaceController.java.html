@@ -251,6 +251,41 @@ public class WorkspaceController {
 <span class="fc" id="L251">        return ResponseEntity.ok(result);</span>
     }
 
+    // ── Diverged resolution ─────────────────────────────────────────
+
+    @PostMapping(&quot;/resolve-diverged&quot;)
+    @Operation(summary = &quot;Resolve a diverged sync state&quot;,
+            description = &quot;Resolves a diverged state between user and shared branches. &quot; +
+                    &quot;Strategies: MERGE (attempt merge), KEEP_MINE (publish local), &quot; +
+                    &quot;TAKE_SHARED (overwrite local with shared).&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; resolveDiverged(
+            @RequestParam String strategy,
+            @RequestParam(required = false) String userBranch) {
+<span class="fc" id="L264">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L265">        String branch = resolveBranch(user, userBranch);</span>
+        try {
+<span class="fc" id="L267">            SyncIntegrationService.DivergedStrategy parsedStrategy =</span>
+<span class="fc" id="L268">                    SyncIntegrationService.DivergedStrategy.valueOf(strategy.toUpperCase());</span>
+<span class="fc" id="L269">            String message = syncIntegrationService.resolveDiverged(user, branch, parsedStrategy);</span>
+<span class="fc" id="L270">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L271">            result.put(&quot;success&quot;, true);</span>
+<span class="fc" id="L272">            result.put(&quot;strategy&quot;, parsedStrategy.name());</span>
+<span class="fc" id="L273">            result.put(&quot;branch&quot;, branch);</span>
+<span class="fc" id="L274">            result.put(&quot;message&quot;, message);</span>
+<span class="fc" id="L275">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L276">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L277">            return ResponseEntity.badRequest().body(Map.of(</span>
+                    &quot;error&quot;, &quot;Invalid strategy: &quot; + strategy,
+<span class="fc" id="L279">                    &quot;validStrategies&quot;, List.of(&quot;MERGE&quot;, &quot;KEEP_MINE&quot;, &quot;TAKE_SHARED&quot;)</span>
+            ));
+<span class="nc" id="L281">        } catch (IOException e) {</span>
+<span class="nc" id="L282">            return ResponseEntity.internalServerError().body(Map.of(</span>
+                    &quot;error&quot;, &quot;Diverged resolution failed&quot;,
+<span class="nc" id="L284">                    &quot;message&quot;, e.getMessage()</span>
+            ));
+        }
+    }
+
     // ── Projection ──────────────────────────────────────────────────
 
     @GetMapping(&quot;/projection&quot;)
@@ -258,8 +293,8 @@ public class WorkspaceController {
             description = &quot;Returns the materialization and index state for the &quot; +
                     &quot;user's workspace, including both in-memory and persisted data.&quot;)
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getProjection() {
-<span class="fc" id="L261">        String user = workspaceResolver.resolveCurrentUsername();</span>
-<span class="fc" id="L262">        return ResponseEntity.ok(workspaceProjectionService.getProjectionInfo(user));</span>
+<span class="fc" id="L296">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L297">        return ResponseEntity.ok(workspaceProjectionService.getProjectionInfo(user));</span>
     }
 
     // ── Internal helpers ────────────────────────────────────────────
@@ -269,22 +304,22 @@ public class WorkspaceController {
      * or &quot;draft&quot; as default.
      */
     private String resolveBranch(String username, String explicitBranch) {
-<span class="pc bpc" id="L272" title="1 of 4 branches missed.">        if (explicitBranch != null &amp;&amp; !explicitBranch.isBlank()) {</span>
-<span class="fc" id="L273">            return explicitBranch;</span>
+<span class="pc bpc" id="L307" title="1 of 4 branches missed.">        if (explicitBranch != null &amp;&amp; !explicitBranch.isBlank()) {</span>
+<span class="fc" id="L308">            return explicitBranch;</span>
         }
-<span class="fc" id="L275">        WorkspaceInfo info = workspaceManager.getWorkspaceInfo(username);</span>
-<span class="pc bpc" id="L276" title="2 of 4 branches missed.">        return info != null &amp;&amp; info.currentBranch() != null</span>
-<span class="fc" id="L277">                ? info.currentBranch()</span>
-<span class="nc" id="L278">                : &quot;draft&quot;;</span>
+<span class="fc" id="L310">        WorkspaceInfo info = workspaceManager.getWorkspaceInfo(username);</span>
+<span class="pc bpc" id="L311" title="2 of 4 branches missed.">        return info != null &amp;&amp; info.currentBranch() != null</span>
+<span class="fc" id="L312">                ? info.currentBranch()</span>
+<span class="nc" id="L313">                : &quot;draft&quot;;</span>
     }
 
     /**
      * Create a read-only {@link ContextRef} for comparison operations.
      */
     private ContextRef readOnlyContextRef(String branch, String commitId) {
-<span class="fc" id="L285">        return new ContextRef(</span>
-<span class="fc" id="L286">                UUID.randomUUID().toString(), branch, commitId,</span>
-<span class="fc" id="L287">                Instant.now(), ContextMode.READ_ONLY,</span>
+<span class="fc" id="L320">        return new ContextRef(</span>
+<span class="fc" id="L321">                UUID.randomUUID().toString(), branch, commitId,</span>
+<span class="fc" id="L322">                Instant.now(), ContextMode.READ_ONLY,</span>
                 null, null, null, null, null, false);
     }
 }
