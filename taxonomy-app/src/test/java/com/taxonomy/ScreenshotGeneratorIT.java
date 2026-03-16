@@ -386,7 +386,7 @@ class ScreenshotGeneratorIT {
 
     /**
      * Forces the interactive-mode checkbox OFF via direct JS property assignment and fires the
-     * {@code change} event so the taxonomy.js module-level variable is also updated.
+     * {@code change} event so the taxonomy-browse.js module-level variable is also updated.
      * Uses a JS-based wait to avoid StaleElementReferenceException from page re-renders.
      */
     private void forceNonInteractiveMode() {
@@ -1458,7 +1458,7 @@ class ScreenshotGeneratorIT {
     void captureWorkspaceUserBadge() throws IOException {
         navigateToTab("analyze");
         // The workspace badge is populated by taxonomy-workspace-sync.js
-        // and taxonomy.js; force it visible with sample content
+        // and taxonomy-browse.js; force it visible with sample content
         js("var badge = document.getElementById('workspaceUserBadge');" +
            "if (badge) {" +
            "  badge.textContent = 'admin @ draft';" +

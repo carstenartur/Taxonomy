@@ -1,25 +1,11 @@
-/* taxonomy.js – frontend logic for NATO NC3T Taxonomy Browser */
+/* taxonomy-browse.js – Tree rendering, navigation & UI for the Taxonomy Browser */
 
 (function () {
     'use strict';
 
-    let taxonomyData = [];
-    let currentScores = null;
-    let currentReasons = {};   // code → reason string
-    let currentDiscrepancies = []; // TaxonomyDiscrepancy list from analysis
-    let currentArchView = null; // latest architecture view from analysis
-    let currentView = 'list'; // 'list' | 'tabs' | 'sunburst' | 'tree' | 'decision' | 'summary'
-    let currentTreeRoot = 'BP'; // code of the taxonomy shown in tree view
-
-    // ── Interactive mode state ─────────────────────────────────────────────────
-    let interactiveMode = true;       // ON by default
-    let storedBusinessText = null;    // stored when user clicks Analyze in interactive mode
-    let evaluatedNodes = new Set();   // track which parent nodes have been evaluated
-    let lastAnalyzedText = null;      // text that was most recently analyzed successfully
-
-    // ── Proposal state ────────────────────────────────────────────────────────
-    let currentProposalFilter = 'PENDING';
-    let pendingProposalNodeCode = null; // node code for propose modal
+    var S = window.TaxonomyState;
+    // SC (scoring functions) resolved lazily — script may load before taxonomy-scoring.js
+    function SC() { return window.TaxonomyScoring || {}; }
 
     // ── Accessibility helpers (WCAG 4.1.3) ────────────────────────────────────
     function announceStatus(message) {
@@ -47,18 +33,18 @@
             }
 
             const interactiveCb = document.getElementById('interactiveMode');
-            interactiveMode = interactiveCb ? interactiveCb.checked : false;
-            if (interactiveMode) {
+            S.interactiveMode = interactiveCb ? interactiveCb.checked : false;
+            if (S.interactiveMode) {
                 // Switch to list view automatically so interactive expand/collapse works
-                if (currentView !== 'list' && currentView !== 'tabs') {
+                if (S.currentView !== 'list' && S.currentView !== 'tabs') {
                     switchView('list');
                 }
-                runInteractiveAnalysis();
+                SC().runInteractiveAnalysis();
             } else {
-                if (currentView === 'list' || currentView === 'tabs') {
-                    runStreamingAnalysis();
+                if (S.currentView === 'list' || S.currentView === 'tabs') {
+                    SC().runStreamingAnalysis();
                 } else {
-                    runAnalysis();
+                    SC().runAnalysis();
                 }
             }
         });
@@ -67,7 +53,7 @@
         const interactiveCb = document.getElementById('interactiveMode');
         if (interactiveCb) {
             interactiveCb.addEventListener('change', function () {
-                interactiveMode = interactiveCb.checked;
+                S.interactiveMode = interactiveCb.checked;
             });
         }
 
@@ -87,8 +73,8 @@
         const treeRootSelect = document.getElementById('treeRootSelect');
         if (treeRootSelect) {
             treeRootSelect.addEventListener('change', function () {
-                currentTreeRoot = this.value;
-                renderView(taxonomyData, currentScores);
+                S.currentTreeRoot = this.value;
+                renderView(S.taxonomyData, S.currentScores);
             });
         }
 
@@ -151,19 +137,19 @@
                             showStatus('danger', '❌ Import failed: ' + data.error);
                             return;
                         }
-                        currentScores = data.scores || {};
-                        currentReasons = data.reasons || {};
+                        S.currentScores = data.scores || {};
+                        S.currentReasons = data.reasons || {};
                         // Update business text field if present in the imported data
                         if (data.requirement) {
                             const btEl = document.getElementById('businessText');
                             if (btEl) { btEl.value = data.requirement; }
-                            storedBusinessText = data.requirement;
-                            lastAnalyzedText   = data.requirement;
+                            S.storedBusinessText = data.requirement;
+                            S.lastAnalyzedText   = data.requirement;
                         }
                         // Render tree with imported scores
-                        renderView(taxonomyData, currentScores);
+                        renderView(S.taxonomyData, S.currentScores);
                         updateExportGroupVisibility();
-                        const scored = Object.keys(currentScores).length;
+                        const scored = Object.keys(S.currentScores).length;
                         let msg = '✅ Loaded analysis: ' + scored + ' node(s) scored.';
                         if (data.warnings && data.warnings.length > 0) {
                             msg += ' ⚠️ ' + data.warnings.join('; ');
@@ -219,7 +205,7 @@
             if (btn) {
                 btn.addEventListener('click', function () {
                     const filter = btn.dataset.filter;
-                    currentProposalFilter = filter;
+                    S.currentProposalFilter = filter;
                     // Update active button styling
                     ['filterPending', 'filterAll', 'filterAccepted', 'filterRejected'].forEach(function (bid) {
                         const b = document.getElementById(bid);
@@ -249,8 +235,8 @@
         if (proposeSubmitBtn) {
             proposeSubmitBtn.addEventListener('click', function () {
                 const relationType = document.getElementById('proposeRelationType').value;
-                if (pendingProposalNodeCode && relationType) {
-                    proposeRelationsForNode(pendingProposalNodeCode, relationType);
+                if (S.pendingProposalNodeCode && relationType) {
+                    proposeRelationsForNode(S.pendingProposalNodeCode, relationType);
                 }
             });
         }
@@ -262,14 +248,14 @@
             businessTextEl.addEventListener('input', function () {
                 clearTimeout(staleDebounceTimer);
                 staleDebounceTimer = setTimeout(function () {
-                    const hasScores = currentScores !== null &&
-                        typeof currentScores === 'object' &&
-                        Object.keys(currentScores).length > 0;
+                    const hasScores = S.currentScores !== null &&
+                        typeof S.currentScores === 'object' &&
+                        Object.keys(S.currentScores).length > 0;
                     if (!hasScores) {
                         businessTextEl.classList.remove('stale-results');
                         return;
                     }
-                    if (lastAnalyzedText !== null && businessTextEl.value !== lastAnalyzedText) {
+                    if (S.lastAnalyzedText !== null && businessTextEl.value !== S.lastAnalyzedText) {
                         businessTextEl.classList.add('stale-results');
                         showStatus('warning', '⚠️ Business text has changed — previous results are no longer valid.');
                         const statusArea = document.getElementById('statusArea');
@@ -677,7 +663,7 @@
             .then(function (data) {
                 if (!data) return; // 503 branch already handled
                 setStartupBanner(false);
-                taxonomyData = data;
+                S.taxonomyData = data;
                 populateTreeRootSelect(data);
                 renderView(data, null);
                 // Populate Graph Explorer node suggestions
@@ -728,17 +714,17 @@
             sel.appendChild(opt);
         });
         // Ensure currentTreeRoot is valid; if not, default to first root
-        if (data.some(r => r.code === currentTreeRoot)) {
-            sel.value = currentTreeRoot;
+        if (data.some(r => r.code === S.currentTreeRoot)) {
+            sel.value = S.currentTreeRoot;
         } else {
-            currentTreeRoot = data[0].code;
-            sel.value = currentTreeRoot;
+            S.currentTreeRoot = data[0].code;
+            sel.value = S.currentTreeRoot;
         }
     }
 
     // ── View switching ────────────────────────────────────────────────────────
     function switchView(view) {
-        currentView = view;
+        S.currentView = view;
 
         // Update button active states
         const viewIds = { list: 'viewList', tabs: 'viewTabs', sunburst: 'viewSunburst', tree: 'viewTree', decision: 'viewDecision', summary: 'viewSummary' };
@@ -768,22 +754,22 @@
             if (btn) { btn.disabled = !svgViewActive; }
         });
 
-        renderView(taxonomyData, currentScores);
+        renderView(S.taxonomyData, S.currentScores);
     }
 
     // ── Master render dispatcher ──────────────────────────────────────────────
     function renderView(data, scores) {
         if (!data || data.length === 0) { return; }
         document.getElementById('taxonomyTree').removeAttribute('data-view-rendered');
-        switch (currentView) {
+        switch (S.currentView) {
             case 'list':
                 renderTree(data, scores);
-                if (scores) { expandMatched(scores); }
+                if (scores) { SC().expandMatched(scores); }
                 document.getElementById('taxonomyTree').setAttribute('data-view-rendered', 'list');
                 break;
             case 'tabs':
                 renderTabsView(data, scores);
-                if (scores) { expandMatched(scores); }
+                if (scores) { SC().expandMatched(scores); }
                 document.getElementById('taxonomyTree').setAttribute('data-view-rendered', 'tabs');
                 break;
             case 'sunburst':
@@ -794,7 +780,7 @@
                 break;
             case 'tree':
                 if (window.TaxonomyViews) {
-                    const treeRoot = data.find(r => r.code === currentTreeRoot) || data[0];
+                    const treeRoot = data.find(r => r.code === S.currentTreeRoot) || data[0];
                     const treeContainer = document.getElementById('taxonomyTree');
                     const canUseCanvas = window.TaxonomyViews.countNodes
                         && window.TaxonomyViews.renderTreeCanvas
@@ -813,7 +799,7 @@
                 }
                 break;
             case 'summary':
-                renderSummaryView(data, scores);
+                SC().renderSummaryView(data, scores);
                 break;
         }
         updateExportGroupVisibility();
@@ -824,20 +810,20 @@
         const exportGroup = document.getElementById('exportGroup');
         const exportHint = document.getElementById('exportHint');
         if (!exportGroup) { return; }
-        const hasScores = currentScores && Object.values(currentScores).some(v => v > 0);
+        const hasScores = S.currentScores && Object.values(S.currentScores).some(v => v > 0);
         exportGroup.style.display = hasScores ? '' : 'none';
         if (exportHint) {
             exportHint.classList.toggle('d-none', hasScores);
         }
         // Share scores with other modules (e.g. taxonomy-analysis.js)
-        window._taxonomyCurrentScores = currentScores;
+        window._taxonomyCurrentScores = S.currentScores;
     }
 
     // ── Export handler ────────────────────────────────────────────────────────
     function handleExport(btnId) {
         if (btnId === 'exportCsv') {
             if (window.TaxonomyExport) {
-                window.TaxonomyExport.exportCsv(currentScores, taxonomyData);
+                window.TaxonomyExport.exportCsv(S.currentScores, S.taxonomyData);
             }
             return;
         }
@@ -878,7 +864,7 @@
         if (btnId === 'exportJson') {
             if (window.TaxonomyExport) {
                 var bt = document.getElementById('businessText');
-                window.TaxonomyExport.exportJson(currentScores, currentReasons, bt ? bt.value : '', null);
+                window.TaxonomyExport.exportJson(S.currentScores, S.currentReasons, bt ? bt.value : '', null);
             }
             return;
         }
@@ -891,13 +877,13 @@
         }
         if (btnId === 'exportDot') {
             if (window.TaxonomyExport) {
-                window.TaxonomyExport.exportDot(currentScores, taxonomyData);
+                window.TaxonomyExport.exportDot(S.currentScores, S.taxonomyData);
             }
             return;
         }
         if (btnId === 'exportMermaidTree') {
             if (window.TaxonomyExport) {
-                window.TaxonomyExport.exportMermaidTree(currentScores, taxonomyData);
+                window.TaxonomyExport.exportMermaidTree(S.currentScores, S.taxonomyData);
             }
             return;
         }
@@ -911,7 +897,7 @@
             fetch('/api/report/' + format, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ scores: currentScores, businessText: businessText, minScore: 20 })
+                body: JSON.stringify({ scores: S.currentScores, businessText: businessText, minScore: 20 })
             })
             .then(function (resp) {
                 if (!resp.ok) throw new Error('Report generation failed');
@@ -1098,7 +1084,7 @@
     function buildNodeEl(node, scores) {
         const hasChildren = node.children && node.children.length > 0;
         const pct = scores ? (scores[node.code] !== undefined ? scores[node.code] : null) : null;
-        const reason = currentReasons ? (currentReasons[node.code] || null) : null;
+        const reason = S.currentReasons ? (S.currentReasons[node.code] || null) : null;
 
         const wrapper = document.createElement('div');
         wrapper.className = 'tax-node tax-level-' + node.level;
@@ -1199,14 +1185,14 @@
         }
 
         // Leaf justification button (leaf node with score > 0)
-        if (!hasChildren && pct !== null && pct > 0 && storedBusinessText) {
+        if (!hasChildren && pct !== null && pct > 0 && S.storedBusinessText) {
             const justifyBtn = document.createElement('button');
             justifyBtn.className = 'btn btn-sm btn-outline-info tax-justify-btn';
             justifyBtn.textContent = '📋 Request Justification';
             justifyBtn.dataset.code = node.code;
             justifyBtn.addEventListener('click', function (e) {
                 e.stopPropagation();
-                requestLeafJustification(node.code, justifyBtn);
+                SC().requestLeafJustification(node.code, justifyBtn);
             });
             wrapper.appendChild(justifyBtn);
         }
@@ -1220,7 +1206,7 @@
         proposeBtn.dataset.code = node.code;
         proposeBtn.addEventListener('click', function (e) {
             e.stopPropagation();
-            pendingProposalNodeCode = node.code;
+            S.pendingProposalNodeCode = node.code;
             const codeEl = document.getElementById('proposeNodeCode');
             if (codeEl) { codeEl.textContent = node.code + ' — ' + node.name; }
             const modal = document.getElementById('proposeRelationsModal');
@@ -1268,10 +1254,10 @@
         if (!children) return;
         const isHidden = children.style.display === 'none';
 
-        if (isHidden && interactiveMode && storedBusinessText) {
+        if (isHidden && S.interactiveMode && S.storedBusinessText) {
             const code = wrapper.dataset.code;
-            if (!evaluatedNodes.has(code)) {
-                evaluatedNodes.add(code);
+            if (!S.evaluatedNodes.has(code)) {
+                S.evaluatedNodes.add(code);
                 evaluateNodeChildren(code, wrapper, toggleEl);
                 return; // don't toggle yet — wait for API response
             }
@@ -1286,12 +1272,12 @@
     function evaluateNodeChildren(parentCode, wrapper, toggle) {
         wrapper.classList.add('tax-evaluating');
         console.log('[Taxonomy] evaluateNodeChildren: parentCode=' + parentCode
-            + ', businessText=' + (storedBusinessText ? storedBusinessText.substring(0, 80) : ''));
+            + ', businessText=' + (S.storedBusinessText ? S.storedBusinessText.substring(0, 80) : ''));
 
-        const parentScore = (currentScores && currentScores[parentCode] != null)
-            ? currentScores[parentCode] : 100;
+        const parentScore = (S.currentScores && S.currentScores[parentCode] != null)
+            ? S.currentScores[parentCode] : 100;
         fetch('/api/analyze-node?parentCode=' + encodeURIComponent(parentCode)
-              + '&businessText=' + encodeURIComponent(storedBusinessText)
+              + '&businessText=' + encodeURIComponent(S.storedBusinessText)
               + '&parentScore=' + encodeURIComponent(parentScore))
             .then(r => {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1312,10 +1298,10 @@
                 }
 
                 // Update global reasons
-                Object.assign(currentReasons, reasons);
+                Object.assign(S.currentReasons, reasons);
 
                 // Append entry to LLM communication log
-                appendLlmLogEntry(parentCode, scores, result);
+                SC().appendLlmLogEntry(parentCode, scores, result);
 
                 // Apply scores to children
                 Object.entries(scores).forEach(([code, pct]) => {
@@ -1362,7 +1348,7 @@
                         }
 
                         // Add justify button for leaf nodes with score > 0
-                        if (!grandchildren && pct > 0 && storedBusinessText) {
+                        if (!grandchildren && pct > 0 && S.storedBusinessText) {
                             let justifyBtn = childEl.querySelector('.tax-justify-btn');
                             if (!justifyBtn) {
                                 justifyBtn = document.createElement('button');
@@ -1371,7 +1357,7 @@
                                 justifyBtn.dataset.code = code;
                                 justifyBtn.addEventListener('click', function (e) {
                                     e.stopPropagation();
-                                    requestLeafJustification(code, justifyBtn);
+                                    SC().requestLeafJustification(code, justifyBtn);
                                 });
                                 childEl.appendChild(justifyBtn);
                             }
@@ -1389,9 +1375,9 @@
                                 if (score !== null) {
                                     var val = parseInt(score, 10);
                                     if (!isNaN(val) && val >= 0 && val <= 100) {
-                                        currentScores[code] = val;
-                                        currentReasons[code] = 'Manually assigned';
-                                        applyScoreToNode(code, val, 'Manually assigned');
+                                        S.currentScores[code] = val;
+                                        S.currentReasons[code] = 'Manually assigned';
+                                        SC().applyScoreToNode(code, val, 'Manually assigned');
                                         updateExportGroupVisibility();
                                     }
                                 }
@@ -1409,8 +1395,8 @@
                 }
 
                 // Update currentScores
-                if (!currentScores) { currentScores = {}; }
-                Object.assign(currentScores, scores);
+                if (!S.currentScores) { S.currentScores = {}; }
+                Object.assign(S.currentScores, scores);
                 updateExportGroupVisibility();
 
                 // Log to console
@@ -1419,7 +1405,7 @@
             })
             .catch(err => {
                 wrapper.classList.remove('tax-evaluating');
-                evaluatedNodes.delete(parentCode); // allow retry
+                S.evaluatedNodes.delete(parentCode); // allow retry
                 console.error('[Taxonomy] Failed to evaluate', parentCode, err);
                 showStatus('danger', 'Failed to evaluate ' + parentCode + ': ' + err.message);
                 // Still expand the node (without scores)
@@ -1429,55 +1415,6 @@
                     toggle.textContent = '▼';
                 }
             });
-    }
-
-    /** Requests a leaf-node justification from the server and shows it in the UI. */
-    function requestLeafJustification(nodeCode, btnEl) {
-        if (!storedBusinessText) {
-            showStatus('warning', 'No business text stored. Please run an analysis first.');
-            return;
-        }
-        const originalText = btnEl.textContent;
-        btnEl.disabled = true;
-        btnEl.textContent = '⏳ Generating…';
-
-        fetch('/api/justify-leaf', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                nodeCode: nodeCode,
-                businessText: storedBusinessText,
-                scores: currentScores || {},
-                reasons: currentReasons || {}
-            })
-        })
-            .then(r => {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(data => {
-                btnEl.disabled = false;
-                btnEl.textContent = originalText;
-                showLeafJustificationModal(nodeCode, data.justification || '(no justification returned)');
-            })
-            .catch(err => {
-                btnEl.disabled = false;
-                btnEl.textContent = originalText;
-                console.error('[Taxonomy] Failed to get leaf justification for', nodeCode, err);
-                showStatus('danger', 'Failed to get justification for ' + nodeCode + ': ' + err.message);
-            });
-    }
-
-    /** Displays the leaf justification in the modal. */
-    function showLeafJustificationModal(nodeCode, justification) {
-        const modal = document.getElementById('leafJustificationModal');
-        const titleEl = document.getElementById('leafJustificationModalTitle');
-        const bodyEl = document.getElementById('leafJustificationModalBody');
-        if (!modal || !titleEl || !bodyEl) return;
-        titleEl.textContent = '📋 Justification for ' + nodeCode;
-        bodyEl.textContent = justification;
-        const bsModal = new bootstrap.Modal(modal);
-        bsModal.show();
     }
 
     function expandAll() {
@@ -1506,854 +1443,7 @@
         });
     }
 
-    // ── Analysis ──────────────────────────────────────────────────────────────
-    function runAnalysis() {
-        const text = document.getElementById('businessText').value.trim();
-        if (!text) {
-            showStatus('warning', 'Please enter a business requirement text before analyzing.');
-            return;
-        }
-
-        console.log('[Taxonomy] Starting analysis with text:', text.substring(0, 100) + '...');
-        const analysisStart = new Date();
-
-        setAnalyzing(true);
-        clearStatus();
-        clearAnalysisLog();
-        document.getElementById('businessText').classList.remove('stale-results');
-
-        var providerSelect = document.getElementById('providerSelect');
-        var provider = providerSelect ? providerSelect.value : '';
-
-        var requestBody = {
-            businessText: text,
-            includeArchitectureView: document.getElementById('includeArchitectureView').checked
-        };
-        if (provider && provider !== 'MANUAL') {
-            requestBody.provider = provider;
-        }
-
-        fetch('/api/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
-        })
-            .then(r => {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(result => {
-                setAnalyzing(false);
-                taxonomyData = result.tree;
-                currentScores = result.scores;
-                currentDiscrepancies = result.discrepancies || [];
-                lastAnalyzedText = text;
-                renderView(taxonomyData, currentScores);
-
-                console.log('[Taxonomy] Analysis result:', result);
-                console.log('[Taxonomy] Scores:', result.scores);
-                const matchedEntries = Object.entries(result.scores).filter(([k, v]) => v > 0);
-                console.log('[Taxonomy] Matched nodes:', matchedEntries);
-
-                const matchedCount = Object.values(result.scores).filter(v => v > 0).length;
-
-                if (result.status === 'SUCCESS') {
-                    if (matchedCount === 0) {
-                        showStatus('warning',
-                            '⚠️ Analysis returned 0 matches. This may indicate the LLM API key is not configured or the LLM returned empty results. Check the server logs for details.');
-                    } else {
-                        showStatus('success',
-                            '✅ Analysis complete. ' + matchedCount + ' node(s) matched.');
-                    }
-                } else if (result.status === 'PARTIAL') {
-                    showStatus('warning',
-                        '⚠️ Partial results — ' + (result.errorMessage || 'Analysis incomplete.') +
-                        ' ' + matchedCount + ' node(s) matched so far.');
-                } else if (result.status === 'ERROR') {
-                    showStatus('danger',
-                        '❌ Analysis failed: ' + (result.errorMessage || 'Unknown error.'));
-                } else {
-                    if (matchedCount === 0) {
-                        showStatus('warning',
-                            '⚠️ Analysis returned 0 matches. This may indicate the LLM API key is not configured or the LLM returned empty results. Check the server logs for details.');
-                    } else {
-                        showStatus('success',
-                            '✅ Analysis complete. ' + matchedCount + ' node(s) matched.');
-                    }
-                }
-
-                if (result.warnings && result.warnings.length > 0) {
-                    const warningList = result.warnings
-                        .map(w => '<li>' + escapeHtml(w) + '</li>')
-                        .join('');
-                    document.getElementById('statusArea').innerHTML +=
-                        '<ul class="mb-0 mt-1 ps-3" style="font-size:0.9em">' + warningList + '</ul>';
-                }
-
-                // Update analysis log panel
-                updateAnalysisLog({
-                    timestamp: analysisStart,
-                    totalNodes: Object.keys(result.scores).length,
-                    matchedEntries: matchedEntries,
-                    warnings: result.warnings || [],
-                    status: result.status
-                });
-
-                // Render architecture view if present
-                renderArchitectureView(result.architectureView);
-                // Render suggested relationships from provisional relations
-                renderSuggestedRelations(result.provisionalRelations);
-
-                // Render ViewContext provenance info
-                if (window.TaxonomyViewContext) {
-                    window.TaxonomyViewContext.renderFromResponse('analyzeViewContext', result);
-                }
-
-                // Store architecture view and show summary button
-                if (result.architectureView) {
-                    currentArchView = result.architectureView;
-                    var summaryBtn = document.getElementById('viewSummary');
-                    if (summaryBtn) summaryBtn.style.display = '';
-                    // Auto-switch to summary view
-                    switchView('summary');
-                    // Add quick action to navigate to Architecture tab
-                    var statusArea = document.getElementById('statusArea');
-                    if (statusArea && window.navigateToPage) {
-                        var archLink = document.createElement('div');
-                        archLink.className = 'mt-2';
-                        var archBtn = document.createElement('button');
-                        archBtn.className = 'btn btn-sm btn-outline-primary';
-                        archBtn.textContent = '\uD83C\uDFDB\uFE0F View Architecture \u2192';
-                        archBtn.addEventListener('click', function () {
-                            window.navigateToPage('architecture');
-                        });
-                        archLink.appendChild(archBtn);
-                        statusArea.appendChild(archLink);
-                    }
-                }
-            })
-            .catch(err => {
-                setAnalyzing(false);
-                showStatus('danger', 'Analysis failed: ' + err.message);
-                updateAnalysisLog({
-                    timestamp: analysisStart,
-                    totalNodes: 0,
-                    matchedEntries: [],
-                    warnings: ['Error: ' + err.message],
-                    status: 'ERROR'
-                });
-            });
-    }
-
-    function clearAnalysisLog() {
-        const log = document.getElementById('analysisLog');
-        if (log) { log.style.display = 'none'; }
-        const logContent = document.getElementById('analysisLogContent');
-        if (logContent) { logContent.innerHTML = ''; }
-        // Also hide architecture view
-        const archPanel = document.getElementById('architectureViewPanel');
-        if (archPanel) { archPanel.style.display = 'none'; }
-        // Also hide suggested relations
-        const sugPanel = document.getElementById('suggestedRelationsPanel');
-        if (sugPanel) { sugPanel.style.display = 'none'; }
-    }
-
-    function renderArchitectureView(view) {
-        const panel = document.getElementById('architectureViewPanel');
-        const content = document.getElementById('architectureViewContent');
-        const placeholder = document.getElementById('architecturePlaceholder');
-        if (!panel || !content) return;
-
-        if (!view) {
-            panel.style.display = 'none';
-            if (placeholder) { placeholder.style.display = ''; }
-            return;
-        }
-
-        let html = '';
-
-        // Notes
-        if (view.notes && view.notes.length > 0) {
-            html += '<div class="alert alert-info py-1 px-2 small mb-2">' +
-                view.notes.map(n => escapeHtml(n)).join('<br>') + '</div>';
-        }
-
-        // Anchors summary
-        if (view.anchors && view.anchors.length > 0) {
-            html += '<h6 class="mb-1">Anchors</h6>';
-            html += '<div class="mb-2 small">';
-            view.anchors.forEach(a => {
-                html += '<span class="badge bg-success me-1">' +
-                    escapeHtml(a.nodeCode) + ' (' + a.directScore + '%) — ' +
-                    escapeHtml(a.reason) + '</span>';
-            });
-            html += '</div>';
-        }
-
-        // Elements table
-        if (view.includedElements && view.includedElements.length > 0) {
-            html += '<h6 class="mb-1">Included Elements</h6>';
-            html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
-            html += '<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead><tbody>';
-            view.includedElements.forEach(e => {
-                const rowClass = e.anchor ? 'table-success' : '';
-                html += '<tr class="' + rowClass + '">' +
-                    '<td>' + escapeHtml(e.nodeCode) + '</td>' +
-                    '<td>' + escapeHtml(e.title || '') + '</td>' +
-                    '<td>' + escapeHtml(e.taxonomySheet || '') + '</td>' +
-                    '<td>' + (e.relevance * 100).toFixed(1) + '%</td>' +
-                    '<td>' + e.hopDistance + '</td>' +
-                    '<td>' + (e.anchor ? '✓' : '') + '</td>' +
-                    '<td>' + escapeHtml(e.includedBecause || '') + '</td>' +
-                    '</tr>';
-            });
-            html += '</tbody></table></div>';
-        }
-
-        // Relationships table
-        if (view.includedRelationships && view.includedRelationships.length > 0) {
-            html += '<h6 class="mb-1">Included Relationships</h6>';
-            html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
-            html += '<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Relevance</th><th>Hops</th><th>Reason</th></tr></thead><tbody>';
-            view.includedRelationships.forEach(r => {
-                html += '<tr>' +
-                    '<td>' + escapeHtml(r.sourceCode) + '</td>' +
-                    '<td>→</td>' +
-                    '<td>' + escapeHtml(r.targetCode) + '</td>' +
-                    '<td>' + escapeHtml(r.relationType) + '</td>' +
-                    '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
-                    '<td>' + r.hopDistance + '</td>' +
-                    '<td>' + escapeHtml(r.includedBecause || '') + '</td>' +
-                    '</tr>';
-            });
-            html += '</tbody></table></div>';
-        }
-
-        if (!html) {
-            html = '<p class="text-muted small mb-0">Architecture view is empty.</p>';
-        }
-
-        content.innerHTML = html;
-        panel.style.display = '';
-        if (placeholder) { placeholder.style.display = 'none'; }
-    }
-
-    /**
-     * Renders the Suggested Relationships panel from provisional relation hypotheses.
-     */
-    function renderSuggestedRelations(provisionalRelations) {
-        var panel = document.getElementById('suggestedRelationsPanel');
-        var content = document.getElementById('suggestedRelationsContent');
-        var badge = document.getElementById('suggestedRelationsBadge');
-        if (!panel || !content) return;
-
-        if (!provisionalRelations || provisionalRelations.length === 0) {
-            panel.style.display = 'none';
-            return;
-        }
-
-        if (badge) badge.textContent = provisionalRelations.length;
-
-        var html = '';
-        html += '<div class="d-flex justify-content-between align-items-center mb-2">';
-        html += '<small class="text-muted">AI-generated relationship suggestions based on analysis scores</small>';
-        html += '<button class="btn btn-sm btn-outline-success" onclick="window._acceptAllHighConfidence()" title="Accept all suggestions with confidence ≥ 80%" aria-label="Accept all suggestions with confidence 80% or higher">✅ Accept all ≥80%</button>';
-        html += '</div>';
-        html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
-        html += '<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Confidence</th><th>Reasoning</th><th>Actions</th></tr></thead><tbody>';
-
-        provisionalRelations.forEach(function (h, idx) {
-            var confPct = (h.confidence * 100).toFixed(0);
-            var confClass = h.confidence >= 0.8 ? 'text-success fw-bold' : (h.confidence >= 0.5 ? 'text-warning' : 'text-danger');
-            html += '<tr id="suggested-row-' + idx + '">' +
-                '<td>' + escapeHtml(h.sourceCode) + (h.sourceName ? '<br><small class="text-muted">' + escapeHtml(h.sourceName) + '</small>' : '') + '</td>' +
-                '<td>→</td>' +
-                '<td>' + escapeHtml(h.targetCode) + (h.targetName ? '<br><small class="text-muted">' + escapeHtml(h.targetName) + '</small>' : '') + '</td>' +
-                '<td><span class="badge bg-secondary">' + escapeHtml(h.relationType) + '</span></td>' +
-                '<td class="' + confClass + '">' + confPct + '%</td>' +
-                '<td><small>' + escapeHtml(h.reasoning || '') + '</small></td>' +
-                '<td class="text-nowrap">' +
-                '<button class="btn btn-sm btn-outline-success me-1" onclick="window._acceptHypothesis(' + idx + ')" title="Accept permanently" aria-label="Accept relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">✅</button>' +
-                '<button class="btn btn-sm btn-outline-info me-1" onclick="window._applyForSession(' + idx + ')" title="Apply for this analysis only" aria-label="Apply relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + ' for this session">📌</button>' +
-                '<button class="btn btn-sm btn-outline-danger" onclick="window._rejectHypothesis(' + idx + ')" title="Dismiss" aria-label="Dismiss relationship ' + escapeHtml(h.sourceCode) + ' to ' + escapeHtml(h.targetCode) + '">❌</button>' +
-                '</td></tr>';
-        });
-
-        html += '</tbody></table></div>';
-        content.innerHTML = html;
-        panel.style.display = '';
-
-        // Store for action handlers
-        window._currentProvisionalRelations = provisionalRelations;
-    }
-
-    /**
-     * Accept a single hypothesis: create proposal and auto-accept.
-     */
-    window._acceptHypothesis = function (idx) {
-        var h = window._currentProvisionalRelations && window._currentProvisionalRelations[idx];
-        if (!h) return;
-        var row = document.getElementById('suggested-row-' + idx);
-        if (row) row.style.opacity = '0.5';
-
-        fetch('/api/proposals/from-hypothesis', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                sourceCode: h.sourceCode,
-                targetCode: h.targetCode,
-                relationType: h.relationType,
-                confidence: h.confidence,
-                rationale: h.reasoning
-            })
-        })
-        .then(function (r) {
-            if (r.status === 409) {
-                // Proposal already exists, mark as already processed
-                if (row) { row.classList.add('table-info'); row.style.opacity = '1'; }
-                var actions = row && row.querySelector('td:last-child');
-                if (actions) actions.innerHTML = '<span class="badge bg-info">Already exists</span>';
-                showStatus('info', 'ℹ️ Proposal already exists for ' + h.sourceCode + ' → ' + h.targetCode);
-                return null;
-            }
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
-        .then(function (proposal) {
-            if (proposal === null) return; // already handled (409)
-            if (proposal && proposal.id) {
-                // Auto-accept the created proposal
-                return fetch('/api/proposals/' + proposal.id + '/accept', { method: 'POST' });
-            }
-        })
-        .then(function () {
-            if (row) { row.classList.add('table-success'); row.style.opacity = '1'; }
-            var actions = row && row.querySelector('td:last-child');
-            if (actions) actions.innerHTML = '<span class="badge bg-success">Accepted</span>';
-            showStatus('success', '✅ Relationship accepted: ' + h.sourceCode + ' → ' + h.targetCode);
-        })
-        .catch(function (err) {
-            if (row) row.style.opacity = '1';
-            showStatus('danger', '❌ Failed to accept: ' + err.message);
-        });
-    };
-
-    /**
-     * Dismiss a hypothesis (just hides the row — no server action needed).
-     */
-    window._rejectHypothesis = function (idx) {
-        var row = document.getElementById('suggested-row-' + idx);
-        if (row) { row.classList.add('table-danger'); row.style.opacity = '0.4'; }
-        var actions = row && row.querySelector('td:last-child');
-        if (actions) actions.innerHTML = '<span class="badge bg-secondary">Dismissed</span>';
-    };
-
-    /**
-     * Apply a hypothesis for the current analysis session only.
-     * Marks the hypothesis as "applied in current analysis" without permanently
-     * accepting it. The relationship is used in the current Architecture View
-     * and exports but is not persisted as a TaxonomyRelation.
-     */
-    window._applyForSession = function (idx) {
-        var h = window._currentProvisionalRelations && window._currentProvisionalRelations[idx];
-        if (!h) return;
-        var row = document.getElementById('suggested-row-' + idx);
-
-        // Mark as applied in current analysis via API
-        if (h.hypothesisId) {
-            fetch('/api/dsl/hypotheses/' + h.hypothesisId + '/apply-session', { method: 'POST' })
-                .catch(function () { /* best effort */ });
-        }
-
-        // Mark in UI
-        if (row) { row.classList.add('table-info'); }
-        var actions = row && row.querySelector('td:last-child');
-        if (actions) actions.innerHTML = '<span class="badge bg-info">📌 Session only</span>';
-        h.appliedInCurrentAnalysis = true;
-        showStatus('info', '📌 Applied for this session: ' + h.sourceCode + ' → ' + h.targetCode);
-    };
-
-    /**
-     * Accept all hypotheses with confidence >= 80%.
-     */
-    window._acceptAllHighConfidence = function () {
-        var relations = window._currentProvisionalRelations;
-        if (!relations) return;
-        relations.forEach(function (h, idx) {
-            if (h.confidence >= 0.8) {
-                window._acceptHypothesis(idx);
-            }
-        });
-    };
-
-    // ── Architecture Summary View ─────────────────────────────────────────────
-    var LAYER_CONFIG = {
-        'Capabilities':           { order: 1, cls: 'layer-cap',  icon: '🔵', label: 'Capabilities' },
-        'Business Processes':     { order: 2, cls: 'layer-proc', icon: '🟢', label: 'Business Processes' },
-        'Business Roles':         { order: 2, cls: 'layer-proc', icon: '🟢', label: 'Business Roles' },
-        'Services':               { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'Services' },
-        'COI Services':           { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'COI Services' },
-        'Core Services':          { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'Core Services' },
-        'Applications':           { order: 4, cls: 'layer-app',  icon: '🟣', label: 'Applications' },
-        'User Applications':      { order: 4, cls: 'layer-app',  icon: '🟣', label: 'User Applications' },
-        'Information Products':   { order: 5, cls: 'layer-info', icon: '🔷', label: 'Information Products' },
-        'Communications Services':{ order: 6, cls: 'layer-comm', icon: '🔴', label: 'Communications Services' }
-    };
-
-    function renderSummaryView(data, scores) {
-        var container = document.getElementById('taxonomyTree');
-        if (!container) return;
-
-        var view = currentArchView;
-        if (!view || !view.includedElements || view.includedElements.length === 0) {
-            container.innerHTML = '<div class="summary-view"><p class="text-muted">No architecture view available. Enable "🏗️ Architecture View" checkbox and run an analysis first.</p></div>';
-            return;
-        }
-
-        var bt = document.getElementById('businessText');
-        var requirement = bt ? bt.value.trim() : '';
-
-        // Group elements by taxonomy sheet
-        var groups = {};
-        view.includedElements.forEach(function (el) {
-            var sheet = el.taxonomySheet || 'Unknown';
-            if (!groups[sheet]) groups[sheet] = [];
-            groups[sheet].push(el);
-        });
-
-        // Sort groups by layer order
-        var sortedSheets = Object.keys(groups).sort(function (a, b) {
-            var oa = LAYER_CONFIG[a] ? LAYER_CONFIG[a].order : 99;
-            var ob = LAYER_CONFIG[b] ? LAYER_CONFIG[b].order : 99;
-            return oa - ob;
-        });
-
-        // Collect relationship types between layers for arrow labels
-        var layerRelations = {};
-        if (view.includedRelationships) {
-            view.includedRelationships.forEach(function (r) {
-                var srcSheet = null, tgtSheet = null;
-                view.includedElements.forEach(function (el) {
-                    if (el.nodeCode === r.sourceCode) srcSheet = el.taxonomySheet;
-                    if (el.nodeCode === r.targetCode) tgtSheet = el.taxonomySheet;
-                });
-                if (srcSheet && tgtSheet && srcSheet !== tgtSheet) {
-                    var key = srcSheet + '→' + tgtSheet;
-                    if (!layerRelations[key]) layerRelations[key] = new Set();
-                    layerRelations[key].add(r.relationType);
-                }
-            });
-        }
-
-        var html = '<div class="summary-view">';
-        html += '<div class="summary-header">📋 Architecture Summary</div>';
-        if (requirement) {
-            html += '<div class="summary-requirement">"' + escapeHtml(requirement.substring(0, 200)) +
-                (requirement.length > 200 ? '…' : '') + '"</div>';
-        }
-
-        for (var i = 0; i < sortedSheets.length; i++) {
-            var sheet = sortedSheets[i];
-            var cfg = LAYER_CONFIG[sheet] || { order: 99, cls: '', icon: '⬜', label: sheet };
-            var elements = groups[sheet];
-
-            // Arrow between groups
-            if (i > 0) {
-                var prevSheet = sortedSheets[i - 1];
-                var key = prevSheet + '→' + sheet;
-                var rKey = sheet + '→' + prevSheet;
-                var relTypes = layerRelations[key] || layerRelations[rKey] || new Set();
-                var arrowLabel = relTypes.size > 0 ? Array.from(relTypes).join(', ') : '';
-                html += '<div class="summary-arrow">│<br>';
-                if (arrowLabel) html += '<span class="arrow-label">' + escapeHtml(arrowLabel) + '</span><br>';
-                html += '▼</div>';
-            }
-
-            html += '<div class="summary-layer ' + cfg.cls + '">';
-            html += '<div class="summary-layer-title">' + cfg.icon + ' ' + escapeHtml(cfg.label) +
-                ' <span class="badge bg-secondary" style="font-size:0.7rem;">' + elements.length + '</span></div>';
-
-            elements.sort(function (a, b) { return b.relevance - a.relevance; });
-            elements.forEach(function (el) {
-                var pct = (el.relevance * 100).toFixed(0);
-                html += '<span class="summary-layer-element" data-code="' + escapeHtml(el.nodeCode) +
-                    '" title="' + escapeHtml(el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '')) + '">';
-                html += escapeHtml(el.nodeCode);
-                if (el.title) html += ' ' + escapeHtml(el.title.substring(0, 30));
-                html += ' <span class="summary-pct">[' + pct + '%]</span>';
-                if (el.anchor) html += ' ★';
-                html += '</span>';
-            });
-
-            html += '</div>';
-        }
-
-        // Stats footer
-        var anchorCount = view.anchors ? view.anchors.length : 0;
-        var elemCount = view.includedElements ? view.includedElements.length : 0;
-        var relCount = view.includedRelationships ? view.includedRelationships.length : 0;
-        html += '<div class="summary-stats">';
-        html += anchorCount + ' Anchors · ' + elemCount + ' Elements · ' + relCount + ' Relations';
-        html += ' · ' + sortedSheets.length + ' Layers';
-        html += '</div>';
-        html += '</div>';
-
-        container.innerHTML = html;
-
-        // Click handler: navigate to node in list view
-        container.querySelectorAll('.summary-layer-element').forEach(function (el) {
-            el.addEventListener('click', function () {
-                var code = this.dataset.code;
-                if (code) {
-                    switchView('list');
-                    setTimeout(function () {
-                        var nodeEl = document.querySelector('[data-node-code="' + code + '"]');
-                        if (nodeEl) {
-                            nodeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            nodeEl.classList.add('search-highlight');
-                            setTimeout(function () { nodeEl.classList.remove('search-highlight'); }, 2000);
-                        }
-                    }, 200);
-                }
-            });
-        });
-    }
-
-    function updateAnalysisLog(info) {
-        const logEl = document.getElementById('analysisLog');
-        const logContent = document.getElementById('analysisLogContent');
-        if (!logEl || !logContent) { return; }
-
-        const timeStr = info.timestamp.toLocaleTimeString();
-        const matchedList = info.matchedEntries.length > 0
-            ? info.matchedEntries.map(([k, v]) => escapeHtml(k) + ': ' + v + '%').join(', ')
-            : '(none)';
-        const warnHtml = info.warnings.length > 0
-            ? '<div class="text-warning mt-1"><strong>Warnings:</strong><ul class="mb-0 ps-3">' +
-              info.warnings.map(w => '<li>' + escapeHtml(w) + '</li>').join('') + '</ul></div>'
-            : '';
-
-        logContent.innerHTML =
-            '<div><strong>Time:</strong> ' + timeStr + '</div>' +
-            '<div><strong>Nodes evaluated:</strong> ' + info.totalNodes + '</div>' +
-            '<div><strong>Status:</strong> ' + escapeHtml(info.status || 'unknown') + '</div>' +
-            '<div><strong>Matched codes (' + info.matchedEntries.length + '):</strong> ' + matchedList + '</div>' +
-            warnHtml;
-        logEl.style.display = '';
-    }
-
-    function appendLlmLogEntry(parentCode, scores, detail) {
-        const content = document.getElementById('llmCommLogContent');
-        if (!content) { return; }
-
-        // Remove the placeholder message on first entry
-        const placeholder = content.querySelector('.text-muted.p-2');
-        if (placeholder) { placeholder.remove(); }
-
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString();
-        const nodeCount = scores ? Object.keys(scores).length : 0;
-        const matchCount = scores ? Object.values(scores).filter(v => v > 0).length : 0;
-        const provider = (detail && detail.provider) ? detail.provider.toUpperCase() : 'UNKNOWN';
-        const durationSec = (detail && detail.durationMs) ? (detail.durationMs / 1000).toFixed(1) : '?';
-        const prompt = (detail && detail.prompt) ? detail.prompt : '';
-        const rawResponse = (detail && detail.rawResponse) ? detail.rawResponse : '';
-        const errorMsg = (detail && detail.error) ? detail.error : null;
-        const reasons = (detail && detail.reasons) ? detail.reasons : {};
-
-        const entry = document.createElement('details');
-        entry.className = 'llm-log-entry' + (errorMsg ? ' llm-log-error' : '');
-
-        const summary = document.createElement('summary');
-        summary.style.cursor = 'pointer';
-        const statusBadge = errorMsg
-            ? '<span class="llm-log-error-badge">&#10060; ERROR</span>'
-            : '<span class="text-success">&#10003; ' + matchCount + ' match' + (matchCount !== 1 ? 'es' : '') + '</span>';
-        summary.innerHTML =
-            '&#128100; <strong>' + escapeHtml(timeStr) + '</strong> — ' +
-            '<code>' + escapeHtml(parentCode) + '</code> ' +
-            '(' + nodeCount + ' nodes) via <strong>' + escapeHtml(provider) + '</strong> ' +
-            '[' + durationSec + 's] ' +
-            statusBadge;
-        entry.appendChild(summary);
-
-        const body = document.createElement('div');
-        body.className = 'px-2 pb-2';
-
-        const errorHtml = errorMsg
-            ? '<div class="mt-1 llm-log-error-detail"><strong>&#9888; ERROR:</strong> ' + escapeHtml(errorMsg) + '</div>'
-            : '';
-
-        // Build reasons HTML if any reasons were returned
-        const reasonEntries = Object.entries(reasons).filter(([, r]) => r);
-        let reasonsHtml = '';
-        if (reasonEntries.length > 0) {
-            const reasonLines = reasonEntries.map(([code, reason]) => {
-                const pct = scores && scores[code] !== undefined ? scores[code] : '?';
-                return '<div class="llm-log-reason-entry"><code>' + escapeHtml(code) + '</code> '
-                    + '(' + pct + '%): ' + escapeHtml(reason) + '</div>';
-            }).join('');
-            reasonsHtml = '<div class="mt-1"><strong>&#128172; REASONS:</strong>'
-                + '<div class="llm-log-reasons">' + reasonLines + '</div></div>';
-        }
-
-        body.innerHTML =
-            errorHtml +
-            '<div class="mt-1"><strong>&#128228; PROMPT:</strong>' +
-            '<div class="llm-log-prompt">' + escapeHtml(prompt) + '</div></div>' +
-            '<div class="mt-1"><strong>&#128229; RESPONSE:</strong>' +
-            '<div class="llm-log-response">' + escapeHtml(rawResponse) + '</div></div>' +
-            reasonsHtml;
-
-        entry.appendChild(body);
-
-        // Prepend so newest entries appear at top
-        content.insertBefore(entry, content.firstChild);
-    }
-
-    // ── Interactive analysis (stores text, renders tree without LLM calls) ─────
-    function runInteractiveAnalysis() {
-        const text = document.getElementById('businessText').value.trim();
-        if (!text) {
-            showStatus('warning', 'Please enter a business requirement text before analyzing.');
-            return;
-        }
-
-        // Reset interactive state
-        storedBusinessText = text;
-        lastAnalyzedText = text;
-        evaluatedNodes = new Set();
-        currentScores = {};
-        currentReasons = {};
-        document.getElementById('businessText').classList.remove('stale-results');
-
-        // Render the tree without scores; mark all expandable nodes as unevaluated
-        renderView(taxonomyData, null);
-        document.querySelectorAll('.tax-node').forEach(function (el) {
-            if (el.querySelector(':scope > .tax-children')) {
-                el.classList.add('tax-has-unevaluated');
-            }
-        });
-
-        showStatus('info', '🔍 Interactive Mode: expand nodes to evaluate them with AI.');
-    }
-
-    // ── Streaming analysis (list / tabs views) ────────────────────────────────
-    function runStreamingAnalysis() {
-        const text = document.getElementById('businessText').value.trim();
-        if (!text) {
-            showStatus('warning', 'Please enter a business requirement text before analyzing.');
-            return;
-        }
-
-        setAnalyzing(true);
-        clearStatus();
-        currentScores = {};
-        currentReasons = {};
-        document.getElementById('businessText').classList.remove('stale-results');
-
-        // Render a clean tree without scores first
-        renderView(taxonomyData, null);
-
-        var providerSelect = document.getElementById('providerSelect');
-        var provider = providerSelect ? providerSelect.value : '';
-
-        var url = '/api/analyze-stream?businessText=' + encodeURIComponent(text);
-        if (provider && provider !== 'MANUAL') {
-            url += '&provider=' + encodeURIComponent(provider);
-        }
-        const eventSource = new EventSource(url);
-
-        eventSource.addEventListener('phase', function (e) {
-            const data = JSON.parse(e.data);
-            showStatus('info', '🔄 ' + data.message);
-        });
-
-        eventSource.addEventListener('scores', function (e) {
-            const data = JSON.parse(e.data);
-            Object.assign(currentScores, data.scores);
-            if (data.reasons) { Object.assign(currentReasons, data.reasons); }
-            Object.entries(data.scores).forEach(function ([code, pct]) {
-                applyScoreToNode(code, pct, data.reasons ? data.reasons[code] : null);
-            });
-        });
-
-        eventSource.addEventListener('expanding', function (e) {
-            const data = JSON.parse(e.data);
-            expandNodeByCode(data.parentCode);
-            data.childCodes.forEach(function (code) {
-                markNodeAsEvaluating(code);
-            });
-        });
-
-        eventSource.addEventListener('complete', function (e) {
-            const data = JSON.parse(e.data);
-            eventSource.close();
-            setAnalyzing(false);
-            currentScores = data.totalScores;
-            currentDiscrepancies = data.discrepancies || [];
-            lastAnalyzedText = text;
-            const matchedCount = Object.values(data.totalScores).filter(v => v > 0).length;
-            let statusMsg = '✅ Analysis complete. ' + matchedCount + ' node(s) matched.';
-            if (currentDiscrepancies.length > 0) {
-                statusMsg += ' ⚠️ ' + currentDiscrepancies.length + ' scoring discrepanc'
-                    + (currentDiscrepancies.length === 1 ? 'y' : 'ies') + ' detected.';
-                console.log('[Taxonomy] Discrepancies:', currentDiscrepancies);
-            }
-            showStatus('success', statusMsg);
-            updateExportGroupVisibility();
-        });
-
-        eventSource.addEventListener('error', function (e) {
-            if (e.data) {
-                try {
-                    const data = JSON.parse(e.data);
-                    eventSource.close();
-                    setAnalyzing(false);
-                    showStatus('warning', '⚠️ ' + data.errorMessage);
-                } catch (parseErr) {
-                    console.error('Failed to parse SSE error event:', parseErr);
-                }
-            }
-        });
-
-        eventSource.onerror = function () {
-            eventSource.close();
-            setAnalyzing(false);
-            showStatus('danger', 'Connection to server lost.');
-        };
-    }
-
-    // ── Incremental DOM update helpers ────────────────────────────────────────
-
-    /** Apply a score (and optional reason) to a node already in the DOM without re-rendering. */
-    function applyScoreToNode(code, pct, reason) {
-        const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
-        if (!el) return;
-        const header = el.querySelector(':scope > .tax-node-header');
-        if (!header) return;
-
-        // Remove evaluating animation
-        el.classList.remove('tax-evaluating');
-
-        if (pct > 0) {
-            const alpha = Math.min(pct / 100, 1).toFixed(2);
-            header.style.backgroundColor = 'rgba(0,128,0,' + alpha + ')';
-            // Contrast-safe text color (WCAG 1.4.3)
-            if (pct >= 75) { header.style.color = '#fff'; }
-            else { header.style.color = '#1a1a1a'; }
-
-            let badge = header.querySelector('.tax-pct');
-            if (!badge) {
-                badge = document.createElement('span');
-                badge.className = 'tax-pct';
-                badge.setAttribute('aria-hidden', 'true');
-                header.appendChild(badge);
-            }
-            badge.textContent = pct + '%';
-
-            // Add/update reason icon
-            if (reason) {
-                let reasonIcon = header.querySelector('.tax-reason-icon');
-                if (!reasonIcon) {
-                    reasonIcon = document.createElement('span');
-                    reasonIcon.className = 'tax-reason-icon';
-                    header.appendChild(reasonIcon);
-                }
-                reasonIcon.textContent = '💬';
-                reasonIcon.title = reason;
-            }
-        } else {
-            // Explicitly scored zero – clear any previous highlight
-            header.style.backgroundColor = '';
-            header.style.color = '';
-        }
-
-        // Update ARIA label with score info (WCAG 4.1.2)
-        var nameEl = header.querySelector('.tax-name');
-        var ariaLabel = code + ' ' + (nameEl ? nameEl.textContent : '');
-        if (pct > 0) {
-            ariaLabel += ', Score: ' + pct + ' percent';
-            if (reason) { ariaLabel += ', Reason: ' + reason; }
-        } else {
-            ariaLabel += ', Score: 0 percent';
-        }
-        el.setAttribute('aria-label', ariaLabel);
-    }
-
-    /** Expand a node in the DOM and all of its ancestors. */
-    function expandNodeByCode(code) {
-        const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
-        if (!el) return;
-        const children = el.querySelector(':scope > .tax-children');
-        if (children) {
-            children.style.display = '';
-            const toggle = el.querySelector(':scope > .tax-node-header > .tax-toggle');
-            if (toggle) toggle.textContent = '▼';
-            el.setAttribute('aria-expanded', 'true');
-        }
-        // Also make sure all ancestors are visible
-        let parent = el.parentElement;
-        while (parent) {
-            if (parent.classList.contains('tax-children')) {
-                parent.style.display = '';
-                const pNode = parent.parentElement;
-                if (pNode) {
-                    const t = pNode.querySelector(':scope > .tax-node-header > .tax-toggle');
-                    if (t) t.textContent = '▼';
-                    pNode.setAttribute('aria-expanded', 'true');
-                }
-            }
-            parent = parent.parentElement;
-        }
-    }
-
-    /** Add a pulsing CSS class to indicate a node is currently being evaluated. */
-    function markNodeAsEvaluating(code) {
-        const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
-        if (el) el.classList.add('tax-evaluating');
-    }
-
-    /** Expand all nodes that have a match > 0 (and their ancestors). */
-    function expandMatched(scores) {
-        Object.entries(scores).forEach(([code, pct]) => {
-            if (pct > 0) {
-                const el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
-                if (!el) return;
-                // expand this node
-                const children = el.querySelector(':scope > .tax-children');
-                if (children) {
-                    children.style.display = '';
-                    const toggle = el.querySelector(':scope > .tax-node-header > .tax-toggle');
-                    if (toggle) toggle.textContent = '▼';
-                }
-                // expand ancestors
-                let parent = el.parentElement;
-                while (parent) {
-                    if (parent.classList.contains('tax-children')) {
-                        parent.style.display = '';
-                        const parentNode = parent.parentElement;
-                        if (parentNode) {
-                            const t = parentNode.querySelector(':scope > .tax-node-header > .tax-toggle');
-                            if (t) t.textContent = '▼';
-                        }
-                    }
-                    parent = parent.parentElement;
-                }
-            }
-        });
-    }
-
     // ── UI helpers ────────────────────────────────────────────────────────────
-    function setAnalyzing(on) {
-        const btn = document.getElementById('analyzeBtn');
-        const spinner = document.getElementById('analyzeSpinner');
-        btn.disabled = on;
-        spinner.classList.toggle('d-none', !on);
-        btn.textContent = on ? ' Analyzing…' : 'Analyze with AI';
-        if (on) btn.prepend(spinner);
-    }
-
     function showStatus(type, msg) {
         document.getElementById('statusArea').innerHTML =
             '<div class="alert alert-' + type + ' py-2">' + escapeHtml(msg) + '</div>';
@@ -2367,12 +1457,12 @@
     }
 
     function resetStaleResults() {
-        currentScores = null;
-        currentReasons = {};
-        storedBusinessText = null;
-        evaluatedNodes = new Set();
-        lastAnalyzedText = null;
-        renderView(taxonomyData, null);
+        S.currentScores = null;
+        S.currentReasons = {};
+        S.storedBusinessText = null;
+        S.evaluatedNodes = new Set();
+        S.lastAnalyzedText = null;
+        renderView(S.taxonomyData, null);
         clearStatus();
         const businessTextEl = document.getElementById('businessText');
         if (businessTextEl) { businessTextEl.classList.remove('stale-results'); }
@@ -2584,7 +1674,7 @@
             showStatus('success', action === 'ACCEPT'
                 ? '✅ ' + result.success + ' proposal(s) accepted.'
                 : '🗑️ ' + result.success + ' proposal(s) rejected.');
-            loadProposals(currentProposalFilter);
+            loadProposals(S.currentProposalFilter);
             // Show undo toast
             showUndoToast(ids, action);
         })
@@ -2601,7 +1691,7 @@
             })
             .then(function () {
                 showStatus('success', '✅ Proposal accepted and relation created.');
-                loadProposals(currentProposalFilter);
+                loadProposals(S.currentProposalFilter);
                 showUndoToast([id], 'ACCEPT');
             })
             .catch(function (err) {
@@ -2618,7 +1708,7 @@
             })
             .then(function () {
                 showStatus('success', '🗑️ Proposal rejected.');
-                loadProposals(currentProposalFilter);
+                loadProposals(S.currentProposalFilter);
                 showUndoToast([id], 'REJECT');
             })
             .catch(function (err) {
@@ -2681,7 +1771,7 @@
         Promise.all(promises)
             .then(function () {
                 showStatus('info', '↩️ ' + ids.length + ' proposal(s) reverted to pending.');
-                loadProposals(currentProposalFilter);
+                loadProposals(S.currentProposalFilter);
             })
             .catch(function (err) {
                 showStatus('danger', '❌ Undo failed: ' + err.message);
@@ -2712,7 +1802,7 @@
                 }
                 const count = Array.isArray(proposals) ? proposals.length : 0;
                 showStatus('success', '✅ Generated ' + count + ' proposal(s) for ' + nodeCode + ' (' + relationType + ').');
-                loadProposals(currentProposalFilter);
+                loadProposals(S.currentProposalFilter);
             })
             .catch(function (err) {
                 console.error('[Taxonomy] Propose relations failed', err);
@@ -2750,12 +1840,12 @@
     window._proposalReject = rejectProposal;
 
     // Expose current scores for Requirement Impact Analysis
-    window._getCurrentScores = function () { return currentScores; };
+    window._getCurrentScores = function () { return S.currentScores; };
     // Test helpers (screenshot tests only — not for production use): allow Selenium tests to set
     // storedBusinessText and re-render the list view so that leaf justify buttons appear without
     // relying on the interactive expansion flow.
-    window._setStoredBusinessText = function (text) { storedBusinessText = text; };
-    window._renderViewWithCurrentScores = function () { renderView(taxonomyData, currentScores); };
+    window._setStoredBusinessText = function (text) { S.storedBusinessText = text; };
+    window._renderViewWithCurrentScores = function () { renderView(S.taxonomyData, S.currentScores); };
 
     // ── Prompt template editor ────────────────────────────────────────────────
 
@@ -2894,12 +1984,12 @@
             return;
         }
 
-        storedBusinessText = text;
-        lastAnalyzedText = text;
-        currentScores = {};
-        currentReasons = {};
+        S.storedBusinessText = text;
+        S.lastAnalyzedText = text;
+        S.currentScores = {};
+        S.currentReasons = {};
 
-        renderView(taxonomyData, null);
+        renderView(S.taxonomyData, null);
         addManualScoreInputs();
 
         showStatus('info', '✏️ Manual Mode: Set scores (0–100) on any node, then click "Apply Manual Scores".');
@@ -2958,11 +2048,11 @@
             return;
         }
 
-        currentScores = scores;
-        currentReasons = reasons;
+        S.currentScores = scores;
+        S.currentReasons = reasons;
         window._taxonomyCurrentScores = scores;
 
-        renderView(taxonomyData, scores);
+        renderView(S.taxonomyData, scores);
 
         var exportGroup = document.getElementById('exportGroup');
         if (exportGroup) exportGroup.style.display = '';
@@ -2981,5 +2071,14 @@
         if (applyBtn) applyBtn.remove();
     }
 
-})();
+    // ── Public API for cross-module use ──────────────────────────────────────
+    window.TaxonomyBrowse = {
+        renderView: renderView,
+        switchView: switchView,
+        showStatus: showStatus,
+        clearStatus: clearStatus,
+        escapeHtml: escapeHtml,
+        updateExportGroupVisibility: updateExportGroupVisibility
+    };
 
+})();
