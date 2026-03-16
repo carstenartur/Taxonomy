@@ -1,0 +1,326 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.controller</a> &gt; <span class="el_source">WorkspaceController.java</span></div><h1>WorkspaceController.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.controller;
+
+import com.taxonomy.dto.ContextComparison;
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.WorkspaceInfo;
+import com.taxonomy.versioning.model.ContextHistoryRecord;
+import com.taxonomy.versioning.service.ContextCompareService;
+import com.taxonomy.versioning.service.ContextHistoryService;
+import com.taxonomy.workspace.service.SyncIntegrationService;
+import com.taxonomy.workspace.service.WorkspaceManager;
+import com.taxonomy.workspace.service.WorkspaceProjectionService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * REST API for workspace management.
+ *
+ * &lt;p&gt;Provides endpoints to query the current user's workspace, list all active
+ * workspaces (admin), and manage workspace lifecycle. Each authenticated user
+ * automatically gets a personal workspace on first access.
+ *
+ * &lt;p&gt;Additional endpoints support context comparison, synchronization with the
+ * shared integration repository, navigation history, and projection state.
+ */
+@RestController
+@RequestMapping(&quot;/api/workspace&quot;)
+@Tag(name = &quot;Workspace Management&quot;)
+public class WorkspaceController {
+
+    private final WorkspaceManager workspaceManager;
+    private final WorkspaceResolver workspaceResolver;
+    private final ContextCompareService contextCompareService;
+    private final ContextHistoryService contextHistoryService;
+    private final SyncIntegrationService syncIntegrationService;
+    private final WorkspaceProjectionService workspaceProjectionService;
+
+    public WorkspaceController(WorkspaceManager workspaceManager,
+                               WorkspaceResolver workspaceResolver,
+                               ContextCompareService contextCompareService,
+                               ContextHistoryService contextHistoryService,
+                               SyncIntegrationService syncIntegrationService,
+<span class="fc" id="L53">                               WorkspaceProjectionService workspaceProjectionService) {</span>
+<span class="fc" id="L54">        this.workspaceManager = workspaceManager;</span>
+<span class="fc" id="L55">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L56">        this.contextCompareService = contextCompareService;</span>
+<span class="fc" id="L57">        this.contextHistoryService = contextHistoryService;</span>
+<span class="fc" id="L58">        this.syncIntegrationService = syncIntegrationService;</span>
+<span class="fc" id="L59">        this.workspaceProjectionService = workspaceProjectionService;</span>
+<span class="fc" id="L60">    }</span>
+
+    @GetMapping(&quot;/current&quot;)
+    @Operation(summary = &quot;Get the current user's workspace&quot;,
+            description = &quot;Returns workspace metadata including current branch, context, &quot; +
+                    &quot;and timestamps for the authenticated user.&quot;)
+    public ResponseEntity&lt;WorkspaceInfo&gt; getCurrentWorkspace() {
+<span class="fc" id="L67">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L68">        return ResponseEntity.ok(workspaceManager.getWorkspaceInfo(user));</span>
+    }
+
+    @GetMapping(&quot;/active&quot;)
+    @Operation(summary = &quot;List all active workspaces&quot;,
+            description = &quot;Returns all currently active (in-memory) workspaces. &quot; +
+                    &quot;Useful for admin monitoring of concurrent users.&quot;)
+    public ResponseEntity&lt;List&lt;WorkspaceInfo&gt;&gt; listActiveWorkspaces() {
+<span class="fc" id="L76">        return ResponseEntity.ok(workspaceManager.listActiveWorkspaces());</span>
+    }
+
+    @GetMapping(&quot;/stats&quot;)
+    @Operation(summary = &quot;Workspace statistics&quot;,
+            description = &quot;Returns basic statistics about active workspaces.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getStats() {
+<span class="fc" id="L83">        return ResponseEntity.ok(Map.of(</span>
+<span class="fc" id="L84">                &quot;activeWorkspaces&quot;, workspaceManager.getActiveWorkspaceCount()</span>
+        ));
+    }
+
+    @PostMapping(&quot;/evict&quot;)
+    @Operation(summary = &quot;Evict a user's workspace from memory&quot;,
+            description = &quot;Removes the in-memory workspace state for the specified user. &quot; +
+                    &quot;The workspace will be recreated on next access. &quot; +
+                    &quot;Admin-only operation for maintenance.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; evictWorkspace(
+            @RequestParam String username) {
+<span class="fc" id="L95">        workspaceManager.evictWorkspace(username);</span>
+<span class="fc" id="L96">        return ResponseEntity.ok(Map.of(</span>
+                &quot;evicted&quot;, username,
+<span class="fc" id="L98">                &quot;success&quot;, true</span>
+        ));
+    }
+
+    // ── Compare ─────────────────────────────────────────────────────
+
+    @PostMapping(&quot;/compare&quot;)
+    @Operation(summary = &quot;Compare two branches or contexts&quot;,
+            description = &quot;Performs a semantic diff between two branches or specific commits. &quot; +
+                    &quot;Returns a summary of changes, individual semantic changes, and an &quot; +
+                    &quot;optional raw DSL diff.&quot;)
+    public ResponseEntity&lt;?&gt; compare(
+            @RequestParam String leftBranch,
+            @RequestParam String rightBranch,
+            @RequestParam(required = false) String leftCommit,
+            @RequestParam(required = false) String rightCommit) {
+        try {
+<span class="fc" id="L115">            ContextRef left = readOnlyContextRef(leftBranch, leftCommit);</span>
+<span class="fc" id="L116">            ContextRef right = readOnlyContextRef(rightBranch, rightCommit);</span>
+
+            ContextComparison comparison;
+<span class="pc bpc" id="L119" title="2 of 4 branches missed.">            if (leftCommit != null || rightCommit != null) {</span>
+<span class="nc" id="L120">                comparison = contextCompareService.compareContexts(left, right);</span>
+            } else {
+<span class="fc" id="L122">                comparison = contextCompareService.compareBranches(left, right);</span>
+            }
+<span class="fc" id="L124">            return ResponseEntity.ok(comparison);</span>
+<span class="nc" id="L125">        } catch (IOException e) {</span>
+<span class="nc" id="L126">            return ResponseEntity.internalServerError().body(Map.of(</span>
+                    &quot;error&quot;, &quot;Compare failed&quot;,
+<span class="nc" id="L128">                    &quot;message&quot;, e.getMessage()</span>
+            ));
+        }
+    }
+
+    // ── Sync operations ─────────────────────────────────────────────
+
+    @PostMapping(&quot;/sync-from-shared&quot;)
+    @Operation(summary = &quot;Sync from shared repository&quot;,
+            description = &quot;Merges the shared integration branch into the user's branch, &quot; +
+                    &quot;bringing it up to date with the latest team-wide state.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; syncFromShared(
+            @RequestParam(required = false) String userBranch) {
+<span class="nc" id="L141">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="nc" id="L142">        String branch = resolveBranch(user, userBranch);</span>
+        try {
+<span class="nc" id="L144">            String mergeCommit = syncIntegrationService.syncFromShared(user, branch);</span>
+<span class="nc" id="L145">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L146">            result.put(&quot;success&quot;, true);</span>
+<span class="nc" id="L147">            result.put(&quot;branch&quot;, branch);</span>
+<span class="nc" id="L148">            result.put(&quot;mergeCommit&quot;, mergeCommit);</span>
+<span class="nc" id="L149">            result.put(&quot;syncedAt&quot;, Instant.now().toString());</span>
+<span class="nc" id="L150">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L151">        } catch (IOException e) {</span>
+<span class="nc" id="L152">            return ResponseEntity.internalServerError().body(Map.of(</span>
+                    &quot;error&quot;, &quot;Sync from shared failed&quot;,
+<span class="nc" id="L154">                    &quot;message&quot;, e.getMessage()</span>
+            ));
+        }
+    }
+
+    @PostMapping(&quot;/publish&quot;)
+    @Operation(summary = &quot;Publish to shared repository&quot;,
+            description = &quot;Merges the user's branch into the shared integration branch, &quot; +
+                    &quot;making local changes available to all team members.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; publish(
+            @RequestParam(required = false) String userBranch) {
+<span class="nc" id="L165">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="nc" id="L166">        String branch = resolveBranch(user, userBranch);</span>
+        try {
+<span class="nc" id="L168">            String mergeCommit = syncIntegrationService.publishToShared(user, branch);</span>
+<span class="nc" id="L169">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L170">            result.put(&quot;success&quot;, true);</span>
+<span class="nc" id="L171">            result.put(&quot;branch&quot;, branch);</span>
+<span class="nc" id="L172">            result.put(&quot;mergeCommit&quot;, mergeCommit);</span>
+<span class="nc" id="L173">            result.put(&quot;publishedAt&quot;, Instant.now().toString());</span>
+<span class="nc" id="L174">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L175">        } catch (IOException e) {</span>
+<span class="nc" id="L176">            return ResponseEntity.internalServerError().body(Map.of(</span>
+                    &quot;error&quot;, &quot;Publish failed&quot;,
+<span class="nc" id="L178">                    &quot;message&quot;, e.getMessage()</span>
+            ));
+        }
+    }
+
+    @GetMapping(&quot;/sync-state&quot;)
+    @Operation(summary = &quot;Get current sync state&quot;,
+            description = &quot;Returns the synchronization status between the user's workspace &quot; +
+                    &quot;and the shared repository, including last sync time and &quot; +
+                    &quot;unpublished commit count.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getSyncState() {
+<span class="fc" id="L189">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L190">        var state = syncIntegrationService.getSyncState(user);</span>
+<span class="fc" id="L191">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L192">        result.put(&quot;username&quot;, user);</span>
+<span class="fc" id="L193">        result.put(&quot;syncStatus&quot;, state.getSyncStatus());</span>
+<span class="fc" id="L194">        result.put(&quot;lastSyncedCommitId&quot;, state.getLastSyncedCommitId());</span>
+<span class="fc" id="L195">        result.put(&quot;lastSyncTimestamp&quot;, state.getLastSyncTimestamp());</span>
+<span class="fc" id="L196">        result.put(&quot;lastPublishedCommitId&quot;, state.getLastPublishedCommitId());</span>
+<span class="fc" id="L197">        result.put(&quot;lastPublishTimestamp&quot;, state.getLastPublishTimestamp());</span>
+<span class="fc" id="L198">        result.put(&quot;unpublishedCommitCount&quot;, state.getUnpublishedCommitCount());</span>
+<span class="fc" id="L199">        return ResponseEntity.ok(result);</span>
+    }
+
+    // ── History ─────────────────────────────────────────────────────
+
+    @GetMapping(&quot;/history&quot;)
+    @Operation(summary = &quot;Get navigation history&quot;,
+            description = &quot;Returns the user's recent context navigation history, &quot; +
+                    &quot;ordered newest first (max 50 entries).&quot;)
+    public ResponseEntity&lt;List&lt;ContextHistoryRecord&gt;&gt; getHistory() {
+<span class="fc" id="L209">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L210">        return ResponseEntity.ok(contextHistoryService.getHistory(user));</span>
+    }
+
+    // ── Local changes ───────────────────────────────────────────────
+
+    @GetMapping(&quot;/local-changes&quot;)
+    @Operation(summary = &quot;Get count of local unpublished changes&quot;,
+            description = &quot;Returns the number of commits on the user's branch that &quot; +
+                    &quot;have not been published to the shared repository.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getLocalChanges(
+            @RequestParam(required = false) String branch) {
+<span class="fc" id="L221">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L222">        String resolvedBranch = resolveBranch(user, branch);</span>
+        try {
+<span class="fc" id="L224">            int changeCount = syncIntegrationService.getLocalChanges(user, resolvedBranch);</span>
+<span class="fc" id="L225">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L226">            result.put(&quot;branch&quot;, resolvedBranch);</span>
+<span class="fc" id="L227">            result.put(&quot;changeCount&quot;, changeCount);</span>
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">            result.put(&quot;hasUnpublishedChanges&quot;, changeCount &gt; 0);</span>
+<span class="fc" id="L229">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L230">        } catch (IOException e) {</span>
+<span class="nc" id="L231">            return ResponseEntity.internalServerError().body(Map.of(</span>
+                    &quot;error&quot;, &quot;Could not count local changes&quot;,
+<span class="nc" id="L233">                    &quot;message&quot;, e.getMessage()</span>
+            ));
+        }
+    }
+
+    // ── Dirty check ─────────────────────────────────────────────────
+
+    @GetMapping(&quot;/dirty&quot;)
+    @Operation(summary = &quot;Check if workspace has unsaved changes&quot;,
+            description = &quot;Returns whether the user's workspace has unpublished &quot; +
+                    &quot;changes relative to the shared repository.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; isDirty() {
+<span class="fc" id="L245">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L246">        boolean dirty = syncIntegrationService.isDirty(user);</span>
+<span class="fc" id="L247">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L248">        result.put(&quot;username&quot;, user);</span>
+<span class="fc" id="L249">        result.put(&quot;dirty&quot;, dirty);</span>
+<span class="fc" id="L250">        result.put(&quot;syncStatus&quot;, syncIntegrationService.getSyncState(user).getSyncStatus());</span>
+<span class="fc" id="L251">        return ResponseEntity.ok(result);</span>
+    }
+
+    // ── Diverged resolution ─────────────────────────────────────────
+
+    @PostMapping(&quot;/resolve-diverged&quot;)
+    @Operation(summary = &quot;Resolve a diverged sync state&quot;,
+            description = &quot;Resolves a diverged state between user and shared branches. &quot; +
+                    &quot;Strategies: MERGE (attempt merge), KEEP_MINE (publish local), &quot; +
+                    &quot;TAKE_SHARED (overwrite local with shared).&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; resolveDiverged(
+            @RequestParam String strategy,
+            @RequestParam(required = false) String userBranch) {
+<span class="fc" id="L264">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L265">        String branch = resolveBranch(user, userBranch);</span>
+        try {
+<span class="fc" id="L267">            SyncIntegrationService.DivergedStrategy parsedStrategy =</span>
+<span class="fc" id="L268">                    SyncIntegrationService.DivergedStrategy.valueOf(strategy.toUpperCase());</span>
+<span class="nc" id="L269">            String message = syncIntegrationService.resolveDiverged(user, branch, parsedStrategy);</span>
+<span class="nc" id="L270">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L271">            result.put(&quot;success&quot;, true);</span>
+<span class="nc" id="L272">            result.put(&quot;strategy&quot;, parsedStrategy.name());</span>
+<span class="nc" id="L273">            result.put(&quot;branch&quot;, branch);</span>
+<span class="nc" id="L274">            result.put(&quot;message&quot;, message);</span>
+<span class="nc" id="L275">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L276">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L277">            return ResponseEntity.badRequest().body(Map.of(</span>
+                    &quot;error&quot;, &quot;Invalid strategy: &quot; + strategy,
+<span class="fc" id="L279">                    &quot;validStrategies&quot;, List.of(&quot;MERGE&quot;, &quot;KEEP_MINE&quot;, &quot;TAKE_SHARED&quot;)</span>
+            ));
+<span class="fc" id="L281">        } catch (IOException e) {</span>
+<span class="fc" id="L282">            return ResponseEntity.internalServerError().body(Map.of(</span>
+                    &quot;error&quot;, &quot;Diverged resolution failed&quot;,
+<span class="fc" id="L284">                    &quot;message&quot;, e.getMessage()</span>
+            ));
+        }
+    }
+
+    // ── Projection ──────────────────────────────────────────────────
+
+    @GetMapping(&quot;/projection&quot;)
+    @Operation(summary = &quot;Get projection state&quot;,
+            description = &quot;Returns the materialization and index state for the &quot; +
+                    &quot;user's workspace, including both in-memory and persisted data.&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getProjection() {
+<span class="fc" id="L296">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L297">        return ResponseEntity.ok(workspaceProjectionService.getProjectionInfo(user));</span>
+    }
+
+    // ── Internal helpers ────────────────────────────────────────────
+
+    /**
+     * Resolve the branch name, falling back to the current workspace branch
+     * or &quot;draft&quot; as default.
+     */
+    private String resolveBranch(String username, String explicitBranch) {
+<span class="pc bpc" id="L307" title="1 of 4 branches missed.">        if (explicitBranch != null &amp;&amp; !explicitBranch.isBlank()) {</span>
+<span class="fc" id="L308">            return explicitBranch;</span>
+        }
+<span class="fc" id="L310">        WorkspaceInfo info = workspaceManager.getWorkspaceInfo(username);</span>
+<span class="pc bpc" id="L311" title="2 of 4 branches missed.">        return info != null &amp;&amp; info.currentBranch() != null</span>
+<span class="fc" id="L312">                ? info.currentBranch()</span>
+<span class="nc" id="L313">                : &quot;draft&quot;;</span>
+    }
+
+    /**
+     * Create a read-only {@link ContextRef} for comparison operations.
+     */
+    private ContextRef readOnlyContextRef(String branch, String commitId) {
+<span class="fc" id="L320">        return new ContextRef(</span>
+<span class="fc" id="L321">                UUID.randomUUID().toString(), branch, commitId,</span>
+<span class="fc" id="L322">                Instant.now(), ContextMode.READ_ONLY,</span>
+                null, null, null, null, null, false);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceManager.java</span></div><h1>WorkspaceManager.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.WorkspaceInfo;
+import com.taxonomy.dto.WorkspaceRole;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import com.taxonomy.dsl.storage.DslGitRepository;
+
+/**
+ * Manages per-user workspace state for multi-user architecture editing.
+ *
+ * &lt;p&gt;Each authenticated user gets their own {@link UserWorkspaceState} with
+ * independent context navigation, projection tracking, and operation state.
+ * The underlying Git repository ({@code DslGitRepository}) is shared; workspaces
+ * provide logical isolation via branches.
+ *
+ * &lt;p&gt;The manager maintains an in-memory map of active workspace states and
+ * persists workspace metadata (branch, timestamps) via {@link UserWorkspaceRepository}.
+ *
+ * &lt;p&gt;A special &quot;shared&quot; workspace exists for the integration repository concept —
+ * the canonical team-wide state that users synchronize with.
+ */
+@Service
+public class WorkspaceManager {
+
+<span class="fc" id="L37">    private static final Logger log = LoggerFactory.getLogger(WorkspaceManager.class);</span>
+
+    /** Default username used when no authentication context is available (e.g. tests). */
+    public static final String DEFAULT_USER = &quot;anonymous&quot;;
+
+    private final UserWorkspaceRepository workspaceRepository;
+    private final int maxHistory;
+
+<span class="fc" id="L45">    private final ConcurrentMap&lt;String, UserWorkspaceState&gt; activeWorkspaces = new ConcurrentHashMap&lt;&gt;();</span>
+
+    public WorkspaceManager(UserWorkspaceRepository workspaceRepository,
+<span class="fc" id="L48">                            @Value(&quot;${taxonomy.context.max-history:50}&quot;) int maxHistory) {</span>
+<span class="fc" id="L49">        this.workspaceRepository = workspaceRepository;</span>
+<span class="fc" id="L50">        this.maxHistory = maxHistory;</span>
+<span class="fc" id="L51">    }</span>
+
+    /**
+     * Get or create the workspace state for a user.
+     *
+     * &lt;p&gt;If no in-memory state exists, a new one is created and a persistent
+     * workspace record is ensured in the database.
+     *
+     * @param username the authenticated user's username
+     * @return the user's workspace state (never null)
+     */
+    public UserWorkspaceState getOrCreateWorkspace(String username) {
+<span class="fc bfc" id="L63" title="All 4 branches covered.">        if (username == null || username.isBlank()) {</span>
+<span class="fc" id="L64">            username = DEFAULT_USER;</span>
+        }
+<span class="fc" id="L66">        String user = username;</span>
+<span class="fc" id="L67">        return activeWorkspaces.computeIfAbsent(user, u -&gt; {</span>
+<span class="fc" id="L68">            log.info(&quot;Creating workspace state for user '{}'&quot;, u);</span>
+<span class="fc" id="L69">            ensurePersistentWorkspace(u);</span>
+<span class="fc" id="L70">            return new UserWorkspaceState(u, maxHistory);</span>
+        });
+    }
+
+    /**
+     * Get the workspace state for a user, or null if not active.
+     *
+     * @param username the user's username
+     * @return the workspace state, or null if the user has no active workspace
+     */
+    public UserWorkspaceState getWorkspace(String username) {
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">        return activeWorkspaces.get(username != null ? username : DEFAULT_USER);</span>
+    }
+
+    /**
+     * List all active workspaces as {@link WorkspaceInfo} DTOs.
+     *
+     * @return list of active workspace summaries
+     */
+    public List&lt;WorkspaceInfo&gt; listActiveWorkspaces() {
+<span class="fc" id="L90">        return activeWorkspaces.values().stream()</span>
+<span class="fc" id="L91">                .map(this::toWorkspaceInfo)</span>
+<span class="fc" id="L92">                .toList();</span>
+    }
+
+    /**
+     * Get workspace info for a specific user.
+     *
+     * @param username the user's username
+     * @return workspace info, or null if not found
+     */
+    public WorkspaceInfo getWorkspaceInfo(String username) {
+<span class="fc" id="L102">        UserWorkspaceState state = getOrCreateWorkspace(username);</span>
+<span class="fc" id="L103">        return toWorkspaceInfo(state);</span>
+    }
+
+    /**
+     * Remove a user's workspace state from the in-memory cache.
+     *
+     * &lt;p&gt;This does not delete the persistent workspace record; the user's
+     * workspace will be recreated on next access. Useful for cleanup on logout.
+     *
+     * @param username the user's username
+     */
+    public void evictWorkspace(String username) {
+<span class="fc" id="L115">        UserWorkspaceState removed = activeWorkspaces.remove(username);</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (removed != null) {</span>
+<span class="fc" id="L117">            log.info(&quot;Evicted workspace state for user '{}'&quot;, username);</span>
+        }
+<span class="fc" id="L119">    }</span>
+
+    /**
+     * Get the number of active workspaces.
+     *
+     * @return count of active user workspaces
+     */
+    public int getActiveWorkspaceCount() {
+<span class="fc" id="L127">        return activeWorkspaces.size();</span>
+    }
+
+    // ── Internal ────────────────────────────────────────────────────
+
+    private void ensurePersistentWorkspace(String username) {
+        try {
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">            if (!workspaceRepository.existsByUsername(username)) {</span>
+<span class="fc" id="L135">                UserWorkspace ws = new UserWorkspace();</span>
+<span class="fc" id="L136">                ws.setWorkspaceId(UUID.randomUUID().toString());</span>
+<span class="fc" id="L137">                ws.setUsername(username);</span>
+<span class="fc" id="L138">                ws.setDisplayName(username + &quot;'s workspace&quot;);</span>
+<span class="fc" id="L139">                ws.setCurrentBranch(&quot;draft&quot;);</span>
+<span class="fc" id="L140">                ws.setBaseBranch(&quot;draft&quot;);</span>
+<span class="fc" id="L141">                ws.setShared(false);</span>
+<span class="fc" id="L142">                ws.setCreatedAt(Instant.now());</span>
+<span class="fc" id="L143">                ws.setLastAccessedAt(Instant.now());</span>
+<span class="fc" id="L144">                workspaceRepository.save(ws);</span>
+<span class="fc" id="L145">                log.debug(&quot;Created persistent workspace for user '{}'&quot;, username);</span>
+<span class="fc" id="L146">            } else {</span>
+<span class="nc" id="L147">                workspaceRepository.findByUsernameAndSharedFalse(username)</span>
+<span class="nc" id="L148">                        .ifPresent(ws -&gt; {</span>
+<span class="nc" id="L149">                            ws.setLastAccessedAt(Instant.now());</span>
+<span class="nc" id="L150">                            workspaceRepository.save(ws);</span>
+<span class="nc" id="L151">                        });</span>
+            }
+<span class="nc" id="L153">        } catch (Exception e) {</span>
+            // Non-fatal: workspace state works in-memory even if persistence fails
+<span class="nc" id="L155">            log.warn(&quot;Could not persist workspace for user '{}': {}&quot;, username, e.getMessage());</span>
+<span class="fc" id="L156">        }</span>
+<span class="fc" id="L157">    }</span>
+
+    private WorkspaceInfo toWorkspaceInfo(UserWorkspaceState state) {
+<span class="fc" id="L160">        ContextRef ctx = state.getCurrentContext();</span>
+<span class="fc" id="L161">        return new WorkspaceInfo(</span>
+<span class="fc" id="L162">                state.getUsername() + &quot;-workspace&quot;,</span>
+<span class="fc" id="L163">                state.getUsername(),</span>
+<span class="fc" id="L164">                state.getUsername() + &quot;'s workspace&quot;,</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">                ctx != null ? ctx.branch() : &quot;draft&quot;,</span>
+                &quot;draft&quot;,
+                false,
+                ctx,
+<span class="fc" id="L169">                Instant.now(),</span>
+<span class="fc" id="L170">                Instant.now()</span>
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

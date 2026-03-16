@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>QualityApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.controller</a> &gt; <span class="el_source">QualityApiController.java</span></div><h1>QualityApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.controller;
+
+import com.taxonomy.dto.ProvenanceMetrics;
+import com.taxonomy.dto.RelationQualityMetrics;
+import com.taxonomy.dto.RelationTypeMetrics;
+import com.taxonomy.dto.TopRejectedProposal;
+import com.taxonomy.relations.service.RelationQualityService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * REST API for the Relation Quality Dashboard.
+ *
+ * &lt;p&gt;Endpoints:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code GET /api/relations/metrics} — full quality dashboard&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/relations/metrics/by-type} — metrics by relation type&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/relations/metrics/by-provenance} — metrics by provenance&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/relations/metrics/top-rejected} — top rejected proposals&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/relations/metrics&quot;)
+@Tag(name = &quot;Quality Metrics&quot;)
+public class QualityApiController {
+
+    private final RelationQualityService qualityService;
+
+<span class="fc" id="L34">    public QualityApiController(RelationQualityService qualityService) {</span>
+<span class="fc" id="L35">        this.qualityService = qualityService;</span>
+<span class="fc" id="L36">    }</span>
+
+    /**
+     * Returns the full quality dashboard metrics.
+     */
+    @Operation(summary = &quot;Quality dashboard&quot;, description = &quot;Returns the full quality dashboard metrics&quot;)
+    @GetMapping
+    public ResponseEntity&lt;RelationQualityMetrics&gt; getMetrics() {
+<span class="fc" id="L44">        return ResponseEntity.ok(qualityService.calculateMetrics());</span>
+    }
+
+    /**
+     * Returns metrics broken down by relation type.
+     */
+    @Operation(summary = &quot;Metrics by relation type&quot;, description = &quot;Returns quality metrics broken down by relation type&quot;)
+    @GetMapping(&quot;/by-type&quot;)
+    public ResponseEntity&lt;List&lt;RelationTypeMetrics&gt;&gt; getMetricsByType() {
+<span class="fc" id="L53">        return ResponseEntity.ok(qualityService.metricsByRelationType());</span>
+    }
+
+    /**
+     * Returns metrics broken down by provenance.
+     */
+    @Operation(summary = &quot;Metrics by provenance&quot;, description = &quot;Returns quality metrics broken down by provenance&quot;)
+    @GetMapping(&quot;/by-provenance&quot;)
+    public ResponseEntity&lt;List&lt;ProvenanceMetrics&gt;&gt; getMetricsByProvenance() {
+<span class="fc" id="L62">        return ResponseEntity.ok(qualityService.metricsByProvenance());</span>
+    }
+
+    /**
+     * Returns top rejected proposals ordered by confidence descending.
+     */
+    @Operation(summary = &quot;Top rejected proposals&quot;, description = &quot;Returns top rejected proposals ordered by confidence descending&quot;)
+    @GetMapping(&quot;/top-rejected&quot;)
+    public ResponseEntity&lt;List&lt;TopRejectedProposal&gt;&gt; getTopRejected(
+            @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;10&quot;) int limit) {
+<span class="fc" id="L72">        return ResponseEntity.ok(qualityService.topRejected(limit));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

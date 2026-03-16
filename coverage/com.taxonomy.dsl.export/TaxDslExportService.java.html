@@ -3,14 +3,18 @@
 import com.taxonomy.dsl.mapper.ModelToAstMapper;
 import com.taxonomy.dsl.model.*;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
-import com.taxonomy.model.TaxonomyNode;
-import com.taxonomy.model.TaxonomyRelation;
-import com.taxonomy.repository.TaxonomyNodeRepository;
-import com.taxonomy.repository.TaxonomyRelationRepository;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.ArchitectureRelation;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
 
 /**
  * Exports the current architecture state (taxonomy nodes and relations)
@@ -21,14 +25,14 @@ public class TaxDslExportService {
 
     private final TaxonomyNodeRepository nodeRepository;
     private final TaxonomyRelationRepository relationRepository;
-<span class="fc" id="L24">    private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();</span>
-<span class="fc" id="L25">    private final TaxDslSerializer serializer = new TaxDslSerializer();</span>
+<span class="fc" id="L28">    private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();</span>
+<span class="fc" id="L29">    private final TaxDslSerializer serializer = new TaxDslSerializer();</span>
 
     public TaxDslExportService(TaxonomyNodeRepository nodeRepository,
-<span class="fc" id="L28">                               TaxonomyRelationRepository relationRepository) {</span>
-<span class="fc" id="L29">        this.nodeRepository = nodeRepository;</span>
-<span class="fc" id="L30">        this.relationRepository = relationRepository;</span>
-<span class="fc" id="L31">    }</span>
+<span class="fc" id="L32">                               TaxonomyRelationRepository relationRepository) {</span>
+<span class="fc" id="L33">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L34">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L35">    }</span>
 
     /**
      * Export the complete current architecture as a single DSL document.
@@ -38,9 +42,9 @@ public class TaxDslExportService {
      */
     @Transactional(readOnly = true)
     public String exportAll(String namespace) {
-<span class="fc" id="L41">        CanonicalArchitectureModel model = buildCanonicalModel();</span>
-<span class="fc" id="L42">        var doc = modelToAstMapper.toDocument(model, namespace);</span>
-<span class="fc" id="L43">        return serializer.serialize(doc);</span>
+<span class="fc" id="L45">        CanonicalArchitectureModel model = buildCanonicalModel();</span>
+<span class="fc" id="L46">        var doc = modelToAstMapper.toDocument(model, namespace);</span>
+<span class="fc" id="L47">        return serializer.serialize(doc);</span>
     }
 
     /**
@@ -48,35 +52,35 @@ public class TaxDslExportService {
      */
     @Transactional(readOnly = true)
     public CanonicalArchitectureModel buildCanonicalModel() {
-<span class="fc" id="L51">        CanonicalArchitectureModel model = new CanonicalArchitectureModel();</span>
+<span class="fc" id="L55">        CanonicalArchitectureModel model = new CanonicalArchitectureModel();</span>
 
         // Export all non-root taxonomy nodes as elements
-<span class="fc" id="L54">        List&lt;TaxonomyNode&gt; allNodes = nodeRepository.findAll();</span>
-<span class="fc bfc" id="L55" title="All 2 branches covered.">        for (TaxonomyNode node : allNodes) {</span>
-<span class="fc bfc" id="L56" title="All 2 branches covered.">            if (node.getLevel() &gt; 0) { // Skip virtual root nodes</span>
-<span class="fc" id="L57">                ArchitectureElement el = new ArchitectureElement();</span>
-<span class="fc" id="L58">                el.setId(node.getCode());</span>
-<span class="fc" id="L59">                el.setType(TaxonomyRootTypes.typeFor(node.getTaxonomyRoot()));</span>
-<span class="fc" id="L60">                el.setTitle(node.getNameEn());</span>
-<span class="fc" id="L61">                el.setDescription(node.getDescriptionEn());</span>
-<span class="fc" id="L62">                el.setTaxonomy(node.getTaxonomyRoot());</span>
-<span class="fc" id="L63">                model.getElements().add(el);</span>
+<span class="fc" id="L58">        List&lt;TaxonomyNode&gt; allNodes = nodeRepository.findAll();</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        for (TaxonomyNode node : allNodes) {</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (node.getLevel() &gt; 0) { // Skip virtual root nodes</span>
+<span class="fc" id="L61">                ArchitectureElement el = new ArchitectureElement();</span>
+<span class="fc" id="L62">                el.setId(node.getCode());</span>
+<span class="fc" id="L63">                el.setType(TaxonomyRootTypes.typeFor(node.getTaxonomyRoot()));</span>
+<span class="fc" id="L64">                el.setTitle(node.getNameEn());</span>
+<span class="fc" id="L65">                el.setDescription(node.getDescriptionEn());</span>
+<span class="fc" id="L66">                el.setTaxonomy(node.getTaxonomyRoot());</span>
+<span class="fc" id="L67">                model.getElements().add(el);</span>
             }
-<span class="fc" id="L65">        }</span>
+<span class="fc" id="L69">        }</span>
 
         // Export all relations
-<span class="fc" id="L68">        List&lt;TaxonomyRelation&gt; allRelations = relationRepository.findAll();</span>
-<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (TaxonomyRelation rel : allRelations) {</span>
-<span class="fc" id="L70">            ArchitectureRelation archRel = new ArchitectureRelation();</span>
-<span class="fc" id="L71">            archRel.setSourceId(rel.getSourceNode().getCode());</span>
-<span class="fc" id="L72">            archRel.setRelationType(rel.getRelationType().name());</span>
-<span class="fc" id="L73">            archRel.setTargetId(rel.getTargetNode().getCode());</span>
-<span class="fc" id="L74">            archRel.setStatus(&quot;accepted&quot;);</span>
-<span class="fc" id="L75">            archRel.setProvenance(rel.getProvenance());</span>
-<span class="fc" id="L76">            model.getRelations().add(archRel);</span>
-<span class="fc" id="L77">        }</span>
+<span class="fc" id="L72">        List&lt;TaxonomyRelation&gt; allRelations = relationRepository.findAll();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (TaxonomyRelation rel : allRelations) {</span>
+<span class="fc" id="L74">            ArchitectureRelation archRel = new ArchitectureRelation();</span>
+<span class="fc" id="L75">            archRel.setSourceId(rel.getSourceNode().getCode());</span>
+<span class="fc" id="L76">            archRel.setRelationType(rel.getRelationType().name());</span>
+<span class="fc" id="L77">            archRel.setTargetId(rel.getTargetNode().getCode());</span>
+<span class="fc" id="L78">            archRel.setStatus(&quot;accepted&quot;);</span>
+<span class="fc" id="L79">            archRel.setProvenance(rel.getProvenance());</span>
+<span class="fc" id="L80">            model.getRelations().add(archRel);</span>
+<span class="fc" id="L81">        }</span>
 
-<span class="fc" id="L79">        return model;</span>
+<span class="fc" id="L83">        return model;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

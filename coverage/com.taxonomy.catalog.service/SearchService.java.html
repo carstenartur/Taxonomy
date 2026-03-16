@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SearchService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">SearchService.java</span></div><h1>SearchService.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.hibernate.search.mapper.orm.Search;
+import org.hibernate.search.mapper.orm.session.SearchSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
+
+/**
+ * Full-text taxonomy search backed by Hibernate Search (Lucene backend).
+ *
+ * &lt;p&gt;Replaces the previous raw-Lucene {@code ByteBuffersDirectory} + {@code IndexWriter}
+ * approach. Hibernate Search auto-indexes {@link TaxonomyNode} entities on JPA persist
+ * and commit, so no manual {@code buildIndex()} call is required.
+ *
+ * &lt;h2&gt;Query strategy&lt;/h2&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;Full-text match across {@code nameEn}, {@code descriptionEn}, {@code nameDe},
+ *       {@code descriptionDe} using the configured English/German analyzers.&lt;/li&gt;
+ *   &lt;li&gt;Keyword prefix match on {@code code}, {@code uuid}, {@code externalId} for
+ *       case-insensitive exact/prefix lookups (e.g. &quot;BP&quot;, &quot;BP.001&quot;).&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@Service
+<span class="fc" id="L35">public class SearchService {</span>
+
+<span class="fc" id="L37">    private static final Logger log = LoggerFactory.getLogger(SearchService.class);</span>
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    /**
+     * Search the taxonomy index and return up to {@code maxResults} flat (no children) DTOs.
+     */
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyNodeDto&gt; search(String queryString, int maxResults) {
+<span class="pc bpc" id="L47" title="2 of 4 branches missed.">        if (queryString == null || queryString.isBlank()) {</span>
+<span class="nc" id="L48">            return Collections.emptyList();</span>
+        }
+        try {
+<span class="fc" id="L51">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L52">            String lower = queryString.toLowerCase(Locale.ROOT);</span>
+
+<span class="fc" id="L54">            List&lt;TaxonomyNode&gt; hits = session.search(TaxonomyNode.class)</span>
+<span class="fc" id="L55">                    .where(f -&gt; f.bool()</span>
+<span class="fc" id="L56">                            .should(f.match()</span>
+<span class="fc" id="L57">                                    .fields(&quot;nameEn&quot;, &quot;descriptionEn&quot;, &quot;nameDe&quot;, &quot;descriptionDe&quot;)</span>
+<span class="fc" id="L58">                                    .matching(queryString))</span>
+<span class="fc" id="L59">                            .should(f.wildcard()</span>
+<span class="fc" id="L60">                                    .fields(&quot;code&quot;, &quot;uuid&quot;, &quot;externalId&quot;)</span>
+<span class="fc" id="L61">                                    .matching(lower + &quot;*&quot;))</span>
+<span class="fc" id="L62">                            .should(f.match()</span>
+<span class="fc" id="L63">                                    .fields(&quot;code&quot;, &quot;uuid&quot;, &quot;externalId&quot;)</span>
+<span class="fc" id="L64">                                    .matching(lower)))</span>
+<span class="fc" id="L65">                    .sort(f -&gt; f.score())</span>
+<span class="fc" id="L66">                    .fetchHits(maxResults);</span>
+
+<span class="fc" id="L68">            return hits.stream().map(this::toFlatDto).collect(Collectors.toList());</span>
+<span class="nc" id="L69">        } catch (Exception e) {</span>
+<span class="nc" id="L70">            log.error(&quot;Hibernate Search full-text search failed for '{}': {}&quot;, queryString, e.getMessage());</span>
+<span class="nc" id="L71">            return Collections.emptyList();</span>
+        }
+    }
+
+    /** Convert a {@link TaxonomyNode} to a flat DTO (no children, no relations). */
+    private TaxonomyNodeDto toFlatDto(TaxonomyNode node) {
+<span class="fc" id="L77">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
+<span class="fc" id="L78">        dto.setId(node.getId());</span>
+<span class="fc" id="L79">        dto.setCode(node.getCode());</span>
+<span class="fc" id="L80">        dto.setUuid(node.getUuid());</span>
+<span class="fc" id="L81">        dto.setNameEn(node.getNameEn());</span>
+<span class="fc" id="L82">        dto.setNameDe(node.getNameDe());</span>
+<span class="fc" id="L83">        dto.setDescriptionEn(node.getDescriptionEn());</span>
+<span class="fc" id="L84">        dto.setDescriptionDe(node.getDescriptionDe());</span>
+<span class="fc" id="L85">        dto.setParentCode(node.getParentCode());</span>
+<span class="fc" id="L86">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
+<span class="fc" id="L87">        dto.setLevel(node.getLevel());</span>
+<span class="fc" id="L88">        dto.setDataset(node.getDataset());</span>
+<span class="fc" id="L89">        dto.setExternalId(node.getExternalId());</span>
+<span class="fc" id="L90">        dto.setSource(node.getSource());</span>
+<span class="fc" id="L91">        dto.setReference(node.getReference());</span>
+<span class="fc" id="L92">        dto.setSortOrder(node.getSortOrder());</span>
+<span class="fc" id="L93">        dto.setState(node.getState());</span>
+<span class="fc" id="L94">        return dto;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelevancePropagationService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">RelevancePropagationService.java</span></div><h1>RelevancePropagationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.dto.TaxonomyRelationDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+import com.taxonomy.relations.service.RelationTraversalService;
+
+/**
+ * Computes propagated relevance scores starting from anchor nodes,
+ * traversing whitelisted relations up to a maximum hop distance.
+ */
+@Service
+public class RelevancePropagationService {
+
+<span class="fc" id="L18">    private static final Logger log = LoggerFactory.getLogger(RelevancePropagationService.class);</span>
+
+    /** Maximum number of hops from an anchor node. */
+    static final int MAX_HOPS = 2;
+
+    /** Minimum relevance threshold — anything below is discarded. */
+    static final double MIN_RELEVANCE = 0.35;
+
+    /** Per-hop decay factor applied after the first hop. */
+    static final double HOP_DECAY = 0.70;
+
+    /** Propagation weight per relation type. */
+<span class="fc" id="L30">    static final Map&lt;String, Double&gt; TYPE_WEIGHTS = Map.of(</span>
+<span class="fc" id="L31">            &quot;REALIZES&quot;, 0.80,</span>
+<span class="fc" id="L32">            &quot;SUPPORTS&quot;, 0.75,</span>
+<span class="fc" id="L33">            &quot;USES&quot;, 0.65</span>
+    );
+
+    private final RelationTraversalService traversalService;
+
+<span class="fc" id="L38">    public RelevancePropagationService(RelationTraversalService traversalService) {</span>
+<span class="fc" id="L39">        this.traversalService = traversalService;</span>
+<span class="fc" id="L40">    }</span>
+
+    /**
+     * Propagates relevance from anchor nodes through traversable relations.
+     *
+     * @param anchorRelevances map of nodeCode → anchor relevance (directScore / 100.0)
+     * @return propagation result with relevance, hop distances, reasons, and traversed relations
+     */
+    public PropagationResult propagate(Map&lt;String, Double&gt; anchorRelevances) {
+<span class="fc" id="L49">        Map&lt;String, Double&gt; relevanceMap = new LinkedHashMap&lt;&gt;(anchorRelevances);</span>
+<span class="fc" id="L50">        Map&lt;String, Integer&gt; hopDistanceMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L51">        Map&lt;String, String&gt; reasonMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L52">        List&lt;PropagationResult.TraversedRelation&gt; traversedRelations = new ArrayList&lt;&gt;();</span>
+
+        // Initialize anchors at hop 0
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        for (Map.Entry&lt;String, Double&gt; entry : anchorRelevances.entrySet()) {</span>
+<span class="fc" id="L56">            hopDistanceMap.put(entry.getKey(), 0);</span>
+<span class="fc" id="L57">            reasonMap.put(entry.getKey(), &quot;direct-match&quot;);</span>
+<span class="fc" id="L58">        }</span>
+
+        // BFS propagation up to MAX_HOPS
+<span class="fc" id="L61">        Set&lt;String&gt; currentFrontier = new LinkedHashSet&lt;&gt;(anchorRelevances.keySet());</span>
+
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        for (int hop = 1; hop &lt;= MAX_HOPS; hop++) {</span>
+<span class="fc" id="L64">            Set&lt;String&gt; nextFrontier = new LinkedHashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L66" title="All 2 branches covered.">            for (String nodeCode : currentFrontier) {</span>
+<span class="fc" id="L67">                double sourceRelevance = relevanceMap.getOrDefault(nodeCode, 0.0);</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                if (sourceRelevance &lt; MIN_RELEVANCE) {</span>
+<span class="nc" id="L69">                    continue;</span>
+                }
+
+<span class="fc" id="L72">                List&lt;TaxonomyRelationDto&gt; relations = traversalService.getTraversableRelations(nodeCode);</span>
+
+<span class="fc bfc" id="L74" title="All 2 branches covered.">                for (TaxonomyRelationDto rel : relations) {</span>
+<span class="fc" id="L75">                    String targetCode = determineTarget(rel, nodeCode);</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">                    if (targetCode == null) continue;</span>
+
+<span class="fc" id="L78">                    Double typeWeight = TYPE_WEIGHTS.get(rel.getRelationType());</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">                    if (typeWeight == null) continue;</span>
+
+<span class="fc" id="L81">                    double propagated = sourceRelevance * typeWeight;</span>
+                    // Apply additional hop decay for hops beyond the first
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                    if (hop &gt; 1) {</span>
+<span class="fc" id="L84">                        propagated *= HOP_DECAY;</span>
+                    }
+
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                    if (propagated &lt; MIN_RELEVANCE) continue;</span>
+
+                    // Keep highest relevance if multiple paths lead to the same node
+<span class="fc" id="L90">                    double existing = relevanceMap.getOrDefault(targetCode, 0.0);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                    if (propagated &gt; existing) {</span>
+<span class="fc" id="L92">                        relevanceMap.put(targetCode, propagated);</span>
+<span class="fc" id="L93">                        hopDistanceMap.put(targetCode, hop);</span>
+<span class="fc" id="L94">                        reasonMap.put(targetCode,</span>
+<span class="fc" id="L95">                                &quot;propagated via &quot; + rel.getRelationType() + &quot; from &quot; + nodeCode);</span>
+<span class="fc" id="L96">                        nextFrontier.add(targetCode);</span>
+
+<span class="fc" id="L98">                        log.debug(&quot;Propagated {} → {} via {} = {} (hop {})&quot;,</span>
+<span class="fc" id="L99">                                nodeCode, targetCode, rel.getRelationType(), propagated, hop);</span>
+                    }
+
+                    // Record the traversed relation
+<span class="fc" id="L103">                    String relReason = &quot;propagated via &quot; + rel.getRelationType() + &quot; from &quot; + nodeCode;</span>
+<span class="fc" id="L104">                    traversedRelations.add(new PropagationResult.TraversedRelation(</span>
+                            rel, propagated, hop, relReason));
+<span class="fc" id="L106">                }</span>
+<span class="fc" id="L107">            }</span>
+
+<span class="fc" id="L109">            currentFrontier = nextFrontier;</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">            if (currentFrontier.isEmpty()) break;</span>
+        }
+
+<span class="fc" id="L113">        log.info(&quot;Propagation complete: {} anchor(s), {} relation(s) traversed, {} element(s) included, maxHop={}&quot;,</span>
+<span class="fc" id="L114">                anchorRelevances.size(), traversedRelations.size(), relevanceMap.size(),</span>
+<span class="fc" id="L115">                hopDistanceMap.values().stream().mapToInt(Integer::intValue).max().orElse(0));</span>
+
+<span class="fc" id="L117">        return new PropagationResult(relevanceMap, hopDistanceMap, reasonMap, traversedRelations);</span>
+    }
+
+    /**
+     * Determines the target node code given a relation and the current source.
+     * For outgoing relations from nodeCode, the target is the relation's target.
+     * For bidirectional relations where nodeCode is the target, the target becomes the source.
+     */
+    private String determineTarget(TaxonomyRelationDto rel, String nodeCode) {
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">        if (rel.getSourceCode().equals(nodeCode)) {</span>
+<span class="fc" id="L127">            return rel.getTargetCode();</span>
+        }
+<span class="nc bnc" id="L129" title="All 4 branches missed.">        if (rel.getTargetCode().equals(nodeCode) &amp;&amp; rel.isBidirectional()) {</span>
+<span class="nc" id="L130">            return rel.getSourceCode();</span>
+        }
+<span class="nc" id="L132">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationProposalService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationProposalService.java</span></div><h1>RelationProposalService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.dto.RelationProposalDto;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.model.*;
+import com.taxonomy.relations.repository.RelationProposalRepository;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationProposal;
+
+/**
+ * Orchestrator for the Relation Proposal Pipeline.
+ *
+ * &lt;p&gt;Pipeline stages:
+ * &lt;ol&gt;
+ *   &lt;li&gt;Candidate Search (via {@link RelationCandidateService})&lt;/li&gt;
+ *   &lt;li&gt;RelationType Compatibility filtering&lt;/li&gt;
+ *   &lt;li&gt;Validation (via {@link RelationValidationService})&lt;/li&gt;
+ *   &lt;li&gt;Confidence scoring&lt;/li&gt;
+ *   &lt;li&gt;Proposal creation &amp;amp; persistence&lt;/li&gt;
+ * &lt;/ol&gt;
+ */
+@Service
+public class RelationProposalService {
+
+<span class="fc" id="L35">    private static final Logger log = LoggerFactory.getLogger(RelationProposalService.class);</span>
+
+    private final TaxonomyNodeRepository nodeRepository;
+    private final RelationProposalRepository proposalRepository;
+    private final RelationCandidateService candidateService;
+    private final RelationValidationService validationService;
+
+    public RelationProposalService(TaxonomyNodeRepository nodeRepository,
+                                   RelationProposalRepository proposalRepository,
+                                   RelationCandidateService candidateService,
+<span class="fc" id="L45">                                   RelationValidationService validationService) {</span>
+<span class="fc" id="L46">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L47">        this.proposalRepository = proposalRepository;</span>
+<span class="fc" id="L48">        this.candidateService = candidateService;</span>
+<span class="fc" id="L49">        this.validationService = validationService;</span>
+<span class="fc" id="L50">    }</span>
+
+    /**
+     * Runs the full proposal pipeline for a source node and relation type.
+     *
+     * @param sourceNodeCode code of the source taxonomy node (e.g. &quot;BP.001&quot;)
+     * @param relationType   the type of relation to propose
+     * @param limit          maximum number of candidates to evaluate
+     * @return list of created proposals (only those that passed validation)
+     */
+    @Transactional
+    public List&lt;RelationProposalDto&gt; proposeRelations(String sourceNodeCode,
+                                                       RelationType relationType,
+                                                       int limit) {
+<span class="fc" id="L64">        TaxonomyNode source = nodeRepository.findByCode(sourceNodeCode)</span>
+<span class="fc" id="L65">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Source node not found: &quot; + sourceNodeCode));
+
+<span class="fc" id="L68">        log.info(&quot;Proposing {} relations for node '{}'&quot;, relationType, sourceNodeCode);</span>
+
+        // 1. Candidate search
+<span class="fc" id="L71">        List&lt;TaxonomyNodeDto&gt; candidates = candidateService.findCandidates(</span>
+                source, relationType, limit);
+
+<span class="fc" id="L74">        List&lt;RelationProposalDto&gt; proposals = new ArrayList&lt;&gt;();</span>
+
+        // 2–4. Validate each candidate and create proposals
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        for (int i = 0; i &lt; candidates.size(); i++) {</span>
+<span class="fc" id="L78">            TaxonomyNodeDto candidate = candidates.get(i);</span>
+
+            // Skip if a proposal already exists for this triple
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationType(</span>
+<span class="fc" id="L82">                    sourceNodeCode, candidate.getCode(), relationType)) {</span>
+<span class="nc" id="L83">                log.debug(&quot;Proposal already exists: {} → {} [{}]&quot;,</span>
+<span class="nc" id="L84">                        sourceNodeCode, candidate.getCode(), relationType);</span>
+<span class="nc" id="L85">                continue;</span>
+            }
+
+<span class="fc" id="L88">            RelationValidationService.ValidationResult result =</span>
+<span class="fc" id="L89">                    validationService.validate(source, candidate, relationType,</span>
+<span class="fc" id="L90">                            i, candidates.size());</span>
+
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">            if (result.isValid()) {</span>
+<span class="fc" id="L93">                TaxonomyNode target = nodeRepository.findByCode(candidate.getCode())</span>
+<span class="fc" id="L94">                        .orElse(null);</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                if (target == null) continue;</span>
+
+<span class="fc" id="L97">                RelationProposal proposal = new RelationProposal();</span>
+<span class="fc" id="L98">                proposal.setSourceNode(source);</span>
+<span class="fc" id="L99">                proposal.setTargetNode(target);</span>
+<span class="fc" id="L100">                proposal.setRelationType(relationType);</span>
+<span class="fc" id="L101">                proposal.setConfidence(result.getConfidence());</span>
+<span class="fc" id="L102">                proposal.setRationale(result.getRationale());</span>
+<span class="fc" id="L103">                proposal.setProvenance(&quot;hybrid-search&quot;);</span>
+<span class="fc" id="L104">                proposal.setStatus(ProposalStatus.PENDING);</span>
+
+<span class="fc" id="L106">                RelationProposal saved = proposalRepository.save(proposal);</span>
+<span class="fc" id="L107">                proposals.add(toDto(saved));</span>
+<span class="fc" id="L108">                log.debug(&quot;Created proposal: {} → {} [{}] confidence={}&quot;,</span>
+<span class="fc" id="L109">                        sourceNodeCode, candidate.getCode(), relationType,</span>
+<span class="fc" id="L110">                        result.getConfidence());</span>
+            }
+        }
+
+<span class="fc" id="L114">        log.info(&quot;Proposed {} relations for node '{}' [{}]&quot;,</span>
+<span class="fc" id="L115">                proposals.size(), sourceNodeCode, relationType);</span>
+<span class="fc" id="L116">        return proposals;</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RelationProposalDto&gt; getPendingProposals() {
+<span class="fc" id="L121">        return proposalRepository.findByStatus(ProposalStatus.PENDING)</span>
+<span class="fc" id="L122">                .stream().map(this::toDto).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RelationProposalDto&gt; getAllProposals() {
+<span class="fc" id="L127">        return proposalRepository.findAll()</span>
+<span class="fc" id="L128">                .stream().map(this::toDto).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RelationProposalDto&gt; getProposalsForNode(String sourceCode) {
+<span class="fc" id="L133">        return proposalRepository.findBySourceNodeCode(sourceCode)</span>
+<span class="fc" id="L134">                .stream().map(this::toDto).toList();</span>
+    }
+
+    /**
+     * Creates a proposal directly from a provisional relation hypothesis.
+     * Used to persist an AI-generated hypothesis as a formal proposal for review.
+     *
+     * @param sourceCode   source node code
+     * @param targetCode   target node code
+     * @param relationType the type of relation
+     * @param confidence   confidence score (0.0–1.0)
+     * @param rationale    explanation for the proposal
+     * @return the created proposal DTO, or {@code null} if the proposal already exists
+     */
+    @Transactional
+    public RelationProposalDto createFromHypothesis(String sourceCode, String targetCode,
+                                                     RelationType relationType,
+                                                     double confidence, String rationale) {
+<span class="nc" id="L152">        TaxonomyNode source = nodeRepository.findByCode(sourceCode)</span>
+<span class="nc" id="L153">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Source node not found: &quot; + sourceCode));</span>
+<span class="nc" id="L154">        TaxonomyNode target = nodeRepository.findByCode(targetCode)</span>
+<span class="nc" id="L155">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Target node not found: &quot; + targetCode));</span>
+
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationType(</span>
+                sourceCode, targetCode, relationType)) {
+<span class="nc" id="L159">            log.debug(&quot;Proposal already exists: {} → {} [{}]&quot;, sourceCode, targetCode, relationType);</span>
+<span class="nc" id="L160">            return null;</span>
+        }
+
+<span class="nc" id="L163">        RelationProposal proposal = new RelationProposal();</span>
+<span class="nc" id="L164">        proposal.setSourceNode(source);</span>
+<span class="nc" id="L165">        proposal.setTargetNode(target);</span>
+<span class="nc" id="L166">        proposal.setRelationType(relationType);</span>
+<span class="nc" id="L167">        proposal.setConfidence(confidence);</span>
+<span class="nc" id="L168">        proposal.setRationale(rationale);</span>
+<span class="nc" id="L169">        proposal.setProvenance(&quot;analysis-hypothesis&quot;);</span>
+<span class="nc" id="L170">        proposal.setStatus(ProposalStatus.PENDING);</span>
+
+<span class="nc" id="L172">        RelationProposal saved = proposalRepository.save(proposal);</span>
+<span class="nc" id="L173">        log.info(&quot;Created proposal from hypothesis: {} → {} [{}] confidence={}&quot;,</span>
+<span class="nc" id="L174">                sourceCode, targetCode, relationType, confidence);</span>
+<span class="nc" id="L175">        return toDto(saved);</span>
+    }
+
+    public RelationProposalDto toDto(RelationProposal proposal) {
+<span class="fc" id="L179">        RelationProposalDto dto = new RelationProposalDto();</span>
+<span class="fc" id="L180">        dto.setId(proposal.getId());</span>
+<span class="fc" id="L181">        dto.setSourceCode(proposal.getSourceNode().getCode());</span>
+<span class="fc" id="L182">        dto.setSourceName(proposal.getSourceNode().getNameEn());</span>
+<span class="fc" id="L183">        dto.setTargetCode(proposal.getTargetNode().getCode());</span>
+<span class="fc" id="L184">        dto.setTargetName(proposal.getTargetNode().getNameEn());</span>
+<span class="fc" id="L185">        dto.setRelationType(proposal.getRelationType().name());</span>
+<span class="fc" id="L186">        dto.setStatus(proposal.getStatus().name());</span>
+<span class="fc" id="L187">        dto.setConfidence(proposal.getConfidence());</span>
+<span class="fc" id="L188">        dto.setRationale(proposal.getRationale());</span>
+<span class="fc" id="L189">        dto.setProvenance(proposal.getProvenance());</span>
+<span class="fc" id="L190">        dto.setExplanationBasis(deriveExplanationBasis(proposal));</span>
+<span class="fc" id="L191">        dto.setCreatedAt(proposal.getCreatedAt());</span>
+<span class="fc" id="L192">        dto.setReviewedAt(proposal.getReviewedAt());</span>
+<span class="fc" id="L193">        return dto;</span>
+    }
+
+    /**
+     * Derives a human-readable explanation of how and why a proposal was created.
+     */
+    private String deriveExplanationBasis(RelationProposal proposal) {
+<span class="fc" id="L200">        String provenance = proposal.getProvenance();</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">        if (provenance == null) return &quot;unknown source&quot;;</span>
+
+<span class="pc bpc" id="L203" title="2 of 3 branches missed.">        return switch (provenance) {</span>
+<span class="fc" id="L204">            case &quot;hybrid-search&quot; -&gt; &quot;Discovered via hybrid search (semantic + keyword) &quot;</span>
+                    + &quot;and validated against the relation compatibility matrix&quot;;
+<span class="nc" id="L206">            case &quot;analysis-hypothesis&quot; -&gt; &quot;Derived from LLM analysis of a business requirement&quot;;</span>
+<span class="nc" id="L207">            default -&gt; &quot;Source: &quot; + provenance;</span>
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

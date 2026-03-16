@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DerivedMetadataService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">DerivedMetadataService.java</span></div><h1>DerivedMetadataService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.relations.repository.RequirementCoverageRepository;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Computes and persists derived graph metadata on {@link TaxonomyNode} entities.
+ *
+ * &lt;p&gt;Derived metadata includes:
+ * &lt;ul&gt;
+ *     &lt;li&gt;Incoming/outgoing relation counts&lt;/li&gt;
+ *     &lt;li&gt;Requirement coverage count&lt;/li&gt;
+ *     &lt;li&gt;Graph role classification (hub / leaf / bridge / isolated)&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;These fields are indexed by Hibernate Search and improve search relevance,
+ * ranking quality, and enable faceted queries over structural properties.
+ */
+@Service
+public class DerivedMetadataService {
+
+<span class="fc" id="L32">    private static final Logger log = LoggerFactory.getLogger(DerivedMetadataService.class);</span>
+
+    /** Nodes with ≥ this many total relations are classified as hubs. */
+    private static final int HUB_THRESHOLD = 5;
+
+    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyRelationRepository relationRepository;
+    private final RequirementCoverageRepository coverageRepository;
+
+    public DerivedMetadataService(TaxonomyNodeRepository nodeRepository,
+                                  TaxonomyRelationRepository relationRepository,
+<span class="fc" id="L43">                                  RequirementCoverageRepository coverageRepository) {</span>
+<span class="fc" id="L44">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L45">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L46">        this.coverageRepository = coverageRepository;</span>
+<span class="fc" id="L47">    }</span>
+
+    /**
+     * Recompute derived metadata for all taxonomy nodes.
+     *
+     * @return the number of nodes updated
+     */
+    @Transactional
+    public int recomputeAll() {
+<span class="fc" id="L56">        log.info(&quot;Recomputing derived metadata for all nodes…&quot;);</span>
+
+<span class="fc" id="L58">        Map&lt;String, Integer&gt; incomingCounts = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L59">        Map&lt;String, Integer&gt; outgoingCounts = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L60">        Map&lt;String, Integer&gt; coverageCounts = new HashMap&lt;&gt;();</span>
+
+        // Count relations
+<span class="fc" id="L63">        relationRepository.findAll().forEach(rel -&gt; {</span>
+<span class="nc" id="L64">            String srcCode = rel.getSourceNode().getCode();</span>
+<span class="nc" id="L65">            String tgtCode = rel.getTargetNode().getCode();</span>
+<span class="nc" id="L66">            outgoingCounts.merge(srcCode, 1, Integer::sum);</span>
+<span class="nc" id="L67">            incomingCounts.merge(tgtCode, 1, Integer::sum);</span>
+<span class="nc" id="L68">        });</span>
+
+        // Count requirement coverage
+<span class="fc" id="L71">        coverageRepository.findNodeCodeCountPairs().forEach(pair -&gt; {</span>
+<span class="nc" id="L72">            String nodeCode = (String) pair[0];</span>
+<span class="nc" id="L73">            long count = (Long) pair[1];</span>
+<span class="nc" id="L74">            coverageCounts.put(nodeCode, (int) count);</span>
+<span class="nc" id="L75">        });</span>
+
+<span class="fc" id="L77">        List&lt;TaxonomyNode&gt; allNodes = nodeRepository.findAll();</span>
+<span class="fc" id="L78">        int updated = 0;</span>
+
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        for (TaxonomyNode node : allNodes) {</span>
+<span class="fc" id="L81">            String code = node.getCode();</span>
+<span class="fc" id="L82">            int incoming = incomingCounts.getOrDefault(code, 0);</span>
+<span class="fc" id="L83">            int outgoing = outgoingCounts.getOrDefault(code, 0);</span>
+<span class="fc" id="L84">            int coverage = coverageCounts.getOrDefault(code, 0);</span>
+<span class="fc" id="L85">            String role = classifyRole(incoming, outgoing);</span>
+
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            boolean changed = node.getIncomingRelationCount() != incoming</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">                    || node.getOutgoingRelationCount() != outgoing</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">                    || node.getRequirementCoverageCount() != coverage</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                    || !role.equals(node.getGraphRole());</span>
+
+<span class="fc bfc" id="L92" title="All 2 branches covered.">            if (changed) {</span>
+<span class="fc" id="L93">                node.setIncomingRelationCount(incoming);</span>
+<span class="fc" id="L94">                node.setOutgoingRelationCount(outgoing);</span>
+<span class="fc" id="L95">                node.setRequirementCoverageCount(coverage);</span>
+<span class="fc" id="L96">                node.setGraphRole(role);</span>
+<span class="fc" id="L97">                updated++;</span>
+            }
+<span class="fc" id="L99">        }</span>
+
+<span class="fc" id="L101">        nodeRepository.saveAll(allNodes);</span>
+<span class="fc" id="L102">        log.info(&quot;Derived metadata recomputed: {} nodes updated out of {} total.&quot;, updated, allNodes.size());</span>
+<span class="fc" id="L103">        return updated;</span>
+    }
+
+    /**
+     * Classify a node's graph role based on its relation counts.
+     *
+     * &lt;ul&gt;
+     *     &lt;li&gt;&lt;b&gt;hub&lt;/b&gt;: ≥ {@value HUB_THRESHOLD} total relations&lt;/li&gt;
+     *     &lt;li&gt;&lt;b&gt;bridge&lt;/b&gt;: both incoming and outgoing relations, but below hub threshold&lt;/li&gt;
+     *     &lt;li&gt;&lt;b&gt;leaf&lt;/b&gt;: only incoming or only outgoing relations&lt;/li&gt;
+     *     &lt;li&gt;&lt;b&gt;isolated&lt;/b&gt;: no relations at all&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+    public static String classifyRole(int incoming, int outgoing) {
+<span class="fc" id="L117">        int total = incoming + outgoing;</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (total == 0) return &quot;isolated&quot;;</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if (total &gt;= HUB_THRESHOLD) return &quot;hub&quot;;</span>
+<span class="fc bfc" id="L120" title="All 4 branches covered.">        if (incoming &gt; 0 &amp;&amp; outgoing &gt; 0) return &quot;bridge&quot;;</span>
+<span class="fc" id="L121">        return &quot;leaf&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

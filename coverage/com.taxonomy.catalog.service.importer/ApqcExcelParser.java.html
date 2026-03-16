@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ApqcExcelParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service.importer</a> &gt; <span class="el_source">ApqcExcelParser.java</span></div><h1>ApqcExcelParser.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service.importer;
+
+import com.taxonomy.dsl.mapping.ExternalElement;
+import com.taxonomy.dsl.mapping.ExternalRelation;
+import org.apache.poi.ss.usermodel.*;
+
+import java.io.InputStream;
+import java.util.*;
+
+/**
+ * Parses APQC Process Classification Framework (PCF) Excel (.xlsx) files into
+ * {@link ExternalElement}s and {@link ExternalRelation}s.
+ *
+ * &lt;p&gt;Many APQC licensees deliver the PCF as {@code .xlsx}. This parser uses
+ * Apache POI (already a project dependency) to read the workbook.
+ *
+ * &lt;p&gt;Expected column structure (flexible header matching):
+ * &lt;pre&gt;
+ * PCF ID | Name | Level | Description
+ * 1.0    | Develop Vision and Strategy | 1 |
+ * &lt;/pre&gt;
+ */
+<span class="fc" id="L23">public class ApqcExcelParser implements ExternalParser {</span>
+
+<span class="fc" id="L25">    private static final String[] LEVEL_TYPES = {</span>
+        &quot;Category&quot;, &quot;ProcessGroup&quot;, &quot;Process&quot;, &quot;Activity&quot;, &quot;Task&quot;
+    };
+
+    @Override
+    public String fileFormat() {
+<span class="fc" id="L31">        return &quot;xlsx&quot;;</span>
+    }
+
+    @Override
+    public ParsedExternalModel parse(InputStream input) throws Exception {
+<span class="fc" id="L36">        List&lt;ExternalElement&gt; elements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L37">        List&lt;ExternalRelation&gt; relations = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L38">        Map&lt;String, String&gt; idByPcfId = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc" id="L40">        try (Workbook workbook = WorkbookFactory.create(input)) {</span>
+<span class="fc" id="L41">            Sheet sheet = workbook.getSheetAt(0);</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">            if (sheet == null) {</span>
+<span class="nc" id="L43">                return new ParsedExternalModel(elements, relations);</span>
+            }
+
+<span class="fc" id="L46">            Iterator&lt;Row&gt; rowIterator = sheet.iterator();</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">            if (!rowIterator.hasNext()) {</span>
+<span class="nc" id="L48">                return new ParsedExternalModel(elements, relations);</span>
+            }
+
+            // Parse header row
+<span class="fc" id="L52">            Row headerRow = rowIterator.next();</span>
+<span class="fc" id="L53">            int pcfIdCol = findColumn(headerRow, &quot;PCF ID&quot;, &quot;Id&quot;, &quot;ID&quot;, &quot;pcf_id&quot;);</span>
+<span class="fc" id="L54">            int nameCol = findColumn(headerRow, &quot;Name&quot;, &quot;name&quot;, &quot;Process Name&quot;, &quot;Title&quot;);</span>
+<span class="fc" id="L55">            int levelCol = findColumn(headerRow, &quot;Level&quot;, &quot;level&quot;, &quot;Hierarchy Level&quot;);</span>
+<span class="fc" id="L56">            int descCol = findColumn(headerRow, &quot;Description&quot;, &quot;description&quot;, &quot;Desc&quot;);</span>
+
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            while (rowIterator.hasNext()) {</span>
+<span class="fc" id="L59">                Row row = rowIterator.next();</span>
+<span class="fc" id="L60">                String pcfId = getCellString(row, pcfIdCol);</span>
+<span class="fc" id="L61">                String name = getCellString(row, nameCol);</span>
+<span class="fc" id="L62">                String levelStr = getCellString(row, levelCol);</span>
+<span class="fc" id="L63">                String description = getCellString(row, descCol, false);</span>
+
+<span class="pc bpc" id="L65" title="2 of 4 branches missed.">                if (pcfId == null || pcfId.isBlank()) continue;</span>
+
+<span class="fc" id="L67">                int level = parseLevel(levelStr, pcfId);</span>
+<span class="pc bpc" id="L68" title="2 of 4 branches missed.">                String type = level &gt;= 1 &amp;&amp; level &lt;= LEVEL_TYPES.length</span>
+<span class="pc" id="L69">                        ? LEVEL_TYPES[level - 1] : &quot;Category&quot;;</span>
+
+<span class="fc" id="L71">                String elementId = &quot;apqc-&quot; + pcfId.replace(&quot;.&quot;, &quot;-&quot;);</span>
+<span class="fc" id="L72">                Map&lt;String, String&gt; props = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L73">                props.put(&quot;pcfId&quot;, pcfId);</span>
+<span class="fc" id="L74">                String parentPcfId = deriveParentPcfId(pcfId);</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">                if (parentPcfId != null) {</span>
+<span class="fc" id="L76">                    props.put(&quot;parentId&quot;, &quot;apqc-&quot; + parentPcfId.replace(&quot;.&quot;, &quot;-&quot;));</span>
+                }
+
+<span class="fc" id="L79">                elements.add(new ExternalElement(elementId, type, name, description, props));</span>
+<span class="fc" id="L80">                idByPcfId.put(pcfId, elementId);</span>
+
+                // Create parent-child relation
+<span class="pc bpc" id="L83" title="2 of 4 branches missed.">                if (parentPcfId != null &amp;&amp; idByPcfId.containsKey(parentPcfId)) {</span>
+<span class="nc" id="L84">                    relations.add(new ExternalRelation(</span>
+<span class="nc" id="L85">                            idByPcfId.get(parentPcfId), elementId, &quot;ParentChild&quot;, Map.of()));</span>
+                }
+<span class="fc" id="L87">            }</span>
+<span class="nc bnc" id="L88" title="All 4 branches missed.">        }</span>
+
+<span class="fc" id="L90">        return new ParsedExternalModel(elements, relations);</span>
+    }
+
+    private int findColumn(Row headerRow, String... candidates) {
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        for (Cell cell : headerRow) {</span>
+<span class="fc" id="L95">            String value = getCellValueAsString(cell);</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            if (value == null) continue;</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            for (String candidate : candidates) {</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                if (value.trim().equalsIgnoreCase(candidate)) {</span>
+<span class="fc" id="L99">                    return cell.getColumnIndex();</span>
+                }
+            }
+<span class="fc" id="L102">        }</span>
+<span class="nc" id="L103">        return -1;</span>
+    }
+
+    private String getCellString(Row row, int colIndex) {
+<span class="fc" id="L107">        return getCellString(row, colIndex, true);</span>
+    }
+
+    private String getCellString(Row row, int colIndex, boolean trim) {
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">        if (colIndex &lt; 0) return null;</span>
+<span class="fc" id="L112">        Cell cell = row.getCell(colIndex);</span>
+<span class="fc" id="L113">        return getCellValueAsString(cell, trim);</span>
+    }
+
+    private String getCellValueAsString(Cell cell) {
+<span class="fc" id="L117">        return getCellValueAsString(cell, true);</span>
+    }
+
+    private String getCellValueAsString(Cell cell, boolean trim) {
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (cell == null) return null;</span>
+<span class="pc bpc" id="L122" title="3 of 4 branches missed.">        return switch (cell.getCellType()) {</span>
+            case STRING -&gt; {
+<span class="fc" id="L124">                RichTextString rts = cell.getRichStringCellValue();</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">                String s = rts != null ? rts.getString() : cell.getStringCellValue();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                yield trim ? s.trim() : s.strip();</span>
+            }
+            case NUMERIC -&gt; {
+<span class="nc" id="L129">                double num = cell.getNumericCellValue();</span>
+<span class="nc bnc" id="L130" title="All 4 branches missed.">                if (num == Math.floor(num) &amp;&amp; !Double.isInfinite(num)) {</span>
+<span class="nc" id="L131">                    yield String.valueOf((long) num);</span>
+                }
+<span class="nc" id="L133">                yield String.valueOf(num);</span>
+            }
+<span class="nc" id="L135">            case BOOLEAN -&gt; String.valueOf(cell.getBooleanCellValue());</span>
+<span class="nc" id="L136">            default -&gt; null;</span>
+        };
+    }
+
+    private int parseLevel(String levelStr, String pcfId) {
+<span class="pc bpc" id="L141" title="2 of 4 branches missed.">        if (levelStr != null &amp;&amp; !levelStr.isBlank()) {</span>
+            try {
+<span class="fc" id="L143">                return Integer.parseInt(levelStr.trim());</span>
+<span class="nc" id="L144">            } catch (NumberFormatException ignored) {</span>
+                // Fall through
+            }
+        }
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        long dots = pcfId.chars().filter(c -&gt; c == '.').count();</span>
+<span class="nc" id="L149">        return (int) dots + 1;</span>
+    }
+
+    private String deriveParentPcfId(String pcfId) {
+<span class="fc" id="L153">        int lastDot = pcfId.lastIndexOf('.');</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">        if (lastDot &lt;= 0) return null;</span>
+<span class="fc" id="L155">        return pcfId.substring(0, lastDot);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

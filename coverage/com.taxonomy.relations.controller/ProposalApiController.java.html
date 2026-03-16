@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProposalApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.controller</a> &gt; <span class="el_source">ProposalApiController.java</span></div><h1>ProposalApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.controller;
+
+import com.taxonomy.dto.RelationProposalDto;
+import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.service.RelationProposalService;
+import com.taxonomy.relations.service.RelationReviewService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+
+/**
+ * REST API for the Relation Proposal Pipeline.
+ *
+ * &lt;p&gt;Endpoints:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code POST /api/proposals/propose} — trigger proposal generation&lt;/li&gt;
+ *   &lt;li&gt;{@code GET  /api/proposals} — list all proposals (optionally filter by status)&lt;/li&gt;
+ *   &lt;li&gt;{@code GET  /api/proposals/pending} — list pending proposals&lt;/li&gt;
+ *   &lt;li&gt;{@code GET  /api/node/{code}/proposals} — proposals for a specific node&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/proposals/{id}/accept} — accept a proposal&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/proposals/{id}/reject} — reject a proposal&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Proposals&quot;)
+public class ProposalApiController {
+
+    private final RelationProposalService proposalService;
+    private final RelationReviewService reviewService;
+
+    public ProposalApiController(RelationProposalService proposalService,
+<span class="fc" id="L40">                                  RelationReviewService reviewService) {</span>
+<span class="fc" id="L41">        this.proposalService = proposalService;</span>
+<span class="fc" id="L42">        this.reviewService = reviewService;</span>
+<span class="fc" id="L43">    }</span>
+
+    /**
+     * Trigger the proposal pipeline for a source node and relation type.
+     */
+    @Operation(summary = &quot;Propose relations&quot;, description = &quot;Trigger the proposal pipeline for a source node and relation type&quot;)
+    @PostMapping(&quot;/proposals/propose&quot;)
+    public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; proposeRelations(
+            @RequestBody Map&lt;String, String&gt; body) {
+<span class="fc" id="L52">        String sourceCode = body.get(&quot;sourceCode&quot;);</span>
+<span class="fc" id="L53">        String relationTypeStr = body.get(&quot;relationType&quot;);</span>
+<span class="fc" id="L54">        String limitStr = body.getOrDefault(&quot;limit&quot;, &quot;10&quot;);</span>
+
+<span class="pc bpc" id="L56" title="2 of 6 branches missed.">        if (sourceCode == null || sourceCode.isBlank() ||</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">                relationTypeStr == null || relationTypeStr.isBlank()) {</span>
+<span class="fc" id="L58">            return ResponseEntity.badRequest().build();</span>
+        }
+
+        RelationType relationType;
+        try {
+<span class="fc" id="L63">            relationType = RelationType.valueOf(relationTypeStr.toUpperCase());</span>
+<span class="fc" id="L64">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L65">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L66">        }</span>
+
+        int limit;
+        try {
+<span class="fc" id="L70">            limit = Integer.parseInt(limitStr);</span>
+<span class="pc bpc" id="L71" title="2 of 4 branches missed.">            if (limit &lt; 1 || limit &gt; 100) limit = 10;</span>
+<span class="nc" id="L72">        } catch (NumberFormatException e) {</span>
+<span class="nc" id="L73">            limit = 10;</span>
+<span class="fc" id="L74">        }</span>
+
+        try {
+<span class="fc" id="L77">            List&lt;RelationProposalDto&gt; proposals =</span>
+<span class="fc" id="L78">                    proposalService.proposeRelations(sourceCode, relationType, limit);</span>
+<span class="fc" id="L79">            return ResponseEntity.ok(proposals);</span>
+<span class="fc" id="L80">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L81">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+    /**
+     * List all proposals.
+     */
+    @Operation(summary = &quot;List all proposals&quot;, description = &quot;Returns all relation proposals&quot;)
+    @GetMapping(&quot;/proposals&quot;)
+    public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; getAllProposals() {
+<span class="fc" id="L91">        return ResponseEntity.ok(proposalService.getAllProposals());</span>
+    }
+
+    /**
+     * List pending proposals (review queue).
+     */
+    @Operation(summary = &quot;List pending proposals&quot;, description = &quot;Returns all proposals with PENDING status (review queue)&quot;)
+    @GetMapping(&quot;/proposals/pending&quot;)
+    public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; getPendingProposals() {
+<span class="fc" id="L100">        return ResponseEntity.ok(proposalService.getPendingProposals());</span>
+    }
+
+    /**
+     * List proposals for a specific source node.
+     */
+    @Operation(summary = &quot;List node proposals&quot;, description = &quot;Returns all proposals for a specific source node&quot;)
+    @GetMapping(&quot;/node/{code}/proposals&quot;)
+    public ResponseEntity&lt;List&lt;RelationProposalDto&gt;&gt; getProposalsForNode(
+            @PathVariable String code) {
+<span class="fc" id="L110">        return ResponseEntity.ok(proposalService.getProposalsForNode(code));</span>
+    }
+
+    /**
+     * Accept a pending proposal — creates the actual TaxonomyRelation.
+     */
+    @Operation(summary = &quot;Accept proposal&quot;, description = &quot;Accepts a pending proposal and creates the actual taxonomy relation&quot;)
+    @PostMapping(&quot;/proposals/{id}/accept&quot;)
+    public ResponseEntity&lt;TaxonomyRelationDto&gt; acceptProposal(@PathVariable Long id) {
+        try {
+<span class="nc" id="L120">            TaxonomyRelationDto relation = reviewService.acceptProposal(id);</span>
+<span class="nc" id="L121">            return ResponseEntity.ok(relation);</span>
+<span class="fc" id="L122">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="fc" id="L123">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+    /**
+     * Reject a pending proposal.
+     */
+    @Operation(summary = &quot;Reject proposal&quot;, description = &quot;Rejects a pending proposal&quot;)
+    @PostMapping(&quot;/proposals/{id}/reject&quot;)
+    public ResponseEntity&lt;RelationProposalDto&gt; rejectProposal(@PathVariable Long id) {
+        try {
+<span class="nc" id="L134">            RelationProposalDto dto = reviewService.rejectProposal(id);</span>
+<span class="nc" id="L135">            return ResponseEntity.ok(dto);</span>
+<span class="fc" id="L136">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="fc" id="L137">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+    /**
+     * Create a proposal directly from an analysis hypothesis.
+     * Request body: {@code { &quot;sourceCode&quot;: &quot;CP&quot;, &quot;targetCode&quot;: &quot;CR&quot;,
+     *   &quot;relationType&quot;: &quot;REALIZES&quot;, &quot;confidence&quot;: 0.56, &quot;rationale&quot;: &quot;...&quot; }}
+     */
+    @Operation(summary = &quot;Create proposal from hypothesis&quot;,
+            description = &quot;Creates a proposal from an AI-generated relation hypothesis&quot;)
+    @PostMapping(&quot;/proposals/from-hypothesis&quot;)
+    public ResponseEntity&lt;RelationProposalDto&gt; createFromHypothesis(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="nc" id="L150">        String sourceCode = (String) body.get(&quot;sourceCode&quot;);</span>
+<span class="nc" id="L151">        String targetCode = (String) body.get(&quot;targetCode&quot;);</span>
+<span class="nc" id="L152">        String relationTypeStr = (String) body.get(&quot;relationType&quot;);</span>
+<span class="nc" id="L153">        Number confidenceNum = (Number) body.get(&quot;confidence&quot;);</span>
+<span class="nc" id="L154">        String rationale = (String) body.get(&quot;rationale&quot;);</span>
+
+<span class="nc bnc" id="L156" title="All 6 branches missed.">        if (sourceCode == null || sourceCode.isBlank()</span>
+<span class="nc bnc" id="L157" title="All 4 branches missed.">                || targetCode == null || targetCode.isBlank()</span>
+<span class="nc bnc" id="L158" title="All 2 branches missed.">                || relationTypeStr == null || relationTypeStr.isBlank()) {</span>
+<span class="nc" id="L159">            return ResponseEntity.badRequest().build();</span>
+        }
+
+        RelationType relationType;
+        try {
+<span class="nc" id="L164">            relationType = RelationType.valueOf(relationTypeStr.toUpperCase());</span>
+<span class="nc" id="L165">        } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L166">            return ResponseEntity.badRequest().build();</span>
+<span class="nc" id="L167">        }</span>
+
+<span class="nc bnc" id="L169" title="All 2 branches missed.">        double confidence = confidenceNum != null ? confidenceNum.doubleValue() : 0.5;</span>
+
+        try {
+<span class="nc" id="L172">            RelationProposalDto dto = proposalService.createFromHypothesis(</span>
+                    sourceCode, targetCode, relationType, confidence, rationale);
+<span class="nc bnc" id="L174" title="All 2 branches missed.">            if (dto == null) {</span>
+                // Proposal already exists
+<span class="nc" id="L176">                Map&lt;String, Object&gt; msg = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L177">                msg.put(&quot;message&quot;, &quot;Proposal already exists for this source, target, and relation type&quot;);</span>
+<span class="nc" id="L178">                return ResponseEntity.status(409).body(null);</span>
+            }
+<span class="nc" id="L180">            return ResponseEntity.ok(dto);</span>
+<span class="nc" id="L181">        } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L182">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+    /**
+     * Revert a proposal back to PENDING status (undo accept/reject).
+     * If the proposal was accepted, the corresponding relation is deleted.
+     */
+    @Operation(summary = &quot;Revert proposal&quot;, description = &quot;Reverts a proposal back to PENDING status (undo last action)&quot;)
+    @PostMapping(&quot;/proposals/{id}/revert&quot;)
+    public ResponseEntity&lt;RelationProposalDto&gt; revertProposal(@PathVariable Long id) {
+        try {
+<span class="nc" id="L194">            RelationProposalDto dto = reviewService.revertProposal(id);</span>
+<span class="nc" id="L195">            return ResponseEntity.ok(dto);</span>
+<span class="fc" id="L196">        } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="fc" id="L197">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+    /**
+     * Bulk accept or reject multiple proposals.
+     * Request body: {@code { &quot;ids&quot;: [1, 2, 3], &quot;action&quot;: &quot;ACCEPT&quot; | &quot;REJECT&quot; }}
+     */
+    @Operation(summary = &quot;Bulk action on proposals&quot;, description = &quot;Accept or reject multiple proposals at once&quot;)
+    @PostMapping(&quot;/proposals/bulk&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; bulkAction(@RequestBody Map&lt;String, Object&gt; body) {
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L209">        List&lt;Number&gt; ids = (List&lt;Number&gt;) body.get(&quot;ids&quot;);</span>
+<span class="fc" id="L210">        String action = (String) body.get(&quot;action&quot;);</span>
+
+<span class="pc bpc" id="L212" title="1 of 8 branches missed.">        if (ids == null || ids.isEmpty() || action == null || action.isBlank()) {</span>
+<span class="fc" id="L213">            return ResponseEntity.badRequest().build();</span>
+        }
+
+<span class="fc" id="L216">        int success = 0;</span>
+<span class="fc" id="L217">        int failed = 0;</span>
+
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        for (Number idNum : ids) {</span>
+<span class="fc" id="L220">            Long id = idNum.longValue();</span>
+            try {
+<span class="fc bfc" id="L222" title="All 2 branches covered.">                if (&quot;ACCEPT&quot;.equalsIgnoreCase(action)) {</span>
+<span class="nc" id="L223">                    reviewService.acceptProposal(id);</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">                } else if (&quot;REJECT&quot;.equalsIgnoreCase(action)) {</span>
+<span class="nc" id="L225">                    reviewService.rejectProposal(id);</span>
+                } else {
+<span class="fc" id="L227">                    return ResponseEntity.badRequest().build();</span>
+                }
+<span class="nc" id="L229">                success++;</span>
+<span class="fc" id="L230">            } catch (IllegalArgumentException | IllegalStateException e) {</span>
+<span class="fc" id="L231">                failed++;</span>
+<span class="nc" id="L232">            }</span>
+<span class="fc" id="L233">        }</span>
+
+<span class="fc" id="L235">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L236">        result.put(&quot;action&quot;, action);</span>
+<span class="fc" id="L237">        result.put(&quot;success&quot;, success);</span>
+<span class="fc" id="L238">        result.put(&quot;failed&quot;, failed);</span>
+<span class="fc" id="L239">        result.put(&quot;total&quot;, ids.size());</span>
+<span class="fc" id="L240">        return ResponseEntity.ok(result);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

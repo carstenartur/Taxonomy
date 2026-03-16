@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceProjection.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.model</a> &gt; <span class="el_source">WorkspaceProjection.java</span></div><h1>WorkspaceProjection.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.model;
+
+import jakarta.persistence.*;
+
+import java.time.Instant;
+
+/**
+ * Tracks per-user database projection state.
+ *
+ * &lt;p&gt;A projection is a materialized view of the DSL at a specific commit,
+ * allowing each user to have their own independent projection of the
+ * architecture model. This entity records which commit the projection was
+ * built from and when it was last materialized, as well as the corresponding
+ * search-index state.
+ *
+ * &lt;p&gt;When the underlying branch advances past the projection commit, the
+ * {@code stale} flag is set so that downstream consumers know the
+ * projection needs to be rebuilt.
+ */
+@Entity
+@Table(name = &quot;workspace_projection&quot;, indexes = {
+    @Index(name = &quot;idx_projection_username&quot;, columnList = &quot;username&quot;),
+    @Index(name = &quot;idx_projection_workspace&quot;, columnList = &quot;workspace_id&quot;)
+}, uniqueConstraints = {
+    @UniqueConstraint(name = &quot;uq_projection_username&quot;, columnNames = &quot;username&quot;)
+})
+public class WorkspaceProjection {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true)
+    private String username;
+
+    @Column(name = &quot;workspace_id&quot;, nullable = false, unique = true)
+    private String workspaceId;
+
+    @Column(name = &quot;projection_commit_id&quot;)
+    private String projectionCommitId;
+
+    @Column(name = &quot;projection_branch&quot;)
+    private String projectionBranch;
+
+    @Column(name = &quot;projection_timestamp&quot;)
+    private Instant projectionTimestamp;
+
+    @Column(name = &quot;index_commit_id&quot;)
+    private String indexCommitId;
+
+    @Column(name = &quot;index_timestamp&quot;)
+    private Instant indexTimestamp;
+
+<span class="fc" id="L54">    @Column(nullable = false)</span>
+    private boolean stale = false;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;updated_at&quot;)
+    private Instant updatedAt;
+
+<span class="fc" id="L63">    public WorkspaceProjection() {</span>
+<span class="fc" id="L64">    }</span>
+
+    public Long getId() {
+<span class="nc" id="L67">        return id;</span>
+    }
+
+    public void setId(Long id) {
+<span class="nc" id="L71">        this.id = id;</span>
+<span class="nc" id="L72">    }</span>
+
+    public String getUsername() {
+<span class="fc" id="L75">        return username;</span>
+    }
+
+    public void setUsername(String username) {
+<span class="fc" id="L79">        this.username = username;</span>
+<span class="fc" id="L80">    }</span>
+
+    public String getWorkspaceId() {
+<span class="fc" id="L83">        return workspaceId;</span>
+    }
+
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L87">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L88">    }</span>
+
+    public String getProjectionCommitId() {
+<span class="fc" id="L91">        return projectionCommitId;</span>
+    }
+
+    public void setProjectionCommitId(String projectionCommitId) {
+<span class="fc" id="L95">        this.projectionCommitId = projectionCommitId;</span>
+<span class="fc" id="L96">    }</span>
+
+    public String getProjectionBranch() {
+<span class="fc" id="L99">        return projectionBranch;</span>
+    }
+
+    public void setProjectionBranch(String projectionBranch) {
+<span class="fc" id="L103">        this.projectionBranch = projectionBranch;</span>
+<span class="fc" id="L104">    }</span>
+
+    public Instant getProjectionTimestamp() {
+<span class="fc" id="L107">        return projectionTimestamp;</span>
+    }
+
+    public void setProjectionTimestamp(Instant projectionTimestamp) {
+<span class="fc" id="L111">        this.projectionTimestamp = projectionTimestamp;</span>
+<span class="fc" id="L112">    }</span>
+
+    public String getIndexCommitId() {
+<span class="fc" id="L115">        return indexCommitId;</span>
+    }
+
+    public void setIndexCommitId(String indexCommitId) {
+<span class="fc" id="L119">        this.indexCommitId = indexCommitId;</span>
+<span class="fc" id="L120">    }</span>
+
+    public Instant getIndexTimestamp() {
+<span class="fc" id="L123">        return indexTimestamp;</span>
+    }
+
+    public void setIndexTimestamp(Instant indexTimestamp) {
+<span class="fc" id="L127">        this.indexTimestamp = indexTimestamp;</span>
+<span class="fc" id="L128">    }</span>
+
+    public boolean isStale() {
+<span class="fc" id="L131">        return stale;</span>
+    }
+
+    public void setStale(boolean stale) {
+<span class="fc" id="L135">        this.stale = stale;</span>
+<span class="fc" id="L136">    }</span>
+
+    public Instant getCreatedAt() {
+<span class="fc" id="L139">        return createdAt;</span>
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+<span class="fc" id="L143">        this.createdAt = createdAt;</span>
+<span class="fc" id="L144">    }</span>
+
+    public Instant getUpdatedAt() {
+<span class="nc" id="L147">        return updatedAt;</span>
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+<span class="fc" id="L151">        this.updatedAt = updatedAt;</span>
+<span class="fc" id="L152">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

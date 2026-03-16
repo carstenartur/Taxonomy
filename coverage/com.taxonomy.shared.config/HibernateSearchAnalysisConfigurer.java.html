@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HibernateSearchAnalysisConfigurer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.config</a> &gt; <span class="el_source">HibernateSearchAnalysisConfigurer.java</span></div><h1>HibernateSearchAnalysisConfigurer.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.config;
+
+import org.apache.lucene.analysis.de.GermanAnalyzer;
+import org.apache.lucene.analysis.en.EnglishAnalyzer;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.hibernate.search.backend.lucene.analysis.LuceneAnalysisConfigurationContext;
+import org.hibernate.search.backend.lucene.analysis.LuceneAnalysisConfigurer;
+import org.springframework.stereotype.Component;
+
+/**
+ * Hibernate Search {@link LuceneAnalysisConfigurer} that registers English and German
+ * Lucene analyzers for use with {@code @FullTextField(analyzer = &quot;english&quot;)} /
+ * {@code @FullTextField(analyzer = &quot;german&quot;)} field annotations.
+ *
+ * &lt;p&gt;Referenced in {@code application.properties} as
+ * {@code hibernate.search.backend.analysis.configurer=bean:hibernateSearchAnalysisConfigurer}.
+ */
+@Component(&quot;hibernateSearchAnalysisConfigurer&quot;)
+<span class="fc" id="L19">public class HibernateSearchAnalysisConfigurer implements LuceneAnalysisConfigurer {</span>
+
+    @Override
+    public void configure(LuceneAnalysisConfigurationContext context) {
+<span class="fc" id="L23">        context.analyzer(&quot;english&quot;).instance(new EnglishAnalyzer());</span>
+<span class="fc" id="L24">        context.analyzer(&quot;german&quot;).instance(new GermanAnalyzer());</span>
+<span class="fc" id="L25">        context.analyzer(&quot;standard&quot;).instance(new StandardAnalyzer());</span>
+<span class="fc" id="L26">        context.analyzer(&quot;dsl&quot;).instance(new DslAnalyzer());</span>
+<span class="fc" id="L27">        context.analyzer(&quot;csv-keyword&quot;).instance(new CsvKeywordAnalyzer());</span>
+<span class="fc" id="L28">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

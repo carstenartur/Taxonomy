@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FrameworkImportService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service.importer</a> &gt; <span class="el_source">FrameworkImportService.java</span></div><h1>FrameworkImportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service.importer;
+
+import com.taxonomy.dsl.export.DslMaterializeService;
+import com.taxonomy.dsl.mapper.ModelToAstMapper;
+import com.taxonomy.dsl.mapping.ExternalModelMapper;
+import com.taxonomy.dsl.mapping.MappingProfile;
+import com.taxonomy.dsl.mapping.MappingResult;
+import com.taxonomy.dsl.mapping.profiles.ApqcMappingProfile;
+import com.taxonomy.dsl.mapping.profiles.C4MappingProfile;
+import com.taxonomy.dsl.mapping.profiles.UafMappingProfile;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+import com.taxonomy.dto.FrameworkImportResult;
+import com.taxonomy.dto.ProfileInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.io.InputStream;
+import java.util.*;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.service.ArchiMateXmlImporter;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.relations.model.RelationHypothesis;
+
+/**
+ * Generic framework import service that combines a {@link MappingProfile} with
+ * an {@link ExternalParser} to import external architecture models.
+ *
+ * &lt;p&gt;Registered profiles:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code archimate} — ArchiMate 3.x XML (not re-parsed here; uses {@code ArchiMateXmlImporter})&lt;/li&gt;
+ *   &lt;li&gt;{@code uaf} — UAF/DoDAF XMI XML&lt;/li&gt;
+ *   &lt;li&gt;{@code apqc} — APQC PCF CSV&lt;/li&gt;
+ *   &lt;li&gt;{@code apqc-excel} — APQC PCF Excel&lt;/li&gt;
+ *   &lt;li&gt;{@code c4} — C4/Structurizr DSL&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;Data flow:
+ * &lt;pre&gt;
+ * File → ExternalParser → ExternalElements/Relations
+ *      → ExternalModelMapper (profile) → CanonicalArchitectureModel
+ *      → DslSerializer → DSL text
+ *      → DslMaterializeService → TaxonomyRelation / RelationHypothesis (DB)
+ * &lt;/pre&gt;
+ */
+@Service
+public class FrameworkImportService {
+
+<span class="fc" id="L49">    private static final Logger log = LoggerFactory.getLogger(FrameworkImportService.class);</span>
+
+    private final DslMaterializeService materializeService;
+<span class="fc" id="L52">    private final Map&lt;String, RegisteredProfile&gt; profiles = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc" id="L54">    public FrameworkImportService(DslMaterializeService materializeService) {</span>
+<span class="fc" id="L55">        this.materializeService = materializeService;</span>
+
+        // Register all supported profiles
+<span class="fc" id="L58">        register(new UafMappingProfile(), new UafXmlParser());</span>
+<span class="fc" id="L59">        register(new ApqcMappingProfile(), new ApqcCsvParser());</span>
+<span class="fc" id="L60">        register(new ApqcMappingProfile(), &quot;apqc-excel&quot;, &quot;APQC PCF (Excel)&quot;, new ApqcExcelParser());</span>
+<span class="fc" id="L61">        register(new C4MappingProfile(), new StructurizrDslParser());</span>
+<span class="fc" id="L62">    }</span>
+
+    private void register(MappingProfile profile, ExternalParser parser) {
+<span class="fc" id="L65">        register(profile, profile.profileId(), profile.displayName(), parser);</span>
+<span class="fc" id="L66">    }</span>
+
+    private void register(MappingProfile profile, String profileId, String displayName,
+                           ExternalParser parser) {
+<span class="fc" id="L70">        profiles.put(profileId, new RegisteredProfile(profile, displayName, parser));</span>
+<span class="fc" id="L71">    }</span>
+
+    /**
+     * Returns info about all available import profiles.
+     */
+    public List&lt;ProfileInfo&gt; getAvailableProfiles() {
+<span class="fc" id="L77">        List&lt;ProfileInfo&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        for (var entry : profiles.entrySet()) {</span>
+<span class="fc" id="L79">            RegisteredProfile rp = entry.getValue();</span>
+<span class="fc" id="L80">            result.add(new ProfileInfo(</span>
+<span class="fc" id="L81">                    entry.getKey(),</span>
+                    rp.displayName,
+<span class="fc" id="L83">                    rp.profile.supportedElementTypes(),</span>
+<span class="fc" id="L84">                    rp.profile.supportedRelationTypes(),</span>
+<span class="fc" id="L85">                    rp.parser.fileFormat()));</span>
+<span class="fc" id="L86">        }</span>
+<span class="fc" id="L87">        return result;</span>
+    }
+
+    /**
+     * Preview an import (dry run): parse and map but do not materialize.
+     */
+    public FrameworkImportResult preview(String profileId, InputStream input) {
+<span class="fc" id="L94">        RegisteredProfile rp = profiles.get(profileId);</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (rp == null) {</span>
+<span class="fc" id="L96">            return errorResult(profileId, &quot;Unknown profile: &quot; + profileId);</span>
+        }
+
+        try {
+<span class="fc" id="L100">            ExternalParser.ParsedExternalModel parsed = rp.parser.parse(input);</span>
+<span class="fc" id="L101">            ExternalModelMapper mapper = new ExternalModelMapper(rp.profile);</span>
+<span class="fc" id="L102">            MappingResult mappingResult = mapper.map(parsed.elements(), parsed.relations());</span>
+
+<span class="fc" id="L104">            return new FrameworkImportResult(</span>
+                    profileId,
+                    rp.displayName,
+                    true,
+<span class="fc" id="L108">                    parsed.elements().size(),</span>
+<span class="fc" id="L109">                    (int) mappingResult.mappingStatistics().getOrDefault(&quot;mappedElements&quot;, 0),</span>
+<span class="fc" id="L110">                    parsed.relations().size(),</span>
+<span class="fc" id="L111">                    (int) mappingResult.mappingStatistics().getOrDefault(&quot;mappedRelations&quot;, 0),</span>
+                    0, 0, null,
+<span class="fc" id="L113">                    mappingResult.warnings(),</span>
+<span class="fc" id="L114">                    new ArrayList&lt;&gt;(mappingResult.unmappedTypes()),</span>
+<span class="fc" id="L115">                    mappingResult.mappingStatistics());</span>
+<span class="nc" id="L116">        } catch (Exception e) {</span>
+<span class="nc" id="L117">            log.error(&quot;Preview failed for profile {}&quot;, profileId, e);</span>
+<span class="nc" id="L118">            return errorResult(profileId, &quot;Preview failed: &quot; + e.getMessage());</span>
+        }
+    }
+
+    /**
+     * Full import: parse, map, serialize to DSL, and materialize into the database.
+     */
+    public FrameworkImportResult importFile(String profileId, InputStream input, String branch) {
+<span class="fc" id="L126">        RegisteredProfile rp = profiles.get(profileId);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (rp == null) {</span>
+<span class="fc" id="L128">            return errorResult(profileId, &quot;Unknown profile: &quot; + profileId);</span>
+        }
+
+        try {
+            // 1. Parse
+<span class="fc" id="L133">            ExternalParser.ParsedExternalModel parsed = rp.parser.parse(input);</span>
+
+            // 2. Map to canonical model
+<span class="fc" id="L136">            ExternalModelMapper mapper = new ExternalModelMapper(rp.profile);</span>
+<span class="fc" id="L137">            MappingResult mappingResult = mapper.map(parsed.elements(), parsed.relations());</span>
+
+            // 3. Serialize to DSL text
+<span class="fc" id="L140">            ModelToAstMapper astMapper = new ModelToAstMapper();</span>
+<span class="fc" id="L141">            TaxDslSerializer serializer = new TaxDslSerializer();</span>
+<span class="fc" id="L142">            var astDoc = astMapper.toDocument(mappingResult.model(), profileId + &quot;-import&quot;);</span>
+<span class="fc" id="L143">            String dslText = serializer.serialize(astDoc);</span>
+
+            // 4. Materialize
+<span class="fc" id="L146">            String path = &quot;import/&quot; + profileId + &quot;-&quot; + System.currentTimeMillis() + &quot;.taxdsl&quot;;</span>
+<span class="fc" id="L147">            DslMaterializeService.MaterializeResult matResult =</span>
+<span class="fc" id="L148">                    materializeService.materialize(dslText, path, branch, null);</span>
+
+<span class="fc" id="L150">            List&lt;String&gt; allWarnings = new ArrayList&lt;&gt;(mappingResult.warnings());</span>
+<span class="fc" id="L151">            allWarnings.addAll(matResult.warnings());</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">            if (!matResult.valid()) {</span>
+<span class="nc" id="L153">                allWarnings.addAll(matResult.errors());</span>
+            }
+
+<span class="fc" id="L156">            return new FrameworkImportResult(</span>
+                    profileId,
+                    rp.displayName,
+<span class="fc" id="L159">                    matResult.valid(),</span>
+<span class="fc" id="L160">                    parsed.elements().size(),</span>
+<span class="fc" id="L161">                    (int) mappingResult.mappingStatistics().getOrDefault(&quot;mappedElements&quot;, 0),</span>
+<span class="fc" id="L162">                    parsed.relations().size(),</span>
+<span class="fc" id="L163">                    (int) mappingResult.mappingStatistics().getOrDefault(&quot;mappedRelations&quot;, 0),</span>
+<span class="fc" id="L164">                    matResult.relationsCreated(),</span>
+<span class="fc" id="L165">                    matResult.hypothesesCreated(),</span>
+<span class="fc" id="L166">                    matResult.documentId(),</span>
+                    allWarnings,
+<span class="fc" id="L168">                    new ArrayList&lt;&gt;(mappingResult.unmappedTypes()),</span>
+<span class="fc" id="L169">                    mappingResult.mappingStatistics());</span>
+<span class="nc" id="L170">        } catch (Exception e) {</span>
+<span class="nc" id="L171">            log.error(&quot;Import failed for profile {}&quot;, profileId, e);</span>
+<span class="nc" id="L172">            return errorResult(profileId, &quot;Import failed: &quot; + e.getMessage());</span>
+        }
+    }
+
+    private FrameworkImportResult errorResult(String profileId, String message) {
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        String displayName = profiles.containsKey(profileId) ?</span>
+<span class="pc" id="L178">                profiles.get(profileId).displayName : profileId;</span>
+<span class="fc" id="L179">        return new FrameworkImportResult(</span>
+                profileId, displayName, false,
+                0, 0, 0, 0, 0, 0, null,
+<span class="fc" id="L182">                List.of(message), List.of(), Map.of());</span>
+    }
+
+<span class="fc" id="L185">    private record RegisteredProfile(</span>
+        MappingProfile profile,
+        String displayName,
+        ExternalParser parser
+    ) {}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

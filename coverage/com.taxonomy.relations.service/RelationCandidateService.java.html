@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationCandidateService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationCandidateService.java</span></div><h1>RelationCandidateService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+import java.util.stream.Collectors;
+import com.taxonomy.shared.service.LocalEmbeddingService;
+
+/**
+ * Finds candidate target nodes for a proposed relation using hybrid search
+ * (full-text + vector similarity).  High recall is the goal at this stage;
+ * precision is handled downstream by validation and scoring.
+ */
+@Service
+public class RelationCandidateService {
+
+<span class="fc" id="L22">    private static final Logger log = LoggerFactory.getLogger(RelationCandidateService.class);</span>
+
+    private final HybridSearchService hybridSearchService;
+    private final LocalEmbeddingService embeddingService;
+    private final RelationCompatibilityMatrix compatibilityMatrix;
+
+    public RelationCandidateService(HybridSearchService hybridSearchService,
+                                    LocalEmbeddingService embeddingService,
+<span class="fc" id="L30">                                    RelationCompatibilityMatrix compatibilityMatrix) {</span>
+<span class="fc" id="L31">        this.hybridSearchService = hybridSearchService;</span>
+<span class="fc" id="L32">        this.embeddingService = embeddingService;</span>
+<span class="fc" id="L33">        this.compatibilityMatrix = compatibilityMatrix;</span>
+<span class="fc" id="L34">    }</span>
+
+    /**
+     * Find candidate target nodes for the given source node and relation type.
+     *
+     * @param source       the source taxonomy node
+     * @param relationType the desired relation type
+     * @param limit        maximum number of candidates to return
+     * @return candidate nodes ranked by relevance
+     */
+    public List&lt;TaxonomyNodeDto&gt; findCandidates(TaxonomyNode source,
+                                                 RelationType relationType,
+                                                 int limit) {
+<span class="fc" id="L47">        String queryText = buildQueryText(source);</span>
+<span class="fc" id="L48">        log.debug(&quot;Finding candidates for {} [{}] with query: '{}'&quot;,</span>
+<span class="fc" id="L49">                source.getCode(), relationType, queryText);</span>
+
+        // Use hybrid search for high recall
+<span class="fc" id="L52">        List&lt;TaxonomyNodeDto&gt; hybridResults = hybridSearchService.hybridSearch(queryText, limit * 2);</span>
+
+        // Filter by allowed target taxonomy roots for this relation type
+<span class="fc" id="L55">        Set&lt;String&gt; allowedRoots = compatibilityMatrix.allowedTargetRoots(</span>
+<span class="fc" id="L56">                source.getTaxonomyRoot(), relationType);</span>
+
+<span class="fc" id="L58">        List&lt;TaxonomyNodeDto&gt; filtered = hybridResults.stream()</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">                .filter(dto -&gt; !dto.getCode().equals(source.getCode())) // exclude self</span>
+<span class="pc bpc" id="L60" title="3 of 4 branches missed.">                .filter(dto -&gt; allowedRoots.isEmpty() || allowedRoots.contains(dto.getTaxonomyRoot()))</span>
+<span class="fc" id="L61">                .limit(limit)</span>
+<span class="fc" id="L62">                .collect(Collectors.toList());</span>
+
+<span class="fc" id="L64">        log.debug(&quot;Candidates for {} [{}]: {} found, {} after filtering&quot;,</span>
+<span class="fc" id="L65">                source.getCode(), relationType, hybridResults.size(), filtered.size());</span>
+<span class="fc" id="L66">        return filtered;</span>
+    }
+
+    private String buildQueryText(TaxonomyNode source) {
+<span class="fc" id="L70">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L71">        sb.append(source.getNameEn());</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">        if (source.getDescriptionEn() != null &amp;&amp; !source.getDescriptionEn().isBlank()) {</span>
+<span class="fc" id="L73">            sb.append(' ').append(source.getDescriptionEn());</span>
+        }
+<span class="fc" id="L75">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

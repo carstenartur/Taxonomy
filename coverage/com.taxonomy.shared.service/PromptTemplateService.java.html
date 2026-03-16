@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>PromptTemplateService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.service</a> &gt; <span class="el_source">PromptTemplateService.java</span></div><h1>PromptTemplateService.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.service;
+
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Manages prompt templates for LLM taxonomy analysis.
+ * Loads default templates from {@code classpath:prompts/*.txt} at startup
+ * and supports runtime overrides without redeployment.
+ */
+@Service
+<span class="fc" id="L26">public class PromptTemplateService {</span>
+
+<span class="fc" id="L28">    private static final Logger log = LoggerFactory.getLogger(PromptTemplateService.class);</span>
+
+    /** Human-readable names for known taxonomy root codes. */
+    private static final Map&lt;String, String&gt; TAXONOMY_NAMES;
+    static {
+<span class="fc" id="L33">        Map&lt;String, String&gt; m = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L34">        m.put(&quot;BP&quot;, &quot;Business Processes&quot;);</span>
+<span class="fc" id="L35">        m.put(&quot;BR&quot;, &quot;Business Roles&quot;);</span>
+<span class="fc" id="L36">        m.put(&quot;CP&quot;, &quot;Capabilities&quot;);</span>
+<span class="fc" id="L37">        m.put(&quot;CI&quot;, &quot;COI Services&quot;);</span>
+<span class="fc" id="L38">        m.put(&quot;CO&quot;, &quot;Communications Services&quot;);</span>
+<span class="fc" id="L39">        m.put(&quot;CR&quot;, &quot;Core Services&quot;);</span>
+<span class="fc" id="L40">        m.put(&quot;IP&quot;, &quot;Information Products&quot;);</span>
+<span class="fc" id="L41">        m.put(&quot;UA&quot;, &quot;User Applications&quot;);</span>
+<span class="fc" id="L42">        TAXONOMY_NAMES = Collections.unmodifiableMap(m);</span>
+<span class="fc" id="L43">    }</span>
+
+    /** File-based defaults loaded at startup (key = taxonomy code or &quot;default&quot;). */
+<span class="fc" id="L46">    private final Map&lt;String, String&gt; defaults = new HashMap&lt;&gt;();</span>
+
+    /** In-memory runtime overrides (survive the request but not a restart). */
+<span class="fc" id="L49">    private final Map&lt;String, String&gt; overrides = new ConcurrentHashMap&lt;&gt;();</span>
+
+    @PostConstruct
+    public void loadDefaults() {
+<span class="fc" id="L53">        PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();</span>
+        try {
+<span class="fc" id="L55">            Resource[] resources = resolver.getResources(&quot;classpath:prompts/*.txt&quot;);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            for (Resource resource : resources) {</span>
+<span class="fc" id="L57">                String filename = resource.getFilename();</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                if (filename == null) continue;</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">                String code = filename.endsWith(&quot;.txt&quot;)</span>
+<span class="fc" id="L60">                        ? filename.substring(0, filename.length() - 4)</span>
+<span class="pc" id="L61">                        : filename;</span>
+<span class="fc" id="L62">                try (InputStream is = resource.getInputStream()) {</span>
+<span class="fc" id="L63">                    String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);</span>
+<span class="fc" id="L64">                    defaults.put(code, content);</span>
+<span class="fc" id="L65">                    log.debug(&quot;Loaded prompt template: {}&quot;, filename);</span>
+<span class="nc" id="L66">                } catch (IOException e) {</span>
+<span class="nc" id="L67">                    log.warn(&quot;Failed to load prompt template '{}': {}&quot;, filename, e.getMessage());</span>
+<span class="fc" id="L68">                }</span>
+            }
+<span class="fc" id="L70">            log.info(&quot;Loaded {} prompt template(s) from classpath:prompts/&quot;, defaults.size());</span>
+<span class="nc" id="L71">        } catch (IOException e) {</span>
+<span class="nc" id="L72">            log.warn(&quot;Could not scan classpath:prompts/ for templates: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L73">        }</span>
+<span class="fc" id="L74">    }</span>
+
+    /**
+     * Returns the effective template for a taxonomy code:
+     * override → taxonomy-specific default → &quot;default&quot; fallback.
+     */
+    public String getTemplate(String taxonomyCode) {
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (overrides.containsKey(taxonomyCode)) {</span>
+<span class="fc" id="L82">            return overrides.get(taxonomyCode);</span>
+        }
+<span class="fc" id="L84">        return getDefaultTemplate(taxonomyCode);</span>
+    }
+
+    /**
+     * Always returns the file-based default (ignoring overrides).
+     * Falls back to &quot;default&quot; template if no taxonomy-specific file exists.
+     */
+    public String getDefaultTemplate(String taxonomyCode) {
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (defaults.containsKey(taxonomyCode)) {</span>
+<span class="fc" id="L93">            return defaults.get(taxonomyCode);</span>
+        }
+<span class="fc" id="L95">        return defaults.getOrDefault(&quot;default&quot;, &quot;&quot;);</span>
+    }
+
+    /** Stores a runtime override for the given taxonomy code. */
+    public void setTemplate(String taxonomyCode, String template) {
+<span class="fc" id="L100">        overrides.put(taxonomyCode, template);</span>
+<span class="fc" id="L101">    }</span>
+
+    /** Removes the runtime override; subsequent calls revert to the file-based default. */
+    public void resetTemplate(String taxonomyCode) {
+<span class="fc" id="L105">        overrides.remove(taxonomyCode);</span>
+<span class="fc" id="L106">    }</span>
+
+    /** Returns {@code true} if a runtime override exists for this taxonomy code. */
+    public boolean isOverridden(String taxonomyCode) {
+<span class="fc" id="L110">        return overrides.containsKey(taxonomyCode);</span>
+    }
+
+    /**
+     * Renders the effective prompt by substituting all {@code {{...}}} placeholders.
+     *
+     * @param taxonomyCode the taxonomy root code (e.g. &quot;BP&quot;)
+     * @param businessText the user-entered business requirement text
+     * @param nodeList     the formatted list of taxonomy nodes
+     * @param parentScore  the parent node's score (100 for root-level nodes); used for distribution
+     * @param expectedKeys comma-separated list of the exact node codes the LLM must use as JSON keys
+     * @return the rendered prompt string ready to send to the LLM
+     */
+    public String renderPrompt(String taxonomyCode, String businessText, String nodeList,
+                               int parentScore, String expectedKeys) {
+<span class="fc" id="L125">        String name = TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode);</span>
+<span class="fc" id="L126">        String template = getTemplate(taxonomyCode);</span>
+<span class="fc" id="L127">        return template</span>
+<span class="fc" id="L128">                .replace(&quot;{{BUSINESS_TEXT}}&quot;, businessText)</span>
+<span class="fc" id="L129">                .replace(&quot;{{NODE_LIST}}&quot;, nodeList)</span>
+<span class="fc" id="L130">                .replace(&quot;{{TAXONOMY_NAME}}&quot;, name)</span>
+<span class="fc" id="L131">                .replace(&quot;{{PARENT_SCORE}}&quot;, String.valueOf(parentScore))</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">                .replace(&quot;{{EXPECTED_KEYS}}&quot;, expectedKeys != null ? expectedKeys : &quot;&quot;);</span>
+    }
+
+    /**
+     * Renders the effective prompt by substituting all {@code {{...}}} placeholders.
+     * Delegates to {@link #renderPrompt(String, String, String, int, String)} with an empty expected-keys string.
+     *
+     * @param taxonomyCode the taxonomy root code (e.g. &quot;BP&quot;)
+     * @param businessText the user-entered business requirement text
+     * @param nodeList     the formatted list of taxonomy nodes
+     * @param parentScore  the parent node's score (100 for root-level nodes); used for distribution
+     * @return the rendered prompt string ready to send to the LLM
+     */
+    public String renderPrompt(String taxonomyCode, String businessText, String nodeList, int parentScore) {
+<span class="fc" id="L146">        return renderPrompt(taxonomyCode, businessText, nodeList, parentScore, &quot;&quot;);</span>
+    }
+
+    /**
+     * Renders the effective prompt using a parent score of 100 (root-level default).
+     * Delegates to {@link #renderPrompt(String, String, String, int, String)}.
+     *
+     * @param taxonomyCode the taxonomy root code (e.g. &quot;BP&quot;)
+     * @param businessText the user-entered business requirement text
+     * @param nodeList     the formatted list of taxonomy nodes
+     * @return the rendered prompt string ready to send to the LLM
+     */
+    public String renderPrompt(String taxonomyCode, String businessText, String nodeList) {
+<span class="fc" id="L159">        return renderPrompt(taxonomyCode, businessText, nodeList, 100, &quot;&quot;);</span>
+    }
+
+    /**
+     * Renders the leaf-justification prompt by substituting all placeholders.
+     *
+     * @param businessText   the original business requirement text
+     * @param leafCode       the code of the leaf node to justify
+     * @param pathDescription formatted path from root to leaf with scores and inline reasons
+     * @param crossRefs       formatted list of other high-scoring nodes for cross-references
+     * @return the rendered prompt string ready to send to the LLM
+     */
+    public String renderLeafJustificationPrompt(String businessText, String leafCode,
+                                                String pathDescription, String crossRefs) {
+<span class="nc" id="L173">        String template = defaults.getOrDefault(&quot;justify-leaf&quot;, &quot;&quot;);</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (template.isBlank()) {</span>
+            // Fallback inline template if the file is missing
+<span class="nc" id="L176">            template = &quot;You are an expert in C3 taxonomy classification.\n&quot;</span>
+                    + &quot;Explain in 3-5 sentences why the taxonomy path ending at {{LEAF_CODE}} &quot;
+                    + &quot;best matches the following business requirement.\n\n&quot;
+                    + &quot;Business Requirement: {{BUSINESS_TEXT}}\n\n&quot;
+                    + &quot;Selected path (root → leaf) with scores:\n{{PATH_DESCRIPTION}}\n&quot;
+                    + &quot;Other high-scoring nodes for cross-reference:\n{{CROSS_REFERENCES}}\n\n&quot;
+                    + &quot;Provide a coherent justification that explains why this path was chosen, &quot;
+                    + &quot;how the leaf node relates to the requirement, and note any relevant &quot;
+                    + &quot;connections to the cross-referenced nodes.&quot;;
+        }
+<span class="nc" id="L186">        return template</span>
+<span class="nc" id="L187">                .replace(&quot;{{BUSINESS_TEXT}}&quot;, businessText)</span>
+<span class="nc" id="L188">                .replace(&quot;{{LEAF_CODE}}&quot;, leafCode)</span>
+<span class="nc" id="L189">                .replace(&quot;{{PATH_DESCRIPTION}}&quot;, pathDescription)</span>
+<span class="nc" id="L190">                .replace(&quot;{{CROSS_REFERENCES}}&quot;, crossRefs);</span>
+    }
+
+    /**
+     * Returns a list of all known template codes (both defaults and any that only have overrides).
+     */
+    public List&lt;String&gt; getAllTemplateCodes() {
+<span class="fc" id="L197">        List&lt;String&gt; codes = new ArrayList&lt;&gt;(defaults.keySet());</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        for (String code : overrides.keySet()) {</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">            if (!codes.contains(code)) {</span>
+<span class="nc" id="L200">                codes.add(code);</span>
+            }
+<span class="fc" id="L202">        }</span>
+<span class="fc" id="L203">        Collections.sort(codes);</span>
+<span class="fc" id="L204">        return codes;</span>
+    }
+
+    /** Returns the human-readable taxonomy name for a code, or the code itself if unknown. */
+    public String getTaxonomyName(String taxonomyCode) {
+<span class="fc" id="L209">        return TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

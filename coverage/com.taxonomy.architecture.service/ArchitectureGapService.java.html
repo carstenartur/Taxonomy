@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureGapService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">ArchitectureGapService.java</span></div><h1>ArchitectureGapService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.dto.*;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+import java.util.stream.Collectors;
+import com.taxonomy.dto.ApqcCoverageResult;
+import com.taxonomy.dto.CoverageGap;
+import com.taxonomy.dto.GapAnalysisView;
+import com.taxonomy.dto.IncompletePattern;
+import com.taxonomy.dto.MissingRelation;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+
+/**
+ * Analyses architectural gaps by comparing expected relations (from the
+ * {@link RelationCompatibilityMatrix}) with actual relations in the repository.
+ *
+ * &lt;p&gt;For each anchor node (high-scoring node from a requirement analysis),
+ * this service checks which relation types &lt;em&gt;should&lt;/em&gt; exist according to
+ * the compatibility matrix and reports any that are missing.
+ */
+@Service
+public class ArchitectureGapService {
+
+<span class="fc" id="L34">    private static final Logger log = LoggerFactory.getLogger(ArchitectureGapService.class);</span>
+
+    private static final int DEFAULT_MIN_SCORE = 50;
+
+    private final RelationCompatibilityMatrix compatibilityMatrix;
+    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyRelationRepository relationRepository;
+
+    public ArchitectureGapService(RelationCompatibilityMatrix compatibilityMatrix,
+                                  TaxonomyNodeRepository nodeRepository,
+<span class="fc" id="L44">                                  TaxonomyRelationRepository relationRepository) {</span>
+<span class="fc" id="L45">        this.compatibilityMatrix = compatibilityMatrix;</span>
+<span class="fc" id="L46">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L47">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L48">    }</span>
+
+    /**
+     * Performs a gap analysis for the given scores and business text.
+     *
+     * @param scores       map of nodeCode → score (0–100)
+     * @param businessText the original business requirement text
+     * @param minScore     minimum score threshold; 0 means default (50)
+     * @return gap analysis view with missing relations, incomplete patterns, and coverage gaps
+     */
+    @Transactional(readOnly = true)
+    public GapAnalysisView analyze(Map&lt;String, Integer&gt; scores, String businessText, int minScore) {
+<span class="fc" id="L60">        GapAnalysisView view = new GapAnalysisView();</span>
+<span class="fc" id="L61">        view.setBusinessText(businessText);</span>
+
+<span class="fc bfc" id="L63" title="All 4 branches covered.">        if (scores == null || scores.isEmpty()) {</span>
+<span class="fc" id="L64">            view.getNotes().add(&quot;No scores provided; gap analysis cannot be performed.&quot;);</span>
+<span class="fc" id="L65">            return view;</span>
+        }
+
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        int threshold = minScore &gt; 0 ? minScore : DEFAULT_MIN_SCORE;</span>
+
+        // Filter to anchor nodes above threshold
+<span class="fc" id="L71">        Map&lt;String, Integer&gt; anchors = scores.entrySet().stream()</span>
+<span class="pc bpc" id="L72" title="1 of 4 branches missed.">                .filter(e -&gt; e.getValue() != null &amp;&amp; e.getValue() &gt;= threshold)</span>
+<span class="fc" id="L73">                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));</span>
+
+<span class="fc" id="L75">        view.setTotalAnchors(anchors.size());</span>
+
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (anchors.isEmpty()) {</span>
+<span class="fc" id="L78">            view.getNotes().add(&quot;No nodes above the score threshold of &quot; + threshold + &quot;.&quot;);</span>
+<span class="fc" id="L79">            return view;</span>
+        }
+
+<span class="fc" id="L82">        List&lt;MissingRelation&gt; missingRelations = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L83">        List&lt;IncompletePattern&gt; incompletePatterns = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L84">        List&lt;CoverageGap&gt; coverageGaps = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : anchors.entrySet()) {</span>
+<span class="fc" id="L87">            String nodeCode = entry.getKey();</span>
+<span class="fc" id="L88">            int score = entry.getValue();</span>
+
+<span class="fc" id="L90">            Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            if (nodeOpt.isEmpty()) {</span>
+<span class="fc" id="L92">                continue;</span>
+            }
+
+<span class="fc" id="L95">            TaxonomyNode node = nodeOpt.get();</span>
+<span class="fc" id="L96">            String sourceRoot = node.getTaxonomyRoot();</span>
+<span class="pc bpc" id="L97" title="2 of 4 branches missed.">            if (sourceRoot == null || sourceRoot.isBlank()) {</span>
+<span class="nc" id="L98">                continue;</span>
+            }
+
+            // Get expected outgoing relation types for this taxonomy root
+<span class="fc" id="L102">            Map&lt;RelationType, Set&lt;String&gt;&gt; expected =</span>
+<span class="fc" id="L103">                    compatibilityMatrix.getExpectedOutgoingRelations(sourceRoot);</span>
+
+            // Get actual outgoing relations for this specific node
+<span class="fc" id="L106">            List&lt;TaxonomyRelation&gt; actualOutgoing = relationRepository.findBySourceNodeCode(nodeCode);</span>
+<span class="fc" id="L107">            Set&lt;String&gt; actualRelTypeNames = actualOutgoing.stream()</span>
+<span class="fc" id="L108">                    .map(r -&gt; r.getRelationType().name())</span>
+<span class="fc" id="L109">                    .collect(Collectors.toSet());</span>
+
+            // Build set of actual target roots per relation type
+<span class="fc" id="L112">            Map&lt;String, Set&lt;String&gt;&gt; actualTargetRootsByType = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            for (TaxonomyRelation rel : actualOutgoing) {</span>
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">                String targetRoot = rel.getTargetNode() != null</span>
+<span class="pc" id="L115">                        ? rel.getTargetNode().getTaxonomyRoot() : null;</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                if (targetRoot != null) {</span>
+<span class="fc" id="L117">                    actualTargetRootsByType</span>
+<span class="fc" id="L118">                            .computeIfAbsent(rel.getRelationType().name(), k -&gt; new HashSet&lt;&gt;())</span>
+<span class="fc" id="L119">                            .add(targetRoot);</span>
+                }
+<span class="fc" id="L121">            }</span>
+
+<span class="fc" id="L123">            boolean hasAnyGap = false;</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            for (Map.Entry&lt;RelationType, Set&lt;String&gt;&gt; expectedEntry : expected.entrySet()) {</span>
+<span class="fc" id="L125">                RelationType relType = expectedEntry.getKey();</span>
+<span class="fc" id="L126">                Set&lt;String&gt; expectedTargets = expectedEntry.getValue();</span>
+
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                if (!actualRelTypeNames.contains(relType.name())) {</span>
+                    // No relation of this type exists at all
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                    for (String targetRoot : expectedTargets) {</span>
+<span class="fc" id="L131">                        missingRelations.add(new MissingRelation(</span>
+<span class="fc" id="L132">                                nodeCode, sourceRoot, relType.name(), targetRoot,</span>
+                                nodeCode + &quot; (&quot; + sourceRoot + &quot;) has no &quot;
+<span class="fc" id="L134">                                        + relType.name() + &quot; relation to any &quot; + targetRoot + &quot; node&quot;));</span>
+<span class="fc" id="L135">                    }</span>
+<span class="fc" id="L136">                    incompletePatterns.add(new IncompletePattern(</span>
+                            nodeCode, sourceRoot,
+<span class="fc" id="L138">                            sourceRoot + &quot; → &quot; + relType.name() + &quot; → &quot;</span>
+<span class="fc" id="L139">                                    + String.join(&quot;/&quot;, expectedTargets),</span>
+<span class="fc" id="L140">                            &quot;No &quot; + relType.name() + &quot; relation exists&quot;));</span>
+<span class="fc" id="L141">                    hasAnyGap = true;</span>
+                } else {
+                    // Relation type exists — check if all expected target roots are covered
+<span class="fc" id="L144">                    Set&lt;String&gt; actualRoots = actualTargetRootsByType</span>
+<span class="fc" id="L145">                            .getOrDefault(relType.name(), Set.of());</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">                    for (String targetRoot : expectedTargets) {</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">                        if (!actualRoots.contains(targetRoot)) {</span>
+<span class="nc" id="L148">                            missingRelations.add(new MissingRelation(</span>
+<span class="nc" id="L149">                                    nodeCode, sourceRoot, relType.name(), targetRoot,</span>
+<span class="nc" id="L150">                                    nodeCode + &quot; has &quot; + relType.name()</span>
+                                            + &quot; but not to a &quot; + targetRoot + &quot; node&quot;));
+<span class="nc" id="L152">                            hasAnyGap = true;</span>
+                        }
+<span class="fc" id="L154">                    }</span>
+                }
+<span class="fc" id="L156">            }</span>
+
+<span class="fc bfc" id="L158" title="All 2 branches covered.">            if (hasAnyGap) {</span>
+<span class="fc" id="L159">                coverageGaps.add(new CoverageGap(</span>
+                        nodeCode, sourceRoot, score,
+                        &quot;Node has coverage (score &quot; + score
+                                + &quot;) but is missing expected architectural relations&quot;));
+            }
+<span class="fc" id="L164">        }</span>
+
+<span class="fc" id="L166">        view.setMissingRelations(missingRelations);</span>
+<span class="fc" id="L167">        view.setIncompletePatterns(incompletePatterns);</span>
+<span class="fc" id="L168">        view.setCoverageGaps(coverageGaps);</span>
+<span class="fc" id="L169">        view.setTotalGaps(missingRelations.size());</span>
+
+<span class="fc" id="L171">        log.info(&quot;Gap analysis: {} anchors, {} missing relations, {} incomplete patterns, {} coverage gaps&quot;,</span>
+<span class="fc" id="L172">                anchors.size(), missingRelations.size(), incompletePatterns.size(), coverageGaps.size());</span>
+
+<span class="fc" id="L174">        return view;</span>
+    }
+
+    /**
+     * Analyses which APQC process categories are covered by the current architecture model.
+     *
+     * &lt;p&gt;Searches for nodes whose code patterns suggest APQC provenance (imported
+     * via the APQC pipeline) and checks whether they have outgoing relations,
+     * indicating integration with the broader architecture.
+     *
+     * @param requirementText optional business requirement text for context
+     * @return APQC coverage result with per-level statistics
+     */
+    @Transactional(readOnly = true)
+    public ApqcCoverageResult analyzeApqcCoverage(String requirementText) {
+        // Find all relations to check for APQC-sourced nodes
+<span class="fc" id="L190">        List&lt;TaxonomyRelation&gt; allRelations = relationRepository.findAll();</span>
+
+        // Check relations for APQC provenance
+<span class="fc" id="L193">        List&lt;TaxonomyRelation&gt; apqcRelations = allRelations.stream()</span>
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">                .filter(r -&gt; &quot;APQC_IMPORT&quot;.equals(r.getProvenance()) ||</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">                             &quot;dsl-materialize&quot;.equals(r.getProvenance()) ||</span>
+<span class="pc bnc" id="L196" title="All 4 branches missed.">                             (r.getDescription() != null &amp;&amp; r.getDescription().toLowerCase().contains(&quot;apqc&quot;)))</span>
+<span class="fc" id="L197">                .toList();</span>
+
+        // Identify unique APQC-related node codes from source and target
+<span class="fc" id="L200">        Set&lt;String&gt; apqcNodeCodes = apqcRelations.stream()</span>
+<span class="fc" id="L201">                .flatMap(rel -&gt; java.util.stream.Stream.of(rel.getSourceNode(), rel.getTargetNode()))</span>
+<span class="fc" id="L202">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L203">                .map(TaxonomyNode::getCode)</span>
+<span class="fc" id="L204">                .collect(Collectors.toCollection(LinkedHashSet::new));</span>
+
+        // Group by taxonomy root (which maps to APQC levels via the import profile)
+<span class="fc" id="L207">        Map&lt;String, Integer&gt; coverageByLevel = new LinkedHashMap&lt;&gt;();</span>
+        // APQC mapping: CP=Category, BP=ProcessGroup, CR=Process, CI=Activity, BR=Task
+<span class="fc" id="L209">        Map&lt;String, String&gt; rootToLevel = Map.of(</span>
+                &quot;CP&quot;, &quot;Category&quot;, &quot;BP&quot;, &quot;ProcessGroup&quot;, &quot;CR&quot;, &quot;Process&quot;,
+                &quot;CI&quot;, &quot;Activity&quot;, &quot;BR&quot;, &quot;Task&quot;);
+
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        for (String code : apqcNodeCodes) {</span>
+<span class="fc" id="L214">            Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(code);</span>
+<span class="fc" id="L215">            nodeOpt.ifPresent(node -&gt; {</span>
+<span class="fc" id="L216">                String level = rootToLevel.getOrDefault(node.getTaxonomyRoot(), &quot;Unknown&quot;);</span>
+<span class="fc" id="L217">                coverageByLevel.merge(level, 1, Integer::sum);</span>
+<span class="fc" id="L218">            });</span>
+<span class="fc" id="L219">        }</span>
+
+        // Count categories that have at least one relation (covered)
+<span class="fc" id="L222">        int totalCategories = coverageByLevel.values().stream().mapToInt(Integer::intValue).sum();</span>
+<span class="fc" id="L223">        Set&lt;String&gt; coveredRoots = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        for (TaxonomyRelation rel : apqcRelations) {</span>
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">            if (rel.getSourceNode() != null) coveredRoots.add(rel.getSourceNode().getTaxonomyRoot());</span>
+<span class="pc bpc" id="L226" title="1 of 2 branches missed.">            if (rel.getTargetNode() != null) coveredRoots.add(rel.getTargetNode().getTaxonomyRoot());</span>
+<span class="fc" id="L227">        }</span>
+
+        // Count categories with outgoing relations as &quot;covered&quot;
+<span class="fc" id="L230">        int coveredCategories = 0;</span>
+<span class="fc" id="L231">        List&lt;String&gt; uncoveredCategories = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">        for (String levelName : rootToLevel.values()) {</span>
+<span class="fc" id="L233">            int count = coverageByLevel.getOrDefault(levelName, 0);</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">            if (count &gt; 0) {</span>
+<span class="fc" id="L235">                coveredCategories++;</span>
+            } else {
+<span class="fc" id="L237">                uncoveredCategories.add(levelName);</span>
+            }
+<span class="fc" id="L239">        }</span>
+
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">        double coveragePercent = rootToLevel.size() &gt; 0</span>
+<span class="fc" id="L242">                ? (coveredCategories * 100.0) / rootToLevel.size()</span>
+<span class="pc" id="L243">                : 0.0;</span>
+
+<span class="fc" id="L245">        log.info(&quot;APQC coverage analysis: {} categories, {} covered, {}%&quot;,</span>
+<span class="fc" id="L246">                totalCategories, coveredCategories, String.format(&quot;%.1f&quot;, coveragePercent));</span>
+
+<span class="fc" id="L248">        return new ApqcCoverageResult(</span>
+                totalCategories,
+                coveredCategories,
+                coveragePercent,
+                uncoveredCategories,
+                coverageByLevel);
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

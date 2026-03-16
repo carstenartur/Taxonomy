@@ -10,9 +10,10 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import com.taxonomy.analysis.service.LlmService;
 
 @Configuration
-<span class="fc" id="L15">public class AppConfig {</span>
+<span class="fc" id="L16">public class AppConfig {</span>
 
     /**
      * Exposes the HTTP request factory as a bean so that {@code LlmService} can update
@@ -24,35 +25,35 @@ import java.util.concurrent.Executors;
     @Bean
     public SimpleClientHttpRequestFactory llmRequestFactory(
             @Value(&quot;${taxonomy.llm.timeout-seconds:30}&quot;) int timeoutSeconds) {
-<span class="fc" id="L27">        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();</span>
-<span class="fc" id="L28">        factory.setConnectTimeout(10_000);</span>
-<span class="fc" id="L29">        factory.setReadTimeout(timeoutSeconds * 1000);</span>
-<span class="fc" id="L30">        return factory;</span>
+<span class="fc" id="L28">        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();</span>
+<span class="fc" id="L29">        factory.setConnectTimeout(10_000);</span>
+<span class="fc" id="L30">        factory.setReadTimeout(timeoutSeconds * 1000);</span>
+<span class="fc" id="L31">        return factory;</span>
     }
 
     @Bean
     public RestTemplate restTemplate(SimpleClientHttpRequestFactory llmRequestFactory) {
-<span class="fc" id="L35">        return new RestTemplate(llmRequestFactory);</span>
+<span class="fc" id="L36">        return new RestTemplate(llmRequestFactory);</span>
     }
 
     @Bean(destroyMethod = &quot;shutdown&quot;)
     public ExecutorService analysisExecutor() {
         // Scale to available CPUs; cap at 4 to avoid over-threading on constrained hosts
         // (e.g. Render Free Tier has 1 CPU — uses 2 threads, which is still useful for I/O waits)
-<span class="fc" id="L42">        int poolSize = Math.min(Runtime.getRuntime().availableProcessors() + 1, 4);</span>
-<span class="fc" id="L43">        return Executors.newFixedThreadPool(poolSize);</span>
+<span class="fc" id="L43">        int poolSize = Math.min(Runtime.getRuntime().availableProcessors() + 1, 4);</span>
+<span class="fc" id="L44">        return Executors.newFixedThreadPool(poolSize);</span>
     }
 
     @Bean
     public TaskExecutor taskExecutor() {
-<span class="fc" id="L48">        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();</span>
-<span class="fc" id="L49">        executor.setCorePoolSize(1);</span>
-<span class="fc" id="L50">        executor.setMaxPoolSize(2);</span>
-<span class="fc" id="L51">        executor.setQueueCapacity(10);</span>
-<span class="fc" id="L52">        executor.setThreadNamePrefix(&quot;taxonomy-async-&quot;);</span>
-<span class="fc" id="L53">        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());</span>
-<span class="fc" id="L54">        executor.initialize();</span>
-<span class="fc" id="L55">        return executor;</span>
+<span class="fc" id="L49">        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();</span>
+<span class="fc" id="L50">        executor.setCorePoolSize(1);</span>
+<span class="fc" id="L51">        executor.setMaxPoolSize(2);</span>
+<span class="fc" id="L52">        executor.setQueueCapacity(10);</span>
+<span class="fc" id="L53">        executor.setThreadNamePrefix(&quot;taxonomy-async-&quot;);</span>
+<span class="fc" id="L54">        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());</span>
+<span class="fc" id="L55">        executor.initialize();</span>
+<span class="fc" id="L56">        return executor;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

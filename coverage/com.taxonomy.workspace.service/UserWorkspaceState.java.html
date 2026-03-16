@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UserWorkspaceState.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">UserWorkspaceState.java</span></div><h1>UserWorkspaceState.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.dto.ContextHistoryEntry;
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
+
+import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.UUID;
+import com.taxonomy.versioning.service.ContextNavigationService;
+import com.taxonomy.versioning.service.RepositoryStateService;
+
+/**
+ * Per-user in-memory workspace state.
+ *
+ * &lt;p&gt;Holds all the volatile state that was previously shared across all users
+ * in the singleton {@link ContextNavigationService} and {@link RepositoryStateService}.
+ * Each user gets their own instance via the {@link WorkspaceManager}.
+ *
+ * &lt;p&gt;This includes:
+ * &lt;ul&gt;
+ *   &lt;li&gt;The current architecture context (branch, commit, mode)&lt;/li&gt;
+ *   &lt;li&gt;Navigation history (browser-like back/forward)&lt;/li&gt;
+ *   &lt;li&gt;Projection tracking (which commit the DB projection was built from)&lt;/li&gt;
+ *   &lt;li&gt;Operation tracking (whether a merge/cherry-pick is in progress)&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;Thread safety: individual fields are volatile for visibility; compound
+ * operations should be synchronized externally if needed.
+ */
+public class UserWorkspaceState {
+
+    private final String username;
+    private final int maxHistory;
+
+    // Context navigation state
+    private volatile ContextRef currentContext;
+<span class="fc" id="L41">    private final Deque&lt;ContextHistoryEntry&gt; history = new ArrayDeque&lt;&gt;();</span>
+
+    // Projection tracking (per-workspace freshness)
+    private volatile String lastProjectionCommit;
+    private volatile String lastProjectionBranch;
+    private volatile Instant lastProjectionTimestamp;
+    private volatile String lastIndexCommit;
+    private volatile Instant lastIndexTimestamp;
+
+    // Operation tracking (per-workspace)
+    private volatile String operationKind;  // null = no operation
+
+<span class="fc" id="L53">    public UserWorkspaceState(String username, int maxHistory) {</span>
+<span class="fc" id="L54">        this.username = username;</span>
+<span class="fc" id="L55">        this.maxHistory = maxHistory;</span>
+        // Initialize with default editable context on draft branch
+<span class="fc" id="L57">        this.currentContext = new ContextRef(</span>
+<span class="fc" id="L58">                UUID.randomUUID().toString(),</span>
+                &quot;draft&quot;,
+                null,
+<span class="fc" id="L61">                Instant.now(),</span>
+                ContextMode.EDITABLE,
+                null, null, null, null, null, false
+        );
+<span class="fc" id="L65">    }</span>
+
+    // ── Username ────────────────────────────────────────────────────
+
+    public String getUsername() {
+<span class="fc" id="L70">        return username;</span>
+    }
+
+    // ── Context navigation ──────────────────────────────────────────
+
+    public ContextRef getCurrentContext() {
+<span class="fc" id="L76">        return currentContext;</span>
+    }
+
+    public void setCurrentContext(ContextRef ctx) {
+<span class="fc" id="L80">        this.currentContext = ctx;</span>
+<span class="fc" id="L81">    }</span>
+
+    public List&lt;ContextHistoryEntry&gt; getHistory() {
+<span class="fc" id="L84">        return new ArrayList&lt;&gt;(history);</span>
+    }
+
+    public void addHistoryEntry(ContextHistoryEntry entry) {
+<span class="fc" id="L88">        history.addLast(entry);</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        while (history.size() &gt; maxHistory) {</span>
+<span class="nc" id="L90">            history.pollFirst();</span>
+        }
+<span class="fc" id="L92">    }</span>
+
+    public ContextHistoryEntry peekLastHistory() {
+<span class="fc" id="L95">        return history.peekLast();</span>
+    }
+
+    public ContextHistoryEntry pollLastHistory() {
+<span class="fc" id="L99">        return history.pollLast();</span>
+    }
+
+    public boolean isHistoryEmpty() {
+<span class="fc" id="L103">        return history.isEmpty();</span>
+    }
+
+    // ── Projection tracking ─────────────────────────────────────────
+
+    public String getLastProjectionCommit() {
+<span class="fc" id="L109">        return lastProjectionCommit;</span>
+    }
+
+    public String getLastProjectionBranch() {
+<span class="fc" id="L113">        return lastProjectionBranch;</span>
+    }
+
+    public Instant getLastProjectionTimestamp() {
+<span class="fc" id="L117">        return lastProjectionTimestamp;</span>
+    }
+
+    public void recordProjection(String commitId, String branch) {
+<span class="fc" id="L121">        this.lastProjectionCommit = commitId;</span>
+<span class="fc" id="L122">        this.lastProjectionBranch = branch;</span>
+<span class="fc" id="L123">        this.lastProjectionTimestamp = Instant.now();</span>
+<span class="fc" id="L124">    }</span>
+
+    public String getLastIndexCommit() {
+<span class="fc" id="L127">        return lastIndexCommit;</span>
+    }
+
+    public Instant getLastIndexTimestamp() {
+<span class="fc" id="L131">        return lastIndexTimestamp;</span>
+    }
+
+    public void recordIndexBuild(String commitId) {
+<span class="fc" id="L135">        this.lastIndexCommit = commitId;</span>
+<span class="fc" id="L136">        this.lastIndexTimestamp = Instant.now();</span>
+<span class="fc" id="L137">    }</span>
+
+    // ── Operation tracking ──────────────────────────────────────────
+
+    public String getOperationKind() {
+<span class="fc" id="L142">        return operationKind;</span>
+    }
+
+    public boolean isOperationInProgress() {
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        return operationKind != null;</span>
+    }
+
+    public void beginOperation(String kind) {
+<span class="fc" id="L150">        this.operationKind = kind;</span>
+<span class="fc" id="L151">    }</span>
+
+    public void endOperation() {
+<span class="fc" id="L154">        this.operationKind = null;</span>
+<span class="fc" id="L155">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
