@@ -60,7 +60,7 @@ import java.util.*;
 <span class="fc" id="L60">                String pcfId = getCellString(row, pcfIdCol);</span>
 <span class="fc" id="L61">                String name = getCellString(row, nameCol);</span>
 <span class="fc" id="L62">                String levelStr = getCellString(row, levelCol);</span>
-<span class="fc" id="L63">                String description = getCellString(row, descCol);</span>
+<span class="fc" id="L63">                String description = getCellString(row, descCol, false);</span>
 
 <span class="pc bpc" id="L65" title="2 of 4 branches missed.">                if (pcfId == null || pcfId.isBlank()) continue;</span>
 
@@ -104,46 +104,55 @@ import java.util.*;
     }
 
     private String getCellString(Row row, int colIndex) {
-<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (colIndex &lt; 0) return null;</span>
-<span class="fc" id="L108">        Cell cell = row.getCell(colIndex);</span>
-<span class="fc" id="L109">        return getCellValueAsString(cell);</span>
+<span class="fc" id="L107">        return getCellString(row, colIndex, true);</span>
+    }
+
+    private String getCellString(Row row, int colIndex, boolean trim) {
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">        if (colIndex &lt; 0) return null;</span>
+<span class="fc" id="L112">        Cell cell = row.getCell(colIndex);</span>
+<span class="fc" id="L113">        return getCellValueAsString(cell, trim);</span>
     }
 
     private String getCellValueAsString(Cell cell) {
-<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        if (cell == null) return null;</span>
-<span class="pc bpc" id="L114" title="3 of 4 branches missed.">        return switch (cell.getCellType()) {</span>
+<span class="fc" id="L117">        return getCellValueAsString(cell, true);</span>
+    }
+
+    private String getCellValueAsString(Cell cell, boolean trim) {
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (cell == null) return null;</span>
+<span class="pc bpc" id="L122" title="3 of 4 branches missed.">        return switch (cell.getCellType()) {</span>
             case STRING -&gt; {
-<span class="fc" id="L116">                RichTextString rts = cell.getRichStringCellValue();</span>
-<span class="pc bpc" id="L117" title="1 of 2 branches missed.">                yield (rts != null ? rts.getString() : cell.getStringCellValue()).trim();</span>
+<span class="fc" id="L124">                RichTextString rts = cell.getRichStringCellValue();</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">                String s = rts != null ? rts.getString() : cell.getStringCellValue();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                yield trim ? s.trim() : s.strip();</span>
             }
             case NUMERIC -&gt; {
-<span class="nc" id="L120">                double num = cell.getNumericCellValue();</span>
-<span class="nc bnc" id="L121" title="All 4 branches missed.">                if (num == Math.floor(num) &amp;&amp; !Double.isInfinite(num)) {</span>
-<span class="nc" id="L122">                    yield String.valueOf((long) num);</span>
+<span class="nc" id="L129">                double num = cell.getNumericCellValue();</span>
+<span class="nc bnc" id="L130" title="All 4 branches missed.">                if (num == Math.floor(num) &amp;&amp; !Double.isInfinite(num)) {</span>
+<span class="nc" id="L131">                    yield String.valueOf((long) num);</span>
                 }
-<span class="nc" id="L124">                yield String.valueOf(num);</span>
+<span class="nc" id="L133">                yield String.valueOf(num);</span>
             }
-<span class="nc" id="L126">            case BOOLEAN -&gt; String.valueOf(cell.getBooleanCellValue());</span>
-<span class="nc" id="L127">            default -&gt; null;</span>
+<span class="nc" id="L135">            case BOOLEAN -&gt; String.valueOf(cell.getBooleanCellValue());</span>
+<span class="nc" id="L136">            default -&gt; null;</span>
         };
     }
 
     private int parseLevel(String levelStr, String pcfId) {
-<span class="pc bpc" id="L132" title="2 of 4 branches missed.">        if (levelStr != null &amp;&amp; !levelStr.isBlank()) {</span>
+<span class="pc bpc" id="L141" title="2 of 4 branches missed.">        if (levelStr != null &amp;&amp; !levelStr.isBlank()) {</span>
             try {
-<span class="fc" id="L134">                return Integer.parseInt(levelStr.trim());</span>
-<span class="nc" id="L135">            } catch (NumberFormatException ignored) {</span>
+<span class="fc" id="L143">                return Integer.parseInt(levelStr.trim());</span>
+<span class="nc" id="L144">            } catch (NumberFormatException ignored) {</span>
                 // Fall through
             }
         }
-<span class="nc bnc" id="L139" title="All 2 branches missed.">        long dots = pcfId.chars().filter(c -&gt; c == '.').count();</span>
-<span class="nc" id="L140">        return (int) dots + 1;</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        long dots = pcfId.chars().filter(c -&gt; c == '.').count();</span>
+<span class="nc" id="L149">        return (int) dots + 1;</span>
     }
 
     private String deriveParentPcfId(String pcfId) {
-<span class="fc" id="L144">        int lastDot = pcfId.lastIndexOf('.');</span>
-<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        if (lastDot &lt;= 0) return null;</span>
-<span class="fc" id="L146">        return pcfId.substring(0, lastDot);</span>
+<span class="fc" id="L153">        int lastDot = pcfId.lastIndexOf('.');</span>
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">        if (lastDot &lt;= 0) return null;</span>
+<span class="fc" id="L155">        return pcfId.substring(0, lastDot);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
