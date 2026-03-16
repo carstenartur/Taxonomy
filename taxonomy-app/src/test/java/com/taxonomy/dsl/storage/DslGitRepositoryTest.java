@@ -559,4 +559,36 @@ class DslGitRepositoryTest {
         assertTrue(repo.getDslHistory("review").size() >= 2);
         assertTrue(repo.getDslHistory("accepted").size() >= 2);
     }
+
+    // ── Branch deletion ─────────────────────────────────────────────
+
+    @Test
+    void deleteBranch_success() throws IOException {
+        repo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
+        repo.createBranch("feature-x", "draft");
+
+        assertTrue(repo.deleteBranch("feature-x"));
+        // Branch should be gone
+        assertFalse(repo.getBranchNames().contains("feature-x"));
+    }
+
+    @Test
+    void deleteBranch_nonexistent() throws IOException {
+        assertFalse(repo.deleteBranch("nonexistent"));
+    }
+
+    @Test
+    void deleteBranch_protectedDraft() {
+        assertThrows(IllegalArgumentException.class, () -> repo.deleteBranch("draft"));
+    }
+
+    @Test
+    void deleteBranch_protectedAccepted() {
+        assertThrows(IllegalArgumentException.class, () -> repo.deleteBranch("accepted"));
+    }
+
+    @Test
+    void deleteBranch_protectedMain() {
+        assertThrows(IllegalArgumentException.class, () -> repo.deleteBranch("main"));
+    }
 }

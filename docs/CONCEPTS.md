@@ -35,6 +35,9 @@ This document explains the key terms used throughout the Taxonomy Architecture A
 - [Variant](#variant)
 - [Workspace Projection](#workspace-projection)
 - [Synchronisation (Sync)](#synchronisation-sync)
+- [Conflict Resolution](#conflict-resolution)
+- [Diverged State](#diverged-state)
+- [Operation Result Feedback](#operation-result-feedback)
 
 ---
 
@@ -344,3 +347,36 @@ The sync state tracks:
 - **Unpublished commit count**: Number of user commits not yet merged into shared
 
 See [User Guide](USER_GUIDE.md) § 11 for the Sync sub-tab in the Versions tab.
+
+## Conflict Resolution
+
+When a merge or cherry-pick operation cannot be completed automatically (because both sides have modified the same DSL content), the system enters a **conflict state**. The conflict resolution UI displays:
+
+- **Ours (target)** — the DSL content on the target branch
+- **Theirs (source)** — the DSL content from the source branch or cherry-picked commit
+- **Resolved** — an editable area where the user manually composes the final content
+
+Quickfire options **Use Ours** / **Use Theirs** let the user pick one side entirely; the
+**Resolve & Commit** button commits the resolved content to the target branch.
+
+API support: `GET /api/dsl/merge/conflicts`, `POST /api/dsl/merge/resolve`,
+`GET /api/dsl/cherry-pick/conflicts`, `POST /api/dsl/cherry-pick/resolve`.
+
+## Diverged State
+
+When both the user's branch and the shared integration branch have commits that the other doesn't, the sync state is **DIVERGED**. Three resolution strategies are available:
+
+| Strategy | Description |
+|---|---|
+| **MERGE** | Attempt to merge shared changes into the user's branch. May fail if content conflicts exist. |
+| **KEEP_MINE** | Publish the user's version to the shared repository, overwriting shared changes. |
+| **TAKE_SHARED** | Replace the user's branch with the shared version, discarding local changes. |
+
+API support: `POST /api/workspace/resolve-diverged?strategy=MERGE|KEEP_MINE|TAKE_SHARED`.
+
+## Operation Result Feedback
+
+Every Git operation (merge, cherry-pick, publish, sync, branch delete) produces visual feedback via a **Bootstrap toast notification** in the bottom-right corner. The toast shows:
+- ✅ Success with operation summary
+- ❌ Failure with error details
+- ⚠️ Warnings (e.g. conflict detected)

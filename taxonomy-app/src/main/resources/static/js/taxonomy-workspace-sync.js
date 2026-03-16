@@ -120,6 +120,11 @@ window.TaxonomyWorkspaceSync = (function () {
 
         var html = '<div class="d-flex align-items-center gap-2 mb-2">';
         html += '<span class="badge ' + badgeClass + '">' + escapeHtml(statusLabel) + '</span>';
+        if (status === 'DIVERGED') {
+            html += '<button class="btn btn-sm btn-outline-danger ms-2" '
+                + 'onclick="var el = document.getElementById(\'syncDivergedModal\'); if (el &amp;&amp; typeof bootstrap !== \'undefined\') { new bootstrap.Modal(el).show(); }" '
+                + 'title="Open diverged resolution dialog">Resolve…</button>';
+        }
         html += '</div>';
 
         html += '<table class="table table-sm table-borderless mb-0" style="max-width:400px;">';
@@ -204,8 +209,16 @@ window.TaxonomyWorkspaceSync = (function () {
             .then(function (r) { return r.json(); })
             .then(function (result) {
                 if (result.error) {
-                    alert('Sync failed: ' + result.error);
+                    if (window.TaxonomyOperationResult) {
+                        window.TaxonomyOperationResult.showError('Sync Failed', result.message || result.error);
+                    } else {
+                        alert('Sync failed: ' + result.error);
+                    }
                 } else {
+                    if (window.TaxonomyOperationResult) {
+                        window.TaxonomyOperationResult.showSuccess('Sync Complete',
+                            'Synced from shared repository: ' + (result.mergeCommit || '').substring(0, 7));
+                    }
                     pollSyncState();
                     if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
                     showLocalChangesPanel();
@@ -221,8 +234,16 @@ window.TaxonomyWorkspaceSync = (function () {
             .then(function (r) { return r.json(); })
             .then(function (result) {
                 if (result.error) {
-                    alert('Publish failed: ' + result.error);
+                    if (window.TaxonomyOperationResult) {
+                        window.TaxonomyOperationResult.showError('Publish Failed', result.message || result.error);
+                    } else {
+                        alert('Publish failed: ' + result.error);
+                    }
                 } else {
+                    if (window.TaxonomyOperationResult) {
+                        window.TaxonomyOperationResult.showSuccess('Publish Complete',
+                            'Published to shared repository: ' + (result.mergeCommit || '').substring(0, 7));
+                    }
                     pollSyncState();
                     if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
                     showLocalChangesPanel();

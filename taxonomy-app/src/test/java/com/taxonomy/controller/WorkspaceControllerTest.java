@@ -7,6 +7,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -132,5 +133,27 @@ class WorkspaceControllerTest {
         mockMvc.perform(get("/api/workspace/projection"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isMap());
+    }
+
+    // ── Diverged resolution ─────────────────────────────────────────
+
+    @Test
+    void resolveDivergedInvalidStrategy() throws Exception {
+        mockMvc.perform(post("/api/workspace/resolve-diverged")
+                        .param("strategy", "INVALID"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Invalid strategy: INVALID"));
+    }
+
+    @Test
+    void resolveDivergedValidStrategy() throws Exception {
+        // MERGE strategy on default branch — the endpoint validates the strategy
+        // but may fail if the merge encounters issues (that's OK, we test the routing)
+        var result = mockMvc.perform(post("/api/workspace/resolve-diverged")
+                        .param("strategy", "MERGE")
+                        .param("userBranch", "draft"))
+                .andReturn();
+        // Should not be 400 (strategy is valid)
+        assertNotEquals(400, result.getResponse().getStatus());
     }
 }
