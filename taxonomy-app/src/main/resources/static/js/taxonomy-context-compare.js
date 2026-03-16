@@ -1,5 +1,5 @@
 /**
- * taxonomy-context-compare.js — Visueller Vergleich
+ * taxonomy-context-compare.js — Visual Comparison
  *
  * Provides a three-level comparison between two architecture contexts:
  * 1. Summary card — counts with visual indicators
@@ -10,6 +10,8 @@
  */
 window.TaxonomyContextCompare = (function () {
     'use strict';
+
+    var t = TaxonomyI18n.t;
 
     /**
      * Show the compare dialog, pre-filled with the current context.
@@ -71,14 +73,6 @@ window.TaxonomyContextCompare = (function () {
     }
 
     /**
-     * Format branch name for display.
-     */
-    function formatBranch(name) {
-        if (!name || name === 'draft') return 'Hauptversion';
-        return name;
-    }
-
-    /**
      * Compare with a specific commit (from search results).
      *
      * @param {string} commitId — the commit to compare against
@@ -103,7 +97,7 @@ window.TaxonomyContextCompare = (function () {
      */
     function executeCompare(url) {
         var container = document.getElementById('contextCompareResults');
-        if (container) container.innerHTML = '<div class="text-muted small">Vergleich wird durchgef\u00FChrt\u2026</div>';
+        if (container) container.innerHTML = '<div class="text-muted small">' + escapeHtml(t('compare.loading')) + '</div>';
 
         fetch(url)
             .then(function (r) { return r.ok ? r.json() : null; })
@@ -113,7 +107,7 @@ window.TaxonomyContextCompare = (function () {
                 }
             })
             .catch(function () {
-                if (container) container.innerHTML = '<p class="text-danger">Vergleich fehlgeschlagen.</p>';
+                if (container) container.innerHTML = '<p class="text-danger">' + escapeHtml(t('compare.error')) + '</p>';
             });
     }
 
@@ -149,37 +143,37 @@ window.TaxonomyContextCompare = (function () {
         // Level 1: Summary Card
         var s = comparison.summary;
         if (s) {
-            var leftName = formatBranch(comparison.leftBranch || '');
-            var rightName = formatBranch(comparison.rightBranch || '');
+            var leftName = TaxonomyI18n.formatBranch(comparison.leftBranch || '');
+            var rightName = TaxonomyI18n.formatBranch(comparison.rightBranch || '');
 
             html += '<div class="compare-summary-card">';
             html += '<div class="compare-title">' + escapeHtml(leftName) + ' \u2194 ' + escapeHtml(rightName) + '</div>';
-            html += '<div class="mb-2 small text-muted">Zusammenfassung der Unterschiede:</div>';
+            html += '<div class="mb-2 small text-muted">' + escapeHtml(t('compare.summary.title')) + '</div>';
             html += '<div class="compare-stats">';
 
             if (s.elementsAdded > 0) {
-                html += '<span class="compare-stat text-success">\uD83D\uDFE2 +' + s.elementsAdded + ' Element(e) hinzugef\u00FCgt</span>';
+                html += '<span class="compare-stat text-success">' + escapeHtml(t('compare.stat.elements_added', s.elementsAdded)) + '</span>';
             }
             if (s.elementsRemoved > 0) {
-                html += '<span class="compare-stat text-danger">\uD83D\uDD34 \u2212' + s.elementsRemoved + ' Element(e) entfernt</span>';
+                html += '<span class="compare-stat text-danger">' + escapeHtml(t('compare.stat.elements_removed', s.elementsRemoved)) + '</span>';
             }
             if (s.elementsChanged > 0) {
-                html += '<span class="compare-stat text-warning">\uD83D\uDFE1 ~' + s.elementsChanged + ' Element(e) ge\u00E4ndert</span>';
+                html += '<span class="compare-stat text-warning">' + escapeHtml(t('compare.stat.elements_changed', s.elementsChanged)) + '</span>';
             }
             if (s.relationsAdded > 0) {
-                html += '<span class="compare-stat text-success">+' + s.relationsAdded + ' Relation(en)</span>';
+                html += '<span class="compare-stat text-success">' + escapeHtml(t('compare.stat.relations_added', s.relationsAdded)) + '</span>';
             }
             if (s.relationsRemoved > 0) {
-                html += '<span class="compare-stat text-danger">\u2212' + s.relationsRemoved + ' Relation(en)</span>';
+                html += '<span class="compare-stat text-danger">' + escapeHtml(t('compare.stat.relations_removed', s.relationsRemoved)) + '</span>';
             }
             if (s.relationsChanged > 0) {
-                html += '<span class="compare-stat text-warning">~' + s.relationsChanged + ' Relation(en)</span>';
+                html += '<span class="compare-stat text-warning">' + escapeHtml(t('compare.stat.relations_changed', s.relationsChanged)) + '</span>';
             }
 
             var total = (s.elementsAdded || 0) + (s.elementsRemoved || 0) + (s.elementsChanged || 0)
                 + (s.relationsAdded || 0) + (s.relationsRemoved || 0) + (s.relationsChanged || 0);
             if (total === 0) {
-                html += '<span class="compare-stat text-muted">Keine Unterschiede gefunden</span>';
+                html += '<span class="compare-stat text-muted">' + escapeHtml(t('compare.stat.no_diff')) + '</span>';
             }
 
             html += '</div>'; // compare-stats
@@ -202,10 +196,10 @@ window.TaxonomyContextCompare = (function () {
 
             // Added column
             html += '<div class="compare-column">';
-            html += '<div class="col-header col-added">\uD83D\uDFE2 Hinzugef\u00FCgt (' + added.length + ')</div>';
+            html += '<div class="col-header col-added">' + escapeHtml(t('compare.col.added', added.length)) + '</div>';
             html += '<div class="col-items">';
             if (added.length === 0) {
-                html += '<div class="col-empty">Keine hinzugef\u00FCgten Elemente</div>';
+                html += '<div class="col-empty">' + escapeHtml(t('compare.col.empty.added')) + '</div>';
             } else {
                 added.forEach(function (c) {
                     html += '<div class="col-item item-added">';
@@ -218,10 +212,10 @@ window.TaxonomyContextCompare = (function () {
 
             // Changed column
             html += '<div class="compare-column">';
-            html += '<div class="col-header col-changed">\uD83D\uDFE1 Ge\u00E4ndert (' + changed.length + ')</div>';
+            html += '<div class="col-header col-changed">' + escapeHtml(t('compare.col.changed', changed.length)) + '</div>';
             html += '<div class="col-items">';
             if (changed.length === 0) {
-                html += '<div class="col-empty">Keine ge\u00E4nderten Elemente</div>';
+                html += '<div class="col-empty">' + escapeHtml(t('compare.col.empty.changed')) + '</div>';
             } else {
                 changed.forEach(function (c) {
                     html += '<div class="col-item item-changed">';
@@ -237,10 +231,10 @@ window.TaxonomyContextCompare = (function () {
 
             // Removed column
             html += '<div class="compare-column">';
-            html += '<div class="col-header col-removed">\uD83D\uDD34 Entfernt (' + removed.length + ')</div>';
+            html += '<div class="col-header col-removed">' + escapeHtml(t('compare.col.removed', removed.length)) + '</div>';
             html += '<div class="col-items">';
             if (removed.length === 0) {
-                html += '<div class="col-empty">Keine entfernten Elemente</div>';
+                html += '<div class="col-empty">' + escapeHtml(t('compare.col.empty.removed')) + '</div>';
             } else {
                 removed.forEach(function (c) {
                     html += '<div class="col-item item-removed">';
@@ -259,14 +253,14 @@ window.TaxonomyContextCompare = (function () {
             html += '<div class="card mb-3">';
             html += '<div class="card-header">';
             html += '<a data-bs-toggle="collapse" href="#rawDiffCollapse" class="text-decoration-none">';
-            html += '\u25B8 <strong>DSL-Diff anzeigen</strong> (Expertenmodus)</a></div>';
+            html += t('compare.raw_diff') + '</a></div>';
             html += '<div id="rawDiffCollapse" class="collapse">';
             html += '<div class="card-body"><pre class="mb-0 small" style="white-space:pre-wrap;">' + renderColoredDiff(comparison.rawDslDiff) + '</pre></div>';
             html += '</div></div>';
         }
 
         if (!html) {
-            html = '<p class="text-muted">Keine Unterschiede gefunden.</p>';
+            html = '<p class="text-muted">' + escapeHtml(t('compare.no_diff')) + '</p>';
         }
 
         container.innerHTML = html;
