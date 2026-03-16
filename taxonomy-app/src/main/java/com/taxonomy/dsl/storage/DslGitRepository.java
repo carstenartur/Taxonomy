@@ -819,4 +819,40 @@ public class DslGitRepository {
     public boolean isDatabaseBacked() {
         return gitRepo instanceof HibernateRepository;
     }
+
+    /**
+     * Delete a branch from the repository.
+     *
+     * <p>Removes the branch reference. The underlying Git objects (commits,
+     * trees, blobs) are not garbage-collected — they remain reachable via
+     * other branches or the reflog.
+     *
+     * @param branchName the branch to delete (must not be a protected branch)
+     * @return true if the branch was deleted, false if it did not exist
+     * @throws IOException on JGit errors
+     * @throws IllegalArgumentException if the branch is protected
+     */
+    public boolean deleteBranch(String branchName) throws IOException {
+        if ("draft".equals(branchName) || "accepted".equals(branchName) || "main".equals(branchName)) {
+            throw new IllegalArgumentException("Cannot delete protected branch: " + branchName);
+        }
+
+        String refName = Constants.R_HEADS + branchName;
+        Ref ref = gitRepo.getRefDatabase().exactRef(refName);
+        if (ref == null) {
+            return false;
+        }
+
+        RefUpdate ru = gitRepo.updateRef(refName);
+        ru.setForceUpdate(true);
+        RefUpdate.Result result = ru.delete();
+        boolean deleted = (result == RefUpdate.Result.FORCED || result == RefUpdate.Result.FAST_FORWARD);
+
+        if (deleted) {
+            log.info("Deleted branch '{}'", branchName);
+        } else {
+            log.warn("Failed to delete branch '{}': {}", branchName, result);
+        }
+        return deleted;
+    }
 }

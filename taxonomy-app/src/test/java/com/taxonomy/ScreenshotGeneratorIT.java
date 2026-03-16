@@ -186,9 +186,17 @@ class ScreenshotGeneratorIT {
                 .withExposedPorts(8080)
                 .withEnv("ADMIN_PASSWORD", "testpassword123")
                 .withEnv("LLM_MOCK", "true")
-                .withStartupTimeout(Duration.ofSeconds(120))
-                // Use /actuator/health (public) as the container readiness check.
-                .waitingFor(Wait.forHttp("/actuator/health").forStatusCode(200).forPort(8080));
+                .withStartupTimeout(Duration.ofSeconds(180))
+                // Wait for the taxonomy to be fully loaded and search index built.
+                // The /api/status/startup endpoint returns {"status":"ready"} once
+                // AppInitializationStateService transitions to READY — works for both
+                // synchronous (default) and asynchronous initialization modes.
+                .waitingFor(Wait.forHttp("/api/status/startup")
+                        .forStatusCode(200)
+                        .forPort(8080)
+                        .withBasicCredentials("admin", "admin")
+                        .forResponsePredicate(body -> body.contains("\"status\":\"ready\""))
+                        .withStartupTimeout(Duration.ofSeconds(180)));
 
         app = appContainer;
         app.start();
@@ -211,14 +219,14 @@ class ScreenshotGeneratorIT {
 
         // Load the application and wait for the taxonomy tree to be FULLY RENDERED
         driver.get("http://app:8080/");
-        new WebDriverWait(driver, Duration.ofSeconds(30))
+        new WebDriverWait(driver, Duration.ofSeconds(15))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // The #taxonomyTree div is always in the HTML (with a loading spinner).
         // Wait for actual taxonomy nodes to appear — they are rendered by the JS
         // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
-        // Use 60s here because this is the first load after container startup —
-        // the taxonomy Excel import may still be running in the background.
-        new WebDriverWait(driver, Duration.ofSeconds(60))
+        // The container startup waited for /api/status/startup to return "ready",
+        // so taxonomy data is already available — 15s is sufficient for the JS fetch + render.
+        new WebDriverWait(driver, Duration.ofSeconds(15))
                 .until(ExpectedConditions.presenceOfElementLocated(
                         By.cssSelector("#taxonomyTree .tax-node")));
         // Dismiss the onboarding overlay if it is present (it blocks clicks on all UI elements)
@@ -245,8 +253,20 @@ class ScreenshotGeneratorIT {
     }
 
     private void saveElementScreenshot(WebElement element, String filename) throws IOException {
-        File src = element.getScreenshotAs(OutputType.FILE);
-        Files.copy(src.toPath(), OUTPUT_DIR.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
+        // Scroll element into viewport to avoid Chrome renderer timeout on large/off-screen elements
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", element);
+        try {
+            File src = element.getScreenshotAs(OutputType.FILE);
+            Files.copy(src.toPath(), OUTPUT_DIR.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
+        } catch (org.openqa.selenium.TimeoutException e) {
+            if (e.getMessage() != null && e.getMessage().contains("renderer")) {
+                // Fallback: take full-page screenshot when element screenshot times out
+                File src = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
+                Files.copy(src.toPath(), OUTPUT_DIR.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                throw e;
+            }
+        }
     }
 
     private WebDriverWait wait(int seconds) {
@@ -264,12 +284,33 @@ class ScreenshotGeneratorIT {
         WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
         js("arguments[0].click();", analyzeBtn);
+        // First wait for statusArea to become non-empty (analysis started or immediately finished)
+        try {
+            wait(30).until(d -> {
+                String text = d.findElement(By.id("statusArea")).getText();
+                return text != null && !text.trim().isEmpty();
+            });
+        } catch (org.openqa.selenium.TimeoutException e) {
+            // Status area never updated — retry the click once
+            js("arguments[0].click();", driver.findElement(By.id("analyzeBtn")));
+        }
         wait(120).until(ExpectedConditions.textMatches(
                 By.id("statusArea"), ANALYSIS_DONE_PATTERN));
     }
 
     private void js(String script, Object... args) {
         ((JavascriptExecutor) driver).executeScript(script, args);
+    }
+
+    /** Scrolls the element into the viewport and clicks via JavaScript — prevents ElementClickIntercepted. */
+    private void safeClick(WebElement element) {
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", element);
+        js("arguments[0].click();", element);
+    }
+
+    /** Finds the element by locator, scrolls it into view and clicks via JavaScript. */
+    private void safeClick(By locator) {
+        safeClick(driver.findElement(locator));
     }
 
     /**
@@ -358,11 +399,13 @@ class ScreenshotGeneratorIT {
     /** Reloads the page and waits for the taxonomy tree to be fully rendered. */
     private void resetPageState() {
         driver.get("http://app:8080/");
-        wait(30).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // The #taxonomyTree div is always in the HTML (with a loading spinner).
         // Wait for actual taxonomy nodes to appear — they are rendered by the JS
         // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
-        wait(30).until(ExpectedConditions.presenceOfElementLocated(
+        // The container startup already waited for /api/status/startup to return "ready",
+        // so taxonomy data is available — 15s is enough for the JS fetch + render.
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(
                 By.cssSelector("#taxonomyTree .tax-node")));
         // Dismiss the onboarding overlay if it reappears after page reload
         List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
@@ -445,9 +488,9 @@ class ScreenshotGeneratorIT {
     @Order(1)
     void captureFullPageLayout() throws IOException {
         driver.get("http://app:8080/");
-        wait(30).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // Wait for actual taxonomy nodes to be rendered (not just the container div with loading spinner)
-        wait(60).until(ExpectedConditions.presenceOfElementLocated(
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(
                 By.cssSelector("#taxonomyTree .tax-node")));
         // Dismiss the onboarding overlay if present
         List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
@@ -463,7 +506,7 @@ class ScreenshotGeneratorIT {
     @Order(2)
     void captureLeftPanelListView() throws IOException {
         // Use Expand All to make the tree show nodes with their action buttons
-        driver.findElement(By.id("expandAll")).click();
+        safeClick(By.id("expandAll"));
         wait(5).until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".tax-toggle")));
         // Take element screenshot of just the left panel card
         saveElementScreenshot(
@@ -496,40 +539,40 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(5)
     void captureTabsView() throws IOException {
-        driver.findElement(By.id("viewTabs")).click();
+        safeClick(By.id("viewTabs"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewTabs"), "class", "btn-primary"));
         saveScreenshot("05-tabs-view.png");
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
     }
 
     @Test
     @Order(6)
     void captureSunburstView() throws IOException {
-        driver.findElement(By.id("viewSunburst")).click();
+        safeClick(By.id("viewSunburst"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
         wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "sunburst"));
         saveScreenshot("06-sunburst-view.png");
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
     }
 
     @Test
     @Order(7)
     void captureTreeView() throws IOException {
-        driver.findElement(By.id("viewTree")).click();
+        safeClick(By.id("viewTree"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewTree"), "class", "btn-primary"));
         wait(10).until(ExpectedConditions.attributeContains(By.id("taxonomyTree"), "data-view-rendered", "tree"));
         saveScreenshot("07-tree-view.png");
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
     }
 
     @Test
     @Order(8)
     void captureDecisionMapView() throws IOException {
-        driver.findElement(By.id("viewDecision")).click();
+        safeClick(By.id("viewDecision"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewDecision"), "class", "btn-primary"));
         wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "decision"));
         saveScreenshot("08-decision-map-view.png");
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
     }
 
     @Test
@@ -746,7 +789,7 @@ class ScreenshotGeneratorIT {
         // Switch to a non-list/tabs view (sunburst) so that clicking Analyze calls runAnalysis()
         // instead of runStreamingAnalysis(). Only runAnalysis() (POST /api/analyze) sends
         // includeArchitectureView:true and renders the architectureViewPanel on completion.
-        driver.findElement(By.id("viewSunburst")).click();
+        safeClick(By.id("viewSunburst"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
 
         WebElement textarea = driver.findElement(By.id("businessText"));
@@ -757,7 +800,6 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
         js("arguments[0].click();", analyzeBtn);
 
-        // Wait for the analysis to complete — runAnalysis() POSTs and waits for JSON response
         wait(120).until(ExpectedConditions.textMatches(
                 By.id("statusArea"), ANALYSIS_DONE_PATTERN));
         // Navigate to Architecture tab to see the panel
@@ -767,7 +809,7 @@ class ScreenshotGeneratorIT {
 
         // Reset: navigate back to analyze, switch back to list view and uncheck architecture view
         navigateToTab("analyze");
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
         if (archCb.isSelected()) {
             js("arguments[0].click();", archCb);
         }
@@ -803,10 +845,9 @@ class ScreenshotGeneratorIT {
         js("arguments[0].click();", failureBtn);
 
         // Wait for the failure impact results to load.
-        // The results are rendered inside graphViewTable (display:none by default) by wrapWithGraphToggle(),
-        // so Selenium's textToBePresentInElementLocated cannot see the text. Instead, check innerHTML
-        // via JavaScript: the loading spinner sets innerHTML to contain "spinner-border", and once the
-        // API response arrives, wrapWithGraphToggle replaces it with toggle buttons + graph/table divs.
+        // Phase 1: wait for graphResultsContent to exist and have content (spinner or results)
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("graphResultsContent")));
+        // Phase 2: wait for the spinner to be replaced by graph/table results
         wait(30).until(d -> {
             String html = (String) ((JavascriptExecutor) d).executeScript(
                     "var el = document.getElementById('graphResultsContent');" +
@@ -829,6 +870,8 @@ class ScreenshotGeneratorIT {
             runAnalysis();
         }
         navigateToTab("export");
+        // Two-phase wait: first ensure the element exists in the DOM, then wait for CSS visibility
+        wait(10).until(ExpectedConditions.presenceOfElementLocated(By.id("exportGroup")));
         wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
         // Wait for the export group to have a non-zero size (not collapsed)
         wait(5).until(d -> {
@@ -1080,6 +1123,8 @@ class ScreenshotGeneratorIT {
             runAnalysis();
         }
         navigateToTab("export");
+        // Two-phase wait: first ensure the element exists in the DOM, then wait for CSS visibility
+        wait(10).until(ExpectedConditions.presenceOfElementLocated(By.id("exportGroup")));
         wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("exportGroup")));
         // Take a full-tab screenshot showing all export options
         saveScreenshot("33-export-tab.png");
@@ -1089,7 +1134,7 @@ class ScreenshotGeneratorIT {
     @Order(34)
     void captureDslEditorPanel() throws IOException {
         navigateToTab("dsl-editor");
-        // Directly fetch DSL export and populate CodeMirror editor (bypasses stale JS init after tab navigation)
+        // Fetch DSL export and populate CodeMirror 6 editor (dslEditorContainer + window.dslCmView)
         js("fetch('/api/dsl/export').then(r => r.text()).then(t => {" +
            "  var view = window.dslCmView;" +
            "  if (view && t && t.trim().length > 0) {" +
@@ -1098,14 +1143,14 @@ class ScreenshotGeneratorIT {
            "});");
         try {
             wait(15).until(d -> {
-                String val = (String) ((JavascriptExecutor) d).executeScript(
+                String content = (String) ((JavascriptExecutor) d).executeScript(
                         "var v = window.dslCmView; return v ? v.state.doc.toString() : '';");
-                return val != null && !val.isBlank() && val.length() > 50;
+                return content != null && !content.isBlank() && content.length() > 50;
             });
         } catch (org.openqa.selenium.TimeoutException e) {
-            // Fallback: inject representative DSL for the screenshot
+            // Fallback: inject representative DSL into CodeMirror editor
             js("var view = window.dslCmView;" +
-               "if (view) { view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: '" + FALLBACK_DSL_TEXT + "'}}); }");
+               "if (view) view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: '" + FALLBACK_DSL_TEXT + "'}});");
         }
         saveScreenshot("34-dsl-editor-panel.png");
     }
@@ -1123,7 +1168,7 @@ class ScreenshotGeneratorIT {
             runAnalysis();
         }
         // Switch to list view and expand all nodes
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewList"), "class", "btn-primary"));
         // Turn descriptions OFF so each node shows only code + name + score bar (much more compact)
         js("var cb = document.getElementById('showDescriptions'); if (cb && cb.checked) { cb.click(); }");
@@ -1254,7 +1299,7 @@ class ScreenshotGeneratorIT {
         }
 
         // Switch to sunburst view so Analyze calls POST /api/analyze (not streaming)
-        driver.findElement(By.id("viewSunburst")).click();
+        safeClick(By.id("viewSunburst"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
 
         WebElement textarea = driver.findElement(By.id("businessText"));
@@ -1267,7 +1312,6 @@ class ScreenshotGeneratorIT {
 
         wait(120).until(ExpectedConditions.textMatches(
                 By.id("statusArea"), ANALYSIS_DONE_PATTERN));
-        // Navigate to architecture tab
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")),
@@ -1275,7 +1319,7 @@ class ScreenshotGeneratorIT {
 
         // Reset: switch back to list view and uncheck architecture view
         navigateToTab("analyze");
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
         archCb = driver.findElement(By.id("includeArchitectureView"));
         if (archCb.isSelected()) {
             js("arguments[0].click();", archCb);
@@ -1293,13 +1337,13 @@ class ScreenshotGeneratorIT {
             runAnalysis();
         }
         // Switch to sunburst view — scores are already computed, so the sunburst will be coloured
-        driver.findElement(By.id("viewSunburst")).click();
+        safeClick(By.id("viewSunburst"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
         // Wait for the sunburst SVG to actually finish rendering
         wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "sunburst"));
         saveScreenshot("39-scored-sunburst.png");
         // Reset to list view
-        driver.findElement(By.id("viewList")).click();
+        safeClick(By.id("viewList"));
     }
 
     @Test
@@ -1315,14 +1359,14 @@ class ScreenshotGeneratorIT {
            "});");
         try {
             wait(15).until(d -> {
-                String val = (String) ((JavascriptExecutor) d).executeScript(
+                String content = (String) ((JavascriptExecutor) d).executeScript(
                         "var v = window.dslCmView; return v ? v.state.doc.toString() : '';");
-                return val != null && !val.isBlank() && val.contains("relation");
+                return content != null && !content.isBlank() && content.contains("relation");
             });
         } catch (org.openqa.selenium.TimeoutException e) {
-            // Fallback: inject DSL with relation blocks for the screenshot
+            // Fallback: inject DSL with relation blocks into CodeMirror editor
             js("var view = window.dslCmView;" +
-               "if (view) { view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: '" + FALLBACK_DSL_TEXT + "'}}); }");
+               "if (view) view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: '" + FALLBACK_DSL_TEXT + "'}});");
         }
         saveScreenshot("40-dsl-editor-with-relations.png");
     }
@@ -1565,5 +1609,361 @@ class ScreenshotGeneratorIT {
            "}");
         saveElementScreenshot(driver.findElement(By.id("contextBar")),
                 "51-context-bar-with-origin.png");
+    }
+
+    // ── Screenshots 52–68: New GUI Dialogs ────────────────────────────────────
+
+    @Test
+    @Order(52)
+    void captureMergeConflictModal() throws IOException {
+        navigateToTab("analyze");
+        showModalViaDOM("mergeConflictModal");
+        // Populate conflict modal with sample content
+        js("document.getElementById('conflictOursLabel').textContent = 'Ours (draft)';" +
+           "document.getElementById('conflictTheirsLabel').textContent = 'Theirs (feature-voice)';" +
+           "document.getElementById('conflictOursContent').textContent = " +
+           "'element CP-1023 type Capability {\\n  title: \"Secure Voice\";\\n}';" +
+           "document.getElementById('conflictTheirsContent').textContent = " +
+           "'element CP-1023 type Capability {\\n  title: \"Secure Voice Service\";\\n}';" +
+           "document.getElementById('conflictResolvedContent').value = " +
+           "'element CP-1023 type Capability {\\n  title: \"Secure Voice Service\";\\n}';");
+        saveScreenshot("52-merge-conflict-modal.png");
+        closeModalViaDOM("mergeConflictModal");
+    }
+
+    @Test
+    @Order(53)
+    void captureMergeConflictResolved() throws IOException, InterruptedException {
+        navigateToTab("analyze");
+        // Simulate a toast notification for resolved conflict
+        js("var toastEl = document.getElementById('operationToast');" +
+           "var titleEl = document.getElementById('operationToastTitle');" +
+           "var bodyEl = document.getElementById('operationToastBody');" +
+           "if (toastEl && titleEl && bodyEl) {" +
+           "  titleEl.textContent = '\\u2705 Merge Conflict Resolved';" +
+           "  bodyEl.textContent = 'Content committed successfully: a3f8c2d';" +
+           "  var header = toastEl.querySelector('.toast-header');" +
+           "  if (header) { header.className = 'toast-header bg-success text-white'; }" +
+           "  toastEl.classList.add('show');" +
+           "}");
+        Thread.sleep(1000);
+        saveScreenshot("53-merge-conflict-resolved.png");
+        js("var toastEl = document.getElementById('operationToast');" +
+           "if (toastEl) toastEl.classList.remove('show');");
+    }
+
+    @Test
+    @Order(54)
+    void captureCherryPickConflictModal() throws IOException {
+        navigateToTab("analyze");
+        showModalViaDOM("mergeConflictModal");
+        // Populate as cherry-pick conflict
+        js("document.getElementById('mergeConflictModalLabel').textContent = " +
+           "'\\u26A0\\uFE0F Cherry-Pick Conflict — Manual Resolution Required';" +
+           "document.getElementById('conflictOursLabel').textContent = 'Ours (review)';" +
+           "document.getElementById('conflictTheirsLabel').textContent = 'Theirs (commit a3f8c2d)';" +
+           "document.getElementById('conflictOursContent').textContent = " +
+           "'element CP-1023 type Capability {\\n  title: \"Secure Voice\";\\n}';" +
+           "document.getElementById('conflictTheirsContent').textContent = " +
+           "'element CP-1023 type Capability {\\n  title: \"Encrypted Voice\";\\n}';" +
+           "document.getElementById('conflictResolvedContent').value = '';");
+        saveScreenshot("54-cherry-pick-conflict-modal.png");
+        closeModalViaDOM("mergeConflictModal");
+        // Reset title
+        js("document.getElementById('mergeConflictModalLabel').textContent = " +
+           "'\\u26A0\\uFE0F Merge Conflict — Manual Resolution Required';");
+    }
+
+    @Test
+    @Order(55)
+    void captureSyncDivergedState() throws IOException {
+        navigateToTab("versions");
+        // Switch to Sync sub-tab
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'sync');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-sync') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        // Inject diverged state
+        js("var panel = document.getElementById('syncStatePanel');" +
+           "if (panel) {" +
+           "  panel.innerHTML = '<div class=\"d-flex align-items-center gap-2 mb-2\">" +
+           "<span class=\"badge bg-danger\">Diverged — both sides have changes</span>" +
+           "<button class=\"btn btn-sm btn-outline-danger ms-2\">Resolve…</button>" +
+           "</div>" +
+           "<table class=\"table table-sm table-borderless mb-0\" style=\"max-width:400px;\">" +
+           "<tr><td class=\"text-muted small\">Last synced</td><td class=\"small\">3/15/2026, 2:30:00 PM</td></tr>" +
+           "<tr><td class=\"text-muted small\">Unpublished</td><td class=\"small\">3 commits</td></tr>" +
+           "</table>';" +
+           "}");
+        saveScreenshot("55-sync-diverged-state.png");
+    }
+
+    @Test
+    @Order(56)
+    void captureSyncResolveModal() throws IOException {
+        showModalViaDOM("syncDivergedModal");
+        saveScreenshot("56-sync-resolve-modal.png");
+        closeModalViaDOM("syncDivergedModal");
+    }
+
+    @Test
+    @Order(57)
+    void captureVariantDeleteConfirm() throws IOException {
+        navigateToTab("versions");
+        // Switch to Variants sub-tab and inject a variant with delete button
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'variants');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-variants') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        // Inject sample variant list with delete button
+        js("var browser = document.getElementById('variantsBrowser');" +
+           "if (browser) {" +
+           "  browser.innerHTML = '<div class=\"list-group\">" +
+           "<div class=\"list-group-item list-group-item-primary\">" +
+           "<div class=\"d-flex justify-content-between align-items-center\">" +
+           "<div><strong>draft</strong> <span class=\"badge bg-primary ms-1\">active</span> <span class=\"badge bg-secondary ms-1\">main</span></div>" +
+           "<div class=\"d-flex gap-1\"><button class=\"btn btn-outline-info btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#8596; Compare</button></div>" +
+           "</div></div>" +
+           "<div class=\"list-group-item\">" +
+           "<div class=\"d-flex justify-content-between align-items-center\">" +
+           "<div><strong>feature-voice</strong></div>" +
+           "<div class=\"d-flex gap-1\">" +
+           "<button class=\"btn btn-outline-primary btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#8594; Switch</button>" +
+           "<button class=\"btn btn-outline-info btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#8596; Compare</button>" +
+           "<button class=\"btn btn-outline-warning btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#128256; Merge</button>" +
+           "<button class=\"btn btn-outline-danger btn-sm py-0 px-1\" style=\"font-size:0.7rem;\">&#128465; Delete</button>" +
+           "</div></div></div></div>';" +
+           "}");
+        saveScreenshot("57-variant-delete-confirm.png");
+    }
+
+    @Test
+    @Order(58)
+    void captureMergeSuccessToast() throws IOException, InterruptedException {
+        navigateToTab("analyze");
+        // Show a success toast for merge
+        js("var toastEl = document.getElementById('operationToast');" +
+           "var titleEl = document.getElementById('operationToastTitle');" +
+           "var bodyEl = document.getElementById('operationToastBody');" +
+           "if (toastEl && titleEl && bodyEl) {" +
+           "  titleEl.textContent = '\\u2705 Merge Successful';" +
+           "  bodyEl.textContent = 'Merged \"feature-voice\" into \"draft\" → a3f8c2d';" +
+           "  var header = toastEl.querySelector('.toast-header');" +
+           "  if (header) { header.className = 'toast-header bg-success text-white'; }" +
+           "  toastEl.classList.add('show');" +
+           "}");
+        Thread.sleep(1000);
+        saveScreenshot("58-merge-success-toast.png");
+        js("var toastEl = document.getElementById('operationToast');" +
+           "if (toastEl) toastEl.classList.remove('show');");
+    }
+
+    @Test
+    @Order(59)
+    void captureCherryPickSuccessToast() throws IOException, InterruptedException {
+        navigateToTab("analyze");
+        // Show a success toast for cherry-pick
+        js("var toastEl = document.getElementById('operationToast');" +
+           "var titleEl = document.getElementById('operationToastTitle');" +
+           "var bodyEl = document.getElementById('operationToastBody');" +
+           "if (toastEl && titleEl && bodyEl) {" +
+           "  titleEl.textContent = '\\u2705 Cherry-Pick Successful';" +
+           "  bodyEl.textContent = 'Applied onto \"review\" → b7e4f1a';" +
+           "  var header = toastEl.querySelector('.toast-header');" +
+           "  if (header) { header.className = 'toast-header bg-success text-white'; }" +
+           "  toastEl.classList.add('show');" +
+           "}");
+        Thread.sleep(1000);
+        saveScreenshot("59-cherry-pick-success-toast.png");
+        js("var toastEl = document.getElementById('operationToast');" +
+           "if (toastEl) toastEl.classList.remove('show');");
+    }
+
+    @Test
+    @Order(60)
+    void captureMergePreviewModal() throws IOException {
+        navigateToTab("analyze");
+        showModalViaDOM("mergePreviewModal");
+        // Inject preview content
+        js("var content = document.getElementById('mergePreviewContent');" +
+           "if (content) {" +
+           "  content.innerHTML = '<div class=\"alert alert-success mb-0\">" +
+           "<strong>From:</strong> feature-voice <strong>→ Into:</strong> draft" +
+           "<hr class=\"my-2\">Merge preview: commits to merge from \"feature-voice\" into \"draft\". No conflicts detected.</div>';" +
+           "}" +
+           "var btn = document.getElementById('mergePreviewProceedBtn');" +
+           "if (btn) btn.classList.remove('d-none');");
+        saveScreenshot("60-merge-preview-modal.png");
+        closeModalViaDOM("mergePreviewModal");
+    }
+
+    @Test
+    @Order(61)
+    void captureMergePreviewFastForward() throws IOException {
+        navigateToTab("analyze");
+        showModalViaDOM("mergePreviewModal");
+        // Inject fast-forward preview
+        js("var content = document.getElementById('mergePreviewContent');" +
+           "if (content) {" +
+           "  content.innerHTML = '<div class=\"alert alert-success mb-0\">" +
+           "<strong>From:</strong> feature-voice <strong>→ Into:</strong> draft" +
+           "<hr class=\"my-2\">\\u2705 Fast-forward merge possible. No conflicts detected.</div>';" +
+           "}" +
+           "var btn = document.getElementById('mergePreviewProceedBtn');" +
+           "if (btn) btn.classList.remove('d-none');");
+        saveScreenshot("61-merge-preview-fast-forward.png");
+        closeModalViaDOM("mergePreviewModal");
+    }
+
+    @Test
+    @Order(62)
+    void captureCherryPickPreviewModal() throws IOException {
+        navigateToTab("analyze");
+        showModalViaDOM("cherryPickPreviewModal");
+        // Inject cherry-pick preview content
+        js("var content = document.getElementById('cherryPickPreviewContent');" +
+           "if (content) {" +
+           "  content.innerHTML = '<div class=\"alert alert-success mb-0\">" +
+           "<strong>Commit:</strong> a3f8c2d <strong>→ Branch:</strong> review" +
+           "<hr class=\"my-2\">\\u2705 Cherry-pick looks clean. Apply commit a3f8c2d onto \"review\"?</div>';" +
+           "}" +
+           "var btn = document.getElementById('cherryPickPreviewProceedBtn');" +
+           "if (btn) btn.classList.remove('d-none');");
+        saveScreenshot("62-cherry-pick-preview-modal.png");
+        closeModalViaDOM("cherryPickPreviewModal");
+    }
+
+    @Test
+    @Order(63)
+    void captureSyncTabUpToDate() throws IOException {
+        navigateToTab("versions");
+        // Switch to Sync sub-tab
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'sync');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-sync') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        js("var panel = document.getElementById('syncStatePanel');" +
+           "if (panel) {" +
+           "  panel.innerHTML = '<div class=\"d-flex align-items-center gap-2 mb-2\">" +
+           "<span class=\"badge bg-success\">Up to date</span></div>" +
+           "<table class=\"table table-sm table-borderless mb-0\" style=\"max-width:400px;\">" +
+           "<tr><td class=\"text-muted small\">Last synced</td><td class=\"small\">3/15/2026, 2:30:00 PM</td></tr>" +
+           "<tr><td class=\"text-muted small\">Synced commit</td><td class=\"small\"><code>a3f8c2d</code></td></tr>" +
+           "</table>';" +
+           "}");
+        saveScreenshot("63-sync-tab-up-to-date.png");
+    }
+
+    @Test
+    @Order(64)
+    void captureSyncTabAhead() throws IOException {
+        navigateToTab("versions");
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'sync');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-sync') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        js("var panel = document.getElementById('syncStatePanel');" +
+           "if (panel) {" +
+           "  panel.innerHTML = '<div class=\"d-flex align-items-center gap-2 mb-2\">" +
+           "<span class=\"badge bg-info text-dark\">3 unpublished commits</span></div>" +
+           "<table class=\"table table-sm table-borderless mb-0\" style=\"max-width:400px;\">" +
+           "<tr><td class=\"text-muted small\">Unpublished</td><td class=\"small\">3 commits</td></tr>" +
+           "</table>';" +
+           "}");
+        saveScreenshot("64-sync-tab-ahead.png");
+    }
+
+    @Test
+    @Order(65)
+    void captureSyncTabBehind() throws IOException {
+        navigateToTab("versions");
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'sync');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-sync') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        js("var panel = document.getElementById('syncStatePanel');" +
+           "if (panel) {" +
+           "  panel.innerHTML = '<div class=\"d-flex align-items-center gap-2 mb-2\">" +
+           "<span class=\"badge bg-warning text-dark\">Behind shared repository</span></div>" +
+           "<table class=\"table table-sm table-borderless mb-0\" style=\"max-width:400px;\">" +
+           "<tr><td class=\"text-muted small\">Last synced</td><td class=\"small\">3/14/2026, 10:00:00 AM</td></tr>" +
+           "</table>';" +
+           "}");
+        saveScreenshot("65-sync-tab-behind.png");
+    }
+
+    @Test
+    @Order(66)
+    void captureVersionsTimeline() throws IOException {
+        navigateToTab("versions");
+        // Switch to History sub-tab
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        // Wait for the timeline to be populated
+        wait(10).until(d -> {
+            String html = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('versionsTimeline');" +
+                    "return el ? el.innerHTML : '';");
+            return html != null && !html.contains("Loading version history");
+        });
+        saveScreenshot("66-versions-timeline.png");
+    }
+
+    @Test
+    @Order(67)
+    void captureVersionRestoreConfirm() throws IOException {
+        navigateToTab("versions");
+        // Inject a simulated restore confirmation dialog
+        js("var timeline = document.getElementById('versionsTimeline');" +
+           "if (timeline) {" +
+           "  var card = document.createElement('div');" +
+           "  card.className = 'alert alert-warning mt-2';" +
+           "  card.innerHTML = '<strong>Restore Version?</strong><br>" +
+           "This will create a new commit restoring the DSL content from commit <code>a3f8c2d</code>.<br>" +
+           "<div class=\"mt-2\"><button class=\"btn btn-sm btn-warning me-1\">\\u21A9 Restore</button>" +
+           "<button class=\"btn btn-sm btn-secondary\">Cancel</button></div>';" +
+           "  timeline.prepend(card);" +
+           "}");
+        saveScreenshot("67-version-restore-confirm.png");
+    }
+
+    @Test
+    @Order(68)
+    void captureDiffView() throws IOException {
+        navigateToTab("dsl-editor");
+        // Inject a diff view into the DSL editor area
+        js("var area = document.getElementById('dslDiffOutput');" +
+           "if (area) {" +
+           "  area.textContent = '--- a/architecture.taxdsl\\n" +
+           "+++ b/architecture.taxdsl\\n" +
+           "@@ -1,5 +1,6 @@\\n" +
+           " element CP-1023 type Capability {\\n" +
+           "-  title: \"Secure Voice\";\\n" +
+           "+  title: \"Secure Voice Service\";\\n" +
+           "+  description: \"Encrypted real-time voice communication\";\\n" +
+           " }\\n';" +
+           "  area.style.display = 'block';" +
+           "}");
+        saveScreenshot("68-diff-view.png");
     }
 }

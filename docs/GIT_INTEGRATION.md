@@ -294,6 +294,20 @@ Commit history is indexed into Hibernate Search for full-text search. You can:
 | `GET` | `/api/dsl/merge/preview` | Preview merge result |
 | `GET` | `/api/dsl/cherry-pick/preview` | Preview cherry-pick result |
 | `GET` | `/api/dsl/operation/check` | Safety check for write operations |
+| `GET` | `/api/dsl/merge/conflicts?from=X&into=Y` | Merge conflict details (DSL content from both sides) |
+| `POST` | `/api/dsl/merge/resolve?fromBranch=X&intoBranch=Y` | Commit manually resolved merge content |
+| `GET` | `/api/dsl/cherry-pick/conflicts?commitId=X&targetBranch=Y` | Cherry-pick conflict details |
+| `POST` | `/api/dsl/cherry-pick/resolve?commitId=X&targetBranch=Y` | Commit manually resolved cherry-pick content |
+| `DELETE` | `/api/dsl/branch?name=X` | Delete a branch (protected branches: draft, accepted, main) |
+
+### Workspace Sync
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/workspace/sync-from-shared?userBranch=X` | Merge shared branch into user branch (pull) |
+| `POST` | `/api/workspace/publish?userBranch=X` | Merge user branch into shared branch (push) |
+| `GET` | `/api/workspace/sync-state` | Get sync status (UP_TO_DATE, BEHIND, AHEAD, DIVERGED) |
+| `POST` | `/api/workspace/resolve-diverged?strategy=X&userBranch=Y` | Resolve diverged state (strategies: MERGE, KEEP_MINE, TAKE_SHARED) |
 
 See [API Reference](API_REFERENCE.md) for full request/response schemas.
 

@@ -1202,16 +1202,49 @@ Available actions for each variant:
 | **Switch** | Switch to that variant for editing (opens a new context) |
 | **Compare** | Compare the variant with another branch (semantic diff) |
 | **Merge** | Merge changes from that variant into the current branch |
+| **🗑 Delete** | Delete the variant branch (protected branches `draft`, `accepted`, `main` cannot be deleted) |
 
 To create a new variant, click **+ New Variant** in the card header. This opens a modal where you enter the variant name. The new variant is forked from the current branch.
 
 ![Variant Creation Modal](images/46-variant-creation-modal.png)
+
+### Deleting Variants
+
+Non-protected variant branches can be deleted using the **🗑 Delete** button. A confirmation dialog appears before deletion. Protected branches (`draft`, `accepted`, `main`) cannot be deleted — the delete button does not appear for these.
 
 ### Copy Back (Read-Only Contexts)
 
 When viewing a variant in **READ-ONLY** mode, a **📤 Copy Back** button appears in the Context Bar. This allows you to selectively transfer elements and relations from the read-only variant back to your editable workspace — useful for cherry-picking ideas from experimental branches.
 
 ![Copy Back Button](images/49-copy-back-button.png)
+
+### Merge Preview
+
+Before any merge operation is executed, a **Merge Preview Modal** is displayed. This modal shows:
+- The **source** and **target** branches
+- Whether the merge would be a **fast-forward** (no conflicts possible)
+- Whether **conflicts** are expected
+- A **Proceed** button (if merge is safe) or a message explaining the conflict
+
+This replaces the previous browser `confirm()` dialogs with a more informative Bootstrap modal.
+
+### Cherry-Pick Preview
+
+Similarly, before cherry-picking a commit, a **Cherry-Pick Preview Modal** shows:
+- The **commit** being cherry-picked and the **target branch**
+- Whether the operation would succeed cleanly
+- A **Proceed** button or conflict warning
+
+### Resolving Merge Conflicts
+
+When a merge or cherry-pick cannot be completed automatically (both sides modified the same DSL content), the **Merge Conflict Resolution Modal** opens. It provides:
+
+- **Side-by-side view**: "Ours" (target branch content) and "Theirs" (source branch/commit content)
+- **Quick actions**: "Use Ours" and "Use Theirs" buttons to accept one side entirely
+- **Manual editing**: A textarea where you compose the final resolved content
+- **Resolve & Commit**: Commits the resolved content to the target branch
+
+After resolution, a success toast notification confirms the operation.
 
 ### Sync with Shared Repository
 
@@ -1224,6 +1257,25 @@ The sync state panel shows:
 - **Sync status** — `UP_TO_DATE` (in sync), `BEHIND` (shared has newer changes), `AHEAD` (you have unpublished changes), or `DIVERGED` (both have changed)
 - **Unpublished commit count** — Number of your commits not yet published to shared
 - **Last sync/publish timestamps** — When you last synced or published
+
+### Resolving Diverged State
+
+When the sync status shows **DIVERGED**, a **Resolve…** button appears next to the status badge. Clicking it opens the **Sync Diverged Resolution Modal** with three strategies:
+
+| Strategy | Description |
+|---|---|
+| **🔀 Merge** | Attempt to merge shared changes into your branch. May fail if conflicts exist. |
+| **📤 Keep Mine** | Publish your version to shared, overwriting shared changes. |
+| **📥 Take Shared** | Replace your branch with the shared version, discarding your changes. |
+
+### Operation Result Notifications
+
+All Git operations (merge, cherry-pick, publish, sync, branch delete) produce a **toast notification** in the bottom-right corner of the screen:
+- **✅ Green** — Operation succeeded, with a summary message
+- **❌ Red** — Operation failed, with error details
+- **⚠️ Yellow** — Warning (e.g., conflict detected)
+
+The toast automatically disappears after 5 seconds.
 
 ### Workspace User Badge
 

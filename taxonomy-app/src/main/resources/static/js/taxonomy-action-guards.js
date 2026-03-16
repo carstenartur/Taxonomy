@@ -202,32 +202,90 @@ window.TaxonomyActionGuards = (function () {
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (preview) {
                 if (!preview) {
-                    if (confirm('Could not load merge preview. Proceed anyway?')) {
-                        onProceed();
-                    }
+                    showMergePreviewModal('Could not load merge preview.', 'warning', fromBranch, intoBranch, onProceed);
                     return;
                 }
-                if (preview.conflictExpected) {
-                    alert('\u26A0\uFE0F Merge conflict expected!\n\n' +
-                        'The merge from "' + fromBranch + '" into "' + intoBranch +
-                        '" would fail due to conflicts.\nResolve conflicts first.');
-                } else if (preview.fastForward) {
-                    if (confirm('\u2705 Fast-forward merge possible.\n\nNo conflicts. Proceed?')) {
-                        onProceed();
+                if (!preview.canMerge) {
+                    // Distinguish real conflicts from non-conflict failures
+                    // (e.g. branch not found, errors) by checking for null commits
+                    var hasWarnings = preview.warnings && preview.warnings.length > 0;
+                    var isBranchError = !preview.fromCommit || !preview.intoCommit;
+
+                    if (isBranchError) {
+                        // Non-conflict failure — show warning, not conflict modal
+                        var warnMsg = hasWarnings ? preview.warnings.join('; ') :
+                            'Merge from "' + fromBranch + '" into "' + intoBranch + '" cannot proceed.';
+                        showMergePreviewModal(warnMsg, 'danger', fromBranch, intoBranch, null);
+                    } else if (window.TaxonomyMergeResolution) {
+                        window.TaxonomyMergeResolution.showMergeConflict(fromBranch, intoBranch);
+                    } else {
+                        showMergePreviewModal(
+                            '\u26A0\uFE0F Merge conflict expected! The merge from "' + fromBranch +
+                            '" into "' + intoBranch + '" would fail due to conflicts.',
+                            'danger', fromBranch, intoBranch, null);
                     }
+                } else if (preview.alreadyMerged) {
+                    showMergePreviewModal(
+                        'Already merged: "' + fromBranch + '" is already an ancestor of "' + intoBranch + '".',
+                        'info', fromBranch, intoBranch, null);
+                } else if (preview.fastForwardable) {
+                    showMergePreviewModal(
+                        '\u2705 Fast-forward merge possible. No conflicts detected.',
+                        'success', fromBranch, intoBranch, onProceed);
                 } else {
-                    if (confirm('Merge preview: ' + (preview.commitCount || '?') +
-                        ' commit(s) to merge from "' + fromBranch + '" into "' + intoBranch +
-                        '".\n\nProceed?')) {
-                        onProceed();
-                    }
+                    showMergePreviewModal(
+                        'Merge preview: commits to merge from "' + fromBranch + '" into "' + intoBranch + '". No conflicts detected.',
+                        'success', fromBranch, intoBranch, onProceed);
                 }
             })
             .catch(function () {
-                if (confirm('Merge preview unavailable. Proceed anyway?')) {
-                    onProceed();
-                }
+                showMergePreviewModal('Merge preview unavailable.', 'warning', fromBranch, intoBranch, onProceed);
             });
+    }
+
+    /**
+     * Display the merge preview in a Bootstrap modal.
+     */
+    function showMergePreviewModal(message, type, fromBranch, intoBranch, onProceed) {
+        var modalEl = document.getElementById('mergePreviewModal');
+        var contentEl = document.getElementById('mergePreviewContent');
+        var proceedBtn = document.getElementById('mergePreviewProceedBtn');
+
+        if (!modalEl || !contentEl) {
+            // Fallback to confirm if modal not available
+            if (onProceed && confirm(message + '\n\nProceed?')) {
+                onProceed();
+            }
+            return;
+        }
+
+        var alertClass = type === 'danger' ? 'alert-danger' :
+                         type === 'warning' ? 'alert-warning' :
+                         type === 'info' ? 'alert-info' : 'alert-success';
+
+        contentEl.innerHTML = '<div class="alert ' + alertClass + ' mb-0">' +
+            '<strong>From:</strong> ' + escapeHtml(fromBranch) +
+            ' <strong>→ Into:</strong> ' + escapeHtml(intoBranch) +
+            '<hr class="my-2">' + escapeHtml(message) + '</div>';
+
+        if (proceedBtn) {
+            if (onProceed) {
+                proceedBtn.classList.remove('d-none');
+                proceedBtn.onclick = function () {
+                    var modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+                    onProceed();
+                };
+            } else {
+                proceedBtn.classList.add('d-none');
+                proceedBtn.onclick = null;
+            }
+        }
+
+        if (typeof bootstrap !== 'undefined') {
+            var modal = new bootstrap.Modal(modalEl);
+            modal.show();
+        }
     }
 
     /**
@@ -243,27 +301,82 @@ window.TaxonomyActionGuards = (function () {
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (preview) {
                 if (!preview) {
-                    if (confirm('Could not load cherry-pick preview. Proceed anyway?')) {
-                        onProceed();
-                    }
+                    showCherryPickPreviewModal('Could not load cherry-pick preview.',
+                        'warning', commitId, targetBranch, onProceed);
                     return;
                 }
-                if (preview.conflictExpected) {
-                    alert('\u26A0\uFE0F Cherry-pick would cause conflicts!\n\n' +
-                        'Commit ' + commitId.substring(0, 7) + ' cannot be cleanly applied to "' +
-                        targetBranch + '".');
-                } else {
-                    if (confirm('\u2705 Cherry-pick looks clean.\n\nApply commit ' +
-                        commitId.substring(0, 7) + ' onto "' + targetBranch + '"?')) {
-                        onProceed();
+                if (!preview.canCherryPick) {
+                    // Distinguish real conflicts from non-conflict failures
+                    var hasWarnings = preview.warnings && preview.warnings.length > 0;
+                    var isInputError = !preview.targetCommit;
+
+                    if (isInputError) {
+                        // Non-conflict failure — show warning, not conflict modal
+                        var warnMsg = hasWarnings ? preview.warnings.join('; ') :
+                            'Cherry-pick of ' + commitId.substring(0, 7) + ' cannot proceed.';
+                        showCherryPickPreviewModal(warnMsg, 'danger', commitId, targetBranch, null);
+                    } else if (window.TaxonomyMergeResolution) {
+                        window.TaxonomyMergeResolution.showCherryPickConflict(commitId, targetBranch);
+                    } else {
+                        showCherryPickPreviewModal(
+                            '\u26A0\uFE0F Cherry-pick would cause conflicts! Commit ' +
+                            commitId.substring(0, 7) + ' cannot be cleanly applied to "' + targetBranch + '".',
+                            'danger', commitId, targetBranch, null);
                     }
+                } else {
+                    showCherryPickPreviewModal(
+                        '\u2705 Cherry-pick looks clean. Apply commit ' +
+                        commitId.substring(0, 7) + ' onto "' + targetBranch + '"?',
+                        'success', commitId, targetBranch, onProceed);
                 }
             })
             .catch(function () {
-                if (confirm('Cherry-pick preview unavailable. Proceed anyway?')) {
-                    onProceed();
-                }
+                showCherryPickPreviewModal('Cherry-pick preview unavailable.',
+                    'warning', commitId, targetBranch, onProceed);
             });
+    }
+
+    /**
+     * Display the cherry-pick preview in a Bootstrap modal.
+     */
+    function showCherryPickPreviewModal(message, type, commitId, targetBranch, onProceed) {
+        var modalEl = document.getElementById('cherryPickPreviewModal');
+        var contentEl = document.getElementById('cherryPickPreviewContent');
+        var proceedBtn = document.getElementById('cherryPickPreviewProceedBtn');
+
+        if (!modalEl || !contentEl) {
+            if (onProceed && confirm(message + '\n\nProceed?')) {
+                onProceed();
+            }
+            return;
+        }
+
+        var alertClass = type === 'danger' ? 'alert-danger' :
+                         type === 'warning' ? 'alert-warning' : 'alert-success';
+
+        contentEl.innerHTML = '<div class="alert ' + alertClass + ' mb-0">' +
+            '<strong>Commit:</strong> ' + escapeHtml(commitId.substring(0, 7)) +
+            ' <strong>→ Branch:</strong> ' + escapeHtml(targetBranch) +
+            '<hr class="my-2">' + escapeHtml(message) + '</div>';
+
+        if (proceedBtn) {
+            if (onProceed) {
+                proceedBtn.classList.remove('d-none');
+                proceedBtn.onclick = function () {
+                    var modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+                    onProceed();
+                };
+            } else {
+                proceedBtn.classList.add('d-none');
+                proceedBtn.onclick = null;
+            }
+        }
+
+        if (typeof bootstrap !== 'undefined') {
+            var modal = new bootstrap.Modal(modalEl);
+            modal.show();
+        }
     }
 
     return {
