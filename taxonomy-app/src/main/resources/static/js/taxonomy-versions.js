@@ -1,9 +1,8 @@
 /**
- * Versionen — Verlauf, R\u00FCckg\u00E4ngig, Wiederherstellen, Version speichern.
+ * Versions — History, Undo, Restore, Save.
  *
  * <p>Provides a user-friendly interface over the JGit-backed DSL versioning
- * system. Uses i18n-aware labels for non-developer audiences: "Version",
- * "R\u00FCckg\u00E4ngig", "Wiederherstellen", and "Speichern".
+ * system. Uses i18n-aware labels for non-developer audiences.
  */
 window.TaxonomyVersions = (function () {
     'use strict';
