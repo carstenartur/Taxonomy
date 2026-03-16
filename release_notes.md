@@ -1,1 +1,3 @@
-No closed issues found since v1.0.0
+- #182: Refactor the current UI so it properly supports the new multi-user workspace model.
+- #180: multi-user architecture workspace model
+- #153: Import verbessern
