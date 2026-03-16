@@ -4,9 +4,9 @@ import com.taxonomy.dto.RelationProposalDto;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.ProposalStatus;
 import com.taxonomy.model.RelationType;
-import com.taxonomy.repository.RelationProposalRepository;
-import com.taxonomy.repository.TaxonomyRelationRepository;
-import com.taxonomy.service.*;
+import com.taxonomy.relations.repository.RelationProposalRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.relations.service.RelationProposalService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +23,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.relations.controller.ProposalApiController;
+import com.taxonomy.relations.service.RelationCandidateService;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+import com.taxonomy.relations.service.RelationProposalService;
+import com.taxonomy.relations.service.RelationReviewService;
+import com.taxonomy.relations.service.RelationValidationService;
 
 /**
  * Tests for the Relation Proposal Pipeline:
@@ -82,7 +90,7 @@ class RelationProposalTests {
 
     @Test
     void validationRejectsSelfRelation() {
-        var source = new com.taxonomy.model.TaxonomyNode();
+        var source = new com.taxonomy.catalog.model.TaxonomyNode();
         source.setCode("BP");
         source.setTaxonomyRoot("BP");
 

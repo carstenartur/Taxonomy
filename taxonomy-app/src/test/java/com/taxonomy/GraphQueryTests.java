@@ -2,9 +2,9 @@ package com.taxonomy;
 
 import com.taxonomy.dto.*;
 import com.taxonomy.model.RelationType;
-import com.taxonomy.repository.TaxonomyRelationRepository;
-import com.taxonomy.service.ArchitectureGraphQueryService;
-import com.taxonomy.service.TaxonomyRelationService;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.architecture.service.ArchitectureGraphQueryService;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +21,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
+import com.taxonomy.dto.ChangeImpactView;
+import com.taxonomy.dto.GraphNeighborhoodView;
+import com.taxonomy.dto.ImpactElement;
+import com.taxonomy.dto.RequirementImpactView;
 
 @SpringBootTest
 @AutoConfigureMockMvc

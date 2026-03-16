@@ -1,8 +1,8 @@
 package com.taxonomy;
 
 import com.taxonomy.dto.GraphSearchResult;
-import com.taxonomy.service.GraphSearchService;
-import com.taxonomy.service.LocalEmbeddingService;
+import com.taxonomy.relations.service.GraphSearchService;
+import com.taxonomy.shared.service.LocalEmbeddingService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;

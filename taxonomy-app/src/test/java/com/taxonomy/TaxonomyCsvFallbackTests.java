@@ -1,7 +1,7 @@
 package com.taxonomy;
 
 import com.taxonomy.dto.TaxonomyRelationDto;
-import com.taxonomy.service.TaxonomyRelationService;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

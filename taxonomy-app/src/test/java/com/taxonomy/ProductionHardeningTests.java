@@ -1,6 +1,6 @@
 package com.taxonomy;
 
-import com.taxonomy.config.RateLimitFilter;
+import com.taxonomy.shared.config.RateLimitFilter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +15,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
+import com.taxonomy.catalog.service.SearchService;
+import com.taxonomy.shared.config.GlobalExceptionHandler;
 
 /**
  * Tests for {@link com.taxonomy.config.RateLimitFilter} and

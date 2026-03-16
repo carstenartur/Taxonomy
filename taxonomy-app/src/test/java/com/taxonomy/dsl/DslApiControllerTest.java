@@ -1,9 +1,9 @@
 package com.taxonomy.dsl;
 
 import com.taxonomy.model.HypothesisStatus;
-import com.taxonomy.model.RelationHypothesis;
+import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.model.RelationType;
-import com.taxonomy.repository.RelationHypothesisRepository;
+import com.taxonomy.relations.repository.RelationHypothesisRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,6 +14,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
+import com.taxonomy.architecture.model.ArchitectureDslDocument;
+import com.taxonomy.dto.ViewContext;
 
 /**
  * Integration tests for the DSL API endpoints.

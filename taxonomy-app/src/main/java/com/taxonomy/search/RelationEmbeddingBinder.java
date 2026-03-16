@@ -1,8 +1,8 @@
 package com.taxonomy.search;
 
-import com.taxonomy.config.SpringContextHolder;
-import com.taxonomy.model.TaxonomyRelation;
-import com.taxonomy.service.LocalEmbeddingService;
+import com.taxonomy.shared.config.SpringContextHolder;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.shared.service.LocalEmbeddingService;
 import org.hibernate.search.engine.backend.document.DocumentElement;
 import org.hibernate.search.engine.backend.document.IndexFieldReference;
 import org.hibernate.search.engine.backend.types.VectorSimilarity;

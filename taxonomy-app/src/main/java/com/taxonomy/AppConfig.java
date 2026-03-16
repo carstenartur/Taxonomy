@@ -10,6 +10,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import com.taxonomy.analysis.service.LlmService;
 
 @Configuration
 public class AppConfig {

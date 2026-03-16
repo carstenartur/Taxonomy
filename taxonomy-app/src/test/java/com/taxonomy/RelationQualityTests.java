@@ -1,9 +1,9 @@
 package com.taxonomy;
 
 import com.taxonomy.model.RelationType;
-import com.taxonomy.repository.RelationProposalRepository;
-import com.taxonomy.repository.TaxonomyRelationRepository;
-import com.taxonomy.service.RelationQualityService;
+import com.taxonomy.relations.repository.RelationProposalRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.relations.service.RelationQualityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
+import com.taxonomy.relations.controller.QualityApiController;
 
 /**
  * Tests for the Relation Quality Dashboard:

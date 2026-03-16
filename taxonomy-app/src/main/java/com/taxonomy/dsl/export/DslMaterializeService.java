@@ -8,11 +8,11 @@ import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.validation.DslValidationResult;
 import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.model.*;
-import com.taxonomy.repository.ArchitectureDslDocumentRepository;
-import com.taxonomy.repository.RelationHypothesisRepository;
-import com.taxonomy.service.RepositoryStateService;
-import com.taxonomy.service.TaxonomyRelationService;
-import com.taxonomy.service.WorkspaceResolver;
+import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
+import com.taxonomy.relations.repository.RelationHypothesisRepository;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
@@ -20,6 +20,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import com.taxonomy.architecture.model.ArchitectureDslDocument;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.dsl.model.ArchitectureRelation;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.model.HypothesisStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationHypothesis;
 
 /**
  * Materializes a parsed DSL document into the database.

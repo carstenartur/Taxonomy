@@ -31,6 +31,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import com.taxonomy.dsl.storage.jgit.HibernateObjDatabase;
+import com.taxonomy.dsl.storage.jgit.HibernateRefDatabase;
 
 /**
  * Facade around a JGit DFS repository that stores DSL documents as Git objects.

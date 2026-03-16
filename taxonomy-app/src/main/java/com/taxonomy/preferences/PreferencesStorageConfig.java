@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import com.taxonomy.dsl.storage.jgit.HibernateRepository;
 
 /**
  * Spring configuration for the preferences Git storage layer.

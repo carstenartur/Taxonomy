@@ -2,12 +2,12 @@ package com.taxonomy;
 
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.RelationType;
-import com.taxonomy.model.TaxonomyNode;
-import com.taxonomy.model.TaxonomyRelation;
-import com.taxonomy.repository.TaxonomyNodeRepository;
-import com.taxonomy.repository.TaxonomyRelationRepository;
-import com.taxonomy.service.TaxonomyRelationService;
-import com.taxonomy.service.TaxonomyService;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.catalog.service.TaxonomyService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

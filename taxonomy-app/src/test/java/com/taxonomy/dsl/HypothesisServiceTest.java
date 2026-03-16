@@ -2,11 +2,11 @@ package com.taxonomy.dsl;
 
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.model.HypothesisStatus;
-import com.taxonomy.model.RelationEvidence;
-import com.taxonomy.model.RelationHypothesis;
-import com.taxonomy.repository.RelationEvidenceRepository;
-import com.taxonomy.repository.RelationHypothesisRepository;
-import com.taxonomy.service.HypothesisService;
+import com.taxonomy.relations.model.RelationEvidence;
+import com.taxonomy.relations.model.RelationHypothesis;
+import com.taxonomy.relations.repository.RelationEvidenceRepository;
+import com.taxonomy.relations.repository.RelationHypothesisRepository;
+import com.taxonomy.versioning.service.HypothesisService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -17,6 +17,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.springframework.security.test.context.support.WithMockUser;
+import com.taxonomy.model.RelationType;
 
 /**
  * Tests for {@link HypothesisService}.
