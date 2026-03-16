@@ -12,7 +12,7 @@ import com.taxonomy.catalog.service.SearchService;
 
 /**
  * Provides Lucene analyzers for English and German full-text fields.
- * Used by {@link com.taxonomy.service.SearchService} to configure per-field analysis.
+ * Used by {@link com.taxonomy.catalog.service.SearchService} to configure per-field analysis.
  */
 public class TaxonomyAnalysisConfigurer {
 

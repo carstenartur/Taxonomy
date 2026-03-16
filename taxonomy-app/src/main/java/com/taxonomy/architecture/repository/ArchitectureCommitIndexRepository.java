@@ -12,7 +12,7 @@ import com.taxonomy.architecture.service.CommitIndexService;
  * Repository for architecture commit index entries.
  *
  * <p>Simple JPA lookups only — full-text search is handled by
- * {@link com.taxonomy.service.CommitIndexService} via Hibernate Search.
+ * {@link com.taxonomy.architecture.service.CommitIndexService} via Hibernate Search.
  */
 @Repository
 public interface ArchitectureCommitIndexRepository extends JpaRepository<ArchitectureCommitIndex, Long> {

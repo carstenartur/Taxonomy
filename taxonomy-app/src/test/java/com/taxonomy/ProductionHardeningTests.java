@@ -19,8 +19,8 @@ import com.taxonomy.catalog.service.SearchService;
 import com.taxonomy.shared.config.GlobalExceptionHandler;
 
 /**
- * Tests for {@link com.taxonomy.config.RateLimitFilter} and
- * {@link com.taxonomy.config.GlobalExceptionHandler}.
+ * Tests for {@link com.taxonomy.shared.config.RateLimitFilter} and
+ * {@link com.taxonomy.shared.config.GlobalExceptionHandler}.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

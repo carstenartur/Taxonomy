@@ -17,7 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.taxonomy.catalog.controller.ImportApiController;
 
 /**
- * Tests for the {@link com.taxonomy.controller.ImportApiController}.
+ * Tests for the {@link com.taxonomy.catalog.controller.ImportApiController}.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

@@ -14,7 +14,7 @@ import java.util.List;
 import com.taxonomy.relations.model.RelationProposal;
 
 /**
- * Service for computing quality metrics over {@link com.taxonomy.model.RelationProposal}
+ * Service for computing quality metrics over {@link com.taxonomy.relations.model.RelationProposal}
  * entities and providing a feedback signal for confidence scoring.
  */
 @Service

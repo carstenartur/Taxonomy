@@ -14,7 +14,7 @@ import com.taxonomy.architecture.model.ArchitectureCommitIndex;
  *
  * <p>Used for {@code affectedElementIds} (comma-separated) and
  * {@code affectedRelationIds} (semicolon-separated) fields in
- * {@link com.taxonomy.model.ArchitectureCommitIndex}.
+ * {@link com.taxonomy.architecture.model.ArchitectureCommitIndex}.
  *
  * <p>Splits on commas and semicolons, trims whitespace, and lowercases
  * so that individual IDs like {@code "CP-1023"} become searchable tokens.
