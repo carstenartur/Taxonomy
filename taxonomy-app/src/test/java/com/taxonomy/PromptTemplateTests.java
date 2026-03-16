@@ -1,6 +1,6 @@
 package com.taxonomy;
 
-import com.taxonomy.service.PromptTemplateService;
+import com.taxonomy.shared.service.PromptTemplateService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

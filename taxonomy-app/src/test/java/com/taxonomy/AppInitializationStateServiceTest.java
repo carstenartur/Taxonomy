@@ -1,7 +1,7 @@
 package com.taxonomy;
 
-import com.taxonomy.service.AppInitializationStateService;
-import com.taxonomy.service.AppInitializationStateService.State;
+import com.taxonomy.shared.service.AppInitializationStateService;
+import com.taxonomy.shared.service.AppInitializationStateService.State;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

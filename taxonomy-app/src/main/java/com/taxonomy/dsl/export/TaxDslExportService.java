@@ -3,14 +3,18 @@ package com.taxonomy.dsl.export;
 import com.taxonomy.dsl.mapper.ModelToAstMapper;
 import com.taxonomy.dsl.model.*;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
-import com.taxonomy.model.TaxonomyNode;
-import com.taxonomy.model.TaxonomyRelation;
-import com.taxonomy.repository.TaxonomyNodeRepository;
-import com.taxonomy.repository.TaxonomyRelationRepository;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.ArchitectureRelation;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
 
 /**
  * Exports the current architecture state (taxonomy nodes and relations)

@@ -1,10 +1,10 @@
 package com.taxonomy;
 
-import com.taxonomy.config.LoginRateLimitFilter;
-import com.taxonomy.controller.UserManagementController;
-import com.taxonomy.model.AppUser;
-import com.taxonomy.repository.RoleRepository;
-import com.taxonomy.repository.UserRepository;
+import com.taxonomy.security.config.LoginRateLimitFilter;
+import com.taxonomy.security.controller.UserManagementController;
+import com.taxonomy.security.model.AppUser;
+import com.taxonomy.security.repository.RoleRepository;
+import com.taxonomy.security.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

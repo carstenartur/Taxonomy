@@ -1,8 +1,8 @@
 package com.taxonomy.dsl;
 
-import com.taxonomy.model.ArchitectureCommitIndex;
-import com.taxonomy.repository.ArchitectureCommitIndexRepository;
-import com.taxonomy.service.CommitIndexService;
+import com.taxonomy.architecture.model.ArchitectureCommitIndex;
+import com.taxonomy.architecture.repository.ArchitectureCommitIndexRepository;
+import com.taxonomy.architecture.service.CommitIndexService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

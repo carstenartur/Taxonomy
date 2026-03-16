@@ -1,14 +1,14 @@
 package com.taxonomy;
 
-import com.taxonomy.model.TaxonomyNode;
-import com.taxonomy.model.TaxonomyRelation;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.search.NodeEmbeddingBinder;
 import com.taxonomy.search.RelationEmbeddingBinder;
 import com.taxonomy.dto.TaxonomyNodeDto;
-import com.taxonomy.service.HybridSearchService;
-import com.taxonomy.service.LocalEmbeddingService;
-import com.taxonomy.service.RankFusionUtil;
-import com.taxonomy.service.SearchService;
+import com.taxonomy.relations.service.HybridSearchService;
+import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.relations.service.RankFusionUtil;
+import com.taxonomy.catalog.service.SearchService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
+import com.taxonomy.model.RelationType;
 
 /**
  * Tests for the semantic/hybrid search infrastructure introduced in Phase 3 of the
@@ -261,9 +262,9 @@ class SemanticSearchTests {
     @Test
     void relationEnrichedTextContainsRelationParts() {
         // Verify RelationEmbeddingBinder.Bridge.buildEnrichedText includes source, type, target
-        com.taxonomy.model.TaxonomyNode source = new TaxonomyNode();
+        com.taxonomy.catalog.model.TaxonomyNode source = new TaxonomyNode();
         source.setNameEn("Business Process A");
-        com.taxonomy.model.TaxonomyNode target = new TaxonomyNode();
+        com.taxonomy.catalog.model.TaxonomyNode target = new TaxonomyNode();
         target.setNameEn("Communication Service B");
         TaxonomyRelation relation = new TaxonomyRelation();
         relation.setSourceNode(source);

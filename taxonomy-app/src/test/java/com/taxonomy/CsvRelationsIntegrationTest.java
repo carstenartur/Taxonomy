@@ -1,10 +1,10 @@
 package com.taxonomy;
 
 import com.taxonomy.dto.RequirementArchitectureView;
-import com.taxonomy.service.PropagationResult;
-import com.taxonomy.service.RelevancePropagationService;
-import com.taxonomy.service.RequirementArchitectureViewService;
-import com.taxonomy.service.TaxonomyRelationService;
+import com.taxonomy.catalog.service.PropagationResult;
+import com.taxonomy.catalog.service.RelevancePropagationService;
+import com.taxonomy.architecture.service.RequirementArchitectureViewService;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

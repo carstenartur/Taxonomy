@@ -1,7 +1,7 @@
 package com.taxonomy.dsl;
 
-import com.taxonomy.config.CsvKeywordAnalyzer;
-import com.taxonomy.config.DslAnalyzer;
+import com.taxonomy.shared.config.CsvKeywordAnalyzer;
+import com.taxonomy.shared.config.DslAnalyzer;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;

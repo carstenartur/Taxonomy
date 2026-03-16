@@ -1,11 +1,11 @@
 package com.taxonomy;
 
 import com.taxonomy.dto.ArchitectureSummary;
-import com.taxonomy.model.TaxonomyNode;
-import com.taxonomy.repository.TaxonomyNodeRepository;
-import com.taxonomy.repository.TaxonomyRelationRepository;
-import com.taxonomy.service.ArchitectureSummaryService;
-import com.taxonomy.service.DerivedMetadataService;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.architecture.service.ArchitectureSummaryService;
+import com.taxonomy.architecture.service.DerivedMetadataService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

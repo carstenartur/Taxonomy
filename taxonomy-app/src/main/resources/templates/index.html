@@ -1042,7 +1042,7 @@
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@4.2.0/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@2.2.4/dist/svg2pdf.umd.min.js"></script>
-<script th:src="@{/js/taxonomy-views.js}"></script>
+<script th:src="@{/js/core/taxonomy-views.js}"></script>
 <script>
     /* ── CSRF token support for fetch() ──────────────────────────────────────────
        Reads the Spring Security CSRF token from meta tags and automatically
@@ -1066,32 +1066,32 @@
         };
     })();
 </script>
-<script th:src="@{/js/taxonomy-git-status.js}"></script>
-<script th:src="@{/js/taxonomy-workspace-sync.js}"></script>
-<script th:src="@{/js/taxonomy-viewcontext.js}"></script>
-<script th:src="@{/js/taxonomy-context-bar.js}"></script>
-<script th:src="@{/js/taxonomy-history-search.js}"></script>
-<script th:src="@{/js/taxonomy-context-compare.js}"></script>
-<script th:src="@{/js/taxonomy-context-transfer.js}"></script>
-<script th:src="@{/js/taxonomy-action-guards.js}"></script>
-<script th:src="@{/js/taxonomy-merge-resolution.js}"></script>
-<script th:src="@{/js/taxonomy-operation-result.js}"></script>
-<script th:src="@{/js/taxonomy-versions.js}"></script>
-<script th:src="@{/js/taxonomy-variants.js}"></script>
-<script th:src="@{/js/taxonomy-export.js}"></script>
-<script th:src="@{/js/taxonomy-import.js}"></script>
-<script th:src="@{/js/taxonomy-graph.js}"></script>
-<script th:src="@{/js/taxonomy-search.js}"></script>
-<script th:src="@{/js/taxonomy-quality.js}"></script>
-<script th:src="@{/js/taxonomy-coverage.js}"></script>
-<script th:src="@{/js/taxonomy-relations.js}"></script>
-<script th:src="@{/js/taxonomy-analysis.js}"></script>
-<script th:src="@{/js/taxonomy-onboarding.js}"></script>
-<script th:src="@{/js/taxonomy-help.js}"></script>
-<script th:src="@{/js/taxonomy-dsl-editor.js}"></script>
-<script type="module" th:src="@{/js/taxonomy-dsl-codemirror.mjs}"></script>
-<script th:src="@{/js/taxonomy-about.js}"></script>
-<script th:src="@{/js/taxonomy.js}"></script>
+<script th:src="@{/js/workspace/taxonomy-git-status.js}"></script>
+<script th:src="@{/js/workspace/taxonomy-workspace-sync.js}"></script>
+<script th:src="@{/js/versioning/taxonomy-viewcontext.js}"></script>
+<script th:src="@{/js/versioning/taxonomy-context-bar.js}"></script>
+<script th:src="@{/js/versioning/taxonomy-history-search.js}"></script>
+<script th:src="@{/js/versioning/taxonomy-context-compare.js}"></script>
+<script th:src="@{/js/versioning/taxonomy-context-transfer.js}"></script>
+<script th:src="@{/js/shared/taxonomy-action-guards.js}"></script>
+<script th:src="@{/js/workspace/taxonomy-merge-resolution.js}"></script>
+<script th:src="@{/js/shared/taxonomy-operation-result.js}"></script>
+<script th:src="@{/js/versioning/taxonomy-versions.js}"></script>
+<script th:src="@{/js/versioning/taxonomy-variants.js}"></script>
+<script th:src="@{/js/shared/taxonomy-export.js}"></script>
+<script th:src="@{/js/shared/taxonomy-import.js}"></script>
+<script th:src="@{/js/shared/taxonomy-graph.js}"></script>
+<script th:src="@{/js/shared/taxonomy-search.js}"></script>
+<script th:src="@{/js/relations/taxonomy-quality.js}"></script>
+<script th:src="@{/js/relations/taxonomy-coverage.js}"></script>
+<script th:src="@{/js/relations/taxonomy-relations.js}"></script>
+<script th:src="@{/js/core/taxonomy-analysis.js}"></script>
+<script th:src="@{/js/shared/taxonomy-onboarding.js}"></script>
+<script th:src="@{/js/shared/taxonomy-help.js}"></script>
+<script th:src="@{/js/shared/taxonomy-dsl-editor.js}"></script>
+<script type="module" th:src="@{/js/shared/taxonomy-dsl-codemirror.mjs}"></script>
+<script th:src="@{/js/shared/taxonomy-about.js}"></script>
+<script th:src="@{/js/core/taxonomy.js}"></script>
 
 <!-- Propose Relations Modal -->
 <div class="modal fade" id="proposeRelationsModal" tabindex="-1" aria-labelledby="proposeRelationsModalLabel" aria-hidden="true">

@@ -1,7 +1,7 @@
 package com.taxonomy;
 
 import com.taxonomy.dto.TaxonomyDiscrepancy;
-import com.taxonomy.service.LlmService;
+import com.taxonomy.analysis.service.LlmService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.taxonomy.dto.AnalysisResult;
 
 /**
  * Tests for the scoring pipeline fixes:

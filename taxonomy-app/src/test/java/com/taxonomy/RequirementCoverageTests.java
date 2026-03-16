@@ -1,8 +1,8 @@
 package com.taxonomy;
 
 import com.taxonomy.dto.CoverageStatistics;
-import com.taxonomy.repository.RequirementCoverageRepository;
-import com.taxonomy.service.RequirementCoverageService;
+import com.taxonomy.relations.repository.RequirementCoverageRepository;
+import com.taxonomy.relations.service.RequirementCoverageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
+import com.taxonomy.relations.controller.CoverageApiController;
 
 /**
  * Tests for the Requirement Coverage feature:

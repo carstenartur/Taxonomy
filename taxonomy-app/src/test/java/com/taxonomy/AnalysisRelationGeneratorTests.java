@@ -2,9 +2,9 @@ package com.taxonomy;
 
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dto.RequirementArchitectureView;
-import com.taxonomy.repository.TaxonomyRelationRepository;
-import com.taxonomy.service.AnalysisRelationGenerator;
-import com.taxonomy.service.RequirementArchitectureViewService;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.analysis.service.AnalysisRelationGenerator;
+import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

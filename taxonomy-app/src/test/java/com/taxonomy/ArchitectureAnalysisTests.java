@@ -2,9 +2,9 @@ package com.taxonomy;
 
 import com.taxonomy.dto.*;
 import com.taxonomy.model.RelationType;
-import com.taxonomy.repository.RequirementCoverageRepository;
-import com.taxonomy.repository.TaxonomyRelationRepository;
-import com.taxonomy.service.*;
+import com.taxonomy.relations.repository.RequirementCoverageRepository;
+import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.relations.service.RequirementCoverageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +21,19 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
+import com.taxonomy.architecture.service.ArchitectureGapService;
+import com.taxonomy.architecture.service.ArchitecturePatternService;
+import com.taxonomy.architecture.service.ArchitectureRecommendationService;
+import com.taxonomy.architecture.service.EnrichedImpactService;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.dto.ApqcCoverageResult;
+import com.taxonomy.dto.ArchitectureRecommendation;
+import com.taxonomy.dto.EnrichedChangeImpactView;
+import com.taxonomy.dto.GapAnalysisView;
+import com.taxonomy.dto.PatternDetectionView;
+import com.taxonomy.dto.RecommendedElement;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+import com.taxonomy.relations.service.RequirementCoverageService;
 
 /**
  * Tests for Steps 2–5:

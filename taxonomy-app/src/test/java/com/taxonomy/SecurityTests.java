@@ -1,12 +1,12 @@
 package com.taxonomy;
 
-import com.taxonomy.config.SecurityConfig;
-import com.taxonomy.config.SecurityDataInitializer;
-import com.taxonomy.model.AppRole;
-import com.taxonomy.model.AppUser;
-import com.taxonomy.repository.RoleRepository;
-import com.taxonomy.repository.UserRepository;
-import com.taxonomy.service.DatabaseUserDetailsService;
+import com.taxonomy.security.config.SecurityConfig;
+import com.taxonomy.security.config.SecurityDataInitializer;
+import com.taxonomy.security.model.AppRole;
+import com.taxonomy.security.model.AppUser;
+import com.taxonomy.security.repository.RoleRepository;
+import com.taxonomy.security.repository.UserRepository;
+import com.taxonomy.security.service.DatabaseUserDetailsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

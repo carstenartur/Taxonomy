@@ -1,8 +1,8 @@
 package com.taxonomy;
 
 import com.taxonomy.dto.*;
-import com.taxonomy.service.ArchitectureReportService;
-import com.taxonomy.service.ExplanationTraceService;
+import com.taxonomy.architecture.service.ArchitectureReportService;
+import com.taxonomy.architecture.service.ExplanationTraceService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -16,6 +16,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
+import com.taxonomy.dto.ArchitectureReport;
+import com.taxonomy.dto.ExplanationTrace;
+import com.taxonomy.dto.RecommendedElement;
 
 /**
  * Tests for Architecture Report Export (Feature 7) and

@@ -1,8 +1,8 @@
 package com.taxonomy;
 
 import com.taxonomy.dto.TaxonomyNodeDto;
-import com.taxonomy.service.SearchService;
-import com.taxonomy.service.TaxonomyService;
+import com.taxonomy.catalog.service.SearchService;
+import com.taxonomy.catalog.service.TaxonomyService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
