@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisFacade.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">AnalysisFacade.java</span></div><h1>AnalysisFacade.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.dto.RelationHypothesisDto;
+import com.taxonomy.dto.SavedAnalysis;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Facade that aggregates the analysis domain services into a single high-level API.
+ *
+ * &lt;p&gt;Controllers should prefer this facade over calling individual services directly,
+ * keeping transaction boundaries and orchestration logic in one place.
+ */
+@Service
+public class AnalysisFacade {
+
+    private final LlmService llmService;
+    private final SavedAnalysisService savedAnalysisService;
+    private final AnalysisRelationGenerator analysisRelationGenerator;
+
+    public AnalysisFacade(@Lazy LlmService llmService,
+                          SavedAnalysisService savedAnalysisService,
+<span class="nc" id="L27">                          AnalysisRelationGenerator analysisRelationGenerator) {</span>
+<span class="nc" id="L28">        this.llmService = llmService;</span>
+<span class="nc" id="L29">        this.savedAnalysisService = savedAnalysisService;</span>
+<span class="nc" id="L30">        this.analysisRelationGenerator = analysisRelationGenerator;</span>
+<span class="nc" id="L31">    }</span>
+
+    /**
+     * Builds a {@link SavedAnalysis} export from the given analysis data.
+     *
+     * @param requirement the business requirement text
+     * @param scores      node code → score map
+     * @param reasons     node code → reason text (may be null or sparse)
+     * @param provider    LLM provider name
+     * @return populated {@link SavedAnalysis} ready for serialization
+     */
+    public SavedAnalysis buildAnalysisExport(String requirement,
+                                             Map&lt;String, Integer&gt; scores,
+                                             Map&lt;String, String&gt; reasons,
+                                             String provider) {
+<span class="nc" id="L46">        return savedAnalysisService.buildExport(requirement, scores, reasons, provider);</span>
+    }
+
+    /**
+     * Generates provisional relation hypotheses from analysis scores.
+     *
+     * @param scores map of nodeCode → integer score (0–100)
+     * @return list of relation hypotheses sorted by confidence descending
+     */
+    @Transactional(readOnly = true)
+    public List&lt;RelationHypothesisDto&gt; generateRelationsFromScores(Map&lt;String, Integer&gt; scores) {
+<span class="nc" id="L57">        return analysisRelationGenerator.generate(scores);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VersioningFacade.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">VersioningFacade.java</span></div><h1>VersioningFacade.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.dto.ContextComparison;
+import com.taxonomy.dto.ContextMode;
+import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.RepositoryState;
+import com.taxonomy.versioning.model.ContextHistoryRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.List;
+
+/**
+ * High-level facade that aggregates the versioning domain services.
+ *
+ * &lt;p&gt;This class provides coarse-grained operations that coordinate
+ * {@link ContextNavigationService}, {@link ContextCompareService},
+ * {@link ContextHistoryService}, and {@link RepositoryStateService}
+ * into workflows that controllers and other consumers can call
+ * without orchestrating the individual services themselves.
+ */
+@Service
+public class VersioningFacade {
+
+<span class="nc" id="L29">    private static final Logger log = LoggerFactory.getLogger(VersioningFacade.class);</span>
+
+    private final ContextNavigationService navigationService;
+    private final ContextCompareService compareService;
+    private final ContextHistoryService historyService;
+    private final RepositoryStateService stateService;
+
+    public VersioningFacade(ContextNavigationService navigationService,
+                            ContextCompareService compareService,
+                            ContextHistoryService historyService,
+<span class="nc" id="L39">                            RepositoryStateService stateService) {</span>
+<span class="nc" id="L40">        this.navigationService = navigationService;</span>
+<span class="nc" id="L41">        this.compareService = compareService;</span>
+<span class="nc" id="L42">        this.historyService = historyService;</span>
+<span class="nc" id="L43">        this.stateService = stateService;</span>
+<span class="nc" id="L44">    }</span>
+
+    // ── Composite result records ────────────────────────────────────
+
+    /**
+     * Combines a newly created variant context with a snapshot of the
+     * repository state on that variant branch.
+     *
+     * @param variantContext   the context on the new variant branch
+     * @param repositoryState the repository state for the variant branch
+     */
+<span class="nc" id="L55">    public record VariantPreview(</span>
+            ContextRef variantContext,
+            RepositoryState repositoryState
+    ) {}
+
+    /**
+     * Combines the user's current navigation context, repository state,
+     * and recent persistent navigation history.
+     *
+     * @param currentContext   the user's active context reference
+     * @param repositoryState the repository state for the active branch
+     * @param history         the user's recent navigation history (newest first)
+     */
+<span class="nc" id="L68">    public record FullContextState(</span>
+            ContextRef currentContext,
+            RepositoryState repositoryState,
+            List&lt;ContextHistoryRecord&gt; history
+    ) {}
+
+    // ── High-level operations ───────────────────────────────────────
+
+    /**
+     * Create a new branch variant from the user's current context and
+     * return a preview that includes the variant context and the
+     * repository state on the new branch.
+     *
+     * @param username    the user creating the variant
+     * @param variantName the name for the new branch
+     * @return the variant context paired with the repository state
+     * @throws IOException if the branch creation fails
+     */
+    public VariantPreview createVariantWithPreview(String username,
+                                                   String variantName) throws IOException {
+<span class="nc" id="L88">        ContextRef variant = navigationService.createVariantFromCurrent(username, variantName);</span>
+<span class="nc" id="L89">        RepositoryState repoState = stateService.getState(username, variant.branch());</span>
+<span class="nc" id="L90">        log.info(&quot;User '{}': created variant '{}' with preview&quot;, username, variantName);</span>
+<span class="nc" id="L91">        return new VariantPreview(variant, repoState);</span>
+    }
+
+    /**
+     * Compare two branches at their HEAD commits and return a semantic
+     * comparison summary.
+     *
+     * @param leftBranch  the left (source/older) branch name
+     * @param rightBranch the right (target/newer) branch name
+     * @return the comparison result including diff summary and semantic changes
+     * @throws IOException if Git operations fail
+     */
+    @Transactional(readOnly = true)
+    public ContextComparison compareAndSummarize(String leftBranch,
+                                                 String rightBranch) throws IOException {
+<span class="nc" id="L106">        ContextRef left = branchRef(leftBranch);</span>
+<span class="nc" id="L107">        ContextRef right = branchRef(rightBranch);</span>
+<span class="nc" id="L108">        log.debug(&quot;Comparing branches: '{}' vs '{}'&quot;, leftBranch, rightBranch);</span>
+<span class="nc" id="L109">        return compareService.compareBranches(left, right);</span>
+    }
+
+    /**
+     * Build a complete picture of a user's current versioning state:
+     * the active navigation context, the repository state on that branch,
+     * and the user's recent persistent navigation history.
+     *
+     * @param username the user whose state to retrieve
+     * @return the combined context, repository, and history state
+     */
+    @Transactional(readOnly = true)
+    public FullContextState getFullContextState(String username) {
+<span class="nc" id="L122">        ContextRef current = navigationService.getCurrentContext(username);</span>
+<span class="nc" id="L123">        RepositoryState repoState = stateService.getState(username, current.branch());</span>
+<span class="nc" id="L124">        List&lt;ContextHistoryRecord&gt; history = historyService.getHistory(username);</span>
+<span class="nc" id="L125">        log.debug(&quot;User '{}': assembled full context state on branch '{}'&quot;,</span>
+<span class="nc" id="L126">                username, current.branch());</span>
+<span class="nc" id="L127">        return new FullContextState(current, repoState, history);</span>
+    }
+
+    // ── Internal helpers ────────────────────────────────────────────
+
+    /**
+     * Build a minimal {@link ContextRef} that identifies a branch without
+     * a specific commit (HEAD is implied).
+     *
+     * &lt;p&gt;Most fields are {@code null} because
+     * {@link ContextCompareService#compareBranches} only reads
+     * {@link ContextRef#branch()} — the remaining fields are unused.
+     */
+    private static ContextRef branchRef(String branch) {
+<span class="nc" id="L141">        return new ContextRef(</span>
+<span class="nc" id="L142">                null, branch, null, Instant.now(),</span>
+                ContextMode.READ_ONLY,
+                null, null, null, null, null, false
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

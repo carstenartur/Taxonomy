@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>CatalogFacade.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">CatalogFacade.java</span></div><h1>CatalogFacade.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.dto.ArchiMateImportResult;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.InputStream;
+import java.util.List;
+
+/**
+ * High-level facade that aggregates the catalog domain services into a
+ * single, coarse-grained API for use by controllers and other consumers.
+ *
+ * &lt;p&gt;Each method orchestrates one or more fine-grained service calls to
+ * fulfil a complete use-case, keeping controllers thin and business logic
+ * in the service layer.
+ */
+@Service
+public class CatalogFacade {
+
+<span class="nc" id="L26">    private static final Logger log = LoggerFactory.getLogger(CatalogFacade.class);</span>
+
+    private final TaxonomyService taxonomyService;
+    private final TaxonomyRelationService relationService;
+    private final ArchiMateXmlImporter archiMateXmlImporter;
+    private final SearchService searchService;
+
+    public CatalogFacade(TaxonomyService taxonomyService,
+                         TaxonomyRelationService relationService,
+                         ArchiMateXmlImporter archiMateXmlImporter,
+<span class="nc" id="L36">                         SearchService searchService) {</span>
+<span class="nc" id="L37">        this.taxonomyService = taxonomyService;</span>
+<span class="nc" id="L38">        this.relationService = relationService;</span>
+<span class="nc" id="L39">        this.archiMateXmlImporter = archiMateXmlImporter;</span>
+<span class="nc" id="L40">        this.searchService = searchService;</span>
+<span class="nc" id="L41">    }</span>
+
+    /**
+     * Returns a taxonomy node identified by {@code rootCode} together with its
+     * full relation context (both outgoing and incoming relations).
+     *
+     * @param rootCode the taxonomy code (e.g. {@code &quot;CP-1023&quot;})
+     * @return the node DTO enriched with relations, or {@code null} if the code
+     *         does not match any node
+     */
+    @Transactional(readOnly = true)
+    public TaxonomyNodeDto getTreeWithRelations(String rootCode) {
+<span class="nc" id="L53">        TaxonomyNode node = taxonomyService.getNodeByCode(rootCode);</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">        if (node == null) {</span>
+<span class="nc" id="L55">            log.debug(&quot;No taxonomy node found for code '{}'&quot;, rootCode);</span>
+<span class="nc" id="L56">            return null;</span>
+        }
+
+<span class="nc" id="L59">        TaxonomyNodeDto dto = taxonomyService.toDto(node);</span>
+
+<span class="nc" id="L61">        List&lt;TaxonomyRelationDto&gt; relations = relationService.getRelationsForNode(rootCode);</span>
+<span class="nc" id="L62">        List&lt;TaxonomyRelationDto&gt; outgoing = relations.stream()</span>
+<span class="nc" id="L63">                .filter(r -&gt; rootCode.equals(r.getSourceCode()))</span>
+<span class="nc" id="L64">                .toList();</span>
+<span class="nc" id="L65">        List&lt;TaxonomyRelationDto&gt; incoming = relations.stream()</span>
+<span class="nc" id="L66">                .filter(r -&gt; rootCode.equals(r.getTargetCode()))</span>
+<span class="nc" id="L67">                .toList();</span>
+<span class="nc" id="L68">        dto.setOutgoingRelations(outgoing);</span>
+<span class="nc" id="L69">        dto.setIncomingRelations(incoming);</span>
+
+<span class="nc" id="L71">        return dto;</span>
+    }
+
+    /**
+     * Imports an ArchiMate 3.x XML file, mapping elements and relationships to
+     * taxonomy nodes and relations.
+     *
+     * @param xmlStream the XML input stream
+     * @return the import result containing match/create statistics and notes
+     */
+    public ArchiMateImportResult importAndValidate(InputStream xmlStream) {
+<span class="nc" id="L82">        log.info(&quot;Starting ArchiMate XML import via facade&quot;);</span>
+<span class="nc" id="L83">        ArchiMateImportResult result = archiMateXmlImporter.importXml(xmlStream);</span>
+<span class="nc" id="L84">        log.info(&quot;ArchiMate import complete – {} elements matched, {} relations created&quot;,</span>
+<span class="nc" id="L85">                result.getElementsMatched(), result.getRelationsImported());</span>
+<span class="nc" id="L86">        return result;</span>
+    }
+
+    /**
+     * Performs a full-text search and enriches each result with its relation
+     * context (outgoing and incoming relations).
+     *
+     * @param query      the search query string
+     * @param maxResults the maximum number of results to return
+     * @return search results with relation context attached
+     */
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyNodeDto&gt; searchWithContext(String query, int maxResults) {
+<span class="nc" id="L99">        List&lt;TaxonomyNodeDto&gt; results = searchService.search(query, maxResults);</span>
+
+<span class="nc bnc" id="L101" title="All 2 branches missed.">        for (TaxonomyNodeDto dto : results) {</span>
+<span class="nc" id="L102">            List&lt;TaxonomyRelationDto&gt; relations = relationService.getRelationsForNode(dto.getCode());</span>
+<span class="nc" id="L103">            List&lt;TaxonomyRelationDto&gt; outgoing = relations.stream()</span>
+<span class="nc" id="L104">                    .filter(r -&gt; dto.getCode().equals(r.getSourceCode()))</span>
+<span class="nc" id="L105">                    .toList();</span>
+<span class="nc" id="L106">            List&lt;TaxonomyRelationDto&gt; incoming = relations.stream()</span>
+<span class="nc" id="L107">                    .filter(r -&gt; dto.getCode().equals(r.getTargetCode()))</span>
+<span class="nc" id="L108">                    .toList();</span>
+<span class="nc" id="L109">            dto.setOutgoingRelations(outgoing);</span>
+<span class="nc" id="L110">            dto.setIncomingRelations(incoming);</span>
+<span class="nc" id="L111">        }</span>
+
+<span class="nc" id="L113">        return results;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

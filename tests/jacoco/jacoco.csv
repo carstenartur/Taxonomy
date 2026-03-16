@@ -40,6 +40,7 @@ Taxonomy Application,com.taxonomy.catalog.service,PropagationResult.TraversedRel
 Taxonomy Application,com.taxonomy.catalog.service,PropagationResult,0,27,0,0,0,10,0,5,0,5
 Taxonomy Application,com.taxonomy.catalog.service,SearchService,11,186,2,2,4,37,2,6,0,6
 Taxonomy Application,com.taxonomy.catalog.service,TaxonomyRelationService,44,231,2,6,6,53,3,13,2,10
+Taxonomy Application,com.taxonomy.catalog.service,CatalogFacade,150,0,4,0,40,0,11,0,9,0
 Taxonomy Application,com.taxonomy.catalog.service,TaxonomyService,407,1164,71,82,103,279,56,51,3,24
 Taxonomy Application,com.taxonomy.catalog.service,RelevancePropagationService,16,289,8,20,4,53,6,12,0,4
 Taxonomy Application,com.taxonomy.catalog.service,ArchiMateXmlImporter,110,416,33,45,28,99,28,21,1,9
@@ -78,16 +79,19 @@ Taxonomy Application,com.taxonomy.preferences.storage,PreferencesGitRepository,9
 Taxonomy Application,com.taxonomy.workspace.model,UserWorkspace,28,47,0,0,10,22,9,10,9,10
 Taxonomy Application,com.taxonomy.workspace.model,WorkspaceProjection,10,73,0,0,4,32,3,20,3,20
 Taxonomy Application,com.taxonomy.workspace.model,SyncState,10,76,0,0,4,33,3,20,3,20
+Taxonomy Application,com.taxonomy.versioning.service,VersioningFacade.FullContextState,12,0,0,0,1,0,1,0,1,0
 Taxonomy Application,com.taxonomy.versioning.service,ConflictDetectionService.CherryPickPreview,0,18,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.versioning.service,ConflictDetectionService.ConflictDetails,21,0,0,0,1,0,1,0,1,0
 Taxonomy Application,com.taxonomy.versioning.service,HypothesisService,24,583,10,30,5,116,10,26,0,16
 Taxonomy Application,com.taxonomy.versioning.service,SelectiveTransferService,241,187,25,15,42,47,20,12,5,7
+Taxonomy Application,com.taxonomy.versioning.service,VersioningFacade.VariantPreview,9,0,0,0,1,0,1,0,1,0
 Taxonomy Application,com.taxonomy.versioning.service,ContextCompareService,98,253,4,14,19,52,4,12,0,7
 Taxonomy Application,com.taxonomy.versioning.service,RepositoryStateService,124,289,1,25,17,71,1,26,0,14
 Taxonomy Application,com.taxonomy.versioning.service,ConflictDetectionService.MergePreview,0,27,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.versioning.service,ContextHistoryService,54,100,1,1,20,28,1,6,0,6
 Taxonomy Application,com.taxonomy.versioning.service,ContextNavigationService,16,393,5,15,4,94,5,19,0,14
 Taxonomy Application,com.taxonomy.versioning.service,ConflictDetectionService,196,273,14,18,29,59,9,13,0,6
+Taxonomy Application,com.taxonomy.versioning.service,VersioningFacade,105,0,0,0,23,0,6,0,6,0
 Taxonomy Application,com.taxonomy.workspace.service,WorkspaceManager,25,164,3,9,7,47,4,14,1,11
 Taxonomy Application,com.taxonomy.workspace.service,RepositoryStateGuard,0,86,0,14,0,20,0,9,0,2
 Taxonomy Application,com.taxonomy.workspace.service,WorkspaceProjectionService,58,317,5,9,20,79,5,13,0,11
@@ -141,6 +145,7 @@ Taxonomy Application,com.taxonomy.shared.config,ExportConfig,0,27,0,0,0,7,0,7,0,
 Taxonomy Application,com.taxonomy.analysis.service,AnalysisRelationGenerator.ScoredNode,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,SavedAnalysisService,2,170,1,21,0,40,1,16,0,6
 Taxonomy Application,com.taxonomy.analysis.service,LlmProvider,0,45,0,0,0,8,0,1,0,1
+Taxonomy Application,com.taxonomy.analysis.service,AnalysisFacade,25,0,0,0,7,0,3,0,3,0
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser,409,157,45,9,81,27,30,10,7,6
 Taxonomy Application,com.taxonomy.analysis.service,AnalysisRelationGenerator,15,341,7,29,3,65,8,16,2,4
 Taxonomy Application,com.taxonomy.analysis.service,LlmRateLimitException,9,0,0,0,4,0,2,0,2,0
