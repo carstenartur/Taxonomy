@@ -1,9 +1,9 @@
 /**
- * taxonomy-workspace-sync.js — Workspace Sync Status & Local Changes
+ * taxonomy-workspace-sync.js — Arbeitsbereich-Synchronisierung
  *
  * Provides sync-state polling, dirty-state indicator, and local-changes panel.
- * Integrates with the Git Status Bar and Context Bar to display workspace
- * synchronisation information.
+ * Uses user-friendly German labels. Integrates with the Context Bar to display
+ * sync status prominently (AP 6).
  *
  * @module TaxonomyWorkspaceSync
  */
@@ -14,14 +14,14 @@ window.TaxonomyWorkspaceSync = (function () {
     var POLL_INTERVAL = 15000; // 15 seconds
     var pollTimer = null;
 
-    // ── Initialization ──────────────────────────────────────────────
+    // \u2500\u2500 Initialization \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
     document.addEventListener('DOMContentLoaded', function () {
         pollSyncState();
         pollTimer = setInterval(pollSyncState, POLL_INTERVAL);
     });
 
-    // ── Polling ─────────────────────────────────────────────────────
+    // \u2500\u2500 Polling \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
     function pollSyncState() {
         fetch('/api/workspace/sync-state')
@@ -37,67 +37,65 @@ window.TaxonomyWorkspaceSync = (function () {
                 renderSyncStatePanel(state);
             })
             .catch(function () {
-                // silently ignore — non-critical
+                // silently ignore \u2014 non-critical
             });
     }
 
-    // ── Sync Indicator (appended to Git Status Bar) ─────────────────
+    // \u2500\u2500 Sync Indicator (appended to Git Status Bar) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
     function renderSyncIndicator(state) {
         var bar = document.getElementById('gitStatusBar');
         if (!bar) return;
 
-        // Remove previous sync indicator
         var existing = document.getElementById('syncStatusIndicator');
         if (existing) existing.remove();
 
         var status = state.syncStatus || 'UP_TO_DATE';
         var dot = 'fresh';
-        var label = 'synced';
+        var label = 'synchron';
         if (status === 'BEHIND') {
             dot = 'stale';
-            label = 'behind shared';
+            label = 'Aktualisierungen verf\u00FCgbar';
         } else if (status === 'AHEAD') {
             dot = 'ahead';
-            label = state.unpublishedCommitCount + ' unpublished';
+            label = state.unpublishedCommitCount + ' unver\u00F6ffentlicht';
         } else if (status === 'DIVERGED') {
             dot = 'error';
-            label = 'diverged';
+            label = 'abweichend';
         }
 
         var span = document.createElement('span');
         span.id = 'syncStatusIndicator';
-        span.innerHTML = '<span class="git-sep">│</span>' +
+        span.innerHTML = '<span class="git-sep">\u2502</span>' +
             '<span class="git-indicator">' +
             '<span class="dot ' + dot + '"></span> Sync: ' + escapeHtml(label) +
             '</span>';
         bar.appendChild(span);
     }
 
-    // ── Dirty State Indicator (in navbar) ───────────────────────────
+    // \u2500\u2500 Dirty State Indicator (in navbar) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
     function renderDirtyIndicator() {
         var badge = document.getElementById('workspaceUserBadge');
         if (!badge || badge.classList.contains('d-none')) return;
 
-        // Check dirty state from context bar
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
         if (ctx && ctx.dirty) {
-            if (!badge.textContent.includes('●')) {
-                badge.textContent = '● ' + badge.textContent;
+            if (!badge.textContent.includes('\u25CF')) {
+                badge.textContent = '\u25CF ' + badge.textContent;
                 badge.classList.remove('bg-info');
                 badge.classList.add('bg-warning');
-                badge.title = 'Workspace has unsaved changes';
+                badge.title = 'Arbeitsbereich hat ungespeicherte \u00C4nderungen';
             }
         } else {
-            badge.textContent = badge.textContent.replace('● ', '');
+            badge.textContent = badge.textContent.replace('\u25CF ', '');
             badge.classList.remove('bg-warning');
             badge.classList.add('bg-info');
-            badge.title = 'Current workspace / user';
+            badge.title = 'Aktueller Arbeitsbereich / Benutzer';
         }
     }
 
-    // ── Sync State Panel (inside Versions → Sync tab) ─────────────
+    // \u2500\u2500 Sync State Panel (inside Versions \u2192 Sync tab) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
     function renderSyncStatePanel(state) {
         var panel = document.getElementById('syncStatePanel');
@@ -105,17 +103,17 @@ window.TaxonomyWorkspaceSync = (function () {
 
         var status = state.syncStatus || 'UP_TO_DATE';
         var badgeClass = 'bg-success';
-        var statusLabel = 'Up to date';
+        var statusLabel = 'Auf dem neuesten Stand';
         if (status === 'BEHIND') {
             badgeClass = 'bg-warning text-dark';
-            statusLabel = 'Behind shared repository';
+            statusLabel = 'Aktualisierungen vom Team verf\u00FCgbar';
         } else if (status === 'AHEAD') {
             badgeClass = 'bg-info text-dark';
-            statusLabel = state.unpublishedCommitCount + ' unpublished commit' +
-                (state.unpublishedCommitCount !== 1 ? 's' : '');
+            statusLabel = state.unpublishedCommitCount + ' unver\u00F6ffentlichte \u00C4nderung' +
+                (state.unpublishedCommitCount !== 1 ? 'en' : '');
         } else if (status === 'DIVERGED') {
             badgeClass = 'bg-danger';
-            statusLabel = 'Diverged — both sides have changes';
+            statusLabel = 'Abweichend \u2014 beide Seiten haben \u00C4nderungen';
         }
 
         var html = '<div class="d-flex align-items-center gap-2 mb-2">';
@@ -123,30 +121,30 @@ window.TaxonomyWorkspaceSync = (function () {
         if (status === 'DIVERGED') {
             html += '<button class="btn btn-sm btn-outline-danger ms-2" '
                 + 'onclick="var el = document.getElementById(\'syncDivergedModal\'); if (el &amp;&amp; typeof bootstrap !== \'undefined\') { new bootstrap.Modal(el).show(); }" '
-                + 'title="Open diverged resolution dialog">Resolve…</button>';
+                + 'title="Dialog zur Aufl\u00F6sung \u00F6ffnen">Aufl\u00F6sen\u2026</button>';
         }
         html += '</div>';
 
         html += '<table class="table table-sm table-borderless mb-0" style="max-width:400px;">';
         if (state.lastSyncTimestamp) {
-            html += '<tr><td class="text-muted small">Last synced</td><td class="small">' +
+            html += '<tr><td class="text-muted small">Zuletzt synchronisiert</td><td class="small">' +
                 escapeHtml(formatTimestamp(state.lastSyncTimestamp)) + '</td></tr>';
         }
         if (state.lastPublishTimestamp) {
-            html += '<tr><td class="text-muted small">Last published</td><td class="small">' +
+            html += '<tr><td class="text-muted small">Zuletzt ver\u00F6ffentlicht</td><td class="small">' +
                 escapeHtml(formatTimestamp(state.lastPublishTimestamp)) + '</td></tr>';
         }
         if (state.lastSyncedCommitId) {
             var commitAbbrev = state.lastSyncedCommitId.length >= 7
                 ? state.lastSyncedCommitId.substring(0, 7)
                 : state.lastSyncedCommitId;
-            html += '<tr><td class="text-muted small">Synced commit</td><td class="small"><code>' +
+            html += '<tr><td class="text-muted small">Synchronisierter Commit</td><td class="small"><code>' +
                 escapeHtml(commitAbbrev) + '</code></td></tr>';
         }
         if (state.unpublishedCommitCount > 0) {
-            html += '<tr><td class="text-muted small">Unpublished</td><td class="small">' +
-                state.unpublishedCommitCount + ' commit' +
-                (state.unpublishedCommitCount !== 1 ? 's' : '') + '</td></tr>';
+            html += '<tr><td class="text-muted small">Unver\u00F6ffentlicht</td><td class="small">' +
+                state.unpublishedCommitCount + ' \u00C4nderung' +
+                (state.unpublishedCommitCount !== 1 ? 'en' : '') + '</td></tr>';
         }
         html += '</table>';
 
@@ -154,7 +152,7 @@ window.TaxonomyWorkspaceSync = (function () {
     }
 
     function formatTimestamp(ts) {
-        if (!ts) return '—';
+        if (!ts) return '\u2014';
         try {
             var d = new Date(ts);
             return d.toLocaleString();
@@ -163,7 +161,7 @@ window.TaxonomyWorkspaceSync = (function () {
         }
     }
 
-    // ── Local Changes Panel ─────────────────────────────────────────
+    // \u2500\u2500 Local Changes Panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
     function showLocalChangesPanel() {
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
@@ -174,18 +172,19 @@ window.TaxonomyWorkspaceSync = (function () {
             .then(function (data) {
                 var html = '<div class="card shadow-sm mb-3">';
                 html += '<div class="card-header fw-semibold d-flex justify-content-between align-items-center">';
-                html += '<span>&#128196; Local Changes</span>';
-                html += '<button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyWorkspaceSync.refresh()">&#128260; Refresh</button>';
+                html += '<span>\uD83D\uDCC4 Lokale \u00C4nderungen</span>';
+                html += '<button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyWorkspaceSync.refresh()">\uD83D\uDD04 Aktualisieren</button>';
                 html += '</div>';
                 html += '<div class="card-body">';
 
                 if (data.changeCount === 0) {
-                    html += '<p class="text-muted mb-0">No unpublished changes. Your workspace is in sync with the shared repository.</p>';
+                    html += '<p class="text-muted mb-0">Keine unver\u00F6ffentlichten \u00C4nderungen. Ihr Arbeitsbereich ist mit dem Team-Repository synchron.</p>';
                 } else {
-                    html += '<p class="mb-2">' + data.changeCount + ' unpublished commit' + (data.changeCount !== 1 ? 's' : '') + ' on branch <strong>' + escapeHtml(branch) + '</strong>.</p>';
+                    var branchDisplay = branch === 'draft' ? 'Hauptversion' : branch;
+                    html += '<p class="mb-2">' + data.changeCount + ' unver\u00F6ffentlichte \u00C4nderung' + (data.changeCount !== 1 ? 'en' : '') + ' auf <strong>' + escapeHtml(branchDisplay) + '</strong>.</p>';
                     html += '<div class="d-flex gap-2">';
-                    html += '<button class="btn btn-sm btn-primary" onclick="TaxonomyWorkspaceSync.publish()">&#128228; Publish to Shared</button>';
-                    html += '<button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyWorkspaceSync.syncFromShared()">&#128229; Sync from Shared</button>';
+                    html += '<button class="btn btn-sm btn-primary" onclick="TaxonomyWorkspaceSync.publish()">\uD83D\uDCE4 F\u00FCr Team ver\u00F6ffentlichen</button>';
+                    html += '<button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyWorkspaceSync.syncFromShared()">\uD83D\uDCE5 Vom Team aktualisieren</button>';
                     html += '</div>';
                 }
 
@@ -199,7 +198,7 @@ window.TaxonomyWorkspaceSync = (function () {
             });
     }
 
-    // ── Sync Actions ────────────────────────────────────────────────
+    // \u2500\u2500 Sync Actions \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
     function syncFromShared() {
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
@@ -210,14 +209,14 @@ window.TaxonomyWorkspaceSync = (function () {
             .then(function (result) {
                 if (result.error) {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError('Sync Failed', result.message || result.error);
+                        window.TaxonomyOperationResult.showError('Synchronisierung fehlgeschlagen', result.message || result.error);
                     } else {
-                        alert('Sync failed: ' + result.error);
+                        alert('Synchronisierung fehlgeschlagen: ' + result.error);
                     }
                 } else {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showSuccess('Sync Complete',
-                            'Synced from shared repository: ' + (result.mergeCommit || '').substring(0, 7));
+                        window.TaxonomyOperationResult.showSuccess('Synchronisierung abgeschlossen',
+                            'Vom Team-Repository aktualisiert.');
                     }
                     pollSyncState();
                     if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
@@ -235,14 +234,14 @@ window.TaxonomyWorkspaceSync = (function () {
             .then(function (result) {
                 if (result.error) {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError('Publish Failed', result.message || result.error);
+                        window.TaxonomyOperationResult.showError('Ver\u00F6ffentlichung fehlgeschlagen', result.message || result.error);
                     } else {
-                        alert('Publish failed: ' + result.error);
+                        alert('Ver\u00F6ffentlichung fehlgeschlagen: ' + result.error);
                     }
                 } else {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showSuccess('Publish Complete',
-                            'Published to shared repository: ' + (result.mergeCommit || '').substring(0, 7));
+                        window.TaxonomyOperationResult.showSuccess('Ver\u00F6ffentlichung abgeschlossen',
+                            '\u00C4nderungen wurden mit dem Team-Repository geteilt.');
                     }
                     pollSyncState();
                     if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
@@ -251,7 +250,7 @@ window.TaxonomyWorkspaceSync = (function () {
             });
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────
+    // \u2500\u2500 Helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
     function escapeHtml(s) {
         if (!s) return '';
