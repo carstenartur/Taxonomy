@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>EnrichedImpactService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">EnrichedImpactService.java</span></div><h1>EnrichedImpactService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.dto.*;
+import com.taxonomy.relations.model.RequirementCoverage;
+import com.taxonomy.relations.repository.RequirementCoverageRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+import java.util.stream.Collectors;
+import com.taxonomy.dto.ChangeImpactView;
+import com.taxonomy.dto.EnrichedChangeImpactView;
+import com.taxonomy.dto.EnrichedImpactElement;
+import com.taxonomy.dto.ImpactElement;
+
+/**
+ * Enriches the existing failure/change impact analysis with requirement
+ * coverage data. For each affected element, the service looks up which
+ * requirements cover it and computes an aggregated risk score.
+ */
+@Service
+public class EnrichedImpactService {
+
+<span class="fc" id="L26">    private static final Logger log = LoggerFactory.getLogger(EnrichedImpactService.class);</span>
+
+    private final ArchitectureGraphQueryService graphQueryService;
+    private final RequirementCoverageRepository coverageRepository;
+
+    public EnrichedImpactService(ArchitectureGraphQueryService graphQueryService,
+<span class="fc" id="L32">                                 RequirementCoverageRepository coverageRepository) {</span>
+<span class="fc" id="L33">        this.graphQueryService = graphQueryService;</span>
+<span class="fc" id="L34">        this.coverageRepository = coverageRepository;</span>
+<span class="fc" id="L35">    }</span>
+
+    /**
+     * Computes failure impact for the given node and enriches results with
+     * requirement coverage correlation.
+     *
+     * @param nodeCode the node that fails or changes
+     * @param maxHops  maximum graph hops (1–5, clamped)
+     * @return enriched change impact view with requirement correlation
+     */
+    @Transactional(readOnly = true)
+    public EnrichedChangeImpactView findEnrichedFailureImpact(String nodeCode, int maxHops) {
+        // Delegate to the existing failure impact analysis
+<span class="fc" id="L48">        ChangeImpactView baseView = graphQueryService.findFailureImpact(nodeCode, maxHops);</span>
+
+<span class="fc" id="L50">        EnrichedChangeImpactView enriched = new EnrichedChangeImpactView();</span>
+<span class="fc" id="L51">        enriched.setFailedNodeCode(baseView.getFailedNodeCode());</span>
+<span class="fc" id="L52">        enriched.setMaxHops(baseView.getMaxHops());</span>
+<span class="fc" id="L53">        enriched.setTraversedRelationships(baseView.getTraversedRelationships());</span>
+<span class="fc" id="L54">        enriched.setTotalRelationships(baseView.getTotalRelationships());</span>
+<span class="fc" id="L55">        enriched.getNotes().addAll(baseView.getNotes());</span>
+
+        // Enrich directly affected elements
+<span class="fc" id="L58">        List&lt;EnrichedImpactElement&gt; enrichedDirect = enrichElements(baseView.getDirectlyAffected());</span>
+<span class="fc" id="L59">        enriched.setDirectlyAffected(enrichedDirect);</span>
+
+        // Enrich indirectly affected elements
+<span class="fc" id="L62">        List&lt;EnrichedImpactElement&gt; enrichedIndirect = enrichElements(baseView.getIndirectlyAffected());</span>
+<span class="fc" id="L63">        enriched.setIndirectlyAffected(enrichedIndirect);</span>
+
+<span class="fc" id="L65">        enriched.setTotalAffected(enrichedDirect.size() + enrichedIndirect.size());</span>
+
+        // Collect all distinct affected requirements
+<span class="fc" id="L68">        Set&lt;String&gt; allRequirements = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (EnrichedImpactElement el : enrichedDirect) {</span>
+<span class="fc" id="L70">            allRequirements.addAll(el.getCoveredByRequirements());</span>
+<span class="fc" id="L71">        }</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        for (EnrichedImpactElement el : enrichedIndirect) {</span>
+<span class="nc" id="L73">            allRequirements.addAll(el.getCoveredByRequirements());</span>
+<span class="nc" id="L74">        }</span>
+<span class="fc" id="L75">        enriched.setAffectedRequirements(new ArrayList&lt;&gt;(allRequirements));</span>
+
+        // Risk score = sum of (requirement count × relevance) for all affected elements
+<span class="fc" id="L78">        double risk = 0.0;</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        for (EnrichedImpactElement el : enrichedDirect) {</span>
+<span class="fc" id="L80">            risk += el.getRequirementCount() * el.getRelevance();</span>
+<span class="fc" id="L81">        }</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        for (EnrichedImpactElement el : enrichedIndirect) {</span>
+<span class="nc" id="L83">            risk += el.getRequirementCount() * el.getRelevance() * 0.5; // indirect = half weight</span>
+<span class="nc" id="L84">        }</span>
+<span class="fc" id="L85">        enriched.setRiskScore(Math.round(risk * 100.0) / 100.0);</span>
+
+<span class="fc" id="L87">        log.info(&quot;Enriched failure impact for {}: {} affected, {} requirements, risk={}&quot;,</span>
+<span class="fc" id="L88">                nodeCode, enriched.getTotalAffected(),</span>
+<span class="fc" id="L89">                enriched.getAffectedRequirements().size(), enriched.getRiskScore());</span>
+
+<span class="fc" id="L91">        return enriched;</span>
+    }
+
+    private List&lt;EnrichedImpactElement&gt; enrichElements(List&lt;ImpactElement&gt; elements) {
+<span class="fc" id="L95">        List&lt;EnrichedImpactElement&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        for (ImpactElement el : elements) {</span>
+<span class="fc" id="L97">            EnrichedImpactElement enriched = new EnrichedImpactElement();</span>
+<span class="fc" id="L98">            enriched.setNodeCode(el.getNodeCode());</span>
+<span class="fc" id="L99">            enriched.setTitle(el.getTitle());</span>
+<span class="fc" id="L100">            enriched.setTaxonomySheet(el.getTaxonomySheet());</span>
+<span class="fc" id="L101">            enriched.setRelevance(el.getRelevance());</span>
+<span class="fc" id="L102">            enriched.setHopDistance(el.getHopDistance());</span>
+<span class="fc" id="L103">            enriched.setIncludedBecause(el.getIncludedBecause());</span>
+
+            // Look up requirement coverage for this node
+<span class="fc" id="L106">            List&lt;RequirementCoverage&gt; coverages = coverageRepository.findByNodeCode(el.getNodeCode());</span>
+<span class="fc" id="L107">            List&lt;String&gt; requirementIds = coverages.stream()</span>
+<span class="fc" id="L108">                    .map(RequirementCoverage::getRequirementId)</span>
+<span class="fc" id="L109">                    .distinct()</span>
+<span class="fc" id="L110">                    .collect(Collectors.toList());</span>
+<span class="fc" id="L111">            enriched.setCoveredByRequirements(requirementIds);</span>
+<span class="fc" id="L112">            enriched.setRequirementCount(requirementIds.size());</span>
+
+<span class="fc" id="L114">            result.add(enriched);</span>
+<span class="fc" id="L115">        }</span>
+<span class="fc" id="L116">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

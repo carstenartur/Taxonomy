@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExplanationTraceApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.controller</a> &gt; <span class="el_source">ExplanationTraceApiController.java</span></div><h1>ExplanationTraceApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.controller;
+
+import com.taxonomy.dto.ExplanationTrace;
+import com.taxonomy.architecture.service.ExplanationTraceService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+
+/**
+ * REST API for Structured Explainable Reasoning.
+ *
+ * &lt;p&gt;Endpoints:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code POST /api/explain/{nodeCode}} — Get structured explanation for a node&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/explain}            — Get explanations for all scored nodes&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/explain&quot;)
+@Tag(name = &quot;Explainable Reasoning&quot;)
+public class ExplanationTraceApiController {
+
+    private final ExplanationTraceService traceService;
+
+<span class="fc" id="L29">    public ExplanationTraceApiController(ExplanationTraceService traceService) {</span>
+<span class="fc" id="L30">        this.traceService = traceService;</span>
+<span class="fc" id="L31">    }</span>
+
+    /**
+     * Request body for explanation trace.
+     */
+<span class="fc" id="L36">    public record ExplainRequest(</span>
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, String&gt; reasons,
+            String businessText,
+            int minScore) {
+    }
+
+    @Operation(summary = &quot;Explain single node&quot;,
+               description = &quot;Returns a structured explanation trace for why a specific node was scored&quot;)
+    @PostMapping(&quot;/{nodeCode}&quot;)
+    public ResponseEntity&lt;ExplanationTrace&gt; explainNode(
+            @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String nodeCode,
+            @RequestBody ExplainRequest request) {
+<span class="fc" id="L49">        ExplanationTrace trace = traceService.buildTrace(</span>
+                nodeCode,
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                request.scores() != null ? request.scores() : Map.of(),</span>
+<span class="fc" id="L52">                request.reasons(),</span>
+<span class="fc" id="L53">                request.businessText());</span>
+<span class="fc" id="L54">        return ResponseEntity.ok(trace);</span>
+    }
+
+    @Operation(summary = &quot;Explain all scored nodes&quot;,
+               description = &quot;Returns structured explanation traces for all nodes above the score threshold&quot;)
+    @PostMapping
+    public ResponseEntity&lt;Map&lt;String, ExplanationTrace&gt;&gt; explainAll(
+            @RequestBody ExplainRequest request) {
+<span class="fc" id="L62">        Map&lt;String, ExplanationTrace&gt; traces = traceService.buildTraces(</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">                request.scores() != null ? request.scores() : Map.of(),</span>
+<span class="fc" id="L64">                request.reasons(),</span>
+<span class="fc" id="L65">                request.businessText(),</span>
+<span class="fc" id="L66">                request.minScore());</span>
+<span class="fc" id="L67">        return ResponseEntity.ok(traces);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

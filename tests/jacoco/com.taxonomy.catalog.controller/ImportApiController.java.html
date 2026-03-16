@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ImportApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.controller</a> &gt; <span class="el_source">ImportApiController.java</span></div><h1>ImportApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.controller;
+
+import com.taxonomy.dto.FrameworkImportResult;
+import com.taxonomy.dto.ProfileInfo;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.catalog.service.importer.FrameworkImportService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * REST API for generic framework import.
+ *
+ * &lt;p&gt;Endpoints:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code GET  /api/import/profiles}             — List available import profiles&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/import/preview/{profileId}}   — Dry-run import with statistics&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/import/{profileId}}            — Full import into database&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/import&quot;)
+@Tag(name = &quot;Framework Import&quot;)
+public class ImportApiController {
+
+<span class="fc" id="L36">    private static final Logger log = LoggerFactory.getLogger(ImportApiController.class);</span>
+
+    private final FrameworkImportService importService;
+    private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public ImportApiController(FrameworkImportService importService,
+                               RepositoryStateService repositoryStateService,
+<span class="fc" id="L44">                               WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L45">        this.importService = importService;</span>
+<span class="fc" id="L46">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L47">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L48">    }</span>
+
+    /**
+     * Returns all available import profiles with their supported types and file formats.
+     */
+    @Operation(summary = &quot;List import profiles&quot;,
+               description = &quot;Returns all registered import profiles (UAF, APQC, C4, etc.)&quot;)
+    @GetMapping(&quot;/profiles&quot;)
+    public ResponseEntity&lt;List&lt;ProfileInfo&gt;&gt; listProfiles() {
+<span class="fc" id="L57">        return ResponseEntity.ok(importService.getAvailableProfiles());</span>
+    }
+
+    /**
+     * Dry-run: parses and maps the uploaded file but does not write to the database.
+     */
+    @Operation(summary = &quot;Preview import&quot;,
+               description = &quot;Parse and map the file without writing to the database. Returns mapping statistics.&quot;)
+    @PostMapping(value = &quot;/preview/{profileId}&quot;, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity&lt;FrameworkImportResult&gt; preview(
+            @PathVariable String profileId,
+            @RequestParam(&quot;file&quot;) MultipartFile file) {
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
+<span class="fc" id="L70">            return ResponseEntity.badRequest().build();</span>
+        }
+        try {
+<span class="fc" id="L73">            FrameworkImportResult result = importService.preview(profileId, file.getInputStream());</span>
+<span class="fc" id="L74">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L75">        } catch (Exception e) {</span>
+<span class="nc" id="L76">            log.error(&quot;Preview failed for profile {} with file {}&quot;, profileId, file.getOriginalFilename(), e);</span>
+<span class="nc" id="L77">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+    /**
+     * Full import: parses, maps, serializes to DSL, and materializes into the database.
+     */
+    @Operation(summary = &quot;Import framework model&quot;,
+               description = &quot;Parse, map, and materialize the file into the database&quot;)
+    @PostMapping(value = &quot;/{profileId}&quot;, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; importFile(
+            @PathVariable String profileId,
+            @RequestParam(&quot;file&quot;) MultipartFile file,
+            @RequestParam(value = &quot;branch&quot;, required = false, defaultValue = &quot;main&quot;) String branch) {
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (file.isEmpty()) {</span>
+<span class="nc" id="L92">            return ResponseEntity.badRequest().build();</span>
+        }
+        try {
+<span class="fc" id="L95">            FrameworkImportResult result = importService.importFile(profileId, file.getInputStream(), branch);</span>
+<span class="fc" id="L96">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L97">            response.put(&quot;result&quot;, result);</span>
+<span class="fc" id="L98">            response.put(&quot;viewContext&quot;, repositoryStateService.getViewContext(</span>
+<span class="fc" id="L99">                    workspaceResolver.resolveCurrentUsername(), branch));</span>
+<span class="fc" id="L100">            return ResponseEntity.ok(response);</span>
+<span class="nc" id="L101">        } catch (Exception e) {</span>
+<span class="nc" id="L102">            log.error(&quot;Import failed for profile {} with file {}&quot;, profileId, file.getOriginalFilename(), e);</span>
+<span class="nc" id="L103">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

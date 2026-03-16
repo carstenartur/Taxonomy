@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UafXmlParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service.importer</a> &gt; <span class="el_source">UafXmlParser.java</span></div><h1>UafXmlParser.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service.importer;
+
+import com.taxonomy.dsl.mapping.ExternalElement;
+import com.taxonomy.dsl.mapping.ExternalRelation;
+
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamReader;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Parses UAF / UPDM XMI (XML) files into {@link ExternalElement}s and {@link ExternalRelation}s.
+ *
+ * &lt;p&gt;UAF models are typically exported as XMI with elements as {@code &lt;packagedElement&gt;}
+ * and relations as nested or top-level elements with source/target attributes.
+ *
+ * &lt;p&gt;Security: External entities and DTD processing are disabled to prevent XXE attacks.
+ */
+<span class="fc" id="L22">public class UafXmlParser implements ExternalParser {</span>
+
+    @Override
+    public String fileFormat() {
+<span class="fc" id="L26">        return &quot;xml&quot;;</span>
+    }
+
+    @Override
+    public ParsedExternalModel parse(InputStream input) throws Exception {
+<span class="fc" id="L31">        List&lt;ExternalElement&gt; elements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L32">        List&lt;ExternalRelation&gt; relations = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L34">        XMLInputFactory factory = XMLInputFactory.newInstance();</span>
+<span class="fc" id="L35">        factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.FALSE);</span>
+<span class="fc" id="L36">        factory.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.FALSE);</span>
+
+<span class="fc" id="L38">        XMLStreamReader reader = factory.createXMLStreamReader(input);</span>
+
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        while (reader.hasNext()) {</span>
+<span class="fc" id="L41">            int event = reader.next();</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            if (event == XMLStreamConstants.START_ELEMENT) {</span>
+<span class="fc" id="L43">                String localName = reader.getLocalName();</span>
+
+<span class="pc bpc" id="L45" title="1 of 4 branches missed.">                if (&quot;packagedElement&quot;.equals(localName) || &quot;ownedElement&quot;.equals(localName)) {</span>
+<span class="fc" id="L46">                    parsePackagedElement(reader, localName, elements, relations);</span>
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">                } else if (&quot;ownedConnector&quot;.equals(localName) || &quot;connector&quot;.equals(localName)) {</span>
+<span class="fc" id="L48">                    parseConnector(reader, localName, relations);</span>
+                }
+            }
+<span class="fc" id="L51">        }</span>
+<span class="fc" id="L52">        reader.close();</span>
+
+<span class="fc" id="L54">        return new ParsedExternalModel(elements, relations);</span>
+    }
+
+    private void parsePackagedElement(XMLStreamReader reader, String startTag,
+                                       List&lt;ExternalElement&gt; elements,
+                                       List&lt;ExternalRelation&gt; relations) throws Exception {
+<span class="fc" id="L60">        String xmiId = getXmiId(reader);</span>
+<span class="fc" id="L61">        String xmiType = getXmiType(reader);</span>
+<span class="fc" id="L62">        String name = reader.getAttributeValue(null, &quot;name&quot;);</span>
+
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (xmiId == null) return;</span>
+
+        // Extract the type suffix (e.g., &quot;uaf:Capability&quot; → &quot;Capability&quot;)
+<span class="fc" id="L67">        String type = extractTypeSuffix(xmiType);</span>
+
+        // Check if this is a relation-like element (e.g., Implements, DependsOn)
+<span class="fc" id="L70">        String source = reader.getAttributeValue(null, &quot;source&quot;);</span>
+<span class="fc" id="L71">        String target = reader.getAttributeValue(null, &quot;target&quot;);</span>
+
+<span class="pc bpc" id="L73" title="3 of 4 branches missed.">        if (source != null &amp;&amp; target != null) {</span>
+<span class="nc" id="L74">            relations.add(new ExternalRelation(source, target, type, Map.of()));</span>
+<span class="nc" id="L75">            skipToEndElement(reader, startTag);</span>
+<span class="nc" id="L76">            return;</span>
+        }
+
+        // Parse child elements for name and description
+<span class="fc" id="L80">        String description = null;</span>
+<span class="fc" id="L81">        int depth = 1;</span>
+<span class="pc bpc" id="L82" title="1 of 4 branches missed.">        while (reader.hasNext() &amp;&amp; depth &gt; 0) {</span>
+<span class="fc" id="L83">            int event = reader.next();</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">            if (event == XMLStreamConstants.START_ELEMENT) {</span>
+<span class="nc" id="L85">                depth++;</span>
+<span class="nc" id="L86">                String childName = reader.getLocalName();</span>
+<span class="nc bnc" id="L87" title="All 4 branches missed.">                if (&quot;name&quot;.equals(childName) &amp;&amp; name == null) {</span>
+<span class="nc" id="L88">                    name = reader.getElementText();</span>
+<span class="nc" id="L89">                    depth--;</span>
+<span class="nc bnc" id="L90" title="All 4 branches missed.">                } else if (&quot;ownedComment&quot;.equals(childName) || &quot;description&quot;.equals(childName)) {</span>
+<span class="nc" id="L91">                    String body = reader.getAttributeValue(null, &quot;body&quot;);</span>
+<span class="nc bnc" id="L92" title="All 2 branches missed.">                    if (body != null) {</span>
+<span class="nc" id="L93">                        description = body;</span>
+                    } else {
+<span class="nc" id="L95">                        description = reader.getElementText();</span>
+<span class="nc" id="L96">                        depth--;</span>
+                    }
+<span class="nc bnc" id="L98" title="All 6 branches missed.">                } else if ((&quot;ownedConnector&quot;.equals(childName) || &quot;connector&quot;.equals(childName))</span>
+                        &amp;&amp; xmiId != null) {
+                    // Nested connector inside an element
+<span class="nc" id="L101">                    parseNestedConnector(reader, childName, xmiId, relations);</span>
+<span class="nc" id="L102">                    depth--;</span>
+                }
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">            } else if (event == XMLStreamConstants.END_ELEMENT) {</span>
+<span class="fc" id="L105">                depth--;</span>
+            }
+<span class="fc" id="L107">        }</span>
+
+<span class="fc" id="L109">        elements.add(new ExternalElement(xmiId, type, name, description, Map.of()));</span>
+<span class="fc" id="L110">    }</span>
+
+    private void parseConnector(XMLStreamReader reader, String startTag,
+                                 List&lt;ExternalRelation&gt; relations) throws Exception {
+<span class="fc" id="L114">        String xmiType = getXmiType(reader);</span>
+<span class="fc" id="L115">        String source = reader.getAttributeValue(null, &quot;source&quot;);</span>
+<span class="fc" id="L116">        String target = reader.getAttributeValue(null, &quot;target&quot;);</span>
+<span class="fc" id="L117">        String type = extractTypeSuffix(xmiType);</span>
+
+<span class="pc bpc" id="L119" title="2 of 4 branches missed.">        if (source != null &amp;&amp; target != null) {</span>
+<span class="fc" id="L120">            relations.add(new ExternalRelation(source, target,</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">                    type != null ? type : &quot;Association&quot;, Map.of()));</span>
+        }
+
+<span class="fc" id="L124">        skipToEndElement(reader, startTag);</span>
+<span class="fc" id="L125">    }</span>
+
+    private void parseNestedConnector(XMLStreamReader reader, String startTag,
+                                       String parentId,
+                                       List&lt;ExternalRelation&gt; relations) throws Exception {
+<span class="nc" id="L130">        String xmiType = getXmiType(reader);</span>
+<span class="nc" id="L131">        String source = reader.getAttributeValue(null, &quot;source&quot;);</span>
+<span class="nc" id="L132">        String target = reader.getAttributeValue(null, &quot;target&quot;);</span>
+<span class="nc" id="L133">        String type = extractTypeSuffix(xmiType);</span>
+
+        // If source is missing, use the parent element
+<span class="nc bnc" id="L136" title="All 2 branches missed.">        if (source == null) source = parentId;</span>
+
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        if (target != null) {</span>
+<span class="nc" id="L139">            relations.add(new ExternalRelation(source, target,</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">                    type != null ? type : &quot;Association&quot;, Map.of()));</span>
+        }
+
+<span class="nc" id="L143">        skipToEndElement(reader, startTag);</span>
+<span class="nc" id="L144">    }</span>
+
+    private String getXmiId(XMLStreamReader reader) {
+        // Try common XMI id attribute patterns
+<span class="fc" id="L148">        String id = reader.getAttributeValue(&quot;http://www.omg.org/spec/XMI/20131001&quot;, &quot;id&quot;);</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">        if (id == null) {</span>
+<span class="nc" id="L150">            id = reader.getAttributeValue(&quot;http://www.omg.org/XMI&quot;, &quot;id&quot;);</span>
+        }
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if (id == null) {</span>
+<span class="nc" id="L153">            id = reader.getAttributeValue(null, &quot;xmi:id&quot;);</span>
+        }
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">        if (id == null) {</span>
+<span class="nc" id="L156">            id = reader.getAttributeValue(null, &quot;id&quot;);</span>
+        }
+<span class="fc" id="L158">        return id;</span>
+    }
+
+    private String getXmiType(XMLStreamReader reader) {
+<span class="fc" id="L162">        String type = reader.getAttributeValue(&quot;http://www.w3.org/2001/XMLSchema-instance&quot;, &quot;type&quot;);</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L164">            type = reader.getAttributeValue(&quot;http://www.omg.org/spec/XMI/20131001&quot;, &quot;type&quot;);</span>
+        }
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L167">            type = reader.getAttributeValue(null, &quot;xmi:type&quot;);</span>
+        }
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if (type == null) {</span>
+<span class="nc" id="L170">            type = reader.getAttributeValue(null, &quot;type&quot;);</span>
+        }
+<span class="fc" id="L172">        return type;</span>
+    }
+
+    private String extractTypeSuffix(String xmiType) {
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">        if (xmiType == null) return &quot;Unknown&quot;;</span>
+<span class="fc" id="L177">        int colon = xmiType.lastIndexOf(':');</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">        return colon &gt;= 0 ? xmiType.substring(colon + 1) : xmiType;</span>
+    }
+
+    private void skipToEndElement(XMLStreamReader reader, String elementName) throws Exception {
+<span class="fc" id="L182">        int depth = 1;</span>
+<span class="pc bpc" id="L183" title="1 of 4 branches missed.">        while (reader.hasNext() &amp;&amp; depth &gt; 0) {</span>
+<span class="fc" id="L184">            int event = reader.next();</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">            if (event == XMLStreamConstants.START_ELEMENT) {</span>
+<span class="nc" id="L186">                depth++;</span>
+<span class="pc bpc" id="L187" title="1 of 2 branches missed.">            } else if (event == XMLStreamConstants.END_ELEMENT) {</span>
+<span class="fc" id="L188">                depth--;</span>
+            }
+<span class="fc" id="L190">        }</span>
+<span class="fc" id="L191">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

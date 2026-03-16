@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RateLimitFilter.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.config</a> &gt; <span class="el_source">RateLimitFilter.java</span></div><h1>RateLimitFilter.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.config;
+
+import com.taxonomy.preferences.PreferencesService;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * Simple in-memory rate limiter for LLM-backed API endpoints.
+ * Limits requests per IP address per minute to prevent quota exhaustion.
+ *
+ * &lt;p&gt;Protected endpoints:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code POST /api/analyze}&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/analyze-stream}&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/analyze-node}&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/justify-leaf}&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;The effective limit is read at request time from {@link PreferencesService}
+ * (key {@code rate-limit.per-minute}) when available, falling back to the
+ * {@code TAXONOMY_RATE_LIMIT_PER_MINUTE} property (default: 10).
+ * Set to 0 to disable rate limiting.
+ */
+@Component
+<span class="fc" id="L37">public class RateLimitFilter extends OncePerRequestFilter {</span>
+
+    @Value(&quot;${taxonomy.rate-limit.per-minute:10}&quot;)
+    private int maxRequestsPerMinute;
+
+    /** Optional — injected lazily to avoid circular dependencies. */
+    @Autowired(required = false)
+    @Lazy
+    private PreferencesService preferencesService;
+
+<span class="fc" id="L47">    private final Map&lt;String, WindowCounter&gt; counters = new ConcurrentHashMap&lt;&gt;();</span>
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                      FilterChain filterChain) throws ServletException, IOException {
+<span class="fc" id="L52">        String path = request.getRequestURI();</span>
+
+        // Only rate-limit LLM-backed endpoints
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (!isRateLimitedPath(path)) {</span>
+<span class="fc" id="L56">            filterChain.doFilter(request, response);</span>
+<span class="fc" id="L57">            return;</span>
+        }
+
+        // Effective limit: prefer runtime preference, fall back to property value
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">        int effectiveLimit = (preferencesService != null)</span>
+<span class="fc" id="L62">                ? preferencesService.getInt(&quot;rate-limit.per-minute&quot;, maxRequestsPerMinute)</span>
+<span class="pc" id="L63">                : maxRequestsPerMinute;</span>
+
+        // Disabled if set to 0
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        if (effectiveLimit &lt;= 0) {</span>
+<span class="nc" id="L67">            filterChain.doFilter(request, response);</span>
+<span class="nc" id="L68">            return;</span>
+        }
+
+<span class="fc" id="L71">        String clientIp = getClientIp(request);</span>
+<span class="fc" id="L72">        WindowCounter counter = counters.computeIfAbsent(clientIp, k -&gt; new WindowCounter());</span>
+
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (counter.incrementAndCheck(effectiveLimit)) {</span>
+<span class="fc" id="L75">            filterChain.doFilter(request, response);</span>
+        } else {
+<span class="fc" id="L77">            response.setStatus(429);</span>
+<span class="fc" id="L78">            response.setContentType(&quot;application/json&quot;);</span>
+<span class="fc" id="L79">            response.getWriter().write(</span>
+                    &quot;{\&quot;error\&quot;:\&quot;Rate limit exceeded. Maximum &quot; + effectiveLimit
+                    + &quot; LLM requests per minute. Please wait.\&quot;,&quot;
+                    + &quot;\&quot;status\&quot;:429}&quot;);
+        }
+<span class="fc" id="L84">    }</span>
+
+    /** Visible for testing — clears all per-IP rate limit counters. */
+    public void clearCounters() {
+<span class="fc" id="L88">        counters.clear();</span>
+<span class="fc" id="L89">    }</span>
+
+    private boolean isRateLimitedPath(String path) {
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        return path.equals(&quot;/api/analyze&quot;)</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            || path.equals(&quot;/api/analyze-stream&quot;)</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">            || path.equals(&quot;/api/analyze-node&quot;)</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">            || path.equals(&quot;/api/justify-leaf&quot;);</span>
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+<span class="fc" id="L99">        String xff = request.getHeader(&quot;X-Forwarded-For&quot;);</span>
+<span class="pc bpc" id="L100" title="3 of 4 branches missed.">        if (xff != null &amp;&amp; !xff.isBlank()) {</span>
+<span class="nc" id="L101">            return xff.split(&quot;,&quot;)[0].trim();</span>
+        }
+<span class="fc" id="L103">        return request.getRemoteAddr();</span>
+    }
+
+    /**
+     * Sliding window counter per minute.
+     */
+<span class="fc" id="L109">    static class WindowCounter {</span>
+<span class="fc" id="L110">        private final AtomicInteger count = new AtomicInteger(0);</span>
+<span class="fc" id="L111">        private volatile long windowStart = System.currentTimeMillis();</span>
+
+        boolean incrementAndCheck(int max) {
+<span class="fc" id="L114">            long now = System.currentTimeMillis();</span>
+            // Reset window every 60 seconds — synchronized to prevent a race between
+            // the reset check and the increment that would count against the new window
+<span class="pc bpc" id="L117" title="1 of 2 branches missed.">            if (now - windowStart &gt; 60_000) {</span>
+<span class="nc" id="L118">                synchronized (this) {</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">                    if (now - windowStart &gt; 60_000) {</span>
+<span class="nc" id="L120">                        count.set(1);</span>
+<span class="nc" id="L121">                        windowStart = now;</span>
+<span class="nc" id="L122">                        return true;</span>
+                    }
+<span class="nc" id="L124">                }</span>
+            }
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            return count.incrementAndGet() &lt;= max;</span>
+        }
+    }
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

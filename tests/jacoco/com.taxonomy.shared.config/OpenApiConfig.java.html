@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>OpenApiConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.config</a> &gt; <span class="el_source">OpenApiConfig.java</span></div><h1>OpenApiConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.config;
+
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Contact;
+import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.info.License;
+import io.swagger.v3.oas.models.servers.Server;
+import io.swagger.v3.oas.models.tags.Tag;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.util.List;
+
+/**
+ * OpenAPI 3.0 configuration for the Taxonomy Architecture Analyzer.
+ * &lt;p&gt;
+ * Provides auto-generated interactive API documentation at {@code /swagger-ui.html}.
+ */
+@Configuration
+<span class="fc" id="L20">public class OpenApiConfig {</span>
+
+    @Bean
+    public OpenAPI taxonomyOpenAPI() {
+<span class="fc" id="L24">        return new OpenAPI()</span>
+<span class="fc" id="L25">                .info(new Info()</span>
+<span class="fc" id="L26">                        .title(&quot;Taxonomy Architecture Analyzer API&quot;)</span>
+<span class="fc" id="L27">                        .description(&quot;&quot;&quot;</span>
+                                REST API for the Taxonomy Architecture Analyzer — maps free-text business \
+                                requirements to structured C3 Taxonomy elements using LLM-powered scoring.
+                                Manage taxonomy relations, run graph-based architecture queries, \
+                                and export results as Visio, ArchiMate, or Mermaid diagrams.&quot;&quot;&quot;)
+<span class="fc" id="L32">                        .version(&quot;1.1.1-SNAPSHOT&quot;)</span>
+<span class="fc" id="L33">                        .contact(new Contact()</span>
+<span class="fc" id="L34">                                .name(&quot;Taxonomy Architecture Analyzer&quot;)</span>
+<span class="fc" id="L35">                                .url(&quot;https://github.com/carstenartur/Taxonomy&quot;))</span>
+<span class="fc" id="L36">                        .license(new License()</span>
+<span class="fc" id="L37">                                .name(&quot;MIT License&quot;)</span>
+<span class="fc" id="L38">                                .url(&quot;https://opensource.org/licenses/MIT&quot;)))</span>
+<span class="fc" id="L39">                .servers(List.of(</span>
+<span class="fc" id="L40">                        new Server().url(&quot;/&quot;).description(&quot;Current server&quot;)))</span>
+<span class="fc" id="L41">                .tags(List.of(</span>
+<span class="fc" id="L42">                        new Tag().name(&quot;Taxonomy&quot;).description(&quot;Browse and query the taxonomy tree&quot;),</span>
+<span class="fc" id="L43">                        new Tag().name(&quot;Analysis&quot;).description(&quot;AI-powered business requirement analysis&quot;),</span>
+<span class="fc" id="L44">                        new Tag().name(&quot;Search&quot;).description(&quot;Full-text, semantic, hybrid, and graph search&quot;),</span>
+<span class="fc" id="L45">                        new Tag().name(&quot;Relations&quot;).description(&quot;Manage taxonomy relations&quot;),</span>
+<span class="fc" id="L46">                        new Tag().name(&quot;Proposals&quot;).description(&quot;Relation proposal pipeline — propose, review, accept/reject&quot;),</span>
+<span class="fc" id="L47">                        new Tag().name(&quot;Graph Queries&quot;).description(&quot;Graph-based architecture impact and neighbourhood queries&quot;),</span>
+<span class="fc" id="L48">                        new Tag().name(&quot;Quality Metrics&quot;).description(&quot;Relation quality dashboard and provenance metrics&quot;),</span>
+<span class="fc" id="L49">                        new Tag().name(&quot;Requirement Coverage&quot;).description(&quot;Track which taxonomy nodes are covered by recorded requirements&quot;),</span>
+<span class="fc" id="L50">                        new Tag().name(&quot;Gap Analysis&quot;).description(&quot;Identify missing relations and incomplete architecture patterns&quot;),</span>
+<span class="fc" id="L51">                        new Tag().name(&quot;Architecture Recommendation&quot;).description(&quot;AI-generated architecture improvement suggestions&quot;),</span>
+<span class="fc" id="L52">                        new Tag().name(&quot;Pattern Detection&quot;).description(&quot;Detect predefined architecture patterns in the relation graph&quot;),</span>
+<span class="fc" id="L53">                        new Tag().name(&quot;Export&quot;).description(&quot;Visio (.vsdx), ArchiMate XML, and Mermaid diagram export&quot;),</span>
+<span class="fc" id="L54">                        new Tag().name(&quot;Report Export&quot;).description(&quot;Export architecture analysis as Markdown, HTML, DOCX, or JSON reports&quot;),</span>
+<span class="fc" id="L55">                        new Tag().name(&quot;Architecture DSL&quot;).description(&quot;Architecture DSL parsing, validation, versioning (JGit), and materialisation&quot;),</span>
+<span class="fc" id="L56">                        new Tag().name(&quot;Architecture Intelligence&quot;).description(&quot;Architecture summary, derived metadata, and next-step guidance&quot;),</span>
+<span class="fc" id="L57">                        new Tag().name(&quot;Explainable Reasoning&quot;).description(&quot;Structured explanation traces for scored taxonomy nodes&quot;),</span>
+<span class="fc" id="L58">                        new Tag().name(&quot;ArchiMate Import&quot;).description(&quot;Import ArchiMate 3.x XML models into the taxonomy knowledge base&quot;),</span>
+<span class="fc" id="L59">                        new Tag().name(&quot;Administration&quot;).description(&quot;Admin status, diagnostics, and prompt template management&quot;),</span>
+<span class="fc" id="L60">                        new Tag().name(&quot;Embedding&quot;).description(&quot;Embedding model status and configuration&quot;),</span>
+<span class="fc" id="L61">                        new Tag().name(&quot;Status&quot;).description(&quot;Application startup and initialisation status&quot;),</span>
+<span class="fc" id="L62">                        new Tag().name(&quot;About&quot;).description(&quot;Application version, build info, license, and third-party notices&quot;)));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

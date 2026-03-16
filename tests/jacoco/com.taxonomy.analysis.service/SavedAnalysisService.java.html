@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SavedAnalysisService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">SavedAnalysisService.java</span></div><h1>SavedAnalysisService.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.dto.SavedAnalysis;
+import tools.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import com.taxonomy.catalog.service.TaxonomyService;
+
+/**
+ * Service for building, exporting, and importing {@link SavedAnalysis} objects.
+ *
+ * &lt;p&gt;The {@code SavedAnalysis} format preserves the semantic distinction between:
+ * &lt;ul&gt;
+ *   &lt;li&gt;A node code present with value {@code 0} → evaluated and scored 0% (not relevant)&lt;/li&gt;
+ *   &lt;li&gt;A node code absent → not yet evaluated&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@Service
+public class SavedAnalysisService {
+
+<span class="fc" id="L31">    private static final Logger log = LoggerFactory.getLogger(SavedAnalysisService.class);</span>
+
+    private static final int SUPPORTED_VERSION = 1;
+
+    private final ObjectMapper objectMapper;
+    private final TaxonomyService taxonomyService;
+
+<span class="fc" id="L38">    public SavedAnalysisService(ObjectMapper objectMapper, TaxonomyService taxonomyService) {</span>
+<span class="fc" id="L39">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L40">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L41">    }</span>
+
+    /**
+     * Builds a {@link SavedAnalysis} ready for JSON serialization and download.
+     *
+     * @param requirement the business requirement text
+     * @param scores      node code → score (0 = scored zero, absent = not evaluated)
+     * @param reasons     node code → reason text (may be null or sparse)
+     * @param provider    LLM provider name (informational)
+     * @return populated {@link SavedAnalysis}
+     */
+    public SavedAnalysis buildExport(String requirement,
+                                     Map&lt;String, Integer&gt; scores,
+                                     Map&lt;String, String&gt; reasons,
+                                     String provider) {
+<span class="fc" id="L56">        SavedAnalysis saved = new SavedAnalysis();</span>
+<span class="fc" id="L57">        saved.setVersion(SUPPORTED_VERSION);</span>
+<span class="fc" id="L58">        saved.setRequirement(requirement);</span>
+<span class="fc" id="L59">        saved.setTimestamp(Instant.now().toString());</span>
+<span class="fc" id="L60">        saved.setProvider(provider);</span>
+<span class="fc" id="L61">        saved.setScores(scores);</span>
+<span class="fc" id="L62">        saved.setReasons(reasons);</span>
+<span class="fc" id="L63">        return saved;</span>
+    }
+
+    /**
+     * Deserializes and validates a {@link SavedAnalysis} from JSON.
+     *
+     * &lt;p&gt;Validation rules:
+     * &lt;ul&gt;
+     *   &lt;li&gt;{@code version} must be {@value #SUPPORTED_VERSION}&lt;/li&gt;
+     *   &lt;li&gt;{@code requirement} must not be blank&lt;/li&gt;
+     *   &lt;li&gt;{@code scores} must not be null or empty&lt;/li&gt;
+     *   &lt;li&gt;Unknown node codes in {@code scores} generate warnings but do not fail&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param json raw JSON string
+     * @return validated {@link SavedAnalysis}
+     * @throws IllegalArgumentException if validation fails
+     * @throws IOException              if the JSON cannot be parsed
+     */
+    public SavedAnalysis importFromJson(String json) throws IOException {
+<span class="fc" id="L83">        SavedAnalysis saved = objectMapper.readValue(json, SavedAnalysis.class);</span>
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (saved.getVersion() != SUPPORTED_VERSION) {</span>
+<span class="fc" id="L86">            throw new IllegalArgumentException(</span>
+<span class="fc" id="L87">                    &quot;Unsupported version: &quot; + saved.getVersion() + &quot; (expected &quot; + SUPPORTED_VERSION + &quot;)&quot;);</span>
+        }
+<span class="fc bfc" id="L89" title="All 4 branches covered.">        if (saved.getRequirement() == null || saved.getRequirement().isBlank()) {</span>
+<span class="fc" id="L90">            throw new IllegalArgumentException(&quot;requirement must not be blank&quot;);</span>
+        }
+<span class="fc bfc" id="L92" title="All 4 branches covered.">        if (saved.getScores() == null || saved.getScores().isEmpty()) {</span>
+<span class="fc" id="L93">            throw new IllegalArgumentException(&quot;scores must not be null or empty&quot;);</span>
+        }
+
+        // Warn about unknown node codes but do not reject
+<span class="fc" id="L97">        List&lt;String&gt; unknownCodes = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        for (String code : saved.getScores().keySet()) {</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            if (taxonomyService.getNodeByCode(code) == null) {</span>
+<span class="fc" id="L100">                unknownCodes.add(code);</span>
+            }
+<span class="fc" id="L102">        }</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (!unknownCodes.isEmpty()) {</span>
+<span class="fc" id="L104">            log.warn(&quot;SavedAnalysis import: {} unknown node code(s): {}&quot;, unknownCodes.size(), unknownCodes);</span>
+        }
+
+<span class="fc" id="L107">        return saved;</span>
+    }
+
+    /**
+     * Loads and validates a {@link SavedAnalysis} from a classpath resource.
+     *
+     * @param resourcePath classpath-relative path (e.g. {@code &quot;mock-scores/secure-voice-comms.json&quot;})
+     * @return validated {@link SavedAnalysis}
+     * @throws IOException if the resource cannot be read or parsed
+     */
+    public SavedAnalysis loadFromClasspath(String resourcePath) throws IOException {
+<span class="fc" id="L118">        ClassPathResource resource = new ClassPathResource(resourcePath);</span>
+<span class="fc" id="L119">        try (InputStream is = resource.getInputStream()) {</span>
+<span class="fc" id="L120">            String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);</span>
+<span class="fc" id="L121">            return importFromJson(json);</span>
+        }
+    }
+
+    /**
+     * Returns the list of unknown node codes found in the given {@link SavedAnalysis}.
+     * Used by the import endpoint to return warnings to the caller.
+     */
+    public List&lt;String&gt; findUnknownCodes(SavedAnalysis saved) {
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        if (saved.getScores() == null) { return List.of(); }</span>
+<span class="fc" id="L131">        List&lt;String&gt; unknown = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        for (String code : saved.getScores().keySet()) {</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">            if (taxonomyService.getNodeByCode(code) == null) {</span>
+<span class="fc" id="L134">                unknown.add(code);</span>
+            }
+<span class="fc" id="L136">        }</span>
+<span class="fc" id="L137">        return unknown;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,921 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.controller</a> &gt; <span class="el_source">ApiController.java</span></div><h1>ApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.controller;
+
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.AnalysisRequest;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AiStatusResponse;
+import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.dto.SavedAnalysis;
+import com.taxonomy.dto.TaxonomyDiscrepancy;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.analysis.service.AnalysisEventCallback;
+import com.taxonomy.export.DiagramProjectionService;
+import com.taxonomy.relations.service.HybridSearchService;
+import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.shared.service.PromptTemplateService;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.architecture.service.RequirementArchitectureViewService;
+import com.taxonomy.analysis.service.AnalysisRelationGenerator;
+import com.taxonomy.versioning.service.HypothesisService;
+import com.taxonomy.analysis.service.SavedAnalysisService;
+import com.taxonomy.catalog.service.SearchService;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.archimate.ArchiMateModel;
+import com.taxonomy.export.ArchiMateDiagramService;
+import com.taxonomy.export.ArchiMateXmlExporter;
+import com.taxonomy.export.MermaidExportService;
+import com.taxonomy.export.VisioDiagramService;
+import com.taxonomy.export.VisioPackageBuilder;
+import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.dto.GraphSearchResult;
+import com.taxonomy.relations.service.GraphSearchService;
+import tools.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import com.taxonomy.dto.AiAvailabilityLevel;
+import com.taxonomy.shared.service.AppInitializationStateService;
+
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Taxonomy&quot;)
+public class ApiController {
+
+    private final TaxonomyService taxonomyService;
+    private final LlmService llmService;
+    private final SearchService searchService;
+    private final HybridSearchService hybridSearchService;
+    private final LocalEmbeddingService embeddingService;
+    private final GraphSearchService graphSearchService;
+    private final ExecutorService analysisExecutor;
+    private final ObjectMapper objectMapper;
+    private final PromptTemplateService promptTemplateService;
+    private final RequirementArchitectureViewService architectureViewService;
+    private final DiagramProjectionService diagramProjectionService;
+    private final VisioDiagramService visioDiagramService;
+    private final VisioPackageBuilder visioPackageBuilder;
+    private final ArchiMateDiagramService archiMateDiagramService;
+    private final ArchiMateXmlExporter archiMateXmlExporter;
+    private final MermaidExportService mermaidExportService;
+    private final SavedAnalysisService savedAnalysisService;
+    private final AnalysisRelationGenerator analysisRelationGenerator;
+    private final HypothesisService hypothesisService;
+    private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
+
+    @Value(&quot;${admin.token:}&quot;)
+    private String adminPassword;
+
+    public ApiController(TaxonomyService taxonomyService, LlmService llmService,
+                         SearchService searchService, HybridSearchService hybridSearchService,
+                         LocalEmbeddingService embeddingService,
+                         GraphSearchService graphSearchService,
+                         ExecutorService analysisExecutor,
+                         ObjectMapper objectMapper, PromptTemplateService promptTemplateService,
+                         RequirementArchitectureViewService architectureViewService,
+                         DiagramProjectionService diagramProjectionService,
+                         VisioDiagramService visioDiagramService,
+                         VisioPackageBuilder visioPackageBuilder,
+                         ArchiMateDiagramService archiMateDiagramService,
+                         ArchiMateXmlExporter archiMateXmlExporter,
+                         MermaidExportService mermaidExportService,
+                         SavedAnalysisService savedAnalysisService,
+                         AnalysisRelationGenerator analysisRelationGenerator,
+                          HypothesisService hypothesisService,
+                         RepositoryStateService repositoryStateService,
+<span class="fc" id="L108">                         WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L109">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L110">        this.llmService = llmService;</span>
+<span class="fc" id="L111">        this.searchService = searchService;</span>
+<span class="fc" id="L112">        this.hybridSearchService = hybridSearchService;</span>
+<span class="fc" id="L113">        this.embeddingService = embeddingService;</span>
+<span class="fc" id="L114">        this.graphSearchService = graphSearchService;</span>
+<span class="fc" id="L115">        this.analysisExecutor = analysisExecutor;</span>
+<span class="fc" id="L116">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L117">        this.promptTemplateService = promptTemplateService;</span>
+<span class="fc" id="L118">        this.architectureViewService = architectureViewService;</span>
+<span class="fc" id="L119">        this.diagramProjectionService = diagramProjectionService;</span>
+<span class="fc" id="L120">        this.visioDiagramService = visioDiagramService;</span>
+<span class="fc" id="L121">        this.visioPackageBuilder = visioPackageBuilder;</span>
+<span class="fc" id="L122">        this.archiMateDiagramService = archiMateDiagramService;</span>
+<span class="fc" id="L123">        this.archiMateXmlExporter = archiMateXmlExporter;</span>
+<span class="fc" id="L124">        this.mermaidExportService = mermaidExportService;</span>
+<span class="fc" id="L125">        this.savedAnalysisService = savedAnalysisService;</span>
+<span class="fc" id="L126">        this.analysisRelationGenerator = analysisRelationGenerator;</span>
+<span class="fc" id="L127">        this.hypothesisService = hypothesisService;</span>
+<span class="fc" id="L128">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L129">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L130">    }</span>
+
+    @Operation(summary = &quot;Get full taxonomy tree&quot;, description = &quot;Returns the complete taxonomy hierarchy as a nested tree of nodes&quot;, tags = {&quot;Taxonomy&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Taxonomy tree returned successfully&quot;)
+    @GetMapping(&quot;/taxonomy&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; getTaxonomy() {
+<span class="fc" id="L136">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="fc" id="L138">        return ResponseEntity.ok(taxonomyService.getFullTree());</span>
+    }
+
+    @Operation(summary = &quot;Check AI availability&quot;, description = &quot;Returns whether an LLM provider is available and which one is active&quot;, tags = {&quot;Administration&quot;})
+    @GetMapping(&quot;/ai-status&quot;)
+    public ResponseEntity&lt;AiStatusResponse&gt; aiStatus() {
+<span class="fc" id="L144">        com.taxonomy.dto.AiAvailabilityLevel level = llmService.getAvailabilityLevel();</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        String provider = level != com.taxonomy.dto.AiAvailabilityLevel.UNAVAILABLE</span>
+<span class="pc" id="L146">                ? llmService.getActiveProviderName() : null;</span>
+<span class="fc" id="L147">        List&lt;String&gt; availableProviders = llmService.getAvailableProviders();</span>
+<span class="fc" id="L148">        return ResponseEntity.ok(new AiStatusResponse(level, provider, availableProviders));</span>
+    }
+
+    @Operation(summary = &quot;Startup status&quot;, description = &quot;Returns the initialization state of the taxonomy data. Poll this endpoint after receiving a 503 to know when the app is ready.&quot;, tags = {&quot;Status&quot;})
+    @GetMapping(&quot;/status/startup&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; startupStatus() {
+<span class="fc" id="L154">        Map&lt;String, Object&gt; status = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L155">        status.put(&quot;initialized&quot;, taxonomyService.isInitialized());</span>
+<span class="fc" id="L156">        status.put(&quot;status&quot;, taxonomyService.getInitStatus());</span>
+
+        // Phase details from AppInitializationStateService
+<span class="fc" id="L159">        com.taxonomy.shared.service.AppInitializationStateService stateService = taxonomyService.getStateService();</span>
+<span class="fc" id="L160">        status.put(&quot;phase&quot;, stateService.getState().name());</span>
+<span class="fc" id="L161">        status.put(&quot;phaseMessage&quot;, stateService.getMessage());</span>
+<span class="fc" id="L162">        status.put(&quot;phaseUpdatedAt&quot;, stateService.getUpdatedAt().toString());</span>
+
+        // Memory info
+<span class="fc" id="L165">        Runtime rt = Runtime.getRuntime();</span>
+<span class="fc" id="L166">        long heapUsed = rt.totalMemory() - rt.freeMemory();</span>
+<span class="fc" id="L167">        long heapMax = rt.maxMemory();</span>
+<span class="fc" id="L168">        Map&lt;String, Object&gt; memory = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L169">        memory.put(&quot;heapUsedMB&quot;, heapUsed / (1024 * 1024));</span>
+<span class="fc" id="L170">        memory.put(&quot;heapMaxMB&quot;, heapMax / (1024 * 1024));</span>
+<span class="fc" id="L171">        memory.put(&quot;heapUsagePercent&quot;, Math.round((double) heapUsed / heapMax * 100));</span>
+<span class="fc" id="L172">        memory.put(&quot;threadCount&quot;, Thread.activeCount());</span>
+<span class="fc" id="L173">        status.put(&quot;memory&quot;, memory);</span>
+
+<span class="fc" id="L175">        return ResponseEntity.ok(status);</span>
+    }
+
+    /**
+     * Returns a 503 response when the taxonomy is not yet initialized, or {@code null} when
+     * the request may proceed normally.  Add {@code ResponseEntity&lt;?&gt; guard = checkInitialized(); if (guard != null) return guard;}
+     * at the top of every data-dependent endpoint.
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private &lt;T&gt; ResponseEntity&lt;T&gt; checkInitialized() {
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        if (!taxonomyService.isInitialized()) {</span>
+<span class="nc" id="L186">            Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L187">            body.put(&quot;error&quot;, &quot;Taxonomy data is still loading. Please wait.&quot;);</span>
+<span class="nc" id="L188">            body.put(&quot;status&quot;, taxonomyService.getInitStatus());</span>
+<span class="nc" id="L189">            return (ResponseEntity&lt;T&gt;) ResponseEntity.status(503).body(body);</span>
+        }
+<span class="fc" id="L191">        return null;</span>
+    }
+
+    @Operation(summary = &quot;Analyze business requirement&quot;, description = &quot;Analyzes a business requirement against the taxonomy using the configured LLM provider. Optionally includes an architecture view.&quot;, tags = {&quot;Analysis&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Analysis completed&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
+    @PostMapping(&quot;/analyze&quot;)
+    public ResponseEntity&lt;AnalysisResult&gt; analyze(@RequestBody AnalysisRequest request) {
+<span class="fc" id="L199">        ResponseEntity&lt;AnalysisResult&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L201" title="1 of 4 branches missed.">        if (request.getBusinessText() == null || request.getBusinessText().isBlank()) {</span>
+<span class="fc" id="L202">            return ResponseEntity.badRequest().build();</span>
+        }
+
+<span class="pc bpc" id="L205" title="1 of 4 branches missed.">        if (request.getProvider() != null &amp;&amp; !request.getProvider().isBlank()) {</span>
+            try {
+<span class="fc" id="L207">                llmService.setRequestProvider(</span>
+<span class="fc" id="L208">                        LlmProvider.valueOf(request.getProvider().toUpperCase()));</span>
+<span class="fc" id="L209">            } catch (IllegalArgumentException e) {</span>
+                @SuppressWarnings(&quot;unchecked&quot;)
+                ResponseEntity&lt;AnalysisResult&gt; badProvider = (ResponseEntity&lt;AnalysisResult&gt;)
+<span class="fc" id="L212">                        (ResponseEntity&lt;?&gt;) ResponseEntity.badRequest().body(Map.of(</span>
+<span class="fc" id="L213">                                &quot;error&quot;, &quot;Unknown provider: &quot; + request.getProvider(),</span>
+<span class="fc" id="L214">                                &quot;validProviders&quot;, java.util.Arrays.toString(LlmProvider.values())));</span>
+<span class="fc" id="L215">                return badProvider;</span>
+<span class="fc" id="L216">            }</span>
+        }
+        try {
+<span class="fc" id="L219">            AnalysisResult result = llmService.analyzeWithBudget(request.getBusinessText());</span>
+
+            // Generate provisional relation hypotheses from scored nodes
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">            if (result.getScores() != null) {</span>
+<span class="fc" id="L223">                result.setProvisionalRelations(</span>
+<span class="fc" id="L224">                        analysisRelationGenerator.generate(result.getScores()));</span>
+
+                // Persist hypotheses to database for later accept/reject via API
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">                if (!result.getProvisionalRelations().isEmpty()) {</span>
+<span class="nc" id="L228">                    hypothesisService.persistFromAnalysis(result.getProvisionalRelations(), null);</span>
+                }
+            }
+
+<span class="pc bpc" id="L232" title="1 of 4 branches missed.">            if (request.isIncludeArchitectureView() &amp;&amp; result.getScores() != null) {</span>
+<span class="fc" id="L233">                result.setArchitectureView(</span>
+<span class="fc" id="L234">                        architectureViewService.build(result.getScores(), request.getBusinessText(),</span>
+<span class="fc" id="L235">                                request.getMaxArchitectureNodes(),</span>
+<span class="fc" id="L236">                                result.getProvisionalRelations()));</span>
+            }
+
+<span class="fc" id="L239">            result.setViewContext(repositoryStateService.getViewContext(</span>
+<span class="fc" id="L240">                    workspaceResolver.resolveCurrentUsername(), &quot;draft&quot;));</span>
+
+<span class="fc" id="L242">            return ResponseEntity.ok(result);</span>
+        } finally {
+<span class="fc" id="L244">            llmService.clearRequestProvider();</span>
+        }
+    }
+
+    /**
+     * Streaming analysis endpoint using Server-Sent Events (SSE).
+     * Emits {@code phase}, {@code scores}, {@code expanding}, {@code complete} and
+     * {@code error} events as the LLM processes the taxonomy level by level.
+     */
+    @Operation(summary = &quot;Streaming analysis (SSE)&quot;, description = &quot;Server-Sent Events streaming analysis. Emits phase, scores, expanding, complete, and error events as the LLM processes the taxonomy level by level.&quot;, tags = {&quot;Analysis&quot;})
+    @GetMapping(value = &quot;/analyze-stream&quot;, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter analyzeStream(
+            @Parameter(description = &quot;Business requirement text to analyze&quot;) @RequestParam String businessText,
+            @Parameter(description = &quot;LLM provider override (e.g. GEMINI, LOCAL_ONNX)&quot;) @RequestParam(required = false) String provider) {
+<span class="fc" id="L258">        SseEmitter emitter = new SseEmitter(120_000L);</span>
+
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">        if (!taxonomyService.isInitialized()) {</span>
+            try {
+<span class="nc" id="L262">                emitter.send(SseEmitter.event()</span>
+<span class="nc" id="L263">                        .name(&quot;error&quot;)</span>
+<span class="nc" id="L264">                        .data(objectMapper.writeValueAsString(Map.of(</span>
+                                &quot;status&quot;, &quot;ERROR&quot;,
+                                &quot;errorMessage&quot;, &quot;Taxonomy data is still loading. Please wait.&quot;,
+<span class="nc" id="L267">                                &quot;initStatus&quot;, taxonomyService.getInitStatus()))));</span>
+<span class="nc" id="L268">            } catch (Exception ignored) {</span>
+                // client already disconnected
+<span class="nc" id="L270">            }</span>
+<span class="nc" id="L271">            emitter.complete();</span>
+<span class="nc" id="L272">            return emitter;</span>
+        }
+
+<span class="pc bpc" id="L275" title="1 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+            try {
+<span class="fc" id="L277">                emitter.send(SseEmitter.event()</span>
+<span class="fc" id="L278">                        .name(&quot;error&quot;)</span>
+<span class="fc" id="L279">                        .data(&quot;{\&quot;status\&quot;:\&quot;ERROR\&quot;,\&quot;errorMessage\&quot;:\&quot;businessText must not be blank\&quot;}&quot;));</span>
+<span class="nc" id="L280">            } catch (IOException ignored) {</span>
+                // client already disconnected
+<span class="fc" id="L282">            }</span>
+<span class="fc" id="L283">            emitter.complete();</span>
+<span class="fc" id="L284">            return emitter;</span>
+        }
+
+<span class="fc" id="L287">        LlmProvider resolvedProvider = null;</span>
+<span class="pc bpc" id="L288" title="3 of 4 branches missed.">        if (provider != null &amp;&amp; !provider.isBlank()) {</span>
+            try {
+<span class="nc" id="L290">                resolvedProvider = LlmProvider.valueOf(provider.toUpperCase());</span>
+<span class="nc" id="L291">            } catch (IllegalArgumentException e) {</span>
+                try {
+<span class="nc" id="L293">                    emitter.send(SseEmitter.event()</span>
+<span class="nc" id="L294">                            .name(&quot;error&quot;)</span>
+<span class="nc" id="L295">                            .data(objectMapper.writeValueAsString(Map.of(</span>
+                                    &quot;status&quot;, &quot;ERROR&quot;,
+                                    &quot;errorMessage&quot;, &quot;Unknown provider: &quot; + provider))));
+<span class="nc" id="L298">                } catch (Exception ignored) {</span>
+                    // client already disconnected
+<span class="nc" id="L300">                }</span>
+<span class="nc" id="L301">                emitter.complete();</span>
+<span class="nc" id="L302">                return emitter;</span>
+<span class="nc" id="L303">            }</span>
+        }
+
+<span class="fc" id="L306">        final LlmProvider providerOverride = resolvedProvider;</span>
+<span class="fc" id="L307">        analysisExecutor.execute(() -&gt; {</span>
+<span class="pc bpc" id="L308" title="1 of 2 branches missed.">            if (providerOverride != null) {</span>
+<span class="nc" id="L309">                llmService.setRequestProvider(providerOverride);</span>
+            }
+            try {
+<span class="fc" id="L312">                llmService.analyzeStreaming(businessText, new AnalysisEventCallback() {</span>
+
+                    @Override
+                    public void onPhase(String message, int progressPercent) {
+<span class="fc" id="L316">                        sendEvent(emitter, &quot;phase&quot;,</span>
+<span class="fc" id="L317">                                Map.of(&quot;message&quot;, message, &quot;progress&quot;, progressPercent));</span>
+<span class="fc" id="L318">                    }</span>
+
+                    @Override
+                    public void onScores(Map&lt;String, Integer&gt; newScores, Map&lt;String, String&gt; reasons,
+                                         String description) {
+<span class="fc" id="L323">                        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L324">                        payload.put(&quot;scores&quot;, newScores);</span>
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">                        payload.put(&quot;reasons&quot;, reasons != null ? reasons : Map.of());</span>
+<span class="fc" id="L326">                        payload.put(&quot;description&quot;, description);</span>
+<span class="fc" id="L327">                        sendEvent(emitter, &quot;scores&quot;, payload);</span>
+<span class="fc" id="L328">                    }</span>
+
+                    @Override
+                    public void onExpanding(String parentCode, List&lt;String&gt; childCodes) {
+<span class="nc" id="L332">                        sendEvent(emitter, &quot;expanding&quot;,</span>
+<span class="nc" id="L333">                                Map.of(&quot;parentCode&quot;, parentCode, &quot;childCodes&quot;, childCodes));</span>
+<span class="nc" id="L334">                    }</span>
+
+                    @Override
+                    public void onComplete(String status, Map&lt;String, Integer&gt; allScores,
+                                           List&lt;String&gt; warnings,
+                                           List&lt;TaxonomyDiscrepancy&gt; discrepancies) {
+<span class="fc" id="L340">                        int matched = (int) allScores.values().stream()</span>
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">                                .filter(v -&gt; v &gt; 0).count();</span>
+<span class="fc" id="L342">                        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L343">                        payload.put(&quot;status&quot;, status);</span>
+<span class="fc" id="L344">                        payload.put(&quot;totalScores&quot;, allScores);</span>
+<span class="fc" id="L345">                        payload.put(&quot;totalMatched&quot;, matched);</span>
+<span class="fc" id="L346">                        payload.put(&quot;warnings&quot;, warnings);</span>
+<span class="fc" id="L347">                        payload.put(&quot;discrepancies&quot;, discrepancies);</span>
+<span class="fc" id="L348">                        sendEvent(emitter, &quot;complete&quot;, payload);</span>
+<span class="fc" id="L349">                        emitter.complete();</span>
+<span class="fc" id="L350">                    }</span>
+
+                    @Override
+                    public void onError(String status, String errorMessage,
+                                        Map&lt;String, Integer&gt; partialScores,
+                                        List&lt;String&gt; warnings,
+                                        List&lt;TaxonomyDiscrepancy&gt; discrepancies) {
+<span class="nc" id="L357">                        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L358">                        payload.put(&quot;status&quot;, status);</span>
+<span class="nc" id="L359">                        payload.put(&quot;errorMessage&quot;, errorMessage);</span>
+<span class="nc" id="L360">                        payload.put(&quot;partialScores&quot;, partialScores);</span>
+<span class="nc" id="L361">                        payload.put(&quot;warnings&quot;, warnings);</span>
+<span class="nc" id="L362">                        payload.put(&quot;discrepancies&quot;, discrepancies);</span>
+<span class="nc" id="L363">                        sendEvent(emitter, &quot;error&quot;, payload);</span>
+<span class="nc" id="L364">                        emitter.complete();</span>
+<span class="nc" id="L365">                    }</span>
+                });
+<span class="nc" id="L367">            } catch (Exception e) {</span>
+<span class="nc" id="L368">                emitter.completeWithError(e);</span>
+            } finally {
+<span class="fc" id="L370">                llmService.clearRequestProvider();</span>
+            }
+<span class="fc" id="L372">        });</span>
+
+<span class="fc" id="L374">        return emitter;</span>
+    }
+
+    private void sendEvent(SseEmitter emitter, String eventName, Object data) {
+        try {
+<span class="fc" id="L379">            emitter.send(SseEmitter.event()</span>
+<span class="fc" id="L380">                    .name(eventName)</span>
+<span class="fc" id="L381">                    .data(objectMapper.writeValueAsString(data)));</span>
+<span class="nc" id="L382">        } catch (IOException e) {</span>
+            // Client disconnected — complete silently
+<span class="nc" id="L384">            emitter.complete();</span>
+<span class="nc" id="L385">        } catch (Exception e) {</span>
+<span class="nc" id="L386">            emitter.completeWithError(e);</span>
+<span class="pc" id="L387">        }</span>
+<span class="fc" id="L388">    }</span>
+
+    @Operation(summary = &quot;Analyze single node children&quot;, description = &quot;Analyzes the children of a specific taxonomy node against a business requirement&quot;, tags = {&quot;Analysis&quot;})
+    @GetMapping(&quot;/analyze-node&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; analyzeNode(
+            @Parameter(description = &quot;Parent taxonomy node code&quot;) @RequestParam String parentCode,
+            @Parameter(description = &quot;Business requirement text&quot;) @RequestParam String businessText,
+            @Parameter(description = &quot;Parent node's score (0-100); defaults to 100 for root-level nodes&quot;) @RequestParam(defaultValue = &quot;100&quot;) int parentScore) {
+<span class="fc" id="L396">        ResponseEntity&lt;Map&lt;String, Object&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L398" title="2 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="nc" id="L399">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L401">        List&lt;TaxonomyNode&gt; children = taxonomyService.getChildrenOf(parentCode);</span>
+<span class="pc bpc" id="L402" title="1 of 2 branches missed.">        if (children.isEmpty()) {</span>
+<span class="nc" id="L403">            Map&lt;String, Object&gt; empty = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L404">            empty.put(&quot;scores&quot;, Map.of());</span>
+<span class="nc" id="L405">            empty.put(&quot;prompt&quot;, &quot;&quot;);</span>
+<span class="nc" id="L406">            empty.put(&quot;rawResponse&quot;, &quot;&quot;);</span>
+<span class="nc" id="L407">            empty.put(&quot;provider&quot;, &quot;&quot;);</span>
+<span class="nc" id="L408">            empty.put(&quot;durationMs&quot;, 0);</span>
+<span class="nc" id="L409">            return ResponseEntity.ok(empty);</span>
+        }
+<span class="fc" id="L411">        LlmCallDetail detail = llmService.analyzeSingleBatchDetailed(businessText, children, parentScore);</span>
+<span class="fc" id="L412">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L413">        result.put(&quot;scores&quot;, detail.getScores());</span>
+<span class="pc bpc" id="L414" title="1 of 2 branches missed.">        result.put(&quot;reasons&quot;, detail.getReasons() != null ? detail.getReasons() : Map.of());</span>
+<span class="fc" id="L415">        result.put(&quot;prompt&quot;, detail.getPrompt());</span>
+<span class="fc" id="L416">        result.put(&quot;rawResponse&quot;, detail.getRawResponse());</span>
+<span class="fc" id="L417">        result.put(&quot;provider&quot;, detail.getProvider());</span>
+<span class="fc" id="L418">        result.put(&quot;durationMs&quot;, detail.getDurationMs());</span>
+<span class="fc" id="L419">        result.put(&quot;error&quot;, detail.getError());</span>
+<span class="fc" id="L420">        return ResponseEntity.ok(result);</span>
+    }
+
+    /**
+     * Generates a leaf-node justification on demand.
+     * Collects the path from root to the leaf node and cross-references to other
+     * high-scoring nodes, then calls the LLM for a coherent summary.
+     */
+    @Operation(summary = &quot;Generate leaf justification&quot;, description = &quot;Generates an explanatory justification for a leaf node match using the LLM&quot;, tags = {&quot;Analysis&quot;})
+    @PostMapping(&quot;/justify-leaf&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; justifyLeaf(
+            @RequestBody Map&lt;String, Object&gt; body) {
+<span class="nc" id="L432">        ResponseEntity&lt;Map&lt;String, Object&gt;&gt; guard = checkInitialized();</span>
+<span class="nc bnc" id="L433" title="All 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="nc" id="L434">        String nodeCode = (String) body.get(&quot;nodeCode&quot;);</span>
+<span class="nc" id="L435">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="nc bnc" id="L436" title="All 8 branches missed.">        if (nodeCode == null || nodeCode.isBlank() || businessText == null || businessText.isBlank()) {</span>
+<span class="nc" id="L437">            return ResponseEntity.badRequest().build();</span>
+        }
+        try {
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc bnc" id="L441" title="All 2 branches missed.">            Map&lt;String, Object&gt; rawScores = body.get(&quot;scores&quot;) instanceof Map&lt;?, ?&gt;</span>
+<span class="nc" id="L442">                    ? (Map&lt;String, Object&gt;) body.get(&quot;scores&quot;) : Map.of();</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc bnc" id="L444" title="All 2 branches missed.">            Map&lt;String, String&gt; allReasons = body.get(&quot;reasons&quot;) instanceof Map&lt;?, ?&gt;</span>
+<span class="nc" id="L445">                    ? (Map&lt;String, String&gt;) body.get(&quot;reasons&quot;) : Map.of();</span>
+
+<span class="nc" id="L447">            Map&lt;String, Integer&gt; allScores = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L448" title="All 2 branches missed.">            for (Map.Entry&lt;String, Object&gt; e : rawScores.entrySet()) {</span>
+<span class="nc bnc" id="L449" title="All 2 branches missed.">                if (e.getValue() instanceof Number n) {</span>
+<span class="nc" id="L450">                    allScores.put(e.getKey(), n.intValue());</span>
+                }
+<span class="nc" id="L452">            }</span>
+
+<span class="nc" id="L454">            List&lt;com.taxonomy.catalog.model.TaxonomyNode&gt; pathNodes =</span>
+<span class="nc" id="L455">                    taxonomyService.getPathToRoot(nodeCode);</span>
+
+<span class="nc" id="L457">            String justification = llmService.generateLeafJustification(</span>
+                    businessText, nodeCode, pathNodes, allScores, allReasons);
+
+<span class="nc" id="L460">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L461">            result.put(&quot;nodeCode&quot;, nodeCode);</span>
+<span class="nc" id="L462">            result.put(&quot;justification&quot;, justification);</span>
+<span class="nc" id="L463">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L464">        } catch (Exception e) {</span>
+<span class="nc" id="L465">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L466">            result.put(&quot;nodeCode&quot;, nodeCode);</span>
+<span class="nc" id="L467">            result.put(&quot;justification&quot;, &quot;Error: &quot; + e.getMessage());</span>
+<span class="nc" id="L468">            return ResponseEntity.ok(result);</span>
+        }
+    }
+
+    @Operation(summary = &quot;Get LLM diagnostics&quot;, description = &quot;Returns diagnostic information about the LLM provider (admin-only)&quot;, tags = {&quot;Administration&quot;})
+    @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Not authorized — admin password required&quot;)
+    @GetMapping(&quot;/diagnostics&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; diagnostics(HttpServletRequest request) {
+<span class="pc bpc" id="L476" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L477">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+        }
+<span class="fc" id="L479">        return ResponseEntity.ok(llmService.getDiagnostics());</span>
+    }
+
+    // ── Admin endpoints ───────────────────────────────────────────────────────
+
+    @Operation(summary = &quot;Check admin status&quot;, description = &quot;Returns whether the admin password is required&quot;, tags = {&quot;Administration&quot;})
+    @GetMapping(&quot;/admin/status&quot;)
+    public ResponseEntity&lt;Map&lt;String, Boolean&gt;&gt; adminStatus() {
+<span class="pc bpc" id="L487" title="2 of 4 branches missed.">        boolean required = adminPassword != null &amp;&amp; !adminPassword.isBlank();</span>
+<span class="fc" id="L488">        return ResponseEntity.ok(Map.of(&quot;passwordRequired&quot;, required));</span>
+    }
+
+    @Operation(summary = &quot;Verify admin password&quot;, description = &quot;Validates the admin password&quot;, tags = {&quot;Administration&quot;})
+    @PostMapping(&quot;/admin/verify&quot;)
+    public ResponseEntity&lt;Map&lt;String, Boolean&gt;&gt; verifyAdmin(@RequestBody Map&lt;String, String&gt; body) {
+<span class="fc" id="L494">        String password = body.get(&quot;password&quot;);</span>
+<span class="pc bpc" id="L495" title="2 of 4 branches missed.">        boolean valid = adminPassword != null &amp;&amp; !adminPassword.isBlank()</span>
+<span class="pc bnc" id="L496" title="All 2 branches missed.">                &amp;&amp; constantTimeEquals(adminPassword, password);</span>
+<span class="fc" id="L497">        return ResponseEntity.ok(Map.of(&quot;valid&quot;, valid));</span>
+    }
+
+    // ── Visio Diagram Export ──────────────────────────────────────────────────
+
+    /**
+     * Generates a Visio .vsdx architecture diagram from a business text requirement.
+     * The requirement is first analyzed, then an architecture view is built, projected
+     * into a diagram model, and exported as a .vsdx file.
+     */
+    @Operation(summary = &quot;Export Visio diagram&quot;, description = &quot;Generates a Visio .vsdx architecture diagram from a business requirement&quot;, tags = {&quot;Export&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Visio file returned as binary attachment&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
+    @PostMapping(&quot;/diagram/visio&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportVisio(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="fc" id="L512">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="fc bfc" id="L513" title="All 4 branches covered.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L514">            return ResponseEntity.badRequest().build();</span>
+        }
+
+        try {
+            // 1. Analyze
+<span class="fc" id="L519">            AnalysisResult result = llmService.analyzeWithBudget(businessText);</span>
+
+            // 2. Build architecture view
+<span class="fc" id="L522">            RequirementArchitectureView view = architectureViewService.build(</span>
+<span class="fc" id="L523">                    result.getScores(), businessText, 20);</span>
+
+            // 3. Project to neutral diagram model
+<span class="pc bpc" id="L526" title="1 of 2 branches missed.">            String title = businessText.length() &gt; 60</span>
+<span class="nc" id="L527">                    ? businessText.substring(0, 57) + &quot;...&quot;</span>
+<span class="fc" id="L528">                    : businessText;</span>
+<span class="fc" id="L529">            DiagramModel diagram = diagramProjectionService.project(view, title);</span>
+
+            // 4. Convert to Visio document model
+<span class="fc" id="L532">            VisioDocument visioDoc = visioDiagramService.convert(diagram);</span>
+
+            // 5. Package as .vsdx
+<span class="fc" id="L535">            byte[] vsdx = visioPackageBuilder.build(visioDoc);</span>
+
+<span class="fc" id="L537">            HttpHeaders headers = new HttpHeaders();</span>
+<span class="fc" id="L538">            headers.set(HttpHeaders.CONTENT_DISPOSITION,</span>
+                    &quot;attachment; filename=\&quot;requirement-architecture.vsdx\&quot;&quot;);
+<span class="fc" id="L540">            headers.set(HttpHeaders.CONTENT_TYPE, &quot;application/vnd.ms-visio.drawing.main+xml&quot;);</span>
+
+<span class="fc" id="L542">            return ResponseEntity.ok().headers(headers).body(vsdx);</span>
+<span class="nc" id="L543">        } catch (IOException e) {</span>
+<span class="nc" id="L544">            return ResponseEntity.internalServerError().build();</span>
+        }
+    }
+
+    // ── ArchiMate Diagram Export ──────────────────────────────────────────────
+
+    /**
+     * Generates an ArchiMate Model Exchange File Format XML from a business text requirement.
+     * The requirement is first analyzed, then an architecture view is built, projected
+     * into a diagram model, and exported as an ArchiMate 3.x XML file.
+     */
+    @Operation(summary = &quot;Export ArchiMate XML&quot;, description = &quot;Generates an ArchiMate Model Exchange File Format XML from a business requirement&quot;, tags = {&quot;Export&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;ArchiMate XML returned as attachment&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
+    @PostMapping(&quot;/diagram/archimate&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportArchiMate(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="fc" id="L560">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="fc bfc" id="L561" title="All 4 branches covered.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L562">            return ResponseEntity.badRequest().build();</span>
+        }
+
+        // 1. Analyze
+<span class="fc" id="L566">        AnalysisResult result = llmService.analyzeWithBudget(businessText);</span>
+
+        // 2. Build architecture view
+<span class="fc" id="L569">        RequirementArchitectureView view = architectureViewService.build(</span>
+<span class="fc" id="L570">                result.getScores(), businessText, 20);</span>
+
+        // 3. Project to neutral diagram model
+<span class="pc bpc" id="L573" title="1 of 2 branches missed.">        String title = businessText.length() &gt; 60</span>
+<span class="nc" id="L574">                ? businessText.substring(0, 57) + &quot;...&quot;</span>
+<span class="fc" id="L575">                : businessText;</span>
+<span class="fc" id="L576">        DiagramModel diagram = diagramProjectionService.project(view, title);</span>
+
+        // 4. Convert to ArchiMate model
+<span class="fc" id="L579">        ArchiMateModel archiMateModel = archiMateDiagramService.convert(diagram);</span>
+
+        // 5. Export as XML
+<span class="fc" id="L582">        byte[] xml = archiMateXmlExporter.export(archiMateModel);</span>
+
+<span class="fc" id="L584">        HttpHeaders headers = new HttpHeaders();</span>
+<span class="fc" id="L585">        headers.set(HttpHeaders.CONTENT_DISPOSITION,</span>
+                &quot;attachment; filename=\&quot;requirement-architecture.xml\&quot;&quot;);
+<span class="fc" id="L587">        headers.set(HttpHeaders.CONTENT_TYPE, &quot;application/xml&quot;);</span>
+
+<span class="fc" id="L589">        return ResponseEntity.ok().headers(headers).body(xml);</span>
+    }
+
+    // ── Mermaid Diagram Export ────────────────────────────────────────────────
+
+    /**
+     * Generates a Mermaid flowchart from a business text requirement.
+     * The requirement is first analyzed, then an architecture view is built, projected
+     * into a diagram model, and exported as Mermaid markdown text.
+     */
+    @Operation(summary = &quot;Export Mermaid diagram&quot;, description = &quot;Generates a Mermaid flowchart from a business requirement for use in Markdown documents&quot;, tags = {&quot;Export&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Mermaid text returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
+    @PostMapping(&quot;/diagram/mermaid&quot;)
+    public ResponseEntity&lt;String&gt; exportMermaid(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="fc" id="L604">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="pc bpc" id="L605" title="1 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L606">            return ResponseEntity.badRequest().build();</span>
+        }
+
+        // 1. Analyze
+<span class="nc" id="L610">        AnalysisResult result = llmService.analyzeWithBudget(businessText);</span>
+
+        // 2. Build architecture view
+<span class="nc" id="L613">        RequirementArchitectureView view = architectureViewService.build(</span>
+<span class="nc" id="L614">                result.getScores(), businessText, 20);</span>
+
+        // 3. Project to neutral diagram model
+<span class="nc bnc" id="L617" title="All 2 branches missed.">        String title = businessText.length() &gt; 60</span>
+<span class="nc" id="L618">                ? businessText.substring(0, 57) + &quot;...&quot;</span>
+<span class="nc" id="L619">                : businessText;</span>
+<span class="nc" id="L620">        DiagramModel diagram = diagramProjectionService.project(view, title);</span>
+
+        // 4. Convert to Mermaid text
+<span class="nc" id="L623">        String mermaid = mermaidExportService.export(diagram);</span>
+
+<span class="nc" id="L625">        return ResponseEntity.ok()</span>
+<span class="nc" id="L626">                .header(HttpHeaders.CONTENT_TYPE, &quot;text/plain; charset=UTF-8&quot;)</span>
+<span class="nc" id="L627">                .body(mermaid);</span>
+    }
+
+    @Operation(summary = &quot;Full-text search&quot;, description = &quot;Search taxonomy nodes using full-text Lucene search&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; search(
+            @Parameter(description = &quot;Search query&quot;) @RequestParam String q,
+            @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;50&quot;) int maxResults) {
+<span class="fc" id="L635">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L636" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L637" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L638">        return ResponseEntity.ok(searchService.search(q, maxResults));</span>
+    }
+
+    // ── Prompt template endpoints ──────────────────────────────────────────────
+
+    @Operation(summary = &quot;List all prompt templates&quot;, description = &quot;Returns all prompt templates (admin-only)&quot;, tags = {&quot;Administration&quot;})
+    @GetMapping(&quot;/prompts&quot;)
+    public ResponseEntity&lt;List&lt;Map&lt;String, Object&gt;&gt;&gt; getAllPrompts(HttpServletRequest request) {
+<span class="pc bpc" id="L646" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L647">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+        }
+<span class="fc" id="L649">        List&lt;Map&lt;String, Object&gt;&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L650" title="All 2 branches covered.">        for (String code : promptTemplateService.getAllTemplateCodes()) {</span>
+<span class="fc" id="L651">            Map&lt;String, Object&gt; entry = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L652">            entry.put(&quot;code&quot;, code);</span>
+<span class="fc" id="L653">            entry.put(&quot;name&quot;, promptTemplateService.getTaxonomyName(code));</span>
+<span class="fc" id="L654">            entry.put(&quot;template&quot;, promptTemplateService.getTemplate(code));</span>
+<span class="fc" id="L655">            entry.put(&quot;overridden&quot;, promptTemplateService.isOverridden(code));</span>
+<span class="fc" id="L656">            result.add(entry);</span>
+<span class="fc" id="L657">        }</span>
+<span class="fc" id="L658">        return ResponseEntity.ok(result);</span>
+    }
+
+    @Operation(summary = &quot;Get prompt template&quot;, description = &quot;Returns a specific prompt template by code (admin-only)&quot;, tags = {&quot;Administration&quot;})
+    @GetMapping(&quot;/prompts/{code}&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getPrompt(@Parameter(description = &quot;Template code&quot;) @PathVariable String code,
+            HttpServletRequest request) {
+<span class="pc bpc" id="L665" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L666">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+        }
+<span class="fc" id="L668">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L669">        result.put(&quot;code&quot;, code);</span>
+<span class="fc" id="L670">        result.put(&quot;name&quot;, promptTemplateService.getTaxonomyName(code));</span>
+<span class="fc" id="L671">        result.put(&quot;template&quot;, promptTemplateService.getTemplate(code));</span>
+<span class="fc" id="L672">        result.put(&quot;defaultTemplate&quot;, promptTemplateService.getDefaultTemplate(code));</span>
+<span class="fc" id="L673">        result.put(&quot;overridden&quot;, promptTemplateService.isOverridden(code));</span>
+<span class="fc" id="L674">        return ResponseEntity.ok(result);</span>
+    }
+
+    @Operation(summary = &quot;Update prompt template&quot;, description = &quot;Overrides a prompt template (admin-only)&quot;, tags = {&quot;Administration&quot;})
+    @PutMapping(&quot;/prompts/{code}&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; savePrompt(
+            @PathVariable String code,
+            @RequestBody Map&lt;String, String&gt; body,
+            HttpServletRequest request) {
+<span class="pc bpc" id="L683" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L684">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+        }
+<span class="fc" id="L686">        String template = body.get(&quot;template&quot;);</span>
+<span class="fc bfc" id="L687" title="All 2 branches covered.">        if (template == null) {</span>
+<span class="fc" id="L688">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L690">        promptTemplateService.setTemplate(code, template);</span>
+<span class="fc" id="L691">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L692">        result.put(&quot;code&quot;, code);</span>
+<span class="fc" id="L693">        result.put(&quot;overridden&quot;, true);</span>
+<span class="fc" id="L694">        return ResponseEntity.ok(result);</span>
+    }
+
+    @Operation(summary = &quot;Reset prompt template&quot;, description = &quot;Resets a prompt template to its default (admin-only)&quot;, tags = {&quot;Administration&quot;})
+    @DeleteMapping(&quot;/prompts/{code}&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; resetPrompt(@PathVariable String code,
+            HttpServletRequest request) {
+<span class="pc bpc" id="L701" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L702">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+        }
+<span class="fc" id="L704">        promptTemplateService.resetTemplate(code);</span>
+<span class="fc" id="L705">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L706">        result.put(&quot;code&quot;, code);</span>
+<span class="fc" id="L707">        result.put(&quot;overridden&quot;, false);</span>
+<span class="fc" id="L708">        return ResponseEntity.ok(result);</span>
+    }
+
+    // ── Semantic / Hybrid / Similar search endpoints ───────────────────────────
+
+    /**
+     * Semantic search across the full taxonomy using embedding similarity.
+     * Returns nodes ranked by cosine similarity to {@code q}.
+     * Requires {@code LLM_PROVIDER=LOCAL_ONNX} or {@code TAXONOMY_EMBEDDING_ENABLED=true}.
+     *
+     * @param q          natural-language query (e.g. &quot;satellite communications&quot;)
+     * @param maxResults maximum number of results (default 20)
+     */
+    @Operation(summary = &quot;Semantic search&quot;, description = &quot;Search taxonomy nodes using embedding similarity (KNN). Requires LOCAL_ONNX or embedding enabled.&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search/semantic&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; semanticSearch(
+            @Parameter(description = &quot;Natural-language query&quot;) @RequestParam String q,
+            @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;20&quot;) int maxResults) {
+<span class="fc" id="L726">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L727" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L728" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L729">        return ResponseEntity.ok(embeddingService.semanticSearch(q, maxResults));</span>
+    }
+
+    /**
+     * Hybrid search: combines full-text Lucene and semantic KNN results via
+     * Reciprocal Rank Fusion.  Falls back to full-text only when embedding is unavailable.
+     *
+     * @param q          natural-language query
+     * @param maxResults maximum number of results (default 20)
+     */
+    @Operation(summary = &quot;Hybrid search&quot;, description = &quot;Combines full-text Lucene and semantic KNN results via Reciprocal Rank Fusion. Falls back to full-text only when embedding is unavailable.&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search/hybrid&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; hybridSearch(
+            @Parameter(description = &quot;Natural-language query&quot;) @RequestParam String q,
+            @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;20&quot;) int maxResults) {
+<span class="fc" id="L744">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L745" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L746" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L747">        return ResponseEntity.ok(hybridSearchService.hybridSearch(q, maxResults));</span>
+    }
+
+    /**
+     * Find taxonomy nodes semantically similar to the node identified by {@code code}.
+     *
+     * @param code   taxonomy node code (e.g. &quot;BP.001&quot;)
+     * @param topK   maximum number of similar nodes (default 10)
+     */
+    @Operation(summary = &quot;Find similar nodes&quot;, description = &quot;Find taxonomy nodes semantically similar to a given node&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search/similar/{code}&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; findSimilar(
+            @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code,
+            @Parameter(description = &quot;Maximum number of similar nodes&quot;) @RequestParam(defaultValue = &quot;10&quot;) int topK) {
+<span class="fc" id="L761">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L762" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="fc" id="L763">        return ResponseEntity.ok(embeddingService.findSimilarNodes(code, topK));</span>
+    }
+
+    /**
+     * Returns the current status of the local embedding model.
+     *
+     * &lt;p&gt;Response fields:
+     * &lt;ul&gt;
+     *   &lt;li&gt;{@code enabled} — whether embedding is globally enabled&lt;/li&gt;
+     *   &lt;li&gt;{@code available} — whether the model loaded successfully&lt;/li&gt;
+     *   &lt;li&gt;{@code modelUrl} — the DJL model URL in use&lt;/li&gt;
+     *   &lt;li&gt;{@code indexedNodes} — number of nodes currently in the vector index
+     *       (0 = not yet built)&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+    @Operation(summary = &quot;Embedding model status&quot;, description = &quot;Returns the current status of the local embedding model&quot;, tags = {&quot;Embedding&quot;})
+    @GetMapping(&quot;/embedding/status&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; embeddingStatus() {
+<span class="fc" id="L781">        Map&lt;String, Object&gt; status = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L782">        status.put(&quot;enabled&quot;,      embeddingService.isEnabled());</span>
+<span class="fc" id="L783">        status.put(&quot;available&quot;,    embeddingService.isAvailable());</span>
+<span class="fc" id="L784">        status.put(&quot;modelUrl&quot;,     embeddingService.effectiveModelUrl());</span>
+<span class="fc" id="L785">        status.put(&quot;indexedNodes&quot;, embeddingService.indexedNodeCount());</span>
+<span class="fc" id="L786">        return ResponseEntity.ok(status);</span>
+    }
+
+    /**
+     * Graph-semantic search: combines node and relation KNN queries to answer
+     * graph-structural questions.
+     *
+     * &lt;p&gt;Returns:
+     * &lt;ul&gt;
+     *   &lt;li&gt;Matched nodes ranked by semantic similarity.&lt;/li&gt;
+     *   &lt;li&gt;Per-root relation counts (graph statistics).&lt;/li&gt;
+     *   &lt;li&gt;Most common relation types.&lt;/li&gt;
+     *   &lt;li&gt;A human-readable summary.&lt;/li&gt;
+     * &lt;/ul&gt;
+     *
+     * @param q          natural-language query (e.g. &quot;which Business Processes are most supported?&quot;)
+     * @param maxResults maximum number of node results (default 20)
+     */
+    @Operation(summary = &quot;Graph-semantic search&quot;, description = &quot;Combines node and relation KNN queries to answer graph-structural questions. Returns matched nodes, per-root relation counts, top relation types, and a summary.&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search/graph&quot;)
+    public ResponseEntity&lt;GraphSearchResult&gt; graphSearch(
+            @Parameter(description = &quot;Natural-language query&quot;) @RequestParam String q,
+            @Parameter(description = &quot;Maximum number of node results&quot;) @RequestParam(defaultValue = &quot;20&quot;) int maxResults) {
+<span class="fc" id="L809">        ResponseEntity&lt;GraphSearchResult&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L810" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L811" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L812">        return ResponseEntity.ok(graphSearchService.graphSearch(q, maxResults));</span>
+    }
+
+    // ── Scores import / export endpoints ────────────────────────────────────────
+
+    /**
+     * Exports the current analysis result as a {@link SavedAnalysis} JSON.
+     *
+     * &lt;p&gt;Request body must contain:
+     * &lt;ul&gt;
+     *   &lt;li&gt;{@code requirement} — business requirement text&lt;/li&gt;
+     *   &lt;li&gt;{@code scores} — map of node code → score&lt;/li&gt;
+     *   &lt;li&gt;{@code reasons} — map of node code → reason text (optional)&lt;/li&gt;
+     *   &lt;li&gt;{@code provider} — LLM provider name (optional, informational)&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+    @Operation(summary = &quot;Export analysis scores as JSON&quot;,
+               description = &quot;Returns a SavedAnalysis JSON with timestamp and version added. The frontend triggers a file download.&quot;,
+               tags = {&quot;Export&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;SavedAnalysis JSON returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Requirement is blank or scores are missing&quot;)
+    @PostMapping(&quot;/scores/export&quot;)
+    public ResponseEntity&lt;SavedAnalysis&gt; exportScores(@RequestBody Map&lt;String, Object&gt; body) {
+<span class="fc" id="L835">        String requirement = (String) body.get(&quot;requirement&quot;);</span>
+<span class="pc bpc" id="L836" title="1 of 4 branches missed.">        if (requirement == null || requirement.isBlank()) {</span>
+<span class="fc" id="L837">            return ResponseEntity.badRequest().build();</span>
+        }
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="pc bpc" id="L840" title="1 of 2 branches missed.">        Map&lt;String, Object&gt; rawScores = body.get(&quot;scores&quot;) instanceof Map&lt;?, ?&gt;</span>
+<span class="pc" id="L841">                ? (Map&lt;String, Object&gt;) body.get(&quot;scores&quot;) : null;</span>
+<span class="pc bpc" id="L842" title="1 of 4 branches missed.">        if (rawScores == null || rawScores.isEmpty()) {</span>
+<span class="fc" id="L843">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L845">        Map&lt;String, Integer&gt; scores = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L846" title="All 2 branches covered.">        for (Map.Entry&lt;String, Object&gt; e : rawScores.entrySet()) {</span>
+<span class="pc bpc" id="L847" title="1 of 2 branches missed.">            if (e.getValue() instanceof Number n) {</span>
+<span class="fc" id="L848">                scores.put(e.getKey(), n.intValue());</span>
+            }
+<span class="fc" id="L850">        }</span>
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="pc bpc" id="L852" title="1 of 2 branches missed.">        Map&lt;String, String&gt; reasons = body.get(&quot;reasons&quot;) instanceof Map&lt;?, ?&gt;</span>
+<span class="pc" id="L853">                ? (Map&lt;String, String&gt;) body.get(&quot;reasons&quot;) : Map.of();</span>
+<span class="pc bpc" id="L854" title="1 of 2 branches missed.">        String provider = body.get(&quot;provider&quot;) instanceof String p ? p : llmService.getActiveProviderName();</span>
+
+<span class="fc" id="L856">        SavedAnalysis saved = savedAnalysisService.buildExport(requirement, scores, reasons, provider);</span>
+<span class="fc" id="L857">        return ResponseEntity.ok(saved);</span>
+    }
+
+    /**
+     * Imports a {@link SavedAnalysis} JSON, validates it, and returns the scores and reasons
+     * so the frontend can apply them to the tree.
+     *
+     * &lt;p&gt;The response includes any warnings about unknown node codes.
+     */
+    @Operation(summary = &quot;Import analysis scores from JSON&quot;,
+               description = &quot;Validates a SavedAnalysis JSON and returns the scores, reasons, requirement, and any warnings.&quot;,
+               tags = {&quot;Export&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Scores imported and returned with any warnings&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Invalid JSON format or validation failure&quot;)
+    @PostMapping(&quot;/scores/import&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; importScores(@RequestBody String jsonBody) {
+        try {
+<span class="fc" id="L874">            SavedAnalysis saved = savedAnalysisService.importFromJson(jsonBody);</span>
+<span class="fc" id="L875">            List&lt;String&gt; warnings = savedAnalysisService.findUnknownCodes(saved)</span>
+<span class="fc" id="L876">                    .stream()</span>
+<span class="fc" id="L877">                    .map(code -&gt; &quot;Unknown node code: &quot; + code)</span>
+<span class="fc" id="L878">                    .toList();</span>
+
+<span class="fc" id="L880">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L881">            result.put(&quot;requirement&quot;, saved.getRequirement());</span>
+<span class="pc bpc" id="L882" title="1 of 2 branches missed.">            result.put(&quot;scores&quot;,      saved.getScores() != null ? saved.getScores() : Map.of());</span>
+<span class="pc bpc" id="L883" title="1 of 2 branches missed.">            result.put(&quot;reasons&quot;,     saved.getReasons() != null ? saved.getReasons() : Map.of());</span>
+<span class="fc" id="L884">            result.put(&quot;provider&quot;,    saved.getProvider());</span>
+<span class="fc" id="L885">            result.put(&quot;warnings&quot;,    warnings);</span>
+<span class="fc" id="L886">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L887">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L888">            return ResponseEntity.badRequest()</span>
+<span class="fc" id="L889">                    .body(Map.of(&quot;error&quot;, e.getMessage(), &quot;warnings&quot;, List.of()));</span>
+<span class="nc" id="L890">        } catch (Exception e) {</span>
+<span class="nc" id="L891">            return ResponseEntity.badRequest()</span>
+<span class="nc" id="L892">                    .body(Map.of(&quot;error&quot;, &quot;Invalid JSON: &quot; + e.getMessage(), &quot;warnings&quot;, List.of()));</span>
+        }
+    }
+
+    // ── Admin authorization helper ────────────────────────────────────────────
+    /**
+     * Returns {@code true} if the request is authorized to access admin-only endpoints.
+     * Authorization is granted when no admin password is configured (backward compatible),
+     * or when the {@code X-Admin-Token} header matches the configured password.
+     */
+    private boolean isAdminAuthorized(HttpServletRequest request) {
+<span class="pc bpc" id="L903" title="2 of 4 branches missed.">        if (adminPassword == null || adminPassword.isBlank()) {</span>
+<span class="fc" id="L904">            return true;</span>
+        }
+<span class="nc" id="L906">        String token = request.getHeader(&quot;X-Admin-Token&quot;);</span>
+<span class="nc" id="L907">        return constantTimeEquals(adminPassword, token);</span>
+    }
+
+    /**
+     * Compares two strings using a constant-time algorithm to mitigate timing attacks.
+     */
+    private static boolean constantTimeEquals(String a, String b) {
+<span class="nc bnc" id="L914" title="All 4 branches missed.">        if (a == null || b == null) {</span>
+<span class="nc" id="L915">            return false;</span>
+        }
+<span class="nc" id="L917">        return MessageDigest.isEqual(a.getBytes(java.nio.charset.StandardCharsets.UTF_8),</span>
+<span class="nc" id="L918">                b.getBytes(java.nio.charset.StandardCharsets.UTF_8));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

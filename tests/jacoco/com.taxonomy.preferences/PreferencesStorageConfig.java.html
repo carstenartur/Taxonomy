@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import com.taxonomy.dsl.storage.jgit.HibernateRepository;
 
 /**
  * Spring configuration for the preferences Git storage layer.
@@ -18,14 +19,14 @@ import org.springframework.context.annotation.Configuration;
  * decoupled from DSL history.
  */
 @Configuration
-<span class="fc" id="L21">public class PreferencesStorageConfig {</span>
+<span class="fc" id="L22">public class PreferencesStorageConfig {</span>
 
-<span class="fc" id="L23">    private static final Logger log = LoggerFactory.getLogger(PreferencesStorageConfig.class);</span>
+<span class="fc" id="L24">    private static final Logger log = LoggerFactory.getLogger(PreferencesStorageConfig.class);</span>
 
     @Bean
     public PreferencesGitRepository preferencesGitRepository(SessionFactory sessionFactory) {
-<span class="fc" id="L27">        log.info(&quot;Creating PreferencesGitRepository (HibernateRepository → database-backed)&quot;);</span>
-<span class="fc" id="L28">        return new PreferencesGitRepository(sessionFactory);</span>
+<span class="fc" id="L28">        log.info(&quot;Creating PreferencesGitRepository (HibernateRepository → database-backed)&quot;);</span>
+<span class="fc" id="L29">        return new PreferencesGitRepository(sessionFactory);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
