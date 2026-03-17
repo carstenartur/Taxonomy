@@ -2,11 +2,7 @@ package com.taxonomy.search.controller;
 
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.GraphSearchResult;
-import com.taxonomy.catalog.service.SearchService;
-import com.taxonomy.catalog.service.TaxonomyService;
-import com.taxonomy.relations.service.HybridSearchService;
-import com.taxonomy.shared.service.LocalEmbeddingService;
-import com.taxonomy.relations.service.GraphSearchService;
+import com.taxonomy.search.service.SearchFacade;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,22 +18,10 @@ import java.util.Map;
 @Tag(name = "Search")
 public class SearchApiController {
 
-    private final TaxonomyService taxonomyService;
-    private final SearchService searchService;
-    private final HybridSearchService hybridSearchService;
-    private final LocalEmbeddingService embeddingService;
-    private final GraphSearchService graphSearchService;
+    private final SearchFacade searchFacade;
 
-    public SearchApiController(TaxonomyService taxonomyService,
-                                SearchService searchService,
-                                HybridSearchService hybridSearchService,
-                                LocalEmbeddingService embeddingService,
-                                GraphSearchService graphSearchService) {
-        this.taxonomyService = taxonomyService;
-        this.searchService = searchService;
-        this.hybridSearchService = hybridSearchService;
-        this.embeddingService = embeddingService;
-        this.graphSearchService = graphSearchService;
+    public SearchApiController(SearchFacade searchFacade) {
+        this.searchFacade = searchFacade;
     }
 
     @Operation(summary = "Full-text search", description = "Search taxonomy nodes using full-text Lucene search", tags = {"Search"})
@@ -48,7 +32,7 @@ public class SearchApiController {
         ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
         if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
-        return ResponseEntity.ok(searchService.search(q, maxResults));
+        return ResponseEntity.ok(searchFacade.fullTextSearch(q, maxResults));
     }
 
     /**
@@ -64,7 +48,7 @@ public class SearchApiController {
         ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
         if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
-        return ResponseEntity.ok(embeddingService.semanticSearch(q, maxResults));
+        return ResponseEntity.ok(searchFacade.semanticSearch(q, maxResults));
     }
 
     /**
@@ -79,7 +63,7 @@ public class SearchApiController {
         ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
         if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
-        return ResponseEntity.ok(hybridSearchService.hybridSearch(q, maxResults));
+        return ResponseEntity.ok(searchFacade.hybridSearch(q, maxResults));
     }
 
     /**
@@ -92,7 +76,7 @@ public class SearchApiController {
             @Parameter(description = "Maximum number of similar nodes") @RequestParam(defaultValue = "10") int topK) {
         ResponseEntity<List<TaxonomyNodeDto>> guard = checkInitialized();
         if (guard != null) return guard;
-        return ResponseEntity.ok(embeddingService.findSimilarNodes(code, topK));
+        return ResponseEntity.ok(searchFacade.findSimilarNodes(code, topK));
     }
 
     /**
@@ -101,12 +85,7 @@ public class SearchApiController {
     @Operation(summary = "Embedding model status", description = "Returns the current status of the local embedding model", tags = {"Embedding"})
     @GetMapping("/embedding/status")
     public ResponseEntity<Map<String, Object>> embeddingStatus() {
-        Map<String, Object> status = new LinkedHashMap<>();
-        status.put("enabled",      embeddingService.isEnabled());
-        status.put("available",    embeddingService.isAvailable());
-        status.put("modelUrl",     embeddingService.effectiveModelUrl());
-        status.put("indexedNodes", embeddingService.indexedNodeCount());
-        return ResponseEntity.ok(status);
+        return ResponseEntity.ok(searchFacade.getEmbeddingStatus());
     }
 
     /**
@@ -121,15 +100,15 @@ public class SearchApiController {
         ResponseEntity<GraphSearchResult> guard = checkInitialized();
         if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
-        return ResponseEntity.ok(graphSearchService.graphSearch(q, maxResults));
+        return ResponseEntity.ok(searchFacade.graphSearch(q, maxResults));
     }
 
     @SuppressWarnings("unchecked")
     private <T> ResponseEntity<T> checkInitialized() {
-        if (!taxonomyService.isInitialized()) {
+        if (!searchFacade.isInitialized()) {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("error", "Taxonomy data is still loading. Please wait.");
-            body.put("status", taxonomyService.getInitStatus());
+            body.put("status", searchFacade.getInitStatus());
             return (ResponseEntity<T>) ResponseEntity.status(503).body(body);
         }
         return null;

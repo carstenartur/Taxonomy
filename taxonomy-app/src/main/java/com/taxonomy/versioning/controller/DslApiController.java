@@ -4,7 +4,6 @@ import com.taxonomy.dsl.diff.DiffSummary;
 import com.taxonomy.dsl.diff.ModelDiff;
 import com.taxonomy.dsl.diff.SemanticDiffDescriber;
 import com.taxonomy.dsl.export.DslMaterializeService;
-import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.mapper.AstToModelMapper;
 import com.taxonomy.dsl.mapper.ModelToAstMapper;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
@@ -12,7 +11,6 @@ import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.dsl.storage.DslBranch;
 import com.taxonomy.dsl.storage.DslCommit;
-import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.validation.DslValidationResult;
 import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.dto.ViewContext;
@@ -20,14 +18,10 @@ import com.taxonomy.dto.VersionedSearchResult;
 import com.taxonomy.architecture.model.ArchitectureDslDocument;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.relations.model.RelationHypothesis;
-import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
-import com.taxonomy.architecture.service.CommitIndexService;
-import com.taxonomy.versioning.service.ContextNavigationService;
 import com.taxonomy.versioning.service.ConflictDetectionService;
+import com.taxonomy.versioning.service.DslOperationsFacade;
 import com.taxonomy.versioning.service.HypothesisService;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
-import com.taxonomy.versioning.service.RepositoryStateService;
-import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -38,9 +32,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.util.*;
-import com.taxonomy.catalog.model.TaxonomyRelation;
-import com.taxonomy.dsl.storage.jgit.HibernateObjDatabase;
-import com.taxonomy.dsl.storage.jgit.HibernateRepository;
 
 /**
  * REST API for the Architecture DSL subsystem.
@@ -48,7 +39,7 @@ import com.taxonomy.dsl.storage.jgit.HibernateRepository;
  * <p>Endpoints cover DSL parsing, validation, export, materialization,
  * versioning (commit/history/diff/branches), and hypothesis management.
  *
- * <p>Versioning is backed by a JGit DFS repository ({@link DslGitRepository})
+ * <p>Versioning is backed by a JGit DFS repository
  * which stores DSL documents as Git objects (blobs → trees → commits)
  * in the HSQLDB database via the {@code sandbox-jgit-storage-hibernate}
  * pattern. JGit is the <b>single source of truth</b> for versioned DSL content.
@@ -60,17 +51,8 @@ public class DslApiController {
 
     private static final Logger log = LoggerFactory.getLogger(DslApiController.class);
 
-    private final TaxDslExportService exportService;
-    private final DslMaterializeService materializeService;
-    private final ArchitectureDslDocumentRepository documentRepository;
+    private final DslOperationsFacade dslOps;
     private final HypothesisService hypothesisService;
-    private final DslGitRepository gitRepository;
-    private final CommitIndexService commitIndexService;
-    private final ConflictDetectionService conflictDetectionService;
-    private final RepositoryStateGuard stateGuard;
-    private final RepositoryStateService repositoryStateService;
-    private final ContextNavigationService contextNavigationService;
-    private final WorkspaceResolver workspaceResolver;
 
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
@@ -78,28 +60,10 @@ public class DslApiController {
     private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();
     private final DslValidator validator = new DslValidator();
 
-    public DslApiController(TaxDslExportService exportService,
-                            DslMaterializeService materializeService,
-                            ArchitectureDslDocumentRepository documentRepository,
-                            HypothesisService hypothesisService,
-                            DslGitRepository gitRepository,
-                            CommitIndexService commitIndexService,
-                            ConflictDetectionService conflictDetectionService,
-                            RepositoryStateGuard stateGuard,
-                            RepositoryStateService repositoryStateService,
-                            ContextNavigationService contextNavigationService,
-                            WorkspaceResolver workspaceResolver) {
-        this.exportService = exportService;
-        this.materializeService = materializeService;
-        this.documentRepository = documentRepository;
+    public DslApiController(DslOperationsFacade dslOps,
+                            HypothesisService hypothesisService) {
+        this.dslOps = dslOps;
         this.hypothesisService = hypothesisService;
-        this.gitRepository = gitRepository;
-        this.commitIndexService = commitIndexService;
-        this.conflictDetectionService = conflictDetectionService;
-        this.stateGuard = stateGuard;
-        this.repositoryStateService = repositoryStateService;
-        this.contextNavigationService = contextNavigationService;
-        this.workspaceResolver = workspaceResolver;
     }
 
     // ── Export & current state ────────────────────────────────────────
@@ -108,7 +72,7 @@ public class DslApiController {
     @Operation(summary = "Export current architecture as DSL text")
     public ResponseEntity<String> exportCurrentArchitecture(
             @RequestParam(defaultValue = "default") String namespace) {
-        String dsl = exportService.exportAll(namespace);
+        String dsl = dslOps.exportAll(namespace);
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_PLAIN)
                 .body(dsl);
@@ -117,7 +81,7 @@ public class DslApiController {
     @GetMapping("/current")
     @Operation(summary = "Get current architecture state as structured JSON")
     public ResponseEntity<Map<String, Object>> getCurrentArchitecture() {
-        CanonicalArchitectureModel model = exportService.buildCanonicalModel();
+        CanonicalArchitectureModel model = dslOps.buildCanonicalModel();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("elements", model.getElements());
         result.put("relations", model.getRelations());
@@ -125,8 +89,7 @@ public class DslApiController {
         result.put("mappings", model.getMappings());
         result.put("views", model.getViews());
         result.put("evidence", model.getEvidence());
-        result.put("viewContext", repositoryStateService.getViewContext(
-                workspaceResolver.resolveCurrentUsername(), "draft"));
+        result.put("viewContext", dslOps.getViewContext("draft"));
         return ResponseEntity.ok(result);
     }
 
@@ -194,7 +157,7 @@ public class DslApiController {
             @RequestParam(required = false) String commitId) {
 
         DslMaterializeService.MaterializeResult matResult =
-                materializeService.materialize(dslText, path, branch, commitId);
+                dslOps.materialize(dslText, path, branch, commitId);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("valid", matResult.valid());
@@ -205,8 +168,7 @@ public class DslApiController {
         result.put("documentId", matResult.documentId());
 
         String effectiveBranch = branch != null ? branch : "draft";
-        result.put("viewContext", repositoryStateService.getViewContext(
-                workspaceResolver.resolveCurrentUsername(), effectiveBranch));
+        result.put("viewContext", dslOps.getViewContext(effectiveBranch));
 
         if (!matResult.valid()) {
             return ResponseEntity.badRequest().body(result);
@@ -223,11 +185,11 @@ public class DslApiController {
             @RequestParam Long afterDocId) {
         try {
             DslMaterializeService.MaterializeResult matResult =
-                    materializeService.materializeIncremental(beforeDocId, afterDocId);
+                    dslOps.materializeIncremental(beforeDocId, afterDocId);
 
             // Derive branch from the after document when available
             String branch = "draft";
-            var afterDoc = documentRepository.findById(afterDocId);
+            var afterDoc = dslOps.findDocumentById(afterDocId);
             if (afterDoc.isPresent() && afterDoc.get().getBranch() != null) {
                 branch = afterDoc.get().getBranch();
             }
@@ -238,8 +200,7 @@ public class DslApiController {
             result.put("relationsCreated", matResult.relationsCreated());
             result.put("hypothesesCreated", matResult.hypothesesCreated());
             result.put("documentId", matResult.documentId());
-            result.put("viewContext", repositoryStateService.getViewContext(
-                    workspaceResolver.resolveCurrentUsername(), branch));
+            result.put("viewContext", dslOps.getViewContext(branch));
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             Map<String, Object> error = new LinkedHashMap<>();
@@ -280,7 +241,7 @@ public class DslApiController {
         // via HibernateRepository/HibernateObjDatabase
         String gitCommitId;
         try {
-            gitCommitId = gitRepository.commitDsl(branch, dslText,
+            gitCommitId = dslOps.commitDsl(branch, dslText,
                     author != null ? author : "system",
                     message != null ? message : "DSL commit");
         } catch (IOException e) {
@@ -298,9 +259,8 @@ public class DslApiController {
         result.put("message", message);
         result.put("valid", true);
         result.put("warnings", validation.getWarnings());
-        result.put("databaseBacked", gitRepository.isDatabaseBacked());
-        result.put("viewContext", repositoryStateService.getViewContext(
-                workspaceResolver.resolveCurrentUsername(), branch));
+        result.put("databaseBacked", dslOps.isDatabaseBacked());
+        result.put("viewContext", dslOps.getViewContext(branch));
         return ResponseEntity.ok(result);
     }
 
@@ -312,7 +272,7 @@ public class DslApiController {
             @RequestParam(defaultValue = "draft") String branch) {
 
         try {
-            List<DslCommit> gitHistory = gitRepository.getDslHistory(branch);
+            List<DslCommit> gitHistory = dslOps.getDslHistory(branch);
             List<Map<String, Object>> history = new ArrayList<>();
             for (DslCommit c : gitHistory) {
                 Map<String, Object> entry = new LinkedHashMap<>();
@@ -322,12 +282,10 @@ public class DslApiController {
                 entry.put("message", c.message());
                 entry.put("timestamp", c.timestamp());
                 // Resolve documentId from the materialized document (if it exists)
-                var doc = documentRepository.findByCommitId(c.commitId());
-                entry.put("documentId", doc.map(ArchitectureDslDocument::getId).orElse(null));
+                entry.put("documentId", dslOps.findDocumentIdByCommitId(c.commitId()).orElse(null));
                 history.add(entry);
             }
-            ViewContext viewContext = repositoryStateService.getViewContext(
-                    workspaceResolver.resolveCurrentUsername(), branch);
+            ViewContext viewContext = dslOps.getViewContext(branch);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("currentBranch", branch);
             result.put("headCommit", viewContext.basedOnCommit());
@@ -348,15 +306,7 @@ public class DslApiController {
             @PathVariable String beforeId,
             @PathVariable String afterId) {
         try {
-            ModelDiff diff;
-
-            // Try as Git commit SHAs first (40-char hex)
-            if (looksLikeGitSha(beforeId) && looksLikeGitSha(afterId)) {
-                diff = gitRepository.diffBetween(beforeId, afterId);
-            } else {
-                // Fall back to JPA document IDs for backward compatibility
-                diff = materializeService.diffDocuments(Long.valueOf(beforeId), Long.valueOf(afterId));
-            }
+            ModelDiff diff = dslOps.diffBetween(beforeId, afterId);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("totalChanges", diff.totalChanges());
@@ -400,12 +350,7 @@ public class DslApiController {
             @PathVariable String beforeId,
             @PathVariable String afterId) {
         try {
-            ModelDiff diff;
-            if (looksLikeGitSha(beforeId) && looksLikeGitSha(afterId)) {
-                diff = gitRepository.diffBetween(beforeId, afterId);
-            } else {
-                diff = materializeService.diffDocuments(Long.valueOf(beforeId), Long.valueOf(afterId));
-            }
+            ModelDiff diff = dslOps.diffBetween(beforeId, afterId);
             DiffSummary summary = DiffSummary.fromDiff(diff);
             return ResponseEntity.ok(summary);
         } catch (Exception e) {
@@ -422,7 +367,7 @@ public class DslApiController {
             @PathVariable String beforeId,
             @PathVariable String afterId) {
         try {
-            String diff = gitRepository.textDiff(beforeId, afterId);
+            String diff = dslOps.textDiff(beforeId, afterId);
             return ResponseEntity.ok()
                     .contentType(MediaType.TEXT_PLAIN)
                     .body(diff);
@@ -431,10 +376,6 @@ public class DslApiController {
             error.put("error", e.getMessage());
             return ResponseEntity.badRequest().body(error);
         }
-    }
-
-    private static boolean looksLikeGitSha(String s) {
-        return s != null && s.length() == 40 && s.matches("[0-9a-f]+");
     }
 
     // ── Branches ─────────────────────────────────────────────────────
@@ -446,7 +387,7 @@ public class DslApiController {
         List<Map<String, Object>> branches = new ArrayList<>();
 
         try {
-            for (DslBranch gb : gitRepository.listBranches()) {
+            for (DslBranch gb : dslOps.listBranches()) {
                 Map<String, Object> branch = new LinkedHashMap<>();
                 branch.put("name", gb.name());
                 branch.put("headCommitId", gb.headCommitId());
@@ -470,7 +411,7 @@ public class DslApiController {
 
         String gitHeadId;
         try {
-            gitHeadId = gitRepository.createBranch(name, fromBranch);
+            gitHeadId = dslOps.createBranch(name, fromBranch);
         } catch (IOException e) {
             log.error("Branch creation failed", e);
             Map<String, Object> error = new LinkedHashMap<>();
@@ -500,7 +441,7 @@ public class DslApiController {
             @RequestParam String commitId,
             @RequestParam(defaultValue = "review") String targetBranch) {
         try {
-            String newCommitId = gitRepository.cherryPick(commitId, targetBranch);
+            String newCommitId = dslOps.cherryPick(commitId, targetBranch);
             if (newCommitId == null) {
                 Map<String, Object> error = new LinkedHashMap<>();
                 error.put("error", "Cherry-pick failed (conflict or invalid commit)");
@@ -529,7 +470,7 @@ public class DslApiController {
             @RequestParam String fromBranch,
             @RequestParam(defaultValue = "accepted") String intoBranch) {
         try {
-            String mergeCommitId = gitRepository.merge(fromBranch, intoBranch);
+            String mergeCommitId = dslOps.merge(fromBranch, intoBranch);
             if (mergeCommitId == null) {
                 Map<String, Object> error = new LinkedHashMap<>();
                 error.put("error", "Merge failed (conflict or branches not found)");
@@ -557,7 +498,7 @@ public class DslApiController {
             @RequestParam String commitId,
             @RequestParam(defaultValue = "draft") String branch) {
         try {
-            String newCommitId = gitRepository.revert(commitId, branch);
+            String newCommitId = dslOps.revert(commitId, branch);
             if (newCommitId == null) {
                 Map<String, Object> error = new LinkedHashMap<>();
                 error.put("error", "Revert failed (conflict, initial commit, or branch not found)");
@@ -586,7 +527,7 @@ public class DslApiController {
     public ResponseEntity<Map<String, Object>> undoLast(
             @RequestParam(defaultValue = "draft") String branch) {
         try {
-            String newHeadId = gitRepository.undoLast(branch);
+            String newHeadId = dslOps.undoLast(branch);
             if (newHeadId == null) {
                 Map<String, Object> error = new LinkedHashMap<>();
                 error.put("error", "Undo failed (branch not found or only initial commit)");
@@ -611,7 +552,7 @@ public class DslApiController {
             @RequestParam String commitId,
             @RequestParam(defaultValue = "draft") String branch) {
         try {
-            String newCommitId = gitRepository.restore(commitId, branch);
+            String newCommitId = dslOps.restore(commitId, branch);
             if (newCommitId == null) {
                 Map<String, Object> error = new LinkedHashMap<>();
                 error.put("error", "Restore failed: source commit not found or has no DSL content");
@@ -638,7 +579,7 @@ public class DslApiController {
     public ResponseEntity<ConflictDetectionService.MergePreview> previewMerge(
             @RequestParam String from,
             @RequestParam String into) {
-        return ResponseEntity.ok(conflictDetectionService.previewMerge(from, into));
+        return ResponseEntity.ok(dslOps.previewMerge(from, into));
     }
 
     @GetMapping("/cherry-pick/preview")
@@ -648,7 +589,7 @@ public class DslApiController {
     public ResponseEntity<ConflictDetectionService.CherryPickPreview> previewCherryPick(
             @RequestParam String commitId,
             @RequestParam(defaultValue = "review") String targetBranch) {
-        return ResponseEntity.ok(conflictDetectionService.previewCherryPick(commitId, targetBranch));
+        return ResponseEntity.ok(dslOps.previewCherryPick(commitId, targetBranch));
     }
 
     // ── Conflict details & resolution ───────────────────────────────
@@ -660,7 +601,7 @@ public class DslApiController {
     public ResponseEntity<?> getMergeConflictDetails(
             @RequestParam String from,
             @RequestParam String into) {
-        var details = conflictDetectionService.getMergeConflictDetails(from, into);
+        var details = dslOps.getMergeConflictDetails(from, into);
         if (details == null) {
             return ResponseEntity.ok(Map.of("conflict", false, "message", "No conflict detected"));
         }
@@ -678,8 +619,8 @@ public class DslApiController {
             @RequestBody String resolvedContent) {
         try {
             // Commit the resolved content to the target branch
-            String username = workspaceResolver.resolveCurrentUsername();
-            String commitId = gitRepository.commitDsl(intoBranch, resolvedContent,
+            String username = dslOps.resolveCurrentUsername();
+            String commitId = dslOps.commitDsl(intoBranch, resolvedContent,
                     username, "Resolve merge conflict: " + fromBranch + " → " + intoBranch);
 
             Map<String, Object> result = new LinkedHashMap<>();
@@ -702,7 +643,7 @@ public class DslApiController {
     public ResponseEntity<?> getCherryPickConflictDetails(
             @RequestParam String commitId,
             @RequestParam(defaultValue = "review") String targetBranch) {
-        var details = conflictDetectionService.getCherryPickConflictDetails(commitId, targetBranch);
+        var details = dslOps.getCherryPickConflictDetails(commitId, targetBranch);
         if (details == null) {
             return ResponseEntity.ok(Map.of("conflict", false, "message", "No conflict detected"));
         }
@@ -718,8 +659,8 @@ public class DslApiController {
             @RequestParam String targetBranch,
             @RequestBody String resolvedContent) {
         try {
-            String username = workspaceResolver.resolveCurrentUsername();
-            String newCommitId = gitRepository.commitDsl(targetBranch, resolvedContent,
+            String username = dslOps.resolveCurrentUsername();
+            String newCommitId = dslOps.commitDsl(targetBranch, resolvedContent,
                     username, "Resolve cherry-pick conflict: " + commitId.substring(0, Math.min(7, commitId.length())));
 
             Map<String, Object> result = new LinkedHashMap<>();
@@ -744,7 +685,7 @@ public class DslApiController {
                     "cannot be deleted.")
     public ResponseEntity<Map<String, Object>> deleteBranch(@RequestParam String name) {
         try {
-            boolean deleted = gitRepository.deleteBranch(name);
+            boolean deleted = dslOps.deleteBranch(name);
             if (!deleted) {
                 Map<String, Object> error = new LinkedHashMap<>();
                 error.put("error", "Branch '" + name + "' not found");
@@ -773,8 +714,7 @@ public class DslApiController {
     public ResponseEntity<RepositoryStateGuard.OperationCheck> checkOperation(
             @RequestParam(defaultValue = "draft") String branch,
             @RequestParam String operationType) {
-        return ResponseEntity.ok(stateGuard.checkWriteOperation(
-                workspaceResolver.resolveCurrentUsername(), branch, operationType));
+        return ResponseEntity.ok(dslOps.checkWriteOperation(branch, operationType));
     }
 
     // ── Git-backed read operations ──────────────────────────────────
@@ -785,7 +725,7 @@ public class DslApiController {
     public ResponseEntity<Map<String, Object>> getGitHead(
             @RequestParam(defaultValue = "draft") String branch) {
         try {
-            String dslText = gitRepository.getDslAtHead(branch);
+            String dslText = dslOps.getDslAtHead(branch);
             if (dslText == null) {
                 Map<String, Object> error = new LinkedHashMap<>();
                 error.put("error", "Branch '" + branch + "' not found or empty");
@@ -795,8 +735,7 @@ public class DslApiController {
             result.put("branch", branch);
             result.put("dslText", dslText);
             result.put("length", dslText.length());
-            result.put("viewContext", repositoryStateService.getViewContext(
-                    workspaceResolver.resolveCurrentUsername(), branch));
+            result.put("viewContext", dslOps.getViewContext(branch));
             return ResponseEntity.ok(result);
         } catch (IOException e) {
             Map<String, Object> error = new LinkedHashMap<>();
@@ -810,7 +749,7 @@ public class DslApiController {
             description = "Reads the architecture.taxdsl file from the given commit SHA.")
     public ResponseEntity<Map<String, Object>> getGitCommit(@PathVariable String commitId) {
         try {
-            String dslText = gitRepository.getDslAtCommit(commitId);
+            String dslText = dslOps.getDslAtCommit(commitId);
             if (dslText == null) {
                 return ResponseEntity.notFound().build();
             }
@@ -913,7 +852,7 @@ public class DslApiController {
     @GetMapping("/documents")
     @Operation(summary = "List stored DSL documents")
     public ResponseEntity<List<ArchitectureDslDocument>> listDocuments() {
-        return ResponseEntity.ok(documentRepository.findAll());
+        return ResponseEntity.ok(dslOps.listDocuments());
     }
 
     // ── History Search ──────────────────────────────────────────────
@@ -923,7 +862,7 @@ public class DslApiController {
             description = "Parses and tokenizes all unindexed commits on the given branch.")
     public ResponseEntity<Map<String, Object>> indexHistory(
             @RequestParam(defaultValue = "draft") String branch) {
-        int indexed = commitIndexService.indexBranch(branch);
+        int indexed = dslOps.indexBranch(branch);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("branch", branch);
         result.put("indexed", indexed);
@@ -938,7 +877,7 @@ public class DslApiController {
     public ResponseEntity<?> searchHistory(
             @RequestParam String query,
             @RequestParam(defaultValue = "50") int maxResults) {
-        return ResponseEntity.ok(commitIndexService.search(query, maxResults));
+        return ResponseEntity.ok(dslOps.searchHistory(query, maxResults));
     }
 
     @GetMapping("/history/element/{elementId}")
@@ -946,7 +885,7 @@ public class DslApiController {
             description = "Searches affectedElementIds and tokenized DSL text for the given " +
                     "element ID using Hibernate Search.")
     public ResponseEntity<?> findHistoryByElement(@PathVariable String elementId) {
-        return ResponseEntity.ok(commitIndexService.findByElement(elementId));
+        return ResponseEntity.ok(dslOps.findByElement(elementId));
     }
 
     @GetMapping("/history/relation")
@@ -954,7 +893,7 @@ public class DslApiController {
             description = "Searches affectedRelationIds and tokenized DSL text for the given " +
                     "relation key (e.g., 'CP-1023 REALIZES CR-1047') using Hibernate Search.")
     public ResponseEntity<?> findHistoryByRelation(@RequestParam String key) {
-        return ResponseEntity.ok(commitIndexService.findByRelation(key));
+        return ResponseEntity.ok(dslOps.findByRelation(key));
     }
 
     @GetMapping("/history/element/{elementId}/aggregation")
@@ -962,7 +901,7 @@ public class DslApiController {
             description = "Returns firstSeen, lastSeen, occurrence count, volatility, " +
                     "and recent commit messages for the given element ID.")
     public ResponseEntity<?> elementHistoryAggregation(@PathVariable String elementId) {
-        var aggregation = commitIndexService.aggregateElementHistory(elementId);
+        var aggregation = dslOps.aggregateElementHistory(elementId);
         if (aggregation == null) {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("elementId", elementId);
@@ -983,14 +922,14 @@ public class DslApiController {
             @RequestParam(defaultValue = "draft") String currentBranch,
             @RequestParam(defaultValue = "50") int maxResults) {
 
-        var hits = commitIndexService.search(query, maxResults);
+        var hits = dslOps.searchHistory(query, maxResults);
         if (hits.isEmpty()) {
             return ResponseEntity.ok(List.of());
         }
 
         String headCommit;
         try {
-            headCommit = gitRepository.getHeadCommit(currentBranch);
+            headCommit = dslOps.getHeadCommit(currentBranch);
         } catch (IOException e) {
             headCommit = null;
         }

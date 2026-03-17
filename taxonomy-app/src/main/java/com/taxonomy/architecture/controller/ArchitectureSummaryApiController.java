@@ -3,7 +3,7 @@ package com.taxonomy.architecture.controller;
 import com.taxonomy.dto.ArchitectureSummary;
 import com.taxonomy.dto.NodeGraphMetadata;
 import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.architecture.service.ArchitectureSummaryService;
 import com.taxonomy.architecture.service.DerivedMetadataService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,14 +31,14 @@ public class ArchitectureSummaryApiController {
 
     private final ArchitectureSummaryService summaryService;
     private final DerivedMetadataService metadataService;
-    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyService taxonomyService;
 
     public ArchitectureSummaryApiController(ArchitectureSummaryService summaryService,
                                             DerivedMetadataService metadataService,
-                                            TaxonomyNodeRepository nodeRepository) {
+                                            TaxonomyService taxonomyService) {
         this.summaryService = summaryService;
         this.metadataService = metadataService;
-        this.nodeRepository = nodeRepository;
+        this.taxonomyService = taxonomyService;
     }
 
     @GetMapping("/summary")
@@ -65,22 +65,19 @@ public class ArchitectureSummaryApiController {
             description = "Returns relation counts, requirement coverage count, and graph role " +
                     "for the given node code.")
     public ResponseEntity<?> getNodeMetadata(@PathVariable String nodeCode) {
-        return nodeRepository.findByCode(nodeCode)
-                .map(node -> {
-                    NodeGraphMetadata metadata = new NodeGraphMetadata(
-                            node.getCode(),
-                            node.getIncomingRelationCount(),
-                            node.getOutgoingRelationCount(),
-                            node.getTotalRelationCount(),
-                            node.getRequirementCoverageCount(),
-                            node.getGraphRole()
-                    );
-                    return ResponseEntity.ok((Object) metadata);
-                })
-                .orElseGet(() -> {
-                    Map<String, Object> error = new LinkedHashMap<>();
-                    error.put("error", "Node not found: " + nodeCode);
-                    return ResponseEntity.notFound().build();
-                });
+        TaxonomyNode node = taxonomyService.getNodeByCode(nodeCode);
+        if (node != null) {
+            NodeGraphMetadata metadata = new NodeGraphMetadata(
+                    node.getCode(),
+                    node.getIncomingRelationCount(),
+                    node.getOutgoingRelationCount(),
+                    node.getTotalRelationCount(),
+                    node.getRequirementCoverageCount(),
+                    node.getGraphRole()
+            );
+            return ResponseEntity.ok(metadata);
+        } else {
+            return ResponseEntity.notFound().build();
+        }
     }
 }
