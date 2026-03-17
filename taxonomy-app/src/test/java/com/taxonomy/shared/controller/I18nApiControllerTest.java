@@ -65,7 +65,7 @@ class I18nApiControllerTest {
     }
 
     @Test
-    void englishAndGermanHaveSameKeyCount() throws Exception {
+    void englishAndGermanHaveSameKeys() throws Exception {
         String enJson = mockMvc.perform(get("/api/i18n/en"))
                 .andReturn().getResponse().getContentAsString();
         String deJson = mockMvc.perform(get("/api/i18n/de"))
@@ -75,7 +75,7 @@ class I18nApiControllerTest {
         Map<String, String> enKeys = mapper.readValue(enJson, new TypeReference<>() {});
         Map<String, String> deKeys = mapper.readValue(deJson, new TypeReference<>() {});
 
-        assertEquals(enKeys.size(), deKeys.size(),
-                "English and German must have the same number of translation keys");
+        assertEquals(enKeys.keySet(), deKeys.keySet(),
+                "English and German must have identical translation key sets");
     }
 }

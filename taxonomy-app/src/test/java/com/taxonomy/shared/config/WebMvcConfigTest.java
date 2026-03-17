@@ -44,9 +44,11 @@ class WebMvcConfigTest {
 
     @Test
     void defaultLocaleIsEnglish() throws Exception {
-        // Without any locale hint the i18n endpoint returns English translations
-        mockMvc.perform(get("/api/i18n/en"))
+        // Without any cookie or ?lang= parameter, LocaleContextHolder should
+        // resolve to English.  We verify via /help TOC (which uses MessageSource
+        // with the resolved locale) — the first entry title must be English.
+        mockMvc.perform(get("/help").accept("application/json"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.['nav.analyze']").value("Analyze"));
+                .andExpect(jsonPath("$[0].title").value("User Guide"));
     }
 }

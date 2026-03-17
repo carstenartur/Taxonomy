@@ -14,16 +14,30 @@ mvn verify             # unit tests + integration tests (requires Docker for con
 
 Integration test classes follow the `**/*IT.java` naming pattern and are run by `maven-failsafe-plugin`.
 
+### CI Command
+
+The CI pipeline runs exactly:
+```bash
+mvn -q verify -DexcludedGroups="real-llm"
+```
+This is the **authoritative** build command. It runs **all** unit tests and **all** integration tests (including Testcontainers-based PostgreSQL, MSSQL, and Oracle ITs), excluding only LLM tests that require a real API key.
+
 ### Validation Strategy
 
 During iterative development, `mvn test` is sufficient for quick feedback.
 
-**Before completing your work** (final commit before opening the PR), run the full integration test suite with `mvn verify -DexcludedGroups="real-llm"` if your changes could affect any of the following:
+**Before completing your work** (final commit before opening the PR), run:
+```bash
+mvn verify -DexcludedGroups="real-llm"
+```
+if your changes could affect any of the following:
 - REST controllers or API endpoints
 - GUI (HTML, JavaScript, CSS, Thymeleaf templates)
 - Application startup, configuration, or Spring context (`application.properties`, Spring beans)
 - `pom.xml` or dependency changes
 - Dockerfile or container setup
+
+⚠️ **Do NOT** invent alternative test commands (e.g., adding `-pl`, extra `-DexcludedGroups`, or switching `verify` to `test`). If `mvn verify` fails due to Docker/Testcontainers issues in your environment, report the failure — do not silently fall back to a weaker command.
 
 For changes that only touch internal logic, Javadoc, comments, or documentation files, `mvn test` is sufficient.
 
