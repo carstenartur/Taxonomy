@@ -1,20 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExportApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export.controller</a> &gt; <span class="el_source">ExportApiController.java</span></div><h1>ExportApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.export.controller;
 
-import com.taxonomy.diagram.DiagramModel;
-import com.taxonomy.dto.AnalysisResult;
-import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.SavedAnalysis;
-import com.taxonomy.analysis.service.LlmService;
-import com.taxonomy.analysis.service.SavedAnalysisService;
-import com.taxonomy.architecture.service.RequirementArchitectureViewService;
-import com.taxonomy.export.DiagramProjectionService;
-import com.taxonomy.export.VisioDiagramService;
-import com.taxonomy.export.VisioPackageBuilder;
-import com.taxonomy.export.ArchiMateDiagramService;
-import com.taxonomy.export.ArchiMateXmlExporter;
-import com.taxonomy.export.MermaidExportService;
-import com.taxonomy.archimate.ArchiMateModel;
-import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.export.service.ExportFacade;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -32,54 +19,11 @@ import java.util.Map;
 @Tag(name = &quot;Export&quot;)
 public class ExportApiController {
 
-    private final LlmService llmService;
-    private final RequirementArchitectureViewService architectureViewService;
-    private final DiagramProjectionService diagramProjectionService;
-    private final VisioDiagramService visioDiagramService;
-    private final VisioPackageBuilder visioPackageBuilder;
-    private final ArchiMateDiagramService archiMateDiagramService;
-    private final ArchiMateXmlExporter archiMateXmlExporter;
-    private final MermaidExportService mermaidExportService;
-    private final SavedAnalysisService savedAnalysisService;
+    private final ExportFacade exportFacade;
 
-    public ExportApiController(LlmService llmService,
-                                RequirementArchitectureViewService architectureViewService,
-                                DiagramProjectionService diagramProjectionService,
-                                VisioDiagramService visioDiagramService,
-                                VisioPackageBuilder visioPackageBuilder,
-                                ArchiMateDiagramService archiMateDiagramService,
-                                ArchiMateXmlExporter archiMateXmlExporter,
-                                MermaidExportService mermaidExportService,
-<span class="fc" id="L53">                                SavedAnalysisService savedAnalysisService) {</span>
-<span class="fc" id="L54">        this.llmService = llmService;</span>
-<span class="fc" id="L55">        this.architectureViewService = architectureViewService;</span>
-<span class="fc" id="L56">        this.diagramProjectionService = diagramProjectionService;</span>
-<span class="fc" id="L57">        this.visioDiagramService = visioDiagramService;</span>
-<span class="fc" id="L58">        this.visioPackageBuilder = visioPackageBuilder;</span>
-<span class="fc" id="L59">        this.archiMateDiagramService = archiMateDiagramService;</span>
-<span class="fc" id="L60">        this.archiMateXmlExporter = archiMateXmlExporter;</span>
-<span class="fc" id="L61">        this.mermaidExportService = mermaidExportService;</span>
-<span class="fc" id="L62">        this.savedAnalysisService = savedAnalysisService;</span>
-<span class="fc" id="L63">    }</span>
-
-    // ── Diagram Export Helper ─────────────────────────────────────────────────
-
-    /**
-     * Shared analysis-and-projection pipeline used by all three diagram export
-     * endpoints.  Analyzes the business text, builds an architecture view, and
-     * projects it into a format-neutral {@link DiagramModel}.
-     */
-    private DiagramModel analyzeAndProject(String businessText) {
-<span class="fc" id="L73">        AnalysisResult result = llmService.analyzeWithBudget(businessText);</span>
-
-<span class="fc" id="L75">        RequirementArchitectureView view = architectureViewService.build(</span>
-<span class="fc" id="L76">                result.getScores(), businessText, 20);</span>
-
-<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        String title = businessText.length() &gt; 60</span>
-<span class="nc" id="L79">                ? businessText.substring(0, 57) + &quot;...&quot;</span>
-<span class="fc" id="L80">                : businessText;</span>
-<span class="fc" id="L81">        return diagramProjectionService.project(view, title);</span>
-    }
+<span class="fc" id="L24">    public ExportApiController(ExportFacade exportFacade) {</span>
+<span class="fc" id="L25">        this.exportFacade = exportFacade;</span>
+<span class="fc" id="L26">    }</span>
 
     // ── Visio Diagram Export ──────────────────────────────────────────────────
 
@@ -88,25 +32,22 @@ public class ExportApiController {
     @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
     @PostMapping(&quot;/diagram/visio&quot;)
     public ResponseEntity&lt;byte[]&gt; exportVisio(@RequestBody Map&lt;String, Object&gt; body) {
-<span class="fc" id="L91">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
-<span class="fc bfc" id="L92" title="All 4 branches covered.">        if (businessText == null || businessText.isBlank()) {</span>
-<span class="fc" id="L93">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L35">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="fc bfc" id="L36" title="All 4 branches covered.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L37">            return ResponseEntity.badRequest().build();</span>
         }
 
         try {
-<span class="fc" id="L97">            DiagramModel diagram = analyzeAndProject(businessText);</span>
+<span class="fc" id="L41">            byte[] vsdx = exportFacade.exportAsVisio(businessText);</span>
 
-<span class="fc" id="L99">            VisioDocument visioDoc = visioDiagramService.convert(diagram);</span>
-<span class="fc" id="L100">            byte[] vsdx = visioPackageBuilder.build(visioDoc);</span>
-
-<span class="fc" id="L102">            HttpHeaders headers = new HttpHeaders();</span>
-<span class="fc" id="L103">            headers.set(HttpHeaders.CONTENT_DISPOSITION,</span>
+<span class="fc" id="L43">            HttpHeaders headers = new HttpHeaders();</span>
+<span class="fc" id="L44">            headers.set(HttpHeaders.CONTENT_DISPOSITION,</span>
                     &quot;attachment; filename=\&quot;requirement-architecture.vsdx\&quot;&quot;);
-<span class="fc" id="L105">            headers.set(HttpHeaders.CONTENT_TYPE, &quot;application/vnd.ms-visio.drawing.main+xml&quot;);</span>
+<span class="fc" id="L46">            headers.set(HttpHeaders.CONTENT_TYPE, &quot;application/vnd.ms-visio.drawing.main+xml&quot;);</span>
 
-<span class="fc" id="L107">            return ResponseEntity.ok().headers(headers).body(vsdx);</span>
-<span class="nc" id="L108">        } catch (IOException e) {</span>
-<span class="nc" id="L109">            return ResponseEntity.internalServerError().build();</span>
+<span class="fc" id="L48">            return ResponseEntity.ok().headers(headers).body(vsdx);</span>
+<span class="nc" id="L49">        } catch (IOException e) {</span>
+<span class="nc" id="L50">            return ResponseEntity.internalServerError().build();</span>
         }
     }
 
@@ -117,22 +58,19 @@ public class ExportApiController {
     @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
     @PostMapping(&quot;/diagram/archimate&quot;)
     public ResponseEntity&lt;byte[]&gt; exportArchiMate(@RequestBody Map&lt;String, Object&gt; body) {
-<span class="fc" id="L120">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
-<span class="fc bfc" id="L121" title="All 4 branches covered.">        if (businessText == null || businessText.isBlank()) {</span>
-<span class="fc" id="L122">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L61">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="fc bfc" id="L62" title="All 4 branches covered.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L63">            return ResponseEntity.badRequest().build();</span>
         }
 
-<span class="fc" id="L125">        DiagramModel diagram = analyzeAndProject(businessText);</span>
+<span class="fc" id="L66">        byte[] xml = exportFacade.exportAsArchiMate(businessText);</span>
 
-<span class="fc" id="L127">        ArchiMateModel archiMateModel = archiMateDiagramService.convert(diagram);</span>
-<span class="fc" id="L128">        byte[] xml = archiMateXmlExporter.export(archiMateModel);</span>
-
-<span class="fc" id="L130">        HttpHeaders headers = new HttpHeaders();</span>
-<span class="fc" id="L131">        headers.set(HttpHeaders.CONTENT_DISPOSITION,</span>
+<span class="fc" id="L68">        HttpHeaders headers = new HttpHeaders();</span>
+<span class="fc" id="L69">        headers.set(HttpHeaders.CONTENT_DISPOSITION,</span>
                 &quot;attachment; filename=\&quot;requirement-architecture.xml\&quot;&quot;);
-<span class="fc" id="L133">        headers.set(HttpHeaders.CONTENT_TYPE, &quot;application/xml&quot;);</span>
+<span class="fc" id="L71">        headers.set(HttpHeaders.CONTENT_TYPE, &quot;application/xml&quot;);</span>
 
-<span class="fc" id="L135">        return ResponseEntity.ok().headers(headers).body(xml);</span>
+<span class="fc" id="L73">        return ResponseEntity.ok().headers(headers).body(xml);</span>
     }
 
     // ── Mermaid Diagram Export ────────────────────────────────────────────────
@@ -142,18 +80,16 @@ public class ExportApiController {
     @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
     @PostMapping(&quot;/diagram/mermaid&quot;)
     public ResponseEntity&lt;String&gt; exportMermaid(@RequestBody Map&lt;String, Object&gt; body) {
-<span class="fc" id="L145">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
-<span class="pc bpc" id="L146" title="1 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
-<span class="fc" id="L147">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L83">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="pc bpc" id="L84" title="1 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L85">            return ResponseEntity.badRequest().build();</span>
         }
 
-<span class="nc" id="L150">        DiagramModel diagram = analyzeAndProject(businessText);</span>
+<span class="nc" id="L88">        String mermaid = exportFacade.exportAsMermaid(businessText);</span>
 
-<span class="nc" id="L152">        String mermaid = mermaidExportService.export(diagram);</span>
-
-<span class="nc" id="L154">        return ResponseEntity.ok()</span>
-<span class="nc" id="L155">                .header(HttpHeaders.CONTENT_TYPE, &quot;text/plain; charset=UTF-8&quot;)</span>
-<span class="nc" id="L156">                .body(mermaid);</span>
+<span class="nc" id="L90">        return ResponseEntity.ok()</span>
+<span class="nc" id="L91">                .header(HttpHeaders.CONTENT_TYPE, &quot;text/plain; charset=UTF-8&quot;)</span>
+<span class="nc" id="L92">                .body(mermaid);</span>
     }
 
     // ── Scores import / export endpoints ────────────────────────────────────────
@@ -165,29 +101,29 @@ public class ExportApiController {
     @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Requirement is blank or scores are missing&quot;)
     @PostMapping(&quot;/scores/export&quot;)
     public ResponseEntity&lt;SavedAnalysis&gt; exportScores(@RequestBody Map&lt;String, Object&gt; body) {
-<span class="fc" id="L168">        String requirement = (String) body.get(&quot;requirement&quot;);</span>
-<span class="pc bpc" id="L169" title="1 of 4 branches missed.">        if (requirement == null || requirement.isBlank()) {</span>
-<span class="fc" id="L170">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L104">        String requirement = (String) body.get(&quot;requirement&quot;);</span>
+<span class="pc bpc" id="L105" title="1 of 4 branches missed.">        if (requirement == null || requirement.isBlank()) {</span>
+<span class="fc" id="L106">            return ResponseEntity.badRequest().build();</span>
         }
         @SuppressWarnings(&quot;unchecked&quot;)
-<span class="pc bpc" id="L173" title="1 of 2 branches missed.">        Map&lt;String, Object&gt; rawScores = body.get(&quot;scores&quot;) instanceof Map&lt;?, ?&gt;</span>
-<span class="pc" id="L174">                ? (Map&lt;String, Object&gt;) body.get(&quot;scores&quot;) : null;</span>
-<span class="pc bpc" id="L175" title="1 of 4 branches missed.">        if (rawScores == null || rawScores.isEmpty()) {</span>
-<span class="fc" id="L176">            return ResponseEntity.badRequest().build();</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">        Map&lt;String, Object&gt; rawScores = body.get(&quot;scores&quot;) instanceof Map&lt;?, ?&gt;</span>
+<span class="pc" id="L110">                ? (Map&lt;String, Object&gt;) body.get(&quot;scores&quot;) : null;</span>
+<span class="pc bpc" id="L111" title="1 of 4 branches missed.">        if (rawScores == null || rawScores.isEmpty()) {</span>
+<span class="fc" id="L112">            return ResponseEntity.badRequest().build();</span>
         }
-<span class="fc" id="L178">        Map&lt;String, Integer&gt; scores = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L179" title="All 2 branches covered.">        for (Map.Entry&lt;String, Object&gt; e : rawScores.entrySet()) {</span>
-<span class="pc bpc" id="L180" title="1 of 2 branches missed.">            if (e.getValue() instanceof Number n) {</span>
-<span class="fc" id="L181">                scores.put(e.getKey(), n.intValue());</span>
+<span class="fc" id="L114">        Map&lt;String, Integer&gt; scores = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        for (Map.Entry&lt;String, Object&gt; e : rawScores.entrySet()) {</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">            if (e.getValue() instanceof Number n) {</span>
+<span class="fc" id="L117">                scores.put(e.getKey(), n.intValue());</span>
             }
-<span class="fc" id="L183">        }</span>
+<span class="fc" id="L119">        }</span>
         @SuppressWarnings(&quot;unchecked&quot;)
-<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        Map&lt;String, String&gt; reasons = body.get(&quot;reasons&quot;) instanceof Map&lt;?, ?&gt;</span>
-<span class="pc" id="L186">                ? (Map&lt;String, String&gt;) body.get(&quot;reasons&quot;) : Map.of();</span>
-<span class="pc bpc" id="L187" title="1 of 2 branches missed.">        String provider = body.get(&quot;provider&quot;) instanceof String p ? p : llmService.getActiveProviderName();</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        Map&lt;String, String&gt; reasons = body.get(&quot;reasons&quot;) instanceof Map&lt;?, ?&gt;</span>
+<span class="pc" id="L122">                ? (Map&lt;String, String&gt;) body.get(&quot;reasons&quot;) : Map.of();</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        String provider = body.get(&quot;provider&quot;) instanceof String p ? p : exportFacade.getActiveProviderName();</span>
 
-<span class="fc" id="L189">        SavedAnalysis saved = savedAnalysisService.buildExport(requirement, scores, reasons, provider);</span>
-<span class="fc" id="L190">        return ResponseEntity.ok(saved);</span>
+<span class="fc" id="L125">        SavedAnalysis saved = exportFacade.buildExport(requirement, scores, reasons, provider);</span>
+<span class="fc" id="L126">        return ResponseEntity.ok(saved);</span>
     }
 
     @Operation(summary = &quot;Import analysis scores from JSON&quot;,
@@ -198,25 +134,25 @@ public class ExportApiController {
     @PostMapping(&quot;/scores/import&quot;)
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; importScores(@RequestBody String jsonBody) {
         try {
-<span class="fc" id="L201">            SavedAnalysis saved = savedAnalysisService.importFromJson(jsonBody);</span>
-<span class="fc" id="L202">            List&lt;String&gt; warnings = savedAnalysisService.findUnknownCodes(saved)</span>
-<span class="fc" id="L203">                    .stream()</span>
-<span class="fc" id="L204">                    .map(code -&gt; &quot;Unknown node code: &quot; + code)</span>
-<span class="fc" id="L205">                    .toList();</span>
+<span class="fc" id="L137">            SavedAnalysis saved = exportFacade.importFromJson(jsonBody);</span>
+<span class="fc" id="L138">            List&lt;String&gt; warnings = exportFacade.findUnknownCodes(saved)</span>
+<span class="fc" id="L139">                    .stream()</span>
+<span class="fc" id="L140">                    .map(code -&gt; &quot;Unknown node code: &quot; + code)</span>
+<span class="fc" id="L141">                    .toList();</span>
 
-<span class="fc" id="L207">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L208">            result.put(&quot;requirement&quot;, saved.getRequirement());</span>
-<span class="pc bpc" id="L209" title="1 of 2 branches missed.">            result.put(&quot;scores&quot;,      saved.getScores() != null ? saved.getScores() : Map.of());</span>
-<span class="pc bpc" id="L210" title="1 of 2 branches missed.">            result.put(&quot;reasons&quot;,     saved.getReasons() != null ? saved.getReasons() : Map.of());</span>
-<span class="fc" id="L211">            result.put(&quot;provider&quot;,    saved.getProvider());</span>
-<span class="fc" id="L212">            result.put(&quot;warnings&quot;,    warnings);</span>
-<span class="fc" id="L213">            return ResponseEntity.ok(result);</span>
-<span class="fc" id="L214">        } catch (IllegalArgumentException e) {</span>
-<span class="fc" id="L215">            return ResponseEntity.badRequest()</span>
-<span class="fc" id="L216">                    .body(Map.of(&quot;error&quot;, e.getMessage(), &quot;warnings&quot;, List.of()));</span>
-<span class="nc" id="L217">        } catch (Exception e) {</span>
-<span class="nc" id="L218">            return ResponseEntity.badRequest()</span>
-<span class="nc" id="L219">                    .body(Map.of(&quot;error&quot;, &quot;Invalid JSON: &quot; + e.getMessage(), &quot;warnings&quot;, List.of()));</span>
+<span class="fc" id="L143">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L144">            result.put(&quot;requirement&quot;, saved.getRequirement());</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">            result.put(&quot;scores&quot;,      saved.getScores() != null ? saved.getScores() : Map.of());</span>
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">            result.put(&quot;reasons&quot;,     saved.getReasons() != null ? saved.getReasons() : Map.of());</span>
+<span class="fc" id="L147">            result.put(&quot;provider&quot;,    saved.getProvider());</span>
+<span class="fc" id="L148">            result.put(&quot;warnings&quot;,    warnings);</span>
+<span class="fc" id="L149">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L150">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L151">            return ResponseEntity.badRequest()</span>
+<span class="fc" id="L152">                    .body(Map.of(&quot;error&quot;, e.getMessage(), &quot;warnings&quot;, List.of()));</span>
+<span class="nc" id="L153">        } catch (Exception e) {</span>
+<span class="nc" id="L154">            return ResponseEntity.badRequest()</span>
+<span class="nc" id="L155">                    .body(Map.of(&quot;error&quot;, &quot;Invalid JSON: &quot; + e.getMessage(), &quot;warnings&quot;, List.of()));</span>
         }
     }
 }
