@@ -30,16 +30,22 @@ class WebMvcConfigTest {
     @Test
     void langParameterSetsLocaleCookie() throws Exception {
         // ?lang=de triggers LocaleChangeInterceptor → CookieLocaleResolver sets cookie
-        mockMvc.perform(get("/help").param("lang", "de"))
+        // AND the response should already reflect the German locale.
+        mockMvc.perform(get("/help").param("lang", "de")
+                        .accept("application/json"))
                 .andExpect(status().isOk())
-                .andExpect(cookie().value("lang", "de"));
+                .andExpect(cookie().value("lang", "de"))
+                .andExpect(jsonPath("$[0].title").value("Benutzerhandbuch"));
     }
 
     @Test
     void langCookieResolvesLocale() throws Exception {
-        // Sending a lang=de cookie should cause HelpController to serve German docs
-        mockMvc.perform(get("/help/USER_GUIDE").cookie(new Cookie("lang", "de")))
-                .andExpect(status().isOk());
+        // Sending a lang=de cookie should cause HelpController TOC to return
+        // German-translated titles (resolved via CookieLocaleResolver → MessageSource).
+        mockMvc.perform(get("/help").cookie(new Cookie("lang", "de"))
+                        .accept("application/json"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].title").value("Benutzerhandbuch"));
     }
 
     @Test
