@@ -191,10 +191,7 @@
         return 'bg-danger';
     }
 
-    function escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
+    var escapeHtml = TaxonomyUtils.escapeHtml;
 
     /* ------------------------------------------------------------------ */
     /*  Public API                                                         */

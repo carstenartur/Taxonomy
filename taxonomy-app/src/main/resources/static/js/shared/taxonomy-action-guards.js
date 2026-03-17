@@ -26,12 +26,7 @@ window.TaxonomyActionGuards = (function () {
     // Data attribute set when a guard blocks the button (so we only re-enable our own blocks)
     var GUARD_BLOCKED_ATTR = 'data-guard-blocked';
 
-    function escapeHtml(s) {
-        if (!s) return '';
-        return s.replace(/[&<>"']/g, function (c) {
-            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
-        });
-    }
+    var escapeHtml = TaxonomyUtils.escapeHtml;
 
     /**
      * Apply guard state to all buttons with [data-guard] attributes.
