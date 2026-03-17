@@ -1,227 +1,227 @@
-# Wissenskonservierung — Use Case für Behörden
+# Knowledge Preservation — Use Case for Government Agencies
 
-Dieses Dokument beschreibt den Einsatz des Taxonomy Architecture Analyzer als Werkzeug zur **Wissenskonservierung** in behördlichen IT-Architektur-Umgebungen.
-
----
-
-## Inhaltsverzeichnis
-
-1. [Problemstellung](#problemstellung)
-2. [Lösung: Architektur-Gedächtnis](#lösung-architektur-gedächtnis)
-3. [Szenarien](#szenarien)
-4. [Funktionen für Wissenskonservierung](#funktionen-für-wissenskonservierung)
-5. [Architekturentscheidungen nachvollziehen](#architekturentscheidungen-nachvollziehen)
-6. [Integration in behördliche Prozesse](#integration-in-behördliche-prozesse)
-7. [Technische Voraussetzungen](#technische-voraussetzungen)
+This document describes the use of the Taxonomy Architecture Analyzer as a tool for **knowledge preservation** in government IT architecture environments.
 
 ---
 
-## Problemstellung
+## Table of Contents
 
-Behörden stehen vor einer kritischen Herausforderung bei der **Konservierung von Architekturwissen**:
+1. [Problem Statement](#problem-statement)
+2. [Solution: Architecture Memory](#solution-architecture-memory)
+3. [Scenarios](#scenarios)
+4. [Knowledge Preservation Features](#knowledge-preservation-features)
+5. [Tracing Architecture Decisions](#tracing-architecture-decisions)
+6. [Integration into Government Processes](#integration-into-government-processes)
+7. [Technical Prerequisites](#technical-prerequisites)
 
-| Problem | Auswirkung |
+---
+
+## Problem Statement
+
+Government agencies face a critical challenge in **preserving architecture knowledge**:
+
+| Problem | Impact |
 |---|---|
-| **Personalfluktuation** | Erfahrene Architekten verlassen die Behörde; ihr Wissen geht verloren |
-| **Projektübergabe** | Neue Teams übernehmen Projekte ohne Kenntnis früherer Entscheidungen |
-| **Lange Laufzeiten** | IT-Projekte in Behörden laufen oft 5–10+ Jahre; Entscheidungen aus der Anfangsphase sind nicht mehr nachvollziehbar |
-| **Audit-Anforderungen** | Rechnungshöfe und IT-Revision verlangen Nachvollziehbarkeit von Architekturentscheidungen |
-| **Wissenssilos** | Architekturwissen steckt in E-Mails, Protokollen und den Köpfen einzelner Personen |
+| **Staff Turnover** | Experienced architects leave the agency; their knowledge is lost |
+| **Project Handover** | New teams take over projects without knowledge of prior decisions |
+| **Long Project Lifecycles** | IT projects in government often run 5–10+ years; decisions from the early phases are no longer traceable |
+| **Audit Requirements** | Courts of auditors and IT auditors require traceability of architecture decisions |
+| **Knowledge Silos** | Architecture knowledge is trapped in emails, meeting minutes, and the minds of individual people |
 
-### Typische Situation
+### Typical Situation
 
-> *„Warum wurde 2022 entschieden, den Kommunikationsdienst über die Plattform X statt Y bereitzustellen?"*
+> *"Why was it decided in 2022 to provide the communication service via platform X instead of Y?"*
 >
-> → Niemand weiß es mehr. Der verantwortliche Architekt ist in Pension.
+> → Nobody knows anymore. The responsible architect has retired.
 
 ---
 
-## Lösung: Architektur-Gedächtnis
+## Solution: Architecture Memory
 
-Der Taxonomy Architecture Analyzer fungiert als **lebendes Architektur-Gedächtnis**, das:
+The Taxonomy Architecture Analyzer acts as a **living architecture memory** that:
 
-1. **Architekturentscheidungen versioniert** — Jede Änderung an der Architektur wird in einem Git-Repository erfasst (JGit)
-2. **KI-gestützte Analyse protokolliert** — Warum wurde welcher Baustein wie bewertet?
-3. **Volltextsuche über History** ermöglicht — „Finde alle Entscheidungen zum Thema Kommunikation"
-4. **Vergleiche zwischen Versionen** bietet — Wie hat sich die Architektur über Zeit entwickelt?
-5. **Exportierbare Nachweise** generiert — ArchiMate XML, DOCX-Reports, Mermaid-Diagramme
-
----
-
-## Szenarien
-
-### Szenario 1: Personalwechsel
-
-**Situation:** Ein erfahrener IT-Architekt verlässt die Behörde. Der Nachfolger soll die laufenden Projekte übernehmen.
-
-**Ohne Taxonomy Analyzer:**
-- Übergabedokument (PowerPoint, veraltet)
-- Mündliche Übergabe (unvollständig)
-- Nachfolger muss Entscheidungen rekonstruieren
-
-**Mit Taxonomy Analyzer:**
-1. Nachfolger öffnet die Anwendung
-2. Sucht nach dem Projektnamen → findet alle zugehörigen Architekturentscheidungen
-3. Sieht die History: welche Anforderungen analysiert wurden, wann, mit welchem Ergebnis
-4. Versteht die Bewertungsgrundlage durch gespeicherte Explanation-Traces
-5. Kann die Architektur weiterentwickeln, ohne frühere Entscheidungen zu widersprechen
-
-### Szenario 2: Projektübergabe an externen Dienstleister
-
-**Situation:** Ein IT-Projekt wird an ein neues Beratungsunternehmen übergeben.
-
-**Ohne Taxonomy Analyzer:**
-- Umfangreiche Dokumentation muss erstellt werden
-- Architekturentscheidungen sind implizit (nur in Köpfen)
-- Missverständnisse bei der Übergabe
-
-**Mit Taxonomy Analyzer:**
-1. Export der aktuellen Architektur als ArchiMate XML → Import in Enterprise Architect
-2. Export als DOCX-Report → Übergabedokument mit Bewertungen und Begründungen
-3. Git-History zeigt die Entwicklung der Architektur über Zeit
-4. Dienstleister kann selbst navigieren und suchen
-
-### Szenario 3: Audit / IT-Revision
-
-**Situation:** Der Rechnungshof prüft die IT-Strategie und fragt: „Wie wurden die Architekturentscheidungen für das Kommunikationsprojekt getroffen?"
-
-**Mit Taxonomy Analyzer:**
-1. Suche nach „Kommunikation" → alle Analysen und Bewertungen
-2. Timeline-Ansicht: wann wurden welche Entscheidungen getroffen
-3. KI-Bewertungen mit Begründungstexten (Explanation-Traces)
-4. Export als DOCX-Report für die Prüfakte
-5. Git-Commit-History als lückenloser Nachweis
-
-### Szenario 4: Strategische Neuausrichtung
-
-**Situation:** Die IT-Strategie wird nach einer Legislaturperiode überarbeitet. Welche bestehenden Architekturentscheidungen sind betroffen?
-
-**Mit Taxonomy Analyzer:**
-1. Neue Anforderung eingeben → KI bewertet gegen bestehende Architektur
-2. Gap-Analyse: welche Bausteine fehlen, welche sind nicht mehr relevant
-3. Vergleich: alte Architektur vs. neue Anforderungen (Diff-Ansicht)
-4. Impact-Analyse: welche abhängigen Systeme sind betroffen
+1. **Versions architecture decisions** — Every change to the architecture is captured in a Git repository (JGit)
+2. **Logs AI-assisted analysis** — Why was each building block rated the way it was?
+3. **Enables full-text search over history** — "Find all decisions related to communication"
+4. **Provides comparisons between versions** — How has the architecture evolved over time?
+5. **Generates exportable evidence** — ArchiMate XML, DOCX reports, Mermaid diagrams
 
 ---
 
-## Funktionen für Wissenskonservierung
+## Scenarios
 
-### Bereits verfügbar
+### Scenario 1: Staff Transition
 
-| Funktion | Beschreibung | Zugang |
+**Situation:** An experienced IT architect leaves the agency. The successor is to take over the ongoing projects.
+
+**Without Taxonomy Analyzer:**
+- Handover document (PowerPoint, outdated)
+- Verbal handover (incomplete)
+- Successor must reconstruct decisions
+
+**With Taxonomy Analyzer:**
+1. Successor opens the application
+2. Searches for the project name → finds all related architecture decisions
+3. Views the history: which requirements were analyzed, when, and with what result
+4. Understands the rationale through stored explanation traces
+5. Can evolve the architecture without contradicting prior decisions
+
+### Scenario 2: Project Handover to External Contractor
+
+**Situation:** An IT project is handed over to a new consulting firm.
+
+**Without Taxonomy Analyzer:**
+- Extensive documentation must be created
+- Architecture decisions are implicit (only in people's heads)
+- Misunderstandings during handover
+
+**With Taxonomy Analyzer:**
+1. Export the current architecture as ArchiMate XML → import into Enterprise Architect
+2. Export as DOCX report → handover document with ratings and justifications
+3. Git history shows the evolution of the architecture over time
+4. The contractor can navigate and search independently
+
+### Scenario 3: Audit / IT Review
+
+**Situation:** The court of auditors reviews the IT strategy and asks: "How were the architecture decisions for the communication project made?"
+
+**With Taxonomy Analyzer:**
+1. Search for "communication" → all analyses and ratings
+2. Timeline view: when were which decisions made
+3. AI ratings with justification texts (explanation traces)
+4. Export as DOCX report for the audit file
+5. Git commit history as a complete audit trail
+
+### Scenario 4: Strategic Realignment
+
+**Situation:** The IT strategy is revised after a legislative period. Which existing architecture decisions are affected?
+
+**With Taxonomy Analyzer:**
+1. Enter new requirement → AI evaluates against existing architecture
+2. Gap analysis: which building blocks are missing, which are no longer relevant
+3. Comparison: old architecture vs. new requirements (diff view)
+4. Impact analysis: which dependent systems are affected
+
+---
+
+## Knowledge Preservation Features
+
+### Currently Available
+
+| Feature | Description | Access |
 |---|---|---|
-| **JGit-Versionierung** | Jede DSL-Änderung wird als Git-Commit erfasst | Versions-Tab → History |
-| **Branching & Merge** | Verschiedene Architekturvarianten parallel pflegen | Versions-Tab → Variants |
-| **Explanation-Traces** | KI-Begründungen für Bewertungen | Analyse-Ergebnis → Justification |
-| **Diff zwischen Versionen** | Änderungen zwischen Commits sichtbar | DSL-Diff-Ansicht |
-| **Volltextsuche** | Suche in Taxonomie-Beschreibungen | Suchfeld |
-| **Semantische Suche** | KI-gestützte Bedeutungssuche | Semantic Search |
-| **Graph-Exploration** | Upstream/Downstream-Abhängigkeiten | Graph-Tab |
-| **Multi-Format-Export** | ArchiMate XML, Visio, Mermaid, JSON, DOCX | Export-Buttons |
-| **Audit-Logging** | Wer hat wann was getan | Application Logs |
+| **JGit Versioning** | Every DSL change is captured as a Git commit | Versions Tab → History |
+| **Branching & Merge** | Maintain different architecture variants in parallel | Versions Tab → Variants |
+| **Explanation Traces** | AI justifications for ratings | Analysis Result → Justification |
+| **Diff Between Versions** | Changes between commits visible | DSL Diff View |
+| **Full-Text Search** | Search in taxonomy descriptions | Search Field |
+| **Semantic Search** | AI-powered meaning-based search | Semantic Search |
+| **Graph Exploration** | Upstream/downstream dependencies | Graph Tab |
+| **Multi-Format Export** | ArchiMate XML, Visio, Mermaid, JSON, DOCX | Export Buttons |
+| **Audit Logging** | Who did what and when | Application Logs |
 
-### Geplant (Roadmap)
+### Planned (Roadmap)
 
-| Funktion | Beschreibung | Phase |
+| Feature | Description | Phase |
 |---|---|---|
-| **Timeline-View** | Chronologische Ansicht aller Architekturentscheidungen | Phase 3 |
-| **ADR-Export** | Architecture Decision Records aus Commit-History generieren | Phase 3 |
-| **Dokument-Import** | PDF/DOCX importieren und automatisch Anforderungen extrahieren | Phase 5 |
-| **Meeting-Transkription** | Audio-Aufnahmen von Architektur-Reviews transkribieren | Phase 6 |
+| **Timeline View** | Chronological view of all architecture decisions | Phase 3 |
+| **ADR Export** | Generate Architecture Decision Records from commit history | Phase 3 |
+| **Document Import** | Import PDF/DOCX and automatically extract requirements | Phase 5 |
+| **Meeting Transcription** | Transcribe audio recordings of architecture reviews | Phase 6 |
 
 ---
 
-## Architekturentscheidungen nachvollziehen
+## Tracing Architecture Decisions
 
-### Schritt-für-Schritt
+### Step by Step
 
-1. **Anforderung eingeben:** Beschreiben Sie die fachliche Anforderung in natürlicher Sprache
-2. **Analyse durchführen:** Die KI bewertet jeden Baustein der Taxonomie (0–100)
-3. **Ergebnis prüfen:** Relevante Bausteine werden farbcodiert im Baum angezeigt
-4. **Begründung lesen:** Für jeden Baustein gibt es eine KI-generierte Begründung
-5. **Architektur speichern:** Commit im DSL-Repository mit aussagekräftiger Nachricht
-6. **Wiederfinden:** Suche, Filter, History-Navigation, oder Graph-Exploration
+1. **Enter requirement:** Describe the business requirement in natural language
+2. **Run analysis:** The AI rates each building block of the taxonomy (0–100)
+3. **Review result:** Relevant building blocks are displayed color-coded in the tree
+4. **Read justification:** Each building block has an AI-generated justification
+5. **Save architecture:** Commit in the DSL repository with a meaningful message
+6. **Retrieve later:** Search, filter, history navigation, or graph exploration
 
-### Bewertungsskala
+### Rating Scale
 
-| Score | Bedeutung | Farbe |
+| Score | Meaning | Color |
 |---|---|---|
-| 90–100 | Hohe Relevanz — Kernbaustein | 🟢 Dunkelgrün |
-| 70–89 | Relevant — einbeziehen | 🟡 Grün/Gelb |
-| 40–69 | Möglicherweise relevant | 🟠 Orange |
-| 1–39 | Geringe Relevanz | 🔴 Rot |
-| 0 | Nicht relevant | ⚪ Grau |
+| 90–100 | High relevance — core building block | 🟢 Dark Green |
+| 70–89 | Relevant — include | 🟡 Green/Yellow |
+| 40–69 | Possibly relevant | 🟠 Orange |
+| 1–39 | Low relevance | 🔴 Red |
+| 0 | Not relevant | ⚪ Gray |
 
 ---
 
-## Integration in behördliche Prozesse
+## Integration into Government Processes
 
-### IT-Architekturmanagement (TOGAF / IT-Grundschutz)
+### IT Architecture Management (TOGAF / IT-Grundschutz)
 
-| Prozessschritt | Taxonomy Analyzer Funktion |
+| Process Step | Taxonomy Analyzer Function |
 |---|---|
-| **Architecture Vision** | Anforderungsanalyse → KI-Bewertung |
-| **Architecture Development** | DSL-Modellierung → Versionierung |
-| **Architecture Review** | Vergleich gegen bestehende Architektur |
-| **Change Management** | Diff-Ansicht → Impact-Analyse |
-| **Compliance** | Audit-Logs → Export für Prüfakte |
+| **Architecture Vision** | Requirements analysis → AI rating |
+| **Architecture Development** | DSL modeling → versioning |
+| **Architecture Review** | Comparison against existing architecture |
+| **Change Management** | Diff view → impact analysis |
+| **Compliance** | Audit logs → export for audit file |
 
-### Beschaffungsprozesse
+### Procurement Processes
 
-Der Taxonomy Analyzer kann Beschaffungsentscheidungen unterstützen:
+The Taxonomy Analyzer can support procurement decisions:
 
-1. Anforderungen aus der Leistungsbeschreibung eingeben
-2. Relevante Architekturbausteine identifizieren
-3. Gap-Analyse: welche Bausteine werden von der bestehenden IT nicht abgedeckt
-4. Export als Bewertungsgrundlage für die Beschaffungskommission
+1. Enter requirements from the service specification
+2. Identify relevant architecture building blocks
+3. Gap analysis: which building blocks are not covered by existing IT
+4. Export as evaluation basis for the procurement committee
 
-### Dokumentationspflichten
+### Documentation Obligations
 
-| Pflicht | Umsetzung |
+| Obligation | Implementation |
 |---|---|
-| **IT-Rahmenarchitektur** | Export als ArchiMate XML → Import in EA/Sparx |
-| **Architekturübersicht** | Export als Mermaid → Einbettung in Confluence/Wiki |
-| **Prüfbericht** | DOCX-Report mit Bewertungen und Begründungen |
-| **Änderungshistorie** | Git-Log als nachvollziehbarer Audit-Trail |
+| **IT Reference Architecture** | Export as ArchiMate XML → import into EA/Sparx |
+| **Architecture Overview** | Export as Mermaid → embed in Confluence/Wiki |
+| **Audit Report** | DOCX report with ratings and justifications |
+| **Change History** | Git log as a traceable audit trail |
 
 ---
 
-## Technische Voraussetzungen
+## Technical Prerequisites
 
-### Minimalkonfiguration für Behörden
+### Minimum Configuration for Government Agencies
 
 ```bash
-# Luftdichter Betrieb (keine externen API-Aufrufe)
+# Air-gapped operation (no external API calls)
 LLM_PROVIDER=LOCAL_ONNX
 TAXONOMY_EMBEDDING_ENABLED=true
 TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/bge-small-en-v1.5
 
-# Produktionsprofil mit gehärteten Defaults
+# Production profile with hardened defaults
 SPRING_PROFILES_ACTIVE=production,postgres
 
-# Audit-Logging aktiv
+# Audit logging enabled
 TAXONOMY_AUDIT_LOGGING=true
 
-# Passwortänderung erzwingen
+# Force password change
 TAXONOMY_REQUIRE_PASSWORD_CHANGE=true
 ```
 
-### Datensouveränität
+### Data Sovereignty
 
-| Anforderung | Umsetzung |
+| Requirement | Implementation |
 |---|---|
-| **Keine Daten verlassen das Netz** | `LLM_PROVIDER=LOCAL_ONNX` |
-| **Vorabdownload aller Modelle** | `TAXONOMY_EMBEDDING_MODEL_DIR` |
-| **Eigene Datenbank** | PostgreSQL on-premises |
-| **Zentrale Authentifizierung** | Keycloak mit LDAP/SAML |
-| **Vollständiges Audit** | `TAXONOMY_AUDIT_LOGGING=true` |
+| **No data leaves the network** | `LLM_PROVIDER=LOCAL_ONNX` |
+| **Pre-download all models** | `TAXONOMY_EMBEDDING_MODEL_DIR` |
+| **Own database** | PostgreSQL on-premises |
+| **Centralized authentication** | Keycloak with LDAP/SAML |
+| **Complete audit** | `TAXONOMY_AUDIT_LOGGING=true` |
 
 ---
 
-## Verwandte Dokumentation
+## Related Documentation
 
-- [AI Transparency / KI-Transparenz](AI_TRANSPARENCY.md) — Transparenz über KI-Einsatz
-- [Data Protection / Datenschutz](DATA_PROTECTION.md) — DSGVO-Dokumentation
-- [Security / Sicherheit](SECURITY.md) — Sicherheitsarchitektur
-- [Operations Guide / Betriebshandbuch](OPERATIONS_GUIDE.md) — Betrieb und Wartung
-- [Deployment Checklist / Einführungscheckliste](DEPLOYMENT_CHECKLIST.md) — Checkliste für die Einführung
+- [AI Transparency](AI_TRANSPARENCY.md) — Transparency about AI usage
+- [Data Protection](DATA_PROTECTION.md) — GDPR documentation
+- [Security](SECURITY.md) — Security architecture
+- [Operations Guide](OPERATIONS_GUIDE.md) — Operations and maintenance
+- [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) — Checklist for deployment

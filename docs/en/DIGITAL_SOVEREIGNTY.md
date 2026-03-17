@@ -1,153 +1,153 @@
-# Digitale Souveränität
+# Digital Sovereignty
 
-Dieses Dokument beschreibt die Positionierung des Taxonomy Architecture Analyzer hinsichtlich **digitaler Souveränität**, **openCode-Kompatibilität** und **Deutsche Verwaltungscloud (DVC) Architektur-Konformität** für den Einsatz in der deutschen Bundesverwaltung.
-
----
-
-## Inhaltsverzeichnis
-
-1. [Souveränitätskriterien](#souveränitätskriterien)
-2. [openCode-Kompatibilität](#opencode-kompatibilität)
-3. [Deutsche Verwaltungscloud (DVC) Kompatibilität](#deutsche-verwaltungscloud-dvc-kompatibilität)
-4. [Nachnutzbarkeit durch Behörden](#nachnutzbarkeit-durch-behörden)
-5. [Konfiguration für souveränen Betrieb](#konfiguration-für-souveränen-betrieb)
+This document describes the positioning of the Taxonomy Architecture Analyzer with regard to **digital sovereignty**, **openCode compatibility**, and **German Federal Cloud (DVC) architecture conformity** for deployment in the German federal administration.
 
 ---
 
-## Souveränitätskriterien
+## Table of Contents
 
-| Kriterium | Taxonomy-Umsetzung | Status |
+1. [Sovereignty Criteria](#sovereignty-criteria)
+2. [openCode Compatibility](#opencode-compatibility)
+3. [German Federal Cloud (DVC) Compatibility](#german-federal-cloud-dvc-compatibility)
+4. [Reusability by Government Agencies](#reusability-by-government-agencies)
+5. [Configuration for Sovereign Operation](#configuration-for-sovereign-operation)
+
+---
+
+## Sovereignty Criteria
+
+| Criterion | Taxonomy Implementation | Status |
 |---|---|---|
-| **Open Source** | MIT-Lizenz; vollständiger Quellcode auf [GitHub](https://github.com/carstenartur/Taxonomy) | ✅ |
-| **Offene Standards** | ArchiMate 3.x XML, JSON, Mermaid, ONNX, OpenAPI, CycloneDX SBOM | ✅ |
-| **Keine Vendor-Lock-In** | 7 austauschbare LLM-Provider; Standard-Datenbanken (PostgreSQL, SQL Server, Oracle) | ✅ |
-| **Air-Gapped-Betrieb** | `LOCAL_ONNX`-Modus für vollständig lokale Inferenz; vorgeladene Embedding-Modelle | ✅ |
-| **SBOM / Supply Chain** | CycloneDX SBOM automatisch bei `mvn package` generiert | ✅ |
-| **Modulare Architektur** | 4 Maven-Module (domain, dsl, export, app); erweiterbar und austauschbar | ✅ |
-| **Datenportabilität** | Export in 5+ Formate (ArchiMate XML, Visio, Mermaid, JSON, Reports); JGit-Repository exportierbar | ✅ |
-| **EU-Datenresidenz** | Mistral AI (Frankreich/EU) oder LOCAL_ONNX für On-Premises-Betrieb konfigurierbar | ✅ |
-| **Standard-Technologien** | Java 17 (LTS), Spring Boot 4, Maven, Docker — breit verfügbare Kompetenzen | ✅ |
-| **Keine Cloud-Abhängigkeit** | Vollständig on-premises deploybar; keine Cloud-Dienste erforderlich | ✅ |
+| **Open Source** | MIT license; full source code on [GitHub](https://github.com/carstenartur/Taxonomy) | ✅ |
+| **Open Standards** | ArchiMate 3.x XML, JSON, Mermaid, ONNX, OpenAPI, CycloneDX SBOM | ✅ |
+| **No Vendor Lock-In** | 7 interchangeable LLM providers; standard databases (PostgreSQL, SQL Server, Oracle) | ✅ |
+| **Air-Gapped Operation** | `LOCAL_ONNX` mode for fully local inference; pre-loaded embedding models | ✅ |
+| **SBOM / Supply Chain** | CycloneDX SBOM automatically generated during `mvn package` | ✅ |
+| **Modular Architecture** | 4 Maven modules (domain, dsl, export, app); extensible and interchangeable | ✅ |
+| **Data Portability** | Export in 5+ formats (ArchiMate XML, Visio, Mermaid, JSON, Reports); JGit repository exportable | ✅ |
+| **EU Data Residency** | Mistral AI (France/EU) or LOCAL_ONNX configurable for on-premises operation | ✅ |
+| **Standard Technologies** | Java 17 (LTS), Spring Boot 4, Maven, Docker — widely available skill sets | ✅ |
+| **No Cloud Dependency** | Fully deployable on-premises; no cloud services required | ✅ |
 
 ---
 
-## openCode-Kompatibilität
+## openCode Compatibility
 
-Der Taxonomy Architecture Analyzer erfüllt die Kriterien für eine Veröffentlichung auf der [openCode-Plattform](https://opencode.de/) (ehemals Open CoDE) des Zentrums für Digitale Souveränität (ZenDiS):
+The Taxonomy Architecture Analyzer meets the criteria for publication on the [openCode platform](https://opencode.de/) (formerly Open CoDE) of the Center for Digital Sovereignty (ZenDiS):
 
-| openCode-Kriterium | Status | Nachweis |
+| openCode Criterion | Status | Evidence |
 |---|---|---|
-| **Open-Source-Lizenz** | ✅ | MIT-Lizenz ([LICENSE](../LICENSE)) |
-| **Öffentlich zugänglicher Quellcode** | ✅ | [GitHub Repository](https://github.com/carstenartur/Taxonomy) |
-| **Dokumentierte Build-Anleitung** | ✅ | [README](../README.md) + [Developer Guide](DEVELOPER_GUIDE.md) |
-| **SBOM vorhanden** | ✅ | CycloneDX (`target/taxonomy-sbom.json`) |
-| **Verwaltungsrelevanter Einsatzzweck** | ✅ | Architektur-Analyse und Wissenskonservierung für Behörden (siehe [Use Case](USE_CASE_WISSENSKONSERVIERUNG.md)) |
-| **Nachnutzung durch andere Behörden** | ✅ | Docker-Deployment; umfangreiche Konfigurationsmöglichkeiten |
-| **Dokumentation in deutscher Sprache** | ✅ | Behördentauglichkeits-Dokumentation auf Deutsch |
-| **Drittanbieter-Transparenz** | ✅ | [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) |
-| **Sicherheitsdokumentation** | ✅ | [SECURITY.md](SECURITY.md) |
-| **Datenschutzdokumentation** | ✅ | [DATA_PROTECTION.md](DATA_PROTECTION.md) |
+| **Open Source License** | ✅ | MIT license ([LICENSE](../LICENSE)) |
+| **Publicly Accessible Source Code** | ✅ | [GitHub Repository](https://github.com/carstenartur/Taxonomy) |
+| **Documented Build Instructions** | ✅ | [README](../README.md) + [Developer Guide](DEVELOPER_GUIDE.md) |
+| **SBOM Available** | ✅ | CycloneDX (`target/taxonomy-sbom.json`) |
+| **Government-Relevant Use Case** | ✅ | Architecture analysis and knowledge preservation for government agencies (see [Use Case](USE_CASE_WISSENSKONSERVIERUNG.md)) |
+| **Reuse by Other Agencies** | ✅ | Docker deployment; extensive configuration options |
+| **Documentation in German** | ✅ | Government-readiness documentation available in German |
+| **Third-Party Transparency** | ✅ | [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) |
+| **Security Documentation** | ✅ | [SECURITY.md](SECURITY.md) |
+| **Data Protection Documentation** | ✅ | [DATA_PROTECTION.md](DATA_PROTECTION.md) |
 
 ---
 
-## Deutsche Verwaltungscloud (DVC) Kompatibilität
+## German Federal Cloud (DVC) Compatibility
 
-Der Taxonomy Architecture Analyzer ist mit der Zielarchitektur der Deutschen Verwaltungscloud kompatibel:
+The Taxonomy Architecture Analyzer is compatible with the target architecture of the German Federal Cloud (Deutsche Verwaltungscloud):
 
-| DVC-Anforderung | Taxonomy-Umsetzung | Status |
+| DVC Requirement | Taxonomy Implementation | Status |
 |---|---|---|
-| **Container-basiertes Deployment** | Docker-Image vorhanden; Kubernetes-fähig (Dockerfile im Repository) | ✅ |
-| **Mandantenfähigkeit** | Workspace-Isolation über Branch-basierte Benutzertrennung (siehe [Workspace Design](internal/WORKSPACE_DESIGN.md)) | ⚠️ In Entwicklung |
-| **Föderale Nachnutzung** | Open Source (MIT); konfigurierbar für verschiedene Behördenkontexte | ✅ |
-| **Standardisierte Schnittstellen** | REST API mit OpenAPI/Swagger-Dokumentation | ✅ |
-| **Datensouveränität** | On-Premises-Betrieb + Air-Gapped-Modus möglich | ✅ |
-| **Interoperabilität** | Export in offene Formate (ArchiMate XML, JSON, Mermaid) | ✅ |
+| **Container-Based Deployment** | Docker image available; Kubernetes-ready (Dockerfile in repository) | ✅ |
+| **Multi-Tenancy** | Workspace isolation via branch-based user separation (see [Workspace Design](internal/WORKSPACE_DESIGN.md)) | ⚠️ In Development |
+| **Federal Reuse** | Open Source (MIT); configurable for various agency contexts | ✅ |
+| **Standardized Interfaces** | REST API with OpenAPI/Swagger documentation | ✅ |
+| **Data Sovereignty** | On-premises operation + air-gapped mode possible | ✅ |
+| **Interoperability** | Export in open formats (ArchiMate XML, JSON, Mermaid) | ✅ |
 | **Monitoring** | Spring Boot Actuator (Health, Metrics, Prometheus) | ✅ |
-| **Skalierbarkeit** | Stateless REST API; Datenbank-Backend austauschbar | ✅ |
-| **Hochverfügbarkeit** | Docker-basiert; Load-Balancer-kompatibel (Health Endpoint) | ✅ |
+| **Scalability** | Stateless REST API; interchangeable database backend | ✅ |
+| **High Availability** | Docker-based; load-balancer compatible (health endpoint) | ✅ |
 
 ---
 
-## Nachnutzbarkeit durch Behörden
+## Reusability by Government Agencies
 
-### Einfache Inbetriebnahme
+### Easy Deployment
 
 ```bash
-# Minimal-Deployment (air-gapped, keine externe Abhängigkeit)
+# Minimal deployment (air-gapped, no external dependencies)
 docker run -p 8080:8080 \
   -e LLM_PROVIDER=LOCAL_ONNX \
   -e SPRING_PROFILES_ACTIVE=production \
-  -e TAXONOMY_ADMIN_PASSWORD=<sicheres-passwort> \
+  -e TAXONOMY_ADMIN_PASSWORD=<secure-password> \
   ghcr.io/carstenartur/taxonomy:latest
 ```
 
-### Anpassbarkeit
+### Customizability
 
-| Bereich | Konfigurationsmöglichkeit |
+| Area | Configuration Options |
 |---|---|
-| **Datenbank** | PostgreSQL, SQL Server, Oracle, HSQLDB (Standard) |
-| **LLM-Provider** | 7 Provider oder vollständig offline (LOCAL_ONNX) |
-| **Authentifizierung** | Lokale Benutzerverwaltung oder Keycloak/OIDC (SSO) |
-| **Taxonomie-Daten** | C3-Katalog vorgeladen; weitere Kataloge importierbar |
-| **Export-Formate** | ArchiMate XML, Visio, Mermaid, JSON, Reports |
-| **Sprache** | UI auf Englisch; Behördendokumentation auf Deutsch |
+| **Database** | PostgreSQL, SQL Server, Oracle, HSQLDB (default) |
+| **LLM Provider** | 7 providers or fully offline (LOCAL_ONNX) |
+| **Authentication** | Local user management or Keycloak/OIDC (SSO) |
+| **Taxonomy Data** | C3 catalog pre-loaded; additional catalogs importable |
+| **Export Formats** | ArchiMate XML, Visio, Mermaid, JSON, Reports |
+| **Language** | UI in English; government documentation in German |
 
-### Behördenspezifische Dokumentation
+### Agency-Specific Documentation
 
-| Dokument | Beschreibung |
+| Document | Description |
 |---|---|
-| [BSI KI Checklist](BSI_KI_CHECKLIST.md) | BSI-Kriterienkatalog für KI-Modelle |
-| [AI Literacy Concept](AI_LITERACY_CONCEPT.md) | Schulungskonzept gemäß EU AI Act Art. 4 |
-| [Accessibility](ACCESSIBILITY.md) | BITV 2.0 / WCAG 2.1 Barrierefreiheitskonzept |
-| [Data Protection](DATA_PROTECTION.md) | DSGVO-Compliance |
-| [Security](SECURITY.md) | Sicherheitsarchitektur |
-| [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) | Behörden-Deployment-Checkliste |
-| [Knowledge Conservation](USE_CASE_WISSENSKONSERVIERUNG.md) | Use Case: Wissenskonservierung in Behörden |
-| [Verwaltungsintegration](VERWALTUNGSINTEGRATION.md) | FIM/115/XÖV-Integrations-Roadmap |
+| [BSI KI Checklist](BSI_KI_CHECKLIST.md) | BSI criteria catalog for AI models |
+| [AI Literacy Concept](AI_LITERACY_CONCEPT.md) | Training concept per EU AI Act Art. 4 |
+| [Accessibility](ACCESSIBILITY.md) | BITV 2.0 / WCAG 2.1 accessibility concept |
+| [Data Protection](DATA_PROTECTION.md) | GDPR compliance |
+| [Security](SECURITY.md) | Security architecture |
+| [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) | Government deployment checklist |
+| [Knowledge Preservation](USE_CASE_WISSENSKONSERVIERUNG.md) | Use case: knowledge preservation in government agencies |
+| [Administration Integration](VERWALTUNGSINTEGRATION.md) | FIM/115/XÖV integration roadmap |
 
 ---
 
-## Konfiguration für souveränen Betrieb
+## Configuration for Sovereign Operation
 
-### Maximale Datensouveränität (Air-Gapped)
+### Maximum Data Sovereignty (Air-Gapped)
 
 ```bash
-# Keine externen Netzwerkverbindungen
+# No external network connections
 LLM_PROVIDER=LOCAL_ONNX
 TAXONOMY_EMBEDDING_ENABLED=true
 TAXONOMY_EMBEDDING_MODEL_DIR=/app/models/bge-small-en-v1.5
 
-# Produktion-Profil mit Sicherheits-Defaults
+# Production profile with security defaults
 SPRING_PROFILES_ACTIVE=production,postgres
-TAXONOMY_ADMIN_PASSWORD=<sicheres-passwort>
-ADMIN_PASSWORD=<admin-panel-geheimnis>
+TAXONOMY_ADMIN_PASSWORD=<secure-password>
+ADMIN_PASSWORD=<admin-panel-secret>
 TAXONOMY_AUDIT_LOGGING=true
 TAXONOMY_REQUIRE_PASSWORD_CHANGE=true
 TAXONOMY_SPRINGDOC_ENABLED=false
 ```
 
-### EU-Datenresidenz (Cloud-LLM in der EU)
+### EU Data Residency (Cloud LLM in the EU)
 
 ```bash
-# Mistral AI — gehostet in Frankreich/EU
+# Mistral AI — hosted in France/EU
 LLM_PROVIDER=MISTRAL
-MISTRAL_API_KEY=<api-schlüssel>
+MISTRAL_API_KEY=<api-key>
 
-# Alle anderen Einstellungen wie Air-Gapped
+# All other settings same as air-gapped
 SPRING_PROFILES_ACTIVE=production,postgres
-TAXONOMY_ADMIN_PASSWORD=<sicheres-passwort>
+TAXONOMY_ADMIN_PASSWORD=<secure-password>
 TAXONOMY_AUDIT_LOGGING=true
 ```
 
-Weitere Details: [AI Transparency — Configuration for Government Use](AI_TRANSPARENCY.md#configuration-for-government-use)
+Further details: [AI Transparency — Configuration for Government Use](AI_TRANSPARENCY.md#configuration-for-government-use)
 
 ---
 
-## Verwandte Dokumentation
+## Related Documentation
 
-- [AI Transparency](AI_TRANSPARENCY.md) — KI-Transparenz und Datenflüsse
-- [Security](SECURITY.md) — Sicherheitsarchitektur
-- [Data Protection](DATA_PROTECTION.md) — Datenschutz und DSGVO
-- [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) — Deployment-Checkliste für Behördenumgebungen
-- [Deployment Guide](DEPLOYMENT_GUIDE.md) — Docker und Deployment-Anleitungen
-- [Verwaltungsintegration](VERWALTUNGSINTEGRATION.md) — FIM/115/XÖV-Integrations-Roadmap
+- [AI Transparency](AI_TRANSPARENCY.md) — AI transparency and data flows
+- [Security](SECURITY.md) — Security architecture
+- [Data Protection](DATA_PROTECTION.md) — Data protection and GDPR
+- [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) — Deployment checklist for government environments
+- [Deployment Guide](DEPLOYMENT_GUIDE.md) — Docker and deployment instructions
+- [Administration Integration](VERWALTUNGSINTEGRATION.md) — FIM/115/XÖV integration roadmap

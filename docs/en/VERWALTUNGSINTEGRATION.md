@@ -1,133 +1,133 @@
-# Verwaltungsintegration — Roadmap
+# Administration Integration — Roadmap
 
-Dieses Dokument beschreibt die geplante Integration des Taxonomy Architecture Analyzer mit verwaltungsfachlichen Wissensbeständen und Schnittstellen der deutschen Bundesverwaltung. Es handelt sich um ein strategisches Roadmap-Dokument.
-
----
-
-## Inhaltsverzeichnis
-
-1. [Übersicht der Integrationspunkte](#übersicht-der-integrationspunkte)
-2. [FIM-Leistungskatalog-Import](#fim-leistungskatalog-import)
-3. [Verwaltungsvorschriften-Parser](#verwaltungsvorschriften-parser)
-4. [115-Wissensbasis-Anbindung](#115-wissensbasis-anbindung)
-5. [XÖV-Schema-Mapping](#xöv-schema-mapping)
-6. [Phasenplanung](#phasenplanung)
+This document describes the planned integration of the Taxonomy Architecture Analyzer with administrative knowledge bases and interfaces of the German federal administration. This is a strategic roadmap document.
 
 ---
 
-## Übersicht der Integrationspunkte
+## Table of Contents
 
-| Integrationspunkt | Beschreibung | Phase | Priorität |
+1. [Overview of Integration Points](#overview-of-integration-points)
+2. [FIM Service Catalog Import](#fim-service-catalog-import)
+3. [Administrative Regulation Parser](#administrative-regulation-parser)
+4. [115 Knowledge Base Connection](#115-knowledge-base-connection)
+5. [XÖV Schema Mapping](#xöv-schema-mapping)
+6. [Phase Planning](#phase-planning)
+
+---
+
+## Overview of Integration Points
+
+| Integration Point | Description | Phase | Priority |
 |---|---|---|---|
-| **FIM-Leistungskatalog-Import** | Verwaltungsleistungen als Anforderungen für Architektur-Analyse importieren | Phase 1 | 🟡 Mittel |
-| **Verwaltungsvorschriften-Parser** | PDF/DOCX → Anforderungsextraktion aus Verwaltungsdokumenten | Phase 1 | 🟡 Mittel |
-| **115-Wissensbasis-Anbindung** | Verwaltungsfachliche Informationen als Kontext für RAG-basierte Analyse | Phase 2 | 🟢 Niedrig |
-| **XÖV-Schema-Mapping** | XÖV-Nachrichten auf Taxonomie-Knoten abbilden | Phase 2 | 🟢 Niedrig |
+| **FIM Service Catalog Import** | Import administrative services as requirements for architecture analysis | Phase 1 | 🟡 Medium |
+| **Administrative Regulation Parser** | PDF/DOCX → requirements extraction from administrative documents | Phase 1 | 🟡 Medium |
+| **115 Knowledge Base Connection** | Administrative domain information as context for RAG-based analysis | Phase 2 | 🟢 Low |
+| **XÖV Schema Mapping** | Map XÖV messages to taxonomy nodes | Phase 2 | 🟢 Low |
 
 ---
 
-## FIM-Leistungskatalog-Import
+## FIM Service Catalog Import
 
-### Ziel
+### Goal
 
-Der [Föderale Informationsmanagement (FIM)](https://fimportal.de/)-Leistungskatalog enthält standardisierte Beschreibungen von Verwaltungsleistungen. Durch den Import dieser Leistungsbeschreibungen als Business-Anforderungen können Architektur-Analysen für verwaltungsfachliche Prozesse automatisiert angestoßen werden.
+The [Federal Information Management (FIM)](https://fimportal.de/) service catalog contains standardized descriptions of administrative services. By importing these service descriptions as business requirements, architecture analyses for administrative processes can be triggered automatically.
 
-### Konzept
+### Concept
 
-| Aspekt | Detail |
+| Aspect | Detail |
 |---|---|
-| **Datenquelle** | FIM-Leistungskatalog (XML/JSON-Export) |
-| **Import-Format** | Leistungsbezeichnung + Leistungsbeschreibung → Business Requirement |
-| **Mapping** | FIM-Leistungsnummer → Analyse-Referenz |
-| **Workflow** | Import → Automatische KI-Analyse → Architekt prüft Ergebnis |
+| **Data Source** | FIM service catalog (XML/JSON export) |
+| **Import Format** | Service name + service description → Business Requirement |
+| **Mapping** | FIM service number → analysis reference |
+| **Workflow** | Import → automatic AI analysis → architect reviews result |
 
-### Voraussetzungen
+### Prerequisites
 
-- Zugang zum FIM-Leistungskatalog-Export
-- API-Spezifikation des FIM-Portals (sofern verfügbar)
-- Mapping-Definition: Welche FIM-Felder als Business Requirement genutzt werden
+- Access to the FIM service catalog export
+- API specification of the FIM portal (if available)
+- Mapping definition: which FIM fields are used as business requirements
 
 ---
 
-## Verwaltungsvorschriften-Parser
+## Administrative Regulation Parser
 
-### Ziel
+### Goal
 
-Verwaltungsvorschriften, Dienstanweisungen und fachliche Anforderungsdokumente liegen häufig als PDF oder DOCX vor. Ein Parser soll aus diesen Dokumenten automatisch Anforderungen extrahieren, die als Input für die Architektur-Analyse dienen.
+Administrative regulations, service instructions, and domain-specific requirements documents are often available as PDF or DOCX. A parser should automatically extract requirements from these documents to serve as input for the architecture analysis.
 
-### Konzept
+### Concept
 
-| Aspekt | Detail |
+| Aspect | Detail |
 |---|---|
-| **Eingabeformate** | PDF, DOCX (weitere Formate erweiterbar) |
-| **Verarbeitung** | Textextraktion → Abschnittsstrukturierung → Anforderungsidentifikation |
-| **KI-Unterstützung** | Optional: LLM-basierte Zusammenfassung und Anforderungsextraktion |
-| **Ausgabe** | Strukturierte Business Requirements für die Taxonomy-Analyse |
+| **Input Formats** | PDF, DOCX (additional formats extensible) |
+| **Processing** | Text extraction → section structuring → requirements identification |
+| **AI Support** | Optional: LLM-based summarization and requirements extraction |
+| **Output** | Structured business requirements for the taxonomy analysis |
 
-### Synergien
+### Synergies
 
-Dieses Feature ergänzt die in [USE_CASE_WISSENSKONSERVIERUNG.md](USE_CASE_WISSENSKONSERVIERUNG.md) beschriebene Roadmap für die Wissenskonservierung aus Dokumenten.
+This feature complements the roadmap for knowledge preservation from documents described in [USE_CASE_WISSENSKONSERVIERUNG.md](USE_CASE_WISSENSKONSERVIERUNG.md).
 
 ---
 
-## 115-Wissensbasis-Anbindung
+## 115 Knowledge Base Connection
 
-### Ziel
+### Goal
 
-Die [115-Wissensbasis](https://www.115.de/) enthält verwaltungsfachliche Informationen zu Behördenleistungen und -prozessen. Durch die Anbindung als Kontextquelle kann die KI-Analyse mit verwaltungsspezifischem Hintergrundwissen angereichert werden (Retrieval Augmented Generation / RAG).
+The [115 knowledge base](https://www.115.de/) contains administrative domain information about government services and processes. By connecting it as a context source, the AI analysis can be enriched with administration-specific background knowledge (Retrieval Augmented Generation / RAG).
 
-### Konzept
+### Concept
 
-| Aspekt | Detail |
+| Aspect | Detail |
 |---|---|
-| **Nutzung** | Kontextanreicherung für LLM-Prompts (RAG) |
-| **Datenquelle** | 115-Wissensbasis-Export oder API |
-| **Vorteil** | Verwaltungsfachliche Präzision der KI-Ergebnisse verbessern |
-| **Datenschutz** | Nur öffentlich zugängliche Informationen; keine personenbezogenen Daten |
+| **Usage** | Context enrichment for LLM prompts (RAG) |
+| **Data Source** | 115 knowledge base export or API |
+| **Benefit** | Improve administrative domain precision of AI results |
+| **Data Protection** | Only publicly available information; no personal data |
 
 ---
 
-## XÖV-Schema-Mapping
+## XÖV Schema Mapping
 
-### Ziel
+### Goal
 
-[XÖV-Standards](https://www.xoev.de/) definieren standardisierte Nachrichtenformate für den Datenaustausch in der deutschen Verwaltung (z. B. XBau, XBezahlen, XPersonenstandsrecht). Durch ein Mapping von XÖV-Schemata auf Taxonomie-Knoten können Architektur-Analysen die verwendeten Schnittstellenstandards berücksichtigen.
+[XÖV standards](https://www.xoev.de/) define standardized message formats for data exchange in German administration (e.g., XBau, XBezahlen, XPersonenstandsrecht). By mapping XÖV schemas to taxonomy nodes, architecture analyses can take the interface standards in use into account.
 
-### Konzept
+### Concept
 
-| Aspekt | Detail |
+| Aspect | Detail |
 |---|---|
-| **Datenquelle** | XÖV-Schema-Repository (XSD-Dateien) |
-| **Mapping** | XÖV-Nachrichtentypen → Taxonomie-Knoten (z. B. Integration-Pattern) |
-| **Nutzen** | Automatische Identifikation relevanter Integrationsstandards für eine Architektur |
-| **Export** | XÖV-Referenzen in ArchiMate-Export integrierbar |
+| **Data Source** | XÖV schema repository (XSD files) |
+| **Mapping** | XÖV message types → taxonomy nodes (e.g., integration pattern) |
+| **Benefit** | Automatic identification of relevant integration standards for an architecture |
+| **Export** | XÖV references can be integrated into the ArchiMate export |
 
 ---
 
-## Phasenplanung
+## Phase Planning
 
-### Phase 1: Konzept und Prototyp (3–6 Monate)
+### Phase 1: Concept and Prototype (3–6 Months)
 
-| Schritt | Beschreibung | Aufwand |
+| Step | Description | Effort |
 |---|---|---|
-| FIM-Katalog-Analyse | Format und Verfügbarkeit des FIM-Exports klären | 1 Woche |
-| Parser-Prototyp | PDF/DOCX-Textextraktion mit Apache Tika evaluieren | 2 Wochen |
-| Import-API | REST-Endpunkt für Anforderungsimport aus strukturierten Quellen | 2 Wochen |
-| Pilot-Test | Testlauf mit 10–20 FIM-Leistungen | 1 Woche |
+| FIM Catalog Analysis | Clarify format and availability of the FIM export | 1 Week |
+| Parser Prototype | Evaluate PDF/DOCX text extraction with Apache Tika | 2 Weeks |
+| Import API | REST endpoint for requirements import from structured sources | 2 Weeks |
+| Pilot Test | Test run with 10–20 FIM services | 1 Week |
 
-### Phase 2: Erweiterte Integration (6–12 Monate)
+### Phase 2: Extended Integration (6–12 Months)
 
-| Schritt | Beschreibung | Aufwand |
+| Step | Description | Effort |
 |---|---|---|
-| 115-Anbindung | Evaluierung der 115-Wissensbasis als RAG-Kontextquelle | 2 Wochen |
-| XÖV-Mapping | Prototypisches Mapping von XÖV-Schemata auf Taxonomie | 3 Wochen |
-| Feedback | Pilotbetrieb mit Partnerbehörde; Feedback-Integration | 4 Wochen |
+| 115 Connection | Evaluate the 115 knowledge base as a RAG context source | 2 Weeks |
+| XÖV Mapping | Prototypical mapping of XÖV schemas to taxonomy | 3 Weeks |
+| Feedback | Pilot operation with partner agency; feedback integration | 4 Weeks |
 
 ---
 
-## Verwandte Dokumentation
+## Related Documentation
 
-- [Use Case: Wissenskonservierung](USE_CASE_WISSENSKONSERVIERUNG.md) — Behörden-Use-Case für Wissenskonservierung
-- [AI Transparency](AI_TRANSPARENCY.md) — KI-Transparenz und Datenflüsse
-- [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — Digitale Souveränität und openCode
-- [API Reference](API_REFERENCE.md) — REST API-Dokumentation
+- [Use Case: Knowledge Preservation](USE_CASE_WISSENSKONSERVIERUNG.md) — Government use case for knowledge preservation
+- [AI Transparency](AI_TRANSPARENCY.md) — AI transparency and data flows
+- [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — Digital sovereignty and openCode
+- [API Reference](API_REFERENCE.md) — REST API documentation
