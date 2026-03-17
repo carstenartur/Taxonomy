@@ -557,6 +557,14 @@ class ScreenshotGeneratorIT {
     }
 
     /**
+     * Waits for D3 tree/treemap transition animations (300ms) to complete.
+     * A 500ms pause ensures all SVG elements have settled into their final positions.
+     */
+    private void waitForD3Transition() {
+        try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
+    /**
      * Injects healthy-looking status badge values for AI, Embeddings, and Git Status
      * before taking documentation screenshots.  This replaces "unavailable" / error states
      * that appear when the screenshot environment lacks a real LLM key or when Git operations
@@ -741,7 +749,7 @@ class ScreenshotGeneratorIT {
             return nodeCount != null && nodeCount > 0;
         });
         // Brief pause to let D3 tree transitions (300ms animation) complete
-        try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        waitForD3Transition();
         saveScreenshot("07-tree-view.png");
         safeClick(By.id("viewList"));
     }
@@ -2226,7 +2234,7 @@ class ScreenshotGeneratorIT {
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewDecision"), "class", "btn-primary"));
         wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "decision"));
         // Brief pause to let the D3 treemap rendering complete
-        try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        waitForD3Transition();
         saveScreenshot("69-decision-map-scored.png");
         safeClick(By.id("viewList"));
     }
