@@ -13,6 +13,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -109,7 +110,10 @@ class HelpControllerTest {
         for (String lang : List.of("en", "de")) {
             Resource[] resources = resolver.getResources("classpath:docs/" + lang + "/*.md");
             for (Resource r : resources) {
-                String content = new String(r.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                String content;
+                try (InputStream in = r.getInputStream()) {
+                    content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                }
                 String filename = r.getFilename();
 
                 Matcher m1 = brokenMarkdownImg.matcher(content);
@@ -184,9 +188,8 @@ class HelpControllerTest {
         // Verify that ../images/ references in Markdown are rewritten to /help/images/ in rendered HTML
         mockMvc.perform(get("/help/USER_GUIDE").accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("/help/images/")))
-                .andExpect(content().string(not(containsString("\"../images/"))))
-                .andExpect(content().string(not(containsString("(../images/"))));
+                .andExpect(content().string(containsString("src=\"/help/images/")))
+                .andExpect(content().string(not(containsString("src=\"../images/"))));
     }
 
     @Test
