@@ -2,6 +2,7 @@
 
 (function () {
     'use strict';
+    var t = TaxonomyI18n.t;
 
     var profilesCache = null;
 
@@ -15,7 +16,7 @@
                 profilesCache = profiles;
                 var select = document.getElementById('importProfileSelect');
                 if (!select) return;
-                select.innerHTML = '<option value="">-- Select Profile --</option>';
+                select.innerHTML = '<option value="">' + t('import.select.profile') + '</option>';
                 profiles.forEach(function (p) {
                     var opt = document.createElement('option');
                     opt.value = p.profileId;
@@ -54,8 +55,8 @@
 
         infoDiv.innerHTML =
             '<small class="text-muted">' +
-            '<strong>Elements:</strong> ' + Array.from(profile.supportedElementTypes).join(', ') +
-            '<br><strong>Relations:</strong> ' + Array.from(profile.supportedRelationTypes).join(', ') +
+            '<strong>' + t('import.elements.strong') + '</strong> ' + Array.from(profile.supportedElementTypes).join(', ') +
+            '<br><strong>' + t('import.relations.strong') + '</strong> ' + Array.from(profile.supportedRelationTypes).join(', ') +
             '</small>';
     }
 
@@ -70,7 +71,7 @@
         var formData = new FormData();
         formData.append('file', file);
 
-        setImportStatus('Previewing...', 'info');
+        setImportStatus(t('import.previewing'), 'info');
 
         fetch('/api/import/preview/' + encodeURIComponent(profileId), {
             method: 'POST',
@@ -81,7 +82,7 @@
             renderResult(result, true);
         })
         .catch(function (err) {
-            setImportStatus('Preview failed: ' + err.message, 'danger');
+            setImportStatus(t('import.preview.failed', err.message), 'danger');
         });
     }
 
@@ -99,7 +100,7 @@
         var formData = new FormData();
         formData.append('file', file);
 
-        setImportStatus('Importing...', 'info');
+        setImportStatus(t('import.importing'), 'info');
 
         fetch('/api/import/' + encodeURIComponent(profileId) + '?branch=' + encodeURIComponent(branchValue), {
             method: 'POST',
@@ -111,14 +112,14 @@
             renderResult(result, false);
         })
         .catch(function (err) {
-            setImportStatus('Import failed: ' + err.message, 'danger');
+            setImportStatus(t('import.import.failed', err.message), 'danger');
         });
     }
 
     function getSelectedProfile() {
         var select = document.getElementById('importProfileSelect');
         if (!select || !select.value) {
-            alert('Please select an import profile.');
+            alert(t('import.select.profile.alert'));
             return null;
         }
         return select.value;
@@ -127,7 +128,7 @@
     function getSelectedFile() {
         var fileInput = document.getElementById('importFrameworkFile');
         if (!fileInput || !fileInput.files || !fileInput.files[0]) {
-            alert('Please select a file to import.');
+            alert(t('import.select.file.alert'));
             return null;
         }
         return fileInput.files[0];
@@ -144,32 +145,32 @@
         if (!div) return;
 
         var statusClass = result.success ? 'success' : 'danger';
-        var statusText = result.success ? (isPreview ? 'Preview OK' : 'Import Successful') : 'Failed';
+        var statusText = result.success ? (isPreview ? t('import.preview.ok') : t('import.import.success')) : t('import.import.fail');
 
         var html = '<div class="alert alert-' + statusClass + ' py-2 small mb-2">' +
             '<strong>' + statusText + '</strong> — ' + (result.profileDisplayName || result.profileId) +
             '</div>';
 
         html += '<table class="table table-sm table-bordered small mb-2">' +
-            '<tr><td>Elements (total/mapped)</td><td>' + result.elementsTotal + ' / ' + result.elementsMapped + '</td></tr>' +
-            '<tr><td>Relations (total/mapped)</td><td>' + result.relationsTotal + ' / ' + result.relationsMapped + '</td></tr>';
+            '<tr><td>' + t('import.elements.label') + '</td><td>' + result.elementsTotal + ' / ' + result.elementsMapped + '</td></tr>' +
+            '<tr><td>' + t('import.relations.label') + '</td><td>' + result.relationsTotal + ' / ' + result.relationsMapped + '</td></tr>';
 
         if (!isPreview) {
-            html += '<tr><td>Relations created</td><td>' + result.relationsCreated + '</td></tr>' +
-                '<tr><td>Hypotheses created</td><td>' + result.hypothesesCreated + '</td></tr>';
+            html += '<tr><td>' + t('import.relations.created') + '</td><td>' + result.relationsCreated + '</td></tr>' +
+                '<tr><td>' + t('import.hypotheses.created') + '</td><td>' + result.hypothesesCreated + '</td></tr>';
         }
         html += '</table>';
 
         if (result.unmappedTypes && result.unmappedTypes.length > 0) {
-            html += '<details class="small mb-2"><summary class="text-warning">Unmapped types (' + result.unmappedTypes.length + ')</summary>' +
-                '<ul class="mb-0">' + result.unmappedTypes.map(function (t) { return '<li>' + escapeHtml(t) + '</li>'; }).join('') + '</ul></details>';
+            html += '<details class="small mb-2"><summary class="text-warning">' + t('import.unmapped.types', result.unmappedTypes.length) + '</summary>' +
+                '<ul class="mb-0">' + result.unmappedTypes.map(function (typ) { return '<li>' + escapeHtml(typ) + '</li>'; }).join('') + '</ul></details>';
         }
 
         if (result.warnings && result.warnings.length > 0) {
-            html += '<details class="small mb-2"><summary class="text-muted">Warnings (' + result.warnings.length + ')</summary>' +
+            html += '<details class="small mb-2"><summary class="text-muted">' + t('import.warnings', result.warnings.length) + '</summary>' +
                 '<ul class="mb-0">' + result.warnings.slice(0, 20).map(function (w) { return '<li>' + escapeHtml(w) + '</li>'; }).join('') + '</ul>';
             if (result.warnings.length > 20) {
-                html += '<p class="text-muted">...and ' + (result.warnings.length - 20) + ' more</p>';
+                html += '<p class="text-muted">' + t('import.warnings.more', result.warnings.length - 20) + '</p>';
             }
             html += '</details>';
         }
