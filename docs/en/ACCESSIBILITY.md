@@ -1,193 +1,193 @@
-# Barrierefreiheitskonzept (BITV 2.0 / WCAG 2.1)
+# Accessibility Concept (BITV 2.0 / WCAG 2.1)
 
-Dieses Dokument beschreibt das Barrierefreiheitskonzept für den Taxonomy Architecture Analyzer gemäß der **Barrierefreie-Informationstechnik-Verordnung (BITV 2.0)** und den **Web Content Accessibility Guidelines (WCAG 2.1 Level AA)**.
-
----
-
-## Inhaltsverzeichnis
-
-1. [Geltungsbereich](#geltungsbereich)
-2. [Konformitätsziel](#konformitätsziel)
-3. [Bestandsaufnahme der UI-Komponenten](#bestandsaufnahme-der-ui-komponenten)
-4. [Identifizierte Handlungsfelder](#identifizierte-handlungsfelder)
-5. [Maßnahmenplan](#maßnahmenplan)
-6. [Prüfverfahren](#prüfverfahren)
-7. [Erklärung zur Barrierefreiheit](#erklärung-zur-barrierefreiheit)
+This document describes the accessibility concept for the Taxonomy Architecture Analyzer in accordance with the **Barrierefreie-Informationstechnik-Verordnung (BITV 2.0)** and the **Web Content Accessibility Guidelines (WCAG 2.1 Level AA)**.
 
 ---
 
-## Geltungsbereich
+## Table of Contents
 
-| Aspekt | Detail |
+1. [Scope](#scope)
+2. [Conformance Target](#conformance-target)
+3. [Inventory of UI Components](#inventory-of-ui-components)
+4. [Identified Areas of Action](#identified-areas-of-action)
+5. [Action Plan](#action-plan)
+6. [Testing Procedures](#testing-procedures)
+7. [Accessibility Statement](#accessibility-statement)
+
+---
+
+## Scope
+
+| Aspect | Detail |
 |---|---|
-| **Anwendung** | Taxonomy Architecture Analyzer — Web-Anwendung (Single-Page) |
-| **Rechtsgrundlage** | BITV 2.0 (§ 1–3), basierend auf BGG § 12a–12d |
-| **Technischer Standard** | WCAG 2.1 Level AA (EN 301 549 V3.2.1) |
-| **Geltung** | Alle öffentlich zugänglichen Webseiten und Anwendungsoberflächen bei Einsatz in Bundesbehörden |
-| **Fristen** | Bestehende Webanwendungen: BITV 2.0 vollständig anwendbar |
+| **Application** | Taxonomy Architecture Analyzer — Web application (Single-Page) |
+| **Legal Basis** | BITV 2.0 (§ 1–3), based on BGG § 12a–12d |
+| **Technical Standard** | WCAG 2.1 Level AA (EN 301 549 V3.2.1) |
+| **Applicability** | All publicly accessible web pages and application interfaces when deployed in federal authorities |
+| **Deadlines** | Existing web applications: BITV 2.0 fully applicable |
 
 ---
 
-## Konformitätsziel
+## Conformance Target
 
-Das Konformitätsziel ist **WCAG 2.1 Level AA**, das dem BITV-2.0-Standard entspricht. Die vier Grundprinzipien:
+The conformance target is **WCAG 2.1 Level AA**, which corresponds to the BITV 2.0 standard. The four core principles:
 
-| Prinzip | Beschreibung | Relevanz für Taxonomy |
+| Principle | Description | Relevance for Taxonomy |
 |---|---|---|
-| **Wahrnehmbar** | Informationen müssen in verschiedenen Formen darstellbar sein | Hoch — farbcodierte Taxonomie-Bäume, Diagramme |
-| **Bedienbar** | Navigation und Bedienung müssen per Tastatur möglich sein | Hoch — komplexe Baum-Navigation, modale Dialoge |
-| **Verständlich** | Inhalte und Bedienung müssen verständlich sein | Mittel — Fachterminologie, KI-Ergebnisse |
-| **Robust** | Inhalte müssen von assistiven Technologien interpretierbar sein | Hoch — dynamische Bootstrap-Komponenten |
+| **Perceivable** | Information must be presentable in different forms | High — color-coded taxonomy trees, diagrams |
+| **Operable** | Navigation and operation must be possible via keyboard | High — complex tree navigation, modal dialogs |
+| **Understandable** | Content and operation must be comprehensible | Medium — technical terminology, AI results |
+| **Robust** | Content must be interpretable by assistive technologies | High — dynamic Bootstrap components |
 
 ---
 
-## Bestandsaufnahme der UI-Komponenten
+## Inventory of UI Components
 
-### Technologie-Stack
+### Technology Stack
 
-| Komponente | Technologie | Barrierefreiheits-Relevanz |
+| Component | Technology | Accessibility Relevance |
 |---|---|---|
-| **Framework** | Bootstrap 5 | Grundlegende ARIA-Unterstützung vorhanden |
-| **Template Engine** | Thymeleaf (serverseitiges Rendering) | HTML-Struktur kontrollierbar |
-| **JavaScript** | Vanilla JS (~29 Module) | Dynamische Inhalte erfordern ARIA-Live-Regionen |
-| **Diagramme** | Mermaid.js (SVG-Rendering) | SVG erfordert Textalternativen |
-| **Icons** | Bootstrap Icons | Icon-only-Elemente erfordern sr-only-Labels |
-| **Baumansicht** | Custom JavaScript (Taxonomie-Baum) | Komplexe Komponente; Treeview-ARIA erforderlich |
+| **Framework** | Bootstrap 5 | Basic ARIA support available |
+| **Template Engine** | Thymeleaf (server-side rendering) | HTML structure controllable |
+| **JavaScript** | Vanilla JS (~29 modules) | Dynamic content requires ARIA live regions |
+| **Diagrams** | Mermaid.js (SVG rendering) | SVG requires text alternatives |
+| **Icons** | Bootstrap Icons | Icon-only elements require sr-only labels |
+| **Tree View** | Custom JavaScript (Taxonomy Tree) | Complex component; treeview ARIA required |
 
-### UI-Bereiche und Bewertung
+### UI Areas and Assessment
 
-| UI-Bereich | Beschreibung | Status |
+| UI Area | Description | Status |
 |---|---|---|
-| **Navigation** | Top-Navbar mit Dropdown-Menüs | ⚠️ Tastaturnavigation prüfen |
-| **Analysepanel** | Textarea + Buttons für KI-Analyse | ⚠️ Label-Zuordnung prüfen |
-| **Taxonomie-Baum** | Scored Tree mit Farbcodierung | ❌ Farbcodierung allein unzugänglich |
-| **Architecture View** | Mermaid-Diagramme (SVG) | ❌ Keine Textalternative |
-| **Diff-Ansicht** | Farbcodierte Code-Diffs | ⚠️ Zusätzliche Markierungen erforderlich |
-| **Graph-Exploration** | Visuelle Graphen | ❌ Nicht barrierefrei |
-| **Admin Panel** | 🔒 Emoji als Interaktionselement | ❌ Nicht barrierefrei |
-| **Modale Dialoge** | Bootstrap Modals | ⚠️ Fokus-Management prüfen |
-| **Toasts/Benachrichtigungen** | Bootstrap Toasts | ⚠️ ARIA-Live-Regionen prüfen |
+| **Navigation** | Top navbar with dropdown menus | ⚠️ Verify keyboard navigation |
+| **Analysis Panel** | Textarea + buttons for AI analysis | ⚠️ Verify label association |
+| **Taxonomy Tree** | Scored tree with color coding | ❌ Color coding alone is inaccessible |
+| **Architecture View** | Mermaid diagrams (SVG) | ❌ No text alternative |
+| **Diff View** | Color-coded code diffs | ⚠️ Additional markers required |
+| **Graph Exploration** | Visual graphs | ❌ Not accessible |
+| **Admin Panel** | 🔒 Emoji as interactive element | ❌ Not accessible |
+| **Modal Dialogs** | Bootstrap Modals | ⚠️ Verify focus management |
+| **Toasts/Notifications** | Bootstrap Toasts | ⚠️ Verify ARIA live regions |
 
 ---
 
-## Identifizierte Handlungsfelder
+## Identified Areas of Action
 
-### Priorität Hoch 🔴
+### Priority High 🔴
 
-| # | Handlungsfeld | Betroffene WCAG-Kriterien | Beschreibung |
+| # | Area of Action | Affected WCAG Criteria | Description |
 |---|---|---|---|
-| **A1** | Scored Taxonomy Tree — Farbcodierung | 1.4.1 (Use of Color), 1.1.1 (Non-text Content) | Farbcodierung der Scores (rot/gelb/grün) ist die einzige Informationsquelle; Screenreader erhalten keine Score-Information |
-| **A2** | Tastaturnavigation | 2.1.1 (Keyboard), 2.4.3 (Focus Order), 2.4.7 (Focus Visible) | Tab-Order, Skip-Links und Focus-Indikatoren für alle interaktiven Elemente sicherstellen |
-| **A3** | Formular-Labels | 1.3.1 (Info and Relationships), 3.3.2 (Labels or Instructions) | Alle Formularfelder (Analyse-Textarea, Suchfelder, Login) mit zugeordneten `<label for="">`-Elementen versehen |
-| **A4** | Admin Panel Lock-Button | 2.5.3 (Label in Name), 1.1.1 (Non-text Content) | 🔒-Emoji als Interaktionselement durch accessible Button mit Textlabel ersetzen |
-| **A5** | Architecture View (Mermaid) | 1.1.1 (Non-text Content) | SVG-Diagramme ohne Textalternative; Alt-Texte oder tabellarische Alternative bereitstellen |
+| **A1** | Scored Taxonomy Tree — Color Coding | 1.4.1 (Use of Color), 1.1.1 (Non-text Content) | Color coding of scores (red/yellow/green) is the only source of information; screen readers receive no score information |
+| **A2** | Keyboard Navigation | 2.1.1 (Keyboard), 2.4.3 (Focus Order), 2.4.7 (Focus Visible) | Ensure tab order, skip links, and focus indicators for all interactive elements |
+| **A3** | Form Labels | 1.3.1 (Info and Relationships), 3.3.2 (Labels or Instructions) | Provide all form fields (analysis textarea, search fields, login) with associated `<label for="">` elements |
+| **A4** | Admin Panel Lock Button | 2.5.3 (Label in Name), 1.1.1 (Non-text Content) | Replace 🔒 emoji as interactive element with an accessible button with a text label |
+| **A5** | Architecture View (Mermaid) | 1.1.1 (Non-text Content) | SVG diagrams without text alternative; provide alt texts or tabular alternative |
 
-### Priorität Mittel 🟡
+### Priority Medium 🟡
 
-| # | Handlungsfeld | Betroffene WCAG-Kriterien | Beschreibung |
+| # | Area of Action | Affected WCAG Criteria | Description |
 |---|---|---|---|
-| **A6** | Diff-Ansicht | 1.4.1 (Use of Color) | Farbcodierte Diffs (grün/rot) durch zusätzliche Symbole (+/−/~) und Screenreader-Labels ergänzen |
-| **A7** | Graph-Exploration | 1.1.1 (Non-text Content) | Visuelle Graphen durch tabellarische Alternativansicht mit Keyboard-Navigation ergänzen |
-| **A8** | Farbkontraste | 1.4.3 (Contrast Minimum) | Kontrast-Audit aller Farben mit axe/Lighthouse durchführen; Mindestkontrastverhältnis 4.5:1 sicherstellen |
-| **A9** | ARIA-Live-Regionen | 4.1.3 (Status Messages) | Dynamische Statusmeldungen (Analyse läuft, Export abgeschlossen) als ARIA-Live-Regionen markieren |
-| **A10** | Modale Dialoge | 2.4.3 (Focus Order) | Fokus-Trapping in Modals sicherstellen; Fokus bei Schließen zurücksetzen |
+| **A6** | Diff View | 1.4.1 (Use of Color) | Supplement color-coded diffs (green/red) with additional symbols (+/−/~) and screen reader labels |
+| **A7** | Graph Exploration | 1.1.1 (Non-text Content) | Supplement visual graphs with a tabular alternative view with keyboard navigation |
+| **A8** | Color Contrasts | 1.4.3 (Contrast Minimum) | Perform contrast audit of all colors with axe/Lighthouse; ensure minimum contrast ratio of 4.5:1 |
+| **A9** | ARIA Live Regions | 4.1.3 (Status Messages) | Mark dynamic status messages (analysis running, export completed) as ARIA live regions |
+| **A10** | Modal Dialogs | 2.4.3 (Focus Order) | Ensure focus trapping in modals; restore focus on close |
 
 ---
 
-## Maßnahmenplan
+## Action Plan
 
-### Phase 1: Audit und Quick Wins (Wochen 1–2)
+### Phase 1: Audit and Quick Wins (Weeks 1–2)
 
-| # | Maßnahme | Aufwand | WCAG-Kriterien |
+| # | Action | Effort | WCAG Criteria |
 |---|---|---|---|
-| M1 | axe/Lighthouse-Audit der Hauptseite durchführen | 2 Tage | Alle |
-| M2 | Skip-Links implementieren (`<a href="#main-content">Zum Inhalt springen</a>`) | 0,5 Tage | 2.4.1 |
-| M3 | `<label for="">`-Zuordnung für alle Formularfelder | 1 Tag | 1.3.1, 3.3.2 |
-| M4 | 🔒-Button durch accessible Button mit Text ersetzen | 0,5 Tage | 2.5.3, 1.1.1 |
-| M5 | `lang="de"` oder `lang="en"` auf `<html>`-Element sicherstellen | 0,5 Tage | 3.1.1 |
+| M1 | Perform axe/Lighthouse audit of the main page | 2 days | All |
+| M2 | Implement skip links (`<a href="#main-content">Skip to content</a>`) | 0.5 days | 2.4.1 |
+| M3 | `<label for="">` association for all form fields | 1 day | 1.3.1, 3.3.2 |
+| M4 | Replace 🔒 button with accessible button with text | 0.5 days | 2.5.3, 1.1.1 |
+| M5 | Ensure `lang="de"` or `lang="en"` on `<html>` element | 0.5 days | 3.1.1 |
 
-### Phase 2: Kernkomponenten (Wochen 3–6)
+### Phase 2: Core Components (Weeks 3–6)
 
-| # | Maßnahme | Aufwand | WCAG-Kriterien |
+| # | Action | Effort | WCAG Criteria |
 |---|---|---|---|
-| M6 | Taxonomie-Baum: ARIA-`treeview`-Rolle, Score als Text (`aria-label`) | 3 Tage | 1.4.1, 1.1.1, 4.1.2 |
-| M7 | Taxonomie-Baum: Tastaturnavigation (Pfeiltasten, Enter, Space) | 2 Tage | 2.1.1, 2.4.3 |
-| M8 | Architecture View: Tabellarische Alternativansicht | 2 Tage | 1.1.1 |
-| M9 | Diff-Ansicht: +/−/~-Symbole und `aria-label` ergänzen | 1 Tag | 1.4.1 |
-| M10 | ARIA-Live-Regionen für dynamische Statusmeldungen | 1 Tag | 4.1.3 |
+| M6 | Taxonomy tree: ARIA `treeview` role, score as text (`aria-label`) | 3 days | 1.4.1, 1.1.1, 4.1.2 |
+| M7 | Taxonomy tree: Keyboard navigation (arrow keys, Enter, Space) | 2 days | 2.1.1, 2.4.3 |
+| M8 | Architecture View: Tabular alternative view | 2 days | 1.1.1 |
+| M9 | Diff View: Add +/−/~ symbols and `aria-label` | 1 day | 1.4.1 |
+| M10 | ARIA live regions for dynamic status messages | 1 day | 4.1.3 |
 
-### Phase 3: Verfeinerung (Wochen 7–10)
+### Phase 3: Refinement (Weeks 7–10)
 
-| # | Maßnahme | Aufwand | WCAG-Kriterien |
+| # | Action | Effort | WCAG Criteria |
 |---|---|---|---|
-| M11 | Kontrast-Audit und Farbkorrekturen | 2 Tage | 1.4.3 |
-| M12 | Graph-Exploration: Tabellarische Alternative | 3 Tage | 1.1.1 |
-| M13 | Fokus-Management in Modals verbessern | 1 Tag | 2.4.3 |
-| M14 | Screenreader-Tests (NVDA, VoiceOver) | 3 Tage | Alle |
-| M15 | BIK-BITV-Konformitätstest vorbereiten | 2 Tage | Alle |
+| M11 | Contrast audit and color corrections | 2 days | 1.4.3 |
+| M12 | Graph Exploration: Tabular alternative | 3 days | 1.1.1 |
+| M13 | Improve focus management in modals | 1 day | 2.4.3 |
+| M14 | Screen reader tests (NVDA, VoiceOver) | 3 days | All |
+| M15 | Prepare BIK BITV conformance test | 2 days | All |
 
 ---
 
-## Prüfverfahren
+## Testing Procedures
 
-### Automatisierte Tests
+### Automated Tests
 
-| Tool | Einsatzbereich | Frequenz |
+| Tool | Area of Use | Frequency |
 |---|---|---|
-| **axe-core** | HTML-Struktur, ARIA, Kontraste, Labels | Bei jedem Build (CI-Integration empfohlen) |
-| **Lighthouse Accessibility Audit** | Gesamtseiten-Bewertung | Monatlich / bei Release |
-| **Pa11y** | Automatisierte Seitenprüfung | Optional, ergänzend |
+| **axe-core** | HTML structure, ARIA, contrasts, labels | On every build (CI integration recommended) |
+| **Lighthouse Accessibility Audit** | Full-page assessment | Monthly / on release |
+| **Pa11y** | Automated page testing | Optional, supplementary |
 
-### Manuelle Tests
+### Manual Tests
 
-| Test | Beschreibung | Frequenz |
+| Test | Description | Frequency |
 |---|---|---|
-| **Tastaturnavigation** | Alle Funktionen ohne Maus erreichbar? Tab-Order logisch? | Bei jedem UI-Release |
-| **Screenreader-Test** | NVDA (Windows) / VoiceOver (macOS) / Orca (Linux) | Quartalsweise |
-| **Zoom-Test** | 200% Zoom: Keine Inhalte abgeschnitten? | Bei jedem UI-Release |
-| **Kontrast-Prüfung** | Colour Contrast Analyser für kritische Farben | Bei Farbänderungen |
+| **Keyboard Navigation** | Are all functions reachable without a mouse? Is tab order logical? | On every UI release |
+| **Screen Reader Test** | NVDA (Windows) / VoiceOver (macOS) / Orca (Linux) | Quarterly |
+| **Zoom Test** | 200% zoom: No content clipped? | On every UI release |
+| **Contrast Check** | Colour Contrast Analyser for critical colors | On color changes |
 
-### BIK-BITV-Test
+### BIK BITV Test
 
-Für den Einsatz in Bundesbehörden wird ein vollständiger **BIK-BITV-Test** empfohlen:
+For deployment in federal authorities, a complete **BIK BITV test** is recommended:
 
-| Aspekt | Detail |
+| Aspect | Detail |
 |---|---|
-| **Prüfverfahren** | BIK-BITV-Test (92 Prüfschritte, basierend auf EN 301 549) |
-| **Durchführung** | Durch zertifizierte BIK-Prüfstellen |
-| **Empfohlener Zeitpunkt** | Nach Abschluss der Maßnahmen Phase 1–3 |
-| **Ergebnis** | BITV-Konformitätsbericht mit Prüfprotokoll |
+| **Testing Procedure** | BIK BITV test (92 test steps, based on EN 301 549) |
+| **Conducted By** | Certified BIK testing centers |
+| **Recommended Timing** | After completion of action plan phases 1–3 |
+| **Result** | BITV conformance report with test protocol |
 
 ---
 
-## Erklärung zur Barrierefreiheit
+## Accessibility Statement
 
-Gemäß **§ 12b BGG** (Behindertengleichstellungsgesetz) muss eine Erklärung zur Barrierefreiheit veröffentlicht werden. Vorlage:
-
----
-
-> ### Erklärung zur Barrierefreiheit
->
-> **[Name der Behörde]** ist bemüht, den Taxonomy Architecture Analyzer im Einklang mit § 12a BGG und der BITV 2.0 barrierefrei zugänglich zu machen.
->
-> **Stand der Vereinbarkeit:** Diese Anwendung ist **teilweise vereinbar** mit der BITV 2.0.
->
-> **Nicht barrierefreie Inhalte:**
-> - Farbcodierte Taxonomie-Bäume und Architekturdiagramme verfügen noch nicht über vollständige Textalternativen
-> - Graph-Exploration-Funktionen sind primär visuell und bieten noch keine tabellarische Alternative
-> - Einzelne interaktive Elemente sind noch nicht vollständig per Tastatur bedienbar
->
-> **Maßnahmen:** Die identifizierten Barrieren werden gemäß dem dokumentierten [Maßnahmenplan](#maßnahmenplan) schrittweise behoben.
->
-> **Feedback und Kontakt:** Wenn Sie Barrieren bei der Nutzung dieser Anwendung feststellen, kontaktieren Sie bitte **[E-Mail der zuständigen Stelle]**.
->
-> **Schlichtungsverfahren:** Bei unbefriedigender Reaktion können Sie sich an die Schlichtungsstelle nach § 16 BGG wenden: [Schlichtungsstelle nach dem Behindertengleichstellungsgesetz](https://www.schlichtungsstelle-bgg.de/).
+In accordance with **§ 12b BGG** (Behindertengleichstellungsgesetz — German Act on Equal Opportunities of Persons with Disabilities), an accessibility statement must be published. Template:
 
 ---
 
-## Verwandte Dokumentation
+> ### Accessibility Statement
+>
+> **[Name of the authority]** is committed to making the Taxonomy Architecture Analyzer accessible in compliance with § 12a BGG and BITV 2.0.
+>
+> **Conformance status:** This application is **partially conformant** with BITV 2.0.
+>
+> **Non-accessible content:**
+> - Color-coded taxonomy trees and architecture diagrams do not yet have complete text alternatives
+> - Graph exploration features are primarily visual and do not yet offer a tabular alternative
+> - Some interactive elements are not yet fully operable via keyboard
+>
+> **Actions:** The identified barriers will be addressed incrementally in accordance with the documented [Action Plan](#action-plan).
+>
+> **Feedback and contact:** If you encounter barriers when using this application, please contact **[email of the responsible office]**.
+>
+> **Arbitration procedure:** In case of an unsatisfactory response, you may contact the arbitration body pursuant to § 16 BGG: [Schlichtungsstelle nach dem Behindertengleichstellungsgesetz](https://www.schlichtungsstelle-bgg.de/).
 
-- [User Guide](USER_GUIDE.md) — Benutzerhandbuch
-- [Security](SECURITY.md) — Sicherheitsarchitektur
-- [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) — Deployment-Checkliste für Behördenumgebungen
-- [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — Digitale Souveränität
+---
+
+## Related Documentation
+
+- [User Guide](USER_GUIDE.md) — User manual
+- [Security](SECURITY.md) — Security architecture
+- [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) — Deployment checklist for government environments
+- [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — Digital sovereignty
