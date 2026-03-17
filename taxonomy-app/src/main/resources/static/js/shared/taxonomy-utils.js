@@ -25,5 +25,19 @@ window.TaxonomyUtils = (function () {
             .replace(/'/g, '&#39;');
     }
 
-    return { escapeHtml: escapeHtml };
+    /**
+     * Strips all HTML tags from a string, returning only the text content.
+     * Uses the browser's DOMParser for safe, complete tag removal that
+     * cannot be bypassed by nested/overlapping tag patterns.
+     *
+     * @param {*} s - value to strip (converted to string; falsy returns '')
+     * @returns {string} the plain-text content
+     */
+    function stripHtml(s) {
+        if (!s) return '';
+        var doc = new DOMParser().parseFromString(String(s), 'text/html');
+        return doc.body.textContent || '';
+    }
+
+    return { escapeHtml: escapeHtml, stripHtml: stripHtml };
 })();

@@ -190,7 +190,7 @@ window.TaxonomyVariants = (function () {
                 });
             })
             .catch(function () {
-                if (confirm(t('variants.integrate.confirm.body', fromDisplay, intoDisplay).replace(/<[^>]*>/g, ''))) {
+                if (confirm(TaxonomyUtils.stripHtml(t('variants.integrate.confirm.body', fromDisplay, intoDisplay)))) {
                     executeMerge(fromBranch, intoBranch);
                 }
             });
