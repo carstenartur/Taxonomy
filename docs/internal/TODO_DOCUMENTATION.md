@@ -59,7 +59,7 @@ Full i18n support has been implemented:
 3. ✅ **JavaScript**: `taxonomy-i18n.js` module loads translations from `/api/i18n/{locale}` and exposes `TaxonomyI18n.t('key')`.
 4. ✅ **Locale detection**: `WebMvcConfig` with `CookieLocaleResolver` + `LocaleChangeInterceptor` (`?lang=` parameter). UI language selector in navbar with `localStorage` persistence.
 5. ✅ **LLM prompts**: Prompt templates are customisable via the Prompt Template Editor — they can be translated per deployment without code changes.
-6. ✅ **Documentation**: `docs/en/` (33 files) and `docs/de/` (33 files) with full parity. `HelpController` resolves docs by locale.
+6. ✅ **Documentation**: `docs/` (31 English files) and `docs/de/` (31 German files) with full parity. `HelpController` resolves docs by locale with fallback chain: `docs/{lang}/` → `docs/` (English default).
 
 ---
 
