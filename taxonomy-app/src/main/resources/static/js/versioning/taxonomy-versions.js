@@ -1,12 +1,12 @@
 /**
- * Versionen — Verlauf, Rückg\u00E4ngig, Wiederherstellen, Version speichern.
+ * Versions — History, Undo, Restore, Save Version.
  *
  * <p>Provides a user-friendly interface over the JGit-backed DSL versioning
- * system. Uses German labels for non-developer audiences: "Version",
- * "Rückg\u00E4ngig", "Wiederherstellen", and "Speichern".
+ * system. All user-visible strings are resolved via TaxonomyI18n.
  */
 window.TaxonomyVersions = (function () {
     'use strict';
+    var t = TaxonomyI18n.t;
 
     // ── Constants ─────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ window.TaxonomyVersions = (function () {
                 branches.forEach(function (b) {
                     var opt = document.createElement('option');
                     opt.value = b;
-                    opt.textContent = b;
+                    opt.textContent = TaxonomyI18n.formatBranch(b);
                     if (b === currentBranch) opt.selected = true;
                     selectEl.appendChild(opt);
                 });
@@ -107,7 +107,7 @@ window.TaxonomyVersions = (function () {
         var branchSelect = el('versionsBranchSelect');
         if (branchSelect) loadBranches(branchSelect);
 
-        container.innerHTML = '<div class="text-muted small">Versionsverlauf wird geladen\u2026</div>';
+        container.innerHTML = '<div class="text-muted small">' + escapeHtml(t('versions.history.loading')) + '</div>';
 
         fetch('/api/dsl/history?branch=' + encodeURIComponent(currentBranch))
             .then(function (r) {
@@ -117,7 +117,7 @@ window.TaxonomyVersions = (function () {
             .then(function (data) {
                 var commits = data.commits || [];
                 if (commits.length === 0) {
-                    container.innerHTML = '<div class="text-muted small p-2">Keine Versionen auf diesem Zweig gefunden.</div>';
+                    container.innerHTML = '<div class="text-muted small p-2">' + escapeHtml(t('versions.history.none')) + '</div>';
                     updateUndoInfo(null);
                     return;
                 }
@@ -136,15 +136,15 @@ window.TaxonomyVersions = (function () {
                 });
             })
             .catch(function (err) {
-                container.innerHTML = '<div class="text-danger small p-2">Verlauf konnte nicht geladen werden: ' + escapeHtml(err.message) + '</div>';
+                container.innerHTML = '<div class="text-danger small p-2">' + escapeHtml(t('versions.history.load.failed', err.message)) + '</div>';
             });
     }
 
     function renderTimelineEntry(commit, isLatest) {
         var ts = commit.timestamp ? formatTimestamp(commit.timestamp) : '';
         var sha = commit.commitId ? commit.commitId.substring(0, 7) : '';
-        var author = commit.author || 'unbekannt';
-        var message = commit.message || 'Keine Nachricht';
+        var author = commit.author || t('versions.entry.unknown.author');
+        var message = commit.message || t('versions.entry.no.message');
 
         // Detect restore/revert commits
         var isRestore = /restore|wiederherst/i.test(message);
@@ -160,9 +160,9 @@ window.TaxonomyVersions = (function () {
 
         // Restore/revert marker
         if (isRestore) {
-            html += ' <span class="restore-marker">\uD83D\uDD04 Wiederherstellung</span>';
+            html += ' <span class="restore-marker">\uD83D\uDD04 ' + escapeHtml(t('versions.entry.marker.restore')) + '</span>';
         } else if (isRevert) {
-            html += ' <span class="restore-marker">\uD83D\uDD04 R\u00FCckg\u00E4ngig</span>';
+            html += ' <span class="restore-marker">\uD83D\uDD04 ' + escapeHtml(t('versions.entry.marker.revert')) + '</span>';
         }
 
         html += '<div class="text-muted" style="font-size:0.75rem;">' +
@@ -172,20 +172,20 @@ window.TaxonomyVersions = (function () {
             '</div>' +
             '<div class="d-flex gap-1">' +
             '<button class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:0.75rem;" ' +
-            'data-action="view" data-commit="' + escapeAttr(commit.commitId) + '" title="DSL dieser Version anzeigen">' +
-            '\uD83D\uDC41 Ansehen</button>' +
+            'data-action="view" data-commit="' + escapeAttr(commit.commitId) + '" title="' + escapeAttr(t('versions.entry.view.title')) + '">' +
+            '\uD83D\uDC41 ' + escapeHtml(t('versions.entry.view')) + '</button>' +
             '<button class="btn btn-outline-info btn-sm py-0 px-2" style="font-size:0.75rem;" ' +
-            'data-action="compare" data-commit="' + escapeAttr(commit.commitId) + '" title="Mit aktuellem Stand vergleichen">' +
-            '\uD83D\uDD0D Vergleichen</button>' +
+            'data-action="compare" data-commit="' + escapeAttr(commit.commitId) + '" title="' + escapeAttr(t('versions.entry.compare.title')) + '">' +
+            '\uD83D\uDD0D ' + escapeHtml(t('versions.entry.compare')) + '</button>' +
             '<button class="btn btn-outline-warning btn-sm py-0 px-2" style="font-size:0.75rem;" ' +
-            'data-action="restore" data-commit="' + escapeAttr(commit.commitId) + '" title="Auf diese Version zur\u00FCcksetzen">' +
-            '\u21A9 Zur\u00FCcksetzen</button>' +
+            'data-action="restore" data-commit="' + escapeAttr(commit.commitId) + '" title="' + escapeAttr(t('versions.entry.restore.title')) + '">' +
+            '\u21A9 ' + escapeHtml(t('versions.entry.restore')) + '</button>' +
             '<button class="btn btn-outline-danger btn-sm py-0 px-2" style="font-size:0.75rem;" ' +
-            'data-action="revert" data-commit="' + escapeAttr(commit.commitId) + '" title="Diese \u00C4nderung r\u00FCckg\u00E4ngig machen">' +
-            '\u274C R\u00FCckg\u00E4ngig</button>' +
+            'data-action="revert" data-commit="' + escapeAttr(commit.commitId) + '" title="' + escapeAttr(t('versions.entry.revert.title')) + '">' +
+            '\u274C ' + escapeHtml(t('versions.entry.revert')) + '</button>' +
             '<button class="btn btn-outline-success btn-sm py-0 px-2" style="font-size:0.75rem;" ' +
-            'data-action="variant" data-commit="' + escapeAttr(commit.commitId) + '" data-branch="' + escapeAttr(currentBranch) + '" title="Variante aus dieser Version erstellen">' +
-            '\uD83C\uDF3F Variante</button>' +
+            'data-action="variant" data-commit="' + escapeAttr(commit.commitId) + '" data-branch="' + escapeAttr(currentBranch) + '" title="' + escapeAttr(t('versions.entry.variant.title')) + '">' +
+            '\uD83C\uDF3F ' + escapeHtml(t('versions.entry.variant')) + '</button>' +
             '</div>' +
             '</div>' +
             '</div>';
@@ -230,7 +230,7 @@ window.TaxonomyVersions = (function () {
                 }
             })
             .catch(function (err) {
-                showModal('Fehler', '<div class="text-danger">' + escapeHtml(err.message) + '</div>');
+                showModal(t('versions.error'), '<div class="text-danger">' + escapeHtml(err.message) + '</div>');
             });
     }
 
@@ -240,7 +240,7 @@ window.TaxonomyVersions = (function () {
             .then(function (state) {
                 var headCommit = state.headCommit;
                 if (!headCommit || headCommit === commitId) {
-                    showModal('Vergleich', '<div class="text-muted">Dies ist die aktuelle Version \u2014 nichts zu vergleichen.</div>');
+                    showModal(t('versions.compare'), '<div class="text-muted">' + escapeHtml(t('versions.compare.same')) + '</div>');
                     return;
                 }
                 return fetch('/api/dsl/diff/' + encodeURIComponent(commitId) + '/' + encodeURIComponent(headCommit));
@@ -248,46 +248,47 @@ window.TaxonomyVersions = (function () {
             .then(function (r) { return r ? r.json() : null; })
             .then(function (diff) {
                 if (!diff) return;
+                var shortSha = commitId.substring(0, 7);
                 var html = '<div class="small">';
                 html += '<div class="compare-summary-card mb-3">';
-                html += '<div class="compare-title">Vergleich: ' + commitId.substring(0, 7) + ' \u2194 Aktuell</div>';
+                html += '<div class="compare-title">' + escapeHtml(t('versions.compare.title', shortSha)) + '</div>';
                 html += '<div class="compare-stats">';
                 if (diff.added && diff.added.length > 0) {
-                    html += '<span class="compare-stat text-success">\uD83D\uDFE2 +' + diff.added.length + ' hinzugef\u00FCgt</span>';
+                    html += '<span class="compare-stat text-success">\uD83D\uDFE2 ' + escapeHtml(t('versions.restore.preview.added', diff.added.length)) + '</span>';
                 }
                 if (diff.removed && diff.removed.length > 0) {
-                    html += '<span class="compare-stat text-danger">\uD83D\uDD34 \u2212' + diff.removed.length + ' entfernt</span>';
+                    html += '<span class="compare-stat text-danger">\uD83D\uDD34 ' + escapeHtml(t('versions.restore.preview.removed', diff.removed.length)) + '</span>';
                 }
                 if (diff.changed && diff.changed.length > 0) {
-                    html += '<span class="compare-stat text-warning">\uD83D\uDFE1 ~' + diff.changed.length + ' ge\u00E4ndert</span>';
+                    html += '<span class="compare-stat text-warning">\uD83D\uDFE1 ' + escapeHtml(t('versions.restore.preview.changed', diff.changed.length)) + '</span>';
                 }
                 html += '</div></div>';
 
                 if (diff.added && diff.added.length > 0) {
-                    html += '<h6 class="text-success">Hinzugef\u00FCgt (' + diff.added.length + ')</h6>';
+                    html += '<h6 class="text-success">' + escapeHtml(t('versions.compare.added')) + ' (' + diff.added.length + ')</h6>';
                     html += '<ul>' + diff.added.map(function (a) { return '<li>' + escapeHtml(a.code || a.id || JSON.stringify(a)) + '</li>'; }).join('') + '</ul>';
                 }
                 if (diff.removed && diff.removed.length > 0) {
-                    html += '<h6 class="text-danger">Entfernt (' + diff.removed.length + ')</h6>';
+                    html += '<h6 class="text-danger">' + escapeHtml(t('versions.compare.removed')) + ' (' + diff.removed.length + ')</h6>';
                     html += '<ul>' + diff.removed.map(function (r) { return '<li>' + escapeHtml(r.code || r.id || JSON.stringify(r)) + '</li>'; }).join('') + '</ul>';
                 }
                 if (diff.changed && diff.changed.length > 0) {
-                    html += '<h6 class="text-warning">Ge\u00E4ndert (' + diff.changed.length + ')</h6>';
+                    html += '<h6 class="text-warning">' + escapeHtml(t('versions.compare.changed')) + ' (' + diff.changed.length + ')</h6>';
                     html += '<ul>' + diff.changed.map(function (c) { return '<li>' + escapeHtml(c.code || c.id || JSON.stringify(c)) + '</li>'; }).join('') + '</ul>';
                 }
                 if ((diff.totalChanges || 0) === 0) {
-                    html += '<p class="text-muted">Keine Unterschiede gefunden.</p>';
+                    html += '<p class="text-muted">' + escapeHtml(t('versions.compare.no.diff')) + '</p>';
                 }
                 html += '</div>';
-                showModal('Vergleich: ' + commitId.substring(0, 7) + ' \u2194 Aktuell', html);
+                showModal(t('versions.compare.summary.title', shortSha), html);
             })
             .catch(function (err) {
-                showModal('Fehler', '<div class="text-danger">' + escapeHtml(err.message) + '</div>');
+                showModal(t('versions.error'), '<div class="text-danger">' + escapeHtml(err.message) + '</div>');
             });
     }
 
     /**
-     * AP 4: Restore with preview modal.
+     * Restore with preview modal.
      */
     function restoreVersion(commitId) {
         // Load diff preview before confirming
@@ -315,8 +316,9 @@ window.TaxonomyVersions = (function () {
      * Show restore confirmation modal with optional preview.
      */
     function showRestoreConfirmModal(commitId, diff) {
-        var bodyHtml = '<p>Auf Version <code>' + escapeHtml(commitId.substring(0, 7)) + '</code> zur\u00FCcksetzen?</p>';
-        bodyHtml += '<p class="small text-muted">Es wird eine neue Version erstellt, die den Inhalt der ausgew\u00E4hlten Version enth\u00E4lt. Die bisherige Versionsgeschichte bleibt erhalten.</p>';
+        var shortSha = escapeHtml(commitId.substring(0, 7));
+        var bodyHtml = '<p>' + t('versions.restore.confirm.body', shortSha) + '</p>';
+        bodyHtml += '<p class="small text-muted">' + escapeHtml(t('versions.restore.confirm.detail')) + '</p>';
 
         if (diff) {
             var total = (diff.totalChanges || 0);
@@ -326,18 +328,18 @@ window.TaxonomyVersions = (function () {
 
             if (total > 0) {
                 bodyHtml += '<div class="restore-preview">';
-                bodyHtml += '<strong>Vorschau der \u00C4nderungen:</strong>';
+                bodyHtml += '<strong>' + escapeHtml(t('versions.restore.preview')) + '</strong>';
                 bodyHtml += '<div class="mt-1">';
-                if (addedCount > 0) bodyHtml += '<span class="text-success me-2">+' + addedCount + ' hinzugef\u00FCgt</span>';
-                if (removedCount > 0) bodyHtml += '<span class="text-danger me-2">\u2212' + removedCount + ' entfernt</span>';
-                if (changedCount > 0) bodyHtml += '<span class="text-warning me-2">~' + changedCount + ' ge\u00E4ndert</span>';
+                if (addedCount > 0) bodyHtml += '<span class="text-success me-2">' + escapeHtml(t('versions.restore.preview.added', addedCount)) + '</span>';
+                if (removedCount > 0) bodyHtml += '<span class="text-danger me-2">' + escapeHtml(t('versions.restore.preview.removed', removedCount)) + '</span>';
+                if (changedCount > 0) bodyHtml += '<span class="text-warning me-2">' + escapeHtml(t('versions.restore.preview.changed', changedCount)) + '</span>';
                 bodyHtml += '</div></div>';
             } else {
-                bodyHtml += '<div class="restore-preview text-muted">Keine Unterschiede zum aktuellen Stand.</div>';
+                bodyHtml += '<div class="restore-preview text-muted">' + escapeHtml(t('versions.restore.preview.none')) + '</div>';
             }
         }
 
-        showConfirmModal('Auf Version zur\u00FCcksetzen', bodyHtml, 'Zur\u00FCcksetzen', 'btn-warning', function () {
+        showConfirmModal(t('versions.restore.confirm.title'), bodyHtml, t('versions.restore.confirm.btn'), 'btn-warning', function () {
             executeRestore(commitId);
         });
     }
@@ -349,14 +351,14 @@ window.TaxonomyVersions = (function () {
             .then(function (data) {
                 if (data.error) {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError('Wiederherstellung fehlgeschlagen', data.error);
+                        window.TaxonomyOperationResult.showError(t('versions.restore.failed'), data.error);
                     } else {
-                        alert('Wiederherstellung fehlgeschlagen: ' + data.error);
+                        alert(t('versions.restore.failed') + ': ' + data.error);
                     }
                 } else {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showSuccess('Version wiederhergestellt',
-                            'Version ' + commitId.substring(0, 7) + ' wurde wiederhergestellt.');
+                        window.TaxonomyOperationResult.showSuccess(t('versions.restore.success'),
+                            t('versions.restore.success.detail', commitId.substring(0, 7)));
                     }
                     loadTimeline();
                     refreshGitStatus();
@@ -364,21 +366,22 @@ window.TaxonomyVersions = (function () {
             })
             .catch(function (err) {
                 if (window.TaxonomyOperationResult) {
-                    window.TaxonomyOperationResult.showError('Wiederherstellung fehlgeschlagen', err.message);
+                    window.TaxonomyOperationResult.showError(t('versions.restore.failed'), err.message);
                 } else {
-                    alert('Wiederherstellung fehlgeschlagen: ' + err.message);
+                    alert(t('versions.restore.failed') + ': ' + err.message);
                 }
             });
     }
 
     /**
-     * AP 4: Revert with confirmation modal.
+     * Revert with confirmation modal.
      */
     function revertVersion(commitId) {
-        var bodyHtml = '<p>\u00C4nderung von Version <code>' + escapeHtml(commitId.substring(0, 7)) + '</code> r\u00FCckg\u00E4ngig machen?</p>';
-        bodyHtml += '<p class="small text-muted">Es wird eine neue Version erstellt, die die \u00C4nderungen dieses Commits r\u00FCckg\u00E4ngig macht. Nur die \u00C4nderungen dieses einen Commits werden zur\u00FCckgenommen.</p>';
+        var shortSha = escapeHtml(commitId.substring(0, 7));
+        var bodyHtml = '<p>' + t('versions.revert.confirm.body', shortSha) + '</p>';
+        bodyHtml += '<p class="small text-muted">' + escapeHtml(t('versions.revert.confirm.detail')) + '</p>';
 
-        showConfirmModal('\u00C4nderung r\u00FCckg\u00E4ngig machen', bodyHtml, 'R\u00FCckg\u00E4ngig machen', 'btn-danger', function () {
+        showConfirmModal(t('versions.revert.confirm.title'), bodyHtml, t('versions.revert.confirm.btn'), 'btn-danger', function () {
             executeRevert(commitId);
         });
     }
@@ -390,14 +393,14 @@ window.TaxonomyVersions = (function () {
             .then(function (data) {
                 if (data.error) {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError('R\u00FCckg\u00E4ngig fehlgeschlagen', data.error);
+                        window.TaxonomyOperationResult.showError(t('versions.revert.failed'), data.error);
                     } else {
-                        alert('R\u00FCckg\u00E4ngig fehlgeschlagen: ' + data.error);
+                        alert(t('versions.revert.failed') + ': ' + data.error);
                     }
                 } else {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showSuccess('\u00C4nderung r\u00FCckg\u00E4ngig gemacht',
-                            'Version ' + commitId.substring(0, 7) + ' wurde r\u00FCckg\u00E4ngig gemacht.');
+                        window.TaxonomyOperationResult.showSuccess(t('versions.revert.success'),
+                            t('versions.revert.success.detail', commitId.substring(0, 7)));
                     }
                     loadTimeline();
                     refreshGitStatus();
@@ -405,9 +408,9 @@ window.TaxonomyVersions = (function () {
             })
             .catch(function (err) {
                 if (window.TaxonomyOperationResult) {
-                    window.TaxonomyOperationResult.showError('R\u00FCckg\u00E4ngig fehlgeschlagen', err.message);
+                    window.TaxonomyOperationResult.showError(t('versions.revert.failed'), err.message);
                 } else {
-                    alert('R\u00FCckg\u00E4ngig fehlgeschlagen: ' + err.message);
+                    alert(t('versions.revert.failed') + ': ' + err.message);
                 }
             });
     }
@@ -429,12 +432,12 @@ window.TaxonomyVersions = (function () {
     // ── Undo ────────────────────────────────────────────────────────
 
     function undoLast() {
-        var branchName = currentBranch === 'draft' ? 'Hauptversion' : currentBranch;
+        var branchName = TaxonomyI18n.formatBranch(currentBranch);
         showConfirmModal(
-            'Letzte \u00C4nderung r\u00FCckg\u00E4ngig machen',
-            '<p>Die letzte \u00C4nderung auf <strong>' + escapeHtml(branchName) + '</strong> r\u00FCckg\u00E4ngig machen?</p>'
-            + '<p class="small text-muted">Der letzte Eintrag wird aus der Versionsgeschichte entfernt.</p>',
-            'R\u00FCckg\u00E4ngig machen',
+            t('versions.undo.confirm.title'),
+            t('versions.undo.confirm.body', escapeHtml(branchName))
+            + '<p class="small text-muted">' + escapeHtml(t('versions.undo.confirm.detail')) + '</p>',
+            t('versions.undo.confirm.btn'),
             'btn-warning',
             function () {
                 fetch('/api/dsl/undo?branch=' + encodeURIComponent(currentBranch), { method: 'POST' })
@@ -442,9 +445,9 @@ window.TaxonomyVersions = (function () {
                     .then(function (data) {
                         if (data.error) {
                             if (window.TaxonomyOperationResult) {
-                                window.TaxonomyOperationResult.showError('R\u00FCckg\u00E4ngig fehlgeschlagen', data.error);
+                                window.TaxonomyOperationResult.showError(t('versions.undo.failed'), data.error);
                             } else {
-                                alert('R\u00FCckg\u00E4ngig fehlgeschlagen: ' + data.error);
+                                alert(t('versions.undo.failed') + ': ' + data.error);
                             }
                         } else {
                             loadTimeline();
@@ -453,9 +456,9 @@ window.TaxonomyVersions = (function () {
                     })
                     .catch(function (err) {
                         if (window.TaxonomyOperationResult) {
-                            window.TaxonomyOperationResult.showError('R\u00FCckg\u00E4ngig fehlgeschlagen', err.message);
+                            window.TaxonomyOperationResult.showError(t('versions.undo.failed'), err.message);
                         } else {
-                            alert('R\u00FCckg\u00E4ngig fehlgeschlagen: ' + err.message);
+                            alert(t('versions.undo.failed') + ': ' + err.message);
                         }
                     });
             }
@@ -466,7 +469,7 @@ window.TaxonomyVersions = (function () {
         var info = el('versionsUndoInfo');
         if (!info) return;
         if (latestCommit) {
-            info.textContent = 'Letzte: \u201E' + (latestCommit.message || '').substring(0, MAX_COMMIT_MESSAGE_DISPLAY) + '\u201C';
+            info.textContent = t('versions.undo.last', (latestCommit.message || '').substring(0, MAX_COMMIT_MESSAGE_DISPLAY));
         } else {
             info.textContent = '';
         }
@@ -483,7 +486,7 @@ window.TaxonomyVersions = (function () {
 
         if (!title) {
             if (statusEl) {
-                statusEl.textContent = 'Bitte geben Sie einen Titel ein.';
+                statusEl.textContent = t('versions.save.error.title');
                 statusEl.className = 'ms-2 small text-danger';
             }
             return;
@@ -494,7 +497,7 @@ window.TaxonomyVersions = (function () {
         fetch('/api/dsl/git/head?branch=' + encodeURIComponent(currentBranch))
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (!data.dslText) throw new Error('Kein DSL-Inhalt auf diesem Zweig');
+                if (!data.dslText) throw new Error(t('versions.save.error.no.content'));
                 return fetch('/api/dsl/commit?branch=' + encodeURIComponent(currentBranch) +
                     '&author=' + encodeURIComponent(DEFAULT_AUTHOR) + '&message=' + encodeURIComponent(message), {
                     method: 'POST',
@@ -506,12 +509,12 @@ window.TaxonomyVersions = (function () {
             .then(function (result) {
                 if (result.error || result.valid === false) {
                     if (statusEl) {
-                        statusEl.textContent = 'Speichern fehlgeschlagen: ' + (result.errors || [result.error]).join(', ');
+                        statusEl.textContent = t('versions.save.failed', (result.errors || [result.error]).join(', '));
                         statusEl.className = 'ms-2 small text-danger';
                     }
                 } else {
                     if (statusEl) {
-                        statusEl.textContent = 'Version gespeichert! (' + (result.commitId || '').substring(0, 7) + ')';
+                        statusEl.textContent = t('versions.save.success', (result.commitId || '').substring(0, 7));
                         statusEl.className = 'ms-2 small text-success';
                     }
                     if (titleEl) titleEl.value = '';
@@ -522,7 +525,7 @@ window.TaxonomyVersions = (function () {
             })
             .catch(function (err) {
                 if (statusEl) {
-                    statusEl.textContent = 'Speichern fehlgeschlagen: ' + err.message;
+                    statusEl.textContent = t('versions.save.failed', err.message);
                     statusEl.className = 'ms-2 small text-danger';
                 }
             });
@@ -544,7 +547,7 @@ window.TaxonomyVersions = (function () {
             '</div>' +
             '<div class="modal-body">' + bodyHtml + '</div>' +
             '<div class="modal-footer">' +
-            '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Abbrechen</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">' + escapeHtml(t('dialog.cancel')) + '</button>' +
             '<button type="button" class="btn ' + confirmBtnClass + ' btn-sm" id="versionsConfirmBtn">' + escapeHtml(confirmLabel) + '</button>' +
             '</div></div></div></div>';
 
@@ -577,7 +580,7 @@ window.TaxonomyVersions = (function () {
             '</div>' +
             '<div class="modal-body">' + bodyHtml + '</div>' +
             '<div class="modal-footer">' +
-            '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Schlie\u00DFen</button>' +
+            '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">' + escapeHtml(t('dialog.close')) + '</button>' +
             '</div></div></div></div>';
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
@@ -600,10 +603,11 @@ window.TaxonomyVersions = (function () {
             var d = new Date(ts);
             var now = new Date();
             var isToday = d.toDateString() === now.toDateString();
+            var timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             if (isToday) {
-                return 'Heute, ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                return t('versions.timestamp.today', timeStr);
             }
-            return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return d.toLocaleDateString() + ' ' + timeStr;
         } catch (e) {
             return String(ts);
         }
