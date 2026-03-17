@@ -42,27 +42,27 @@ public class I18nApiController {
      */
     @GetMapping(&quot;/{locale}&quot;)
     public Map&lt;String, String&gt; getTranslations(@PathVariable String locale) {
-<span class="nc" id="L45">        Locale resolved = Locale.forLanguageTag(locale);</span>
-<span class="nc" id="L46">        Map&lt;String, String&gt; messages = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L45">        Locale resolved = Locale.forLanguageTag(locale);</span>
+<span class="fc" id="L46">        Map&lt;String, String&gt; messages = new HashMap&lt;&gt;();</span>
 
         // Load all keys from the default (English) properties file and resolve
         // each key for the requested locale via the MessageSource.
         try {
-<span class="nc" id="L51">            Properties defaultProps = new Properties();</span>
-<span class="nc" id="L52">            ClassPathResource resource = new ClassPathResource(&quot;i18n/messages.properties&quot;);</span>
-<span class="nc bnc" id="L53" title="All 2 branches missed.">            if (resource.exists()) {</span>
-<span class="nc" id="L54">                try (InputStream in = resource.getInputStream()) {</span>
-<span class="nc" id="L55">                    defaultProps.load(in);</span>
+<span class="fc" id="L51">            Properties defaultProps = new Properties();</span>
+<span class="fc" id="L52">            ClassPathResource resource = new ClassPathResource(&quot;i18n/messages.properties&quot;);</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">            if (resource.exists()) {</span>
+<span class="fc" id="L54">                try (InputStream in = resource.getInputStream()) {</span>
+<span class="fc" id="L55">                    defaultProps.load(in);</span>
                 }
             }
-<span class="nc bnc" id="L58" title="All 2 branches missed.">            for (String key : defaultProps.stringPropertyNames()) {</span>
-<span class="nc" id="L59">                messages.put(key, messageSource.getMessage(key, null, key, resolved));</span>
-<span class="nc" id="L60">            }</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            for (String key : defaultProps.stringPropertyNames()) {</span>
+<span class="fc" id="L59">                messages.put(key, messageSource.getMessage(key, null, key, resolved));</span>
+<span class="fc" id="L60">            }</span>
 <span class="nc" id="L61">        } catch (IOException e) {</span>
 <span class="nc" id="L62">            log.warn(&quot;Failed to load i18n properties: {}&quot;, e.getMessage());</span>
-<span class="nc" id="L63">        }</span>
+<span class="fc" id="L63">        }</span>
 
-<span class="nc" id="L65">        return messages;</span>
+<span class="fc" id="L65">        return messages;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
