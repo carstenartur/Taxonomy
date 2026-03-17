@@ -1,12 +1,9 @@
 package com.taxonomy.search;
 
-import com.taxonomy.shared.config.SpringContextHolder;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
-import com.taxonomy.shared.service.LocalEmbeddingService;
 import org.hibernate.search.engine.backend.document.DocumentElement;
 import org.hibernate.search.engine.backend.document.IndexFieldReference;
-import org.hibernate.search.engine.backend.types.VectorSimilarity;
 import org.hibernate.search.mapper.pojo.bridge.TypeBridge;
 import org.hibernate.search.mapper.pojo.bridge.binding.TypeBindingContext;
 import org.hibernate.search.mapper.pojo.bridge.mapping.programmatic.TypeBinder;
@@ -38,10 +35,8 @@ public class NodeEmbeddingBinder implements TypeBinder {
                 .use("incomingRelations.relationType")
                 .use("incomingRelations.sourceNode.nameEn");
 
-        IndexFieldReference<float[]> embeddingField = context.indexSchemaElement()
-                .field("embedding",
-                        f -> f.asFloatVector().dimension(384).vectorSimilarity(VectorSimilarity.COSINE))
-                .toReference();
+        IndexFieldReference<float[]> embeddingField =
+                EmbeddingBridgeSupport.createEmbeddingField(context);
 
         context.bridge(TaxonomyNode.class, new Bridge(embeddingField));
     }
@@ -57,15 +52,8 @@ public class NodeEmbeddingBinder implements TypeBinder {
         @Override
         public void write(DocumentElement target, TaxonomyNode node,
                 TypeBridgeWriteContext context) {
-            try {
-                LocalEmbeddingService svc = SpringContextHolder.getBean(LocalEmbeddingService.class);
-                if (svc == null || !svc.isAvailable()) return;
-                String text = buildEnrichedText(node);
-                float[] vector = svc.embed(text);
-                target.addValue(embeddingField, vector);
-            } catch (Exception ignored) {
-                // graceful degradation – document will be indexed without a vector
-            }
+            EmbeddingBridgeSupport.writeEmbedding(target, embeddingField, node,
+                    Bridge::buildEnrichedText);
         }
 
         public static String buildEnrichedText(TaxonomyNode node) {

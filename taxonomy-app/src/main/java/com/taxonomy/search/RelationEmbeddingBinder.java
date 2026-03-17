@@ -1,11 +1,8 @@
 package com.taxonomy.search;
 
-import com.taxonomy.shared.config.SpringContextHolder;
 import com.taxonomy.catalog.model.TaxonomyRelation;
-import com.taxonomy.shared.service.LocalEmbeddingService;
 import org.hibernate.search.engine.backend.document.DocumentElement;
 import org.hibernate.search.engine.backend.document.IndexFieldReference;
-import org.hibernate.search.engine.backend.types.VectorSimilarity;
 import org.hibernate.search.mapper.pojo.bridge.TypeBridge;
 import org.hibernate.search.mapper.pojo.bridge.binding.TypeBindingContext;
 import org.hibernate.search.mapper.pojo.bridge.mapping.programmatic.TypeBinder;
@@ -30,10 +27,8 @@ public class RelationEmbeddingBinder implements TypeBinder {
                 .use("sourceNode.nameEn")
                 .use("targetNode.nameEn");
 
-        IndexFieldReference<float[]> embeddingField = context.indexSchemaElement()
-                .field("embedding",
-                        f -> f.asFloatVector().dimension(384).vectorSimilarity(VectorSimilarity.COSINE))
-                .toReference();
+        IndexFieldReference<float[]> embeddingField =
+                EmbeddingBridgeSupport.createEmbeddingField(context);
 
         context.bridge(TaxonomyRelation.class, new Bridge(embeddingField));
     }
@@ -49,15 +44,8 @@ public class RelationEmbeddingBinder implements TypeBinder {
         @Override
         public void write(DocumentElement target, TaxonomyRelation relation,
                 TypeBridgeWriteContext context) {
-            try {
-                LocalEmbeddingService svc = SpringContextHolder.getBean(LocalEmbeddingService.class);
-                if (svc == null || !svc.isAvailable()) return;
-                String text = buildEnrichedText(relation);
-                float[] vector = svc.embed(text);
-                target.addValue(embeddingField, vector);
-            } catch (Exception ignored) {
-                // graceful degradation
-            }
+            EmbeddingBridgeSupport.writeEmbedding(target, embeddingField, relation,
+                    Bridge::buildEnrichedText);
         }
 
         public static String buildEnrichedText(TaxonomyRelation relation) {
