@@ -1,5 +1,7 @@
 package com.taxonomy.shared.controller;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -8,7 +10,10 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.Map;
+
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -61,13 +66,16 @@ class I18nApiControllerTest {
 
     @Test
     void englishAndGermanHaveSameKeyCount() throws Exception {
-        // Both locales must return the same number of keys
-        mockMvc.perform(get("/api/i18n/en").accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", aMapWithSize(359)));
+        String enJson = mockMvc.perform(get("/api/i18n/en"))
+                .andReturn().getResponse().getContentAsString();
+        String deJson = mockMvc.perform(get("/api/i18n/de"))
+                .andReturn().getResponse().getContentAsString();
 
-        mockMvc.perform(get("/api/i18n/de").accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", aMapWithSize(359)));
+        ObjectMapper mapper = new ObjectMapper();
+        Map<String, String> enKeys = mapper.readValue(enJson, new TypeReference<>() {});
+        Map<String, String> deKeys = mapper.readValue(deJson, new TypeReference<>() {});
+
+        assertEquals(enKeys.size(), deKeys.size(),
+                "English and German must have the same number of translation keys");
     }
 }
