@@ -2,6 +2,7 @@
 
 (function () {
     'use strict';
+    var t = TaxonomyI18n.t;
 
     var STORAGE_KEY = 'taxonomy_onboarded';
 
@@ -18,14 +19,14 @@
         overlay.id = 'onboardingOverlay';
         overlay.innerHTML =
             '<div class="onboarding-card">' +
-            '  <h2>&#127756; Welcome to the NATO NC3T Taxonomy Browser</h2>' +
-            '  <p>Map your business requirements to the NATO C3 Taxonomy in three simple steps:</p>' +
+            '  <h2>' + t('onboarding.title') + '</h2>' +
+            '  <p>' + t('onboarding.intro') + '</p>' +
             '  <div class="steps">' +
-            '    <div class="step-item"><span class="step-number">1</span><span>Describe your requirement in the text area on the right</span></div>' +
-            '    <div class="step-item"><span class="step-number">2</span><span>Click <strong>Analyze with AI</strong> to find matching taxonomy nodes</span></div>' +
-            '    <div class="step-item"><span class="step-number">3</span><span>Explore the results in different views, export diagrams, and browse dependencies</span></div>' +
+            '    <div class="step-item"><span class="step-number">1</span><span>' + t('onboarding.step1') + '</span></div>' +
+            '    <div class="step-item"><span class="step-number">2</span><span>' + t('onboarding.step2') + '</span></div>' +
+            '    <div class="step-item"><span class="step-number">3</span><span>' + t('onboarding.step3') + '</span></div>' +
             '  </div>' +
-            '  <button id="onboardingDismiss" class="btn btn-primary">Got it &mdash; let\'s start!</button>' +
+            '  <button id="onboardingDismiss" class="btn btn-primary">' + t('onboarding.dismiss') + '</button>' +
             '</div>';
 
         document.body.appendChild(overlay);

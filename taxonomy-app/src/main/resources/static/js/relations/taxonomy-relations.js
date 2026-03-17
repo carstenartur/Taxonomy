@@ -6,6 +6,7 @@
  */
 (function () {
     'use strict';
+    var t = TaxonomyI18n.t;
 
     /* ------------------------------------------------------------------ */
     /*  Bootstrap on DOMContentLoaded                                      */
@@ -43,7 +44,7 @@
     function loadRelations() {
         var content = document.getElementById('relationsTableContainer');
         if (!content) return;
-        content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> Loading\u2026</div>';
+        content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('relations.loading') + '</div>';
 
         var typeFilter = document.getElementById('relationsTypeFilter');
         var type = typeFilter ? typeFilter.value : '';
@@ -53,26 +54,26 @@
             .then(function (r) { return r.ok ? r.json() : []; })
             .then(function (relations) { renderRelationsTable(relations); })
             .catch(function () {
-                content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F Failed to load relations.</div>';
+                content.innerHTML = '<div class="text-danger small p-2">' + t('relations.load.failed') + '</div>';
             });
     }
 
     function renderRelationsTable(relations) {
         var content = document.getElementById('relationsTableContainer');
         if (!relations || relations.length === 0) {
-            content.innerHTML = '<div class="text-muted small p-2">No relations found.</div>';
+            content.innerHTML = '<div class="text-muted small p-2">' + t('relations.none') + '</div>';
             return;
         }
-        var html = '<div class="small text-muted mb-1">' + relations.length + ' relation(s)</div>';
+        var html = '<div class="small text-muted mb-1">' + t('relations.count', relations.length) + '</div>';
         html += '<table class="table table-sm table-bordered table-hover mb-0 relations-table" style="font-size:0.82em;">';
-        html += '<thead><tr><th>Source</th><th>Target</th><th>Type</th><th>Provenance</th><th></th></tr></thead><tbody>';
+        html += '<thead><tr><th>' + t('relations.table.source') + '</th><th>' + t('relations.table.target') + '</th><th>' + t('relations.table.type') + '</th><th>' + t('relations.table.provenance') + '</th><th></th></tr></thead><tbody>';
         relations.forEach(function (r) {
             html += '<tr>';
             html += '<td title="' + escapeHtml(r.sourceName || '') + '">' + escapeHtml(r.sourceCode) + '</td>';
             html += '<td title="' + escapeHtml(r.targetName || '') + '">' + escapeHtml(r.targetCode) + '</td>';
             html += '<td>' + escapeHtml(r.relationType) + '</td>';
             html += '<td><span class="badge ' + provenanceBadge(r.provenance) + '">' + escapeHtml(r.provenance || 'MANUAL') + '</span></td>';
-            html += '<td><button class="btn btn-sm btn-outline-danger py-0 px-1 relation-delete-btn" data-id="' + r.id + '" title="Delete relation">\u2716</button></td>';
+            html += '<td><button class="btn btn-sm btn-outline-danger py-0 px-1 relation-delete-btn" data-id="' + r.id + '" title="' + t('relations.delete.title') + '">\u2716</button></td>';
             html += '</tr>';
         });
         html += '</tbody></table>';
@@ -106,7 +107,7 @@
         if (errorEl) { errorEl.classList.add('d-none'); errorEl.textContent = ''; }
 
         if (!sourceCode || !targetCode) {
-            if (errorEl) { errorEl.textContent = 'Source and Target codes are required.'; errorEl.classList.remove('d-none'); }
+            if (errorEl) { errorEl.textContent = t('relations.create.required'); errorEl.classList.remove('d-none'); }
             return;
         }
 
@@ -137,7 +138,7 @@
         })
         .catch(function (err) {
             if (spinner) spinner.classList.add('d-none');
-            if (errorEl) { errorEl.textContent = 'Error creating relation: ' + err.message; errorEl.classList.remove('d-none'); }
+            if (errorEl) { errorEl.textContent = t('relations.create.error', err.message); errorEl.classList.remove('d-none'); }
         });
     }
 
@@ -145,7 +146,7 @@
     /*  Delete relation                                                    */
     /* ------------------------------------------------------------------ */
     function deleteRelation(id) {
-        if (!confirm('Delete this relation?')) return;
+        if (!confirm(t('relations.delete.confirm'))) return;
         fetch('/api/relations/' + id, { method: 'DELETE' })
             .then(function (r) {
                 if (!r.ok) throw new Error('Failed');
@@ -157,7 +158,7 @@
                 if (content) {
                     var errDiv = document.createElement('div');
                     errDiv.className = 'text-danger small p-1';
-                    errDiv.textContent = '\u26A0\uFE0F Failed to delete relation.';
+                    errDiv.textContent = t('relations.delete.failed');
                     content.prepend(errDiv);
                     setTimeout(function () { errDiv.remove(); }, 5000);
                 }
@@ -184,12 +185,12 @@
 
         if (Object.keys(scores).length === 0) {
             area.style.display = 'block';
-            area.innerHTML = '<div class="text-warning small p-2">\u26A0\uFE0F Run an analysis first to generate scores for impact analysis.</div>';
+            area.innerHTML = '<div class="text-warning small p-2">' + t('relations.impact.no.scores') + '</div>';
             return;
         }
 
         area.style.display = 'block';
-        area.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> Analyzing impact\u2026</div>';
+        area.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('relations.impact.analyzing') + '</div>';
 
         var maxHops = document.getElementById('graphMaxHops') ? parseInt(document.getElementById('graphMaxHops').value, 10) : 2;
 
@@ -214,9 +215,9 @@
         var html = '';
 
         if (data.impactedElements && data.impactedElements.length > 0) {
-            html += '<div class="small text-muted mb-1">' + data.impactedElements.length + ' impacted element(s)</div>';
+            html += '<div class="small text-muted mb-1">' + t('relations.impact.elements', data.impactedElements.length) + '</div>';
             html += '<table class="table table-sm table-bordered mb-2" style="font-size:0.82em;">';
-            html += '<thead><tr><th>Code</th><th>Name</th><th>Impact</th></tr></thead><tbody>';
+            html += '<thead><tr><th>' + t('relations.impact.table.code') + '</th><th>' + t('relations.impact.table.name') + '</th><th>' + t('relations.impact.table.impact') + '</th></tr></thead><tbody>';
             data.impactedElements.forEach(function (el) {
                 html += '<tr>';
                 html += '<td class="fw-semibold">' + escapeHtml(el.code || '') + '</td>';
@@ -228,9 +229,9 @@
         }
 
         if (data.traversedRelationships && data.traversedRelationships.length > 0) {
-            html += '<div class="small text-muted mb-1">' + data.traversedRelationships.length + ' traversed relationship(s)</div>';
+            html += '<div class="small text-muted mb-1">' + t('relations.impact.relationships', data.traversedRelationships.length) + '</div>';
             html += '<table class="table table-sm table-bordered mb-0" style="font-size:0.82em;">';
-            html += '<thead><tr><th>From</th><th>To</th><th>Type</th></tr></thead><tbody>';
+            html += '<thead><tr><th>' + t('relations.impact.table.from') + '</th><th>' + t('relations.impact.table.to') + '</th><th>' + t('relations.table.type') + '</th></tr></thead><tbody>';
             data.traversedRelationships.forEach(function (rel) {
                 html += '<tr>';
                 html += '<td>' + escapeHtml(rel.sourceCode || rel.from || '') + '</td>';
@@ -241,7 +242,7 @@
             html += '</tbody></table>';
         }
 
-        area.innerHTML = html || '<div class="text-muted small p-2">No impact data returned.</div>';
+        area.innerHTML = html || '<div class="text-muted small p-2">' + t('relations.impact.no.data') + '</div>';
     }
 
     /* ------------------------------------------------------------------ */
