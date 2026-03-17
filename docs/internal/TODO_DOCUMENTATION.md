@@ -50,17 +50,16 @@ This file tracks known documentation gaps and improvement opportunities. Items m
 
 ---
 
-## Internationalisation (i18n) Roadmap
+## Internationalisation (i18n) — Implemented ✅
 
-The application currently has all UI text hard-coded in English. Full i18n would require:
+Full i18n support has been implemented:
 
-1. **Backend**: Add Spring `MessageSource` bean with `messages.properties` (English default), `messages_de.properties`, etc.
-2. **Templates**: Replace hard-coded strings in `index.html` with Thymeleaf `#{…}` expressions (e.g., `th:text="#{nav.analyze}"`).
-3. **JavaScript**: Create a `taxonomy-i18n.js` module that loads locale strings from a `/api/i18n/{locale}` endpoint and exposes a `t('key')` function. Replace all string literals in JS modules.
-4. **Locale detection**: Use `Accept-Language` header or a UI language selector stored in `localStorage`.
-5. **LLM prompts**: Prompt templates are already customisable via the Prompt Template Editor — they can be translated per deployment without code changes.
-
-This is a significant effort (~200+ translatable strings across HTML and 11 JS modules) and is tracked as a separate initiative.
+1. ✅ **Backend**: `I18nConfig` with `MessageSource`, `messages.properties` (English, 359 keys), `messages_de.properties` (German, 359 keys).
+2. ✅ **Templates**: Thymeleaf `#{…}` expressions used throughout `index.html`.
+3. ✅ **JavaScript**: `taxonomy-i18n.js` module loads translations from `/api/i18n/{locale}` and exposes `TaxonomyI18n.t('key')`.
+4. ✅ **Locale detection**: `WebMvcConfig` with `CookieLocaleResolver` + `LocaleChangeInterceptor` (`?lang=` parameter). UI language selector in navbar with `localStorage` persistence.
+5. ✅ **LLM prompts**: Prompt templates are customisable via the Prompt Template Editor — they can be translated per deployment without code changes.
+6. ✅ **Documentation**: `docs/en/` (33 files) and `docs/de/` (33 files) with full parity. `HelpController` resolves docs by locale.
 
 ---
 
