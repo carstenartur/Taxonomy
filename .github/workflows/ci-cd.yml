@@ -76,7 +76,7 @@ jobs:
         if: always()
         run: |
           mvn surefire-report:report-only --no-transfer-progress -DskipTests
-          mvn site --no-transfer-progress -DskipTests -DgenerateReports=false -pl taxonomy-app
+          mvn site --no-transfer-progress -am -DskipTests -DgenerateReports=false -pl taxonomy-app
 
       - name: Generate badge JSON files
         if: always()
