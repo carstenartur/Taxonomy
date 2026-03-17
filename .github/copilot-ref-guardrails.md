@@ -50,6 +50,7 @@
 - These ITs start the real application in Docker via Testcontainers and test against HSQLDB, PostgreSQL, Oracle, and MSSQL.
 - Before finishing your work, run `mvn verify -DexcludedGroups="real-llm"` if your changes could affect controllers, GUI, startup config, pom.xml, or Dockerfiles.
 - You do NOT need to run `mvn verify` for every small iteration — only as a final check before pushing.
+- ⚠️ **Do NOT** weaken the test command by adding `-pl`, extra exclusion tags (`db-postgres`, `db-oracle`, `db-mssql`), or downgrading from `verify` to `test`. The CI runs `mvn verify -DexcludedGroups="real-llm"` — your local validation must match. If Docker/Testcontainers fail in your environment, report it rather than silently running fewer tests.
 
 ## Multi-Module Maven — Always Use `-am` With `-pl`
 

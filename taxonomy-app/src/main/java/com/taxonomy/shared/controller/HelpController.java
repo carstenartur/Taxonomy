@@ -36,8 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Supports locale-aware document resolution:
  * <ol>
  *   <li>Try {@code docs/{lang}/{docName}.md}</li>
- *   <li>Try {@code docs/en/{docName}.md}</li>
- *   <li>Fall back to {@code docs/{docName}.md} (legacy path)</li>
+ *   <li>Fall back to {@code docs/en/{docName}.md}</li>
  * </ol>
  */
 @Controller
@@ -56,21 +55,37 @@ public class HelpController {
 
     /** Known documentation files with their default (English) metadata. */
     private static final List<String[]> DOC_METADATA = List.of(
-        new String[]{"USER_GUIDE",               "📖", "help.toc.USER_GUIDE",             "help.audience.everyone"},
-        new String[]{"CONCEPTS",                  "💡", "help.toc.CONCEPTS",               "help.audience.everyone"},
-        new String[]{"EXAMPLES",                  "📝", "help.toc.EXAMPLES",               "help.audience.everyone"},
-        new String[]{"FRAMEWORK_IMPORT",          "📥", "help.toc.FRAMEWORK_IMPORT",       "help.audience.everyone"},
-        new String[]{"GIT_INTEGRATION",           "🔀", "help.toc.GIT_INTEGRATION",        "help.audience.developers"},
-        new String[]{"PREFERENCES",               "🎛️", "help.toc.PREFERENCES",            "help.audience.admins"},
-        new String[]{"AI_PROVIDERS",              "🤖", "help.toc.AI_PROVIDERS",           "help.audience.everyone"},
-        new String[]{"CONFIGURATION_REFERENCE",   "⚙️", "help.toc.CONFIGURATION_REFERENCE","help.audience.admins"},
-        new String[]{"API_REFERENCE",             "🔌", "help.toc.API_REFERENCE",          "help.audience.integrators"},
-        new String[]{"CURL_EXAMPLES",             "💻", "help.toc.CURL_EXAMPLES",          "help.audience.integrators"},
-        new String[]{"ARCHITECTURE",              "🏗️", "help.toc.ARCHITECTURE",           "help.audience.developers"},
-        new String[]{"DEVELOPER_GUIDE",           "🛠️", "help.toc.DEVELOPER_GUIDE",        "help.audience.developers"},
-        new String[]{"DEPLOYMENT_GUIDE",          "🚀", "help.toc.DEPLOYMENT_GUIDE",       "help.audience.devops"},
-        new String[]{"SECURITY",                  "🔒", "help.toc.SECURITY",               "help.audience.admins"},
-        new String[]{"DATABASE_SETUP",            "🗄️", "help.toc.DATABASE_SETUP",         "help.audience.devops"}
+        new String[]{"USER_GUIDE",               "📖", "help.toc.USER_GUIDE",                    "help.audience.everyone"},
+        new String[]{"CONCEPTS",                  "💡", "help.toc.CONCEPTS",                      "help.audience.everyone"},
+        new String[]{"EXAMPLES",                  "📝", "help.toc.EXAMPLES",                      "help.audience.everyone"},
+        new String[]{"FRAMEWORK_IMPORT",          "📥", "help.toc.FRAMEWORK_IMPORT",              "help.audience.everyone"},
+        new String[]{"GIT_INTEGRATION",           "🔀", "help.toc.GIT_INTEGRATION",               "help.audience.developers"},
+        new String[]{"PREFERENCES",               "🎛️", "help.toc.PREFERENCES",                   "help.audience.admins"},
+        new String[]{"AI_PROVIDERS",              "🤖", "help.toc.AI_PROVIDERS",                  "help.audience.everyone"},
+        new String[]{"CONFIGURATION_REFERENCE",   "⚙️", "help.toc.CONFIGURATION_REFERENCE",       "help.audience.admins"},
+        new String[]{"API_REFERENCE",             "🔌", "help.toc.API_REFERENCE",                 "help.audience.integrators"},
+        new String[]{"CURL_EXAMPLES",             "💻", "help.toc.CURL_EXAMPLES",                 "help.audience.integrators"},
+        new String[]{"ARCHITECTURE",              "🏗️", "help.toc.ARCHITECTURE",                  "help.audience.developers"},
+        new String[]{"DEVELOPER_GUIDE",           "🛠️", "help.toc.DEVELOPER_GUIDE",               "help.audience.developers"},
+        new String[]{"DEPLOYMENT_GUIDE",          "🚀", "help.toc.DEPLOYMENT_GUIDE",              "help.audience.devops"},
+        new String[]{"SECURITY",                  "🔒", "help.toc.SECURITY",                      "help.audience.admins"},
+        new String[]{"DATABASE_SETUP",            "🗄️", "help.toc.DATABASE_SETUP",                "help.audience.devops"},
+        new String[]{"DEPLOYMENT_CHECKLIST",      "✅", "help.toc.DEPLOYMENT_CHECKLIST",           "help.audience.devops"},
+        new String[]{"OPERATIONS_GUIDE",          "📋", "help.toc.OPERATIONS_GUIDE",              "help.audience.devops"},
+        new String[]{"KEYCLOAK_SETUP",            "🔑", "help.toc.KEYCLOAK_SETUP",                "help.audience.devops"},
+        new String[]{"SSO_INTEGRATION",           "🔐", "help.toc.SSO_INTEGRATION",               "help.audience.devops"},
+        new String[]{"POSTGRESQL-SETUP",          "🐘", "help.toc.POSTGRESQL-SETUP",              "help.audience.devops"},
+        new String[]{"MSSQL-SETUP",               "🪟", "help.toc.MSSQL-SETUP",                   "help.audience.devops"},
+        new String[]{"ORACLE-SETUP",              "🏛️", "help.toc.ORACLE-SETUP",                  "help.audience.devops"},
+        new String[]{"AI_TRANSPARENCY",           "🔍", "help.toc.AI_TRANSPARENCY",               "help.audience.everyone"},
+        new String[]{"AI_LITERACY_CONCEPT",       "🎓", "help.toc.AI_LITERACY_CONCEPT",           "help.audience.everyone"},
+        new String[]{"DATA_PROTECTION",           "🛡️", "help.toc.DATA_PROTECTION",               "help.audience.admins"},
+        new String[]{"ACCESSIBILITY",             "♿", "help.toc.ACCESSIBILITY",                 "help.audience.everyone"},
+        new String[]{"BSI_KI_CHECKLIST",          "📜", "help.toc.BSI_KI_CHECKLIST",              "help.audience.admins"},
+        new String[]{"DIGITAL_SOVEREIGNTY",       "🏴", "help.toc.DIGITAL_SOVEREIGNTY",           "help.audience.admins"},
+        new String[]{"USE_CASE_WISSENSKONSERVIERUNG", "📚", "help.toc.USE_CASE_WISSENSKONSERVIERUNG","help.audience.everyone"},
+        new String[]{"VERWALTUNGSINTEGRATION",    "🏢", "help.toc.VERWALTUNGSINTEGRATION",        "help.audience.admins"},
+        new String[]{"UI_GAP_ANALYSIS",           "📊", "help.toc.UI_GAP_ANALYSIS",               "help.audience.developers"}
     );
 
     /** Set of known doc filenames for validation. */
@@ -158,7 +173,7 @@ public class HelpController {
 
     /**
      * Resolves a document by locale, falling back through:
-     * docs/{lang}/{docName}.md → docs/en/{docName}.md → docs/{docName}.md
+     * docs/{lang}/{docName}.md → docs/en/{docName}.md
      */
     private String renderDoc(String docName, Locale locale) {
         // 1. Try locale-specific path
@@ -173,12 +188,6 @@ public class HelpController {
         if (enResource.exists()) {
             return parseResource(enResource, docName);
         }
-        // 3. Legacy fallback (docs/{docName}.md)
-        String legacyPath = "docs/" + docName + ".md";
-        ClassPathResource legacyResource = new ClassPathResource(legacyPath);
-        if (legacyResource.exists()) {
-            return parseResource(legacyResource, docName);
-        }
         return null;
     }
 
@@ -187,6 +196,8 @@ public class HelpController {
             String markdown = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             // Rewrite relative image paths to absolute /help/images/... URLs
             markdown = markdown.replaceAll("\\(images/([^)]+)\\)", "(/help/images/$1)");
+            // Also rewrite HTML <img src="images/..."> tags
+            markdown = markdown.replaceAll("src=\"images/([^\"]+)\"", "src=\"/help/images/$1\"");
             Node document = parser.parse(markdown);
             String body = renderer.render(document);
             return "<div class=\"help-doc-content\">" + body + "</div>";

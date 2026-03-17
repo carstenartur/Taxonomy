@@ -30,9 +30,9 @@ Full multi-database support means end-to-end coverage across:
 - [ ] Database-specific configuration guidance in the UI
 
 ### Documentation
-- [x] Configuration guide for MSSQL (`docs/MSSQL-SETUP.md`)
-- [x] Configuration guide for PostgreSQL (`docs/POSTGRESQL-SETUP.md`)
-- [x] Configuration guide for Oracle (`docs/ORACLE-SETUP.md`)
+- [x] Configuration guide for MSSQL (`docs/en/MSSQL-SETUP.md`)
+- [x] Configuration guide for PostgreSQL (`docs/en/POSTGRESQL-SETUP.md`)
+- [x] Configuration guide for Oracle (`docs/en/ORACLE-SETUP.md`)
 - [x] Docker Compose examples for each database (`docker-compose-mssql.yml`, `docker-compose-postgres.yml`, `docker-compose-oracle.yml`)
 - [ ] Migration guide from HSQLDB to production databases
 - [ ] Performance considerations per database

@@ -132,7 +132,7 @@ Diese Checkliste bildet die BSI-Kriterien für den Einsatz von KI-Modellen in de
 |---|---|---|
 | Software Bill of Materials vorhanden | CycloneDX SBOM automatisch generiert (`mvn package`) | ✅ Erfüllt |
 | Abhängigkeiten dokumentiert | `target/taxonomy-sbom.json` und `target/taxonomy-sbom.xml` mit Paketnamen, Versionen, Lizenzen, Hashes | ✅ Erfüllt |
-| Drittanbieter-Transparenz | [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) dokumentiert alle Drittanbieter-Lizenzen | ✅ Erfüllt |
+| Drittanbieter-Transparenz | [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) dokumentiert alle Drittanbieter-Lizenzen | ✅ Erfüllt |
 | Open-Source-Lizenz | MIT-Lizenz — vollständig offener Quellcode | ✅ Erfüllt |
 
 **Nachweis:** Siehe [Security — SBOM](SECURITY.md#sbom-software-bill-of-materials)

@@ -37,14 +37,14 @@ Der Taxonomy Architecture Analyzer erfüllt die Kriterien für eine Veröffentli
 
 | openCode-Kriterium | Status | Nachweis |
 |---|---|---|
-| **Open-Source-Lizenz** | ✅ | MIT-Lizenz ([LICENSE](../LICENSE)) |
+| **Open-Source-Lizenz** | ✅ | MIT-Lizenz ([LICENSE](../../LICENSE)) |
 | **Öffentlich zugänglicher Quellcode** | ✅ | [GitHub Repository](https://github.com/carstenartur/Taxonomy) |
-| **Dokumentierte Build-Anleitung** | ✅ | [README](../README.md) + [Developer Guide](DEVELOPER_GUIDE.md) |
+| **Dokumentierte Build-Anleitung** | ✅ | [README](../../README.md) + [Developer Guide](DEVELOPER_GUIDE.md) |
 | **SBOM vorhanden** | ✅ | CycloneDX (`target/taxonomy-sbom.json`) |
 | **Verwaltungsrelevanter Einsatzzweck** | ✅ | Architektur-Analyse und Wissenskonservierung für Behörden (siehe [Use Case](USE_CASE_WISSENSKONSERVIERUNG.md)) |
 | **Nachnutzung durch andere Behörden** | ✅ | Docker-Deployment; umfangreiche Konfigurationsmöglichkeiten |
 | **Dokumentation in deutscher Sprache** | ✅ | Behördentauglichkeits-Dokumentation auf Deutsch |
-| **Drittanbieter-Transparenz** | ✅ | [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) |
+| **Drittanbieter-Transparenz** | ✅ | [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) |
 | **Sicherheitsdokumentation** | ✅ | [SECURITY.md](SECURITY.md) |
 | **Datenschutzdokumentation** | ✅ | [DATA_PROTECTION.md](DATA_PROTECTION.md) |
 
@@ -57,7 +57,7 @@ Der Taxonomy Architecture Analyzer ist mit der Zielarchitektur der Deutschen Ver
 | DVC-Anforderung | Taxonomy-Umsetzung | Status |
 |---|---|---|
 | **Container-basiertes Deployment** | Docker-Image vorhanden; Kubernetes-fähig (Dockerfile im Repository) | ✅ |
-| **Mandantenfähigkeit** | Workspace-Isolation über Branch-basierte Benutzertrennung (siehe [Workspace Design](internal/WORKSPACE_DESIGN.md)) | ⚠️ In Entwicklung |
+| **Mandantenfähigkeit** | Workspace-Isolation über Branch-basierte Benutzertrennung (siehe [Workspace Design](../internal/WORKSPACE_DESIGN.md)) | ⚠️ In Entwicklung |
 | **Föderale Nachnutzung** | Open Source (MIT); konfigurierbar für verschiedene Behördenkontexte | ✅ |
 | **Standardisierte Schnittstellen** | REST API mit OpenAPI/Swagger-Dokumentation | ✅ |
 | **Datensouveränität** | On-Premises-Betrieb + Air-Gapped-Modus möglich | ✅ |

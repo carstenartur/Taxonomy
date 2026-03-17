@@ -421,7 +421,7 @@ Review the SBOM as part of the BSI IT-Grundschutz software supply chain requirem
 
 ## Workspace Access Rights
 
-When multi-user workspace isolation is enabled (see [Workspace Design](internal/WORKSPACE_DESIGN.md)), the following access control matrix applies to workspace operations:
+When multi-user workspace isolation is enabled (see [Workspace Design](../internal/WORKSPACE_DESIGN.md)), the following access control matrix applies to workspace operations:
 
 | Action | USER | ARCHITECT | ADMIN | Workspace Owner |
 |---|:---:|:---:|:---:|:---:|

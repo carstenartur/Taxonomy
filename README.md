@@ -124,7 +124,7 @@ mvn verify            # Unit + integration tests (requires Docker)
 
 Interactive documentation: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html)
 
-All endpoints require HTTP Basic authentication (`-u admin:admin`). For the full reference with request/response examples, see [API Reference](docs/API_REFERENCE.md). For end-to-end curl workflows, see [Curl Workflow Examples](docs/CURL_EXAMPLES.md).
+All endpoints require HTTP Basic authentication (`-u admin:admin`). For the full reference with request/response examples, see [API Reference](docs/en/API_REFERENCE.md). For end-to-end curl workflows, see [Curl Workflow Examples](docs/en/CURL_EXAMPLES.md).
 
 ---
 
@@ -146,22 +146,22 @@ Taxonomy/
 
 | Document | Description |
 |---|---|
-| **[User Guide](docs/USER_GUIDE.md)** | End-user guide with screenshots and workflow walkthroughs |
-| **[Examples](docs/EXAMPLES.md)** | Worked examples for analysis, impact, proposals, export |
-| **[Concepts & Glossary](docs/CONCEPTS.md)** | Key terms and domain model |
-| **[API Reference](docs/API_REFERENCE.md)** | REST API quick-reference with request/response examples |
-| **[Configuration](docs/CONFIGURATION_REFERENCE.md)** | Environment variables and settings |
-| **[Deployment](docs/DEPLOYMENT_GUIDE.md)** | Docker, Render.com, health checks |
-| **[Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md)** | Pre-deployment verification checklist |
-| **[Security](docs/SECURITY.md)** | Authentication, roles, permissions, deployment hardening |
-| **[Architecture](docs/ARCHITECTURE.md)** | System design, modules, DSL storage, pipelines |
-| **[Developer Guide](docs/DEVELOPER_GUIDE.md)** | Module architecture, testing, extending the system |
-| **[Keycloak Setup](docs/KEYCLOAK_SETUP.md)** | SSO/OIDC integration with Keycloak |
-| **[SSO Integration](docs/SSO_INTEGRATION.md)** | Single Sign-On configuration and setup |
-| **[AI Transparency](docs/AI_TRANSPARENCY.md)** | AI/LLM usage transparency documentation |
-| **[Data Protection](docs/DATA_PROTECTION.md)** | GDPR and data protection compliance |
-| **[Operations Guide](docs/OPERATIONS_GUIDE.md)** | Operational procedures and monitoring |
-| **[Knowledge Conservation](docs/USE_CASE_WISSENSKONSERVIERUNG.md)** | Use case: architecture knowledge preservation |
+| **[User Guide](docs/en/USER_GUIDE.md)** | End-user guide with screenshots and workflow walkthroughs |
+| **[Examples](docs/en/EXAMPLES.md)** | Worked examples for analysis, impact, proposals, export |
+| **[Concepts & Glossary](docs/en/CONCEPTS.md)** | Key terms and domain model |
+| **[API Reference](docs/en/API_REFERENCE.md)** | REST API quick-reference with request/response examples |
+| **[Configuration](docs/en/CONFIGURATION_REFERENCE.md)** | Environment variables and settings |
+| **[Deployment](docs/en/DEPLOYMENT_GUIDE.md)** | Docker, Render.com, health checks |
+| **[Deployment Checklist](docs/en/DEPLOYMENT_CHECKLIST.md)** | Pre-deployment verification checklist |
+| **[Security](docs/en/SECURITY.md)** | Authentication, roles, permissions, deployment hardening |
+| **[Architecture](docs/en/ARCHITECTURE.md)** | System design, modules, DSL storage, pipelines |
+| **[Developer Guide](docs/en/DEVELOPER_GUIDE.md)** | Module architecture, testing, extending the system |
+| **[Keycloak Setup](docs/en/KEYCLOAK_SETUP.md)** | SSO/OIDC integration with Keycloak |
+| **[SSO Integration](docs/en/SSO_INTEGRATION.md)** | Single Sign-On configuration and setup |
+| **[AI Transparency](docs/en/AI_TRANSPARENCY.md)** | AI/LLM usage transparency documentation |
+| **[Data Protection](docs/en/DATA_PROTECTION.md)** | GDPR and data protection compliance |
+| **[Operations Guide](docs/en/OPERATIONS_GUIDE.md)** | Operational procedures and monitoring |
+| **[Knowledge Conservation](docs/en/USE_CASE_WISSENSKONSERVIERUNG.md)** | Use case: architecture knowledge preservation |
 
 ## Government Readiness (Behördentauglichkeit)
 
@@ -169,16 +169,16 @@ The Taxonomy Architecture Analyzer includes comprehensive documentation for depl
 
 | Document | Description |
 |---|---|
-| **[BSI KI Checklist](docs/BSI_KI_CHECKLIST.md)** | BSI criteria checklist for AI models in federal administration |
-| **[AI Literacy Concept](docs/AI_LITERACY_CONCEPT.md)** | Training concept per EU AI Act Art. 4 (AI Literacy) |
-| **[Accessibility / BITV 2.0](docs/ACCESSIBILITY.md)** | BITV 2.0 / WCAG 2.1 accessibility concept and action plan |
-| **[Digital Sovereignty](docs/DIGITAL_SOVEREIGNTY.md)** | Digital sovereignty, openCode compatibility, DVC architecture |
-| **[Administration Integration](docs/VERWALTUNGSINTEGRATION.md)** | FIM / 115 / XÖV integration roadmap |
-| **[AI Transparency](docs/AI_TRANSPARENCY.md)** | EU AI Act compliance, data flows, explainability |
-| **[Data Protection](docs/DATA_PROTECTION.md)** | GDPR/DSGVO compliance, BfDI guidelines |
-| **[Security](docs/SECURITY.md)** | Authentication, roles, hardening, workspace access rights |
-| **[Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md)** | Government/enterprise deployment verification checklist |
-| **[Knowledge Conservation](docs/USE_CASE_WISSENSKONSERVIERUNG.md)** | Use case: architecture knowledge preservation for government |
+| **[BSI KI Checklist](docs/en/BSI_KI_CHECKLIST.md)** | BSI criteria checklist for AI models in federal administration |
+| **[AI Literacy Concept](docs/en/AI_LITERACY_CONCEPT.md)** | Training concept per EU AI Act Art. 4 (AI Literacy) |
+| **[Accessibility / BITV 2.0](docs/en/ACCESSIBILITY.md)** | BITV 2.0 / WCAG 2.1 accessibility concept and action plan |
+| **[Digital Sovereignty](docs/en/DIGITAL_SOVEREIGNTY.md)** | Digital sovereignty, openCode compatibility, DVC architecture |
+| **[Administration Integration](docs/en/VERWALTUNGSINTEGRATION.md)** | FIM / 115 / XÖV integration roadmap |
+| **[AI Transparency](docs/en/AI_TRANSPARENCY.md)** | EU AI Act compliance, data flows, explainability |
+| **[Data Protection](docs/en/DATA_PROTECTION.md)** | GDPR/DSGVO compliance, BfDI guidelines |
+| **[Security](docs/en/SECURITY.md)** | Authentication, roles, hardening, workspace access rights |
+| **[Deployment Checklist](docs/en/DEPLOYMENT_CHECKLIST.md)** | Government/enterprise deployment verification checklist |
+| **[Knowledge Conservation](docs/en/USE_CASE_WISSENSKONSERVIERUNG.md)** | Use case: architecture knowledge preservation for government |
 
 **Key capabilities for government use:**
 - 🔒 **Air-gapped operation** — `LLM_PROVIDER=LOCAL_ONNX` for fully offline deployment
