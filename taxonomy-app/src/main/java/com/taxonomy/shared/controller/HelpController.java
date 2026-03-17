@@ -85,7 +85,8 @@ public class HelpController {
         new String[]{"DIGITAL_SOVEREIGNTY",       "🏴", "help.toc.DIGITAL_SOVEREIGNTY",           "help.audience.admins"},
         new String[]{"USE_CASE_WISSENSKONSERVIERUNG", "📚", "help.toc.USE_CASE_WISSENSKONSERVIERUNG","help.audience.everyone"},
         new String[]{"VERWALTUNGSINTEGRATION",    "🏢", "help.toc.VERWALTUNGSINTEGRATION",        "help.audience.admins"},
-        new String[]{"UI_GAP_ANALYSIS",           "📊", "help.toc.UI_GAP_ANALYSIS",               "help.audience.developers"}
+        new String[]{"UI_GAP_ANALYSIS",           "📊", "help.toc.UI_GAP_ANALYSIS",               "help.audience.developers"},
+        new String[]{"WORKSPACE_VERSIONING",      "🔄", "help.toc.WORKSPACE_VERSIONING",          "help.audience.everyone"}
     );
 
     /** Set of known doc filenames for validation. */
