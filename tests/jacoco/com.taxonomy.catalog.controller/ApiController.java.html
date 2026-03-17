@@ -2,6 +2,8 @@
 
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.service.TaxonomyService;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,29 +32,32 @@ import java.util.Map;
 public class ApiController {
 
     private final TaxonomyService taxonomyService;
+    private final MessageSource messageSource;
 
-<span class="fc" id="L34">    public ApiController(TaxonomyService taxonomyService) {</span>
-<span class="fc" id="L35">        this.taxonomyService = taxonomyService;</span>
-<span class="fc" id="L36">    }</span>
+<span class="fc" id="L37">    public ApiController(TaxonomyService taxonomyService, MessageSource messageSource) {</span>
+<span class="fc" id="L38">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L39">        this.messageSource = messageSource;</span>
+<span class="fc" id="L40">    }</span>
 
     @Operation(summary = &quot;Get full taxonomy tree&quot;, description = &quot;Returns the complete taxonomy hierarchy as a nested tree of nodes&quot;, tags = {&quot;Taxonomy&quot;})
     @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Taxonomy tree returned successfully&quot;)
     @GetMapping(&quot;/taxonomy&quot;)
     public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; getTaxonomy() {
-<span class="fc" id="L42">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
-<span class="pc bpc" id="L43" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
-<span class="fc" id="L44">        return ResponseEntity.ok(taxonomyService.getFullTree());</span>
+<span class="fc" id="L46">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="fc" id="L48">        return ResponseEntity.ok(taxonomyService.getFullTree());</span>
     }
 
     @SuppressWarnings(&quot;unchecked&quot;)
     private &lt;T&gt; ResponseEntity&lt;T&gt; checkInitialized() {
-<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (!taxonomyService.isInitialized()) {</span>
-<span class="nc" id="L50">            Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L51">            body.put(&quot;error&quot;, &quot;Taxonomy data is still loading. Please wait.&quot;);</span>
-<span class="nc" id="L52">            body.put(&quot;status&quot;, taxonomyService.getInitStatus());</span>
-<span class="nc" id="L53">            return (ResponseEntity&lt;T&gt;) ResponseEntity.status(503).body(body);</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">        if (!taxonomyService.isInitialized()) {</span>
+<span class="nc" id="L54">            Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L55">            body.put(&quot;error&quot;, messageSource.getMessage(&quot;error.loading&quot;, null,</span>
+<span class="nc" id="L56">                    &quot;Taxonomy data is still loading. Please wait.&quot;, LocaleContextHolder.getLocale()));</span>
+<span class="nc" id="L57">            body.put(&quot;status&quot;, taxonomyService.getInitStatus());</span>
+<span class="nc" id="L58">            return (ResponseEntity&lt;T&gt;) ResponseEntity.status(503).body(body);</span>
         }
-<span class="fc" id="L55">        return null;</span>
+<span class="fc" id="L60">        return null;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -3,6 +3,8 @@
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.search.service.SearchFacade;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,20 +21,22 @@ import java.util.Map;
 public class SearchApiController {
 
     private final SearchFacade searchFacade;
+    private final MessageSource messageSource;
 
-<span class="fc" id="L23">    public SearchApiController(SearchFacade searchFacade) {</span>
-<span class="fc" id="L24">        this.searchFacade = searchFacade;</span>
-<span class="fc" id="L25">    }</span>
+<span class="fc" id="L26">    public SearchApiController(SearchFacade searchFacade, MessageSource messageSource) {</span>
+<span class="fc" id="L27">        this.searchFacade = searchFacade;</span>
+<span class="fc" id="L28">        this.messageSource = messageSource;</span>
+<span class="fc" id="L29">    }</span>
 
     @Operation(summary = &quot;Full-text search&quot;, description = &quot;Search taxonomy nodes using full-text Lucene search&quot;, tags = {&quot;Search&quot;})
     @GetMapping(&quot;/search&quot;)
     public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; search(
             @Parameter(description = &quot;Search query&quot;) @RequestParam String q,
             @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;50&quot;) int maxResults) {
-<span class="fc" id="L32">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
-<span class="pc bpc" id="L33" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
-<span class="pc bpc" id="L34" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
-<span class="fc" id="L35">        return ResponseEntity.ok(searchFacade.fullTextSearch(q, maxResults));</span>
+<span class="fc" id="L36">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L38" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L39">        return ResponseEntity.ok(searchFacade.fullTextSearch(q, maxResults));</span>
     }
 
     /**
@@ -45,10 +49,10 @@ public class SearchApiController {
     public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; semanticSearch(
             @Parameter(description = &quot;Natural-language query&quot;) @RequestParam String q,
             @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;20&quot;) int maxResults) {
-<span class="fc" id="L48">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
-<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
-<span class="pc bpc" id="L50" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
-<span class="fc" id="L51">        return ResponseEntity.ok(searchFacade.semanticSearch(q, maxResults));</span>
+<span class="fc" id="L52">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L54" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L55">        return ResponseEntity.ok(searchFacade.semanticSearch(q, maxResults));</span>
     }
 
     /**
@@ -60,10 +64,10 @@ public class SearchApiController {
     public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; hybridSearch(
             @Parameter(description = &quot;Natural-language query&quot;) @RequestParam String q,
             @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;20&quot;) int maxResults) {
-<span class="fc" id="L63">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
-<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
-<span class="pc bpc" id="L65" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
-<span class="fc" id="L66">        return ResponseEntity.ok(searchFacade.hybridSearch(q, maxResults));</span>
+<span class="fc" id="L67">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L69" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L70">        return ResponseEntity.ok(searchFacade.hybridSearch(q, maxResults));</span>
     }
 
     /**
@@ -74,9 +78,9 @@ public class SearchApiController {
     public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; findSimilar(
             @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code,
             @Parameter(description = &quot;Maximum number of similar nodes&quot;) @RequestParam(defaultValue = &quot;10&quot;) int topK) {
-<span class="fc" id="L77">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
-<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
-<span class="fc" id="L79">        return ResponseEntity.ok(searchFacade.findSimilarNodes(code, topK));</span>
+<span class="fc" id="L81">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="fc" id="L83">        return ResponseEntity.ok(searchFacade.findSimilarNodes(code, topK));</span>
     }
 
     /**
@@ -85,7 +89,7 @@ public class SearchApiController {
     @Operation(summary = &quot;Embedding model status&quot;, description = &quot;Returns the current status of the local embedding model&quot;, tags = {&quot;Embedding&quot;})
     @GetMapping(&quot;/embedding/status&quot;)
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; embeddingStatus() {
-<span class="fc" id="L88">        return ResponseEntity.ok(searchFacade.getEmbeddingStatus());</span>
+<span class="fc" id="L92">        return ResponseEntity.ok(searchFacade.getEmbeddingStatus());</span>
     }
 
     /**
@@ -97,21 +101,22 @@ public class SearchApiController {
     public ResponseEntity&lt;GraphSearchResult&gt; graphSearch(
             @Parameter(description = &quot;Natural-language query&quot;) @RequestParam String q,
             @Parameter(description = &quot;Maximum number of node results&quot;) @RequestParam(defaultValue = &quot;20&quot;) int maxResults) {
-<span class="fc" id="L100">        ResponseEntity&lt;GraphSearchResult&gt; guard = checkInitialized();</span>
-<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
-<span class="pc bpc" id="L102" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
-<span class="fc" id="L103">        return ResponseEntity.ok(searchFacade.graphSearch(q, maxResults));</span>
+<span class="fc" id="L104">        ResponseEntity&lt;GraphSearchResult&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L106" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L107">        return ResponseEntity.ok(searchFacade.graphSearch(q, maxResults));</span>
     }
 
     @SuppressWarnings(&quot;unchecked&quot;)
     private &lt;T&gt; ResponseEntity&lt;T&gt; checkInitialized() {
-<span class="pc bpc" id="L108" title="1 of 2 branches missed.">        if (!searchFacade.isInitialized()) {</span>
-<span class="nc" id="L109">            Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L110">            body.put(&quot;error&quot;, &quot;Taxonomy data is still loading. Please wait.&quot;);</span>
-<span class="nc" id="L111">            body.put(&quot;status&quot;, searchFacade.getInitStatus());</span>
-<span class="nc" id="L112">            return (ResponseEntity&lt;T&gt;) ResponseEntity.status(503).body(body);</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">        if (!searchFacade.isInitialized()) {</span>
+<span class="nc" id="L113">            Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L114">            body.put(&quot;error&quot;, messageSource.getMessage(&quot;error.loading&quot;, null,</span>
+<span class="nc" id="L115">                    &quot;Taxonomy data is still loading. Please wait.&quot;, LocaleContextHolder.getLocale()));</span>
+<span class="nc" id="L116">            body.put(&quot;status&quot;, searchFacade.getInitStatus());</span>
+<span class="nc" id="L117">            return (ResponseEntity&lt;T&gt;) ResponseEntity.status(503).body(body);</span>
         }
-<span class="fc" id="L114">        return null;</span>
+<span class="fc" id="L119">        return null;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
