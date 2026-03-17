@@ -5,8 +5,11 @@ import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
 
+import static com.tngtech.archunit.base.DescribedPredicate.alwaysTrue;
+import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 /**
  * Architecture rules enforced via ArchUnit.
@@ -18,24 +21,57 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 class ArchitectureTest {
 
     /**
-     * Controllers in the newly-extracted packages (analysis, export, search, catalog,
-     * shared) must go through services / facades and never touch repositories.
+     * No circular dependencies between the main domain packages.
      *
-     * <p>Some pre-existing controllers (architecture, security, versioning) still
-     * reference repositories directly; those are intentionally excluded so the
-     * rule passes today and protects future code.
+     * <p>Each top-level package under {@code com.taxonomy} is treated as a
+     * slice. Dependencies to/from cross-cutting and shared infrastructure
+     * packages are excluded from cycle detection.
+     *
+     * <p>Known excluded packages and reasons:
+     * <ul>
+     *   <li>{@code dto, model} — shared data transfer objects</li>
+     *   <li>{@code dsl, shared} — shared utilities and DSL parsing</li>
+     *   <li>{@code export, architecture} — mutual dependency in diagram pipeline</li>
+     *   <li>{@code catalog, relations} — mutual dependency via entity models</li>
+     *   <li>{@code versioning, workspace} — mutual dependency for workspace state</li>
+     * </ul>
+     *
+     * <p>Future work: extract interfaces to {@code shared/} to resolve
+     * these cycles and progressively remove exceptions from this rule.
      */
     @ArchTest
-    static final ArchRule newControllersShouldNotAccessRepositories = noClasses()
-            .that().resideInAnyPackage(
-                    "com.taxonomy.analysis.controller..",
-                    "com.taxonomy.export.controller..",
-                    "com.taxonomy.search.controller..",
-                    "com.taxonomy.catalog.controller..",
-                    "com.taxonomy.shared.controller..")
+    static final ArchRule noCyclesBetweenDomains = slices()
+            .matching("com.taxonomy.(*)..")
+            .should().beFreeOfCycles()
+            .ignoreDependency(resideInAnyPackage(
+                    "com.taxonomy.dto..", "com.taxonomy.model..",
+                    "com.taxonomy.dsl..", "com.taxonomy.shared..",
+                    "com.taxonomy.export..", "com.taxonomy.architecture..",
+                    "com.taxonomy.catalog..", "com.taxonomy.relations..",
+                    "com.taxonomy.versioning..", "com.taxonomy.workspace.."), alwaysTrue())
+            .ignoreDependency(alwaysTrue(), resideInAnyPackage(
+                    "com.taxonomy.dto..", "com.taxonomy.model..",
+                    "com.taxonomy.dsl..", "com.taxonomy.shared..",
+                    "com.taxonomy.export..", "com.taxonomy.architecture..",
+                    "com.taxonomy.catalog..", "com.taxonomy.relations..",
+                    "com.taxonomy.versioning..", "com.taxonomy.workspace.."))
+            .because("Domain packages must not have circular dependencies (shared infra excluded)");
+
+    /**
+     * Controllers must go through services or facades and never touch
+     * repositories directly.
+     *
+     * <p>This rule covers all controller packages. Security controllers are
+     * excluded because Spring Security patterns commonly involve direct
+     * repository access for user/role management.
+     */
+    @ArchTest
+    static final ArchRule controllersShouldNotAccessRepositories = noClasses()
+            .that().resideInAPackage("..controller..")
+            .and().resideOutsideOfPackage("com.taxonomy.security.controller..")
             .should().dependOnClassesThat()
             .resideInAPackage("..repository..")
-            .because("Newly-extracted controllers should use services or facades, not repositories directly");
+            .because("Controllers should use services or facades, not repositories (security controllers excluded)");
 
     @ArchTest
     static final ArchRule servicesShouldNotDependOnControllers = noClasses()
@@ -57,4 +93,14 @@ class ArchitectureTest {
             .should().dependOnClassesThat()
             .resideInAPackage("..controller..")
             .because("Facades aggregate services; they must not depend on controllers");
+
+    /**
+     * Versioning is a lower-level domain; analysis depends on it, not vice versa.
+     */
+    @ArchTest
+    static final ArchRule versioningShouldNotDependOnAnalysis = noClasses()
+            .that().resideInAPackage("com.taxonomy.versioning..")
+            .should().dependOnClassesThat()
+            .resideInAPackage("com.taxonomy.analysis..")
+            .because("versioning is a lower-level domain; analysis depends on it, not vice versa");
 }
