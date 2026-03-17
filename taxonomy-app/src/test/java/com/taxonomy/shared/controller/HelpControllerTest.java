@@ -13,9 +13,14 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -87,6 +92,43 @@ class HelpControllerTest {
         }
     }
 
+    /**
+     * Ensures that localized Markdown files in {@code docs/en/} and {@code docs/de/}
+     * do not contain broken {@code images/...} references. Since the shared image
+     * directory is at {@code docs/images/}, locale-folder docs must use
+     * {@code ../images/...} instead.
+     */
+    @Test
+    void noLocalizedDocContainsBrokenImagePaths() throws IOException {
+        Pattern brokenMarkdownImg = Pattern.compile("\\(images/[^)]+\\)");
+        Pattern brokenHtmlImg = Pattern.compile("src=\"images/[^\"]+\"");
+
+        PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
+        List<String> violations = new ArrayList<>();
+
+        for (String lang : List.of("en", "de")) {
+            Resource[] resources = resolver.getResources("classpath:docs/" + lang + "/*.md");
+            for (Resource r : resources) {
+                String content = new String(r.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                String filename = r.getFilename();
+
+                Matcher m1 = brokenMarkdownImg.matcher(content);
+                while (m1.find()) {
+                    violations.add("docs/" + lang + "/" + filename + ": broken markdown image ref " + m1.group());
+                }
+
+                Matcher m2 = brokenHtmlImg.matcher(content);
+                while (m2.find()) {
+                    violations.add("docs/" + lang + "/" + filename + ": broken HTML image ref " + m2.group());
+                }
+            }
+        }
+
+        assertEquals(List.of(), violations,
+                "Localized docs must use ../images/... instead of images/... — "
+                + "the shared image folder is at docs/images/, not docs/{lang}/images/.");
+    }
+
     // ── Endpoint tests ───────────────────────────────────────────────────────
 
     @Test
@@ -135,6 +177,16 @@ class HelpControllerTest {
         mockMvc.perform(get("/help/USER_GUIDE").accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("<h")));
+    }
+
+    @Test
+    void docRenderingRewritesImagePaths() throws Exception {
+        // Verify that ../images/ references in Markdown are rewritten to /help/images/ in rendered HTML
+        mockMvc.perform(get("/help/USER_GUIDE").accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("/help/images/")))
+                .andExpect(content().string(not(containsString("\"../images/"))))
+                .andExpect(content().string(not(containsString("(../images/"))));
     }
 
     @Test

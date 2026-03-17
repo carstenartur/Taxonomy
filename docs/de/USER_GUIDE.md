@@ -14,7 +14,7 @@
 
 Das System bewertet jeden Taxonomieknoten (0–100), hebt die relevantesten Elemente mit farbcodierten Bewertungen hervor, erzeugt eine Architekturansicht, die deren Zusammenhänge zeigt, und ermöglicht den Export der Ergebnisse.
 
-![Bewerteter Taxonomiebaum](images/15-scored-taxonomy-tree.png)
+![Bewerteter Taxonomiebaum](../images/15-scored-taxonomy-tree.png)
 
 **Bereit für mehr?** Lesen Sie weiter für die vollständige Anleitung, oder springen Sie zu [Architekturansicht](#7-architecture-view), um zu erfahren, wie die Architektur generiert wird.
 
@@ -106,7 +106,7 @@ Die Anwendung wird als einzelne Seite geladen. Beim ersten Zugriff wird eine Anm
 
 Klicken Sie auf **Got it — let's start!**, um das Overlay zu schließen. Das Overlay wird bei nachfolgenden Besuchen nicht mehr angezeigt (wird im localStorage Ihres Browsers gespeichert). Um das Onboarding zurückzusetzen, öffnen Sie die Browser-Konsole und führen Sie `TaxonomyOnboarding.reset()` aus.
 
-![Vollständiges Seitenlayout](images/01-full-page-layout.png)
+![Vollständiges Seitenlayout](../images/01-full-page-layout.png)
 
 ### KI-Verfügbarkeit prüfen
 
@@ -139,7 +139,7 @@ Jede Taxonomieknoten-Zeile zeigt:
 - Einen **Bewertungsbalken** und Prozentsatz (sichtbar nach der Analyse).
 - **Aktionsschaltflächen pro Knoten:** 🔗 (Beziehungen vorschlagen) | 📋 (Begründung anfordern) | 🔎 (Graph Explorer)
 
-![Linkes Panel — Taxonomiebaum in Listenansicht](images/02-left-panel-list-view.png)
+![Linkes Panel — Taxonomiebaum in Listenansicht](../images/02-left-panel-list-view.png)
 
 ### Rechtes Panel — Analyse und Werkzeuge
 
@@ -148,7 +148,7 @@ Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 - **Business Requirement Analysis Karte** — der Haupttextbereich, in dem Sie eine Anforderung eingeben und die Analyse ausführen.
 - **Match Legend** — Farbskala von 0 % bis 100 %, die zeigt, was jeder Grünton bedeutet.
 
-![Match Legend](images/10-match-legend.png)
+![Match Legend](../images/10-match-legend.png)
 
 - **Statusbereich** — Meldungen und Warnungen zur aktuellen Operation.
 - **Analyseprotokoll** (einklappbar) — Schritt-für-Schritt-Protokoll des Bewertungsprozesses.
@@ -159,7 +159,7 @@ Das rechte Panel (schmalere Spalte) enthält alle interaktiven Werkzeuge:
 - **LLM-Diagnose-Panel** (nur Admin, einklappbar) — Verbindungstest und Statistiken.
 - **Prompt-Vorlagen-Editor** (nur Admin, einklappbar) — LLM-Prompt-Vorlagen anzeigen und bearbeiten.
 
-![Rechtes Panel — Standardzustand](images/03-right-panel-default.png)
+![Rechtes Panel — Standardzustand](../images/03-right-panel-default.png)
 
 ### Navigationsleiste
 
@@ -190,7 +190,7 @@ Tipps für gute Anforderungen:
 - Seien Sie spezifisch hinsichtlich der benötigten Funktion oder des gewünschten Ergebnisses.
 - Halten Sie den Text unter 500 Wörtern; längerer Text verbessert die Genauigkeit nicht.
 
-![Business Requirement Analysis Karte](images/04-analysis-panel-empty.png)
+![Business Requirement Analysis Karte](../images/04-analysis-panel-empty.png)
 
 ### Standardanalyse
 
@@ -200,11 +200,11 @@ Tipps für gute Anforderungen:
 4. Im Statusbereich erscheint eine Fortschrittsanzeige. Der Taxonomiebaum im linken Panel beginnt, farbcodierte Bewertungsbalken anzuzeigen, sobald Ergebnisse eintreffen.
 5. Wenn die Analyse abgeschlossen ist, zeigt der Statusbereich eine Zusammenfassung an und die Export-Schaltflächen werden verfügbar.
 
-![Bewerteter Taxonomiebaum](images/15-scored-taxonomy-tree.png)
+![Bewerteter Taxonomiebaum](../images/15-scored-taxonomy-tree.png)
 
 Der vollständig aufgeklappte Baum zeigt Bewertungen auf jeder Ebene und macht es leicht zu erkennen, welche Zweige am relevantesten sind:
 
-![Bewerteter Taxonomiebaum — vollständig aufgeklappt](images/35-scored-bp-tree-expanded.png)
+![Bewerteter Taxonomiebaum — vollständig aufgeklappt](../images/35-scored-bp-tree-expanded.png)
 
 ### Interaktiver Modus
 
@@ -218,7 +218,7 @@ Im interaktiven Modus:
 
 Dieser Modus ist nützlich für sehr große Taxonomien oder wenn Sie sich auf einen Zweig konzentrieren möchten.
 
-![Interaktiver Modus](images/16-interactive-mode.png)
+![Interaktiver Modus](../images/16-interactive-mode.png)
 
 ### Architekturansicht-Kontrollkästchen
 
@@ -241,7 +241,7 @@ Die Farbe wird berechnet als `rgba(0, 128, 0, score/100)` — ein reines Grün, 
 
 Knoten mit einer Bewertung von 0 % haben keine Hervorhebung. Fahren Sie mit der Maus über ein beliebiges Legendenfeld, um einen Tooltip mit der Beschreibung der Übereinstimmungsstufe zu sehen.
 
-![Match Legend mit Bewertungen](images/17-match-legend-with-scores.png)
+![Match Legend mit Bewertungen](../images/17-match-legend-with-scores.png)
 
 ### Das Analyseprotokoll
 
@@ -292,13 +292,13 @@ Die Standardansicht zeigt alle Taxonomieknoten als flache, eingerückte Liste. J
 - Verwenden Sie **Expand All**, um den gesamten Baum zu öffnen, oder **Collapse All**, um ihn zu schließen.
 - Schalten Sie den **Descriptions**-Umschalter um, um den Beschreibungstext unter jedem Knotennamen ein- oder auszublenden.
 
-![Listenansicht mit sichtbaren Beschreibungen](images/09-list-view-descriptions.png)
+![Listenansicht mit sichtbaren Beschreibungen](../images/09-list-view-descriptions.png)
 
 ### Registerkartenansicht
 
 Die Registerkartenansicht gruppiert Taxonomieknoten unter Registerkarten-Überschriften für jede Kategorie der obersten Ebene. Klicken Sie auf eine Registerkarte, um nur die Knoten in diesem Zweig anzuzeigen.
 
-![Registerkartenansicht](images/05-tabs-view.png)
+![Registerkartenansicht](../images/05-tabs-view.png)
 
 ### Sunburst-Ansicht
 
@@ -307,23 +307,23 @@ Die Sunburst-Ansicht stellt die Taxonomie als radiales Sunburst-Diagramm dar, be
 - Fahren Sie mit der Maus über ein Segment, um den Knotennamen und die Bewertung zu sehen.
 - Klicken Sie auf ein Segment, um in diesen Teilbaum hineinzuzoomen.
 
-![Sunburst-Ansicht](images/06-sunburst-view.png)
+![Sunburst-Ansicht](../images/06-sunburst-view.png)
 
 Nach Durchführung einer Analyse zeigt das Sunburst-Diagramm Heatmap-Farbverläufe an, die die Bewertungen widerspiegeln:
 
-![Bewertete Sunburst-Ansicht](images/39-scored-sunburst.png)
+![Bewertete Sunburst-Ansicht](../images/39-scored-sunburst.png)
 
 ### Baumansicht
 
 Die Baumansicht stellt die Taxonomie als interaktives Knoten-Verbindungs-Diagramm dar. Verwenden Sie das **Taxonomy root selector**-Dropdown, um auszuwählen, welcher Stamm angezeigt werden soll, wenn es mehrere Taxonomiestämme gibt.
 
-![Baumansicht](images/07-tree-view.png)
+![Baumansicht](../images/07-tree-view.png)
 
 ### Entscheidungskarten-Ansicht
 
 Die Entscheidungskarten-Ansicht zeigt die Taxonomie als Entscheidungsbaum-Layout, das für die Auswahl relevanter Knoten basierend auf den Analysebewertungen optimiert ist.
 
-![Entscheidungskarten-Ansicht](images/08-decision-map-view.png)
+![Entscheidungskarten-Ansicht](../images/08-decision-map-view.png)
 
 ### Zusammenfassungsansicht (📋 Summary)
 
@@ -377,7 +377,7 @@ Für jeden Blattknoten (einen Knoten ohne Unterknoten) mit einer Bewertung grö�
 3. Ein **Leaf Justification Modal** öffnet sich und zeigt die LLM-generierte Erklärung an.
 4. Lesen Sie die Erklärung und schließen Sie das Modal, wenn Sie fertig sind.
 
-![Blattbegründungs-Modal](images/18-leaf-justification-modal.png)
+![Blattbegründungs-Modal](../images/18-leaf-justification-modal.png)
 
 ### Warnung bei veralteten Ergebnissen
 
@@ -393,7 +393,7 @@ Die Warnung wird nach einer 300-ms-Verzögerung (Debounce) ausgelöst, wenn Sie 
 - Klicken Sie auf **Reset Results**, um die alten Bewertungen zu löschen, und führen Sie dann die Analyse erneut durch, oder
 - Klicken Sie erneut auf **Analyze with AI**, um die veralteten Bewertungen durch frische Ergebnisse zu ersetzen.
 
-![Warnung bei veralteten Ergebnissen](images/19-stale-results-warning.png)
+![Warnung bei veralteten Ergebnissen](../images/19-stale-results-warning.png)
 
 ---
 
@@ -421,7 +421,7 @@ Das Panel zeigt drei Abschnitte:
 - **Elemente** erweitern das Bild: Wenn ein Ankerknoten eine Fähigkeit *realisiert*, erscheint diese Fähigkeit ebenfalls als Element.
 - **Beziehungen** zeigen die Richtung und den Typ der Verbindung (z. B. REALIZES, SUPPORTS, DEPENDS_ON).
 
-![Architekturansicht](images/20-architecture-view.png)
+![Architekturansicht](../images/20-architecture-view.png)
 
 ---
 
@@ -436,7 +436,7 @@ Im **Graph Explorer Panel** (rechtes Panel, unterhalb des Architekturansicht-Pan
 1. Geben Sie einen Knotencode in das Feld **Node Code** ein, oder klicken Sie auf die **🔎 Graph**-Schaltfläche bei einem beliebigen Taxonomieknoten im linken Panel, um das Feld vorauszufüllen.
 2. Stellen Sie den **Max Hops**-Wert ein, um zu steuern, wie viele Beziehungsschritte durchlaufen werden sollen (Standard: 2).
 
-![Graph Explorer Panel](images/11-graph-explorer-panel.png)
+![Graph Explorer Panel](../images/11-graph-explorer-panel.png)
 
 ### Upstream-Abfrage — „Was speist diesen Knoten?"
 
@@ -479,13 +479,13 @@ Die Tabelle/der Graph zeigt:
 | Hops | Entfernung vom Ausgangsknoten |
 | Relevanz | Auswirkungs-Score oder Ähnlichkeitsindikator |
 
-![Graph Explorer Upstream-Ergebnisse](images/21-graph-explorer-upstream.png)
+![Graph Explorer Upstream-Ergebnisse](../images/21-graph-explorer-upstream.png)
 
-![Graph Explorer Ausfallauswirkung](images/22-graph-explorer-failure.png)
+![Graph Explorer Ausfallauswirkung](../images/22-graph-explorer-failure.png)
 
 Akzeptierte Vorschläge erscheinen ebenfalls als Graph-Kanten. Nach dem Akzeptieren eines Vorschlags (siehe [Abschnitt 9](#9-working-with-relation-proposals)) ist die neue Beziehung sofort im Graph Explorer sichtbar:
 
-![Graph Explorer mit akzeptierter Beziehung](images/37-graph-with-accepted-relation.png)
+![Graph Explorer mit akzeptierter Beziehung](../images/37-graph-with-accepted-relation.png)
 
 ---
 
@@ -499,7 +499,7 @@ Das System kann automatisch neue Beziehungen zwischen Taxonomieknoten mithilfe v
 2. Klicken Sie auf die **🔗** (Beziehungen vorschlagen)-Schaltfläche in der Zeile dieses Knotens.
 3. Das **Propose Relations Modal** öffnet sich.
 
-![Modal „Relationen vorschlagen"](images/13-propose-relations-modal.png)
+![Modal „Relationen vorschlagen"](../images/13-propose-relations-modal.png)
 
 ### Auswahl eines Relationstyps
 
@@ -525,11 +525,11 @@ Die Vorschlagstabelle zeigt:
 - Konfidenz-Wert (0–100 %) — wie sicher die KI bei dem Vorschlag ist
 - KI-generierte Begründung, die erklärt, warum diese Relation vorgeschlagen wurde
 
-![Panel „Relationsvorschläge"](images/12-relation-proposals-panel.png)
+![Panel „Relationsvorschläge"](../images/12-relation-proposals-panel.png)
 
 Die Vorschlags-Überprüfungswarteschlange zeigt alle Vorschläge mit Filterung nach Status. Verwenden Sie die Filterschaltflächen **Pending**, **All**, **Accepted** und **Rejected**, um sich auf bestimmte Vorschlagsstatus zu konzentrieren:
 
-![Vorschlags-Überprüfungswarteschlange — alle Vorschläge](images/28-proposal-review-queue.png)
+![Vorschlags-Überprüfungswarteschlange — alle Vorschläge](../images/28-proposal-review-queue.png)
 
 ### Annehmen oder Ablehnen eines Vorschlags
 
@@ -540,7 +540,7 @@ Für jede Zeile in der Vorschlagstabelle:
 
 Nach der Annahme zeigt der Vorschlag ein grünes **Accepted**-Badge an. Die akzeptierte Relation ist sofort im Graph-Explorer sichtbar:
 
-![Akzeptierter Vorschlag](images/36-proposal-accepted.png)
+![Akzeptierter Vorschlag](../images/36-proposal-accepted.png)
 
 Nach jeder Annahme- oder Ablehnungsaktion erscheint eine **Rückgängig-Toast-Benachrichtigung** in der unteren rechten Ecke für 8 Sekunden. Klicken Sie auf **↩️ Undo**, um den Vorschlag auf den Status PENDING zurückzusetzen (und, falls er akzeptiert wurde, die erstellte Relation zu löschen).
 
@@ -563,11 +563,11 @@ Die Spalte **Confidence** zeigt, wie stark die KI davon überzeugt ist, dass die
 
 Nach einer erfolgreichen Analyse erscheinen Export-Schaltflächen am oberen Rand des linken Bereichs. Diese Schaltflächen sind nur sichtbar, wenn Analyse-Bewertungen vorhanden sind.
 
-![Export-Schaltflächen](images/23-export-buttons.png)
+![Export-Schaltflächen](../images/23-export-buttons.png)
 
 Der Export-Tab bietet ein dediziertes Panel mit allen verfügbaren Exportformaten, gegliedert nach Kategorie (Diagramme, Daten, Berichte) sowie Importoptionen:
 
-![Export-Tab — Gesamtansicht](images/33-export-tab.png)
+![Export-Tab — Gesamtansicht](../images/33-export-tab.png)
 
 ### SVG-Export
 
@@ -665,13 +665,13 @@ Das Panel **Search Taxonomy** (rechte Spalte, einklappbar) bietet vier Suchmodi 
 
 Screenshots der einzelnen Suchmodi in Aktion:
 
-![Volltextsuche-Ergebnisse](images/29-search-fulltext.png)
+![Volltextsuche-Ergebnisse](../images/29-search-fulltext.png)
 
-![Semantische Suche-Ergebnisse](images/30-search-semantic.png)
+![Semantische Suche-Ergebnisse](../images/30-search-semantic.png)
 
-![Hybridsuche-Ergebnisse](images/31-search-hybrid.png)
+![Hybridsuche-Ergebnisse](../images/31-search-hybrid.png)
 
-![Graph-Suche-Ergebnisse](images/32-search-graph.png)
+![Graph-Suche-Ergebnisse](../images/32-search-graph.png)
 
 ### Embedding-Status
 
@@ -754,7 +754,7 @@ Das Panel **📋 Requirement Coverage** (rechte Spalte, einklappbar) verfolgt, w
 
 Klicken Sie auf die Zusammenfassung **📋 Requirement Coverage** in der rechten Spalte. Die Abdeckungsstatistiken werden automatisch aus der Datenbank geladen.
 
-<img src="images/26-coverage-dashboard-empty.png" alt="Abdeckungs-Dashboard — leerer Zustand" width="600">
+<img src="../images/26-coverage-dashboard-empty.png" alt="Abdeckungs-Dashboard — leerer Zustand" width="600">
 
 ### Zusammenfassende Metriken
 
@@ -775,7 +775,7 @@ Eine Tabelle, die die 10 Knoten zeigt, die durch die meisten Anforderungen abged
 
 Eine Tabelle, die bis zu 10 Knoten ohne Anforderungsabdeckung zeigt. Diese sind erstrangige Kandidaten für Architekturlücken — keine bestehende Anforderung adressiert diese Elemente.
 
-<img src="images/27-coverage-dashboard-data.png" alt="Abdeckungs-Dashboard — nach Aufzeichnung einer Analyse" width="600">
+<img src="../images/27-coverage-dashboard-data.png" alt="Abdeckungs-Dashboard — nach Aufzeichnung einer Analyse" width="600">
 
 ### Aufzeichnung einer Analyse
 
@@ -1070,11 +1070,11 @@ Der DSL-Editor-Tab in der Anwendung bietet:
 4. **Commit** — Speichert Änderungen im Git-gestützten Repository mit einer Commit-Nachricht
 5. **Branch management** — Erstellen von Branches, Cherry-Pick und Merge
 
-![DSL-Editor-Panel](images/34-dsl-editor-panel.png)
+![DSL-Editor-Panel](../images/34-dsl-editor-panel.png)
 
 Nach dem Akzeptieren von Vorschlägen enthält die exportierte DSL `relation`-Blöcke neben `element`-Blöcken und zeigt das vollständige Architekturdatenmodell:
 
-![DSL-Editor mit Beziehungen](images/40-dsl-editor-with-relations.png)
+![DSL-Editor mit Beziehungen](../images/40-dsl-editor-with-relations.png)
 
 ### Versionskontrolle
 
@@ -1123,7 +1123,7 @@ Siehe [§12 Versionen-Tab](#12-versions-tab) für die Verwendung der Suche in de
 
 Der **🕓 Versions**-Tab bietet eine visuelle Oberfläche zum Durchsuchen, Verwalten und Zurücksetzen von Architekturversionen. Klicken Sie auf **🕓 Versions** in der oberen Navigationsleiste, um ihn zu öffnen.
 
-![Versionen-Tab — Verlaufszeitachse](images/41-versions-tab-history.png)
+![Versionen-Tab — Verlaufszeitachse](../images/41-versions-tab-history.png)
 
 ### Branch-Auswahl
 
@@ -1161,7 +1161,7 @@ Oben im Versionen-Tab entfernt die Schaltfläche **↩ Undo last change** den le
 
 Klicken Sie auf den Unter-Tab **💾 Save Version**, um einen benannten Snapshot des aktuellen Architekturzustands zu erstellen.
 
-![Versionen-Tab — Version speichern](images/42-versions-tab-save.png)
+![Versionen-Tab — Version speichern](../images/42-versions-tab-save.png)
 
 1. Geben Sie einen **Titel** ein (erforderlich) — zum Beispiel „Baseline nach Review-Runde 2".
 2. Fügen Sie optional eine **Beschreibung** mit weiteren Details zu den Änderungen hinzu.
@@ -1178,7 +1178,7 @@ Klicken Sie auf die Schaltfläche **🔄 Refresh** in der Kopfzeile der Verlaufs
 
 Klicken Sie auf den Unter-Tab **🔀 Variants**, um alle Architektur-Varianten-Branches anzuzeigen. Jede Variante zeigt:
 
-![Varianten-Browser-Tab](images/47-variants-browser-tab.png)
+![Varianten-Browser-Tab](../images/47-variants-browser-tab.png)
 
 - **Branch-Name** — Der Name der Variante (z. B. `feature-voice-services`)
 - **Letzter Commit** — Die neueste Änderung auf dieser Variante
@@ -1195,7 +1195,7 @@ Verfügbare Aktionen für jede Variante:
 
 Um eine neue Variante zu erstellen, klicken Sie auf **+ New Variant** in der Kopfzeile der Karte. Dies öffnet ein Modal, in dem Sie den Variantennamen eingeben. Die neue Variante wird vom aktuellen Branch abgezweigt.
 
-![Modal zur Variantenerstellung](images/46-variant-creation-modal.png)
+![Modal zur Variantenerstellung](../images/46-variant-creation-modal.png)
 
 ### Varianten löschen
 
@@ -1205,7 +1205,7 @@ Nicht-geschützte Varianten-Branches können mit der Schaltfläche **🗑 Delete
 
 Wenn Sie eine Variante im **READ-ONLY**-Modus anzeigen, erscheint eine Schaltfläche **📤 Copy Back** in der Kontextleiste. Dies ermöglicht es Ihnen, Elemente und Beziehungen selektiv aus der schreibgeschützten Variante in Ihren bearbeitbaren Arbeitsbereich zu übertragen — nützlich zum gezielten Übernehmen von Ideen aus experimentellen Branches.
 
-![Schaltfläche Zurückkopieren](images/49-copy-back-button.png)
+![Schaltfläche Zurückkopieren](../images/49-copy-back-button.png)
 
 ### Merge-Vorschau
 
@@ -1270,7 +1270,7 @@ Die Toast-Benachrichtigung verschwindet automatisch nach 5 Sekunden.
 
 In der Navigationsleiste (oben rechts) zeigt das **Arbeitsbereich-Badge** Ihren Benutzernamen und den aktuellen Branch an. Die Farbe des Badges ändert sich je nach Zustand:
 
-![Arbeitsbereich-Benutzer-Badge](images/45-workspace-user-badge.png)
+![Arbeitsbereich-Benutzer-Badge](../images/45-workspace-user-badge.png)
 
 - **Blau** — Normal, Arbeitsbereich ist sauber
 - **Gelb** — Arbeitsbereich hat ungespeicherte/unveröffentlichte Änderungen (unsauberer Zustand)
@@ -1285,7 +1285,7 @@ Zwei horizontale Leisten oben auf der Seite bieten einen schnellen Überblick ü
 
 Die **Git-Statusleiste** erscheint direkt unter der Navigationsleiste. Sie zeigt:
 
-![Git-Statusleiste](images/43-git-status-bar.png)
+![Git-Statusleiste](../images/43-git-status-bar.png)
 
 | Indikator | Bedeutung |
 |---|---|
@@ -1303,7 +1303,7 @@ Wenn die Projektion **STALE** anzeigt, bedeutet dies, dass die DSL geändert, ab
 
 Die **Kontextleiste** erscheint unterhalb der Git-Statusleiste, wenn Sie zwischen verschiedenen Architekturkontexten navigieren (z. B. beim Anzeigen einer historischen Version, Erkunden eines Varianten-Branches oder Vergleichen von Branches).
 
-![Kontext-Navigationsleiste](images/44-context-bar.png)
+![Kontext-Navigationsleiste](../images/44-context-bar.png)
 
 Die Kontextleiste zeigt:
 
@@ -1371,7 +1371,7 @@ Das **LLM-Diagnose-Panel** (nur Admin, einklappbar) zeigt Statistiken zur LLM-Nu
 
 Klicken Sie auf **Refresh**, um die Statistiken zu aktualisieren. Klicken Sie auf **Test Connection**, um eine Testanfrage an den LLM-Anbieter zu senden und zu bestätigen, dass er korrekt antwortet.
 
-![LLM-Diagnose-Panel](images/24-llm-diagnostics.png)
+![LLM-Diagnose-Panel](../images/24-llm-diagnostics.png)
 
 ### Prompt-Vorlagen-Editor
 
@@ -1382,7 +1382,7 @@ Der **Prompt-Vorlagen-Editor** (nur Admin, einklappbar) ermöglicht es Ihnen, di
 3. Bearbeiten Sie den Text nach Bedarf.
 4. Klicken Sie auf **Save**, um Ihre Änderungen zu speichern, oder **Reset**, um die integrierte Standardeinstellung wiederherzustellen.
 
-![Prompt-Vorlagen-Editor](images/25-prompt-template-editor.png)
+![Prompt-Vorlagen-Editor](../images/25-prompt-template-editor.png)
 
 ---
 

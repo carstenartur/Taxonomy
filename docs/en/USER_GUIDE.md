@@ -14,7 +14,7 @@
 
 The system scores every taxonomy node (0–100), highlights the most relevant elements with colour-coded scores, generates an architecture view showing how they relate, and lets you export the result.
 
-![Scored taxonomy tree](images/15-scored-taxonomy-tree.png)
+![Scored taxonomy tree](../images/15-scored-taxonomy-tree.png)
 
 **Ready for more?** Continue reading for the full guide, or jump to [Architecture View](#7-architecture-view) to understand how the architecture is generated.
 
@@ -106,7 +106,7 @@ The application loads as a single page. A login page is presented on first acces
 
 Click **Got it — let's start!** to dismiss the overlay. The overlay will not appear again on subsequent visits (stored in your browser's localStorage). To reset the onboarding, open the browser console and run `TaxonomyOnboarding.reset()`.
 
-![Full page layout](images/01-full-page-layout.png)
+![Full page layout](../images/01-full-page-layout.png)
 
 ### Checking AI Availability
 
@@ -139,7 +139,7 @@ Each taxonomy node row shows:
 - A **score bar** and percentage (visible after analysis).
 - **Per-node action buttons:** 🔗 (Propose Relations) | 📋 (Request Justification) | 🔎 (Graph Explorer)
 
-![Left panel — taxonomy tree in List view](images/02-left-panel-list-view.png)
+![Left panel — taxonomy tree in List view](../images/02-left-panel-list-view.png)
 
 ### Right Panel — Analysis and Tools
 
@@ -148,7 +148,7 @@ The right panel (narrower column) contains all interactive tools:
 - **Business Requirement Analysis card** — the main textarea where you type a requirement and run the analysis.
 - **Match Legend** — colour scale from 0 % to 100 % showing what each green shade means.
 
-![Match Legend](images/10-match-legend.png)
+![Match Legend](../images/10-match-legend.png)
 
 - **Status Area** — messages and warnings about the current operation.
 - **Analysis Log** (collapsible) — step-by-step log of the scoring process.
@@ -159,7 +159,7 @@ The right panel (narrower column) contains all interactive tools:
 - **LLM Diagnostics Panel** (admin only, collapsible) — connection test and statistics.
 - **Prompt Templates Editor** (admin only, collapsible) — view and edit the LLM prompt templates.
 
-![Right panel — default state](images/03-right-panel-default.png)
+![Right panel — default state](../images/03-right-panel-default.png)
 
 ### Navigation Bar
 
@@ -190,7 +190,7 @@ Tips for good requirements:
 - Be specific about the function or outcome you need.
 - Keep the text under 500 words; longer text does not improve accuracy.
 
-![Business Requirement Analysis card](images/04-analysis-panel-empty.png)
+![Business Requirement Analysis card](../images/04-analysis-panel-empty.png)
 
 ### Standard Analysis
 
@@ -200,11 +200,11 @@ Tips for good requirements:
 4. A progress indicator appears in the Status Area. The taxonomy tree in the left panel will start showing colour-coded score bars as results arrive.
 5. When analysis is complete, the Status Area shows a summary message and the export buttons become available.
 
-![Scored taxonomy tree](images/15-scored-taxonomy-tree.png)
+![Scored taxonomy tree](../images/15-scored-taxonomy-tree.png)
 
 The fully expanded tree shows scores at every level, making it easy to identify which branches are most relevant:
 
-![Scored taxonomy tree — fully expanded](images/35-scored-bp-tree-expanded.png)
+![Scored taxonomy tree — fully expanded](../images/35-scored-bp-tree-expanded.png)
 
 ### Interactive Mode
 
@@ -218,7 +218,7 @@ In Interactive Mode:
 
 This mode is useful for very large taxonomies or when you want to focus on one branch.
 
-![Interactive Mode](images/16-interactive-mode.png)
+![Interactive Mode](../images/16-interactive-mode.png)
 
 ### Architecture View Checkbox
 
@@ -241,7 +241,7 @@ The colour is computed as `rgba(0, 128, 0, score/100)` — a pure green whose **
 
 Nodes with a score of 0 % have no highlight at all. Hover over any legend box to see a tooltip describing its match level.
 
-![Match Legend with scores](images/17-match-legend-with-scores.png)
+![Match Legend with scores](../images/17-match-legend-with-scores.png)
 
 ### The Analysis Log
 
@@ -292,13 +292,13 @@ The default view shows all taxonomy nodes as a flat, indented list. Each row con
 - Use **Expand All** to open the entire tree, or **Collapse All** to close it.
 - Toggle the **Descriptions** switch to show or hide the description text beneath each node name.
 
-![List view with descriptions visible](images/09-list-view-descriptions.png)
+![List view with descriptions visible](../images/09-list-view-descriptions.png)
 
 ### Tabs View
 
 The Tabs view groups taxonomy nodes under tab headers for each top-level category. Click a tab to display only the nodes in that branch.
 
-![Tabs view](images/05-tabs-view.png)
+![Tabs view](../images/05-tabs-view.png)
 
 ### Sunburst View
 
@@ -307,23 +307,23 @@ The Sunburst view renders the taxonomy as a radial sunburst chart where the cent
 - Hover over a segment to see the node name and score.
 - Click a segment to zoom into that subtree.
 
-![Sunburst view](images/06-sunburst-view.png)
+![Sunburst view](../images/06-sunburst-view.png)
 
 After running an analysis, the sunburst chart displays heat-mapped colour gradients reflecting the scores:
 
-![Scored sunburst view](images/39-scored-sunburst.png)
+![Scored sunburst view](../images/39-scored-sunburst.png)
 
 ### Tree View
 
 The Tree view renders the taxonomy as an interactive node-link diagram. Use the **Taxonomy root selector** dropdown to choose which root to display when there are multiple taxonomy roots.
 
-![Tree view](images/07-tree-view.png)
+![Tree view](../images/07-tree-view.png)
 
 ### Decision Map View
 
 The Decision Map view shows the taxonomy as a decision-tree style layout optimised for selecting relevant nodes based on the analysis scores.
 
-![Decision Map view](images/08-decision-map-view.png)
+![Decision Map view](../images/08-decision-map-view.png)
 
 ### Summary View (📋 Summary)
 
@@ -377,7 +377,7 @@ For any leaf node (a node with no children) that has a non-zero score, you can a
 3. A **Leaf Justification Modal** opens, displaying the LLM-generated explanation.
 4. Read the explanation and close the modal when done.
 
-![Leaf Justification modal](images/18-leaf-justification-modal.png)
+![Leaf Justification modal](../images/18-leaf-justification-modal.png)
 
 ### Stale Results Warning
 
@@ -393,7 +393,7 @@ The warning triggers after a 300 ms debounce when you type in the business text 
 - Click **Reset Results** to clear the old scores, then re-run the analysis, or
 - Click **Analyze with AI** again to replace the stale scores with fresh results.
 
-![Stale results warning](images/19-stale-results-warning.png)
+![Stale results warning](../images/19-stale-results-warning.png)
 
 ---
 
@@ -421,7 +421,7 @@ The panel shows three sections:
 - **Elements** extend the picture: if an anchor node *realizes* a capability, that capability also appears as an element.
 - **Relationships** show the direction and type of the link (e.g., REALIZES, SUPPORTS, DEPENDS_ON).
 
-![Architecture View](images/20-architecture-view.png)
+![Architecture View](../images/20-architecture-view.png)
 
 ---
 
@@ -436,7 +436,7 @@ In the **Graph Explorer Panel** (right panel, below the Architecture View Panel)
 1. Type a node code in the **Node Code** field, or click the **🔎 Graph** button on any taxonomy node in the left panel to pre-fill the field.
 2. Set the **Max Hops** value to control how many relationship steps to traverse (default: 2).
 
-![Graph Explorer panel](images/11-graph-explorer-panel.png)
+![Graph Explorer panel](../images/11-graph-explorer-panel.png)
 
 ### Upstream Query — "What feeds into this?"
 
@@ -479,13 +479,13 @@ The table/graph shows:
 | Hops | Distance from the starting node |
 | Relevance | Impact score or similarity indicator |
 
-![Graph Explorer upstream results](images/21-graph-explorer-upstream.png)
+![Graph Explorer upstream results](../images/21-graph-explorer-upstream.png)
 
-![Graph Explorer failure impact](images/22-graph-explorer-failure.png)
+![Graph Explorer failure impact](../images/22-graph-explorer-failure.png)
 
 Accepted proposals also appear as graph edges. After accepting a proposal (see [Section 9](#9-working-with-relation-proposals)), the new relation is immediately visible in the Graph Explorer:
 
-![Graph Explorer with accepted relation](images/37-graph-with-accepted-relation.png)
+![Graph Explorer with accepted relation](../images/37-graph-with-accepted-relation.png)
 
 ---
 
@@ -499,7 +499,7 @@ The system can automatically propose new relations between taxonomy nodes using 
 2. Click the **🔗** (Propose Relations) button on that node's row.
 3. The **Propose Relations Modal** opens.
 
-![Propose Relations modal](images/13-propose-relations-modal.png)
+![Propose Relations modal](../images/13-propose-relations-modal.png)
 
 ### Choosing a Relation Type
 
@@ -525,11 +525,11 @@ The proposals table shows:
 - Confidence score (0–100 %) — how confident the AI is in the proposal
 - AI-generated rationale explaining why this relation was suggested
 
-![Relation Proposals panel](images/12-relation-proposals-panel.png)
+![Relation Proposals panel](../images/12-relation-proposals-panel.png)
 
 The Proposal Review Queue shows all proposals with filtering by status. Use the **Pending**, **All**, **Accepted**, and **Rejected** filter buttons to focus on specific proposal states:
 
-![Proposal Review Queue — all proposals](images/28-proposal-review-queue.png)
+![Proposal Review Queue — all proposals](../images/28-proposal-review-queue.png)
 
 ### Accepting or Rejecting a Proposal
 
@@ -540,7 +540,7 @@ For each row in the proposals table:
 
 Once accepted, the proposal displays a green **Accepted** badge. The accepted relation is immediately visible in the Graph Explorer:
 
-![Accepted proposal](images/36-proposal-accepted.png)
+![Accepted proposal](../images/36-proposal-accepted.png)
 
 After each accept or reject action, an **Undo toast notification** appears in the bottom-right corner for 8 seconds. Click **↩️ Undo** to revert the proposal back to PENDING status (and, if it was accepted, delete the created relation).
 
@@ -563,11 +563,11 @@ The **Confidence** column shows how strongly the AI believes the proposed relati
 
 After a successful analysis, export buttons appear at the top of the left panel. These buttons are only visible when analysis scores are present.
 
-![Export buttons](images/23-export-buttons.png)
+![Export buttons](../images/23-export-buttons.png)
 
 The Export tab provides a dedicated panel with all available export formats organised by category (diagrams, data, reports) and import options:
 
-![Export tab — full view](images/33-export-tab.png)
+![Export tab — full view](../images/33-export-tab.png)
 
 ### SVG Export
 
@@ -665,13 +665,13 @@ The **Search Taxonomy** panel (right column, collapsible) provides four search m
 
 Screenshots of each search mode in action:
 
-![Full-text search results](images/29-search-fulltext.png)
+![Full-text search results](../images/29-search-fulltext.png)
 
-![Semantic search results](images/30-search-semantic.png)
+![Semantic search results](../images/30-search-semantic.png)
 
-![Hybrid search results](images/31-search-hybrid.png)
+![Hybrid search results](../images/31-search-hybrid.png)
 
-![Graph search results](images/32-search-graph.png)
+![Graph search results](../images/32-search-graph.png)
 
 ### Embedding Status
 
@@ -757,7 +757,7 @@ been covered by any requirement (gap candidates).
 Click the **📋 Requirement Coverage** summary in the right column. Coverage statistics
 are loaded automatically from the database.
 
-<img src="images/26-coverage-dashboard-empty.png" alt="Coverage Dashboard — empty state" width="600">
+<img src="../images/26-coverage-dashboard-empty.png" alt="Coverage Dashboard — empty state" width="600">
 
 ### Summary Metrics
 
@@ -780,7 +780,7 @@ view the list of requirements that cover it, together with scores and analysis t
 A table showing up to 10 nodes with no requirement coverage. These are prime candidates
 for architecture gaps — no existing requirement addresses these elements.
 
-<img src="images/27-coverage-dashboard-data.png" alt="Coverage Dashboard — after recording an analysis" width="600">
+<img src="../images/27-coverage-dashboard-data.png" alt="Coverage Dashboard — after recording an analysis" width="600">
 
 ### Recording an Analysis
 
@@ -1081,11 +1081,11 @@ The DSL Editor tab in the application provides:
 4. **Commit** — Save changes to the Git-backed repository with a commit message
 5. **Branch management** — Create branches, cherry-pick, and merge
 
-![DSL Editor panel](images/34-dsl-editor-panel.png)
+![DSL Editor panel](../images/34-dsl-editor-panel.png)
 
 After accepting proposals, the exported DSL includes `relation` blocks alongside `element` blocks, showing the full architecture data model:
 
-![DSL Editor with relations](images/40-dsl-editor-with-relations.png)
+![DSL Editor with relations](../images/40-dsl-editor-with-relations.png)
 
 ### Version Control
 
@@ -1134,7 +1134,7 @@ See [§12 Versions Tab](#12-versions-tab) for how to use the search in the GUI.
 
 The **🕓 Versions** tab provides a visual interface for browsing, managing, and reverting architecture versions. Click **🕓 Versions** in the top navigation bar to open it.
 
-![Versions Tab — History timeline](images/41-versions-tab-history.png)
+![Versions Tab — History timeline](../images/41-versions-tab-history.png)
 
 ### Branch Selector
 
@@ -1172,7 +1172,7 @@ At the top of the Versions tab, the **↩ Undo last change** button removes the 
 
 Click the **💾 Save Version** sub-tab to create a named snapshot of the current architecture state.
 
-![Versions Tab — Save Version](images/42-versions-tab-save.png)
+![Versions Tab — Save Version](../images/42-versions-tab-save.png)
 
 1. Enter a **Title** (required) — for example, "Baseline after review round 2".
 2. Optionally add a **Description** with more detail about what changed.
@@ -1189,7 +1189,7 @@ Click the **🔄 Refresh** button in the History card header to reload the timel
 
 Click the **🔀 Variants** sub-tab to see all architecture variant branches. Each variant shows:
 
-![Variants Browser Tab](images/47-variants-browser-tab.png)
+![Variants Browser Tab](../images/47-variants-browser-tab.png)
 
 - **Branch name** — The name of the variant (e.g., `feature-voice-services`)
 - **Latest commit** — The most recent change on that variant
@@ -1206,7 +1206,7 @@ Available actions for each variant:
 
 To create a new variant, click **+ New Variant** in the card header. This opens a modal where you enter the variant name. The new variant is forked from the current branch.
 
-![Variant Creation Modal](images/46-variant-creation-modal.png)
+![Variant Creation Modal](../images/46-variant-creation-modal.png)
 
 ### Deleting Variants
 
@@ -1216,7 +1216,7 @@ Non-protected variant branches can be deleted using the **🗑 Delete** button. 
 
 When viewing a variant in **READ-ONLY** mode, a **📤 Copy Back** button appears in the Context Bar. This allows you to selectively transfer elements and relations from the read-only variant back to your editable workspace — useful for cherry-picking ideas from experimental branches.
 
-![Copy Back Button](images/49-copy-back-button.png)
+![Copy Back Button](../images/49-copy-back-button.png)
 
 ### Merge Preview
 
@@ -1281,7 +1281,7 @@ The toast automatically disappears after 5 seconds.
 
 In the navbar (top-right), the **workspace badge** shows your username and current branch. The badge colour changes to indicate state:
 
-![Workspace User Badge](images/45-workspace-user-badge.png)
+![Workspace User Badge](../images/45-workspace-user-badge.png)
 
 - **Blue** — Normal, workspace is clean
 - **Yellow** — Workspace has unsaved/unpublished changes (dirty state)
@@ -1296,7 +1296,7 @@ Two horizontal bars at the top of the page provide at-a-glance information about
 
 The **Git Status Bar** appears just below the navigation bar. It displays:
 
-![Git Status Bar](images/43-git-status-bar.png)
+![Git Status Bar](../images/43-git-status-bar.png)
 
 | Indicator | Meaning |
 |---|---|
@@ -1314,7 +1314,7 @@ When the projection shows **STALE**, it means the DSL has been changed but not y
 
 The **Context Bar** appears below the Git Status Bar when you are navigating between different architecture contexts (e.g., viewing a historical version, exploring a variant branch, or comparing branches).
 
-![Context Navigation Bar](images/44-context-bar.png)
+![Context Navigation Bar](../images/44-context-bar.png)
 
 The Context Bar shows:
 
@@ -1382,7 +1382,7 @@ The **LLM Diagnostics Panel** (admin only, collapsible) shows statistics about L
 
 Click **Refresh** to update the statistics. Click **Test Connection** to send a test request to the LLM provider and confirm it is responding correctly.
 
-![LLM Diagnostics panel](images/24-llm-diagnostics.png)
+![LLM Diagnostics panel](../images/24-llm-diagnostics.png)
 
 ### Prompt Template Editor
 
@@ -1393,7 +1393,7 @@ The **Prompt Templates Editor** (admin only, collapsible) allows you to customis
 3. Edit the text as needed.
 4. Click **Save** to save your changes, or **Reset** to restore the built-in default.
 
-![Prompt Template Editor](images/25-prompt-template-editor.png)
+![Prompt Template Editor](../images/25-prompt-template-editor.png)
 
 ---
 

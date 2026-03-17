@@ -195,9 +195,9 @@ public class HelpController {
         try (InputStream in = resource.getInputStream()) {
             String markdown = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             // Rewrite relative image paths to absolute /help/images/... URLs
-            markdown = markdown.replaceAll("\\(images/([^)]+)\\)", "(/help/images/$1)");
-            // Also rewrite HTML <img src="images/..."> tags
-            markdown = markdown.replaceAll("src=\"images/([^\"]+)\"", "src=\"/help/images/$1\"");
+            markdown = markdown.replaceAll("\\(\\.\\./images/([^)]+)\\)", "(/help/images/$1)");
+            // Also rewrite HTML <img src="../images/..."> tags
+            markdown = markdown.replaceAll("src=\"\\.\\./images/([^\"]+)\"", "src=\"/help/images/$1\"");
             Node document = parser.parse(markdown);
             String body = renderer.render(document);
             return "<div class=\"help-doc-content\">" + body + "</div>";
