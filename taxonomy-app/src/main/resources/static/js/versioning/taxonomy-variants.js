@@ -1,8 +1,9 @@
 /**
- * taxonomy-variants.js — Variant (Branch) Browser
+ * taxonomy-variants.js — Varianten-Dashboard
  *
- * Provides a UI panel listing all architecture variants (Git branches)
+ * Provides a card-based UI panel listing all architecture variants (Git branches)
  * with actions to switch, compare, merge, and delete.
+ * Uses user-friendly German labels and card layout.
  *
  * @module TaxonomyVariants
  */
@@ -18,24 +19,32 @@ window.TaxonomyVariants = (function () {
         var container = document.getElementById(containerId);
         if (!container) return;
 
-        container.innerHTML = '<div class="text-muted small">Loading variants…</div>';
+        container.innerHTML = '<div class="text-muted small">Varianten werden geladen\u2026</div>';
 
         fetch('/api/git/state?branch=draft')
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (state) {
                 if (!state || !state.branches) {
-                    container.innerHTML = '<div class="text-muted small">No variant information available.</div>';
+                    container.innerHTML = '<div class="text-muted small">Keine Varianten-Informationen verf\u00FCgbar.</div>';
                     return;
                 }
                 renderVariants(container, state);
             })
             .catch(function (err) {
-                container.innerHTML = '<div class="text-danger small">Failed to load variants: ' + escapeHtml(err.message) + '</div>';
+                container.innerHTML = '<div class="text-danger small">Varianten konnten nicht geladen werden: ' + escapeHtml(err.message) + '</div>';
             });
     }
 
     /**
-     * Render the variant list.
+     * Format branch name for display.
+     */
+    function formatBranchName(branch) {
+        if (!branch || branch === 'draft') return 'Hauptversion';
+        return branch;
+    }
+
+    /**
+     * Render the variant list as cards.
      *
      * @param {HTMLElement} container — target container element
      * @param {object} state — RepositoryState from API
@@ -47,51 +56,65 @@ window.TaxonomyVariants = (function () {
         var activeBranch = ctx ? ctx.branch : currentBranch;
 
         if (branches.length === 0) {
-            container.innerHTML = '<div class="text-muted small p-2">No variants found.</div>';
+            container.innerHTML = '<div class="variant-empty-state">'
+                + '<span class="empty-icon">\uD83C\uDF3F</span>'
+                + '<p class="fw-semibold">Keine Varianten vorhanden</p>'
+                + '<p class="small text-muted mb-3">Varianten erm\u00F6glichen paralleles Arbeiten an verschiedenen Architektur-Entw\u00FCrfen, ohne die Hauptversion zu beeinflussen.</p>'
+                + '<button class="btn btn-success btn-sm" onclick="TaxonomyContextBar.showVariantDialog()">\uD83C\uDF3F Erste Variante erstellen</button>'
+                + '</div>';
             return;
         }
 
-        var html = '<div class="list-group">';
+        var html = '<div class="variant-list">';
         branches.forEach(function (branch) {
             var isActive = (branch === activeBranch);
             var isDraft = (branch === 'draft');
 
-            html += '<div class="list-group-item' + (isActive ? ' list-group-item-primary' : '') + '">';
-            html += '<div class="d-flex justify-content-between align-items-center">';
+            html += '<div class="variant-card' + (isActive ? ' variant-active' : '') + '">';
 
-            // Branch info
-            html += '<div>';
-            html += '<strong>' + escapeHtml(branch) + '</strong>';
+            // Header: name + badges
+            html += '<div class="variant-header">';
+            html += '<div class="variant-name">';
+            html += '\uD83C\uDF3F ' + escapeHtml(formatBranchName(branch));
             if (isActive) {
-                html += ' <span class="badge bg-primary ms-1">active</span>';
+                html += ' <span class="badge bg-primary ms-1" style="font-size:0.7rem;">\u2713 Aktiv</span>';
             }
             if (isDraft) {
-                html += ' <span class="badge bg-secondary ms-1">main</span>';
+                html += ' <span class="badge bg-secondary ms-1" style="font-size:0.7rem;">\uD83C\uDFE0 Haupt</span>';
+            }
+            html += '</div>';
+            html += '</div>'; // variant-header
+
+            // Meta info
+            html += '<div class="variant-meta">';
+            if (isDraft) {
+                html += 'Hauptversion \u2014 Referenz f\u00FCr alle Varianten';
+            } else {
+                html += 'Variante \u2014 abgeleitet von Hauptversion';
             }
             html += '</div>';
 
-            // Action buttons
-            html += '<div class="d-flex gap-1">';
+            // Actions
+            html += '<div class="variant-actions">';
             if (!isActive) {
-                html += '<button class="btn btn-outline-primary btn-sm py-0 px-1" style="font-size:0.7rem;" '
-                    + 'onclick="TaxonomyVariants.switchTo(\'' + escapeAttr(branch) + '\')" title="Switch to this variant">'
-                    + '&#8594; Switch</button>';
+                html += '<button class="btn btn-outline-primary btn-sm" '
+                    + 'onclick="TaxonomyVariants.switchTo(\'' + escapeAttr(branch) + '\')" title="Zu dieser Variante wechseln">'
+                    + '\u27A1 \u00D6ffnen</button>';
             }
-            html += '<button class="btn btn-outline-info btn-sm py-0 px-1" style="font-size:0.7rem;" '
-                + 'onclick="TaxonomyVariants.compareTo(\'' + escapeAttr(branch) + '\')" title="Compare with current">'
-                + '&#8596; Compare</button>';
+            html += '<button class="btn btn-outline-info btn-sm" '
+                + 'onclick="TaxonomyVariants.compareTo(\'' + escapeAttr(branch) + '\')" title="Mit aktueller Version vergleichen">'
+                + '\uD83D\uDD0D Vergleichen</button>';
             if (!isActive && !isDraft) {
-                html += '<button class="btn btn-outline-warning btn-sm py-0 px-1" style="font-size:0.7rem;" '
-                    + 'onclick="TaxonomyVariants.mergeFrom(\'' + escapeAttr(branch) + '\')" title="Merge this variant into current">'
-                    + '&#128256; Merge</button>';
-                html += '<button class="btn btn-outline-danger btn-sm py-0 px-1" style="font-size:0.7rem;" '
-                    + 'onclick="TaxonomyVariants.deleteBranch(\'' + escapeAttr(branch) + '\')" title="Delete this variant">'
-                    + '&#128465; Delete</button>';
+                html += '<button class="btn btn-outline-warning btn-sm" '
+                    + 'onclick="TaxonomyVariants.mergeFrom(\'' + escapeAttr(branch) + '\')" title="\u00C4nderungen dieser Variante in die aktuelle Version \u00FCbernehmen">'
+                    + '\uD83D\uDD00 Integrieren</button>';
+                html += '<button class="btn btn-outline-danger btn-sm" '
+                    + 'onclick="TaxonomyVariants.deleteBranch(\'' + escapeAttr(branch) + '\')" title="Diese Variante l\u00F6schen">'
+                    + '\uD83D\uDDD1 L\u00F6schen</button>';
             }
-            html += '</div>';
+            html += '</div>'; // variant-actions
 
-            html += '</div>';
-            html += '</div>';
+            html += '</div>'; // variant-card
         });
         html += '</div>';
 
@@ -124,7 +147,6 @@ window.TaxonomyVariants = (function () {
         var leftSel = document.getElementById('compareLeftBranch');
         var rightSel = document.getElementById('compareRightBranch');
 
-        // Populate branch selectors, then set values and show modal
         fetch('/api/git/branches')
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -152,7 +174,6 @@ window.TaxonomyVariants = (function () {
                 }
             })
             .catch(function () {
-                // Fallback: just open the dialog
                 if (window.TaxonomyContextCompare) {
                     window.TaxonomyContextCompare.showDialog(ctx);
                 }
@@ -160,7 +181,7 @@ window.TaxonomyVariants = (function () {
     }
 
     /**
-     * Merge a variant into the current branch.
+     * Merge a variant into the current branch with preview.
      *
      * @param {string} fromBranch — source branch to merge from
      */
@@ -173,10 +194,50 @@ window.TaxonomyVariants = (function () {
                 executeMerge(fromBranch, intoBranch);
             });
         } else {
-            if (confirm('Merge "' + fromBranch + '" into "' + intoBranch + '"?')) {
-                executeMerge(fromBranch, intoBranch);
-            }
+            // AP 5: Use modal confirmation instead of plain confirm()
+            showMergeConfirmation(fromBranch, intoBranch);
         }
+    }
+
+    /**
+     * Show a modal merge confirmation with preview (AP 5).
+     */
+    function showMergeConfirmation(fromBranch, intoBranch) {
+        var fromDisplay = fromBranch === 'draft' ? 'Hauptversion' : fromBranch;
+        var intoDisplay = intoBranch === 'draft' ? 'Hauptversion' : intoBranch;
+
+        // Try to load a diff preview first
+        fetch('/api/context/compare?leftBranch=' + encodeURIComponent(intoBranch)
+            + '&rightBranch=' + encodeURIComponent(fromBranch))
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (comparison) {
+                var previewHtml = '';
+                if (comparison && comparison.summary) {
+                    var s = comparison.summary;
+                    var total = (s.elementsAdded || 0) + (s.elementsRemoved || 0) + (s.elementsChanged || 0)
+                        + (s.relationsAdded || 0) + (s.relationsRemoved || 0) + (s.relationsChanged || 0);
+                    previewHtml = '<div class="restore-preview">'
+                        + '<strong>Vorschau:</strong> ' + total + ' \u00C4nderung(en) werden \u00FCbernommen'
+                        + '<div class="small text-muted mt-1">'
+                        + '+' + (s.elementsAdded || 0) + ' Elemente, '
+                        + '\u2212' + (s.elementsRemoved || 0) + ' entfernt, '
+                        + '~' + (s.elementsChanged || 0) + ' ge\u00E4ndert'
+                        + '</div></div>';
+                }
+
+                var bodyHtml = '<p>\u00C4nderungen aus <strong>' + escapeHtml(fromDisplay) + '</strong> '
+                    + 'in <strong>' + escapeHtml(intoDisplay) + '</strong> \u00FCbernehmen?</p>'
+                    + previewHtml;
+
+                showConfirmModal('Integrieren', bodyHtml, 'Integrieren', 'btn-warning', function () {
+                    executeMerge(fromBranch, intoBranch);
+                });
+            })
+            .catch(function () {
+                if (confirm('\u00C4nderungen aus "' + fromDisplay + '" in "' + intoDisplay + '" \u00FCbernehmen?')) {
+                    executeMerge(fromBranch, intoBranch);
+                }
+            });
     }
 
     /**
@@ -186,21 +247,23 @@ window.TaxonomyVariants = (function () {
      * @param {string} intoBranch — target branch
      */
     function executeMerge(fromBranch, intoBranch) {
+        var fromDisplay = fromBranch === 'draft' ? 'Hauptversion' : fromBranch;
+        var intoDisplay = intoBranch === 'draft' ? 'Hauptversion' : intoBranch;
+
         fetch('/api/dsl/merge?from=' + encodeURIComponent(fromBranch)
             + '&into=' + encodeURIComponent(intoBranch), { method: 'POST' })
             .then(function (r) { return r.json(); })
             .then(function (result) {
                 if (result.error) {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError('Merge Failed', result.error);
+                        window.TaxonomyOperationResult.showError('Integration fehlgeschlagen', result.error);
                     } else {
-                        alert('Merge failed: ' + result.error);
+                        alert('Integration fehlgeschlagen: ' + result.error);
                     }
                 } else {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showSuccess('Merge Successful',
-                            'Merged "' + fromBranch + '" into "' + intoBranch + '" → ' +
-                            (result.commitId || '').substring(0, 7));
+                        window.TaxonomyOperationResult.showSuccess('Erfolgreich integriert',
+                            '\u00C4nderungen aus \u201E' + fromDisplay + '\u201C in \u201E' + intoDisplay + '\u201C \u00FCbernommen.');
                     }
                     if (window.TaxonomyContextBar) window.TaxonomyContextBar.fetchAndRender('contextBar');
                     if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
@@ -209,9 +272,9 @@ window.TaxonomyVariants = (function () {
             })
             .catch(function (err) {
                 if (window.TaxonomyOperationResult) {
-                    window.TaxonomyOperationResult.showError('Merge Failed', err.message);
+                    window.TaxonomyOperationResult.showError('Integration fehlgeschlagen', err.message);
                 } else {
-                    alert('Merge failed: ' + err.message);
+                    alert('Integration fehlgeschlagen: ' + err.message);
                 }
             });
     }
@@ -222,15 +285,25 @@ window.TaxonomyVariants = (function () {
      * @param {string} branch — branch name to delete
      */
     function deleteBranch(branch) {
-        if (!confirm('Delete variant "' + branch + '"?\n\nThis cannot be undone.')) {
-            return;
-        }
+        var display = branch === 'draft' ? 'Hauptversion' : branch;
+        showConfirmModal(
+            'Variante l\u00F6schen',
+            '<p>Variante <strong>' + escapeHtml(display) + '</strong> wirklich l\u00F6schen?</p>'
+            + '<p class="text-danger small">\u26A0 Dies kann nicht r\u00FCckg\u00E4ngig gemacht werden.</p>',
+            'L\u00F6schen',
+            'btn-danger',
+            function () {
+                executeDelete(branch);
+            }
+        );
+    }
 
+    function executeDelete(branch) {
         fetch('/api/dsl/branch?name=' + encodeURIComponent(branch), { method: 'DELETE' })
             .then(function (r) {
                 if (!r.ok && r.status === 404) {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError('Delete Failed', 'Branch "' + branch + '" not found.');
+                        window.TaxonomyOperationResult.showError('L\u00F6schen fehlgeschlagen', 'Variante \u201E' + branch + '\u201C nicht gefunden.');
                     }
                     return null;
                 }
@@ -240,14 +313,14 @@ window.TaxonomyVariants = (function () {
                 if (!result) return;
                 if (result.error) {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError('Delete Failed', result.error);
+                        window.TaxonomyOperationResult.showError('L\u00F6schen fehlgeschlagen', result.error);
                     } else {
-                        alert('Delete failed: ' + result.error);
+                        alert('L\u00F6schen fehlgeschlagen: ' + result.error);
                     }
                 } else {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showSuccess('Variant Deleted',
-                            'Branch "' + branch + '" has been deleted.');
+                        window.TaxonomyOperationResult.showSuccess('Variante gel\u00F6scht',
+                            'Variante \u201E' + branch + '\u201C wurde gel\u00F6scht.');
                     }
                     if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
                     refresh();
@@ -255,11 +328,45 @@ window.TaxonomyVariants = (function () {
             })
             .catch(function (err) {
                 if (window.TaxonomyOperationResult) {
-                    window.TaxonomyOperationResult.showError('Delete Failed', err.message);
+                    window.TaxonomyOperationResult.showError('L\u00F6schen fehlgeschlagen', err.message);
                 } else {
-                    alert('Delete failed: ' + err.message);
+                    alert('L\u00F6schen fehlgeschlagen: ' + err.message);
                 }
             });
+    }
+
+    /**
+     * Show a modal confirmation dialog (used instead of confirm()).
+     */
+    function showConfirmModal(title, bodyHtml, confirmLabel, confirmBtnClass, onConfirm) {
+        var existing = document.getElementById('variantConfirmModal');
+        if (existing) existing.remove();
+
+        var modalHtml =
+            '<div class="modal fade" id="variantConfirmModal" tabindex="-1">' +
+            '<div class="modal-dialog">' +
+            '<div class="modal-content">' +
+            '<div class="modal-header">' +
+            '<h5 class="modal-title">' + escapeHtml(title) + '</h5>' +
+            '<button type="button" class="btn-close" data-bs-dismiss="modal"></button>' +
+            '</div>' +
+            '<div class="modal-body">' + bodyHtml + '</div>' +
+            '<div class="modal-footer">' +
+            '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Abbrechen</button>' +
+            '<button type="button" class="btn ' + confirmBtnClass + ' btn-sm" id="variantConfirmBtn">' + escapeHtml(confirmLabel) + '</button>' +
+            '</div></div></div></div>';
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        var modalEl = document.getElementById('variantConfirmModal');
+        var modal = new bootstrap.Modal(modalEl);
+
+        document.getElementById('variantConfirmBtn').addEventListener('click', function () {
+            modal.hide();
+            if (onConfirm) onConfirm();
+        });
+
+        modal.show();
+        modalEl.addEventListener('hidden.bs.modal', function () { modalEl.remove(); });
     }
 
     var escapeHtml = TaxonomyUtils.escapeHtml;

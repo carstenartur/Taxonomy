@@ -618,16 +618,16 @@
                 <!-- Sub-tabs -->
                 <ul class="nav nav-tabs mb-3" id="versionsSubTabs">
                     <li class="nav-item">
-                        <a class="nav-link active" data-versions-tab="history" href="#">&#128339; History</a>
+                        <a class="nav-link active" data-versions-tab="history" href="#">&#128339; Verlauf</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" data-versions-tab="variants" href="#">&#128256; Variants</a>
+                        <a class="nav-link" data-versions-tab="variants" href="#">&#127807; Varianten</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" data-versions-tab="save" href="#">&#128190; Save Version</a>
+                        <a class="nav-link" data-versions-tab="save" href="#">&#128190; Version speichern</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" data-versions-tab="sync" href="#">&#128260; Sync</a>
+                        <a class="nav-link" data-versions-tab="sync" href="#">&#128260; Synchronisieren</a>
                     </li>
                 </ul>
 
@@ -635,76 +635,76 @@
                 <div id="versions-history" class="versions-sub-pane">
                     <div class="card shadow-sm">
                         <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-                            <span>&#128339; Version History</span>
-                            <button id="versionsRefreshBtn" class="btn btn-sm btn-outline-secondary" title="Refresh history">&#128260; Refresh</button>
+                            <span>&#128339; Versionsverlauf</span>
+                            <button id="versionsRefreshBtn" class="btn btn-sm btn-outline-secondary" title="Verlauf aktualisieren">&#128260; Aktualisieren</button>
                         </div>
                         <div class="card-body p-0">
                             <div id="versionsTimeline" class="p-3">
-                                <div class="text-muted small">Loading version history…</div>
+                                <div class="text-muted small">Versionsverlauf wird geladen…</div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Sub-tab: Variants Browser -->
+                <!-- Sub-tab: Varianten-Dashboard -->
                 <div id="versions-variants" class="versions-sub-pane d-none">
                     <div class="card shadow-sm">
                         <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-                            <span>&#128256; Variants (Branches)</span>
+                            <span>&#127807; Varianten</span>
                             <div class="d-flex gap-1">
-                                <button class="btn btn-sm btn-outline-success" onclick="TaxonomyContextBar.showVariantDialog()" title="Create new variant">&#43; New Variant</button>
-                                <button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyVariants.refresh()" title="Refresh">&#128260; Refresh</button>
+                                <button class="btn btn-sm btn-outline-success" onclick="TaxonomyContextBar.showVariantDialog()" title="Neue Variante erstellen">&#127807; Neue Variante</button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyVariants.refresh()" title="Aktualisieren">&#128260; Aktualisieren</button>
                             </div>
                         </div>
                         <div class="card-body p-0">
                             <div id="variantsBrowser" class="p-3">
-                                <div class="text-muted small">Loading variants…</div>
+                                <div class="text-muted small">Varianten werden geladen…</div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Sub-tab: Save Version -->
+                <!-- Sub-tab: Version speichern -->
                 <div id="versions-save" class="versions-sub-pane d-none">
                     <div class="card shadow-sm">
-                        <div class="card-header fw-semibold">&#128190; Save Version</div>
+                        <div class="card-header fw-semibold">&#128190; Version speichern</div>
                         <div class="card-body">
                             <p class="text-muted small mb-3">
-                                Create a named version (snapshot) of the current DSL state.
+                                Erstellen Sie eine benannte Version (Snapshot) des aktuellen Architekturstands.
                             </p>
                             <div class="mb-2">
-                                <label for="versionTitle" class="form-label small">Title</label>
+                                <label for="versionTitle" class="form-label small">Titel</label>
                                 <input id="versionTitle" type="text" class="form-control form-control-sm"
-                                       placeholder="e.g. Baseline after review round 2">
+                                       placeholder="z.B. Baseline nach Reviewrunde 2">
                             </div>
                             <div class="mb-3">
-                                <label for="versionDescription" class="form-label small">Description (optional)</label>
+                                <label for="versionDescription" class="form-label small">Beschreibung (optional)</label>
                                 <textarea id="versionDescription" class="form-control form-control-sm" rows="2"
-                                          placeholder="Brief summary of what changed"></textarea>
+                                          placeholder="Kurze Zusammenfassung der Änderungen"></textarea>
                             </div>
-                            <button id="versionsSaveBtn" class="btn btn-primary btn-sm">&#128190; Save Version</button>
+                            <button id="versionsSaveBtn" class="btn btn-primary btn-sm">&#128190; Version speichern</button>
                             <span id="versionsSaveStatus" class="ms-2 small"></span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Sub-tab: Sync with Shared Repository -->
+                <!-- Sub-tab: Mit Team-Repository synchronisieren -->
                 <div id="versions-sync" class="versions-sub-pane d-none">
                     <div class="card shadow-sm">
                         <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-                            <span>&#128260; Sync with Shared Repository</span>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyWorkspaceSync.refresh()" title="Refresh sync state">&#128260; Refresh</button>
+                            <span>&#128260; Mit Team-Repository synchronisieren</span>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyWorkspaceSync.refresh()" title="Synchronisierungsstatus aktualisieren">&#128260; Aktualisieren</button>
                         </div>
                         <div class="card-body">
                             <div id="syncStatePanel" class="mb-3">
-                                <div class="text-muted small">Loading sync state…</div>
+                                <div class="text-muted small">Synchronisierungsstatus wird geladen…</div>
                             </div>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-outline-primary" onclick="TaxonomyWorkspaceSync.syncFromShared()" title="Pull changes from shared repository into your workspace">
-                                    &#128229; Sync from Shared
+                                <button class="btn btn-sm btn-outline-primary" onclick="TaxonomyWorkspaceSync.syncFromShared()" title="Änderungen vom Team-Repository in Ihren Arbeitsbereich übernehmen">
+                                    &#128229; Vom Team aktualisieren
                                 </button>
-                                <button class="btn btn-sm btn-primary" onclick="TaxonomyWorkspaceSync.publish()" title="Publish your changes to the shared repository" data-guard="commit">
-                                    &#128228; Publish to Shared
+                                <button class="btn btn-sm btn-primary" onclick="TaxonomyWorkspaceSync.publish()" title="Ihre Änderungen für das Team veröffentlichen" data-guard="commit">
+                                    &#128228; Für Team veröffentlichen
                                 </button>
                             </div>
                             <div id="localChangesPanel" class="mt-3 d-none"></div>
@@ -1482,33 +1482,33 @@
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="contextCompareModalLabel">&#8596; Compare Contexts</h5>
+                <h5 class="modal-title" id="contextCompareModalLabel">&#128269; Versionen vergleichen</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="row mb-3">
                     <div class="col-md-3">
-                        <label for="compareLeftBranch" class="form-label">Left Branch</label>
+                        <label for="compareLeftBranch" class="form-label">Linke Version</label>
                         <select class="form-select form-select-sm" id="compareLeftBranch">
                             <option value="draft">draft</option>
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label for="compareLeftCommit" class="form-label">Left Commit (optional)</label>
+                        <label for="compareLeftCommit" class="form-label">Linker Commit (optional)</label>
                         <input type="text" class="form-control form-control-sm" id="compareLeftCommit" placeholder="HEAD"/>
                     </div>
                     <div class="col-md-3">
-                        <label for="compareRightBranch" class="form-label">Right Branch</label>
+                        <label for="compareRightBranch" class="form-label">Rechte Version</label>
                         <select class="form-select form-select-sm" id="compareRightBranch">
                             <option value="draft">draft</option>
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label for="compareRightCommit" class="form-label">Right Commit (optional)</label>
+                        <label for="compareRightCommit" class="form-label">Rechter Commit (optional)</label>
                         <input type="text" class="form-control form-control-sm" id="compareRightCommit" placeholder="HEAD"/>
                     </div>
                 </div>
-                <button class="btn btn-primary btn-sm mb-3" onclick="TaxonomyContextCompare.doCompare()">Compare</button>
+                <button class="btn btn-primary btn-sm mb-3" onclick="TaxonomyContextCompare.doCompare()">Vergleichen</button>
                 <div id="contextCompareResults"></div>
             </div>
         </div>
@@ -1520,25 +1520,25 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="createVariantModalLabel">&#43; Create Variant</h5>
+                <h5 class="modal-title" id="createVariantModalLabel">&#127807; Neue Variante erstellen</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p class="text-muted small">
-                    Create a new variant (branch) from your current context.
-                    The variant will contain a copy of the current architecture state and can be independently modified.
+                    Erstellen Sie eine neue Variante aus Ihrem aktuellen Architekturstand.
+                    Die Variante enth&#228;lt eine Kopie des aktuellen Stands und kann unabh&#228;ngig bearbeitet werden.
                 </p>
                 <div class="mb-3">
-                    <label for="variantNameInput" class="form-label">Variant Name</label>
+                    <label for="variantNameInput" class="form-label">Variantenname</label>
                     <input type="text" class="form-control form-control-sm" id="variantNameInput"
-                           placeholder="e.g. my-experiment, review-round-2" autocomplete="off"/>
-                    <div class="form-text">Use lowercase letters, numbers, and hyphens. No spaces.</div>
+                           placeholder="z.B. mein-experiment, review-runde-2" autocomplete="off"/>
+                    <div class="form-text">Verwenden Sie Kleinbuchstaben, Zahlen und Bindestriche. Keine Leerzeichen.</div>
                 </div>
                 <div id="variantCreateStatus"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-success btn-sm" onclick="TaxonomyContextBar.createVariant()">Create Variant</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="TaxonomyContextBar.createVariant()">Variante erstellen</button>
             </div>
         </div>
     </div>
