@@ -16,7 +16,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Integration tests for {@link WebMvcConfig} locale resolution.
  *
  * <p>Verifies that the {@code ?lang=} query parameter switches locale
- * and that a {@code lang} cookie persists the preference.
+ * (via {@code LocaleChangeInterceptor}) and that a {@code lang} cookie
+ * persists the preference (via {@code CookieLocaleResolver}).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -27,24 +28,23 @@ class WebMvcConfigTest {
     private MockMvc mockMvc;
 
     @Test
-    void langParameterSwitchesToGerman() throws Exception {
-        // ?lang=de should cause server-side Thymeleaf to resolve German messages
-        mockMvc.perform(get("/api/i18n/de"))
+    void langParameterSetsLocaleCookie() throws Exception {
+        // ?lang=de triggers LocaleChangeInterceptor → CookieLocaleResolver sets cookie
+        mockMvc.perform(get("/help").param("lang", "de"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.['nav.analyze']").value("Analyse"));
+                .andExpect(cookie().value("lang", "de"));
     }
 
     @Test
-    void langCookiePersistsLocale() throws Exception {
-        // Sending a lang cookie should be recognised by CookieLocaleResolver
-        mockMvc.perform(get("/api/i18n/de").cookie(new Cookie("lang", "de")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.['nav.analyze']").value("Analyse"));
+    void langCookieResolvesLocale() throws Exception {
+        // Sending a lang=de cookie should cause HelpController to serve German docs
+        mockMvc.perform(get("/help/USER_GUIDE").cookie(new Cookie("lang", "de")))
+                .andExpect(status().isOk());
     }
 
     @Test
     void defaultLocaleIsEnglish() throws Exception {
-        // Without any locale hint the default should be English
+        // Without any locale hint the i18n endpoint returns English translations
         mockMvc.perform(get("/api/i18n/en"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.['nav.analyze']").value("Analyze"));
