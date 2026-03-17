@@ -75,8 +75,9 @@ jobs:
       - name: Generate Surefire HTML report
         if: always()
         run: |
+          mvn install --no-transfer-progress -DskipTests -q
           mvn surefire-report:report-only --no-transfer-progress -DskipTests
-          mvn site --no-transfer-progress -DskipTests -DgenerateReports=false -pl taxonomy-app -am
+          mvn site --no-transfer-progress -DskipTests -DgenerateReports=false -pl taxonomy-app
 
       - name: Generate badge JSON files
         if: always()
