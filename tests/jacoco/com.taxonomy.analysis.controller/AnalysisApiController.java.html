@@ -1,0 +1,359 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.controller</a> &gt; <span class="el_source">AnalysisApiController.java</span></div><h1>AnalysisApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.controller;
+
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.AnalysisRequest;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.dto.TaxonomyDiscrepancy;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.analysis.service.AnalysisEventCallback;
+import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.analysis.service.AnalysisRelationGenerator;
+import com.taxonomy.versioning.service.HypothesisService;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.architecture.service.RequirementArchitectureViewService;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import tools.jackson.databind.ObjectMapper;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Analysis&quot;)
+public class AnalysisApiController {
+
+    private final TaxonomyService taxonomyService;
+    private final LlmService llmService;
+    private final ExecutorService analysisExecutor;
+    private final ObjectMapper objectMapper;
+    private final RequirementArchitectureViewService architectureViewService;
+    private final AnalysisRelationGenerator analysisRelationGenerator;
+    private final HypothesisService hypothesisService;
+    private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public AnalysisApiController(TaxonomyService taxonomyService,
+                                  LlmService llmService,
+                                  ExecutorService analysisExecutor,
+                                  ObjectMapper objectMapper,
+                                  RequirementArchitectureViewService architectureViewService,
+                                  AnalysisRelationGenerator analysisRelationGenerator,
+                                  HypothesisService hypothesisService,
+                                  RepositoryStateService repositoryStateService,
+<span class="fc" id="L58">                                  WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L59">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L60">        this.llmService = llmService;</span>
+<span class="fc" id="L61">        this.analysisExecutor = analysisExecutor;</span>
+<span class="fc" id="L62">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L63">        this.architectureViewService = architectureViewService;</span>
+<span class="fc" id="L64">        this.analysisRelationGenerator = analysisRelationGenerator;</span>
+<span class="fc" id="L65">        this.hypothesisService = hypothesisService;</span>
+<span class="fc" id="L66">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L67">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L68">    }</span>
+
+    @Operation(summary = &quot;Analyze business requirement&quot;, description = &quot;Analyzes a business requirement against the taxonomy using the configured LLM provider. Optionally includes an architecture view.&quot;, tags = {&quot;Analysis&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Analysis completed&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or missing&quot;)
+    @PostMapping(&quot;/analyze&quot;)
+    public ResponseEntity&lt;AnalysisResult&gt; analyze(@RequestBody AnalysisRequest request) {
+<span class="fc" id="L75">        ResponseEntity&lt;AnalysisResult&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L77" title="1 of 4 branches missed.">        if (request.getBusinessText() == null || request.getBusinessText().isBlank()) {</span>
+<span class="fc" id="L78">            return ResponseEntity.badRequest().build();</span>
+        }
+
+<span class="pc bpc" id="L81" title="1 of 4 branches missed.">        if (request.getProvider() != null &amp;&amp; !request.getProvider().isBlank()) {</span>
+            try {
+<span class="fc" id="L83">                llmService.setRequestProvider(</span>
+<span class="fc" id="L84">                        LlmProvider.valueOf(request.getProvider().toUpperCase()));</span>
+<span class="fc" id="L85">            } catch (IllegalArgumentException e) {</span>
+                @SuppressWarnings(&quot;unchecked&quot;)
+                ResponseEntity&lt;AnalysisResult&gt; badProvider = (ResponseEntity&lt;AnalysisResult&gt;)
+<span class="fc" id="L88">                        (ResponseEntity&lt;?&gt;) ResponseEntity.badRequest().body(Map.of(</span>
+<span class="fc" id="L89">                                &quot;error&quot;, &quot;Unknown provider: &quot; + request.getProvider(),</span>
+<span class="fc" id="L90">                                &quot;validProviders&quot;, java.util.Arrays.toString(LlmProvider.values())));</span>
+<span class="fc" id="L91">                return badProvider;</span>
+<span class="fc" id="L92">            }</span>
+        }
+        try {
+<span class="fc" id="L95">            AnalysisResult result = llmService.analyzeWithBudget(request.getBusinessText());</span>
+
+            // Generate provisional relation hypotheses from scored nodes
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            if (result.getScores() != null) {</span>
+<span class="fc" id="L99">                result.setProvisionalRelations(</span>
+<span class="fc" id="L100">                        analysisRelationGenerator.generate(result.getScores()));</span>
+
+                // Persist hypotheses to database for later accept/reject via API
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">                if (!result.getProvisionalRelations().isEmpty()) {</span>
+<span class="nc" id="L104">                    hypothesisService.persistFromAnalysis(result.getProvisionalRelations(), null);</span>
+                }
+            }
+
+<span class="pc bpc" id="L108" title="1 of 4 branches missed.">            if (request.isIncludeArchitectureView() &amp;&amp; result.getScores() != null) {</span>
+<span class="fc" id="L109">                result.setArchitectureView(</span>
+<span class="fc" id="L110">                        architectureViewService.build(result.getScores(), request.getBusinessText(),</span>
+<span class="fc" id="L111">                                request.getMaxArchitectureNodes(),</span>
+<span class="fc" id="L112">                                result.getProvisionalRelations()));</span>
+            }
+
+<span class="fc" id="L115">            result.setViewContext(repositoryStateService.getViewContext(</span>
+<span class="fc" id="L116">                    workspaceResolver.resolveCurrentUsername(), &quot;draft&quot;));</span>
+
+<span class="fc" id="L118">            return ResponseEntity.ok(result);</span>
+        } finally {
+<span class="fc" id="L120">            llmService.clearRequestProvider();</span>
+        }
+    }
+
+    /**
+     * Streaming analysis endpoint using Server-Sent Events (SSE).
+     * Emits {@code phase}, {@code scores}, {@code expanding}, {@code complete} and
+     * {@code error} events as the LLM processes the taxonomy level by level.
+     */
+    @Operation(summary = &quot;Streaming analysis (SSE)&quot;, description = &quot;Server-Sent Events streaming analysis. Emits phase, scores, expanding, complete, and error events as the LLM processes the taxonomy level by level.&quot;, tags = {&quot;Analysis&quot;})
+    @GetMapping(value = &quot;/analyze-stream&quot;, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter analyzeStream(
+            @Parameter(description = &quot;Business requirement text to analyze&quot;) @RequestParam String businessText,
+            @Parameter(description = &quot;LLM provider override (e.g. GEMINI, LOCAL_ONNX)&quot;) @RequestParam(required = false) String provider) {
+<span class="fc" id="L134">        SseEmitter emitter = new SseEmitter(120_000L);</span>
+
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (!taxonomyService.isInitialized()) {</span>
+            try {
+<span class="nc" id="L138">                emitter.send(SseEmitter.event()</span>
+<span class="nc" id="L139">                        .name(&quot;error&quot;)</span>
+<span class="nc" id="L140">                        .data(objectMapper.writeValueAsString(Map.of(</span>
+                                &quot;status&quot;, &quot;ERROR&quot;,
+                                &quot;errorMessage&quot;, &quot;Taxonomy data is still loading. Please wait.&quot;,
+<span class="nc" id="L143">                                &quot;initStatus&quot;, taxonomyService.getInitStatus()))));</span>
+<span class="nc" id="L144">            } catch (Exception ignored) {</span>
+                // client already disconnected
+<span class="nc" id="L146">            }</span>
+<span class="nc" id="L147">            emitter.complete();</span>
+<span class="nc" id="L148">            return emitter;</span>
+        }
+
+<span class="pc bpc" id="L151" title="1 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+            try {
+<span class="fc" id="L153">                emitter.send(SseEmitter.event()</span>
+<span class="fc" id="L154">                        .name(&quot;error&quot;)</span>
+<span class="fc" id="L155">                        .data(&quot;{\&quot;status\&quot;:\&quot;ERROR\&quot;,\&quot;errorMessage\&quot;:\&quot;businessText must not be blank\&quot;}&quot;));</span>
+<span class="nc" id="L156">            } catch (IOException ignored) {</span>
+                // client already disconnected
+<span class="fc" id="L158">            }</span>
+<span class="fc" id="L159">            emitter.complete();</span>
+<span class="fc" id="L160">            return emitter;</span>
+        }
+
+<span class="fc" id="L163">        LlmProvider resolvedProvider = null;</span>
+<span class="pc bpc" id="L164" title="3 of 4 branches missed.">        if (provider != null &amp;&amp; !provider.isBlank()) {</span>
+            try {
+<span class="nc" id="L166">                resolvedProvider = LlmProvider.valueOf(provider.toUpperCase());</span>
+<span class="nc" id="L167">            } catch (IllegalArgumentException e) {</span>
+                try {
+<span class="nc" id="L169">                    emitter.send(SseEmitter.event()</span>
+<span class="nc" id="L170">                            .name(&quot;error&quot;)</span>
+<span class="nc" id="L171">                            .data(objectMapper.writeValueAsString(Map.of(</span>
+                                    &quot;status&quot;, &quot;ERROR&quot;,
+                                    &quot;errorMessage&quot;, &quot;Unknown provider: &quot; + provider))));
+<span class="nc" id="L174">                } catch (Exception ignored) {</span>
+                    // client already disconnected
+<span class="nc" id="L176">                }</span>
+<span class="nc" id="L177">                emitter.complete();</span>
+<span class="nc" id="L178">                return emitter;</span>
+<span class="nc" id="L179">            }</span>
+        }
+
+<span class="fc" id="L182">        final LlmProvider providerOverride = resolvedProvider;</span>
+<span class="fc" id="L183">        analysisExecutor.execute(() -&gt; {</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">            if (providerOverride != null) {</span>
+<span class="nc" id="L185">                llmService.setRequestProvider(providerOverride);</span>
+            }
+            try {
+<span class="fc" id="L188">                llmService.analyzeStreaming(businessText, new AnalysisEventCallback() {</span>
+
+                    @Override
+                    public void onPhase(String message, int progressPercent) {
+<span class="fc" id="L192">                        sendEvent(emitter, &quot;phase&quot;,</span>
+<span class="fc" id="L193">                                Map.of(&quot;message&quot;, message, &quot;progress&quot;, progressPercent));</span>
+<span class="fc" id="L194">                    }</span>
+
+                    @Override
+                    public void onScores(Map&lt;String, Integer&gt; newScores, Map&lt;String, String&gt; reasons,
+                                         String description) {
+<span class="fc" id="L199">                        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L200">                        payload.put(&quot;scores&quot;, newScores);</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">                        payload.put(&quot;reasons&quot;, reasons != null ? reasons : Map.of());</span>
+<span class="fc" id="L202">                        payload.put(&quot;description&quot;, description);</span>
+<span class="fc" id="L203">                        sendEvent(emitter, &quot;scores&quot;, payload);</span>
+<span class="fc" id="L204">                    }</span>
+
+                    @Override
+                    public void onExpanding(String parentCode, List&lt;String&gt; childCodes) {
+<span class="nc" id="L208">                        sendEvent(emitter, &quot;expanding&quot;,</span>
+<span class="nc" id="L209">                                Map.of(&quot;parentCode&quot;, parentCode, &quot;childCodes&quot;, childCodes));</span>
+<span class="nc" id="L210">                    }</span>
+
+                    @Override
+                    public void onComplete(String status, Map&lt;String, Integer&gt; allScores,
+                                           List&lt;String&gt; warnings,
+                                           List&lt;TaxonomyDiscrepancy&gt; discrepancies) {
+<span class="fc" id="L216">                        int matched = (int) allScores.values().stream()</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                                .filter(v -&gt; v &gt; 0).count();</span>
+<span class="fc" id="L218">                        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L219">                        payload.put(&quot;status&quot;, status);</span>
+<span class="fc" id="L220">                        payload.put(&quot;totalScores&quot;, allScores);</span>
+<span class="fc" id="L221">                        payload.put(&quot;totalMatched&quot;, matched);</span>
+<span class="fc" id="L222">                        payload.put(&quot;warnings&quot;, warnings);</span>
+<span class="fc" id="L223">                        payload.put(&quot;discrepancies&quot;, discrepancies);</span>
+<span class="fc" id="L224">                        sendEvent(emitter, &quot;complete&quot;, payload);</span>
+<span class="fc" id="L225">                        emitter.complete();</span>
+<span class="fc" id="L226">                    }</span>
+
+                    @Override
+                    public void onError(String status, String errorMessage,
+                                        Map&lt;String, Integer&gt; partialScores,
+                                        List&lt;String&gt; warnings,
+                                        List&lt;TaxonomyDiscrepancy&gt; discrepancies) {
+<span class="nc" id="L233">                        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L234">                        payload.put(&quot;status&quot;, status);</span>
+<span class="nc" id="L235">                        payload.put(&quot;errorMessage&quot;, errorMessage);</span>
+<span class="nc" id="L236">                        payload.put(&quot;partialScores&quot;, partialScores);</span>
+<span class="nc" id="L237">                        payload.put(&quot;warnings&quot;, warnings);</span>
+<span class="nc" id="L238">                        payload.put(&quot;discrepancies&quot;, discrepancies);</span>
+<span class="nc" id="L239">                        sendEvent(emitter, &quot;error&quot;, payload);</span>
+<span class="nc" id="L240">                        emitter.complete();</span>
+<span class="nc" id="L241">                    }</span>
+                });
+<span class="nc" id="L243">            } catch (Exception e) {</span>
+<span class="nc" id="L244">                emitter.completeWithError(e);</span>
+            } finally {
+<span class="fc" id="L246">                llmService.clearRequestProvider();</span>
+            }
+<span class="fc" id="L248">        });</span>
+
+<span class="fc" id="L250">        return emitter;</span>
+    }
+
+    private void sendEvent(SseEmitter emitter, String eventName, Object data) {
+        try {
+<span class="fc" id="L255">            emitter.send(SseEmitter.event()</span>
+<span class="fc" id="L256">                    .name(eventName)</span>
+<span class="fc" id="L257">                    .data(objectMapper.writeValueAsString(data)));</span>
+<span class="nc" id="L258">        } catch (IOException e) {</span>
+            // Client disconnected — complete silently
+<span class="nc" id="L260">            emitter.complete();</span>
+<span class="nc" id="L261">        } catch (Exception e) {</span>
+<span class="nc" id="L262">            emitter.completeWithError(e);</span>
+<span class="pc" id="L263">        }</span>
+<span class="fc" id="L264">    }</span>
+
+    @Operation(summary = &quot;Analyze single node children&quot;, description = &quot;Analyzes the children of a specific taxonomy node against a business requirement&quot;, tags = {&quot;Analysis&quot;})
+    @GetMapping(&quot;/analyze-node&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; analyzeNode(
+            @Parameter(description = &quot;Parent taxonomy node code&quot;) @RequestParam String parentCode,
+            @Parameter(description = &quot;Business requirement text&quot;) @RequestParam String businessText,
+            @Parameter(description = &quot;Parent node's score (0-100); defaults to 100 for root-level nodes&quot;) @RequestParam(defaultValue = &quot;100&quot;) int parentScore) {
+<span class="fc" id="L272">        ResponseEntity&lt;Map&lt;String, Object&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L274" title="2 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="nc" id="L275">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L277">        List&lt;TaxonomyNode&gt; children = taxonomyService.getChildrenOf(parentCode);</span>
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">        if (children.isEmpty()) {</span>
+<span class="nc" id="L279">            Map&lt;String, Object&gt; empty = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L280">            empty.put(&quot;scores&quot;, Map.of());</span>
+<span class="nc" id="L281">            empty.put(&quot;prompt&quot;, &quot;&quot;);</span>
+<span class="nc" id="L282">            empty.put(&quot;rawResponse&quot;, &quot;&quot;);</span>
+<span class="nc" id="L283">            empty.put(&quot;provider&quot;, &quot;&quot;);</span>
+<span class="nc" id="L284">            empty.put(&quot;durationMs&quot;, 0);</span>
+<span class="nc" id="L285">            return ResponseEntity.ok(empty);</span>
+        }
+<span class="fc" id="L287">        LlmCallDetail detail = llmService.analyzeSingleBatchDetailed(businessText, children, parentScore);</span>
+<span class="fc" id="L288">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L289">        result.put(&quot;scores&quot;, detail.getScores());</span>
+<span class="pc bpc" id="L290" title="1 of 2 branches missed.">        result.put(&quot;reasons&quot;, detail.getReasons() != null ? detail.getReasons() : Map.of());</span>
+<span class="fc" id="L291">        result.put(&quot;prompt&quot;, detail.getPrompt());</span>
+<span class="fc" id="L292">        result.put(&quot;rawResponse&quot;, detail.getRawResponse());</span>
+<span class="fc" id="L293">        result.put(&quot;provider&quot;, detail.getProvider());</span>
+<span class="fc" id="L294">        result.put(&quot;durationMs&quot;, detail.getDurationMs());</span>
+<span class="fc" id="L295">        result.put(&quot;error&quot;, detail.getError());</span>
+<span class="fc" id="L296">        return ResponseEntity.ok(result);</span>
+    }
+
+    /**
+     * Generates a leaf-node justification on demand.
+     * Collects the path from root to the leaf node and cross-references to other
+     * high-scoring nodes, then calls the LLM for a coherent summary.
+     */
+    @Operation(summary = &quot;Generate leaf justification&quot;, description = &quot;Generates an explanatory justification for a leaf node match using the LLM&quot;, tags = {&quot;Analysis&quot;})
+    @PostMapping(&quot;/justify-leaf&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; justifyLeaf(
+            @RequestBody Map&lt;String, Object&gt; body) {
+<span class="nc" id="L308">        ResponseEntity&lt;Map&lt;String, Object&gt;&gt; guard = checkInitialized();</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="nc" id="L310">        String nodeCode = (String) body.get(&quot;nodeCode&quot;);</span>
+<span class="nc" id="L311">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="nc bnc" id="L312" title="All 8 branches missed.">        if (nodeCode == null || nodeCode.isBlank() || businessText == null || businessText.isBlank()) {</span>
+<span class="nc" id="L313">            return ResponseEntity.badRequest().build();</span>
+        }
+        try {
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc bnc" id="L317" title="All 2 branches missed.">            Map&lt;String, Object&gt; rawScores = body.get(&quot;scores&quot;) instanceof Map&lt;?, ?&gt;</span>
+<span class="nc" id="L318">                    ? (Map&lt;String, Object&gt;) body.get(&quot;scores&quot;) : Map.of();</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+<span class="nc bnc" id="L320" title="All 2 branches missed.">            Map&lt;String, String&gt; allReasons = body.get(&quot;reasons&quot;) instanceof Map&lt;?, ?&gt;</span>
+<span class="nc" id="L321">                    ? (Map&lt;String, String&gt;) body.get(&quot;reasons&quot;) : Map.of();</span>
+
+<span class="nc" id="L323">            Map&lt;String, Integer&gt; allScores = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L324" title="All 2 branches missed.">            for (Map.Entry&lt;String, Object&gt; e : rawScores.entrySet()) {</span>
+<span class="nc bnc" id="L325" title="All 2 branches missed.">                if (e.getValue() instanceof Number n) {</span>
+<span class="nc" id="L326">                    allScores.put(e.getKey(), n.intValue());</span>
+                }
+<span class="nc" id="L328">            }</span>
+
+<span class="nc" id="L330">            List&lt;com.taxonomy.catalog.model.TaxonomyNode&gt; pathNodes =</span>
+<span class="nc" id="L331">                    taxonomyService.getPathToRoot(nodeCode);</span>
+
+<span class="nc" id="L333">            String justification = llmService.generateLeafJustification(</span>
+                    businessText, nodeCode, pathNodes, allScores, allReasons);
+
+<span class="nc" id="L336">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L337">            result.put(&quot;nodeCode&quot;, nodeCode);</span>
+<span class="nc" id="L338">            result.put(&quot;justification&quot;, justification);</span>
+<span class="nc" id="L339">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L340">        } catch (Exception e) {</span>
+<span class="nc" id="L341">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L342">            result.put(&quot;nodeCode&quot;, nodeCode);</span>
+<span class="nc" id="L343">            result.put(&quot;justification&quot;, &quot;Error: &quot; + e.getMessage());</span>
+<span class="nc" id="L344">            return ResponseEntity.ok(result);</span>
+        }
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private &lt;T&gt; ResponseEntity&lt;T&gt; checkInitialized() {
+<span class="pc bpc" id="L350" title="1 of 2 branches missed.">        if (!taxonomyService.isInitialized()) {</span>
+<span class="nc" id="L351">            Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L352">            body.put(&quot;error&quot;, &quot;Taxonomy data is still loading. Please wait.&quot;);</span>
+<span class="nc" id="L353">            body.put(&quot;status&quot;, taxonomyService.getInitStatus());</span>
+<span class="nc" id="L354">            return (ResponseEntity&lt;T&gt;) ResponseEntity.status(503).body(body);</span>
+        }
+<span class="fc" id="L356">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SearchApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.search.controller</a> &gt; <span class="el_source">SearchApiController.java</span></div><h1>SearchApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.search.controller;
+
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.dto.GraphSearchResult;
+import com.taxonomy.catalog.service.SearchService;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.relations.service.HybridSearchService;
+import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.relations.service.GraphSearchService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Search&quot;)
+public class SearchApiController {
+
+    private final TaxonomyService taxonomyService;
+    private final SearchService searchService;
+    private final HybridSearchService hybridSearchService;
+    private final LocalEmbeddingService embeddingService;
+    private final GraphSearchService graphSearchService;
+
+    public SearchApiController(TaxonomyService taxonomyService,
+                                SearchService searchService,
+                                HybridSearchService hybridSearchService,
+                                LocalEmbeddingService embeddingService,
+<span class="fc" id="L35">                                GraphSearchService graphSearchService) {</span>
+<span class="fc" id="L36">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L37">        this.searchService = searchService;</span>
+<span class="fc" id="L38">        this.hybridSearchService = hybridSearchService;</span>
+<span class="fc" id="L39">        this.embeddingService = embeddingService;</span>
+<span class="fc" id="L40">        this.graphSearchService = graphSearchService;</span>
+<span class="fc" id="L41">    }</span>
+
+    @Operation(summary = &quot;Full-text search&quot;, description = &quot;Search taxonomy nodes using full-text Lucene search&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; search(
+            @Parameter(description = &quot;Search query&quot;) @RequestParam String q,
+            @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;50&quot;) int maxResults) {
+<span class="fc" id="L48">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L50" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L51">        return ResponseEntity.ok(searchService.search(q, maxResults));</span>
+    }
+
+    /**
+     * Semantic search across the full taxonomy using embedding similarity.
+     * Returns nodes ranked by cosine similarity to {@code q}.
+     * Requires {@code LLM_PROVIDER=LOCAL_ONNX} or {@code TAXONOMY_EMBEDDING_ENABLED=true}.
+     */
+    @Operation(summary = &quot;Semantic search&quot;, description = &quot;Search taxonomy nodes using embedding similarity (KNN). Requires LOCAL_ONNX or embedding enabled.&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search/semantic&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; semanticSearch(
+            @Parameter(description = &quot;Natural-language query&quot;) @RequestParam String q,
+            @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;20&quot;) int maxResults) {
+<span class="fc" id="L64">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L66" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L67">        return ResponseEntity.ok(embeddingService.semanticSearch(q, maxResults));</span>
+    }
+
+    /**
+     * Hybrid search: combines full-text Lucene and semantic KNN results via
+     * Reciprocal Rank Fusion.  Falls back to full-text only when embedding is unavailable.
+     */
+    @Operation(summary = &quot;Hybrid search&quot;, description = &quot;Combines full-text Lucene and semantic KNN results via Reciprocal Rank Fusion. Falls back to full-text only when embedding is unavailable.&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search/hybrid&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; hybridSearch(
+            @Parameter(description = &quot;Natural-language query&quot;) @RequestParam String q,
+            @Parameter(description = &quot;Maximum number of results&quot;) @RequestParam(defaultValue = &quot;20&quot;) int maxResults) {
+<span class="fc" id="L79">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L81" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L82">        return ResponseEntity.ok(hybridSearchService.hybridSearch(q, maxResults));</span>
+    }
+
+    /**
+     * Find taxonomy nodes semantically similar to the node identified by {@code code}.
+     */
+    @Operation(summary = &quot;Find similar nodes&quot;, description = &quot;Find taxonomy nodes semantically similar to a given node&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search/similar/{code}&quot;)
+    public ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; findSimilar(
+            @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code,
+            @Parameter(description = &quot;Maximum number of similar nodes&quot;) @RequestParam(defaultValue = &quot;10&quot;) int topK) {
+<span class="fc" id="L93">        ResponseEntity&lt;List&lt;TaxonomyNodeDto&gt;&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="fc" id="L95">        return ResponseEntity.ok(embeddingService.findSimilarNodes(code, topK));</span>
+    }
+
+    /**
+     * Returns the current status of the local embedding model.
+     */
+    @Operation(summary = &quot;Embedding model status&quot;, description = &quot;Returns the current status of the local embedding model&quot;, tags = {&quot;Embedding&quot;})
+    @GetMapping(&quot;/embedding/status&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; embeddingStatus() {
+<span class="fc" id="L104">        Map&lt;String, Object&gt; status = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L105">        status.put(&quot;enabled&quot;,      embeddingService.isEnabled());</span>
+<span class="fc" id="L106">        status.put(&quot;available&quot;,    embeddingService.isAvailable());</span>
+<span class="fc" id="L107">        status.put(&quot;modelUrl&quot;,     embeddingService.effectiveModelUrl());</span>
+<span class="fc" id="L108">        status.put(&quot;indexedNodes&quot;, embeddingService.indexedNodeCount());</span>
+<span class="fc" id="L109">        return ResponseEntity.ok(status);</span>
+    }
+
+    /**
+     * Graph-semantic search: combines node and relation KNN queries to answer
+     * graph-structural questions.
+     */
+    @Operation(summary = &quot;Graph-semantic search&quot;, description = &quot;Combines node and relation KNN queries to answer graph-structural questions. Returns matched nodes, per-root relation counts, top relation types, and a summary.&quot;, tags = {&quot;Search&quot;})
+    @GetMapping(&quot;/search/graph&quot;)
+    public ResponseEntity&lt;GraphSearchResult&gt; graphSearch(
+            @Parameter(description = &quot;Natural-language query&quot;) @RequestParam String q,
+            @Parameter(description = &quot;Maximum number of node results&quot;) @RequestParam(defaultValue = &quot;20&quot;) int maxResults) {
+<span class="fc" id="L121">        ResponseEntity&lt;GraphSearchResult&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L123" title="1 of 4 branches missed.">        if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L124">        return ResponseEntity.ok(graphSearchService.graphSearch(q, maxResults));</span>
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private &lt;T&gt; ResponseEntity&lt;T&gt; checkInitialized() {
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (!taxonomyService.isInitialized()) {</span>
+<span class="nc" id="L130">            Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L131">            body.put(&quot;error&quot;, &quot;Taxonomy data is still loading. Please wait.&quot;);</span>
+<span class="nc" id="L132">            body.put(&quot;status&quot;, taxonomyService.getInitStatus());</span>
+<span class="nc" id="L133">            return (ResponseEntity&lt;T&gt;) ResponseEntity.status(503).body(body);</span>
+        }
+<span class="fc" id="L135">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
