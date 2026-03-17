@@ -285,7 +285,6 @@
 
 /* ── Leaf justification button ─────────────────────────────── */
 .tax-justify-btn {
-    display: inline-block;
     font-size: 0.7rem;
     padding: 0 5px;
     line-height: 1.5;
