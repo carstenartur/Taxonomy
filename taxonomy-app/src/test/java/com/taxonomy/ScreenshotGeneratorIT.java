@@ -413,6 +413,44 @@ class ScreenshotGeneratorIT {
         return new WebDriverWait(driver, Duration.ofSeconds(seconds));
     }
 
+    /**
+     * Waits for the taxonomy to be ready by monitoring the UI startup banner.
+     * The banner is hidden (gets {@code d-none} class) when the JS
+     * {@code pollStartupStatus()} detects {@code initialized: true} from
+     * {@code /api/status/startup}.  This is event-driven: no manual API polling
+     * needed — Selenium just waits for the DOM change triggered by the app's
+     * own 5-second polling loop.
+     */
+    private void waitForTaxonomyReadyViaUI() {
+        wait(300).until(d -> {
+            try {
+                WebElement banner = d.findElement(By.id("startupBanner"));
+                return banner.getAttribute("class").contains("d-none");
+            } catch (org.openqa.selenium.NoSuchElementException e) {
+                // Banner element not in DOM — assume already loaded
+                return true;
+            }
+        });
+    }
+
+    /**
+     * Waits for embeddings to be ready by monitoring the nav-bar embedding badge.
+     * The badge text changes from {@code "🧠 Embeddings: unavailable"} to
+     * {@code "🧠 Embeddings: N nodes"} once the embedding index is built.
+     * Uses the app's own periodic {@code checkEmbeddingStatus()} polling.
+     */
+    private void waitForEmbeddingsReadyViaUI() {
+        wait(180).until(d -> {
+            try {
+                WebElement badge = d.findElement(By.id("embeddingStatusBadge"));
+                String text = badge.getText();
+                return text != null && text.contains("Embeddings:") && !text.contains("unavailable");
+            } catch (org.openqa.selenium.NoSuchElementException e) {
+                return false;
+            }
+        });
+    }
+
     /** Runs a standard (non-interactive) analysis and waits up to 120 s for completion. */
     private void runAnalysis() {
         navigateToTab("analyze");
@@ -1191,6 +1229,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(29)
     void captureSearchFullText() throws IOException {
+        waitForTaxonomyReadyViaUI(); // Wait until startup banner is hidden (taxonomy index ready)
         navigateToTab("analyze");
         // Open the search panel
         WebElement searchPanel = driver.findElement(By.id("searchPanel"));
@@ -1227,6 +1266,9 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(30)
     void captureSearchSemantic() throws IOException {
+        waitForTaxonomyReadyViaUI();
+        // Embedding badge check — if embeddings load, we get real results; if not, fallback below
+        try { waitForEmbeddingsReadyViaUI(); } catch (org.openqa.selenium.TimeoutException ignored) { }
         navigateToTab("analyze");
         WebElement searchPanel = driver.findElement(By.id("searchPanel"));
         openDetails(searchPanel);
@@ -1260,6 +1302,8 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(31)
     void captureSearchHybrid() throws IOException {
+        waitForTaxonomyReadyViaUI();
+        try { waitForEmbeddingsReadyViaUI(); } catch (org.openqa.selenium.TimeoutException ignored) { }
         navigateToTab("analyze");
         WebElement searchPanel = driver.findElement(By.id("searchPanel"));
         openDetails(searchPanel);
@@ -1293,6 +1337,8 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(32)
     void captureSearchGraph() throws IOException {
+        waitForTaxonomyReadyViaUI();
+        try { waitForEmbeddingsReadyViaUI(); } catch (org.openqa.selenium.TimeoutException ignored) { }
         navigateToTab("analyze");
         WebElement searchPanel = driver.findElement(By.id("searchPanel"));
         openDetails(searchPanel);

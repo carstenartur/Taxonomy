@@ -270,12 +270,26 @@
     opacity: 1;
 }
 
+/* ── Inline node action buttons (shown on hover) ──────────── */
+.tax-node-actions {
+    display: none;
+    gap: 3px;
+    margin-left: 8px;
+    flex-shrink: 0;
+    align-items: center;
+}
+.tax-node-header:hover .tax-node-actions,
+.tax-node-header:focus-within .tax-node-actions {
+    display: inline-flex;
+}
+
 /* ── Leaf justification button ─────────────────────────────── */
 .tax-justify-btn {
     display: inline-block;
-    margin: 4px 0 4px 2.5em;
-    font-size: 0.75rem;
-    padding: 2px 8px;
+    font-size: 0.7rem;
+    padding: 0 5px;
+    line-height: 1.5;
+    white-space: nowrap;
 }
 
 /* ── LLM log: reasons section ─────────────────────────────── */
@@ -475,8 +489,8 @@
 }
 
 .proposal-btn {
-    font-size: 0.72rem;
-    padding: 1px 6px;
+    font-size: 0.7rem;
+    padding: 0 5px;
 }
 
 /* ── Graph Explorer ──────────────────────────────────────── */
@@ -557,8 +571,8 @@
 }
 
 .graph-explore-btn {
-    font-size: 0.72rem;
-    padding: 1px 6px;
+    font-size: 0.7rem;
+    padding: 0 5px;
     border-color: #6f42c1;
     color: #6f42c1;
 }

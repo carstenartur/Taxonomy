@@ -1161,6 +1161,73 @@
             header.appendChild(reasonIcon);
         }
 
+        // Inline action buttons — shown on hover, same line as the node header
+        const actions = document.createElement('span');
+        actions.className = 'tax-node-actions';
+
+        // Leaf justification button (leaf node with score > 0)
+        if (!hasChildren && pct !== null && pct > 0 && S.storedBusinessText) {
+            const justifyBtn = document.createElement('button');
+            justifyBtn.className = 'btn btn-sm btn-outline-info tax-justify-btn';
+            justifyBtn.textContent = t('browse.btn.justify');
+            justifyBtn.dataset.code = node.code;
+            justifyBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                SC().requestLeafJustification(node.code, justifyBtn);
+            });
+            actions.appendChild(justifyBtn);
+        }
+
+        // Propose Relations button
+        const proposeBtn = document.createElement('button');
+        proposeBtn.className = 'btn btn-sm btn-outline-secondary tax-justify-btn proposal-btn';
+        proposeBtn.textContent = t('browse.btn.propose.relations');
+        proposeBtn.title = t('browse.btn.propose.relations.title', node.code);
+        proposeBtn.setAttribute('aria-label', t('browse.btn.propose.relations.aria', node.code));
+        proposeBtn.dataset.code = node.code;
+        proposeBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            S.pendingProposalNodeCode = node.code;
+            const codeEl = document.getElementById('proposeNodeCode');
+            if (codeEl) { codeEl.textContent = node.code + ' — ' + node.name; }
+            const modal = document.getElementById('proposeRelationsModal');
+            if (modal && window.bootstrap) {
+                new window.bootstrap.Modal(modal).show();
+            }
+        });
+        actions.appendChild(proposeBtn);
+
+        // Graph Explorer button
+        const graphBtn = document.createElement('button');
+        graphBtn.className = 'btn btn-sm btn-outline-secondary tax-justify-btn graph-explore-btn';
+        graphBtn.textContent = t('browse.btn.graph');
+        graphBtn.title = t('browse.btn.graph.title', node.code);
+        graphBtn.setAttribute('aria-label', t('browse.btn.graph.aria', node.code));
+        graphBtn.dataset.code = node.code;
+        graphBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (window.TaxonomyGraph) {
+                window.TaxonomyGraph.openGraphExplorer(node.code);
+            }
+        });
+        actions.appendChild(graphBtn);
+
+        // Find Similar button
+        const similarBtn = document.createElement('button');
+        similarBtn.className = 'btn btn-sm btn-outline-secondary tax-justify-btn search-similar-btn';
+        similarBtn.textContent = t('browse.btn.similar');
+        similarBtn.title = t('browse.btn.similar.title', node.code);
+        similarBtn.setAttribute('aria-label', t('browse.btn.similar.aria', node.code));
+        similarBtn.dataset.code = node.code;
+        similarBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (window.TaxonomySearch) {
+                window.TaxonomySearch.findSimilar(node.code);
+            }
+        });
+        actions.appendChild(similarBtn);
+
+        header.appendChild(actions);
         wrapper.appendChild(header);
 
         // Visible description below the header row
@@ -1180,68 +1247,6 @@
             node.children.forEach(child => childContainer.appendChild(buildNodeEl(child, scores)));
             wrapper.appendChild(childContainer);
         }
-
-        // Leaf justification button (leaf node with score > 0)
-        if (!hasChildren && pct !== null && pct > 0 && S.storedBusinessText) {
-            const justifyBtn = document.createElement('button');
-            justifyBtn.className = 'btn btn-sm btn-outline-info tax-justify-btn';
-            justifyBtn.textContent = t('browse.btn.justify');
-            justifyBtn.dataset.code = node.code;
-            justifyBtn.addEventListener('click', function (e) {
-                e.stopPropagation();
-                SC().requestLeafJustification(node.code, justifyBtn);
-            });
-            wrapper.appendChild(justifyBtn);
-        }
-
-        // Propose Relations button (always visible on every node)
-        const proposeBtn = document.createElement('button');
-        proposeBtn.className = 'btn btn-sm btn-outline-secondary tax-justify-btn proposal-btn';
-        proposeBtn.textContent = t('browse.btn.propose.relations');
-        proposeBtn.title = t('browse.btn.propose.relations.title', node.code);
-        proposeBtn.setAttribute('aria-label', t('browse.btn.propose.relations.aria', node.code));
-        proposeBtn.dataset.code = node.code;
-        proposeBtn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            S.pendingProposalNodeCode = node.code;
-            const codeEl = document.getElementById('proposeNodeCode');
-            if (codeEl) { codeEl.textContent = node.code + ' — ' + node.name; }
-            const modal = document.getElementById('proposeRelationsModal');
-            if (modal && window.bootstrap) {
-                new window.bootstrap.Modal(modal).show();
-            }
-        });
-        wrapper.appendChild(proposeBtn);
-
-        // Graph Explorer button (always visible on every node)
-        const graphBtn = document.createElement('button');
-        graphBtn.className = 'btn btn-sm btn-outline-secondary tax-justify-btn graph-explore-btn';
-        graphBtn.textContent = t('browse.btn.graph');
-        graphBtn.title = t('browse.btn.graph.title', node.code);
-        graphBtn.setAttribute('aria-label', t('browse.btn.graph.aria', node.code));
-        graphBtn.dataset.code = node.code;
-        graphBtn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            if (window.TaxonomyGraph) {
-                window.TaxonomyGraph.openGraphExplorer(node.code);
-            }
-        });
-        wrapper.appendChild(graphBtn);
-
-        // Find Similar button (visible when embeddings are available)
-        const similarBtn = document.createElement('button');
-        similarBtn.className = 'btn btn-sm btn-outline-secondary tax-justify-btn search-similar-btn';
-        similarBtn.textContent = t('browse.btn.similar');
-        similarBtn.title = t('browse.btn.similar.title', node.code);
-        similarBtn.setAttribute('aria-label', t('browse.btn.similar.aria', node.code));
-        similarBtn.dataset.code = node.code;
-        similarBtn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            if (window.TaxonomySearch) {
-                window.TaxonomySearch.findSimilar(node.code);
-            }
-        });
-        wrapper.appendChild(similarBtn);
 
         return wrapper;
     }
