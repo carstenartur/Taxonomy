@@ -7,6 +7,8 @@
 (function () {
     'use strict';
 
+    var t = TaxonomyI18n.t;
+
     var POLL_INTERVAL = 10000; // 10 seconds
     var statusBar = null;
     var pollTimer = null;
@@ -64,10 +66,9 @@
 
         // Projection status
         var projDot = state.projectionStale ? 'stale' : 'fresh';
-        var projLabel = state.projectionStale ? 'STALE' : 'fresh';
         parts.push(
             '<span class="git-indicator">' +
-            '<span class="dot ' + projDot + '"></span> Projection: ' + projLabel +
+            '<span class="dot ' + projDot + '"></span> ' + t('git.projection') + ': ' + (state.projectionStale ? t('git.stale') : t('git.fresh')) +
             '</span>'
         );
 
@@ -75,32 +76,29 @@
 
         // Index status
         var idxDot = state.indexStale ? 'stale' : 'fresh';
-        var idxLabel = state.indexStale ? 'STALE' : 'fresh';
         parts.push(
             '<span class="git-indicator">' +
-            '<span class="dot ' + idxDot + '"></span> Index: ' + idxLabel +
+            '<span class="dot ' + idxDot + '"></span> ' + t('git.index') + ': ' + (state.indexStale ? t('git.stale') : t('git.fresh')) +
             '</span>'
         );
 
         // Branch count (shown as "variants")
         if (state.branches && state.branches.length > 0) {
             parts.push('<span class="git-sep">│</span>');
-            parts.push('<span class="git-indicator">' + state.branches.length + ' variant' +
-                (state.branches.length !== 1 ? 's' : '') + '</span>');
+            parts.push('<span class="git-indicator">' + t('git.variants.count', state.branches.length) + '</span>');
         }
 
         // Commit count (shown as "versions")
         if (state.totalCommits > 0) {
             parts.push('<span class="git-sep">│</span>');
-            parts.push('<span class="git-indicator">' + state.totalCommits + ' version' +
-                (state.totalCommits !== 1 ? 's' : '') + '</span>');
+            parts.push('<span class="git-indicator">' + t('git.versions.count', state.totalCommits) + '</span>');
         }
 
         // Operation warning
         if (state.operationInProgress) {
             parts.push('<span class="git-sep">│</span>');
             parts.push('<span class="git-operation">&#128308; ' +
-                escapeHtml(state.operationKind || 'operation') + ' in progress</span>');
+                t('git.operation.in.progress', escapeHtml(state.operationKind || 'operation')) + '</span>');
         }
 
         // Context mode indicator
@@ -121,7 +119,7 @@
 
     function renderError(msg) {
         if (!statusBar) return;
-        statusBar.innerHTML = '<span class="git-indicator"><span class="dot error"></span> Git status unavailable</span>';
+        statusBar.innerHTML = '<span class="git-indicator"><span class="dot error"></span> ' + t('git.status.unavailable') + '</span>';
         statusBar.classList.remove('d-none');
     }
 

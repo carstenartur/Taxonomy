@@ -3,6 +3,8 @@
 (function () {
     'use strict';
 
+    var t = TaxonomyI18n.t;
+
     // Sizing constants
     var MAX_SUNBURST_SIZE = 600; // max px for sunburst diameter
     var TREE_INITIAL_DEPTH = 3;  // collapse nodes at depth >= this on initial render
@@ -40,7 +42,7 @@
         var showDesc = !showDescChk || showDescChk.checked;
         if (showDesc && nodeData.description) { html += '<br><small>' + esc(nodeData.description).replace(/\n/g, '<br>') + '</small>'; }
         if (pct !== undefined && pct > 0) {
-            html += '<br><span class="tax-tooltip-pct">Match: ' + pct + '%</span>';
+            html += '<br><span class="tax-tooltip-pct">' + t('views.tooltip.match', pct) + '</span>';
         }
         tip.innerHTML = html;
         tip.style.display = 'block';
