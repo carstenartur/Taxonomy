@@ -1,210 +1,210 @@
-# AI-Literacy-Schulungskonzept
+# AI Literacy Training Concept
 
-Dieses Dokument beschreibt das Schulungskonzept für Anwender des Taxonomy Architecture Analyzer gemäß der **AI-Literacy-Pflicht nach EU AI Act Art. 4** (in Kraft seit 02.02.2025). Betreiber und Nutzer von KI-Systemen müssen sicherstellen, dass das Personal über ausreichende KI-Kompetenz verfügt.
-
----
-
-## Inhaltsverzeichnis
-
-1. [Rechtlicher Hintergrund](#rechtlicher-hintergrund)
-2. [Zielgruppen und Kompetenzstufen](#zielgruppen-und-kompetenzstufen)
-3. [Schulungsinhalte nach Rolle](#schulungsinhalte-nach-rolle)
-4. [Was die KI im Taxonomy Analyzer macht](#was-die-ki-im-taxonomy-analyzer-macht)
-5. [Was die KI nicht macht](#was-die-ki-nicht-macht)
-6. [Erklärbarkeit der KI-Ergebnisse](#erklärbarkeit-der-ki-ergebnisse)
-7. [Empfehlungen für Einführungsworkshops](#empfehlungen-für-einführungsworkshops)
-8. [Lernressourcen](#lernressourcen)
-9. [Dokumentationspflichten](#dokumentationspflichten)
+This document describes the training concept for users of the Taxonomy Architecture Analyzer in accordance with the **AI Literacy obligation under EU AI Act Art. 4** (in effect since 02.02.2025). Operators and users of AI systems must ensure that their personnel have sufficient AI competence.
 
 ---
 
-## Rechtlicher Hintergrund
+## Table of Contents
 
-| Aspekt | Detail |
+1. [Legal Background](#legal-background)
+2. [Target Groups and Competence Levels](#target-groups-and-competence-levels)
+3. [Training Content by Role](#training-content-by-role)
+4. [What the AI Does in the Taxonomy Analyzer](#what-the-ai-does-in-the-taxonomy-analyzer)
+5. [What the AI Does Not Do](#what-the-ai-does-not-do)
+6. [Explainability of AI Results](#explainability-of-ai-results)
+7. [Recommendations for Introductory Workshops](#recommendations-for-introductory-workshops)
+8. [Learning Resources](#learning-resources)
+9. [Documentation Obligations](#documentation-obligations)
+
+---
+
+## Legal Background
+
+| Aspect | Detail |
 |---|---|
-| **Rechtsgrundlage** | EU AI Act (Verordnung (EU) 2024/1689), Artikel 4 — AI Literacy |
-| **In Kraft seit** | 02. Februar 2025 |
-| **Verpflichtung** | Anbieter und Betreiber müssen sicherstellen, dass ihr Personal über ein ausreichendes Maß an KI-Kompetenz verfügt |
-| **Anwendung auf Taxonomy** | Als Betreiber des Taxonomy Architecture Analyzer (Risikoklasse: Minimal Risk) muss die einsetzende Behörde AI-Literacy-Maßnahmen umsetzen |
+| **Legal Basis** | EU AI Act (Regulation (EU) 2024/1689), Article 4 — AI Literacy |
+| **In Effect Since** | 02 February 2025 |
+| **Obligation** | Providers and deployers must ensure that their personnel have a sufficient level of AI competence |
+| **Application to Taxonomy** | As the deployer of the Taxonomy Architecture Analyzer (risk class: Minimal Risk), the deploying authority must implement AI literacy measures |
 
-> **Art. 4 EU AI Act:** „Anbieter und Betreiber von KI-Systemen ergreifen Maßnahmen, um nach besten Kräften sicherzustellen, dass ihr Personal und andere Personen, die in ihrem Auftrag mit dem Betrieb und der Nutzung von KI-Systemen befasst sind, über ein ausreichendes Maß an KI-Kompetenz verfügen, wobei ihre technischen Kenntnisse, ihre Erfahrung, ihre Ausbildung und ihr Schulungsstand sowie der Kontext, in dem die KI-Systeme eingesetzt werden sollen, und die Personen oder Personengruppen, bei denen die KI-Systeme eingesetzt werden sollen, zu berücksichtigen sind."
+> **Art. 4 EU AI Act:** "Providers and deployers of AI systems shall take measures to ensure, to their best extent, a sufficient level of AI literacy of their staff and other persons dealing with the operation and use of AI systems on their behalf, taking into account their technical knowledge, experience, education and training and the context the AI systems are to be used in, and considering the persons or groups of persons on whom the AI systems are to be used."
 
 ---
 
-## Zielgruppen und Kompetenzstufen
+## Target Groups and Competence Levels
 
-| Zielgruppe | Rolle im System | Kompetenzstufe | Schulungsumfang |
+| Target Group | Role in System | Competence Level | Training Scope |
 |---|---|---|---|
-| **IT-Architekten** (Endanwender) | USER / ARCHITECT | Grundkompetenz | 2–4 Stunden |
-| **Teamleiter / Projektmanager** | USER (lesend) | Orientierungswissen | 1–2 Stunden |
-| **Administratoren** | ADMIN | Erweiterte Kompetenz | 4–8 Stunden |
-| **IT-Sicherheitsbeauftragte** | Beratend | Spezialkompetenz KI-Sicherheit | 4 Stunden |
-| **Datenschutzbeauftragte** | Beratend | Spezialkompetenz KI-Datenschutz | 2 Stunden |
+| **IT Architects** (End Users) | USER / ARCHITECT | Basic Competence | 2–4 Hours |
+| **Team Leads / Project Managers** | USER (read-only) | Orientation Knowledge | 1–2 Hours |
+| **Administrators** | ADMIN | Advanced Competence | 4–8 Hours |
+| **IT Security Officers** | Advisory | Specialist Competence in AI Security | 4 Hours |
+| **Data Protection Officers** | Advisory | Specialist Competence in AI Data Protection | 2 Hours |
 
 ---
 
-## Schulungsinhalte nach Rolle
+## Training Content by Role
 
-### Für alle Anwender (Grundkompetenz)
+### For All Users (Basic Competence)
 
-| # | Thema | Lernziel |
+| # | Topic | Learning Objective |
 |---|---|---|
-| 1 | **Was ist ein LLM?** | Verstehen, dass Large Language Models textbasierte Wahrscheinlichkeitsmodelle sind, keine wissenden Systeme |
-| 2 | **KI-Scores richtig interpretieren** | Wissen, dass Scores (0–100) Relevanzeinschätzungen sind, keine Fakten; verschiedene Provider können unterschiedliche Ergebnisse liefern |
-| 3 | **Justification-Texte bewerten** | Fähigkeit, KI-generierte Begründungen kritisch zu prüfen und mit eigenem Fachwissen abzugleichen |
-| 4 | **Limitationen erkennen** | Kenntnis von Halluzinationen, Bias, Inkonsistenzen als inhärente LLM-Eigenschaften |
-| 5 | **Human-in-the-Loop-Prinzip** | Verstehen der eigenen Verantwortung: KI schlägt vor, Mensch entscheidet |
+| 1 | **What Is an LLM?** | Understand that Large Language Models are text-based probability models, not knowledgeable systems |
+| 2 | **Interpreting AI Scores Correctly** | Know that scores (0–100) are relevance estimates, not facts; different providers may produce different results |
+| 3 | **Evaluating Justification Texts** | Ability to critically review AI-generated justifications and compare them with one's own domain expertise |
+| 4 | **Recognizing Limitations** | Awareness of hallucinations, bias, and inconsistencies as inherent LLM characteristics |
+| 5 | **Human-in-the-Loop Principle** | Understanding one's own responsibility: AI suggests, humans decide |
 
-### Für Architekten (Erweiterte Kompetenz)
+### For Architects (Advanced Competence)
 
-| # | Thema | Lernziel |
+| # | Topic | Learning Objective |
 |---|---|---|
-| 6 | **Anforderungsformulierung für KI** | Fähigkeit, Business Requirements so zu formulieren, dass die KI relevante Ergebnisse liefert |
-| 7 | **Provider-Vergleich** | Wissen, wann und wie verschiedene LLM-Provider verglichen werden sollten |
-| 8 | **Accept/Reject-Workflow** | Strukturierte Bewertung von KI-Vorschlägen für Architektur-Relationen |
-| 9 | **Keine personenbezogenen Daten in Prompts** | Verantwortung, keine PII in Business Requirement-Texte aufzunehmen |
+| 6 | **Formulating Requirements for AI** | Ability to formulate business requirements in a way that yields relevant AI results |
+| 7 | **Provider Comparison** | Know when and how different LLM providers should be compared |
+| 8 | **Accept/Reject Workflow** | Structured evaluation of AI suggestions for architecture relations |
+| 9 | **No Personal Data in Prompts** | Responsibility to avoid including PII in business requirement texts |
 
-### Für Administratoren (Spezialkompetenz)
+### For Administrators (Specialist Competence)
 
-| # | Thema | Lernziel |
+| # | Topic | Learning Objective |
 |---|---|---|
-| 10 | **Provider-Konfiguration** | Sichere Einrichtung von LLM-Providern; Air-Gapped-Betrieb mit LOCAL_ONNX |
-| 11 | **Prompt-Template-Management** | Verantwortung für Prompt-Templates; Risiken von Prompt-Injection verstehen |
-| 12 | **LLM Communication Log** | Überwachung der KI-Kommunikation; Erkennen von anomalem Verhalten |
-| 13 | **Rate-Limiting und Kosten** | Konfiguration von Rate-Limits; Kostencontrolling bei Cloud-Providern |
-| 14 | **AI-Diagnostics-Endpunkt** | Nutzung von `GET /api/ai-diagnostics` zur Systemüberwachung |
+| 10 | **Provider Configuration** | Secure setup of LLM providers; air-gapped operation with LOCAL_ONNX |
+| 11 | **Prompt Template Management** | Responsibility for prompt templates; understanding prompt injection risks |
+| 12 | **LLM Communication Log** | Monitoring AI communication; detecting anomalous behavior |
+| 13 | **Rate Limiting and Costs** | Configuration of rate limits; cost control for cloud providers |
+| 14 | **AI Diagnostics Endpoint** | Using `GET /api/ai-diagnostics` for system monitoring |
 
 ---
 
-## Was die KI im Taxonomy Analyzer macht
+## What the AI Does in the Taxonomy Analyzer
 
-| Funktion | Beschreibung | Eingriff in Entscheidungen? |
+| Function | Description | Intervenes in Decisions? |
 |---|---|---|
-| **Taxonomie-Scoring** | Bewertet die Relevanz von ~2.500 Taxonomie-Knoten für eine Business-Anforderung | ❌ Nein — nur Vorschlag |
-| **Justification-Generierung** | Erstellt textuelle Begründungen für die Score-Vergabe | ❌ Nein — nur Erklärung |
-| **Architektur-Vorschläge** | Schlägt Relationen zwischen Architektur-Elementen vor | ❌ Nein — erfordert Accept/Reject |
-| **Semantische Suche** | Findet Taxonomie-Knoten basierend auf Bedeutungsähnlichkeit (lokales Embedding-Modell) | ❌ Nein — nur Suchergebnisse |
+| **Taxonomy Scoring** | Evaluates the relevance of ~2,500 taxonomy nodes for a business requirement | ❌ No — suggestion only |
+| **Justification Generation** | Creates textual justifications for the score assignment | ❌ No — explanation only |
+| **Architecture Suggestions** | Suggests relations between architecture elements | ❌ No — requires Accept/Reject |
+| **Semantic Search** | Finds taxonomy nodes based on semantic similarity (local embedding model) | ❌ No — search results only |
 
-**Kernaussage:** Die KI im Taxonomy Analyzer ist ein **Empfehlungssystem** (Minimal Risk gemäß EU AI Act). Sie trifft keine Entscheidungen und ändert keine Daten eigenständig.
+**Key Statement:** The AI in the Taxonomy Analyzer is a **recommendation system** (Minimal Risk according to EU AI Act). It does not make decisions and does not modify data autonomously.
 
 ---
 
-## Was die KI nicht macht
+## What the AI Does Not Do
 
-| Aktion | Status |
+| Action | Status |
 |---|---|
-| Eigenständige Architekturentscheidungen treffen | ❌ Nicht implementiert |
-| Daten ohne Benutzerinteraktion ändern | ❌ Nicht implementiert |
-| Personenbezogene Daten verarbeiten | ❌ Nicht vorgesehen |
-| Eigenes Modelltraining durchführen | ❌ Nicht implementiert |
-| Auf externe Systeme zugreifen (außer konfiguriertem LLM-Provider) | ❌ Nicht implementiert |
-| Soziales Scoring oder Emotionserkennung | ❌ Nicht implementiert (Art. 5 EU AI Act — verbotene Praktiken) |
+| Make autonomous architecture decisions | ❌ Not implemented |
+| Modify data without user interaction | ❌ Not implemented |
+| Process personal data | ❌ Not intended |
+| Perform its own model training | ❌ Not implemented |
+| Access external systems (other than the configured LLM provider) | ❌ Not implemented |
+| Social scoring or emotion recognition | ❌ Not implemented (Art. 5 EU AI Act — prohibited practices) |
 
 ---
 
-## Erklärbarkeit der KI-Ergebnisse
+## Explainability of AI Results
 
-Der Taxonomy Analyzer bietet mehrere Mechanismen zur Nachvollziehbarkeit:
+The Taxonomy Analyzer provides several mechanisms for traceability:
 
-### 1. Score und Justification
+### 1. Score and Justification
 
-Jeder bewertete Taxonomie-Knoten zeigt:
-- **Score** (0–100): Numerische Relevanzeinschätzung
-- **Justification**: Textuelle Begründung des LLM, warum dieser Score vergeben wurde
+Each evaluated taxonomy node displays:
+- **Score** (0–100): Numerical relevance estimate
+- **Justification**: Textual explanation from the LLM for why this score was assigned
 
 ### 2. LLM Communication Log (Admin)
 
-Administratoren können im Admin-Panel einsehen:
-- Vollständiger Prompt-Text, der an das LLM gesendet wurde
-- Vollständige Antwort des LLM
-- Zeitstempel, Dauer, Token-Counts
-- Verwendeter Provider und Modell
+Administrators can view in the Admin Panel:
+- Complete prompt text sent to the LLM
+- Complete response from the LLM
+- Timestamp, duration, token counts
+- Provider and model used
 
-### 3. Versionskontrolle
+### 3. Version Control
 
-Alle Architekturentscheidungen werden versioniert:
-- JGit-basiertes Repository mit Commit-Historie
-- Autor-Attribution für jeden Commit
-- Diff-Ansicht zwischen Versionen
+All architecture decisions are versioned:
+- JGit-based repository with commit history
+- Author attribution for each commit
+- Diff view between versions
 
-**Referenz:** Siehe [AI Transparency — Scoring and Explainability](AI_TRANSPARENCY.md#scoring-and-explainability)
-
----
-
-## Empfehlungen für Einführungsworkshops
-
-### Workshop 1: Grundlagen-Workshop (alle Anwender, 2 Stunden)
-
-| Block | Dauer | Inhalt |
-|---|---|---|
-| **Einführung** | 20 min | Was ist KI/LLM? Wie funktioniert der Taxonomy Analyzer? |
-| **Live-Demo** | 30 min | Anforderung eingeben → Scoring → Ergebnisse interpretieren |
-| **Hands-On** | 40 min | Teilnehmer führen eigene Analyse durch; diskutieren Ergebnisse |
-| **Kritisches Denken** | 20 min | Beispiele für falsche/ungenaue KI-Ergebnisse; wie erkennt man sie? |
-| **Q&A** | 10 min | Offene Fragen |
-
-### Workshop 2: Architekten-Workshop (ARCHITECT-Rolle, 2 Stunden)
-
-| Block | Dauer | Inhalt |
-|---|---|---|
-| **Anforderungs-Design** | 30 min | Wie formuliere ich Anforderungen für optimale KI-Ergebnisse? |
-| **Provider-Vergleich** | 30 min | Dieselbe Anforderung mit verschiedenen Providern analysieren |
-| **Accept/Reject-Workflow** | 30 min | Architektur-Vorschläge systematisch bewerten |
-| **DSL und Versionierung** | 20 min | Änderungen committen, Diff-Ansicht nutzen |
-| **Best Practices** | 10 min | Zusammenfassung der Empfehlungen |
-
-### Workshop 3: Admin-Workshop (ADMIN-Rolle, 4 Stunden)
-
-| Block | Dauer | Inhalt |
-|---|---|---|
-| **Provider-Konfiguration** | 60 min | LLM-Provider einrichten; Air-Gapped-Betrieb; Rate-Limits |
-| **Prompt-Template-Management** | 30 min | Templates anpassen; Prompt-Injection-Risiken |
-| **Monitoring und Diagnostics** | 30 min | LLM Communication Log; AI-Diagnostics-Endpunkt |
-| **Sicherheit und Datenschutz** | 60 min | Audit-Logging; BSI-Checkliste; DSGVO-Compliance |
-| **Troubleshooting** | 30 min | Häufige Fehler und deren Behebung |
-| **Q&A** | 30 min | Offene Fragen und Erfahrungsaustausch |
+**Reference:** See [AI Transparency — Scoring and Explainability](AI_TRANSPARENCY.md#scoring-and-explainability)
 
 ---
 
-## Lernressourcen
+## Recommendations for Introductory Workshops
 
-### Interne Dokumentation
+### Workshop 1: Fundamentals Workshop (all users, 2 hours)
 
-| Dokument | Relevanz |
+| Block | Duration | Content |
+|---|---|---|
+| **Introduction** | 20 min | What is AI/LLM? How does the Taxonomy Analyzer work? |
+| **Live Demo** | 30 min | Enter a requirement → Scoring → Interpret results |
+| **Hands-On** | 40 min | Participants perform their own analysis; discuss results |
+| **Critical Thinking** | 20 min | Examples of incorrect/inaccurate AI results; how to recognize them? |
+| **Q&A** | 10 min | Open questions |
+
+### Workshop 2: Architect Workshop (ARCHITECT role, 2 hours)
+
+| Block | Duration | Content |
+|---|---|---|
+| **Requirement Design** | 30 min | How do I formulate requirements for optimal AI results? |
+| **Provider Comparison** | 30 min | Analyze the same requirement with different providers |
+| **Accept/Reject Workflow** | 30 min | Systematically evaluate architecture suggestions |
+| **DSL and Versioning** | 20 min | Commit changes, use diff view |
+| **Best Practices** | 10 min | Summary of recommendations |
+
+### Workshop 3: Admin Workshop (ADMIN role, 4 hours)
+
+| Block | Duration | Content |
+|---|---|---|
+| **Provider Configuration** | 60 min | Set up LLM providers; air-gapped operation; rate limits |
+| **Prompt Template Management** | 30 min | Customize templates; prompt injection risks |
+| **Monitoring and Diagnostics** | 30 min | LLM Communication Log; AI Diagnostics endpoint |
+| **Security and Data Protection** | 60 min | Audit logging; BSI checklist; GDPR compliance |
+| **Troubleshooting** | 30 min | Common errors and their resolution |
+| **Q&A** | 30 min | Open questions and experience sharing |
+
+---
+
+## Learning Resources
+
+### Internal Documentation
+
+| Document | Relevance |
 |---|---|
-| [AI Transparency](AI_TRANSPARENCY.md) | KI-Komponenten, Datenflüsse, Limitationen |
-| [AI Providers](AI_PROVIDERS.md) | Provider-Details und Konfiguration |
-| [User Guide](USER_GUIDE.md) | Schritt-für-Schritt-Anleitung |
-| [BSI KI Checklist](BSI_KI_CHECKLIST.md) | BSI-Kriterien für KI-Einsatz |
-| [Data Protection](DATA_PROTECTION.md) | DSGVO-Compliance |
+| [AI Transparency](AI_TRANSPARENCY.md) | AI components, data flows, limitations |
+| [AI Providers](AI_PROVIDERS.md) | Provider details and configuration |
+| [User Guide](USER_GUIDE.md) | Step-by-step instructions |
+| [BSI KI Checklist](BSI_KI_CHECKLIST.md) | BSI criteria for AI deployment |
+| [Data Protection](DATA_PROTECTION.md) | GDPR compliance |
 
-### Externe Ressourcen
+### External Resources
 
-| Ressource | Beschreibung |
+| Resource | Description |
 |---|---|
-| [EU AI Act (Volltext)](https://eur-lex.europa.eu/eli/reg/2024/1689/oj) | Verordnung (EU) 2024/1689 |
-| [BSI — Künstliche Intelligenz](https://www.bsi.bund.de/DE/Themen/Unternehmen-und-Organisationen/Informationen-und-Empfehlungen/Kuenstliche-Intelligenz/kuenstliche-intelligenz_node.html) | BSI-Empfehlungen für KI-Sicherheit |
-| [BfDI — KI und Datenschutz](https://www.bfdi.bund.de/) | Datenschutzrechtliche Bewertung von KI-Systemen |
+| [EU AI Act (Full Text)](https://eur-lex.europa.eu/eli/reg/2024/1689/oj) | Regulation (EU) 2024/1689 |
+| [BSI — Artificial Intelligence](https://www.bsi.bund.de/DE/Themen/Unternehmen-und-Organisationen/Informationen-und-Empfehlungen/Kuenstliche-Intelligenz/kuenstliche-intelligenz_node.html) | BSI recommendations for AI security |
+| [BfDI — AI and Data Protection](https://www.bfdi.bund.de/) | Data protection assessment of AI systems |
 
 ---
 
-## Dokumentationspflichten
+## Documentation Obligations
 
-Die einsetzende Behörde sollte folgende Nachweise führen:
+The deploying authority should maintain the following records:
 
-| Nachweis | Inhalt | Aufbewahrung |
+| Record | Content | Retention |
 |---|---|---|
-| **Schulungsteilnahme** | Liste der geschulten Personen mit Datum und Workshop-Typ | Mindestens 3 Jahre |
-| **Kompetenzbestätigung** | Teilnehmer bestätigen Verständnis der KI-Limitationen und ihrer Verantwortung | Mindestens 3 Jahre |
-| **Wiederholungsschulung** | Jährliche Auffrischung bei wesentlichen Änderungen am System | Fortlaufend |
-| **Neue Mitarbeiter** | Schulung vor erstem Einsatz des Systems | Vor Nutzungsbeginn |
+| **Training Attendance** | List of trained personnel with date and workshop type | At least 3 years |
+| **Competence Confirmation** | Participants confirm understanding of AI limitations and their responsibilities | At least 3 years |
+| **Refresher Training** | Annual refresher upon significant changes to the system | Ongoing |
+| **New Employees** | Training before first use of the system | Before first use |
 
 ---
 
-## Verwandte Dokumentation
+## Related Documentation
 
-- [AI Transparency](AI_TRANSPARENCY.md) — KI-Transparenz und Datenflüsse
-- [BSI KI Checklist](BSI_KI_CHECKLIST.md) — BSI-Kriterienkatalog-Checkliste
-- [Data Protection](DATA_PROTECTION.md) — Datenschutz und DSGVO
-- [Security](SECURITY.md) — Sicherheitsarchitektur
-- [User Guide](USER_GUIDE.md) — Benutzerhandbuch
+- [AI Transparency](AI_TRANSPARENCY.md) — AI transparency and data flows
+- [BSI KI Checklist](BSI_KI_CHECKLIST.md) — BSI criteria catalog checklist
+- [Data Protection](DATA_PROTECTION.md) — Data protection and GDPR
+- [Security](SECURITY.md) — Security architecture
+- [User Guide](USER_GUIDE.md) — User manual
