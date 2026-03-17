@@ -52,10 +52,13 @@ class HelpControllerTest {
 
     // ── Structural-sync tests ────────────────────────────────────────────────
 
+    /** Sentinel default that MessageSource will never return for a real key. */
+    private static final String MISSING_KEY_SENTINEL = "\0MISSING";
+
     /**
      * Every {@code .md} file in {@code docs/en/} must be registered in
      * {@link HelpController#KNOWN_FILENAMES}. Catches "new doc file added but
-     * not registered in HelpController" — the root cause of the 15-vs-31 mismatch.
+     * not registered in HelpController" -- the root cause of the 15-vs-31 mismatch.
      */
     @Test
     void everyEnglishDocFileIsRegistered() throws IOException {
@@ -68,18 +71,18 @@ class HelpControllerTest {
 
     /**
      * Every registered doc must have a matching {@code help.toc.<name>} key in
-     * <strong>both</strong> the English and German message bundles.  Prevents
+     * both the English and German message bundles.  Prevents
      * "doc registered but i18n key forgotten" drift.
      */
     @Test
     void everyRegisteredDocHasI18nKeys() {
         for (String filename : HelpController.KNOWN_FILENAMES) {
             String key = "help.toc." + filename;
-            String en = messageSource.getMessage(key, null, "\0MISSING", Locale.ENGLISH);
-            String de = messageSource.getMessage(key, null, "\0MISSING", Locale.GERMAN);
-            assertNotEquals("\0MISSING", en,
+            String en = messageSource.getMessage(key, null, MISSING_KEY_SENTINEL, Locale.ENGLISH);
+            String de = messageSource.getMessage(key, null, MISSING_KEY_SENTINEL, Locale.GERMAN);
+            assertNotEquals(MISSING_KEY_SENTINEL, en,
                     "Missing English i18n key: " + key);
-            assertNotEquals("\0MISSING", de,
+            assertNotEquals(MISSING_KEY_SENTINEL, de,
                     "Missing German i18n key: " + key);
         }
     }
