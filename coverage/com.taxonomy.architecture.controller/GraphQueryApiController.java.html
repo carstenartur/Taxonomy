@@ -5,20 +5,12 @@ import com.taxonomy.dto.ChangeImpactView;
 import com.taxonomy.dto.EnrichedChangeImpactView;
 import com.taxonomy.dto.GraphNeighborhoodView;
 import com.taxonomy.dto.RequirementImpactView;
-import com.taxonomy.dsl.mapper.AstToModelMapper;
-import com.taxonomy.dsl.model.ArchitectureElement;
-import com.taxonomy.dsl.model.CanonicalArchitectureModel;
-import com.taxonomy.dsl.model.TaxonomyRootTypes;
-import com.taxonomy.dsl.parser.TaxDslParser;
-import com.taxonomy.architecture.model.ArchitectureDslDocument;
-import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
+import com.taxonomy.architecture.service.ApqcHierarchyService;
 import com.taxonomy.architecture.service.ArchitectureGraphQueryService;
 import com.taxonomy.architecture.service.EnrichedImpactService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -42,19 +34,17 @@ import java.util.*;
 @Tag(name = &quot;Graph Queries&quot;)
 public class GraphQueryApiController {
 
-<span class="fc" id="L45">    private static final Logger log = LoggerFactory.getLogger(GraphQueryApiController.class);</span>
-
     private final ArchitectureGraphQueryService graphQueryService;
     private final EnrichedImpactService enrichedImpactService;
-    private final ArchitectureDslDocumentRepository documentRepository;
+    private final ApqcHierarchyService apqcHierarchyService;
 
     public GraphQueryApiController(ArchitectureGraphQueryService graphQueryService,
                                    EnrichedImpactService enrichedImpactService,
-<span class="fc" id="L53">                                   ArchitectureDslDocumentRepository documentRepository) {</span>
-<span class="fc" id="L54">        this.graphQueryService = graphQueryService;</span>
-<span class="fc" id="L55">        this.enrichedImpactService = enrichedImpactService;</span>
-<span class="fc" id="L56">        this.documentRepository = documentRepository;</span>
-<span class="fc" id="L57">    }</span>
+<span class="fc" id="L43">                                   ApqcHierarchyService apqcHierarchyService) {</span>
+<span class="fc" id="L44">        this.graphQueryService = graphQueryService;</span>
+<span class="fc" id="L45">        this.enrichedImpactService = enrichedImpactService;</span>
+<span class="fc" id="L46">        this.apqcHierarchyService = apqcHierarchyService;</span>
+<span class="fc" id="L47">    }</span>
 
     /**
      * Requirement impact: which elements are affected by a business requirement?
@@ -66,26 +56,26 @@ public class GraphQueryApiController {
     @PostMapping(&quot;/impact&quot;)
     public ResponseEntity&lt;RequirementImpactView&gt; findImpact(@RequestBody Map&lt;String, Object&gt; body) {
         @SuppressWarnings(&quot;unchecked&quot;)
-<span class="fc" id="L69">        Map&lt;String, Object&gt; rawScores = (Map&lt;String, Object&gt;) body.get(&quot;scores&quot;);</span>
-<span class="fc" id="L70">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
-<span class="fc bfc" id="L71" title="All 2 branches covered.">        int maxHops = body.containsKey(&quot;maxHops&quot;)</span>
-<span class="fc" id="L72">                ? ((Number) body.get(&quot;maxHops&quot;)).intValue()</span>
-<span class="fc" id="L73">                : 2;</span>
+<span class="fc" id="L59">        Map&lt;String, Object&gt; rawScores = (Map&lt;String, Object&gt;) body.get(&quot;scores&quot;);</span>
+<span class="fc" id="L60">        String businessText = (String) body.get(&quot;businessText&quot;);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        int maxHops = body.containsKey(&quot;maxHops&quot;)</span>
+<span class="fc" id="L62">                ? ((Number) body.get(&quot;maxHops&quot;)).intValue()</span>
+<span class="fc" id="L63">                : 2;</span>
 
-<span class="pc bpc" id="L75" title="1 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
-<span class="fc" id="L76">            return ResponseEntity.badRequest().build();</span>
+<span class="pc bpc" id="L65" title="1 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L66">            return ResponseEntity.badRequest().build();</span>
         }
 
-<span class="fc" id="L79">        Map&lt;String, Integer&gt; scores = new java.util.LinkedHashMap&lt;&gt;();</span>
-<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (rawScores != null) {</span>
-<span class="fc bfc" id="L81" title="All 2 branches covered.">            for (Map.Entry&lt;String, Object&gt; entry : rawScores.entrySet()) {</span>
-<span class="fc" id="L82">                scores.put(entry.getKey(), ((Number) entry.getValue()).intValue());</span>
-<span class="fc" id="L83">            }</span>
+<span class="fc" id="L69">        Map&lt;String, Integer&gt; scores = new java.util.LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if (rawScores != null) {</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            for (Map.Entry&lt;String, Object&gt; entry : rawScores.entrySet()) {</span>
+<span class="fc" id="L72">                scores.put(entry.getKey(), ((Number) entry.getValue()).intValue());</span>
+<span class="fc" id="L73">            }</span>
         }
 
-<span class="fc" id="L86">        RequirementImpactView view = graphQueryService.findImpactForRequirement(</span>
+<span class="fc" id="L76">        RequirementImpactView view = graphQueryService.findImpactForRequirement(</span>
                 scores, businessText, maxHops);
-<span class="fc" id="L88">        return ResponseEntity.ok(view);</span>
+<span class="fc" id="L78">        return ResponseEntity.ok(view);</span>
     }
 
     /**
@@ -96,8 +86,8 @@ public class GraphQueryApiController {
     public ResponseEntity&lt;GraphNeighborhoodView&gt; findUpstream(
             @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code,
             @Parameter(description = &quot;Maximum traversal hops&quot;) @RequestParam(defaultValue = &quot;2&quot;) int maxHops) {
-<span class="fc" id="L99">        GraphNeighborhoodView view = graphQueryService.findUpstream(code, maxHops);</span>
-<span class="fc" id="L100">        return ResponseEntity.ok(view);</span>
+<span class="fc" id="L89">        GraphNeighborhoodView view = graphQueryService.findUpstream(code, maxHops);</span>
+<span class="fc" id="L90">        return ResponseEntity.ok(view);</span>
     }
 
     /**
@@ -108,8 +98,8 @@ public class GraphQueryApiController {
     public ResponseEntity&lt;GraphNeighborhoodView&gt; findDownstream(
             @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code,
             @Parameter(description = &quot;Maximum traversal hops&quot;) @RequestParam(defaultValue = &quot;2&quot;) int maxHops) {
-<span class="fc" id="L111">        GraphNeighborhoodView view = graphQueryService.findDownstream(code, maxHops);</span>
-<span class="fc" id="L112">        return ResponseEntity.ok(view);</span>
+<span class="fc" id="L101">        GraphNeighborhoodView view = graphQueryService.findDownstream(code, maxHops);</span>
+<span class="fc" id="L102">        return ResponseEntity.ok(view);</span>
     }
 
     /**
@@ -120,8 +110,8 @@ public class GraphQueryApiController {
     public ResponseEntity&lt;ChangeImpactView&gt; findFailureImpact(
             @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code,
             @Parameter(description = &quot;Maximum traversal hops&quot;) @RequestParam(defaultValue = &quot;3&quot;) int maxHops) {
-<span class="fc" id="L123">        ChangeImpactView view = graphQueryService.findFailureImpact(code, maxHops);</span>
-<span class="fc" id="L124">        return ResponseEntity.ok(view);</span>
+<span class="fc" id="L113">        ChangeImpactView view = graphQueryService.findFailureImpact(code, maxHops);</span>
+<span class="fc" id="L114">        return ResponseEntity.ok(view);</span>
     }
 
     /**
@@ -133,8 +123,8 @@ public class GraphQueryApiController {
     public ResponseEntity&lt;EnrichedChangeImpactView&gt; findEnrichedFailureImpact(
             @Parameter(description = &quot;Taxonomy node code&quot;) @PathVariable String code,
             @Parameter(description = &quot;Maximum traversal hops&quot;) @RequestParam(defaultValue = &quot;3&quot;) int maxHops) {
-<span class="fc" id="L136">        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(code, maxHops);</span>
-<span class="fc" id="L137">        return ResponseEntity.ok(view);</span>
+<span class="fc" id="L126">        EnrichedChangeImpactView view = enrichedImpactService.findEnrichedFailureImpact(code, maxHops);</span>
+<span class="fc" id="L127">        return ResponseEntity.ok(view);</span>
     }
 
     /**
@@ -148,50 +138,7 @@ public class GraphQueryApiController {
                description = &quot;Returns APQC process elements from imported DSL documents as a hierarchy tree&quot;)
     @GetMapping(&quot;/apqc-hierarchy&quot;)
     public ResponseEntity&lt;List&lt;ApqcHierarchyNode&gt;&gt; apqcHierarchy() {
-<span class="fc" id="L151">        TaxDslParser parser = new TaxDslParser();</span>
-<span class="fc" id="L152">        AstToModelMapper mapper = new AstToModelMapper();</span>
-<span class="fc" id="L153">        List&lt;ArchitectureElement&gt; apqcElements = new ArrayList&lt;&gt;();</span>
-
-<span class="pc bpc" id="L155" title="1 of 2 branches missed.">        for (ArchitectureDslDocument doc : documentRepository.findAll()) {</span>
-<span class="nc bnc" id="L156" title="All 4 branches missed.">            if (doc.getRawContent() == null || doc.getRawContent().isBlank()) continue;</span>
-            try {
-<span class="nc" id="L158">                var ast = parser.parse(doc.getRawContent(), doc.getPath());</span>
-<span class="nc" id="L159">                CanonicalArchitectureModel model = mapper.map(ast);</span>
-<span class="nc bnc" id="L160" title="All 2 branches missed.">                for (ArchitectureElement el : model.getElements()) {</span>
-<span class="nc bnc" id="L161" title="All 2 branches missed.">                    if (&quot;apqc&quot;.equals(el.getExtensions().get(&quot;x-source-framework&quot;))) {</span>
-<span class="nc" id="L162">                        apqcElements.add(el);</span>
-                    }
-<span class="nc" id="L164">                }</span>
-<span class="nc" id="L165">            } catch (Exception e) {</span>
-<span class="nc" id="L166">                log.debug(&quot;Skipping unparseable DSL document '{}': {}&quot;, doc.getPath(), e.getMessage());</span>
-<span class="nc" id="L167">            }</span>
-<span class="nc" id="L168">        }</span>
-
-        // Build lookup map and tree
-<span class="fc" id="L171">        Map&lt;String, ApqcHierarchyNode&gt; nodeMap = new LinkedHashMap&lt;&gt;();</span>
-<span class="pc bpc" id="L172" title="1 of 2 branches missed.">        for (ArchitectureElement el : apqcElements) {</span>
-<span class="nc" id="L173">            Map&lt;String, String&gt; ext = el.getExtensions();</span>
-<span class="nc" id="L174">            String level = ext.getOrDefault(&quot;x-apqc-level&quot;, &quot;Unknown&quot;);</span>
-<span class="nc" id="L175">            String pcfId = ext.getOrDefault(&quot;x-apqc-pcf-id&quot;, &quot;&quot;);</span>
-<span class="nc" id="L176">            String parentId = ext.get(&quot;x-apqc-parent&quot;);</span>
-<span class="nc" id="L177">            String taxonomyRoot = TaxonomyRootTypes.rootFor(el.getType());</span>
-<span class="nc" id="L178">            nodeMap.put(el.getId(), new ApqcHierarchyNode(</span>
-<span class="nc" id="L179">                    el.getId(), el.getTitle(), level, pcfId, parentId,</span>
-<span class="nc bnc" id="L180" title="All 2 branches missed.">                    taxonomyRoot != null ? taxonomyRoot : &quot;&quot;,</span>
-                    new ArrayList&lt;&gt;()));
-<span class="nc" id="L182">        }</span>
-
-        // Link children to parents
-<span class="fc" id="L185">        List&lt;ApqcHierarchyNode&gt; roots = new ArrayList&lt;&gt;();</span>
-<span class="pc bpc" id="L186" title="1 of 2 branches missed.">        for (ApqcHierarchyNode node : nodeMap.values()) {</span>
-<span class="nc bnc" id="L187" title="All 4 branches missed.">            if (node.parentId() != null &amp;&amp; nodeMap.containsKey(node.parentId())) {</span>
-<span class="nc" id="L188">                nodeMap.get(node.parentId()).children().add(node);</span>
-            } else {
-<span class="nc" id="L190">                roots.add(node);</span>
-            }
-<span class="nc" id="L192">        }</span>
-
-<span class="fc" id="L194">        return ResponseEntity.ok(roots);</span>
+<span class="fc" id="L141">        return ResponseEntity.ok(apqcHierarchyService.buildHierarchy());</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

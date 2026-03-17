@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ApqcHierarchyService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">ApqcHierarchyService.java</span></div><h1>ApqcHierarchyService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.dto.ApqcHierarchyNode;
+import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.architecture.model.ArchitectureDslDocument;
+import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+
+/**
+ * Service that extracts the APQC process hierarchy from imported DSL documents.
+ *
+ * &lt;p&gt;Scans all stored DSL documents for elements with the
+ * {@code x-source-framework: &quot;apqc&quot;} extension and reconstructs the
+ * parent–child hierarchy using {@code x-apqc-parent} chains.
+ */
+@Service
+public class ApqcHierarchyService {
+
+<span class="fc" id="L27">    private static final Logger log = LoggerFactory.getLogger(ApqcHierarchyService.class);</span>
+
+    private final ArchitectureDslDocumentRepository documentRepository;
+
+<span class="fc" id="L31">    public ApqcHierarchyService(ArchitectureDslDocumentRepository documentRepository) {</span>
+<span class="fc" id="L32">        this.documentRepository = documentRepository;</span>
+<span class="fc" id="L33">    }</span>
+
+    /**
+     * Build the APQC process hierarchy from all stored DSL documents.
+     *
+     * @return list of root APQC hierarchy nodes with children linked
+     */
+    public List&lt;ApqcHierarchyNode&gt; buildHierarchy() {
+<span class="fc" id="L41">        TaxDslParser parser = new TaxDslParser();</span>
+<span class="fc" id="L42">        AstToModelMapper mapper = new AstToModelMapper();</span>
+<span class="fc" id="L43">        List&lt;ArchitectureElement&gt; apqcElements = new ArrayList&lt;&gt;();</span>
+
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">        for (ArchitectureDslDocument doc : documentRepository.findAll()) {</span>
+<span class="nc bnc" id="L46" title="All 4 branches missed.">            if (doc.getRawContent() == null || doc.getRawContent().isBlank()) continue;</span>
+            try {
+<span class="nc" id="L48">                var ast = parser.parse(doc.getRawContent(), doc.getPath());</span>
+<span class="nc" id="L49">                CanonicalArchitectureModel model = mapper.map(ast);</span>
+<span class="nc bnc" id="L50" title="All 2 branches missed.">                for (ArchitectureElement el : model.getElements()) {</span>
+<span class="nc bnc" id="L51" title="All 2 branches missed.">                    if (&quot;apqc&quot;.equals(el.getExtensions().get(&quot;x-source-framework&quot;))) {</span>
+<span class="nc" id="L52">                        apqcElements.add(el);</span>
+                    }
+<span class="nc" id="L54">                }</span>
+<span class="nc" id="L55">            } catch (Exception e) {</span>
+<span class="nc" id="L56">                log.debug(&quot;Skipping unparseable DSL document '{}': {}&quot;, doc.getPath(), e.getMessage());</span>
+<span class="nc" id="L57">            }</span>
+<span class="nc" id="L58">        }</span>
+
+        // Build lookup map and tree
+<span class="fc" id="L61">        Map&lt;String, ApqcHierarchyNode&gt; nodeMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">        for (ArchitectureElement el : apqcElements) {</span>
+<span class="nc" id="L63">            Map&lt;String, String&gt; ext = el.getExtensions();</span>
+<span class="nc" id="L64">            String level = ext.getOrDefault(&quot;x-apqc-level&quot;, &quot;Unknown&quot;);</span>
+<span class="nc" id="L65">            String pcfId = ext.getOrDefault(&quot;x-apqc-pcf-id&quot;, &quot;&quot;);</span>
+<span class="nc" id="L66">            String parentId = ext.get(&quot;x-apqc-parent&quot;);</span>
+<span class="nc" id="L67">            String taxonomyRoot = TaxonomyRootTypes.rootFor(el.getType());</span>
+<span class="nc" id="L68">            nodeMap.put(el.getId(), new ApqcHierarchyNode(</span>
+<span class="nc" id="L69">                    el.getId(), el.getTitle(), level, pcfId, parentId,</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">                    taxonomyRoot != null ? taxonomyRoot : &quot;&quot;,</span>
+                    new ArrayList&lt;&gt;()));
+<span class="nc" id="L72">        }</span>
+
+        // Link children to parents
+<span class="fc" id="L75">        List&lt;ApqcHierarchyNode&gt; roots = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        for (ApqcHierarchyNode node : nodeMap.values()) {</span>
+<span class="nc bnc" id="L77" title="All 4 branches missed.">            if (node.parentId() != null &amp;&amp; nodeMap.containsKey(node.parentId())) {</span>
+<span class="nc" id="L78">                nodeMap.get(node.parentId()).children().add(node);</span>
+            } else {
+<span class="nc" id="L80">                roots.add(node);</span>
+            }
+<span class="nc" id="L82">        }</span>
+
+<span class="fc" id="L84">        return roots;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

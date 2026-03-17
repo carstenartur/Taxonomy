@@ -3,7 +3,7 @@
 import com.taxonomy.dto.ArchitectureSummary;
 import com.taxonomy.dto.NodeGraphMetadata;
 import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.architecture.service.ArchitectureSummaryService;
 import com.taxonomy.architecture.service.DerivedMetadataService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,14 +31,14 @@ public class ArchitectureSummaryApiController {
 
     private final ArchitectureSummaryService summaryService;
     private final DerivedMetadataService metadataService;
-    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyService taxonomyService;
 
     public ArchitectureSummaryApiController(ArchitectureSummaryService summaryService,
                                             DerivedMetadataService metadataService,
-<span class="fc" id="L38">                                            TaxonomyNodeRepository nodeRepository) {</span>
+<span class="fc" id="L38">                                            TaxonomyService taxonomyService) {</span>
 <span class="fc" id="L39">        this.summaryService = summaryService;</span>
 <span class="fc" id="L40">        this.metadataService = metadataService;</span>
-<span class="fc" id="L41">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L41">        this.taxonomyService = taxonomyService;</span>
 <span class="fc" id="L42">    }</span>
 
     @GetMapping(&quot;/summary&quot;)
@@ -65,23 +65,20 @@ public class ArchitectureSummaryApiController {
             description = &quot;Returns relation counts, requirement coverage count, and graph role &quot; +
                     &quot;for the given node code.&quot;)
     public ResponseEntity&lt;?&gt; getNodeMetadata(@PathVariable String nodeCode) {
-<span class="fc" id="L68">        return nodeRepository.findByCode(nodeCode)</span>
-<span class="fc" id="L69">                .map(node -&gt; {</span>
-<span class="fc" id="L70">                    NodeGraphMetadata metadata = new NodeGraphMetadata(</span>
-<span class="fc" id="L71">                            node.getCode(),</span>
-<span class="fc" id="L72">                            node.getIncomingRelationCount(),</span>
-<span class="fc" id="L73">                            node.getOutgoingRelationCount(),</span>
-<span class="fc" id="L74">                            node.getTotalRelationCount(),</span>
-<span class="fc" id="L75">                            node.getRequirementCoverageCount(),</span>
-<span class="fc" id="L76">                            node.getGraphRole()</span>
-                    );
-<span class="fc" id="L78">                    return ResponseEntity.ok((Object) metadata);</span>
-                })
-<span class="fc" id="L80">                .orElseGet(() -&gt; {</span>
-<span class="fc" id="L81">                    Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L82">                    error.put(&quot;error&quot;, &quot;Node not found: &quot; + nodeCode);</span>
-<span class="fc" id="L83">                    return ResponseEntity.notFound().build();</span>
-                });
+<span class="fc" id="L68">        TaxonomyNode node = taxonomyService.getNodeByCode(nodeCode);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (node != null) {</span>
+<span class="fc" id="L70">            NodeGraphMetadata metadata = new NodeGraphMetadata(</span>
+<span class="fc" id="L71">                    node.getCode(),</span>
+<span class="fc" id="L72">                    node.getIncomingRelationCount(),</span>
+<span class="fc" id="L73">                    node.getOutgoingRelationCount(),</span>
+<span class="fc" id="L74">                    node.getTotalRelationCount(),</span>
+<span class="fc" id="L75">                    node.getRequirementCoverageCount(),</span>
+<span class="fc" id="L76">                    node.getGraphRole()</span>
+            );
+<span class="fc" id="L78">            return ResponseEntity.ok(metadata);</span>
+        } else {
+<span class="fc" id="L80">            return ResponseEntity.notFound().build();</span>
+        }
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
