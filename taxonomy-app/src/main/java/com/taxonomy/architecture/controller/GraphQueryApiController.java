@@ -5,20 +5,12 @@ import com.taxonomy.dto.ChangeImpactView;
 import com.taxonomy.dto.EnrichedChangeImpactView;
 import com.taxonomy.dto.GraphNeighborhoodView;
 import com.taxonomy.dto.RequirementImpactView;
-import com.taxonomy.dsl.mapper.AstToModelMapper;
-import com.taxonomy.dsl.model.ArchitectureElement;
-import com.taxonomy.dsl.model.CanonicalArchitectureModel;
-import com.taxonomy.dsl.model.TaxonomyRootTypes;
-import com.taxonomy.dsl.parser.TaxDslParser;
-import com.taxonomy.architecture.model.ArchitectureDslDocument;
-import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
+import com.taxonomy.architecture.service.ApqcHierarchyService;
 import com.taxonomy.architecture.service.ArchitectureGraphQueryService;
 import com.taxonomy.architecture.service.EnrichedImpactService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -42,18 +34,16 @@ import java.util.*;
 @Tag(name = "Graph Queries")
 public class GraphQueryApiController {
 
-    private static final Logger log = LoggerFactory.getLogger(GraphQueryApiController.class);
-
     private final ArchitectureGraphQueryService graphQueryService;
     private final EnrichedImpactService enrichedImpactService;
-    private final ArchitectureDslDocumentRepository documentRepository;
+    private final ApqcHierarchyService apqcHierarchyService;
 
     public GraphQueryApiController(ArchitectureGraphQueryService graphQueryService,
                                    EnrichedImpactService enrichedImpactService,
-                                   ArchitectureDslDocumentRepository documentRepository) {
+                                   ApqcHierarchyService apqcHierarchyService) {
         this.graphQueryService = graphQueryService;
         this.enrichedImpactService = enrichedImpactService;
-        this.documentRepository = documentRepository;
+        this.apqcHierarchyService = apqcHierarchyService;
     }
 
     /**
@@ -148,49 +138,6 @@ public class GraphQueryApiController {
                description = "Returns APQC process elements from imported DSL documents as a hierarchy tree")
     @GetMapping("/apqc-hierarchy")
     public ResponseEntity<List<ApqcHierarchyNode>> apqcHierarchy() {
-        TaxDslParser parser = new TaxDslParser();
-        AstToModelMapper mapper = new AstToModelMapper();
-        List<ArchitectureElement> apqcElements = new ArrayList<>();
-
-        for (ArchitectureDslDocument doc : documentRepository.findAll()) {
-            if (doc.getRawContent() == null || doc.getRawContent().isBlank()) continue;
-            try {
-                var ast = parser.parse(doc.getRawContent(), doc.getPath());
-                CanonicalArchitectureModel model = mapper.map(ast);
-                for (ArchitectureElement el : model.getElements()) {
-                    if ("apqc".equals(el.getExtensions().get("x-source-framework"))) {
-                        apqcElements.add(el);
-                    }
-                }
-            } catch (Exception e) {
-                log.debug("Skipping unparseable DSL document '{}': {}", doc.getPath(), e.getMessage());
-            }
-        }
-
-        // Build lookup map and tree
-        Map<String, ApqcHierarchyNode> nodeMap = new LinkedHashMap<>();
-        for (ArchitectureElement el : apqcElements) {
-            Map<String, String> ext = el.getExtensions();
-            String level = ext.getOrDefault("x-apqc-level", "Unknown");
-            String pcfId = ext.getOrDefault("x-apqc-pcf-id", "");
-            String parentId = ext.get("x-apqc-parent");
-            String taxonomyRoot = TaxonomyRootTypes.rootFor(el.getType());
-            nodeMap.put(el.getId(), new ApqcHierarchyNode(
-                    el.getId(), el.getTitle(), level, pcfId, parentId,
-                    taxonomyRoot != null ? taxonomyRoot : "",
-                    new ArrayList<>()));
-        }
-
-        // Link children to parents
-        List<ApqcHierarchyNode> roots = new ArrayList<>();
-        for (ApqcHierarchyNode node : nodeMap.values()) {
-            if (node.parentId() != null && nodeMap.containsKey(node.parentId())) {
-                nodeMap.get(node.parentId()).children().add(node);
-            } else {
-                roots.add(node);
-            }
-        }
-
-        return ResponseEntity.ok(roots);
+        return ResponseEntity.ok(apqcHierarchyService.buildHierarchy());
     }
 }

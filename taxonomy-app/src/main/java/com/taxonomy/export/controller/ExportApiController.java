@@ -1,20 +1,7 @@
 package com.taxonomy.export.controller;
 
-import com.taxonomy.diagram.DiagramModel;
-import com.taxonomy.dto.AnalysisResult;
-import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.SavedAnalysis;
-import com.taxonomy.analysis.service.LlmService;
-import com.taxonomy.analysis.service.SavedAnalysisService;
-import com.taxonomy.architecture.service.RequirementArchitectureViewService;
-import com.taxonomy.export.DiagramProjectionService;
-import com.taxonomy.export.VisioDiagramService;
-import com.taxonomy.export.VisioPackageBuilder;
-import com.taxonomy.export.ArchiMateDiagramService;
-import com.taxonomy.export.ArchiMateXmlExporter;
-import com.taxonomy.export.MermaidExportService;
-import com.taxonomy.archimate.ArchiMateModel;
-import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.export.service.ExportFacade;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -32,53 +19,10 @@ import java.util.Map;
 @Tag(name = "Export")
 public class ExportApiController {
 
-    private final LlmService llmService;
-    private final RequirementArchitectureViewService architectureViewService;
-    private final DiagramProjectionService diagramProjectionService;
-    private final VisioDiagramService visioDiagramService;
-    private final VisioPackageBuilder visioPackageBuilder;
-    private final ArchiMateDiagramService archiMateDiagramService;
-    private final ArchiMateXmlExporter archiMateXmlExporter;
-    private final MermaidExportService mermaidExportService;
-    private final SavedAnalysisService savedAnalysisService;
+    private final ExportFacade exportFacade;
 
-    public ExportApiController(LlmService llmService,
-                                RequirementArchitectureViewService architectureViewService,
-                                DiagramProjectionService diagramProjectionService,
-                                VisioDiagramService visioDiagramService,
-                                VisioPackageBuilder visioPackageBuilder,
-                                ArchiMateDiagramService archiMateDiagramService,
-                                ArchiMateXmlExporter archiMateXmlExporter,
-                                MermaidExportService mermaidExportService,
-                                SavedAnalysisService savedAnalysisService) {
-        this.llmService = llmService;
-        this.architectureViewService = architectureViewService;
-        this.diagramProjectionService = diagramProjectionService;
-        this.visioDiagramService = visioDiagramService;
-        this.visioPackageBuilder = visioPackageBuilder;
-        this.archiMateDiagramService = archiMateDiagramService;
-        this.archiMateXmlExporter = archiMateXmlExporter;
-        this.mermaidExportService = mermaidExportService;
-        this.savedAnalysisService = savedAnalysisService;
-    }
-
-    // ── Diagram Export Helper ─────────────────────────────────────────────────
-
-    /**
-     * Shared analysis-and-projection pipeline used by all three diagram export
-     * endpoints.  Analyzes the business text, builds an architecture view, and
-     * projects it into a format-neutral {@link DiagramModel}.
-     */
-    private DiagramModel analyzeAndProject(String businessText) {
-        AnalysisResult result = llmService.analyzeWithBudget(businessText);
-
-        RequirementArchitectureView view = architectureViewService.build(
-                result.getScores(), businessText, 20);
-
-        String title = businessText.length() > 60
-                ? businessText.substring(0, 57) + "..."
-                : businessText;
-        return diagramProjectionService.project(view, title);
+    public ExportApiController(ExportFacade exportFacade) {
+        this.exportFacade = exportFacade;
     }
 
     // ── Visio Diagram Export ──────────────────────────────────────────────────
@@ -94,10 +38,7 @@ public class ExportApiController {
         }
 
         try {
-            DiagramModel diagram = analyzeAndProject(businessText);
-
-            VisioDocument visioDoc = visioDiagramService.convert(diagram);
-            byte[] vsdx = visioPackageBuilder.build(visioDoc);
+            byte[] vsdx = exportFacade.exportAsVisio(businessText);
 
             HttpHeaders headers = new HttpHeaders();
             headers.set(HttpHeaders.CONTENT_DISPOSITION,
@@ -122,10 +63,7 @@ public class ExportApiController {
             return ResponseEntity.badRequest().build();
         }
 
-        DiagramModel diagram = analyzeAndProject(businessText);
-
-        ArchiMateModel archiMateModel = archiMateDiagramService.convert(diagram);
-        byte[] xml = archiMateXmlExporter.export(archiMateModel);
+        byte[] xml = exportFacade.exportAsArchiMate(businessText);
 
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.CONTENT_DISPOSITION,
@@ -147,9 +85,7 @@ public class ExportApiController {
             return ResponseEntity.badRequest().build();
         }
 
-        DiagramModel diagram = analyzeAndProject(businessText);
-
-        String mermaid = mermaidExportService.export(diagram);
+        String mermaid = exportFacade.exportAsMermaid(businessText);
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8")
@@ -184,9 +120,9 @@ public class ExportApiController {
         @SuppressWarnings("unchecked")
         Map<String, String> reasons = body.get("reasons") instanceof Map<?, ?>
                 ? (Map<String, String>) body.get("reasons") : Map.of();
-        String provider = body.get("provider") instanceof String p ? p : llmService.getActiveProviderName();
+        String provider = body.get("provider") instanceof String p ? p : exportFacade.getActiveProviderName();
 
-        SavedAnalysis saved = savedAnalysisService.buildExport(requirement, scores, reasons, provider);
+        SavedAnalysis saved = exportFacade.buildExport(requirement, scores, reasons, provider);
         return ResponseEntity.ok(saved);
     }
 
@@ -198,8 +134,8 @@ public class ExportApiController {
     @PostMapping("/scores/import")
     public ResponseEntity<Map<String, Object>> importScores(@RequestBody String jsonBody) {
         try {
-            SavedAnalysis saved = savedAnalysisService.importFromJson(jsonBody);
-            List<String> warnings = savedAnalysisService.findUnknownCodes(saved)
+            SavedAnalysis saved = exportFacade.importFromJson(jsonBody);
+            List<String> warnings = exportFacade.findUnknownCodes(saved)
                     .stream()
                     .map(code -> "Unknown node code: " + code)
                     .toList();
