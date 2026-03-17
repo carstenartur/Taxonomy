@@ -2,6 +2,8 @@ package com.taxonomy.catalog.controller;
 
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.service.TaxonomyService;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,9 +32,11 @@ import java.util.Map;
 public class ApiController {
 
     private final TaxonomyService taxonomyService;
+    private final MessageSource messageSource;
 
-    public ApiController(TaxonomyService taxonomyService) {
+    public ApiController(TaxonomyService taxonomyService, MessageSource messageSource) {
         this.taxonomyService = taxonomyService;
+        this.messageSource = messageSource;
     }
 
     @Operation(summary = "Get full taxonomy tree", description = "Returns the complete taxonomy hierarchy as a nested tree of nodes", tags = {"Taxonomy"})
@@ -48,7 +52,8 @@ public class ApiController {
     private <T> ResponseEntity<T> checkInitialized() {
         if (!taxonomyService.isInitialized()) {
             Map<String, Object> body = new LinkedHashMap<>();
-            body.put("error", "Taxonomy data is still loading. Please wait.");
+            body.put("error", messageSource.getMessage("error.loading", null,
+                    "Taxonomy data is still loading. Please wait.", LocaleContextHolder.getLocale()));
             body.put("status", taxonomyService.getInitStatus());
             return (ResponseEntity<T>) ResponseEntity.status(503).body(body);
         }

@@ -62,7 +62,7 @@ class HelpControllerTest {
     void tocContainsTwelveEntries() throws Exception {
         mockMvc.perform(get("/help").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(HelpController.DOCS.size()));
+                .andExpect(jsonPath("$.length()").value(HelpController.KNOWN_FILENAMES.size()));
     }
 
     @Test

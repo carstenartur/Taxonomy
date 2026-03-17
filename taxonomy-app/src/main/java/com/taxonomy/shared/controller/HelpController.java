@@ -9,6 +9,8 @@ import com.vladsch.flexmark.util.ast.Node;
 import com.vladsch.flexmark.util.data.MutableDataSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -24,11 +26,19 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Serves the in-app Help tab: table of contents, rendered Markdown documents,
  * and documentation images.
+ *
+ * <p>Supports locale-aware document resolution:
+ * <ol>
+ *   <li>Try {@code docs/{lang}/{docName}.md}</li>
+ *   <li>Try {@code docs/en/{docName}.md}</li>
+ *   <li>Fall back to {@code docs/{docName}.md} (legacy path)</li>
+ * </ol>
  */
 @Controller
 @RequestMapping("/help")
@@ -44,29 +54,38 @@ public class HelpController {
 
     record DocEntry(String filename, String title, String icon, String audience) {}
 
-    static final List<DocEntry> DOCS = List.of(
-        new DocEntry("USER_GUIDE",               "User Guide",               "📖", "Everyone"),
-        new DocEntry("CONCEPTS",                  "Concepts",                 "💡", "Everyone"),
-        new DocEntry("EXAMPLES",                  "Examples",                 "📝", "Everyone"),
-        new DocEntry("FRAMEWORK_IMPORT",          "Framework Import",         "📥", "Everyone"),
-        new DocEntry("GIT_INTEGRATION",           "Git Integration",          "🔀", "Developers"),
-        new DocEntry("PREFERENCES",               "Preferences",              "🎛️", "Admins"),
-        new DocEntry("AI_PROVIDERS",              "AI Providers",             "🤖", "Everyone"),
-        new DocEntry("CONFIGURATION_REFERENCE",   "Configuration Reference",  "⚙️", "Admins"),
-        new DocEntry("API_REFERENCE",             "API Reference",            "🔌", "Integrators"),
-        new DocEntry("CURL_EXAMPLES",             "cURL Examples",            "💻", "Integrators"),
-        new DocEntry("ARCHITECTURE",              "Architecture",             "🏗️", "Developers"),
-        new DocEntry("DEVELOPER_GUIDE",           "Developer Guide",          "🛠️", "Developers"),
-        new DocEntry("DEPLOYMENT_GUIDE",          "Deployment Guide",         "🚀", "DevOps"),
-        new DocEntry("SECURITY",                  "Security",                 "🔒", "Admins"),
-        new DocEntry("DATABASE_SETUP",            "Database Setup",           "🗄️", "DevOps")
+    /** Known documentation files with their default (English) metadata. */
+    private static final List<String[]> DOC_METADATA = List.of(
+        new String[]{"USER_GUIDE",               "📖", "help.toc.USER_GUIDE",             "help.audience.everyone"},
+        new String[]{"CONCEPTS",                  "💡", "help.toc.CONCEPTS",               "help.audience.everyone"},
+        new String[]{"EXAMPLES",                  "📝", "help.toc.EXAMPLES",               "help.audience.everyone"},
+        new String[]{"FRAMEWORK_IMPORT",          "📥", "help.toc.FRAMEWORK_IMPORT",       "help.audience.everyone"},
+        new String[]{"GIT_INTEGRATION",           "🔀", "help.toc.GIT_INTEGRATION",        "help.audience.developers"},
+        new String[]{"PREFERENCES",               "🎛️", "help.toc.PREFERENCES",            "help.audience.admins"},
+        new String[]{"AI_PROVIDERS",              "🤖", "help.toc.AI_PROVIDERS",           "help.audience.everyone"},
+        new String[]{"CONFIGURATION_REFERENCE",   "⚙️", "help.toc.CONFIGURATION_REFERENCE","help.audience.admins"},
+        new String[]{"API_REFERENCE",             "🔌", "help.toc.API_REFERENCE",          "help.audience.integrators"},
+        new String[]{"CURL_EXAMPLES",             "💻", "help.toc.CURL_EXAMPLES",          "help.audience.integrators"},
+        new String[]{"ARCHITECTURE",              "🏗️", "help.toc.ARCHITECTURE",           "help.audience.developers"},
+        new String[]{"DEVELOPER_GUIDE",           "🛠️", "help.toc.DEVELOPER_GUIDE",        "help.audience.developers"},
+        new String[]{"DEPLOYMENT_GUIDE",          "🚀", "help.toc.DEPLOYMENT_GUIDE",       "help.audience.devops"},
+        new String[]{"SECURITY",                  "🔒", "help.toc.SECURITY",               "help.audience.admins"},
+        new String[]{"DATABASE_SETUP",            "🗄️", "help.toc.DATABASE_SETUP",         "help.audience.devops"}
     );
+
+    /** Set of known doc filenames for validation. */
+    static final List<String> KNOWN_FILENAMES = DOC_METADATA.stream()
+            .map(m -> m[0])
+            .toList();
 
     private final Parser parser;
     private final HtmlRenderer renderer;
+    private final MessageSource messageSource;
+    /** Cache key format: "locale:docName", e.g. "de:USER_GUIDE". */
     private final ConcurrentHashMap<String, String> htmlCache = new ConcurrentHashMap<>();
 
-    public HelpController() {
+    public HelpController(MessageSource messageSource) {
+        this.messageSource = messageSource;
         MutableDataSet options = new MutableDataSet();
         options.set(Parser.EXTENSIONS, Arrays.asList(
             TablesExtension.create(),
@@ -77,14 +96,21 @@ public class HelpController {
         this.renderer = HtmlRenderer.builder(options).build();
     }
 
-    /** Returns the ordered table of contents as JSON. */
+    /** Returns the ordered table of contents as JSON, with locale-resolved titles. */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public List<DocEntry> getToc() {
-        return DOCS;
+        Locale locale = LocaleContextHolder.getLocale();
+        return DOC_METADATA.stream()
+                .map(m -> new DocEntry(
+                        m[0],
+                        messageSource.getMessage(m[2], null, m[0], locale),
+                        m[1],
+                        messageSource.getMessage(m[3], null, "Everyone", locale)))
+                .toList();
     }
 
-    /** Renders a Markdown document to HTML. */
+    /** Renders a Markdown document to HTML, with locale-aware resolution. */
     @GetMapping(value = "/{docName}", produces = MediaType.TEXT_HTML_VALUE)
     @ResponseBody
     public ResponseEntity<String> getDoc(@PathVariable String docName) {
@@ -92,11 +118,13 @@ public class HelpController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid document name");
         }
         // Only allow documents that exist in the known list
-        boolean knownDoc = DOCS.stream().anyMatch(d -> d.filename().equals(docName));
+        boolean knownDoc = KNOWN_FILENAMES.contains(docName);
         if (!knownDoc) {
             return ResponseEntity.notFound().build();
         }
-        String html = htmlCache.computeIfAbsent(docName, this::renderDoc);
+        Locale locale = LocaleContextHolder.getLocale();
+        String cacheKey = locale.getLanguage() + ":" + docName;
+        String html = htmlCache.computeIfAbsent(cacheKey, k -> renderDoc(docName, locale));
         if (html == null) {
             return ResponseEntity.notFound().build();
         }
@@ -128,12 +156,33 @@ public class HelpController {
 
     // ── private helpers ───────────────────────────────────────────────────────
 
-    private String renderDoc(String docName) {
-        String path = "docs/" + docName + ".md";
-        ClassPathResource resource = new ClassPathResource(path);
-        if (!resource.exists()) {
-            return null;
+    /**
+     * Resolves a document by locale, falling back through:
+     * docs/{lang}/{docName}.md → docs/en/{docName}.md → docs/{docName}.md
+     */
+    private String renderDoc(String docName, Locale locale) {
+        // 1. Try locale-specific path
+        String localePath = "docs/" + locale.getLanguage() + "/" + docName + ".md";
+        ClassPathResource localeResource = new ClassPathResource(localePath);
+        if (localeResource.exists()) {
+            return parseResource(localeResource, docName);
         }
+        // 2. Fallback to English
+        String enPath = "docs/en/" + docName + ".md";
+        ClassPathResource enResource = new ClassPathResource(enPath);
+        if (enResource.exists()) {
+            return parseResource(enResource, docName);
+        }
+        // 3. Legacy fallback (docs/{docName}.md)
+        String legacyPath = "docs/" + docName + ".md";
+        ClassPathResource legacyResource = new ClassPathResource(legacyPath);
+        if (legacyResource.exists()) {
+            return parseResource(legacyResource, docName);
+        }
+        return null;
+    }
+
+    private String parseResource(ClassPathResource resource, String docName) {
         try (InputStream in = resource.getInputStream()) {
             String markdown = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             // Rewrite relative image paths to absolute /help/images/... URLs
