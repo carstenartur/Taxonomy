@@ -1,0 +1,333 @@
+# Taxonomy Architecture Analyzer — Entwicklerhandbuch
+
+Dieses Handbuch richtet sich an Entwicklerinnen und Entwickler, die zum Taxonomy Architecture Analyzer beitragen.
+
+---
+
+## Inhaltsverzeichnis
+
+- [Schnellstart](#schnellstart)
+- [Modularchitektur](#modularchitektur)
+- [Modulverantwortlichkeiten](#modulverantwortlichkeiten)
+- [Wo Änderungen vorzunehmen sind](#wo-änderungen-vorzunehmen-sind)
+- [Tests ausführen](#tests-ausführen)
+- [Einen neuen REST-Endpunkt hinzufügen](#einen-neuen-rest-endpunkt-hinzufügen)
+- [Ein neues Exportformat hinzufügen](#ein-neues-exportformat-hinzufügen)
+- [Einen neuen LLM-Anbieter hinzufügen](#einen-neuen-llm-anbieter-hinzufügen)
+- [DSL und JGit-Speicher](#dsl-und-jgit-speicher)
+- [Hibernate Search und Lucene](#hibernate-search-und-lucene)
+- [Testkonventionen](#testkonventionen)
+- [Häufige Stolperfallen](#häufige-stolperfallen)
+
+---
+
+## Schnellstart
+
+```bash
+git clone https://github.com/carstenartur/Taxonomy.git
+cd Taxonomy
+
+# Compile all 4 modules (~5 seconds)
+mvn compile
+
+# Run all tests (~60 seconds, no Docker needed)
+mvn test
+
+# Run including integration tests (requires Docker)
+mvn verify
+
+# Start locally (browse-only, no API key needed)
+mvn -pl taxonomy-app spring-boot:run
+```
+
+Öffnen Sie <http://localhost:8080>, um die Anwendung aufzurufen.
+
+---
+
+## Modularchitektur
+
+Das Projekt ist ein Multi-Modul-Maven-Build mit vier Modulen:
+
+```
+Taxonomy/
+├── taxonomy-domain/     Pure domain types (DTOs, enums) — no framework dependencies
+├── taxonomy-dsl/        Architecture DSL (parser, model, validator, differ) — no framework dependencies
+├── taxonomy-export/     Export services (ArchiMate, Visio, Mermaid) — no framework dependencies
+└── taxonomy-app/        Spring Boot application (controllers, services, JPA, search, storage)
+```
+
+**Abhängigkeitsgraph:**
+
+```
+taxonomy-app  →  taxonomy-domain
+taxonomy-app  →  taxonomy-dsl
+taxonomy-app  →  taxonomy-export
+taxonomy-export  →  taxonomy-domain
+```
+
+- `taxonomy-domain`, `taxonomy-dsl` und `taxonomy-export` haben **keine Spring-Abhängigkeiten** und können unabhängig getestet werden.
+- Das Spring-Boot-JAR wird von `taxonomy-app` erzeugt.
+
+---
+
+## Modulverantwortlichkeiten
+
+### taxonomy-domain
+
+Reine Datentypen, die modulübergreifend genutzt werden:
+
+| Paket | Inhalt |
+|---|---|
+| `com.taxonomy.dto` | DTOs (Data Transfer Objects) — `TaxonomyNodeDto`, `AnalysisResult`, `ArchitectureRecommendation`, `GapAnalysisView`, `SavedAnalysis` usw. |
+| `com.taxonomy.model` | 3 Domain-Enums — `RelationType` (10 Werte), `HypothesisStatus`, `ProposalStatus` |
+
+### taxonomy-dsl
+
+Framework-freie Architecture-DSL-Engine:
+
+| Paket | Inhalt |
+|---|---|
+| `com.taxonomy.dsl.ast` | Abstrakte Syntaxbaum-Records — `BlockAst`, `PropertyAst`, `MetaAst`, `SourceLocation` |
+| `com.taxonomy.dsl.model` | Kanonisches Architekturmodell — `CanonicalArchitectureModel`, `ArchitectureElement`, `ArchitectureRelation`, `ArchitectureView` usw. |
+| `com.taxonomy.dsl.parser` | `TaxDslParser` (DSL-Text → AST → Modell), `DslTokenizer` (tokenisiert DSL-Text für die Indexierung) |
+| `com.taxonomy.dsl.serializer` | `TaxDslSerializer` (Modell → DSL-Text) |
+| `com.taxonomy.dsl.mapper` | `AstToModelMapper`, `ModelToAstMapper` — bidirektionale AST-↔-Modell-Konvertierung |
+| `com.taxonomy.dsl.validation` | `DslValidator` — semantische Validierung einschließlich Relationstyp-Kombinationskompatibilität |
+| `com.taxonomy.dsl.diff` | `ModelDiffer` — semantischer Diff zwischen zwei `CanonicalArchitectureModel`-Instanzen |
+
+### taxonomy-export
+
+Exportdienste — framework-frei, als Spring Beans über `ExportConfig` registriert:
+
+| Paket | Inhalt |
+|---|---|
+| `com.taxonomy.export` | `ArchiMateDiagramService`, `VisioDiagramService`, `MermaidExportService`, `DiagramProjectionService` |
+| `com.taxonomy.archimate` | ArchiMate-Modell-Records — `ArchiMateModel`, `ArchiMateElement`, `ArchiMateRelationship` usw. |
+| `com.taxonomy.visio` | Visio-Dokumentmodell + XStream-Konverter |
+| `com.taxonomy.diagram` | Neutrales Diagrammmodell-Records — `DiagramModel`, `DiagramNode`, `DiagramEdge`, `DiagramLayout` |
+
+### taxonomy-app
+
+Die Haupt-Spring-Boot-Anwendung:
+
+| Verzeichnis | Inhalt |
+|---|---|
+| `controller/` | REST-Controller |
+| `service/` | Service-Klassen — LLM, Suche, Architektur, Graph, Proposals, Reports usw. |
+| `model/` | JPA-Entitäten — `TaxonomyNode`, `TaxonomyRelation`, `RelationProposal`, `RelationHypothesis`, `ArchitectureCommitIndex` usw. |
+| `repository/` | Spring Data JPA Repositories |
+| `config/` | Konfigurationsklassen — Sicherheit, Rate Limiting, Hibernate-Search-Analysatoren, OpenAPI, Actuator |
+| `search/` | Hibernate-Search-Konfiguration |
+| `dsl/storage/` | JGit-DFS-Speicher auf Hibernate-Basis — `DslGitRepository`, `HibernateRepository` usw. |
+| `dsl/storage/jgit/` | JPA-Entitäten für Git-Speicher — `GitPackEntity`, `GitReflogEntity` |
+| `resources/data/` | Excel-Arbeitsmappe, CSV-Fallback, JSON-Taxonomie |
+| `resources/prompts/` | LLM-Prompt-Vorlagen (eine pro Taxonomieblatt + Standardvorlagen) |
+| `resources/static/js/` | JavaScript-Module (UI-Logik) |
+| `resources/templates/` | Einzelnes Thymeleaf-Template (`index.html`) |
+
+---
+
+## Wo Änderungen vorzunehmen sind
+
+| Ich möchte… | Wo nachschauen |
+|---|---|
+| Einen neuen Taxonomie-Endpunkt hinzufügen | `taxonomy-app/.../controller/` — einen `@RestController` erstellen oder erweitern |
+| Einen neuen Service hinzufügen | `taxonomy-app/.../service/` — eine `@Service`-Klasse erstellen |
+| Ein neues Exportformat hinzufügen | `taxonomy-export/.../export/` — den Exporter implementieren und in `ExportConfig` registrieren |
+| Eine neue JPA-Entität hinzufügen | `taxonomy-app/.../model/` — mit `@Entity` annotieren |
+| Ein neues DTO hinzufügen | `taxonomy-domain/.../dto/` — einen Record oder eine Klasse erstellen |
+| Die DSL-Grammatik ändern | `taxonomy-dsl/.../parser/TaxDslParser.java` |
+| Eine DSL-Validierungsregel hinzufügen | `taxonomy-dsl/.../validation/DslValidator.java` |
+| Die Benutzeroberfläche ändern | `taxonomy-app/src/main/resources/templates/index.html` + `static/js/` |
+| Einen neuen LLM-Prompt hinzufügen | `taxonomy-app/src/main/resources/prompts/` — `XX.txt` erstellen |
+| Die Konfiguration ändern | `taxonomy-app/src/main/resources/application.properties` |
+
+---
+
+## Tests ausführen
+
+```bash
+# All unit + Spring context tests (no Docker needed)
+mvn test
+
+# Tests for a single module
+mvn test -pl taxonomy-dsl
+mvn test -pl taxonomy-app
+
+# Tests for a single class
+mvn test -pl taxonomy-app -Dtest=TaxonomyApplicationTests
+
+# Integration tests (requires Docker for Testcontainers)
+mvn verify
+
+# Screenshot generation (requires Docker + optionally GEMINI_API_KEY)
+mvn package -DskipTests
+mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
+```
+
+### Integrationstests für externe Datenbanken
+
+Das Projekt enthält Integrationstests, die die korrekte Funktionsweise der Anwendung mit PostgreSQL, Microsoft SQL Server und Oracle-Datenbanken verifizieren. PostgreSQL- und MSSQL-Tests werden als Teil des standardmäßigen `mvn verify`-Builds ausgeführt (Docker erforderlich). Oracle-Tests sind **optional** — mit `db-oracle` getaggt und standardmäßig ausgeschlossen. Um spezifische Datenbanktests auszuführen:
+
+```bash
+# Run only PostgreSQL integration tests
+mvn verify -DexcludedGroups=real-llm -Dit.test="*Postgres*IT"
+
+# Run only MSSQL integration tests
+mvn verify -DexcludedGroups=real-llm -Dit.test="*Mssql*IT"
+
+# Run only Oracle integration tests
+mvn verify -DexcludedGroups=real-llm -Dit.test="*Oracle*IT"
+
+# Run ALL external database tests
+mvn verify -DexcludedGroups=real-llm
+
+# Run all Selenium + external-db tests
+mvn verify -DexcludedGroups=real-llm -Dit.test="Selenium*ContainerIT"
+```
+
+**Architektur:** Jede externe Datenbank-Testklasse erbt von `AbstractDatabaseContainerIT` (REST-/Diagnosetests) oder `AbstractSeleniumContainerIT` (Selenium-UI-Tests). Die Basisklassen enthalten die gesamte Testlogik; datenbankspezifische Unterklassen umfassen ca. 30 Zeilen Konfiguration, die den Datenbank-Container und die JDBC-Umgebungsvariablen für den App-Container festlegen.
+
+**Funktionsweise:** Das Anwendungs-JAR wird einmal gebaut und in einem Docker-Container (`eclipse-temurin:17-jre-alpine`) ausgeführt. Ein Datenbank-Container (PostgreSQL, MSSQL oder Oracle) läuft im selben Docker-Netzwerk. Der App-Container erhält `SPRING_PROFILES_ACTIVE` (z. B. `mssql` oder `postgres`), um das datenbankspezifische Spring-Profil zu aktivieren, sowie Umgebungsvariablen wie `TAXONOMY_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` usw., um spezifische Verbindungseinstellungen zu überschreiben.
+
+Konventionen für Testdateinamen:
+
+| Muster | Runner | Beschreibung |
+|---|---|---|
+| `*Test.java`, `*Tests.java` | maven-surefire-plugin | Unit- und Spring-Kontexttests |
+| `*IT.java` | maven-failsafe-plugin | Integrationstests (Docker erforderlich) |
+| `@Tag("db-postgres")` | maven-failsafe-plugin | PostgreSQL-Tests (standardmäßig enthalten) |
+| `@Tag("db-mssql")` | maven-failsafe-plugin | MSSQL-Tests (standardmäßig enthalten) |
+| `@Tag("db-oracle")` | maven-failsafe-plugin | Oracle-Tests (standardmäßig ausgeschlossen) |
+
+---
+
+## Einen neuen REST-Endpunkt hinzufügen
+
+1. Erstellen oder erweitern Sie einen Controller in `taxonomy-app/src/main/java/com/taxonomy/controller/`.
+2. Falls der Endpunkt ein neues DTO zurückgibt, fügen Sie es unter `taxonomy-domain/src/main/java/com/taxonomy/dto/` hinzu.
+3. Falls der Endpunkt einen neuen Service benötigt, fügen Sie ihn unter `taxonomy-app/src/main/java/com/taxonomy/service/` hinzu.
+4. Fügen Sie Tests hinzu (typischerweise mit `@SpringBootTest` + `@AutoConfigureMockMvc` + `@WithMockUser(roles = "ADMIN")`).
+5. Falls der Endpunkt nur für Administratoren bestimmt ist, platzieren Sie ihn unter `/api/admin/` (geschützt durch `ROLE_ADMIN` in `SecurityConfig`).
+6. Falls der Endpunkt Architekturdaten ändert (Relationen, DSL), platzieren Sie ihn unter `/api/relations/`, `/api/dsl/` oder `/api/git/` — Schreiboperationen auf diesen Pfaden erfordern `ROLE_ARCHITECT` oder `ROLE_ADMIN`.
+
+---
+
+## Ein neues Exportformat hinzufügen
+
+1. Fügen Sie die Exporter-Klasse unter `taxonomy-export/src/main/java/com/taxonomy/export/` hinzu.
+2. Registrieren Sie sie als Spring Bean in `taxonomy-app/src/main/java/com/taxonomy/config/ExportConfig.java`.
+3. Fügen Sie einen Controller-Endpunkt in `ApiController` hinzu oder erstellen Sie einen neuen Controller.
+4. Fügen Sie Tests unter `taxonomy-app/src/test/` hinzu.
+
+---
+
+## Einen neuen LLM-Anbieter hinzufügen
+
+Der `LlmService` unterstützt mehrere LLM-Anbieter. Um einen neuen hinzuzufügen:
+
+1. Fügen Sie die API-Key-Eigenschaft zu `application.properties` hinzu (z. B. `newprovider.api.key=${NEW_PROVIDER_API_KEY:}`).
+2. Fügen Sie den Anbieternamen zur automatischen Erkennungslogik in `LlmService` hinzu.
+3. Implementieren Sie den HTTP-Aufruf in `LlmService` nach dem Muster der bestehenden Anbieter.
+4. Aktualisieren Sie `LlmResponseParser`, falls sich das Antwortformat unterscheidet.
+5. Dokumentieren Sie den neuen Anbieter in `CONFIGURATION_REFERENCE.md`.
+
+---
+
+## DSL und JGit-Speicher
+
+Das Architecture-DSL-Subsystem verwendet JGit DFS (Distributed File System), wobei alle Git-Objekte in der HSQLDB-Datenbank gespeichert werden — es wird kein Dateisystem verwendet. Die DSL dient als **Single Source of Truth** für Architekturdefinitionen.
+
+**DSL-Modul (`taxonomy-dsl`)** — Spring-unabhängige Bibliothek:
+
+| Paket | Aufgabe |
+|---|---|
+| `dsl.parser` | Parser mit geschweiften Klammern: DSL-Text → `DocumentAst` |
+| `dsl.serializer` | Deterministischer Serializer: `DocumentAst` → DSL-Text (sortierte Blöcke, kanonische Eigenschaftsreihenfolge, Escape-Sequenzen) |
+| `dsl.ast` | AST-Knotentypen: `DocumentAst`, `BlockAst`, `PropertyAst`, `MetaAst` |
+| `dsl.model` | Kanonisches Modell: `CanonicalArchitectureModel`, `ArchitectureElement`, `ArchitectureRelation` usw. |
+| `dsl.mapper` | Bidirektionale Zuordnung: AST ↔ kanonisches Modell |
+| `dsl.validation` | Validierung: Duplikat-IDs, referenzielle Integrität, Relationstyp-Kompatibilitätsmatrix |
+| `dsl.diff` | Semantischer Diff: `ModelDiffer` vergleicht zwei Modelle; `SemanticDiffDescriber` erzeugt menschenlesbare Beschreibungen |
+
+**Serialisierungsgarantien** (entscheidend für Git-freundliche Diffs):
+
+- **Blocksortierung**: Sortiert nach Art (Element → Relation → Anforderung → Zuordnung → Ansicht → Evidenz), dann nach primärer ID
+- **Eigenschaftsreihenfolge**: Kanonische Reihenfolge pro Blockart (Title → Description → Taxonomy für Elemente usw.)
+- **Erweiterungen**: Alphabetisch sortiert nach bekannten Eigenschaften
+- **Escape-Sequenzen**: `\"` und `\\` in zitierten Werten
+- **Round-Trip-Stabilität**: `parse → serialize → parse → serialize` erzeugt immer identische Ausgabe
+
+**JGit-Integrationsklassen:**
+
+| Klasse | Aufgabe |
+|---|---|
+| `DslGitRepository` | Fassade für Commit-, Lese-, Branch- und Diff-Operationen |
+| `HibernateObjDatabase` | Speichert Git-Pack-Daten als BLOBs in der `git_packs`-Tabelle |
+| `HibernateRefDatabase` | Speichert Git-Refs als Reftables in Pack-Erweiterungen |
+| `HibernateRepository` | Erweitert JGit `DfsRepository` mit Datenbank-Backends |
+| `GitPackEntity` | JPA-Entität für die `git_packs`-Tabelle |
+| `GitReflogEntity` | JPA-Entität für die `git_reflog`-Tabelle |
+
+**Wichtig:** `DfsBlockCache` ist ein JVM-globaler Singleton. Pack-Namen **müssen** über alle `HibernateObjDatabase`-Instanzen innerhalb derselben JVM eindeutig sein. Der `packIdCounter` ist pro Instanz und wird mit `System.nanoTime()` initialisiert, um Kollisionen bei Test-Kontext-Neustarts zu vermeiden.
+
+---
+
+## Hibernate Search und Lucene
+
+Die Anwendung verwendet Hibernate Search 8 mit einem Lucene-9-Backend für Volltextsuche und KNN-basierte semantische Suche.
+
+**Benutzerdefinierte Analysatoren** (registriert in `HibernateSearchAnalysisConfigurer`):
+
+| Analysator | Zweck |
+|---|---|
+| `dsl` | WhitespaceTokenizer + LowerCaseFilter — für DSL-Block-Schlüsselwörter und Property-Token |
+| `csv-keyword` | PatternTokenizer mit Trennung an Komma/Semikolon — für Element- und Relationsbezeichner-Felder |
+| `english` | Standard-English-Analysator für Commit-Nachrichten |
+| `german` | Standard-German-Analysator für deutschsprachige Felder |
+
+**Indizierte Entitäten:** `TaxonomyNode` (Volltext + KNN), `TaxonomyRelation` (Volltext + KNN), `ArchitectureCommitIndex` (Volltext).
+
+---
+
+## Testkonventionen
+
+- Tests verwenden `@SpringBootTest` mit HSQLDB-In-Memory und `@AutoConfigureMockMvc`.
+- DSL-Modultests (`taxonomy-dsl`) sind reine JUnit-5-Tests — kein Spring-Kontext.
+- JGit-Speichertests (`DslGitRepositoryTest`) sind reine JUnit-5-Tests mit datenbankgestütztem `HibernateRepository`.
+- Integrationstests, die Docker erfordern, folgen dem `*IT.java`-Namensschema.
+- Tests rufen **niemals** echte LLM-APIs auf — verwenden Sie stattdessen `LlmService`-Mocking.
+
+### Sicherheitskonfiguration für Tests
+
+Spring Boot 4 wendet `SecurityMockMvcConfigurers.springSecurity()` **nicht** automatisch auf MockMvc an. Das Projekt stellt `TestSecuritySupport` (in den Test-Quellen) bereit, das einen `MockMvcBuilderCustomizer`-Bean registriert, um:
+
+1. Die Spring-Security-Filterkette auf alle MockMvc-Anfragen anzuwenden.
+2. CSRF-Tokens automatisch auf Testanfragen anzuwenden.
+
+Alle MockMvc-Testklassen müssen `@WithMockUser(roles = "ADMIN")` (oder eine restriktivere Rolle) verwenden, um einen authentifizierten Benutzer zu simulieren. Ohne diese Annotation geben Anfragen HTTP 401/403 zurück.
+
+```java
+@SpringBootTest
+@AutoConfigureMockMvc
+@WithMockUser(roles = "ADMIN")
+class MyControllerTest {
+    @Autowired
+    private MockMvc mockMvc;
+    // tests here
+}
+```
+
+---
+
+## Häufige Stolperfallen
+
+1. **HSQLDB-NCLOB-Einschränkung:** `@Nationalized @Lob`-Felder werden auf HSQLDB als `NCLOB` abgebildet. JPQL-Funktionen wie `LOWER()` können nicht auf NCLOB-Spalten angewendet werden. Verwenden Sie `@Column(length=N)` ohne `@Lob` für Felder, die JPQL-String-Funktionen benötigen.
+
+2. **JGit-DfsBlockCache-Kollisionen:** Der Cache ist ein JVM-globaler Singleton, der nach `(Repository-Name + Pack-Name)` schlüsselt. Wenn Pack-Namen kollidieren (z. B. durch statische Zähler), verursachen veraltete Cache-Einträge `REJECTED_MISSING_OBJECT`-Fehler. Verwenden Sie immer instanzspezifische Zähler.
+
+3. **Spring-Test-Kontext-Caching:** Spring cached `@SpringBootTest`-Kontexte zur Wiederverwendung. In Kombination mit `ddl-auto=create` kann die Tabellenneuanlage den Zustand in Beans aus älteren Kontexten ungültig machen. Beans, die internen Zustand mit Bezug auf DB-Inhalte halten, müssen damit angemessen umgehen.
+
+4. **SimpleDriverDataSource:** Die Anwendung verwendet `SimpleDriverDataSource` anstelle von HikariCP für die In-Process-HSQLDB. Das bedeutet keinen Connection Pool — was beabsichtigt ist, um den Speicherverbrauch zu reduzieren. Wechseln Sie nicht zu HikariCP, ohne die Auswirkungen zu verstehen.
+
+5. **Rate Limiting in Tests:** Der `RateLimitFilter` ist während `@SpringBootTest`-Tests aktiv. Wenn Tests LLM-gestützte Endpunkte schnell hintereinander aufrufen, können sie vom Rate Limiting betroffen sein. Erwägen Sie bei Bedarf die Deaktivierung über `TAXONOMY_RATE_LIMIT_PER_MINUTE=0` in der Testkonfiguration.

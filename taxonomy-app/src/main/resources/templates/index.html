@@ -1,14 +1,16 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <meta name="_csrf" th:content="${_csrf.token}"/>
     <meta name="_csrf_header" th:content="${_csrf.headerName}"/>
-    <title>Taxonomy Architecture Analyzer</title>
+    <title th:text="#{app.title}">Taxonomy Architecture Analyzer</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
     <link rel="stylesheet" th:href="@{/css/git-status.css}"/>
+    <!-- i18n: load translations before other scripts -->
+    <script th:src="@{/js/taxonomy-i18n.js}"></script>
 </head>
 <body>
 <!-- Skip-Link (BITV 2.0 / WCAG 2.4.1) -->
@@ -23,18 +25,25 @@
 <nav class="navbar navbar-dark bg-dark mb-0" aria-label="Main navigation">
     <div class="container-fluid">
         <span class="navbar-brand fw-bold">
-            &#127756; Taxonomy Architecture Analyzer &mdash; <span id="navbarVersion">v1.1.1</span>
+            &#127756; <span th:text="#{app.title}">Taxonomy Architecture Analyzer</span> &mdash; <span id="navbarVersion">v1.1.1</span>
         </span>
         <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" title="Shows the current AI/LLM provider status: green = available, yellow = unknown (status check failed), red = no API key configured"></span>
         <span id="embeddingStatusBadge" class="badge bg-secondary ms-2 d-none" title="Embedding model status for semantic search"></span>
         <span id="workspaceUserBadge" class="badge bg-info text-dark ms-2 d-none" title="Current workspace / user"></span>
-        <button id="aboutBtn" class="btn btn-sm btn-outline-light me-2" title="About this application" aria-label="About">&#8505;&#65039;</button>
-        <button id="darkModeToggle" class="btn btn-sm btn-outline-light me-2" title="Toggle dark/light theme" aria-label="Toggle theme">&#127769;</button>
+        <!-- Language selector -->
+        <select id="langSelector" class="form-select form-select-sm me-2" style="width:auto;"
+                onchange="TaxonomyI18n.setLocale(this.value)"
+                th:title="#{lang.selector.label}" aria-label="Language">
+            <option value="en" th:selected="${#locale.language == 'en'}">🇬🇧 English</option>
+            <option value="de" th:selected="${#locale.language == 'de'}">🇩🇪 Deutsch</option>
+        </select>
+        <button id="aboutBtn" class="btn btn-sm btn-outline-light me-2" th:title="#{navbar.about}" aria-label="About">&#8505;&#65039;</button>
+        <button id="darkModeToggle" class="btn btn-sm btn-outline-light me-2" th:title="#{navbar.darkmode}" aria-label="Toggle theme">&#127769;</button>
         <button id="adminLockBtn" class="btn btn-sm btn-outline-light d-none"
             title="Open admin mode to access diagnostic panels and prompt templates"
-            aria-label="Admin mode — locked" style="font-size:1.1rem;">
+            th:aria-label="#{navbar.admin.locked}" style="font-size:1.1rem;">
             <span aria-hidden="true">&#128274;</span>
-            <span class="visually-hidden">Admin Mode</span>
+            <span class="visually-hidden" th:text="#{navbar.admin.label}">Admin Mode</span>
         </button>
     </div>
 </nav>
@@ -50,34 +59,34 @@
     <div class="container-fluid px-3">
         <ul class="nav nav-tabs nav-tabs-page mb-0" id="mainNavTabs">
             <li class="nav-item">
-                <a class="nav-link active" data-page="analyze" href="#analyze">&#128269; Analyze</a>
+                <a class="nav-link active" data-page="analyze" href="#analyze">&#128269; <span th:text="#{nav.analyze}">Analyze</span></a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-page="architecture" href="#architecture">&#127959;&#65039; Architecture</a>
+                <a class="nav-link" data-page="architecture" href="#architecture">&#127959;&#65039; <span th:text="#{nav.architecture}">Architecture</span></a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-page="graph" href="#graph">&#128300; Graph</a>
+                <a class="nav-link" data-page="graph" href="#graph">&#128300; <span th:text="#{nav.graph}">Graph</span></a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-page="relations" href="#relations">&#128279; Relations</a>
+                <a class="nav-link" data-page="relations" href="#relations">&#128279; <span th:text="#{nav.relations}">Relations</span></a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-page="export" href="#export">&#128229; Export</a>
+                <a class="nav-link" data-page="export" href="#export">&#128229; <span th:text="#{nav.export}">Export</span></a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-page="versions" href="#versions">&#128339; Versions</a>
+                <a class="nav-link" data-page="versions" href="#versions">&#128339; <span th:text="#{nav.versions}">Versions</span></a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-page="dsl-editor" href="#dsl-editor">&#128221; DSL</a>
+                <a class="nav-link" data-page="dsl-editor" href="#dsl-editor">&#128221; <span th:text="#{nav.dsl}">DSL</span></a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-page="help" href="#help">&#128214; Help</a>
+                <a class="nav-link" data-page="help" href="#help">&#128214; <span th:text="#{nav.help}">Help</span></a>
             </li>
             <li id="adminNavTab" class="nav-item admin-only">
-                <a class="nav-link text-warning" data-page="admin" href="#admin">&#9881;&#65039; Admin</a>
+                <a class="nav-link text-warning" data-page="admin" href="#admin">&#9881;&#65039; <span th:text="#{nav.admin}">Admin</span></a>
             </li>
             <li id="preferencesNavTab" class="nav-item admin-only">
-                <a class="nav-link text-warning" data-page="preferences" href="#preferences">&#9881;&#65039; Preferences</a>
+                <a class="nav-link text-warning" data-page="preferences" href="#preferences">&#9881;&#65039; <span th:text="#{nav.preferences}">Preferences</span></a>
             </li>
         </ul>
     </div>
@@ -98,7 +107,7 @@
         <div id="leftPanel" class="col-lg-7">
             <div class="card shadow-sm h-100">
                 <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <span class="fw-semibold">Taxonomy Tree</span>
+                    <span class="fw-semibold" th:text="#{browse.title}">Taxonomy Browser</span>
                     <div class="d-flex gap-2 align-items-center flex-wrap">
                         <!-- View switcher -->
                         <div class="btn-group" role="group" aria-label="View mode">
@@ -754,7 +763,7 @@
                             <div class="card-header fw-semibold">&#128230; Commit &amp; Materialize</div>
                             <div class="card-body">
                                 <div class="mb-2">
-                                    <label class="form-label small mb-1">Branch</label>
+                                    <label class="form-label small mb-1" th:text="#{context.branch}">Branch</label>
                                     <div class="d-flex gap-1">
                                         <select id="dslBranchSelect" class="form-select form-select-sm">
                                             <option value="draft">draft</option>
@@ -764,16 +773,16 @@
                                     </div>
                                 </div>
                                 <div class="mb-2">
-                                    <label class="form-label small mb-1">Author <small class="text-muted">(optional)</small></label>
+                                    <label class="form-label small mb-1"><span th:text="#{dsl.commit.author}">Author</span> <small class="text-muted" th:text="#{dsl.commit.author.hint}">(optional)</small></label>
                                     <input id="dslAuthorInput" type="text" class="form-control form-control-sm" placeholder="user@example.com">
                                 </div>
                                 <div class="mb-2">
-                                    <label class="form-label small mb-1">Commit message</label>
-                                    <input id="dslMessageInput" type="text" class="form-control form-control-sm" placeholder="Describe your changes…">
+                                    <label class="form-label small mb-1" th:text="#{dsl.commit.message}">Commit message</label>
+                                    <input id="dslMessageInput" type="text" class="form-control form-control-sm" th:placeholder="#{dsl.commit.message.placeholder}" placeholder="Describe your changes…">
                                 </div>
                                 <div class="d-flex gap-2 flex-wrap">
-                                    <button id="dslCommitBtn" class="btn btn-sm btn-primary" data-guard="commit" title="Commit DSL to selected branch (no materialization)">&#128230; Commit</button>
-                                    <button id="dslMaterializeBtn" class="btn btn-sm btn-success" data-guard="materialize" title="Materialize DSL into taxonomy database">&#9889; Materialize</button>
+                                    <button id="dslCommitBtn" class="btn btn-sm btn-primary" data-guard="commit" th:title="#{dsl.btn.commit.title}" title="Commit DSL to selected branch (no materialization)">&#128230; <span th:text="#{dsl.btn.commit}">Commit</span></button>
+                                    <button id="dslMaterializeBtn" class="btn btn-sm btn-success" data-guard="materialize" th:title="#{dsl.btn.materialize.title}" title="Materialize DSL into taxonomy database">&#9889; <span th:text="#{dsl.btn.materialize}">Materialize</span></button>
                                     <button id="dslMaterializeIncrBtn" class="btn btn-sm btn-outline-success" title="Incremental materialization (delta only)">&#916; Incremental</button>
                                 </div>
                             </div>

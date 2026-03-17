@@ -2,6 +2,7 @@
 
 (function () {
     'use strict';
+    var t = TaxonomyI18n.t;
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@
             el.innerHTML =
                 '<div class="text-center text-muted py-2">' +
                 '<div class="spinner-border spinner-border-sm me-1" role="status"></div> ' +
-                'Analyzing\u2026</div>';
+                t('analyze.panel.analyzing') + '</div>';
         }
     }
 
@@ -44,7 +45,7 @@
 
     function runGapAnalysis() {
         if (!hasScores()) {
-            showPanelError('gapAnalysisContent', 'Please run an analysis first to get scores.');
+            showPanelError('gapAnalysisContent', t('analyze.scores.required'));
             return;
         }
         showPanelLoading('gapAnalysisContent');
@@ -68,7 +69,7 @@
             renderGapAnalysis(data);
         })
         .catch(function (err) {
-            showPanelError('gapAnalysisContent', 'Gap analysis failed: ' + err.message);
+            showPanelError('gapAnalysisContent', t('analyze.gap.failed', err.message));
         });
     }
 
@@ -79,15 +80,15 @@
 
         // Summary
         html += '<div class="d-flex gap-3 mb-2 flex-wrap">';
-        html += '<span class="badge bg-primary">Anchors: ' + data.totalAnchors + '</span>';
-        html += '<span class="badge ' + (data.totalGaps > 0 ? 'bg-danger' : 'bg-success') + '">Gaps: ' + data.totalGaps + '</span>';
+        html += '<span class="badge bg-primary">' + t('analyze.gap.anchors', data.totalAnchors) + '</span>';
+        html += '<span class="badge ' + (data.totalGaps > 0 ? 'bg-danger' : 'bg-success') + '">' + t('analyze.gap.gaps', data.totalGaps) + '</span>';
         html += '</div>';
 
         // Missing Relations
         if (data.missingRelations && data.missingRelations.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">\u274C Missing Relations <span class="badge bg-danger">' + data.missingRelations.length + '</span></h6>';
+            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.gap.missing.relations') + ' <span class="badge bg-danger">' + data.missingRelations.length + '</span></h6>';
             html += '<div class="table-responsive"><table class="table table-sm table-hover mb-2" style="font-size:0.82em;">';
-            html += '<thead><tr><th>Source Node</th><th>Source Root</th><th>Expected Relation</th><th>Expected Target</th><th>Description</th></tr></thead><tbody>';
+            html += '<thead><tr><th>' + t('analyze.table.source.node') + '</th><th>' + t('analyze.table.source.root') + '</th><th>' + t('analyze.table.expected.relation') + '</th><th>' + t('analyze.table.expected.target') + '</th><th>' + t('analyze.table.description') + '</th></tr></thead><tbody>';
             data.missingRelations.forEach(function (mr) {
                 html += '<tr>';
                 html += '<td><code>' + escapeHtml(mr.sourceNodeCode) + '</code></td>';
@@ -102,9 +103,9 @@
 
         // Incomplete Patterns
         if (data.incompletePatterns && data.incompletePatterns.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">\u26A0\uFE0F Incomplete Patterns <span class="badge bg-warning text-dark">' + data.incompletePatterns.length + '</span></h6>';
+            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.gap.incomplete.patterns') + ' <span class="badge bg-warning text-dark">' + data.incompletePatterns.length + '</span></h6>';
             html += '<div class="table-responsive"><table class="table table-sm table-hover mb-2" style="font-size:0.82em;">';
-            html += '<thead><tr><th>Node</th><th>Root</th><th>Pattern</th><th>Missing</th></tr></thead><tbody>';
+            html += '<thead><tr><th>' + t('analyze.table.node') + '</th><th>' + t('analyze.table.root') + '</th><th>' + t('analyze.table.pattern') + '</th><th>' + t('analyze.table.missing') + '</th></tr></thead><tbody>';
             data.incompletePatterns.forEach(function (ip) {
                 html += '<tr>';
                 html += '<td><code>' + escapeHtml(ip.nodeCode) + '</code></td>';
@@ -118,9 +119,9 @@
 
         // Coverage Gaps
         if (data.coverageGaps && data.coverageGaps.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">\uD83D\uDCCA Coverage Gaps <span class="badge bg-secondary">' + data.coverageGaps.length + '</span></h6>';
+            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.gap.coverage.gaps') + ' <span class="badge bg-secondary">' + data.coverageGaps.length + '</span></h6>';
             html += '<div class="table-responsive"><table class="table table-sm table-hover mb-2" style="font-size:0.82em;">';
-            html += '<thead><tr><th>Node</th><th>Root</th><th>Score</th><th>Gap</th></tr></thead><tbody>';
+            html += '<thead><tr><th>' + t('analyze.table.node') + '</th><th>' + t('analyze.table.root') + '</th><th>' + t('analyze.table.score') + '</th><th>' + t('analyze.table.gap') + '</th></tr></thead><tbody>';
             data.coverageGaps.forEach(function (cg) {
                 html += '<tr>';
                 html += '<td><code>' + escapeHtml(cg.nodeCode) + '</code></td>';
@@ -140,7 +141,7 @@
         }
 
         if (data.totalGaps === 0) {
-            html += '<div class="alert alert-success py-1 px-2 small mb-0 mt-2">\u2705 No gaps detected — architecture coverage is complete for the analyzed nodes.</div>';
+            html += '<div class="alert alert-success py-1 px-2 small mb-0 mt-2">' + t('analyze.gap.no.gaps') + '</div>';
         }
 
         el.innerHTML = html;
@@ -150,7 +151,7 @@
 
     function runPatternDetection() {
         if (!hasScores()) {
-            showPanelError('patternDetectionContent', 'Please run an analysis first to get scores.');
+            showPanelError('patternDetectionContent', t('analyze.scores.required'));
             return;
         }
         showPanelLoading('patternDetectionContent');
@@ -173,7 +174,7 @@
             renderPatternDetection(data);
         })
         .catch(function (err) {
-            showPanelError('patternDetectionContent', 'Pattern detection failed: ' + err.message);
+            showPanelError('patternDetectionContent', t('analyze.patterns.failed', err.message));
         });
     }
 
@@ -184,14 +185,14 @@
 
         // Summary
         html += '<div class="d-flex gap-3 mb-2 flex-wrap">';
-        html += '<span class="badge bg-success">Complete Patterns: ' + (data.matchedPatterns ? data.matchedPatterns.length : 0) + '</span>';
-        html += '<span class="badge bg-warning text-dark">Incomplete: ' + (data.incompletePatterns ? data.incompletePatterns.length : 0) + '</span>';
-        html += '<span class="badge bg-primary">Coverage: ' + (data.patternCoverage * 100).toFixed(0) + '%</span>';
+        html += '<span class="badge bg-success">' + t('analyze.patterns.complete', (data.matchedPatterns ? data.matchedPatterns.length : 0)) + '</span>';
+        html += '<span class="badge bg-warning text-dark">' + t('analyze.patterns.incomplete.count', (data.incompletePatterns ? data.incompletePatterns.length : 0)) + '</span>';
+        html += '<span class="badge bg-primary">' + t('analyze.patterns.coverage', (data.patternCoverage * 100).toFixed(0) + '%') + '</span>';
         html += '</div>';
 
         // Matched patterns
         if (data.matchedPatterns && data.matchedPatterns.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">\u2705 Complete Patterns</h6>';
+            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.patterns.complete.heading') + '</h6>';
             data.matchedPatterns.forEach(function (p) {
                 html += renderPatternCard(p, 'success');
             });
@@ -199,7 +200,7 @@
 
         // Incomplete patterns
         if (data.incompletePatterns && data.incompletePatterns.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">\u26A0\uFE0F Incomplete Patterns</h6>';
+            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.patterns.incomplete.heading') + '</h6>';
             data.incompletePatterns.forEach(function (p) {
                 html += renderPatternCard(p, 'warning');
             });
@@ -214,7 +215,7 @@
 
         if ((!data.matchedPatterns || data.matchedPatterns.length === 0) &&
             (!data.incompletePatterns || data.incompletePatterns.length === 0)) {
-            html += '<div class="text-muted small">No patterns detected for the current scores.</div>';
+            html += '<div class="text-muted small">' + t('analyze.patterns.none') + '</div>';
         }
 
         el.innerHTML = html;
@@ -253,7 +254,7 @@
 
     function runRecommendation() {
         if (!hasScores()) {
-            showPanelError('recommendationContent', 'Please run an analysis first to get scores.');
+            showPanelError('recommendationContent', t('analyze.scores.required'));
             return;
         }
         showPanelLoading('recommendationContent');
@@ -277,7 +278,7 @@
             renderRecommendation(data);
         })
         .catch(function (err) {
-            showPanelError('recommendationContent', 'Recommendation failed: ' + err.message);
+            showPanelError('recommendationContent', t('analyze.recommendation.failed', err.message));
         });
     }
 
@@ -290,16 +291,16 @@
         var conf = data.confidence ? data.confidence.toFixed(0) : 0;
         var confColor = conf >= 70 ? 'success' : (conf >= 40 ? 'warning' : 'danger');
         html += '<div class="d-flex gap-3 mb-2 flex-wrap align-items-center">';
-        html += '<span class="badge bg-' + confColor + (confColor === 'warning' ? ' text-dark' : '') + '" style="font-size:0.9em;">\uD83C\uDFAF Confidence: ' + conf + '%</span>';
-        html += '<span class="badge bg-success">Confirmed: ' + (data.confirmedElements ? data.confirmedElements.length : 0) + '</span>';
-        html += '<span class="badge bg-info text-dark">Proposed: ' + (data.proposedElements ? data.proposedElements.length : 0) + '</span>';
-        html += '<span class="badge bg-secondary">Relations: ' + (data.suggestedRelations ? data.suggestedRelations.length : 0) + '</span>';
+        html += '<span class="badge bg-' + confColor + (confColor === 'warning' ? ' text-dark' : '') + '" style="font-size:0.9em;">' + t('analyze.recommendation.confidence', conf) + '</span>';
+        html += '<span class="badge bg-success">' + t('analyze.recommendation.confirmed', (data.confirmedElements ? data.confirmedElements.length : 0)) + '</span>';
+        html += '<span class="badge bg-info text-dark">' + t('analyze.recommendation.proposed', (data.proposedElements ? data.proposedElements.length : 0)) + '</span>';
+        html += '<span class="badge bg-secondary">' + t('analyze.recommendation.relations.count', (data.suggestedRelations ? data.suggestedRelations.length : 0)) + '</span>';
         html += '</div>';
 
         // Reasoning
         if (data.reasoning && data.reasoning.length > 0) {
             html += '<div class="alert alert-light py-1 px-2 small mb-2 border">';
-            html += '<strong>\uD83D\uDCA1 Reasoning:</strong><ul class="mb-0 ps-3">';
+            html += '<strong>' + t('analyze.recommendation.reasoning') + '</strong><ul class="mb-0 ps-3">';
             data.reasoning.forEach(function (r) {
                 html += '<li>' + escapeHtml(r) + '</li>';
             });
@@ -308,21 +309,21 @@
 
         // Confirmed Elements
         if (data.confirmedElements && data.confirmedElements.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">\u2705 Confirmed Elements</h6>';
+            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.recommendation.confirmed.heading') + '</h6>';
             html += renderRecommendedElementsTable(data.confirmedElements, 'success');
         }
 
         // Proposed Elements
         if (data.proposedElements && data.proposedElements.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">\uD83D\uDCA1 Proposed Elements</h6>';
+            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.recommendation.proposed.heading') + '</h6>';
             html += renderRecommendedElementsTable(data.proposedElements, 'info');
         }
 
         // Suggested Relations
         if (data.suggestedRelations && data.suggestedRelations.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">\uD83D\uDD17 Suggested Relations</h6>';
+            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.recommendation.suggested.heading') + '</h6>';
             html += '<div class="table-responsive"><table class="table table-sm table-hover mb-2" style="font-size:0.82em;">';
-            html += '<thead><tr><th>Source</th><th></th><th>Target</th><th>Type</th><th>Reasoning</th></tr></thead><tbody>';
+            html += '<thead><tr><th>' + t('analyze.table.source') + '</th><th></th><th>' + t('analyze.table.target') + '</th><th>' + t('analyze.table.type') + '</th><th>' + t('analyze.table.reasoning') + '</th></tr></thead><tbody>';
             data.suggestedRelations.forEach(function (sr) {
                 html += '<tr>';
                 html += '<td><code>' + escapeHtml(sr.sourceCode) + '</code></td>';
@@ -347,7 +348,7 @@
 
     function renderRecommendedElementsTable(elements, color) {
         var html = '<div class="table-responsive"><table class="table table-sm table-hover mb-2" style="font-size:0.82em;">';
-        html += '<thead><tr><th>Code</th><th>Title</th><th>Root</th><th>Score</th><th>Reasoning</th></tr></thead><tbody>';
+        html += '<thead><tr><th>' + t('analyze.table.code') + '</th><th>' + t('analyze.table.title') + '</th><th>' + t('analyze.table.root') + '</th><th>' + t('analyze.table.score') + '</th><th>' + t('analyze.table.reasoning') + '</th></tr></thead><tbody>';
         elements.forEach(function (e) {
             html += '<tr>';
             html += '<td><code>' + escapeHtml(e.nodeCode) + '</code></td>';
@@ -369,7 +370,7 @@
         if (!code) {
             var content = document.getElementById('graphResultsContent');
             if (content) {
-                content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0">Please enter a node code.</div>';
+                content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0">' + t('analyze.graph.enter.code') + '</div>';
             }
             return;
         }
@@ -384,7 +385,7 @@
             content.innerHTML =
                 '<div class="text-center text-muted py-2">' +
                 '<div class="spinner-border spinner-border-sm me-1" role="status"></div> ' +
-                'Analyzing enriched failure impact\u2026</div>';
+                t('analyze.graph.enriched.analyzing') + '</div>';
         }
 
         fetch('/api/graph/node/' + encodeURIComponent(code) + '/enriched-failure-impact?maxHops=' + maxHops)
@@ -397,8 +398,7 @@
             })
             .catch(function (err) {
                 if (content) {
-                    content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0">Enriched failure impact failed: ' +
-                        escapeHtml(err.message) + '</div>';
+                    content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0">' + t('analyze.graph.enriched.failed', escapeHtml(err.message)) + '</div>';
                 }
             });
     }
@@ -408,31 +408,31 @@
 
         // Summary stats
         html += '<div class="d-flex gap-2 mb-2 flex-wrap">';
-        html += '<span class="badge bg-danger">\u26A0\uFE0F Failed: ' + escapeHtml(data.failedNodeCode) + '</span>';
-        html += '<span class="badge bg-danger">\uD83D\uDD34 Direct: ' + (data.directlyAffected ? data.directlyAffected.length : 0) + '</span>';
-        html += '<span class="badge bg-warning text-dark">\uD83D\uDFE0 Indirect: ' + (data.indirectlyAffected ? data.indirectlyAffected.length : 0) + '</span>';
-        html += '<span class="badge bg-dark">Total: ' + data.totalAffected + '</span>';
+        html += '<span class="badge bg-danger">' + t('analyze.graph.failed.node', escapeHtml(data.failedNodeCode)) + '</span>';
+        html += '<span class="badge bg-danger">' + t('analyze.graph.direct', (data.directlyAffected ? data.directlyAffected.length : 0)) + '</span>';
+        html += '<span class="badge bg-warning text-dark">' + t('analyze.graph.indirect', (data.indirectlyAffected ? data.indirectlyAffected.length : 0)) + '</span>';
+        html += '<span class="badge bg-dark">' + t('analyze.graph.total', data.totalAffected) + '</span>';
         var riskColor = data.riskScore > 5 ? 'danger' : (data.riskScore > 2 ? 'warning' : 'success');
-        html += '<span class="badge bg-' + riskColor + (riskColor === 'warning' ? ' text-dark' : '') + '">\uD83D\uDCC8 Risk: ' + data.riskScore.toFixed(2) + '</span>';
+        html += '<span class="badge bg-' + riskColor + (riskColor === 'warning' ? ' text-dark' : '') + '">' + t('analyze.graph.risk', data.riskScore.toFixed(2)) + '</span>';
         html += '</div>';
 
         // Affected Requirements
         if (data.affectedRequirements && data.affectedRequirements.length > 0) {
             html += '<div class="alert alert-danger py-1 px-2 small mb-2">';
-            html += '<strong>\uD83D\uDCCB Affected Requirements (' + data.affectedRequirements.length + '):</strong> ';
+            html += '<strong>' + t('analyze.graph.affected.requirements', data.affectedRequirements.length) + '</strong> ';
             html += data.affectedRequirements.map(function (r) { return escapeHtml(r); }).join(', ');
             html += '</div>';
         }
 
         // Directly Affected
         if (data.directlyAffected && data.directlyAffected.length > 0) {
-            html += '<h6 class="small fw-semibold">\uD83D\uDD34 Directly Affected (Hop 1)</h6>';
+            html += '<h6 class="small fw-semibold">' + t('analyze.graph.directly.affected') + '</h6>';
             html += renderEnrichedElementsTable(data.directlyAffected);
         }
 
         // Indirectly Affected
         if (data.indirectlyAffected && data.indirectlyAffected.length > 0) {
-            html += '<h6 class="small fw-semibold mt-2">\uD83D\uDFE0 Indirectly Affected (Hop 2+)</h6>';
+            html += '<h6 class="small fw-semibold mt-2">' + t('analyze.graph.indirectly.affected') + '</h6>';
             html += renderEnrichedElementsTable(data.indirectlyAffected);
         }
 
@@ -448,7 +448,7 @@
 
     function renderEnrichedElementsTable(elements) {
         var html = '<div class="table-responsive"><table class="table table-sm table-hover mb-2" style="font-size:0.82em;">';
-        html += '<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hop</th><th>Requirements</th></tr></thead><tbody>';
+        html += '<thead><tr><th>' + t('analyze.table.code') + '</th><th>' + t('analyze.table.title') + '</th><th>' + t('analyze.table.sheet') + '</th><th>' + t('analyze.table.relevance') + '</th><th>' + t('analyze.table.hop') + '</th><th>' + t('analyze.table.requirements') + '</th></tr></thead><tbody>';
         elements.forEach(function (e) {
             html += '<tr>';
             html += '<td><code>' + escapeHtml(e.nodeCode) + '</code></td>';
@@ -461,7 +461,7 @@
                 html += '<span class="badge bg-danger">' + e.requirementCount + ' req(s)</span> ';
                 html += '<span class="small text-muted">' + e.coveredByRequirements.map(function (r) { return escapeHtml(r); }).join(', ') + '</span>';
             } else {
-                html += '<span class="text-muted small">none</span>';
+                html += '<span class="text-muted small">' + t('analyze.table.none') + '</span>';
             }
             html += '</td>';
             html += '</tr>';
@@ -491,7 +491,7 @@
             statusEl.innerHTML =
                 '<div class="text-center text-muted py-1">' +
                 '<div class="spinner-border spinner-border-sm me-1" role="status"></div> ' +
-                'Importing ' + escapeHtml(file.name) + '\u2026</div>';
+                t('analyze.import.importing', escapeHtml(file.name)) + '</div>';
             statusEl.style.display = '';
         }
 
@@ -506,8 +506,7 @@
         .then(function (data) {
             if (statusEl) {
                 var html = '<div class="alert alert-success py-1 px-2 small mb-0">';
-                html += '\u2705 Imported: ' + (data.elementsImported || 0) + ' elements, ';
-                html += (data.relationsImported || 0) + ' relations';
+                html += t('analyze.import.success', (data.elementsImported || 0), (data.relationsImported || 0));
                 if (data.notes && data.notes.length > 0) {
                     html += '<br><small>' + data.notes.map(function (n) { return escapeHtml(n); }).join('; ') + '</small>';
                 }
@@ -517,8 +516,7 @@
         })
         .catch(function (err) {
             if (statusEl) {
-                statusEl.innerHTML = '<div class="alert alert-danger py-1 px-2 small mb-0">\u274C Import failed: ' +
-                    escapeHtml(err.message) + '</div>';
+                statusEl.innerHTML = '<div class="alert alert-danger py-1 px-2 small mb-0">' + t('analyze.import.failed', escapeHtml(err.message)) + '</div>';
             }
         });
     }
@@ -528,7 +526,7 @@
     function runCopilotFlow() {
         var bt = getBusinessText();
         if (!bt) {
-            showCopilotStatus('warning', 'Please enter a business requirement first.');
+            showCopilotStatus('warning', t('analyze.copilot.enter.requirement'));
             return;
         }
 
@@ -544,14 +542,14 @@
             copilotContent.innerHTML =
                 '<div class="text-center text-muted py-2">' +
                 '<div class="spinner-border spinner-border-sm me-1" role="status"></div> ' +
-                '<span id="copilotStepLabel">Step 1/4: Analyzing requirement\u2026</span></div>';
+                '<span id="copilotStepLabel">' + t('analyze.copilot.step1') + '</span></div>';
         }
 
         // Step 1: Trigger the main analysis (use existing analyze button logic)
         var analyzeBtn = document.getElementById('analyzeBtn');
         if (analyzeBtn && !hasScores()) {
             // Trigger analysis and wait for scores
-            showCopilotStep('Step 1/4: Analyzing requirement\u2026');
+            showCopilotStep(t('analyze.copilot.step1'));
             analyzeBtn.click();
             // Poll for scores to appear
             waitForScores(function () {
@@ -561,7 +559,7 @@
             // Already have scores, continue
             continueCopilotFlow();
         } else {
-            showCopilotStatus('danger', 'Cannot start analysis. Please check AI status.');
+            showCopilotStatus('danger', t('analyze.copilot.cannot.start'));
             resetCopilotBtn();
         }
     }
@@ -576,7 +574,7 @@
                 callback();
             } else if (attempts >= maxAttempts) {
                 clearInterval(interval);
-                showCopilotStatus('warning', 'Analysis timed out. Please try analyzing manually first, then use the Copilot.');
+                showCopilotStatus('warning', t('analyze.copilot.timeout'));
                 resetCopilotBtn();
             }
         }, 1000);
@@ -586,7 +584,7 @@
         var results = {};
 
         // Step 2: Gap Analysis
-        showCopilotStep('Step 2/4: Running gap analysis\u2026');
+        showCopilotStep(t('analyze.copilot.step2'));
         fetch('/api/gap/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -604,7 +602,7 @@
             if (gapPanel) gapPanel.open = true;
 
             // Step 3: Pattern Detection
-            showCopilotStep('Step 3/4: Detecting patterns\u2026');
+            showCopilotStep(t('analyze.copilot.step3'));
             return fetch('/api/patterns/detect', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -622,7 +620,7 @@
             if (patternPanel) patternPanel.open = true;
 
             // Step 4: Recommendation
-            showCopilotStep('Step 4/4: Generating recommendation\u2026');
+            showCopilotStep(t('analyze.copilot.step4'));
             return fetch('/api/recommend', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -645,7 +643,7 @@
             resetCopilotBtn();
         })
         .catch(function (err) {
-            showCopilotStatus('danger', 'Copilot flow failed: ' + err.message);
+            showCopilotStatus('danger', t('analyze.copilot.failed', err.message));
             resetCopilotBtn();
         });
     }
@@ -675,7 +673,7 @@
         var html = '';
 
         html += '<div class="alert alert-success py-2 px-3 mb-2">';
-        html += '<strong>\u2705 Architecture Copilot Analysis Complete</strong>';
+        html += '<strong>' + t('analyze.copilot.complete') + '</strong>';
         html += '</div>';
 
         html += '<div class="row g-2">';
@@ -686,8 +684,8 @@
         html += '<div class="card text-center ' + (gapCount > 0 ? 'border-danger' : 'border-success') + '">';
         html += '<div class="card-body py-2">';
         html += '<div class="fs-4">' + (gapCount > 0 ? '\u274C' : '\u2705') + '</div>';
-        html += '<div class="fw-bold">' + gapCount + ' Gap(s)</div>';
-        html += '<div class="small text-muted">' + (results.gaps ? results.gaps.totalAnchors : 0) + ' anchors analyzed</div>';
+        html += '<div class="fw-bold">' + t('analyze.copilot.gaps', gapCount) + '</div>';
+        html += '<div class="small text-muted">' + t('analyze.copilot.anchors.analyzed', (results.gaps ? results.gaps.totalAnchors : 0)) + '</div>';
         html += '</div></div></div>';
 
         // Patterns summary card
@@ -697,8 +695,8 @@
         html += '<div class="card text-center border-' + patternColor + '">';
         html += '<div class="card-body py-2">';
         html += '<div class="fs-4">\uD83E\uDDE9</div>';
-        html += '<div class="fw-bold">' + patternPct + '% Patterns</div>';
-        html += '<div class="small text-muted">' + (results.patterns && results.patterns.matchedPatterns ? results.patterns.matchedPatterns.length : 0) + ' complete</div>';
+        html += '<div class="fw-bold">' + t('analyze.copilot.patterns', patternPct) + '</div>';
+        html += '<div class="small text-muted">' + t('analyze.copilot.patterns.complete', (results.patterns && results.patterns.matchedPatterns ? results.patterns.matchedPatterns.length : 0)) + '</div>';
         html += '</div></div></div>';
 
         // Recommendation summary card
@@ -708,13 +706,13 @@
         html += '<div class="card text-center border-' + confColor + '">';
         html += '<div class="card-body py-2">';
         html += '<div class="fs-4">\uD83D\uDCA1</div>';
-        html += '<div class="fw-bold">' + conf + '% Confidence</div>';
-        html += '<div class="small text-muted">' + (results.recommendation && results.recommendation.proposedElements ? results.recommendation.proposedElements.length : 0) + ' proposals</div>';
+        html += '<div class="fw-bold">' + t('analyze.copilot.confidence', conf) + '</div>';
+        html += '<div class="small text-muted">' + t('analyze.copilot.proposals', (results.recommendation && results.recommendation.proposedElements ? results.recommendation.proposedElements.length : 0)) + '</div>';
         html += '</div></div></div>';
 
         html += '</div>';
 
-        html += '<div class="small text-muted mt-2">\uD83D\uDC47 Scroll down for detailed results in the Gap Analysis, Pattern Detection, and Recommendation panels.</div>';
+        html += '<div class="small text-muted mt-2">' + t('analyze.copilot.scroll.hint') + '</div>';
 
         el.innerHTML = html;
     }

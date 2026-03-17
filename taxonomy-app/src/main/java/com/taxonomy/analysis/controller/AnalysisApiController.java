@@ -46,6 +46,7 @@ public class AnalysisApiController {
     private final HypothesisService hypothesisService;
     private final RepositoryStateService repositoryStateService;
     private final WorkspaceResolver workspaceResolver;
+    private final org.springframework.context.MessageSource messageSource;
 
     public AnalysisApiController(TaxonomyService taxonomyService,
                                   LlmService llmService,
@@ -55,7 +56,8 @@ public class AnalysisApiController {
                                   AnalysisRelationGenerator analysisRelationGenerator,
                                   HypothesisService hypothesisService,
                                   RepositoryStateService repositoryStateService,
-                                  WorkspaceResolver workspaceResolver) {
+                                  WorkspaceResolver workspaceResolver,
+                                  org.springframework.context.MessageSource messageSource) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.analysisExecutor = analysisExecutor;
@@ -65,6 +67,7 @@ public class AnalysisApiController {
         this.hypothesisService = hypothesisService;
         this.repositoryStateService = repositoryStateService;
         this.workspaceResolver = workspaceResolver;
+        this.messageSource = messageSource;
     }
 
     @Operation(summary = "Analyze business requirement", description = "Analyzes a business requirement against the taxonomy using the configured LLM provider. Optionally includes an architecture view.", tags = {"Analysis"})
@@ -139,7 +142,9 @@ public class AnalysisApiController {
                         .name("error")
                         .data(objectMapper.writeValueAsString(Map.of(
                                 "status", "ERROR",
-                                "errorMessage", "Taxonomy data is still loading. Please wait.",
+                                "errorMessage", messageSource.getMessage("error.loading", null,
+                                        "Taxonomy data is still loading. Please wait.",
+                                        org.springframework.context.i18n.LocaleContextHolder.getLocale()),
                                 "initStatus", taxonomyService.getInitStatus()))));
             } catch (Exception ignored) {
                 // client already disconnected
@@ -349,7 +354,9 @@ public class AnalysisApiController {
     private <T> ResponseEntity<T> checkInitialized() {
         if (!taxonomyService.isInitialized()) {
             Map<String, Object> body = new LinkedHashMap<>();
-            body.put("error", "Taxonomy data is still loading. Please wait.");
+            body.put("error", messageSource.getMessage("error.loading", null,
+                    "Taxonomy data is still loading. Please wait.",
+                    org.springframework.context.i18n.LocaleContextHolder.getLocale()));
             body.put("status", taxonomyService.getInitStatus());
             return (ResponseEntity<T>) ResponseEntity.status(503).body(body);
         }

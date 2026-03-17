@@ -2,6 +2,7 @@
 
 (function () {
     'use strict';
+    var t = TaxonomyI18n.t;
 
     var S = window.TaxonomyState;
     // SC (scoring functions) resolved lazily — script may load before taxonomy-scoring.js
@@ -97,7 +98,7 @@
             clearLlmLogBtn.addEventListener('click', function () {
                 const content = document.getElementById('llmCommLogContent');
                 if (content) {
-                    content.innerHTML = '<div class="text-muted p-2">No LLM calls yet. Run an analysis to see LLM communication details.</div>';
+                    content.innerHTML = '<div class="text-muted p-2">' + t('browse.llm.log.empty') + '</div>';
                 }
             });
         }
@@ -134,7 +135,7 @@
                     .then(function (resp) { return resp.json(); })
                     .then(function (data) {
                         if (data.error) {
-                            showStatus('danger', '❌ Import failed: ' + data.error);
+                            showStatus('danger', t('browse.import.failed', data.error));
                             return;
                         }
                         S.currentScores = data.scores || {};
@@ -150,14 +151,14 @@
                         renderView(S.taxonomyData, S.currentScores);
                         updateExportGroupVisibility();
                         const scored = Object.keys(S.currentScores).length;
-                        let msg = '✅ Loaded analysis: ' + scored + ' node(s) scored.';
+                        let msg = t('browse.import.loaded', scored);
                         if (data.warnings && data.warnings.length > 0) {
                             msg += ' ⚠️ ' + data.warnings.join('; ');
                         }
                         showStatus(data.warnings && data.warnings.length > 0 ? 'warning' : 'success', msg);
                     })
                     .catch(function (err) {
-                        showStatus('danger', '❌ Import failed: ' + err.message);
+                        showStatus('danger', t('browse.import.failed', err.message));
                     });
                 };
                 reader.readAsText(file);
@@ -257,14 +258,14 @@
                     }
                     if (S.lastAnalyzedText !== null && businessTextEl.value !== S.lastAnalyzedText) {
                         businessTextEl.classList.add('stale-results');
-                        showStatus('warning', '⚠️ Business text has changed — previous results are no longer valid.');
+                        showStatus('warning', t('browse.stale.warning'));
                         const statusArea = document.getElementById('statusArea');
                         if (statusArea) {
                             const alertEl = statusArea.querySelector('.alert');
                             if (alertEl && !alertEl.querySelector('.btn-warning')) {
                                 const resetBtn = document.createElement('button');
                                 resetBtn.className = 'btn btn-sm btn-warning ms-2';
-                                resetBtn.textContent = '🔄 Reset Results';
+                                resetBtn.textContent = t('browse.stale.reset');
                                 resetBtn.addEventListener('click', resetStaleResults);
                                 alertEl.appendChild(resetBtn);
                             }
@@ -335,8 +336,8 @@
             if (adminNavTab) { adminNavTab.style.display = ''; }
             if (lockBtn) {
                 lockBtn.innerHTML = '<span aria-hidden="true">🔓</span><span class="visually-hidden">Admin Mode</span>';
-                lockBtn.title = 'Admin mode active — click to lock';
-                lockBtn.setAttribute('aria-label', 'Admin mode — unlocked. Click to lock.');
+                lockBtn.title = t('browse.admin.active.title');
+                lockBtn.setAttribute('aria-label', t('browse.admin.active.aria'));
                 lockBtn.classList.remove('d-none');
             }
         } else {
@@ -344,8 +345,8 @@
             if (adminNavTab) { adminNavTab.style.display = 'none'; }
             if (lockBtn) {
                 lockBtn.innerHTML = '<span aria-hidden="true">🔐</span><span class="visually-hidden">Admin Mode</span>';
-                lockBtn.title = 'Click to unlock admin mode';
-                lockBtn.setAttribute('aria-label', 'Admin mode — locked. Click to unlock.');
+                lockBtn.title = t('browse.admin.locked.title');
+                lockBtn.setAttribute('aria-label', t('browse.admin.locked.aria'));
                 lockBtn.classList.remove('d-none');
             }
         }
@@ -480,7 +481,7 @@
         // Manual scoring option
         var manualOpt = document.createElement('option');
         manualOpt.value = 'MANUAL';
-        manualOpt.textContent = '✏️ Manual Scoring';
+        manualOpt.textContent = '✏️ ' + t('browse.manual.scoring');
         select.appendChild(manualOpt);
     }
 
@@ -500,18 +501,18 @@
                     const aiWarn = document.getElementById('aiUnavailableWarning');
                     if (aiWarn) aiWarn.classList.add('d-none');
                     if (!adminPasswordRequired || isAdminMode()) {
-                        infoEl.textContent = 'Using: ' + status.provider;
+                        infoEl.textContent = t('browse.ai.using', status.provider);
                         infoEl.classList.remove('d-none');
                     } else {
                         infoEl.classList.add('d-none');
                     }
                     if (badge) {
                         if (!adminPasswordRequired || isAdminMode()) {
-                            badge.textContent = '🟢 AI: ' + status.provider;
-                            badge.title = 'AI is available (' + status.provider + ')';
+                            badge.textContent = t('browse.ai.badge.provider', status.provider);
+                            badge.title = t('browse.ai.badge.available.title', status.provider);
                         } else {
-                            badge.textContent = '🟢 AI: Ready';
-                            badge.title = 'AI is available';
+                            badge.textContent = t('browse.ai.badge.ready');
+                            badge.title = t('browse.ai.badge.ready.title');
                         }
                         badge.className = 'badge bg-success ms-auto me-2 fs-6';
                     }
@@ -522,15 +523,11 @@
                     const aiWarn = document.getElementById('aiUnavailableWarning');
                     if (aiWarn) aiWarn.classList.remove('d-none');
                     if (badge) {
-                        badge.textContent = '🔴 AI: Unavailable';
+                        badge.textContent = t('browse.ai.badge.unavailable');
                         badge.className = 'badge bg-danger ms-auto me-2 fs-6';
-                        badge.title = 'AI is not available — no LLM API key configured';
+                        badge.title = t('browse.ai.badge.unavailable.title');
                     }
-                    showStatus('warning',
-                        '⚠️ AI analysis is not available — no LLM API key is configured. ' +
-                        'Set one of the following environment variables: GEMINI_API_KEY, ' +
-                        'OPENAI_API_KEY, DEEPSEEK_API_KEY, DASHSCOPE_API_KEY, LLAMA_API_KEY, ' +
-                        'or MISTRAL_API_KEY. You can still use LOCAL_ONNX or Manual Scoring.');
+                    showStatus('warning', t('browse.ai.unavailable.detail'));
                 }
             })
             .catch(() => {
@@ -541,9 +538,9 @@
                 if (aiWarn) aiWarn.classList.add('d-none');
                 const badge = document.getElementById('aiStatusBadge');
                 if (badge) {
-                    badge.textContent = '⚠️ AI: Unknown';
+                    badge.textContent = t('browse.ai.badge.unknown');
                     badge.className = 'badge bg-warning text-dark ms-auto me-2 fs-6';
-                    badge.title = 'AI status could not be determined';
+                    badge.title = t('browse.ai.badge.unknown.title');
                 }
             });
     }
@@ -553,13 +550,13 @@
         if (adminPasswordRequired && !isAdminMode()) { return; }
         const content = document.getElementById('diagnosticsContent');
         if (!content) { return; }
-        content.innerHTML = '<div class="text-muted">Loading…</div>';
+        content.innerHTML = '<div class="text-muted">' + t('status.loading') + '</div>';
         const headers = { 'Accept': 'application/json' };
         if (isAdminMode()) { headers['X-Admin-Token'] = getAdminToken(); }
         fetch('/api/diagnostics', { headers: headers })
             .then(r => {
                 if (r.status === 401) {
-                    if (content) { content.innerHTML = '<div class="text-muted">Admin authentication required.</div>'; }
+                    if (content) { content.innerHTML = '<div class="text-muted">' + t('browse.diagnostics.auth.required') + '</div>'; }
                     return null;
                 }
                 return r.json();
@@ -568,65 +565,65 @@
                 if (!d) { return; }
                 console.log('[Taxonomy] Diagnostics:', d);
                 const keyStatus = d.apiKeyConfigured
-                    ? '<span class="diag-status-ok">&#9989; Configured</span>' +
+                    ? '<span class="diag-status-ok">&#9989; ' + t('browse.diagnostics.configured') + '</span>' +
                       (d.apiKeyPrefix ? ' (<code>' + escapeHtml(d.apiKeyPrefix) + '</code>)' : '')
-                    : '<span class="diag-status-err">&#10060; Not configured</span>';
+                    : '<span class="diag-status-err">&#10060; ' + t('browse.diagnostics.not.configured') + '</span>';
                 const lastCallHtml = d.lastCallTime
                     ? escapeHtml(d.lastCallTime) + ' — ' +
                       (d.lastCallSuccess
-                          ? '<span class="diag-status-ok">&#9989; Success</span>'
-                          : '<span class="diag-status-err">&#10060; Failed</span>')
-                    : '<span class="text-muted">No calls yet</span>';
+                          ? '<span class="diag-status-ok">&#9989; ' + t('browse.diagnostics.success') + '</span>'
+                          : '<span class="diag-status-err">&#10060; ' + t('browse.diagnostics.failed.label') + '</span>')
+                    : '<span class="text-muted">' + t('browse.diagnostics.no.calls') + '</span>';
                 const lastErrorHtml = d.lastError
-                    ? '<div class="mt-1 llm-log-error-detail"><strong>Last error:</strong> ' +
+                    ? '<div class="mt-1 llm-log-error-detail"><strong>' + t('browse.diagnostics.last.error') + '</strong> ' +
                       escapeHtml(d.lastError) + '</div>'
                     : '';
                 content.innerHTML =
                     '<table class="table table-sm table-borderless mb-0" style="font-size:0.9em;">' +
-                    '<tr><td class="fw-semibold" style="width:140px">Provider</td><td>' + escapeHtml(d.provider || '—') + '</td></tr>' +
-                    '<tr><td class="fw-semibold">API Key</td><td>' + keyStatus + '</td></tr>' +
-                    '<tr><td class="fw-semibold">Last call</td><td>' + lastCallHtml + '</td></tr>' +
-                    '<tr><td class="fw-semibold">Stats</td><td>' +
+                    '<tr><td class="fw-semibold" style="width:140px">' + t('browse.diagnostics.provider') + '</td><td>' + escapeHtml(d.provider || '—') + '</td></tr>' +
+                    '<tr><td class="fw-semibold">' + t('browse.diagnostics.api.key') + '</td><td>' + keyStatus + '</td></tr>' +
+                    '<tr><td class="fw-semibold">' + t('browse.diagnostics.last.call') + '</td><td>' + lastCallHtml + '</td></tr>' +
+                    '<tr><td class="fw-semibold">' + t('browse.diagnostics.stats') + '</td><td>' +
                         escapeHtml(String(d.totalCalls)) + ' total / ' +
                         '<span class="diag-status-ok">' + escapeHtml(String(d.successfulCalls)) + ' ok</span> / ' +
                         '<span class="diag-status-err">' + escapeHtml(String(d.failedCalls)) + ' failed</span>' +
                     '</td></tr>' +
-                    '<tr><td class="fw-semibold">Server time</td><td>' + escapeHtml(d.serverTime || '—') + '</td></tr>' +
+                    '<tr><td class="fw-semibold">' + t('browse.diagnostics.server.time') + '</td><td>' + escapeHtml(d.serverTime || '—') + '</td></tr>' +
                     '</table>' +
                     lastErrorHtml;
             })
             .catch(err => {
                 console.error('[Taxonomy] Failed to load diagnostics', err);
-                if (content) { content.innerHTML = '<div class="text-danger">Failed to load diagnostics: ' + escapeHtml(err.message) + '</div>'; }
+                if (content) { content.innerHTML = '<div class="text-danger">' + t('browse.diagnostics.load.failed', escapeHtml(err.message)) + '</div>'; }
             });
     }
 
     function testLlmConnection() {
         const btn = document.getElementById('testLlmConnection');
-        if (btn) { btn.disabled = true; btn.textContent = '⏳ Testing…'; }
+        if (btn) { btn.disabled = true; btn.textContent = t('browse.test.testing'); }
         const testText = 'Test connection: business process management';
         fetch('/api/analyze-node?parentCode=BP&businessText=' + encodeURIComponent(testText))
             .then(r => r.json())
             .then(result => {
                 console.log('[Taxonomy] Test connection result:', result);
                 if (result.error) {
-                    showStatus('warning', '⚠️ Test connection error: ' + result.error);
+                    showStatus('warning', t('browse.test.error', result.error));
                 } else {
-                    showStatus('success', '✅ Test connection successful via ' + (result.provider || 'unknown provider') + '.');
+                    showStatus('success', t('browse.test.success', (result.provider || 'unknown provider')));
                 }
                 loadDiagnostics();
             })
             .catch(err => {
                 console.error('[Taxonomy] Test connection failed', err);
-                showStatus('danger', '❌ Test connection failed: ' + err.message);
+                showStatus('danger', t('browse.test.failed', err.message));
             })
             .finally(() => {
-                if (btn) { btn.disabled = false; btn.textContent = '🧪 Test Connection'; }
+                if (btn) { btn.disabled = false; btn.textContent = t('browse.test.btn'); }
             });
     }
 
     // ── Load taxonomy tree from API ───────────────────────────────────────────
-    var LOADING_MSG = '⏳ Taxonomy data is loading&hellip; This takes about 1&ndash;2 minutes on first start. Please wait.';
+    var LOADING_MSG = t('browse.loading.message');
 
     /** Shows or hides the global startup banner and disables/enables interactive elements. */
     function setStartupBanner(show, statusText) {
@@ -642,8 +639,8 @@
         if (analyzeBtn) {
             analyzeBtn.disabled = show;
             analyzeBtn.title = show
-                ? 'Waiting for taxonomy data to finish loading…'
-                : 'Analyze the business requirement text against the taxonomy using the configured AI/LLM provider';
+                ? t('browse.loading.wait')
+                : t('browse.analyze.btn.title');
         }
     }
 
@@ -674,7 +671,7 @@
             .catch(function (err) {
                 setStartupBanner(false);
                 document.getElementById('taxonomyTree').innerHTML =
-                    '<div class="alert alert-danger">Failed to load taxonomy: ' + err + '</div>';
+                    '<div class="alert alert-danger">' + t('browse.load.failed', err) + '</div>';
             });
     }
 
@@ -913,7 +910,7 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             })
-            .catch(function (err) { alert('Report export failed: ' + err.message); });
+            .catch(function (err) { alert(t('browse.report.export.failed', err.message)); });
             return;
         }
     }
@@ -1095,10 +1092,10 @@
         wrapper.setAttribute('tabindex', '-1');
         var ariaLabel = node.code + ' ' + (node.name || '');
         if (pct !== null && pct > 0) {
-            ariaLabel += ', Score: ' + pct + ' percent';
-            if (reason) { ariaLabel += ', Reason: ' + reason; }
+            ariaLabel += ', ' + t('browse.node.score', pct);
+            if (reason) { ariaLabel += ', ' + t('browse.node.reason', reason); }
         } else if (pct !== null) {
-            ariaLabel += ', Score: 0 percent';
+            ariaLabel += ', ' + t('browse.node.score', 0);
         }
         wrapper.setAttribute('aria-label', ariaLabel);
         if (hasChildren) {
@@ -1160,7 +1157,7 @@
             reasonIcon.className = 'tax-reason-icon';
             reasonIcon.textContent = '💬';
             reasonIcon.title = reason;
-            reasonIcon.setAttribute('aria-label', 'Reason: ' + reason);
+            reasonIcon.setAttribute('aria-label', t('browse.node.reason', reason));
             header.appendChild(reasonIcon);
         }
 
@@ -1188,7 +1185,7 @@
         if (!hasChildren && pct !== null && pct > 0 && S.storedBusinessText) {
             const justifyBtn = document.createElement('button');
             justifyBtn.className = 'btn btn-sm btn-outline-info tax-justify-btn';
-            justifyBtn.textContent = '📋 Request Justification';
+            justifyBtn.textContent = t('browse.btn.justify');
             justifyBtn.dataset.code = node.code;
             justifyBtn.addEventListener('click', function (e) {
                 e.stopPropagation();
@@ -1200,9 +1197,9 @@
         // Propose Relations button (always visible on every node)
         const proposeBtn = document.createElement('button');
         proposeBtn.className = 'btn btn-sm btn-outline-secondary tax-justify-btn proposal-btn';
-        proposeBtn.textContent = '🔗 Propose Relations';
-        proposeBtn.title = 'Generate relation proposals for ' + node.code;
-        proposeBtn.setAttribute('aria-label', 'Propose relations for ' + node.code);
+        proposeBtn.textContent = t('browse.btn.propose.relations');
+        proposeBtn.title = t('browse.btn.propose.relations.title', node.code);
+        proposeBtn.setAttribute('aria-label', t('browse.btn.propose.relations.aria', node.code));
         proposeBtn.dataset.code = node.code;
         proposeBtn.addEventListener('click', function (e) {
             e.stopPropagation();
@@ -1219,9 +1216,9 @@
         // Graph Explorer button (always visible on every node)
         const graphBtn = document.createElement('button');
         graphBtn.className = 'btn btn-sm btn-outline-secondary tax-justify-btn graph-explore-btn';
-        graphBtn.textContent = '🔎 Graph';
-        graphBtn.title = 'Explore upstream/downstream dependencies and failure impact for ' + node.code;
-        graphBtn.setAttribute('aria-label', 'Open graph explorer for ' + node.code);
+        graphBtn.textContent = t('browse.btn.graph');
+        graphBtn.title = t('browse.btn.graph.title', node.code);
+        graphBtn.setAttribute('aria-label', t('browse.btn.graph.aria', node.code));
         graphBtn.dataset.code = node.code;
         graphBtn.addEventListener('click', function (e) {
             e.stopPropagation();
@@ -1234,9 +1231,9 @@
         // Find Similar button (visible when embeddings are available)
         const similarBtn = document.createElement('button');
         similarBtn.className = 'btn btn-sm btn-outline-secondary tax-justify-btn search-similar-btn';
-        similarBtn.textContent = '🔍 Similar';
-        similarBtn.title = 'Find semantically similar nodes to ' + node.code;
-        similarBtn.setAttribute('aria-label', 'Find similar nodes to ' + node.code);
+        similarBtn.textContent = t('browse.btn.similar');
+        similarBtn.title = t('browse.btn.similar.title', node.code);
+        similarBtn.setAttribute('aria-label', t('browse.btn.similar.aria', node.code));
         similarBtn.dataset.code = node.code;
         similarBtn.addEventListener('click', function (e) {
             e.stopPropagation();
@@ -1294,7 +1291,7 @@
                 // Show error in status area if present
                 if (result.error) {
                     console.warn('[Taxonomy] LLM error for', parentCode, ':', result.error);
-                    showStatus('warning', '⚠️ LLM issue for ' + parentCode + ': ' + result.error);
+                    showStatus('warning', t('browse.eval.llm.issue', parentCode, result.error));
                 }
 
                 // Update global reasons
@@ -1353,7 +1350,7 @@
                             if (!justifyBtn) {
                                 justifyBtn = document.createElement('button');
                                 justifyBtn.className = 'btn btn-sm btn-outline-info tax-justify-btn';
-                                justifyBtn.textContent = '📋 Request Justification';
+                                justifyBtn.textContent = t('browse.btn.justify');
                                 justifyBtn.dataset.code = code;
                                 justifyBtn.addEventListener('click', function (e) {
                                     e.stopPropagation();
@@ -1368,15 +1365,15 @@
                             var manualBtn = document.createElement('button');
                             manualBtn.className = 'btn btn-sm btn-outline-secondary tax-manual-btn ms-1';
                             manualBtn.textContent = '✏️';
-                            manualBtn.title = 'Set score manually (no AI)';
+                            manualBtn.title = t('browse.manual.score.title');
                             manualBtn.addEventListener('click', function (e) {
                                 e.stopPropagation();
-                                var score = prompt('Enter score (0-100) for ' + code + ':');
+                                var score = prompt(t('browse.manual.score.prompt', code));
                                 if (score !== null) {
                                     var val = parseInt(score, 10);
                                     if (!isNaN(val) && val >= 0 && val <= 100) {
                                         S.currentScores[code] = val;
-                                        S.currentReasons[code] = 'Manually assigned';
+                                        S.currentReasons[code] = t('browse.manual.reason');
                                         SC().applyScoreToNode(code, val, 'Manually assigned');
                                         updateExportGroupVisibility();
                                     }
@@ -1407,7 +1404,7 @@
                 wrapper.classList.remove('tax-evaluating');
                 S.evaluatedNodes.delete(parentCode); // allow retry
                 console.error('[Taxonomy] Failed to evaluate', parentCode, err);
-                showStatus('danger', 'Failed to evaluate ' + parentCode + ': ' + err.message);
+                showStatus('danger', t('browse.eval.failed', parentCode, err.message));
                 // Still expand the node (without scores)
                 const children = wrapper.querySelector(':scope > .tax-children');
                 if (children) {
@@ -1468,7 +1465,7 @@
         if (businessTextEl) { businessTextEl.classList.remove('stale-results'); }
         const content = document.getElementById('llmCommLogContent');
         if (content) {
-            content.innerHTML = '<div class="text-muted p-2">No LLM calls yet. Run an analysis to see LLM communication details.</div>';
+            content.innerHTML = '<div class="text-muted p-2">' + t('browse.llm.log.empty') + '</div>';
         }
     }
 
@@ -1479,7 +1476,7 @@
     function loadProposals(statusFilter) {
         const container = document.getElementById('proposalsTableContainer');
         if (!container) return;
-        container.innerHTML = '<div class="text-muted small p-2" role="status" aria-live="polite">Loading proposals&hellip;</div>';
+        container.innerHTML = '<div class="text-muted small p-2" role="status" aria-live="polite">' + t('browse.proposals.loading') + '</div>';
         // PENDING has a dedicated endpoint; ACCEPTED/REJECTED/ALL need the full list
         const url = statusFilter === 'PENDING' ? '/api/proposals/pending' : '/api/proposals';
         fetch(url)
@@ -1498,7 +1495,7 @@
             .catch(function (err) {
                 console.error('[Taxonomy] Failed to load proposals', err);
                 if (container) {
-                    container.innerHTML = '<div class="text-danger small p-2">Failed to load proposals: ' + escapeHtml(err.message) + '</div>';
+                    container.innerHTML = '<div class="text-danger small p-2">' + t('browse.proposals.load.failed', escapeHtml(err.message)) + '</div>';
                 }
             });
     }
@@ -1508,7 +1505,7 @@
         if (!container) return;
 
         if (!proposals || proposals.length === 0) {
-            container.innerHTML = '<div class="text-muted small p-2">No proposals found.</div>';
+            container.innerHTML = '<div class="text-muted small p-2">' + t('browse.proposals.none') + '</div>';
             return;
         }
 
@@ -1519,9 +1516,9 @@
         // Bulk actions bar (only for pending proposals)
         if (hasPending) {
             html += '<div class="bulk-actions-bar" id="bulkActionsBar">' +
-                '<span class="bulk-count" id="bulkCount">0 selected</span>' +
-                '<button class="btn btn-sm btn-accept" id="bulkAcceptBtn" disabled>✅ Accept Selected</button>' +
-                '<button class="btn btn-sm btn-reject" id="bulkRejectBtn" disabled>❌ Reject Selected</button>' +
+                '<span class="bulk-count" id="bulkCount">' + t('browse.proposals.selected', 0) + '</span>' +
+                '<button class="btn btn-sm btn-accept" id="bulkAcceptBtn" disabled>' + t('browse.proposals.accept.selected') + '</button>' +
+                '<button class="btn btn-sm btn-reject" id="bulkRejectBtn" disabled>' + t('browse.proposals.reject.selected') + '</button>' +
                 '</div>';
         }
 
@@ -1529,16 +1526,16 @@
             '<thead><tr>';
 
         if (hasPending) {
-            html += '<th scope="col"><input type="checkbox" id="proposalSelectAll" aria-label="Select all proposals" title="Select all"></th>';
+            html += '<th scope="col"><input type="checkbox" id="proposalSelectAll" aria-label="' + t('browse.proposals.select.all') + '" title="' + t('browse.proposals.select.all') + '"></th>';
         }
 
-        html += '<th scope="col">Source</th>' +
-            '<th scope="col" aria-label="arrow">→</th>' +
-            '<th scope="col">Target</th>' +
-            '<th scope="col">Type</th>' +
-            '<th scope="col">Confidence</th>' +
-            '<th scope="col">Rationale</th>' +
-            '<th scope="col">Actions</th>' +
+        html += '<th scope="col">' + t('browse.proposals.table.source') + '</th>' +
+            '<th scope="col" aria-label="arrow">\u2192</th>' +
+            '<th scope="col">' + t('browse.proposals.table.target') + '</th>' +
+            '<th scope="col">' + t('browse.proposals.table.type') + '</th>' +
+            '<th scope="col">' + t('browse.proposals.table.confidence') + '</th>' +
+            '<th scope="col">' + t('browse.proposals.table.rationale') + '</th>' +
+            '<th scope="col">' + t('browse.proposals.table.actions') + '</th>' +
             '</tr></thead><tbody>';
 
         proposals.forEach(function (p) {
@@ -1611,7 +1608,7 @@
         function updateBulkCount() {
             var checked = document.querySelectorAll('.proposal-select:checked');
             var countEl = document.getElementById('bulkCount');
-            if (countEl) countEl.textContent = checked.length + ' selected';
+            if (countEl) countEl.textContent = t('browse.proposals.selected', checked.length);
             if (bulkAccept) bulkAccept.disabled = checked.length === 0;
             if (bulkReject) bulkReject.disabled = checked.length === 0;
         }
@@ -1666,14 +1663,14 @@
         })
         .then(function (result) {
             showStatus('success', action === 'ACCEPT'
-                ? '✅ ' + result.success + ' proposal(s) accepted.'
-                : '🗑️ ' + result.success + ' proposal(s) rejected.');
+                ? t('browse.proposals.accepted', result.success)
+                : t('browse.proposals.rejected', result.success));
             loadProposals(S.currentProposalFilter);
             // Show undo toast
             showUndoToast(ids, action);
         })
         .catch(function (err) {
-            showStatus('danger', '❌ Bulk action failed: ' + err.message);
+            showStatus('danger', t('browse.proposals.bulk.failed', err.message));
         });
     }
 
@@ -1684,13 +1681,13 @@
                 return r.json();
             })
             .then(function () {
-                showStatus('success', '✅ Proposal accepted and relation created.');
+                showStatus('success', t('browse.proposals.accept.success'));
                 loadProposals(S.currentProposalFilter);
                 showUndoToast([id], 'ACCEPT');
             })
             .catch(function (err) {
                 console.error('[Taxonomy] Accept proposal failed', err);
-                showStatus('danger', '❌ Failed to accept proposal: ' + err.message);
+                showStatus('danger', t('browse.proposals.accept.failed', err.message));
             });
     }
 
@@ -1701,13 +1698,13 @@
                 return r.json();
             })
             .then(function () {
-                showStatus('success', '🗑️ Proposal rejected.');
+                showStatus('success', t('browse.proposals.reject.success'));
                 loadProposals(S.currentProposalFilter);
                 showUndoToast([id], 'REJECT');
             })
             .catch(function (err) {
                 console.error('[Taxonomy] Reject proposal failed', err);
-                showStatus('danger', '❌ Failed to reject proposal: ' + err.message);
+                showStatus('danger', t('browse.proposals.reject.failed', err.message));
             });
     }
 
@@ -1723,14 +1720,14 @@
         if (undoTimeout) clearTimeout(undoTimeout);
 
         var label = action === 'ACCEPT'
-            ? '✅ ' + ids.length + ' proposal(s) accepted'
-            : '🗑️ ' + ids.length + ' proposal(s) rejected';
+            ? t('browse.proposals.undo.accepted', ids.length)
+            : t('browse.proposals.undo.rejected', ids.length);
 
         var toast = document.createElement('div');
         toast.className = 'undo-toast';
         toast.id = 'undoToast';
         toast.innerHTML = '<span>' + label + '</span>' +
-            '<button class="undo-btn" id="undoBtn">↩️ Undo</button>';
+            '<button class="undo-btn" id="undoBtn">' + t('browse.proposals.undo.btn') + '</button>';
 
         document.body.appendChild(toast);
 
@@ -1764,11 +1761,11 @@
 
         Promise.all(promises)
             .then(function () {
-                showStatus('info', '↩️ ' + ids.length + ' proposal(s) reverted to pending.');
+                showStatus('info', t('browse.proposals.reverted', ids.length));
                 loadProposals(S.currentProposalFilter);
             })
             .catch(function (err) {
-                showStatus('danger', '❌ Undo failed: ' + err.message);
+                showStatus('danger', t('browse.proposals.undo.failed', err.message));
             });
     }
 
@@ -1795,12 +1792,12 @@
                     if (modal) modal.hide();
                 }
                 const count = Array.isArray(proposals) ? proposals.length : 0;
-                showStatus('success', '✅ Generated ' + count + ' proposal(s) for ' + nodeCode + ' (' + relationType + ').');
+                showStatus('success', t('browse.proposals.generated', count, nodeCode, relationType));
                 loadProposals(S.currentProposalFilter);
             })
             .catch(function (err) {
                 console.error('[Taxonomy] Propose relations failed', err);
-                showStatus('danger', '❌ Failed to generate proposals: ' + err.message);
+                showStatus('danger', t('browse.proposals.generate.failed', err.message));
             })
             .finally(function () {
                 if (spinner) spinner.classList.add('d-none');
@@ -1818,7 +1815,7 @@
                 const badge = document.getElementById('proposalPendingBadge');
                 if (badge) {
                     const count = Array.isArray(pending) ? pending.length : 0;
-                    badge.textContent = count + ' pending';
+                    badge.textContent = t('browse.proposals.pending', count);
                     badge.className = count > 0
                         ? 'badge bg-warning text-dark proposal-pending-badge'
                         : 'badge bg-secondary proposal-pending-badge';
@@ -1877,7 +1874,7 @@
                 }
             })
             .catch(function () {
-                setPromptStatus('danger', 'Failed to load prompt templates.');
+                setPromptStatus('danger', t('browse.prompt.load.failed'));
             });
 
         select.addEventListener('change', function () {
@@ -1897,14 +1894,14 @@
                 return r.json();
             })
             .then(function () {
-                setPromptStatus('success', '✅ Template saved.');
+                setPromptStatus('success', t('browse.prompt.saved'));
                 updateOverrideBadge(code, true);
                 // Update local cache
                 const entry = promptTemplates.find(t => t.code === code);
                 if (entry) { entry.template = template; entry.overridden = true; }
             })
             .catch(function (e) {
-                setPromptStatus('danger', '❌ Save failed: ' + e.message);
+                setPromptStatus('danger', t('browse.prompt.save.failed', e.message));
             });
         });
 
@@ -1927,12 +1924,12 @@
             .then(function (data) {
                 document.getElementById('promptTextarea').value = data.template;
                 updateOverrideBadge(code, false);
-                setPromptStatus('success', 'Reset to default.');
+                setPromptStatus('success', t('browse.prompt.reset.success'));
                 const entry = promptTemplates.find(t => t.code === code);
                 if (entry) { entry.template = data.template; entry.overridden = false; }
             })
             .catch(function (e) {
-                setPromptStatus('danger', '❌ Reset failed: ' + e.message);
+                setPromptStatus('danger', t('browse.prompt.reset.failed', e.message));
             });
         });
     }
@@ -1950,7 +1947,7 @@
                 setPromptStatus('', '');
             })
             .catch(function () {
-                setPromptStatus('danger', 'Failed to load template for ' + code);
+                setPromptStatus('danger', t('browse.prompt.load.template.failed', code));
             });
     }
 
@@ -1974,7 +1971,7 @@
     function enterManualScoringMode() {
         var text = document.getElementById('businessText').value.trim();
         if (!text) {
-            showStatus('warning', 'Please enter a requirement text (used as label for export).');
+            showStatus('warning', t('browse.manual.enter.text'));
             return;
         }
 
@@ -1986,7 +1983,7 @@
         renderView(S.taxonomyData, null);
         addManualScoreInputs();
 
-        showStatus('info', '✏️ Manual Mode: Set scores (0–100) on any node, then click "Apply Manual Scores".');
+        showStatus('info', t('browse.manual.mode.info'));
         showManualApplyButton();
     }
 
@@ -2005,7 +2002,7 @@
             input.className = 'form-control form-control-sm manual-score-input';
             input.dataset.code = code;
             input.style.cssText = 'width:60px; display:inline-block; margin-left:8px;';
-            input.title = 'Score for ' + code + ' (0-100)';
+            input.title = t('browse.manual.score.input.title', code);
             input.addEventListener('click', function(e) { e.stopPropagation(); });
             header.appendChild(input);
         });
@@ -2021,7 +2018,7 @@
         var btn = document.createElement('button');
         btn.id = 'manualApplyBtn';
         btn.className = 'btn btn-success btn-sm mt-2';
-        btn.textContent = '✅ Apply Manual Scores';
+        btn.textContent = t('browse.manual.apply.btn');
         btn.addEventListener('click', applyManualScores);
         container.parentNode.insertBefore(btn, container.nextSibling);
     }
@@ -2033,12 +2030,12 @@
             var val = parseInt(input.value, 10);
             if (!isNaN(val) && val > 0) {
                 scores[input.dataset.code] = val;
-                reasons[input.dataset.code] = 'Manually assigned';
+                reasons[input.dataset.code] = t('browse.manual.reason');
             }
         });
 
         if (Object.keys(scores).length === 0) {
-            showStatus('warning', 'No scores entered. Set at least one score > 0.');
+            showStatus('warning', t('browse.manual.no.scores'));
             return;
         }
 
@@ -2053,9 +2050,7 @@
         var exportHint = document.getElementById('exportHint');
         if (exportHint) exportHint.style.display = 'none';
 
-        showStatus('success', '✏️ Manual scores applied: ' +
-            Object.keys(scores).length + ' node(s) scored. ' +
-            'You can now export or generate an Architecture View.');
+        showStatus('success', t('browse.manual.applied', Object.keys(scores).length));
 
         // Remove score inputs and apply button
         document.querySelectorAll('.manual-score-input').forEach(function(el) {

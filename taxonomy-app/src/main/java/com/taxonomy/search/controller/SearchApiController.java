@@ -3,6 +3,8 @@ package com.taxonomy.search.controller;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.search.service.SearchFacade;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,9 +21,11 @@ import java.util.Map;
 public class SearchApiController {
 
     private final SearchFacade searchFacade;
+    private final MessageSource messageSource;
 
-    public SearchApiController(SearchFacade searchFacade) {
+    public SearchApiController(SearchFacade searchFacade, MessageSource messageSource) {
         this.searchFacade = searchFacade;
+        this.messageSource = messageSource;
     }
 
     @Operation(summary = "Full-text search", description = "Search taxonomy nodes using full-text Lucene search", tags = {"Search"})
@@ -107,7 +111,8 @@ public class SearchApiController {
     private <T> ResponseEntity<T> checkInitialized() {
         if (!searchFacade.isInitialized()) {
             Map<String, Object> body = new LinkedHashMap<>();
-            body.put("error", "Taxonomy data is still loading. Please wait.");
+            body.put("error", messageSource.getMessage("error.loading", null,
+                    "Taxonomy data is still loading. Please wait.", LocaleContextHolder.getLocale()));
             body.put("status", searchFacade.getInitStatus());
             return (ResponseEntity<T>) ResponseEntity.status(503).body(body);
         }
