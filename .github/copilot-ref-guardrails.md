@@ -43,3 +43,16 @@
 
 - Extending test timeouts masks bugs. If a test is timing out, find and fix the root cause.
 - Silent JavaScript promise failures (missing `.catch()`) are a common cause of Selenium timeouts.
+
+## Use `mvn verify` as Final Validation When Needed
+
+- Running only `mvn test` misses ALL integration tests (`*IT.java`).
+- These ITs start the real application in Docker via Testcontainers and test against HSQLDB, PostgreSQL, Oracle, and MSSQL.
+- Before finishing your work, run `mvn verify -DexcludedGroups="real-llm"` if your changes could affect controllers, GUI, startup config, pom.xml, or Dockerfiles.
+- You do NOT need to run `mvn verify` for every small iteration — only as a final check before pushing.
+
+## Multi-Module Maven — Always Use `-am` With `-pl`
+
+- `mvn verify` does NOT run `install` — sibling modules are NOT in `~/.m2/repository`.
+- Any command using `-pl <module>` MUST also include `-am` (`--also-make`) or sibling dependencies will fail to resolve.
+- When adding Maven commands to CI workflow files, always test them manually in your workspace first.

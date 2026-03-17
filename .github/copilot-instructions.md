@@ -14,6 +14,21 @@ mvn verify             # unit tests + integration tests (requires Docker for con
 
 Integration test classes follow the `**/*IT.java` naming pattern and are run by `maven-failsafe-plugin`.
 
+### Validation Strategy
+
+During iterative development, `mvn test` is sufficient for quick feedback.
+
+**Before completing your work** (final commit before opening the PR), run the full integration test suite with `mvn verify -DexcludedGroups="real-llm"` if your changes could affect any of the following:
+- REST controllers or API endpoints
+- GUI (HTML, JavaScript, CSS, Thymeleaf templates)
+- Application startup, configuration, or Spring context (`application.properties`, Spring beans)
+- `pom.xml` or dependency changes
+- Dockerfile or container setup
+
+For changes that only touch internal logic, Javadoc, comments, or documentation files, `mvn test` is sufficient.
+
+**When modifying CI/CD workflow files** (`.github/workflows/*.yml`): manually execute every new or changed shell command in your workspace before committing. This is a multi-module Maven project — commands using `-pl <module>` must also include `-am` (`--also-make`), because `mvn verify` does not install sibling modules into `~/.m2/repository`.
+
 ## Critical Rules
 
 1. **Taxonomy codes follow `XX-XXXX` format** — two uppercase letters, hyphen, four digits (e.g., `CP-1023`, `CR-1047`). Not all numbers exist. Never invent codes; discover them from the live taxonomy via `GET /api/taxonomy`.
