@@ -195,9 +195,9 @@ public class HelpController {
 <span class="fc" id="L195">        try (InputStream in = resource.getInputStream()) {</span>
 <span class="fc" id="L196">            String markdown = new String(in.readAllBytes(), StandardCharsets.UTF_8);</span>
             // Rewrite relative image paths to absolute /help/images/... URLs
-<span class="fc" id="L198">            markdown = markdown.replaceAll(&quot;\\(images/([^)]+)\\)&quot;, &quot;(/help/images/$1)&quot;);</span>
-            // Also rewrite HTML &lt;img src=&quot;images/...&quot;&gt; tags
-<span class="fc" id="L200">            markdown = markdown.replaceAll(&quot;src=\&quot;images/([^\&quot;]+)\&quot;&quot;, &quot;src=\&quot;/help/images/$1\&quot;&quot;);</span>
+<span class="fc" id="L198">            markdown = markdown.replaceAll(&quot;\\(\\.\\./images/([^)]++)\\)&quot;, &quot;(/help/images/$1)&quot;);</span>
+            // Also rewrite HTML &lt;img src=&quot;../images/...&quot;&gt; tags
+<span class="fc" id="L200">            markdown = markdown.replaceAll(&quot;src=\&quot;\\.\\./images/([^\&quot;]++)\&quot;&quot;, &quot;src=\&quot;/help/images/$1\&quot;&quot;);</span>
 <span class="fc" id="L201">            Node document = parser.parse(markdown);</span>
 <span class="fc" id="L202">            String body = renderer.render(document);</span>
 <span class="fc" id="L203">            return &quot;&lt;div class=\&quot;help-doc-content\&quot;&gt;&quot; + body + &quot;&lt;/div&gt;&quot;;</span>
