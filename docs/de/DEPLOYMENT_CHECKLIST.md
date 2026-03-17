@@ -136,7 +136,7 @@ docker run -d \
 | Verwaltungsintegration | [docs/VERWALTUNGSINTEGRATION.md](VERWALTUNGSINTEGRATION.md) |
 | Betriebshandbuch | [docs/OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md) |
 | SSO-Integration | [docs/SSO_INTEGRATION.md](SSO_INTEGRATION.md) |
-| Drittanbieter-Hinweise | [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) |
+| Drittanbieter-Hinweise | [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) |
 | SBOM | `target/taxonomy-sbom.json` (wird beim Build generiert) |
 
 ---

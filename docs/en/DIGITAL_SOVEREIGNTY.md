@@ -37,14 +37,14 @@ The Taxonomy Architecture Analyzer meets the criteria for publication on the [op
 
 | openCode Criterion | Status | Evidence |
 |---|---|---|
-| **Open Source License** | ✅ | MIT license ([LICENSE](../LICENSE)) |
+| **Open Source License** | ✅ | MIT license ([LICENSE](../../LICENSE)) |
 | **Publicly Accessible Source Code** | ✅ | [GitHub Repository](https://github.com/carstenartur/Taxonomy) |
-| **Documented Build Instructions** | ✅ | [README](../README.md) + [Developer Guide](DEVELOPER_GUIDE.md) |
+| **Documented Build Instructions** | ✅ | [README](../../README.md) + [Developer Guide](DEVELOPER_GUIDE.md) |
 | **SBOM Available** | ✅ | CycloneDX (`target/taxonomy-sbom.json`) |
 | **Government-Relevant Use Case** | ✅ | Architecture analysis and knowledge preservation for government agencies (see [Use Case](USE_CASE_WISSENSKONSERVIERUNG.md)) |
 | **Reuse by Other Agencies** | ✅ | Docker deployment; extensive configuration options |
 | **Documentation in German** | ✅ | Government-readiness documentation available in German |
-| **Third-Party Transparency** | ✅ | [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) |
+| **Third-Party Transparency** | ✅ | [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) |
 | **Security Documentation** | ✅ | [SECURITY.md](SECURITY.md) |
 | **Data Protection Documentation** | ✅ | [DATA_PROTECTION.md](DATA_PROTECTION.md) |
 
@@ -57,7 +57,7 @@ The Taxonomy Architecture Analyzer is compatible with the target architecture of
 | DVC Requirement | Taxonomy Implementation | Status |
 |---|---|---|
 | **Container-Based Deployment** | Docker image available; Kubernetes-ready (Dockerfile in repository) | ✅ |
-| **Multi-Tenancy** | Workspace isolation via branch-based user separation (see [Workspace Design](internal/WORKSPACE_DESIGN.md)) | ⚠️ In Development |
+| **Multi-Tenancy** | Workspace isolation via branch-based user separation (see [Workspace Design](../internal/WORKSPACE_DESIGN.md)) | ⚠️ In Development |
 | **Federal Reuse** | Open Source (MIT); configurable for various agency contexts | ✅ |
 | **Standardized Interfaces** | REST API with OpenAPI/Swagger documentation | ✅ |
 | **Data Sovereignty** | On-premises operation + air-gapped mode possible | ✅ |

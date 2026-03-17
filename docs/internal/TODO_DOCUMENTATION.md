@@ -54,12 +54,12 @@ This file tracks known documentation gaps and improvement opportunities. Items m
 
 Full i18n support has been implemented:
 
-1. ✅ **Backend**: `I18nConfig` with `MessageSource`, `messages.properties` (English, 359 keys), `messages_de.properties` (German, 359 keys).
+1. ✅ **Backend**: `I18nConfig` with `MessageSource`, `messages.properties` (English, 375 keys), `messages_de.properties` (German, 375 keys).
 2. ✅ **Templates**: Thymeleaf `#{…}` expressions used throughout `index.html`.
 3. ✅ **JavaScript**: `taxonomy-i18n.js` module loads translations from `/api/i18n/{locale}` and exposes `TaxonomyI18n.t('key')`.
 4. ✅ **Locale detection**: `WebMvcConfig` with `CookieLocaleResolver` + `LocaleChangeInterceptor` (`?lang=` parameter). UI language selector in navbar with `localStorage` persistence.
 5. ✅ **LLM prompts**: Prompt templates are customisable via the Prompt Template Editor — they can be translated per deployment without code changes.
-6. ✅ **Documentation**: `docs/` (31 English files) and `docs/de/` (31 German files) with full parity. `HelpController` resolves docs by locale with fallback chain: `docs/{lang}/` → `docs/` (English default).
+6. ✅ **Documentation**: `docs/en/` (31 English files) and `docs/de/` (31 German files) with full parity. `HelpController` resolves docs by locale with fallback chain: `docs/{lang}/` → `docs/en/`. All 31 docs are accessible via the in-app Help tab. Adding a new language requires creating a `docs/{lang}/` directory with translated `.md` files.
 
 ---
 
