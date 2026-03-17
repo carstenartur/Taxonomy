@@ -59,7 +59,7 @@ Process: Enable (BP-1327)
 
 Klicken Sie auf eine Export-Schaltfläche, um die Architektur als ArchiMate XML, Visio `.vsdx` oder Mermaid-Flussdiagramm herunterzuladen.
 
-![Detaillierte Architekturansicht](images/38-architecture-view-detailed.png)
+![Detaillierte Architekturansicht](../images/38-architecture-view-detailed.png)
 
 ### REST-API-Äquivalent
 
@@ -168,7 +168,7 @@ Jeder Vorschlag zeigt:
 
 Klicken Sie auf **Accept**, um die Beziehung zum Wissensgraphen hinzuzufügen, oder auf **Reject**, um sie zu verwerfen.
 
-![Akzeptierter Vorschlag](images/36-proposal-accepted.png)
+![Akzeptierter Vorschlag](../images/36-proposal-accepted.png)
 
 ### REST-API
 
