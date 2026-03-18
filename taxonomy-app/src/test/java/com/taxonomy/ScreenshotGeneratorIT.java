@@ -267,51 +267,6 @@ class ScreenshotGeneratorIT {
             "</div></div></div>" +
             "</div>";
 
-    /**
-     * Fallback failure-impact graph results HTML injected when the failure-impact
-     * query fails (HTTP 423 or timeout). Contains a {@code graphViewTable} element
-     * so downstream waits are satisfied. Mirrors FALLBACK_UPSTREAM_GRAPH_HTML
-     * with a FAILURE direction stat card.
-     */
-    private static final String FALLBACK_FAILURE_GRAPH_HTML =
-            "<div class=\"graph-view-toggle\">" +
-            "<button class=\"btn btn-sm btn-outline-secondary graph-toggle-btn\" data-mode=\"graph\">&#128279; Graph</button>" +
-            "<button class=\"btn btn-sm btn-primary graph-toggle-btn\" data-mode=\"table\">&#128202; Table</button>" +
-            "</div>" +
-            "<div id=\"graphViewGraph\" style=\"display:none;\"></div>" +
-            "<div id=\"graphViewTable\">" +
-            "<div class=\"graph-stats-row\">" +
-            "<div class=\"graph-stat-card\"><span class=\"graph-stat-icon\">&#9888;&#65039;</span>" +
-            "<div><div class=\"graph-stat-value text-danger\">FAILURE</div><div class=\"graph-stat-label\">Direction</div></div></div>" +
-            "<div class=\"graph-stat-card\"><span class=\"graph-stat-icon\">&#128205;</span>" +
-            "<div><div class=\"graph-stat-value text-dark\">BP-1327</div><div class=\"graph-stat-label\">Origin</div></div></div>" +
-            "<div class=\"graph-stat-card\"><span class=\"graph-stat-icon\">&#128101;</span>" +
-            "<div><div class=\"graph-stat-value text-success\">3</div><div class=\"graph-stat-label\">Neighbors</div></div></div>" +
-            "<div class=\"graph-stat-card\"><span class=\"graph-stat-icon\">&#128279;</span>" +
-            "<div><div class=\"graph-stat-value text-info\">3</div><div class=\"graph-stat-label\">Relations</div></div></div>" +
-            "</div>" +
-            "<h6 class=\"graph-section-title\">Failure Impact Elements <span class=\"badge bg-secondary\">3</span></h6>" +
-            "<div class=\"table-responsive\"><table class=\"table table-sm table-hover graph-table mb-2\">" +
-            "<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hop</th><th>Reason</th></tr></thead>" +
-            "<tbody>" +
-            "<tr><td>CP-1023</td><td>Secure Voice Communications</td>" +
-            "<td><span class=\"badge bg-light text-dark border\">Capabilities</span></td>" +
-            "<td><span class=\"badge bg-danger graph-relevance-badge\">92%</span></td>" +
-            "<td><span class=\"badge bg-light text-dark border\">hop 1</span></td>" +
-            "<td class=\"small text-muted\">direct dependency failure</td></tr>" +
-            "<tr><td>CR-1047</td><td>Data Exchange Services</td>" +
-            "<td><span class=\"badge bg-light text-dark border\">Core Services</span></td>" +
-            "<td><span class=\"badge bg-warning graph-relevance-badge\">75%</span></td>" +
-            "<td><span class=\"badge bg-light text-dark border\">hop 1</span></td>" +
-            "<td class=\"small text-muted\">cascading service impact</td></tr>" +
-            "<tr><td>IP-2001</td><td>Interoperability Framework</td>" +
-            "<td><span class=\"badge bg-light text-dark border\">Information Products</span></td>" +
-            "<td><span class=\"badge bg-primary graph-relevance-badge\">58%</span></td>" +
-            "<td><span class=\"badge bg-light text-dark border\">hop 2</span></td>" +
-            "<td class=\"small text-muted\">transitive failure propagation</td></tr>" +
-            "</tbody></table></div>" +
-            "</div>";
-
     private static final Path OUTPUT_DIR = resolveOutputDir();
 
     /**
@@ -623,14 +578,13 @@ class ScreenshotGeneratorIT {
     /** Reloads the page and waits for the taxonomy tree to be fully rendered. */
     private void resetPageState() {
         driver.get("http://app:8080/");
-        wait(30).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // The #taxonomyTree div is always in the HTML (with a loading spinner).
         // Wait for actual taxonomy nodes to appear — they are rendered by the JS
         // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
         // The container startup already waited for /api/status/startup to return "ready",
-        // so taxonomy data is available — but CI may be slow, so allow 30s.
-        waitForTaxonomyReadyViaUI();
-        wait(30).until(ExpectedConditions.presenceOfElementLocated(
+        // so taxonomy data is available — 15s is enough for the JS fetch + render.
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(
                 By.cssSelector("#taxonomyTree .tax-node")));
         // Dismiss the onboarding overlay if it reappears after page reload
         List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
@@ -1139,28 +1093,14 @@ class ScreenshotGeneratorIT {
         // Phase 1: wait for graphResultsContent to exist and have content (spinner or results)
         wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("graphResultsContent")));
         // Phase 2: wait for the spinner to be replaced by graph/table results
-        try {
-            wait(30).until(d -> {
-                String html = (String) ((JavascriptExecutor) d).executeScript(
-                        "var el = document.getElementById('graphResultsContent');" +
-                        "return el ? el.innerHTML : '';");
-                return html != null
-                        && !html.contains("spinner-border")
-                        && html.contains("graphViewTable");
-            });
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Failure-impact query failed (HTTP 423) or timed out — fall through to fallback below
-        }
-        // Check if results are present, otherwise inject fallback
-        Boolean hasResults = (Boolean) ((JavascriptExecutor) driver).executeScript(
-                "var el = document.getElementById('graphResultsContent');" +
-                "if (!el) return false;" +
-                "var rows = el.querySelectorAll('.graph-element-row, tbody tr');" +
-                "return rows.length >= 2;");
-        if (!Boolean.TRUE.equals(hasResults)) {
-            js("var el = document.getElementById('graphResultsContent');" +
-               "if (el) el.innerHTML = arguments[0];", FALLBACK_FAILURE_GRAPH_HTML);
-        }
+        wait(30).until(d -> {
+            String html = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('graphResultsContent');" +
+                    "return el ? el.innerHTML : '';");
+            return html != null
+                    && !html.contains("spinner-border")
+                    && html.contains("graphViewTable");
+        });
         saveElementScreenshot(driver.findElement(By.id("graphExplorerPanel")), "22-graph-explorer-failure.png");
     }
 
@@ -1174,11 +1114,6 @@ class ScreenshotGeneratorIT {
             forceNonInteractiveMode();
             runAnalysis();
         }
-        // Ensure exportGroup is visible — updateExportGroupVisibility() may not have fired yet
-        js("if (window.TaxonomyState && window.TaxonomyState.currentScores) {" +
-           "  var eg = document.getElementById('exportGroup');" +
-           "  if (eg) eg.style.display = '';" +
-           "}");
         navigateToTab("export");
         // Two-phase wait: first ensure the element exists in the DOM, then wait for CSS visibility
         wait(10).until(ExpectedConditions.presenceOfElementLocated(By.id("exportGroup")));
@@ -1201,11 +1136,8 @@ class ScreenshotGeneratorIT {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", diagPanel);
         openDetails(diagPanel);
         wait(5).until(ExpectedConditions.visibilityOf(diagPanel));
-        // Actively trigger diagnostics fetch in case the auto-load did not fire
-        js("if (document.getElementById('refreshDiagnostics')) " +
-           "document.getElementById('refreshDiagnostics').click();");
         // Wait for diagnostics content to load (no longer shows "Loading…" placeholder)
-        wait(15).until(d -> {
+        wait(10).until(d -> {
             WebElement content = d.findElement(By.id("diagnosticsContent"));
             String text = content.getText();
             return text != null && !text.isEmpty() && !text.contains("Loading");
@@ -1456,11 +1388,6 @@ class ScreenshotGeneratorIT {
             forceNonInteractiveMode();
             runAnalysis();
         }
-        // Ensure exportGroup is visible — updateExportGroupVisibility() may not have fired yet
-        js("if (window.TaxonomyState && window.TaxonomyState.currentScores) {" +
-           "  var eg = document.getElementById('exportGroup');" +
-           "  if (eg) eg.style.display = '';" +
-           "}");
         navigateToTab("export");
         // Two-phase wait: first ensure the element exists in the DOM, then wait for CSS visibility
         wait(10).until(ExpectedConditions.presenceOfElementLocated(By.id("exportGroup")));
@@ -1550,22 +1477,16 @@ class ScreenshotGeneratorIT {
         // the first child under the CR root.  Store them in window globals for later tests.
         js("window._proposalCreated = false; window._proposalError = null;" +
            "fetch('/api/taxonomy').then(r => r.json()).then(function(roots) {" +
-           "  function firstChild(nodes, prefix) {" +
-           "    for (var i = 0; i < nodes.length; i++) {" +
-           "      if (nodes[i].code.lastIndexOf(prefix, 0) === 0 && nodes[i].children && nodes[i].children.length > 0)" +
-           "        return nodes[i].children[0].code;" +
-           "    }" +
-           "    for (var i = 0; i < nodes.length; i++) {" +
-           "      if (nodes[i].children) {" +
-           "        var r = firstChild(nodes[i].children, prefix);" +
-           "        if (r) return r;" +
-           "      }" +
+           "  function firstChild(roots, prefix) {" +
+           "    for (var i = 0; i < roots.length; i++) {" +
+           "      if (roots[i].code === prefix && roots[i].children && roots[i].children.length > 0)" +
+           "        return roots[i].children[0].code;" +
            "    }" +
            "    return null;" +
            "  }" +
            "  var src = firstChild(roots, 'CP');" +
            "  var tgt = firstChild(roots, 'CR');" +
-           "  if (!src || !tgt) { window._proposalError = 'Cannot find CP or CR child nodes in taxonomy'; return; }" +
+           "  if (!src || !tgt) throw new Error('Cannot find CP or CR child nodes in taxonomy');" +
            "  window._acceptedSourceCode = src;" +
            "  window._acceptedTargetCode = tgt;" +
            "  return fetch('/api/proposals/from-hypothesis', {" +
@@ -1577,11 +1498,11 @@ class ScreenshotGeneratorIT {
            "      rationale: src + ' provides the capability that ' + tgt + ' implements as a core service'" +
            "    })" +
            "  });" +
-           "}).then(function(r) { if (!r || !r.ok) throw new Error('Proposal creation failed: ' + (r ? r.status : 'no response')); return r.json(); })" +
+           "}).then(r => { if (!r.ok) throw new Error('Proposal creation failed: ' + r.status); return r.json(); })" +
            ".then(function(data) {" +
            "  window._createdProposalId = data.id;" +
            "  return fetch('/api/proposals/' + data.id + '/accept', {method: 'POST'});" +
-           "}).then(function(r) { if (!r || !r.ok) throw new Error('Proposal accept failed: ' + (r ? r.status : 'no response')); return r.json(); })" +
+           "}).then(r => { if (!r.ok) throw new Error('Proposal accept failed: ' + r.status); return r.json(); })" +
            ".then(function() { window._proposalCreated = true; })" +
            ".catch(function(err) { window._proposalError = err.message || String(err); });");
         wait(30).until(d -> {
@@ -1590,15 +1511,9 @@ class ScreenshotGeneratorIT {
             if (Boolean.TRUE.equals(done)) return true;
             String err = (String) ((JavascriptExecutor) d).executeScript(
                     "return window._proposalError;");
-            if (err != null) return true; // Don't throw — check below with Assumptions
+            if (err != null) throw new RuntimeException("Proposal creation/accept failed: " + err);
             return false;
         });
-
-        // Skip the test gracefully if taxonomy codes could not be found
-        String proposalErr = (String) ((JavascriptExecutor) driver).executeScript(
-                "return window._proposalError;");
-        Assumptions.assumeTrue(proposalErr == null,
-                "Skipping: " + proposalErr);
 
         // Navigate to the relations tab and filter to show all proposals
         navigateToTab("relations");
@@ -1723,20 +1638,7 @@ class ScreenshotGeneratorIT {
         safeClick(By.id("viewSunburst"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
         // Wait for the sunburst SVG to actually finish rendering
-        try {
-            wait(15).until(ExpectedConditions.attributeToBe(
-                    By.id("taxonomyTree"), "data-view-rendered", "sunburst"));
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Force re-render if the attribute was not set in time
-            js("if (window.TaxonomyViews && window.TaxonomyState) {" +
-               "  window.TaxonomyViews.renderSunburst(" +
-               "    document.getElementById('taxonomyTree')," +
-               "    window.TaxonomyState.taxonomyData," +
-               "    window.TaxonomyState.currentScores);" +
-               "}");
-            wait(10).until(ExpectedConditions.attributeToBe(
-                    By.id("taxonomyTree"), "data-view-rendered", "sunburst"));
-        }
+        wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "sunburst"));
         saveScreenshot("39-scored-sunburst.png");
         // Reset to list view
         safeClick(By.id("viewList"));
@@ -1850,14 +1752,11 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(44)
     void captureContextBar() throws IOException {
-        // Actively trigger context bar fetch instead of waiting for the 10s poll interval
-        js("if (window.TaxonomyContextBar) TaxonomyContextBar.fetchAndRender('contextBar');");
-        // The context bar renders a <div class="workspace-bar"> — wait for it to appear
-        // and for the d-none class to be removed (the bar starts hidden).
+        // The context bar polls /api/context/current. Wait for it to render.
         wait(15).until(d -> {
             WebElement bar = d.findElement(By.id("contextBar"));
-            return !bar.getAttribute("class").contains("d-none")
-                    && bar.getAttribute("innerHTML").contains("workspace-bar");
+            String html = bar.getAttribute("innerHTML");
+            return html != null && !html.isEmpty() && html.contains("workspace-bar");
         });
         saveElementScreenshot(driver.findElement(By.id("contextBar")),
                 "44-context-bar.png");
@@ -2395,20 +2294,7 @@ class ScreenshotGeneratorIT {
         // Switch to the decision map view — with scores, it renders the D3 treemap + decision table
         safeClick(By.id("viewDecision"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewDecision"), "class", "btn-primary"));
-        try {
-            wait(15).until(ExpectedConditions.attributeToBe(
-                    By.id("taxonomyTree"), "data-view-rendered", "decision"));
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Force re-render if the attribute was not set in time
-            js("if (window.TaxonomyViews && window.TaxonomyState) {" +
-               "  window.TaxonomyViews.renderDecisionMap(" +
-               "    document.getElementById('taxonomyTree')," +
-               "    window.TaxonomyState.taxonomyData," +
-               "    window.TaxonomyState.currentScores);" +
-               "}");
-            wait(10).until(ExpectedConditions.attributeToBe(
-                    By.id("taxonomyTree"), "data-view-rendered", "decision"));
-        }
+        wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "decision"));
         // Brief pause to let the D3 treemap rendering complete
         waitForD3Transition();
         saveScreenshot("69-decision-map-scored.png");

@@ -104,6 +104,7 @@
         }
         container.innerHTML = '';
 
+        try {
         var colorMap = buildColorMap(data);
         var W = container.clientWidth || 500;
         var size = Math.min(W, MAX_SUNBURST_SIZE);
@@ -249,6 +250,9 @@
         });
         obs.observe(container);
         container._taxObserver = obs;
+        } catch (e) {
+            console.error('Sunburst rendering failed:', e);
+        }
         container.setAttribute('data-view-rendered', 'sunburst');
     }
 
@@ -558,6 +562,7 @@
         }
 
         // ── D3 Tree ──────────────────────────────────────────────────────────
+        try {
         var marginLeft = 40;
         var marginRight = 300;
         var marginTop = 20;
@@ -766,6 +771,9 @@
         });
         obs.observe(container);
         container._taxObserver = obs;
+        } catch (e) {
+            console.error('Decision map rendering failed:', e);
+        }
 
         // ── Results table ────────────────────────────────────────────────────
         renderDecisionTable(container, allScored, nameMap, pathMap, levelMap, isLeafSet, rankMap);
