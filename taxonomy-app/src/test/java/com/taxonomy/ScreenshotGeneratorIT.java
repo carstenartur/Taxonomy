@@ -327,6 +327,7 @@ class ScreenshotGeneratorIT {
                 .withExposedPorts(8080)
                 .withEnv("ADMIN_PASSWORD", "testpassword123")
                 .withEnv("LLM_MOCK", "true")
+                .withEnv("TAXONOMY_GIT_BOOTSTRAP", "true")
                 .withStartupTimeout(Duration.ofSeconds(180))
                 // Wait for the taxonomy to be fully loaded and search index built.
                 // The /api/status/startup endpoint returns {"status":"ready"} once

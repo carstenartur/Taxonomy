@@ -5,11 +5,13 @@ import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.shared.service.AppInitializationStateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Initialises the DSL Git repository with a {@code draft} branch on application startup.
@@ -27,11 +29,28 @@ import java.io.IOException;
  * {@link ApplicationReadyEvent} fires. In asynchronous init mode, this component
  * checks {@link AppInitializationStateService#isReady()} and skips if not ready —
  * the first user-initiated DSL commit will create the branch in that case.
+ *
+ * <p>Controlled by the {@code taxonomy.git.bootstrap} property (default: {@code true}).
+ * A JVM-wide static guard ensures that only the <em>first</em> Spring context in a
+ * JVM performs the bootstrap, preventing stale
+ * {@link org.eclipse.jgit.internal.storage.dfs.DfsBlockCache} entries when
+ * multiple {@code @SpringBootTest} contexts share the same JVM and
+ * {@code ddl-auto=create} recreates tables between contexts.
  */
 @Component
+@ConditionalOnProperty(name = "taxonomy.git.bootstrap", havingValue = "true", matchIfMissing = true)
 public class GitRepositoryBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(GitRepositoryBootstrap.class);
+
+    /**
+     * JVM-wide guard: ensures bootstrap runs at most once per JVM lifetime.
+     * In production (single context), this fires exactly once. In unit tests
+     * (multiple cached contexts sharing the JVM-global DfsBlockCache), it
+     * prevents a second context from committing into a repository whose
+     * underlying tables were wiped by {@code ddl-auto=create}.
+     */
+    private static final AtomicBoolean BOOTSTRAPPED = new AtomicBoolean(false);
 
     private final DslGitRepository gitRepository;
     private final TaxDslExportService exportService;
@@ -50,11 +69,19 @@ public class GitRepositoryBootstrap {
      *
      * <p>This method is idempotent: on subsequent restarts with persistent storage,
      * the branch already exists and the method returns without making changes.
+     * The static {@link #BOOTSTRAPPED} guard adds an extra layer of protection
+     * in multi-context test JVMs.
      */
     @EventListener(ApplicationReadyEvent.class)
     public void initializeDraftBranch() {
+        if (!BOOTSTRAPPED.compareAndSet(false, true)) {
+            log.debug("Draft branch already bootstrapped in this JVM — skipping.");
+            return;
+        }
+
         if (!stateService.isReady()) {
             log.debug("Taxonomy not yet loaded (async mode) — skipping draft branch bootstrap.");
+            BOOTSTRAPPED.set(false); // allow retry after taxonomy loads
             return;
         }
 
