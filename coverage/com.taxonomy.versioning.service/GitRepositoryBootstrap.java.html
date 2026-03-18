@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>GitRepositoryBootstrap.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">GitRepositoryBootstrap.java</span></div><h1>GitRepositoryBootstrap.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.dsl.export.TaxDslExportService;
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.shared.service.AppInitializationStateService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * Initialises the DSL Git repository with a {@code draft} branch on application startup.
+ *
+ * &lt;p&gt;When the application starts for the first time (empty database), the Git repository
+ * has no branches and no commits. This causes the frontend to display
+ * &quot;Git status unavailable&quot; and the version history to show errors, because
+ * {@code /api/git/state?branch=draft} returns null values.
+ *
+ * &lt;p&gt;This component creates an initial commit on the {@code draft} branch containing
+ * the DSL export of the current taxonomy, so that Git-based features (status bar,
+ * version history, variants, compare) work correctly from the start.
+ *
+ * &lt;p&gt;In synchronous init mode (default), the taxonomy is already loaded by the time
+ * {@link ApplicationReadyEvent} fires. In asynchronous init mode, this component
+ * checks {@link AppInitializationStateService#isReady()} and skips if not ready —
+ * the first user-initiated DSL commit will create the branch in that case.
+ *
+ * &lt;p&gt;Controlled by the {@code taxonomy.git.bootstrap} property (default: {@code true}).
+ * A JVM-wide static guard ensures that only the &lt;em&gt;first&lt;/em&gt; Spring context in a
+ * JVM performs the bootstrap, preventing stale
+ * {@link org.eclipse.jgit.internal.storage.dfs.DfsBlockCache} entries when
+ * multiple {@code @SpringBootTest} contexts share the same JVM and
+ * {@code ddl-auto=create} recreates tables between contexts.
+ */
+@Component
+@ConditionalOnProperty(name = &quot;taxonomy.git.bootstrap&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)
+public class GitRepositoryBootstrap {
+
+<span class="fc" id="L44">    private static final Logger log = LoggerFactory.getLogger(GitRepositoryBootstrap.class);</span>
+
+    /**
+     * JVM-wide guard: ensures bootstrap runs at most once per JVM lifetime.
+     * In production (single context), this fires exactly once. In unit tests
+     * (multiple cached contexts sharing the JVM-global DfsBlockCache), it
+     * prevents a second context from committing into a repository whose
+     * underlying tables were wiped by {@code ddl-auto=create}.
+     */
+<span class="fc" id="L53">    private static final AtomicBoolean BOOTSTRAPPED = new AtomicBoolean(false);</span>
+
+    private final DslGitRepository gitRepository;
+    private final TaxDslExportService exportService;
+    private final AppInitializationStateService stateService;
+
+    public GitRepositoryBootstrap(DslGitRepository gitRepository,
+                                  TaxDslExportService exportService,
+<span class="fc" id="L61">                                  AppInitializationStateService stateService) {</span>
+<span class="fc" id="L62">        this.gitRepository = gitRepository;</span>
+<span class="fc" id="L63">        this.exportService = exportService;</span>
+<span class="fc" id="L64">        this.stateService = stateService;</span>
+<span class="fc" id="L65">    }</span>
+
+    /**
+     * Creates an initial commit on the {@code draft} branch if it does not already exist.
+     *
+     * &lt;p&gt;This method is idempotent: on subsequent restarts with persistent storage,
+     * the branch already exists and the method returns without making changes.
+     * The static {@link #BOOTSTRAPPED} guard adds an extra layer of protection
+     * in multi-context test JVMs.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void initializeDraftBranch() {
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (!BOOTSTRAPPED.compareAndSet(false, true)) {</span>
+<span class="fc" id="L78">            log.debug(&quot;Draft branch already bootstrapped in this JVM — skipping.&quot;);</span>
+<span class="fc" id="L79">            return;</span>
+        }
+
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        if (!stateService.isReady()) {</span>
+<span class="nc" id="L83">            log.debug(&quot;Taxonomy not yet loaded (async mode) — skipping draft branch bootstrap.&quot;);</span>
+<span class="nc" id="L84">            BOOTSTRAPPED.set(false); // allow retry after taxonomy loads</span>
+<span class="nc" id="L85">            return;</span>
+        }
+
+        try {
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            if (gitRepository.getHeadCommit(&quot;draft&quot;) != null) {</span>
+<span class="nc" id="L90">                log.debug(&quot;Draft branch already exists — skipping bootstrap.&quot;);</span>
+<span class="nc" id="L91">                return;</span>
+            }
+
+<span class="fc" id="L94">            String dsl = exportService.exportAll(&quot;default&quot;);</span>
+<span class="fc" id="L95">            String commitId = gitRepository.commitDsl(&quot;draft&quot;, dsl, &quot;system&quot;,</span>
+                    &quot;Initial taxonomy materialization&quot;);
+
+<span class="fc" id="L98">            log.info(&quot;Bootstrapped 'draft' branch with initial taxonomy DSL &quot; +</span>
+<span class="fc" id="L99">                    &quot;(commit={}, {} chars)&quot;, commitId.substring(0, 7), dsl.length());</span>
+<span class="nc" id="L100">        } catch (IOException e) {</span>
+<span class="nc" id="L101">            log.warn(&quot;Failed to bootstrap 'draft' branch: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L102">        }</span>
+<span class="fc" id="L103">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
