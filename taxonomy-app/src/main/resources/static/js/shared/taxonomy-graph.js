@@ -359,11 +359,11 @@
         // Summary stats
         var dirIcon = data.direction === 'UPSTREAM' ? '&#11014;&#65039;' : '&#11015;&#65039;';
         html += '<div class="graph-stats-row">';
-        html += summaryCard(dirIcon, 'Direction', data.direction, 'primary');
-        html += summaryCard('&#128205;', 'Origin', data.originNodeCode, 'dark');
-        html += summaryCard('&#128101;', 'Neighbors', data.totalNeighbors, 'success');
-        html += summaryCard('&#128279;', 'Relations', data.totalRelationships, 'info');
-        html += summaryCard('&#128218;', 'Max Hops', data.maxHops, 'secondary');
+        html += summaryCard(dirIcon, t('graph.summary.direction'), data.direction, 'primary');
+        html += summaryCard('&#128205;', t('graph.summary.origin'), data.originNodeCode, 'dark');
+        html += summaryCard('&#128101;', t('graph.summary.neighbors'), data.totalNeighbors, 'success');
+        html += summaryCard('&#128279;', t('graph.summary.relations'), data.totalRelationships, 'info');
+        html += summaryCard('&#128218;', t('graph.summary.maxhops'), data.maxHops, 'secondary');
         html += '</div>';
 
         // Notes
@@ -372,7 +372,7 @@
                 data.notes.map(function (n) { return escapeHtml(n); }).join('<br>') + '</div>';
         }
 
-        html += renderElementsTable(data.neighbors, data.direction === 'UPSTREAM' ? 'Upstream Elements' : 'Downstream Elements');
+        html += renderElementsTable(data.neighbors, data.direction === 'UPSTREAM' ? t('graph.summary.upstream.elements') : t('graph.summary.downstream.elements'));
         html += renderRelationshipsTable(data.traversedRelationships);
 
         return html;
@@ -385,11 +385,11 @@
 
         // Summary stats
         html += '<div class="graph-stats-row">';
-        html += summaryCard('&#9888;&#65039;', 'Failed Node', data.failedNodeCode, 'danger');
-        html += summaryCard('&#128308;', 'Direct Impact', safeLen(data.directlyAffected), 'danger');
-        html += summaryCard('&#128992;', 'Indirect Impact', safeLen(data.indirectlyAffected), 'warning');
-        html += summaryCard('&#128101;', 'Total Affected', data.totalAffected, 'dark');
-        html += summaryCard('&#128218;', 'Max Hops', data.maxHops, 'secondary');
+        html += summaryCard('&#9888;&#65039;', t('graph.summary.failed.node'), data.failedNodeCode, 'danger');
+        html += summaryCard('&#128308;', t('graph.summary.direct.impact'), safeLen(data.directlyAffected), 'danger');
+        html += summaryCard('&#128992;', t('graph.summary.indirect.impact'), safeLen(data.indirectlyAffected), 'warning');
+        html += summaryCard('&#128101;', t('graph.summary.total.affected'), data.totalAffected, 'dark');
+        html += summaryCard('&#128218;', t('graph.summary.maxhops'), data.maxHops, 'secondary');
         html += '</div>';
 
         // Notes
@@ -414,29 +414,29 @@
                 return r.json();
             })
             .then(callback)
-            .catch(function (err) { showGraphError(label + ' query failed: ' + err.message); });
+            .catch(function (err) { showGraphError(t('graph.query.failed', label, err.message)); });
     }
 
     function fetchUpstream(nodeCode, maxHops, callback) {
         fetchGraphData('/api/graph/node/' + encodeURIComponent(nodeCode) + '/upstream?maxHops=' + maxHops,
-            'Upstream', callback);
+            t('graph.label.upstream'), callback);
     }
 
     function fetchDownstream(nodeCode, maxHops, callback) {
         fetchGraphData('/api/graph/node/' + encodeURIComponent(nodeCode) + '/downstream?maxHops=' + maxHops,
-            'Downstream', callback);
+            t('graph.label.downstream'), callback);
     }
 
     function fetchFailureImpact(nodeCode, maxHops, callback) {
         fetchGraphData('/api/graph/node/' + encodeURIComponent(nodeCode) + '/failure-impact?maxHops=' + maxHops,
-            'Failure impact', callback);
+            t('graph.label.failure'), callback);
     }
 
     // ── Event handlers ────────────────────────────────────────────────────────
 
     function onUpstreamClick() {
         var code = getNodeCode();
-        if (!code) { showGraphError('Please enter a node code.'); return; }
+        if (!code) { showGraphError(t('graph.enter.code')); return; }
         showGraphLoading();
         fetchUpstream(code, getMaxHops(), function (data) {
             var tableHtml = renderNeighborhoodResult(data, true);
@@ -448,7 +448,7 @@
 
     function onDownstreamClick() {
         var code = getNodeCode();
-        if (!code) { showGraphError('Please enter a node code.'); return; }
+        if (!code) { showGraphError(t('graph.enter.code')); return; }
         showGraphLoading();
         fetchDownstream(code, getMaxHops(), function (data) {
             var tableHtml = renderNeighborhoodResult(data, true);
@@ -460,7 +460,7 @@
 
     function onFailureClick() {
         var code = getNodeCode();
-        if (!code) { showGraphError('Please enter a node code.'); return; }
+        if (!code) { showGraphError(t('graph.enter.code')); return; }
         showGraphLoading();
         fetchFailureImpact(code, getMaxHops(), function (data) {
             var tableHtml = renderFailureResult(data);
