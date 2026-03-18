@@ -1444,14 +1444,14 @@ class ScreenshotGeneratorIT {
         // Remove the max-height CSS constraint so the full expanded tree renders without clipping
         js("var cardBody = document.querySelector('#taxonomyTree').closest('.card-body');" +
            " if (cardBody) { cardBody.style.maxHeight = 'none'; cardBody.style.overflow = 'visible'; }");
-        // Increase viewport height to capture the expanded tree; use a reasonable height (5000px)
-        // instead of an extreme value to avoid creating an unusably narrow element screenshot.
-        // Also hide the right panel to give the tree full width for a cleaner screenshot.
+        // Use a moderate viewport height (2000px) to capture the top portion of the expanded
+        // tree without creating an excessively tall/narrow image that is hard to read in
+        // GitHub documentation.  Also hide the right panel to give the tree full width.
         js("var rightCol = document.querySelector('.col-lg-5');" +
            " if (rightCol) rightCol.style.display = 'none';" +
            " var leftCol = document.querySelector('.col-lg-7');" +
            " if (leftCol) { leftCol.className = leftCol.className.replace('col-lg-7', 'col-12'); }");
-        driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 5000));
+        driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 2000));
         wait(2).until(d -> true); // brief settle
         // Scroll to the top and capture a full-page screenshot (avoids the narrow-strip problem
         // caused by element screenshots on very tall elements)
