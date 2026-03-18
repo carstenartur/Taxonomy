@@ -323,7 +323,11 @@ The Tree view renders the taxonomy as an interactive node-link diagram. Use the 
 
 The Decision Map view shows the taxonomy as a decision-tree style layout optimised for selecting relevant nodes based on the analysis scores.
 
-![Decision Map view](../images/08-decision-map-view.png)
+![Decision Map view (scored)](../images/69-decision-map-scored.png)
+
+> **Note:** Before running an analysis, the Decision Map shows an empty state prompting you to run an analysis first.
+>
+> ![Decision Map — empty state](../images/08-decision-map-view.png)
 
 ### Summary View (📋 Summary)
 
