@@ -2,6 +2,7 @@ package com.taxonomy;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -265,38 +266,6 @@ class ScreenshotGeneratorIT {
             "<div class=\"text-muted\" style=\"font-size:0.75rem;\">2025-03-13 16:00 &mdash; system <code class=\"ms-1\">c7d8e9f</code></div>" +
             "</div></div></div>" +
             "</div>";
-
-    /**
-     * Fallback architecture view HTML injected when the LLM analysis fails (no API key, error,
-     * or unavailable) and the {@code architectureViewPanel} is never rendered.
-     * Matches the structure produced by {@code renderArchitectureView()} in taxonomy-scoring.js.
-     */
-    private static final String FALLBACK_ARCHITECTURE_VIEW_HTML =
-            "<div class=\"alert alert-info py-1 px-2 small mb-2\">" +
-            "Architecture view generated from requirement analysis</div>" +
-            "<h6 class=\"mb-1\">Anchors</h6>" +
-            "<div class=\"mb-2 small\">" +
-            "<span class=\"badge bg-success me-1\">CP-1023 (92%) — direct capability match</span>" +
-            "<span class=\"badge bg-success me-1\">CR-1047 (78%) — service dependency</span>" +
-            "</div>" +
-            "<h6 class=\"mb-1\">Included Elements</h6>" +
-            "<div class=\"table-responsive\"><table class=\"table table-sm table-bordered small mb-2\">" +
-            "<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead>" +
-            "<tbody>" +
-            "<tr class=\"table-success\"><td>CP-1023</td><td>Secure Voice Communications</td>" +
-            "<td>Capabilities</td><td>92.0%</td><td>0</td><td>✓</td><td>direct capability match</td></tr>" +
-            "<tr class=\"table-success\"><td>CR-1047</td><td>Data Exchange Services</td>" +
-            "<td>Core Services</td><td>78.0%</td><td>0</td><td>✓</td><td>service dependency</td></tr>" +
-            "<tr><td>IP-2001</td><td>Interoperability Framework</td>" +
-            "<td>Information Products</td><td>65.0%</td><td>1</td><td></td><td>transitive dependency</td></tr>" +
-            "</tbody></table></div>" +
-            "<h6 class=\"mb-1\">Included Relationships</h6>" +
-            "<div class=\"table-responsive\"><table class=\"table table-sm table-bordered small mb-0\">" +
-            "<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Relevance</th><th>Hops</th><th>Reason</th></tr></thead>" +
-            "<tbody>" +
-            "<tr><td>CP-1023</td><td>→</td><td>CR-1047</td><td>REALIZES</td><td>85.0%</td><td>1</td><td>capability mapping</td></tr>" +
-            "<tr><td>CR-1047</td><td>→</td><td>IP-2001</td><td>REQUIRES</td><td>65.0%</td><td>2</td><td>data exchange</td></tr>" +
-            "</tbody></table></div>";
 
     private static final Path OUTPUT_DIR = resolveOutputDir();
 
@@ -1061,20 +1030,16 @@ class ScreenshotGeneratorIT {
 
         wait(120).until(ExpectedConditions.textMatches(
                 By.id("statusArea"), ANALYSIS_DONE_PATTERN));
+
+        // Check that analysis actually succeeded — if it ended with error/unavailable,
+        // the architectureViewPanel is never rendered and waiting for it would just time out.
+        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
+        Assumptions.assumeTrue(statusText.contains("complete"),
+                "Skipping: analysis did not complete successfully (status: " + statusText + ")");
+
         // Navigate to Architecture tab to see the panel
         navigateToTab("architecture");
-        try {
-            wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Analysis ended with error/unavailable — architectureViewPanel was never shown.
-            // Inject fallback content so the screenshot is still meaningful.
-            js("var p = document.getElementById('architectureViewPanel');" +
-               "if (p) { p.style.display = ''; " +
-               "  var c = document.getElementById('architectureViewContent');" +
-               "  if (c) c.innerHTML = arguments[0]; " +
-               "  var ph = document.getElementById('architecturePlaceholder');" +
-               "  if (ph) ph.style.display = 'none'; }", FALLBACK_ARCHITECTURE_VIEW_HTML);
-        }
+        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")), "20-architecture-view.png");
 
         // Reset: navigate back to analyze, switch back to list view and uncheck architecture view
@@ -1638,18 +1603,15 @@ class ScreenshotGeneratorIT {
 
         wait(120).until(ExpectedConditions.textMatches(
                 By.id("statusArea"), ANALYSIS_DONE_PATTERN));
+
+        // Check that analysis actually succeeded — if it ended with error/unavailable,
+        // the architectureViewPanel is never rendered and waiting for it would just time out.
+        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
+        Assumptions.assumeTrue(statusText.contains("complete"),
+                "Skipping: analysis did not complete successfully (status: " + statusText + ")");
+
         navigateToTab("architecture");
-        try {
-            wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Analysis ended with error/unavailable — inject fallback content
-            js("var p = document.getElementById('architectureViewPanel');" +
-               "if (p) { p.style.display = ''; " +
-               "  var c = document.getElementById('architectureViewContent');" +
-               "  if (c) c.innerHTML = arguments[0]; " +
-               "  var ph = document.getElementById('architecturePlaceholder');" +
-               "  if (ph) ph.style.display = 'none'; }", FALLBACK_ARCHITECTURE_VIEW_HTML);
-        }
+        wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")),
                 "38-architecture-view-detailed.png");
 
