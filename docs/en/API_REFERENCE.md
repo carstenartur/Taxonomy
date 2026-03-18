@@ -1,5 +1,13 @@
 # Taxonomy Architecture Analyzer — API Reference
 
+> **Audience:** This reference is for developers building **automations, CI/CD integrations,
+> and administrative scripts**. If you are an end user, start with the
+> [User Guide](USER_GUIDE.md) — all features described there are available through the
+> web-based GUI.
+>
+> **Swagger/OpenAPI** (`/swagger-ui.html`) is the authoritative, always-up-to-date
+> API documentation. This static reference provides an overview and usage examples.
+
 All endpoints require **HTTP Basic authentication** (`-u admin:admin`) unless listed as public.
 CSRF is disabled for `/api/**` — REST clients do not need CSRF tokens.
 
