@@ -9,6 +9,8 @@
 (function () {
     'use strict';
 
+    var t = TaxonomyI18n.t;
+
     /* ── DOM refs ──────────────────────────────────────────────────────── */
     var tocList     = document.getElementById('helpTocList');
     var searchInput = document.getElementById('helpSearchInput');
@@ -99,7 +101,7 @@
                 }
             })
             .catch(function (e) {
-                tocList.innerHTML = '<li class="text-danger small p-2">Failed to load help index.</li>';
+                tocList.innerHTML = '<li class="text-danger small p-2">' + t('help.load.failed') + '</li>';
                 console.error('Help TOC load error:', e);
             });
     }

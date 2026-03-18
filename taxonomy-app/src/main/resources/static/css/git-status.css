@@ -118,7 +118,243 @@ button[data-guard].guard-blocked {
     vertical-align: middle;
 }
 
-/* ── Versions Timeline ─────────────────────────────────── */
+/* ── Workspace Context Bar (AP 1) ──────────────────────── */
+.workspace-bar {
+    background: var(--bs-light, #f8f9fa);
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    padding: 8px 16px;
+    font-size: 0.85rem;
+}
+
+.workspace-bar .wb-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.workspace-bar .wb-breadcrumb {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8rem;
+    color: var(--bs-secondary, #6c757d);
+}
+
+.workspace-bar .wb-breadcrumb a {
+    color: var(--bs-primary, #0d6efd);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.workspace-bar .wb-breadcrumb a:hover {
+    text-decoration: underline;
+}
+
+.workspace-bar .wb-breadcrumb .wb-sep {
+    color: var(--bs-secondary, #6c757d);
+    margin: 0 2px;
+}
+
+.workspace-bar .wb-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.workspace-bar .wb-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.workspace-bar .wb-dirty {
+    animation: pulse-dirty 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dirty {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.workspace-bar .wb-sync-info {
+    font-size: 0.78rem;
+    color: var(--bs-secondary, #6c757d);
+}
+
+body.dark-mode .workspace-bar {
+    background: #1a1a2e;
+    border-bottom-color: #333;
+    color: #ccc;
+}
+
+/* ── Variant Cards (AP 2) ─────────────────────────────── */
+.variant-card {
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    background: var(--bs-body-bg, #fff);
+    transition: box-shadow 0.15s ease;
+}
+
+.variant-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.variant-card.variant-active {
+    border-left: 4px solid var(--bs-primary, #0d6efd);
+    background: rgba(13, 110, 253, 0.04);
+}
+
+.variant-card .variant-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.variant-card .variant-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.variant-card .variant-meta {
+    font-size: 0.75rem;
+    color: var(--bs-secondary, #6c757d);
+}
+
+.variant-card .variant-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.variant-card .variant-actions .btn {
+    font-size: 0.78rem;
+    padding: 3px 10px;
+}
+
+.variant-empty-state {
+    text-align: center;
+    padding: 24px 16px;
+    color: var(--bs-secondary, #6c757d);
+}
+
+.variant-empty-state .empty-icon {
+    font-size: 2.5rem;
+    margin-bottom: 8px;
+    display: block;
+}
+
+body.dark-mode .variant-card {
+    background: #1e1e30;
+    border-color: #333;
+}
+
+/* ── Compare View (AP 3) ──────────────────────────────── */
+.compare-summary-card {
+    background: var(--bs-light, #f8f9fa);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.compare-summary-card .compare-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.compare-summary-card .compare-stats {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.compare-summary-card .compare-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.85rem;
+}
+
+.compare-changes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.compare-column {
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.compare-column .col-header {
+    padding: 8px 12px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.compare-column .col-header.col-added {
+    background: rgba(25, 135, 84, 0.1);
+    color: var(--bs-success, #198754);
+    border-bottom: 2px solid var(--bs-success, #198754);
+}
+
+.compare-column .col-header.col-changed {
+    background: rgba(255, 193, 7, 0.1);
+    color: var(--bs-warning, #856404);
+    border-bottom: 2px solid var(--bs-warning, #ffc107);
+}
+
+.compare-column .col-header.col-removed {
+    background: rgba(220, 53, 69, 0.1);
+    color: var(--bs-danger, #dc3545);
+    border-bottom: 2px solid var(--bs-danger, #dc3545);
+}
+
+.compare-column .col-items {
+    padding: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.compare-column .col-item {
+    padding: 6px 8px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    font-size: 0.8rem;
+}
+
+.compare-column .col-item:last-child {
+    margin-bottom: 0;
+}
+
+.compare-column .col-item.item-added { background: rgba(25, 135, 84, 0.06); }
+.compare-column .col-item.item-changed { background: rgba(255, 193, 7, 0.06); }
+.compare-column .col-item.item-removed { background: rgba(220, 53, 69, 0.06); }
+
+.compare-column .col-empty {
+    padding: 12px;
+    text-align: center;
+    color: var(--bs-secondary, #6c757d);
+    font-size: 0.8rem;
+    font-style: italic;
+}
+
+body.dark-mode .compare-summary-card {
+    background: #1e1e30;
+    border-color: #333;
+}
+
+/* ── Versions Timeline (AP 4) ─────────────────────────── */
 .timeline-entry {
     border-left: 2px solid #dee2e6;
 }
@@ -129,4 +365,29 @@ button[data-guard].guard-blocked {
 
 .timeline-dot-current {
     background-color: #0d6efd;
+}
+
+.timeline-dot-restore {
+    background-color: var(--bs-warning, #ffc107);
+}
+
+.timeline-entry .restore-marker {
+    font-size: 0.7rem;
+    color: var(--bs-warning, #856404);
+    font-style: italic;
+}
+
+/* ── Restore/Revert Confirmation Modal ─────────────────── */
+.restore-preview {
+    background: var(--bs-light, #f8f9fa);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 12px;
+    font-size: 0.8rem;
+}
+
+body.dark-mode .restore-preview {
+    background: #1e1e30;
+    border-color: #333;
 }

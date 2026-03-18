@@ -604,8 +604,8 @@
                 <!-- Undo / Redo bar -->
                 <div class="card shadow-sm mb-3">
                     <div class="card-body d-flex align-items-center gap-3 py-2">
-                        <button id="versionsUndoBtn" class="btn btn-outline-warning btn-sm" title="Undo last change on this branch">
-                            &#8617; Undo last change
+                        <button id="versionsUndoBtn" class="btn btn-outline-warning btn-sm" th:title="#{versions.undo.title}" title="Undo last change on this branch">
+                            &#8617; <span th:text="#{versions.undo}">Undo last change</span>
                         </button>
                         <span id="versionsUndoInfo" class="text-muted small"></span>
                         <div class="ms-auto d-flex align-items-center gap-2">
@@ -618,16 +618,16 @@
                 <!-- Sub-tabs -->
                 <ul class="nav nav-tabs mb-3" id="versionsSubTabs">
                     <li class="nav-item">
-                        <a class="nav-link active" data-versions-tab="history" href="#">&#128339; History</a>
+                        <a class="nav-link active" data-versions-tab="history" href="#">&#128339; <span th:text="#{versions.sub.history}">History</span></a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" data-versions-tab="variants" href="#">&#128256; Variants</a>
+                        <a class="nav-link" data-versions-tab="variants" href="#">&#127807; <span th:text="#{versions.sub.variants}">Variants</span></a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" data-versions-tab="save" href="#">&#128190; Save Version</a>
+                        <a class="nav-link" data-versions-tab="save" href="#">&#128190; <span th:text="#{versions.sub.save}">Save Version</span></a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" data-versions-tab="sync" href="#">&#128260; Sync</a>
+                        <a class="nav-link" data-versions-tab="sync" href="#">&#128260; <span th:text="#{versions.sub.sync}">Sync</span></a>
                     </li>
                 </ul>
 
@@ -635,30 +635,30 @@
                 <div id="versions-history" class="versions-sub-pane">
                     <div class="card shadow-sm">
                         <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-                            <span>&#128339; Version History</span>
-                            <button id="versionsRefreshBtn" class="btn btn-sm btn-outline-secondary" title="Refresh history">&#128260; Refresh</button>
+                            <span>&#128339; <span th:text="#{versions.history.title}">Version History</span></span>
+                            <button id="versionsRefreshBtn" class="btn btn-sm btn-outline-secondary" th:title="#{versions.history.refresh}" title="Refresh">&#128260; <span th:text="#{versions.history.refresh}">Refresh</span></button>
                         </div>
                         <div class="card-body p-0">
                             <div id="versionsTimeline" class="p-3">
-                                <div class="text-muted small">Loading version history…</div>
+                                <div class="text-muted small" th:text="#{versions.history.loading}">Loading version history…</div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Sub-tab: Variants Browser -->
+                <!-- Sub-tab: Variants Dashboard -->
                 <div id="versions-variants" class="versions-sub-pane d-none">
                     <div class="card shadow-sm">
                         <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-                            <span>&#128256; Variants (Branches)</span>
+                            <span>&#127807; <span th:text="#{variants.title}">Variants</span></span>
                             <div class="d-flex gap-1">
-                                <button class="btn btn-sm btn-outline-success" onclick="TaxonomyContextBar.showVariantDialog()" title="Create new variant">&#43; New Variant</button>
-                                <button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyVariants.refresh()" title="Refresh">&#128260; Refresh</button>
+                                <button class="btn btn-sm btn-outline-success" onclick="TaxonomyContextBar.showVariantDialog()" th:title="#{variants.new.variant.title}" title="Create new variant">&#127807; <span th:text="#{variants.new.variant}">New Variant</span></button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyVariants.refresh()" th:title="#{variants.refresh}" title="Refresh">&#128260; <span th:text="#{variants.refresh}">Refresh</span></button>
                             </div>
                         </div>
                         <div class="card-body p-0">
                             <div id="variantsBrowser" class="p-3">
-                                <div class="text-muted small">Loading variants…</div>
+                                <div class="text-muted small" th:text="#{variants.loading}">Loading variants…</div>
                             </div>
                         </div>
                     </div>
@@ -667,44 +667,44 @@
                 <!-- Sub-tab: Save Version -->
                 <div id="versions-save" class="versions-sub-pane d-none">
                     <div class="card shadow-sm">
-                        <div class="card-header fw-semibold">&#128190; Save Version</div>
+                        <div class="card-header fw-semibold">&#128190; <span th:text="#{versions.save.title}">Save Version</span></div>
                         <div class="card-body">
-                            <p class="text-muted small mb-3">
-                                Create a named version (snapshot) of the current DSL state.
+                            <p class="text-muted small mb-3" th:text="#{versions.save.description}">
+                                Create a named version (snapshot) of the current architecture state.
                             </p>
                             <div class="mb-2">
-                                <label for="versionTitle" class="form-label small">Title</label>
+                                <label for="versionTitle" class="form-label small" th:text="#{versions.save.label.title}">Title</label>
                                 <input id="versionTitle" type="text" class="form-control form-control-sm"
-                                       placeholder="e.g. Baseline after review round 2">
+                                       th:placeholder="#{versions.save.placeholder.title}" placeholder="e.g. Baseline after review round 2">
                             </div>
                             <div class="mb-3">
-                                <label for="versionDescription" class="form-label small">Description (optional)</label>
+                                <label for="versionDescription" class="form-label small" th:text="#{versions.save.label.desc}">Description (optional)</label>
                                 <textarea id="versionDescription" class="form-control form-control-sm" rows="2"
-                                          placeholder="Brief summary of what changed"></textarea>
+                                          th:placeholder="#{versions.save.placeholder.desc}" placeholder="Brief summary of what changed"></textarea>
                             </div>
-                            <button id="versionsSaveBtn" class="btn btn-primary btn-sm">&#128190; Save Version</button>
+                            <button id="versionsSaveBtn" class="btn btn-primary btn-sm">&#128190; <span th:text="#{versions.save.btn}">Save Version</span></button>
                             <span id="versionsSaveStatus" class="ms-2 small"></span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Sub-tab: Sync with Shared Repository -->
+                <!-- Sub-tab: Sync with Team Repository -->
                 <div id="versions-sync" class="versions-sub-pane d-none">
                     <div class="card shadow-sm">
                         <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-                            <span>&#128260; Sync with Shared Repository</span>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyWorkspaceSync.refresh()" title="Refresh sync state">&#128260; Refresh</button>
+                            <span>&#128260; <span th:text="#{workspace.sync.tab.title}">Sync with Team Repository</span></span>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="TaxonomyWorkspaceSync.refresh()" th:title="#{workspace.sync.tab.refresh.title}" title="Refresh sync state">&#128260; <span th:text="#{workspace.sync.tab.refresh}">Refresh</span></button>
                         </div>
                         <div class="card-body">
                             <div id="syncStatePanel" class="mb-3">
-                                <div class="text-muted small">Loading sync state…</div>
+                                <div class="text-muted small" th:text="#{workspace.sync.tab.loading}">Loading sync state…</div>
                             </div>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-outline-primary" onclick="TaxonomyWorkspaceSync.syncFromShared()" title="Pull changes from shared repository into your workspace">
-                                    &#128229; Sync from Shared
+                                <button class="btn btn-sm btn-outline-primary" onclick="TaxonomyWorkspaceSync.syncFromShared()" th:title="#{workspace.sync.from.shared.title}" title="Pull changes from team repository into your workspace">
+                                    &#128229; <span th:text="#{workspace.sync.from.shared}">Sync from Team</span>
                                 </button>
-                                <button class="btn btn-sm btn-primary" onclick="TaxonomyWorkspaceSync.publish()" title="Publish your changes to the shared repository" data-guard="commit">
-                                    &#128228; Publish to Shared
+                                <button class="btn btn-sm btn-primary" onclick="TaxonomyWorkspaceSync.publish()" th:title="#{workspace.sync.publish.title}" title="Publish your changes for the team" data-guard="commit">
+                                    &#128228; <span th:text="#{workspace.sync.publish}">Publish for Team</span>
                                 </button>
                             </div>
                             <div id="localChangesPanel" class="mt-3 d-none"></div>
@@ -1482,33 +1482,33 @@
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="contextCompareModalLabel">&#8596; Compare Contexts</h5>
+                <h5 class="modal-title" id="contextCompareModalLabel">&#128269; <span th:text="#{compare.modal.title}">Compare Versions</span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div class="row mb-3">
                     <div class="col-md-3">
-                        <label for="compareLeftBranch" class="form-label">Left Branch</label>
+                        <label for="compareLeftBranch" class="form-label" th:text="#{compare.left.branch}">Left Version</label>
                         <select class="form-select form-select-sm" id="compareLeftBranch">
                             <option value="draft">draft</option>
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label for="compareLeftCommit" class="form-label">Left Commit (optional)</label>
+                        <label for="compareLeftCommit" class="form-label" th:text="#{compare.left.commit}">Left Commit (optional)</label>
                         <input type="text" class="form-control form-control-sm" id="compareLeftCommit" placeholder="HEAD"/>
                     </div>
                     <div class="col-md-3">
-                        <label for="compareRightBranch" class="form-label">Right Branch</label>
+                        <label for="compareRightBranch" class="form-label" th:text="#{compare.right.branch}">Right Version</label>
                         <select class="form-select form-select-sm" id="compareRightBranch">
                             <option value="draft">draft</option>
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label for="compareRightCommit" class="form-label">Right Commit (optional)</label>
+                        <label for="compareRightCommit" class="form-label" th:text="#{compare.right.commit}">Right Commit (optional)</label>
                         <input type="text" class="form-control form-control-sm" id="compareRightCommit" placeholder="HEAD"/>
                     </div>
                 </div>
-                <button class="btn btn-primary btn-sm mb-3" onclick="TaxonomyContextCompare.doCompare()">Compare</button>
+                <button class="btn btn-primary btn-sm mb-3" onclick="TaxonomyContextCompare.doCompare()" th:text="#{compare.btn}">Compare</button>
                 <div id="contextCompareResults"></div>
             </div>
         </div>
@@ -1520,25 +1520,25 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="createVariantModalLabel">&#43; Create Variant</h5>
+                <h5 class="modal-title" id="createVariantModalLabel">&#127807; <span th:text="#{variants.create.modal.title}">Create New Variant</span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p class="text-muted small">
-                    Create a new variant (branch) from your current context.
-                    The variant will contain a copy of the current architecture state and can be independently modified.
+                <p class="text-muted small" th:text="#{variants.create.modal.description}">
+                    Create a new variant from your current architecture state.
+                    The variant will contain a copy of the current state and can be independently modified.
                 </p>
                 <div class="mb-3">
-                    <label for="variantNameInput" class="form-label">Variant Name</label>
+                    <label for="variantNameInput" class="form-label" th:text="#{variants.create.modal.label}">Variant Name</label>
                     <input type="text" class="form-control form-control-sm" id="variantNameInput"
-                           placeholder="e.g. my-experiment, review-round-2" autocomplete="off"/>
-                    <div class="form-text">Use lowercase letters, numbers, and hyphens. No spaces.</div>
+                           th:placeholder="#{variants.create.modal.placeholder}" placeholder="e.g. my-experiment, review-round-2" autocomplete="off"/>
+                    <div class="form-text" th:text="#{variants.create.modal.hint}">Use lowercase letters, numbers, and hyphens. No spaces.</div>
                 </div>
                 <div id="variantCreateStatus"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-success btn-sm" onclick="TaxonomyContextBar.createVariant()">Create Variant</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal" th:text="#{dialog.cancel}">Cancel</button>
+                <button type="button" class="btn btn-success btn-sm" onclick="TaxonomyContextBar.createVariant()" th:text="#{variants.create.modal.btn}">Create Variant</button>
             </div>
         </div>
     </div>

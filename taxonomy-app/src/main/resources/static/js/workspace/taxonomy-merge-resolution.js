@@ -8,6 +8,7 @@
  */
 window.TaxonomyMergeResolution = (function () {
     'use strict';
+    var t = TaxonomyI18n.t;
 
     var currentConflict = null; // Stores current conflict context
 
@@ -70,20 +71,20 @@ window.TaxonomyMergeResolution = (function () {
             .then(function (data) {
                 if (data.conflict === false) {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showWarning('No Conflict',
-                            'No conflict detected between "' + fromBranch + '" and "' + intoBranch + '".');
+                        window.TaxonomyOperationResult.showWarning(t('merge.no.conflict.title'),
+                            t('merge.no.conflict.merge', fromBranch, intoBranch));
                     }
                     return;
                 }
                 populateConflictModal(data);
                 // Ensure title is set for merge context
                 var titleEl = document.getElementById('mergeConflictModalLabel');
-                if (titleEl) titleEl.textContent = '\u26A0\uFE0F Merge Conflict \u2014 Manual Resolution Required';
+                if (titleEl) titleEl.textContent = t('merge.conflict.title');
                 showModal('mergeConflictModal');
             })
             .catch(function (err) {
                 if (window.TaxonomyOperationResult) {
-                    window.TaxonomyOperationResult.showError('Error', 'Could not load conflict details: ' + err.message);
+                    window.TaxonomyOperationResult.showError(t('merge.error.title'), t('merge.error.load', err.message));
                 }
             });
     }
@@ -103,20 +104,20 @@ window.TaxonomyMergeResolution = (function () {
             .then(function (data) {
                 if (data.conflict === false) {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showWarning('No Conflict',
-                            'No conflict detected for cherry-pick onto "' + targetBranch + '".');
+                        window.TaxonomyOperationResult.showWarning(t('merge.no.conflict.title'),
+                            t('merge.no.conflict.cherrypick', targetBranch));
                     }
                     return;
                 }
                 populateConflictModal(data);
                 // Update modal title for cherry-pick context
                 var titleEl = document.getElementById('mergeConflictModalLabel');
-                if (titleEl) titleEl.textContent = '\u26A0\uFE0F Cherry-Pick Conflict \u2014 Manual Resolution Required';
+                if (titleEl) titleEl.textContent = t('merge.cherrypick.conflict.title');
                 showModal('mergeConflictModal');
             })
             .catch(function (err) {
                 if (window.TaxonomyOperationResult) {
-                    window.TaxonomyOperationResult.showError('Error', 'Could not load conflict details: ' + err.message);
+                    window.TaxonomyOperationResult.showError(t('merge.error.title'), t('merge.error.load', err.message));
                 }
             });
     }
@@ -129,8 +130,8 @@ window.TaxonomyMergeResolution = (function () {
         var resolved = document.getElementById('conflictResolvedContent');
 
         // textContent already escapes HTML, so use raw labels (no escapeHtml)
-        if (oursLabel) oursLabel.textContent = 'Ours (' + (data.oursLabel || 'target') + ')';
-        if (theirsLabel) theirsLabel.textContent = 'Theirs (' + (data.theirsLabel || 'source') + ')';
+        if (oursLabel) oursLabel.textContent = t('merge.ours.label', data.oursLabel || 'target');
+        if (theirsLabel) theirsLabel.textContent = t('merge.theirs.label', data.theirsLabel || 'source');
         if (oursContent) oursContent.textContent = data.oursContent || '';
         if (theirsContent) theirsContent.textContent = data.theirsContent || '';
         if (resolved) resolved.value = data.oursContent || '';
@@ -142,7 +143,7 @@ window.TaxonomyMergeResolution = (function () {
         var resolved = document.getElementById('conflictResolvedContent');
         if (!resolved || !resolved.value.trim()) {
             if (window.TaxonomyOperationResult) {
-                window.TaxonomyOperationResult.showWarning('Empty Content', 'Resolved content cannot be empty.');
+                window.TaxonomyOperationResult.showWarning(t('merge.empty.content'), t('merge.empty.warning'));
             }
             return;
         }
@@ -165,14 +166,14 @@ window.TaxonomyMergeResolution = (function () {
         .then(function (data) {
             if (data.error) {
                 if (window.TaxonomyOperationResult) {
-                    window.TaxonomyOperationResult.showError('Resolution Failed', data.error);
+                    window.TaxonomyOperationResult.showError(t('merge.resolution.failed'), data.error);
                 }
             } else {
                 hideModal('mergeConflictModal');
                 if (window.TaxonomyOperationResult) {
                     var label = currentConflict.type === 'merge' ? 'Merge' : 'Cherry-Pick';
-                    window.TaxonomyOperationResult.showSuccess(label + ' Conflict Resolved',
-                        'Content committed successfully: ' + (data.commitId || '').substring(0, 7));
+                    window.TaxonomyOperationResult.showSuccess(t('merge.resolved.title', label),
+                        t('merge.resolved.detail', (data.commitId || '').substring(0, 7)));
                 }
                 // Refresh UI
                 if (window.TaxonomyContextBar) window.TaxonomyContextBar.fetchAndRender('contextBar');
@@ -183,7 +184,7 @@ window.TaxonomyMergeResolution = (function () {
         })
         .catch(function (err) {
             if (window.TaxonomyOperationResult) {
-                window.TaxonomyOperationResult.showError('Error', 'Resolution failed: ' + err.message);
+                window.TaxonomyOperationResult.showError(t('merge.error.title'), t('merge.resolution.error', err.message));
             }
         });
     }
@@ -201,11 +202,11 @@ window.TaxonomyMergeResolution = (function () {
                 hideModal('syncDivergedModal');
                 if (data.error) {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError('Resolution Failed', data.message || data.error);
+                        window.TaxonomyOperationResult.showError(t('merge.resolution.failed'), data.message || data.error);
                     }
                 } else {
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showSuccess('Diverged State Resolved', data.message || 'Success');
+                        window.TaxonomyOperationResult.showSuccess(t('merge.diverged.resolved'), data.message || 'Success');
                     }
                     if (window.TaxonomyWorkspaceSync) window.TaxonomyWorkspaceSync.refresh();
                     if (window.TaxonomyGitStatus) window.TaxonomyGitStatus.refresh();
@@ -213,7 +214,7 @@ window.TaxonomyMergeResolution = (function () {
             })
             .catch(function (err) {
                 if (window.TaxonomyOperationResult) {
-                    window.TaxonomyOperationResult.showError('Error', 'Resolution failed: ' + err.message);
+                    window.TaxonomyOperationResult.showError(t('merge.error.title'), t('merge.resolution.error', err.message));
                 }
             });
     }

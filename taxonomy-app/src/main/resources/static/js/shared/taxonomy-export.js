@@ -2,6 +2,7 @@
 
 (function () {
     'use strict';
+    var t = TaxonomyI18n.t;
 
     /**
      * Export the current SVG from the given container as a standalone SVG file.
@@ -24,7 +25,7 @@
         }
 
         if (!svgEl) {
-            alert('No SVG found in current view. Switch to Sunburst, Tree, or Decision view.');
+            alert(t('export.no.svg'));
             return;
         }
 
@@ -68,7 +69,7 @@
         }
 
         if (!svgEl) {
-            alert('No SVG found in current view. Switch to Sunburst, Tree, or Decision view.');
+            alert(t('export.no.svg'));
             return;
         }
 
@@ -103,7 +104,7 @@
         };
         img.onerror = function () {
             URL.revokeObjectURL(url);
-            alert('Failed to export PNG. Try SVG export instead.');
+            alert(t('export.png.failed'));
         };
         img.src = url;
     }
@@ -167,7 +168,7 @@
      */
     function exportVisio(businessText) {
         if (!businessText || !businessText.trim()) {
-            alert('Please enter a business requirement text before exporting to Visio.');
+            alert(t('export.visio.no.text'));
             return;
         }
         fetch('/api/diagram/visio', {
@@ -177,7 +178,7 @@
         })
         .then(function (resp) {
             if (!resp.ok) {
-                throw new Error('Export failed (HTTP ' + resp.status + ')');
+                throw new Error(t('export.failed.http', resp.status));
             }
             return resp.blob();
         })
@@ -185,7 +186,7 @@
             downloadBlob(blob, 'requirement-architecture.vsdx');
         })
         .catch(function (err) {
-            alert('Visio export failed: ' + err.message);
+            alert(t('export.visio.failed', err.message));
         });
     }
 
@@ -196,7 +197,7 @@
      */
     function exportArchiMate(businessText) {
         if (!businessText || !businessText.trim()) {
-            alert('Please enter a business requirement text before exporting to ArchiMate.');
+            alert(t('export.archimate.no.text'));
             return;
         }
         fetch('/api/diagram/archimate', {
@@ -206,7 +207,7 @@
         })
         .then(function (resp) {
             if (!resp.ok) {
-                throw new Error('Export failed (HTTP ' + resp.status + ')');
+                throw new Error(t('export.failed.http', resp.status));
             }
             return resp.blob();
         })
@@ -214,7 +215,7 @@
             downloadBlob(blob, 'requirement-architecture.xml');
         })
         .catch(function (err) {
-            alert('ArchiMate export failed: ' + err.message);
+            alert(t('export.archimate.failed', err.message));
         });
     }
 
@@ -228,7 +229,7 @@
      */
     function exportJson(scores, reasons, businessText, provider) {
         if (!scores || Object.keys(scores).length === 0) {
-            alert('No scores to export. Please run an analysis first.');
+            alert(t('export.json.no.scores'));
             return;
         }
         fetch('/api/scores/export', {
@@ -243,7 +244,7 @@
         })
         .then(function (resp) {
             if (!resp.ok) {
-                throw new Error('Export failed (HTTP ' + resp.status + ')');
+                throw new Error(t('export.failed.http', resp.status));
             }
             return resp.json();
         })
@@ -254,7 +255,7 @@
             downloadBlob(blob, filename);
         })
         .catch(function (err) {
-            alert('JSON export failed: ' + err.message);
+            alert(t('export.json.failed', err.message));
         });
     }
 
@@ -265,7 +266,7 @@
      */
     function exportMermaid(businessText) {
         if (!businessText || !businessText.trim()) {
-            alert('Please enter a business requirement text before exporting to Mermaid.');
+            alert(t('export.mermaid.no.text'));
             return;
         }
         fetch('/api/diagram/mermaid', {
@@ -275,7 +276,7 @@
         })
         .then(function (resp) {
             if (!resp.ok) {
-                throw new Error('Export failed (HTTP ' + resp.status + ')');
+                throw new Error(t('export.failed.http', resp.status));
             }
             return resp.text();
         })
@@ -284,7 +285,7 @@
             downloadBlob(blob, 'requirement-architecture.mmd');
         })
         .catch(function (err) {
-            alert('Mermaid export failed: ' + err.message);
+            alert(t('export.mermaid.failed', err.message));
         });
     }
 
@@ -295,7 +296,7 @@
      */
     function exportDot(scores, taxonomyData) {
         if (!taxonomyData || !window.TaxonomyViews || !window.TaxonomyViews.buildDotExport) {
-            alert('DOT export requires taxonomy data. Please load the taxonomy first.');
+            alert(t('export.dot.no.data'));
             return;
         }
         var dot = window.TaxonomyViews.buildDotExport(taxonomyData, scores || {});
@@ -311,7 +312,7 @@
      */
     function exportMermaidTree(scores, taxonomyData) {
         if (!taxonomyData || !window.TaxonomyViews || !window.TaxonomyViews.buildMermaidTreeExport) {
-            alert('Mermaid tree export requires taxonomy data. Please load the taxonomy first.');
+            alert(t('export.mermaid.tree.no.data'));
             return;
         }
         var mmd = window.TaxonomyViews.buildMermaidTreeExport(taxonomyData, scores || {});

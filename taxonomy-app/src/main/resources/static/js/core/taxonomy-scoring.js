@@ -3,6 +3,7 @@
 (function () {
     'use strict';
 
+    var t = TaxonomyI18n.t;
     var S = window.TaxonomyState;
     // B (browse functions) resolved lazily — script may load before taxonomy-browse.js
     function B() { return window.TaxonomyBrowse || {}; }
@@ -30,7 +31,7 @@
         const spinner = document.getElementById('analyzeSpinner');
         btn.disabled = on;
         spinner.classList.toggle('d-none', !on);
-        btn.textContent = on ? ' Analyzing…' : 'Analyze with AI';
+        btn.textContent = on ? ' ' + t('scoring.analyzing') : t('scoring.analyze.btn');
         if (on) btn.prepend(spinner);
     }
 
@@ -256,7 +257,7 @@
                         archLink.className = 'mt-2';
                         var archBtn = document.createElement('button');
                         archBtn.className = 'btn btn-sm btn-outline-primary';
-                        archBtn.textContent = '\uD83C\uDFDB\uFE0F View Architecture \u2192';
+                        archBtn.textContent = '\uD83C\uDFDB\uFE0F ' + t('scoring.view.architecture');
                         archBtn.addEventListener('click', function () {
                             window.navigateToPage('architecture');
                         });
@@ -519,7 +520,7 @@
         }
         const originalText = btnEl.textContent;
         btnEl.disabled = true;
-        btnEl.textContent = '⏳ Generating…';
+        btnEl.textContent = t('scoring.generating');
 
         fetch('/api/justify-leaf', {
             method: 'POST',
@@ -538,7 +539,7 @@
             .then(data => {
                 btnEl.disabled = false;
                 btnEl.textContent = originalText;
-                showLeafJustificationModal(nodeCode, data.justification || '(no justification returned)');
+                showLeafJustificationModal(nodeCode, data.justification || t('scoring.no.justification'));
             })
             .catch(err => {
                 btnEl.disabled = false;
@@ -554,7 +555,7 @@
         const titleEl = document.getElementById('leafJustificationModalTitle');
         const bodyEl = document.getElementById('leafJustificationModalBody');
         if (!modal || !titleEl || !bodyEl) return;
-        titleEl.textContent = '📋 Justification for ' + nodeCode;
+        titleEl.textContent = t('scoring.justification.title', nodeCode);
         bodyEl.textContent = justification;
         const bsModal = new bootstrap.Modal(modal);
         bsModal.show();

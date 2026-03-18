@@ -3,6 +3,8 @@
 (function () {
     'use strict';
 
+    var t = TaxonomyI18n.t;
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     var MAX_AUTOCOMPLETE_SUGGESTIONS = 200;
@@ -556,12 +558,12 @@
     function renderApqcTree(container, roots) {
         if (typeof d3 === 'undefined' || !roots || roots.length === 0) {
             container.innerHTML = '<div class="alert alert-info py-1 px-2 small mb-0">' +
-                'No APQC hierarchy data found. Import an APQC file first via the Import tab.</div>';
+                t('graph.apqc.no.data') + '</div>';
             return;
         }
 
         container.innerHTML = '';
-        var syntheticRoot = { name: 'APQC Process Classification Framework', level: '', children: roots };
+        var syntheticRoot = { name: t('graph.apqc.title'), level: '', children: roots };
         var root = d3.hierarchy(syntheticRoot);
 
         var marginLeft = 30;
@@ -669,12 +671,12 @@
                     if (!content) return;
                     if (!data || data.length === 0) {
                         content.innerHTML = '<div class="alert alert-info py-1 px-2 small mb-0">' +
-                            'No APQC hierarchy data found. Import an APQC file first via the Import tab.</div>';
+                            t('graph.apqc.no.data') + '</div>';
                         return;
                     }
                     content.innerHTML =
-                        '<div class="mb-1"><strong>APQC Process Hierarchy</strong> ' +
-                        '<span class="badge bg-secondary">' + countNodes(data) + ' processes</span></div>' +
+                        '<div class="mb-1"><strong>' + t('graph.apqc.title') + '</strong> ' +
+                        '<span class="badge bg-secondary">' + t('graph.apqc.processes', countNodes(data)) + '</span></div>' +
                         '<div id="apqcTreeContainer"></div>';
                     var treeContainer = document.getElementById('apqcTreeContainer');
                     if (treeContainer) renderApqcTree(treeContainer, data);
@@ -682,7 +684,7 @@
                 .catch(function (err) {
                     if (content) {
                         content.innerHTML = '<div class="alert alert-warning py-1 px-2 small mb-0">' +
-                            'Failed to load APQC hierarchy: ' + escapeHtml(err.message) + '</div>';
+                            t('graph.apqc.load.failed', escapeHtml(err.message)) + '</div>';
                     }
                 });
         } else {

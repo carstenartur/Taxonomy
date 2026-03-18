@@ -1,15 +1,18 @@
 /**
- * taxonomy-context-compare.js — Context Compare View
+ * taxonomy-context-compare.js — Visual comparison
  *
  * Provides a three-level comparison between two architecture contexts:
- * 1. Summary — counts of added/changed/removed elements and relations
- * 2. Semantic Changes — individual change descriptions
- * 3. Raw DSL Diff — textual diff for expert users
+ * 1. Summary card — counts with visual indicators
+ * 2. Three-column grid — Added / Changed / Removed
+ * 3. Raw DSL Diff — collapsible expert mode with colored diff
  *
  * @module TaxonomyContextCompare
  */
 window.TaxonomyContextCompare = (function () {
     'use strict';
+
+    var t = TaxonomyI18n.t;
+    var escapeHtml = TaxonomyUtils.escapeHtml;
 
     /**
      * Show the compare dialog, pre-filled with the current context.
@@ -24,7 +27,6 @@ window.TaxonomyContextCompare = (function () {
         var leftBranch = document.getElementById('compareLeftBranch');
         var rightBranch = document.getElementById('compareRightBranch');
 
-        // Populate branch selectors
         populateBranchSelectors(function () {
             if (leftBranch && currentContext) {
                 leftBranch.value = currentContext.branch || 'draft';
@@ -34,7 +36,6 @@ window.TaxonomyContextCompare = (function () {
             }
         });
 
-        // Clear previous results
         var results = document.getElementById('contextCompareResults');
         if (results) results.innerHTML = '';
 
@@ -96,6 +97,9 @@ window.TaxonomyContextCompare = (function () {
      * @param {string} url — the compare API URL
      */
     function executeCompare(url) {
+        var container = document.getElementById('contextCompareResults');
+        if (container) container.innerHTML = '<div class="text-muted small">' + escapeHtml(t('compare.loading')) + '</div>';
+
         fetch(url)
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (comparison) {
@@ -104,8 +108,7 @@ window.TaxonomyContextCompare = (function () {
                 }
             })
             .catch(function () {
-                var container = document.getElementById('contextCompareResults');
-                if (container) container.innerHTML = '<p class="text-danger">Compare failed.</p>';
+                if (container) container.innerHTML = '<p class="text-danger">' + escapeHtml(t('compare.failed')) + '</p>';
             });
     }
 
@@ -127,7 +130,7 @@ window.TaxonomyContextCompare = (function () {
     }
 
     /**
-     * Render the comparison results.
+     * Render the comparison results with visual cards and columns.
      *
      * @param {string} containerId — DOM ID for results
      * @param {object} comparison — ContextComparison from API
@@ -138,56 +141,151 @@ window.TaxonomyContextCompare = (function () {
 
         var html = '';
 
-        // Level 1: Summary
+        // Level 1: Summary Card
         var s = comparison.summary;
         if (s) {
-            html += '<div class="card mb-3">';
-            html += '<div class="card-header"><strong>Summary</strong> — ' + s.elementsAdded + ' added, '
-                + s.elementsChanged + ' changed, ' + s.elementsRemoved + ' removed elements; '
-                + s.relationsAdded + ' added, ' + s.relationsChanged + ' changed, '
-                + s.relationsRemoved + ' removed relations</div>';
-            html += '</div>';
+            var leftName = TaxonomyI18n.formatBranch(comparison.leftBranch || '');
+            var rightName = TaxonomyI18n.formatBranch(comparison.rightBranch || '');
+
+            html += '<div class="compare-summary-card">';
+            html += '<div class="compare-title">' + escapeHtml(leftName) + ' \u2194 ' + escapeHtml(rightName) + '</div>';
+            html += '<div class="mb-2 small text-muted">' + escapeHtml(t('compare.summary')) + '</div>';
+            html += '<div class="compare-stats">';
+
+            if (s.elementsAdded > 0) {
+                html += '<span class="compare-stat text-success">\uD83D\uDFE2 ' + escapeHtml(t('compare.elements.added', s.elementsAdded)) + '</span>';
+            }
+            if (s.elementsRemoved > 0) {
+                html += '<span class="compare-stat text-danger">\uD83D\uDD34 ' + escapeHtml(t('compare.elements.removed', s.elementsRemoved)) + '</span>';
+            }
+            if (s.elementsChanged > 0) {
+                html += '<span class="compare-stat text-warning">\uD83D\uDFE1 ' + escapeHtml(t('compare.elements.changed', s.elementsChanged)) + '</span>';
+            }
+            if (s.relationsAdded > 0) {
+                html += '<span class="compare-stat text-success">' + escapeHtml(t('compare.relations.added', s.relationsAdded)) + '</span>';
+            }
+            if (s.relationsRemoved > 0) {
+                html += '<span class="compare-stat text-danger">' + escapeHtml(t('compare.relations.removed', s.relationsRemoved)) + '</span>';
+            }
+            if (s.relationsChanged > 0) {
+                html += '<span class="compare-stat text-warning">' + escapeHtml(t('compare.relations.changed', s.relationsChanged)) + '</span>';
+            }
+
+            var total = (s.elementsAdded || 0) + (s.elementsRemoved || 0) + (s.elementsChanged || 0)
+                + (s.relationsAdded || 0) + (s.relationsRemoved || 0) + (s.relationsChanged || 0);
+            if (total === 0) {
+                html += '<span class="compare-stat text-muted">' + escapeHtml(t('compare.no.differences')) + '</span>';
+            }
+
+            html += '</div>'; // compare-stats
+            html += '</div>'; // compare-summary-card
         }
 
-        // Level 2: Semantic Changes
+        // Level 2: Three-column grid for changes
         if (comparison.changes && comparison.changes.length > 0) {
-            html += '<div class="card mb-3"><div class="card-header"><strong>Semantic Changes</strong></div>';
-            html += '<ul class="list-group list-group-flush">';
+            var added = [];
+            var changed = [];
+            var removed = [];
+
             comparison.changes.forEach(function (c) {
-                var icon = c.changeType === 'ADD' ? '&#10133;' : c.changeType === 'REMOVE' ? '&#10134;' : '&#9998;';
-                var badgeClass = c.changeType === 'ADD' ? 'bg-success' : c.changeType === 'REMOVE' ? 'bg-danger' : 'bg-warning text-dark';
-                html += '<li class="list-group-item">';
-                html += '<span class="badge ' + badgeClass + ' me-1">' + icon + ' ' + escapeHtml(c.changeType) + '</span>';
-                html += '<span class="badge bg-secondary me-1">' + escapeHtml(c.category) + '</span>';
-                html += escapeHtml(c.description);
-                if (c.beforeValue && c.afterValue) {
-                    html += '<br><small class="text-muted">' + escapeHtml(c.beforeValue)
-                        + ' → ' + escapeHtml(c.afterValue) + '</small>';
-                }
-                html += '</li>';
+                if (c.changeType === 'ADD') added.push(c);
+                else if (c.changeType === 'REMOVE') removed.push(c);
+                else changed.push(c);
             });
-            html += '</ul></div>';
+
+            html += '<div class="compare-changes-grid">';
+
+            // Added column
+            html += '<div class="compare-column">';
+            html += '<div class="col-header col-added">\uD83D\uDFE2 ' + escapeHtml(t('compare.column.added', added.length)) + '</div>';
+            html += '<div class="col-items">';
+            if (added.length === 0) {
+                html += '<div class="col-empty">' + escapeHtml(t('compare.column.empty.added')) + '</div>';
+            } else {
+                added.forEach(function (c) {
+                    html += '<div class="col-item item-added">';
+                    html += '<span class="badge bg-secondary me-1" style="font-size:0.65rem;">' + escapeHtml(c.category) + '</span>';
+                    html += '<span>' + escapeHtml(c.description) + '</span>';
+                    html += '</div>';
+                });
+            }
+            html += '</div></div>';
+
+            // Changed column
+            html += '<div class="compare-column">';
+            html += '<div class="col-header col-changed">\uD83D\uDFE1 ' + escapeHtml(t('compare.column.changed', changed.length)) + '</div>';
+            html += '<div class="col-items">';
+            if (changed.length === 0) {
+                html += '<div class="col-empty">' + escapeHtml(t('compare.column.empty.changed')) + '</div>';
+            } else {
+                changed.forEach(function (c) {
+                    html += '<div class="col-item item-changed">';
+                    html += '<span class="badge bg-secondary me-1" style="font-size:0.65rem;">' + escapeHtml(c.category) + '</span>';
+                    html += '<span>' + escapeHtml(c.description) + '</span>';
+                    if (c.beforeValue && c.afterValue) {
+                        html += '<div class="small text-muted mt-1">' + escapeHtml(c.beforeValue) + ' \u2192 ' + escapeHtml(c.afterValue) + '</div>';
+                    }
+                    html += '</div>';
+                });
+            }
+            html += '</div></div>';
+
+            // Removed column
+            html += '<div class="compare-column">';
+            html += '<div class="col-header col-removed">\uD83D\uDD34 ' + escapeHtml(t('compare.column.removed', removed.length)) + '</div>';
+            html += '<div class="col-items">';
+            if (removed.length === 0) {
+                html += '<div class="col-empty">' + escapeHtml(t('compare.column.empty.removed')) + '</div>';
+            } else {
+                removed.forEach(function (c) {
+                    html += '<div class="col-item item-removed">';
+                    html += '<span class="badge bg-secondary me-1" style="font-size:0.65rem;">' + escapeHtml(c.category) + '</span>';
+                    html += '<span>' + escapeHtml(c.description) + '</span>';
+                    html += '</div>';
+                });
+            }
+            html += '</div></div>';
+
+            html += '</div>'; // compare-changes-grid
         }
 
-        // Level 3: Raw DSL Diff (collapsible)
+        // Level 3: Raw DSL Diff (collapsible expert mode)
         if (comparison.rawDslDiff) {
             html += '<div class="card mb-3">';
             html += '<div class="card-header">';
             html += '<a data-bs-toggle="collapse" href="#rawDiffCollapse" class="text-decoration-none">';
-            html += '<strong>Raw DSL Diff</strong> (click to expand)</a></div>';
+            html += '\u25B8 <strong>' + escapeHtml(t('compare.dsl.diff')) + '</strong> ' + escapeHtml(t('compare.dsl.diff.expert')) + '</a></div>';
             html += '<div id="rawDiffCollapse" class="collapse">';
-            html += '<div class="card-body"><pre class="mb-0 small">' + escapeHtml(comparison.rawDslDiff) + '</pre></div>';
+            html += '<div class="card-body"><pre class="mb-0 small" style="white-space:pre-wrap;">' + renderColoredDiff(comparison.rawDslDiff) + '</pre></div>';
             html += '</div></div>';
         }
 
         if (!html) {
-            html = '<p class="text-muted">No differences found.</p>';
+            html = '<p class="text-muted">' + escapeHtml(t('compare.no.diff')) + '</p>';
         }
 
         container.innerHTML = html;
     }
 
-    var escapeHtml = TaxonomyUtils.escapeHtml;
+    /**
+     * Render a colored unified diff.
+     */
+    function renderColoredDiff(diffText) {
+        if (!diffText) return '';
+        return diffText.split('\n').map(function (line) {
+            var escaped = escapeHtml(line);
+            if (line.startsWith('+')) {
+                return '<span style="color:#198754;background:rgba(25,135,84,0.08);">' + escaped + '</span>';
+            }
+            if (line.startsWith('-')) {
+                return '<span style="color:#dc3545;background:rgba(220,53,69,0.08);">' + escaped + '</span>';
+            }
+            if (line.startsWith('@')) {
+                return '<span style="color:#0d6efd;">' + escaped + '</span>';
+            }
+            return escaped;
+        }).join('\n');
+    }
 
     return {
         showDialog: showDialog,

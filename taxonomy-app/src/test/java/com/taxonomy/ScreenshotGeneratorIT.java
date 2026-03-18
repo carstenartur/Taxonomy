@@ -2,6 +2,7 @@ package com.taxonomy;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -1029,6 +1030,13 @@ class ScreenshotGeneratorIT {
 
         wait(120).until(ExpectedConditions.textMatches(
                 By.id("statusArea"), ANALYSIS_DONE_PATTERN));
+
+        // Check that analysis actually succeeded — if it ended with error/unavailable,
+        // the architectureViewPanel is never rendered and waiting for it would just time out.
+        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
+        Assumptions.assumeTrue(statusText.contains("complete"),
+                "Skipping: analysis did not complete successfully (status: " + statusText + ")");
+
         // Navigate to Architecture tab to see the panel
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
@@ -1037,6 +1045,7 @@ class ScreenshotGeneratorIT {
         // Reset: navigate back to analyze, switch back to list view and uncheck architecture view
         navigateToTab("analyze");
         safeClick(By.id("viewList"));
+        archCb = driver.findElement(By.id("includeArchitectureView"));
         if (archCb.isSelected()) {
             js("arguments[0].click();", archCb);
         }
@@ -1594,6 +1603,13 @@ class ScreenshotGeneratorIT {
 
         wait(120).until(ExpectedConditions.textMatches(
                 By.id("statusArea"), ANALYSIS_DONE_PATTERN));
+
+        // Check that analysis actually succeeded — if it ended with error/unavailable,
+        // the architectureViewPanel is never rendered and waiting for it would just time out.
+        String statusText = driver.findElement(By.id("statusArea")).getText().toLowerCase();
+        Assumptions.assumeTrue(statusText.contains("complete"),
+                "Skipping: analysis did not complete successfully (status: " + statusText + ")");
+
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")),

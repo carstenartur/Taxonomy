@@ -10,6 +10,8 @@
 window.TaxonomyContextTransfer = (function () {
     'use strict';
 
+    var t = TaxonomyI18n.t;
+
     /**
      * Show the transfer dialog.
      *
@@ -47,7 +49,7 @@ window.TaxonomyContextTransfer = (function () {
             })
             .catch(function () {
                 var container = document.getElementById('transferPreviewResults');
-                if (container) container.innerHTML = '<p class="text-danger">Preview failed.</p>';
+                if (container) container.innerHTML = '<p class="text-danger">' + t('transfer.preview.failed') + '</p>';
             });
     }
 
@@ -58,7 +60,7 @@ window.TaxonomyContextTransfer = (function () {
         var selection = buildSelection();
         if (!selection) return;
 
-        if (!confirm('Apply the selective transfer? This will create a new commit.')) return;
+        if (!confirm(t('transfer.apply.confirm'))) return;
 
         fetch('/api/context/copy-back/apply', {
             method: 'POST',
@@ -68,12 +70,12 @@ window.TaxonomyContextTransfer = (function () {
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (result) {
                 if (result && result.success) {
-                    alert('Transfer completed. Commit: ' + (result.commitId || '').substring(0, 7));
+                    alert(t('transfer.apply.success', (result.commitId || '').substring(0, 7)));
                     var modal = bootstrap.Modal.getInstance(document.getElementById('contextTransferModal'));
                     if (modal) modal.hide();
                     if (window.TaxonomyContextBar) window.TaxonomyContextBar.fetchAndRender('contextBar');
                 } else {
-                    alert('Transfer failed: ' + (result ? result.error : 'Unknown error'));
+                    alert(t('transfer.apply.failed', result ? result.error : 'Unknown error'));
                 }
             });
     }
@@ -89,17 +91,17 @@ window.TaxonomyContextTransfer = (function () {
         if (!container) return;
 
         var html = '<div class="alert ' + (preview.hasConflicts ? 'alert-warning' : 'alert-success') + '">';
-        html += 'Selected: ' + preview.selectedElements + ' elements, ' + preview.selectedRelations + ' relations.';
+        html += t('transfer.selected', preview.selectedElements, preview.selectedRelations);
         if (preview.hasConflicts) {
-            html += ' <strong>' + preview.conflicts.length + ' conflict(s) detected.</strong>';
+            html += ' <strong>' + t('transfer.conflicts', preview.conflicts.length) + '</strong>';
         } else {
-            html += ' No conflicts.';
+            html += ' ' + t('transfer.no.conflicts');
         }
         html += '</div>';
 
         if (preview.conflicts && preview.conflicts.length > 0) {
             html += '<table class="table table-sm">';
-            html += '<thead><tr><th>ID</th><th>Current</th><th>Incoming</th><th>Affected Views</th></tr></thead>';
+            html += '<thead><tr><th>' + t('transfer.header.id') + '</th><th>' + t('transfer.header.current') + '</th><th>' + t('transfer.header.incoming') + '</th><th>' + t('transfer.header.affected.views') + '</th></tr></thead>';
             html += '<tbody>';
             preview.conflicts.forEach(function (c) {
                 html += '<tr>';
@@ -127,7 +129,7 @@ window.TaxonomyContextTransfer = (function () {
         var relInput = document.getElementById('transferRelationIds');
 
         if (!srcInput || !tgtInput || !srcInput.value || !tgtInput.value) {
-            alert('Source and target commit IDs are required.');
+            alert(t('transfer.required.ids'));
             return null;
         }
 

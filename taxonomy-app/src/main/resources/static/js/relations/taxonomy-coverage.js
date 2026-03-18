@@ -7,6 +7,7 @@
  */
 (function () {
     'use strict';
+    var t = TaxonomyI18n.t;
 
     /* ------------------------------------------------------------------ */
     /*  Bootstrap on DOMContentLoaded                                      */
@@ -36,13 +37,13 @@
     function loadCoverageDashboard() {
         var content = document.getElementById('coverageDashboardContent');
         if (!content) return;
-        content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> Loading coverage\u2026</div>';
+        content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('coverage.loading') + '</div>';
 
         fetch('/api/coverage/statistics')
             .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
             .then(function (stats) { renderDashboard(stats); })
             .catch(function () {
-                content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F Failed to load coverage statistics.</div>';
+                content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F ' + t('coverage.load.failed') + '</div>';
             });
     }
 
@@ -56,19 +57,19 @@
 
         /* Summary badges */
         html += '<div class="d-flex gap-2 flex-wrap mb-2">';
-        html += metricBadge('Total nodes', stats.totalNodes, 'bg-primary');
-        html += metricBadge('Covered', stats.coveredNodes, 'bg-success');
-        html += metricBadge('Uncovered', stats.uncoveredNodes, stats.uncoveredNodes > 0 ? 'bg-warning text-dark' : 'bg-secondary');
-        html += metricBadge('Coverage', (stats.coveragePercentage != null ? stats.coveragePercentage : 0).toFixed(1) + '%', coverageClass(stats.coveragePercentage || 0));
-        html += metricBadge('Requirements', stats.totalRequirements, 'bg-info text-dark');
-        html += metricBadge('Avg req/node', (stats.avgRequirementsPerNode != null ? stats.avgRequirementsPerNode : 0).toFixed(2), 'bg-secondary');
+        html += metricBadge(t('coverage.total.nodes'), stats.totalNodes, 'bg-primary');
+        html += metricBadge(t('coverage.covered'), stats.coveredNodes, 'bg-success');
+        html += metricBadge(t('coverage.uncovered'), stats.uncoveredNodes, stats.uncoveredNodes > 0 ? 'bg-warning text-dark' : 'bg-secondary');
+        html += metricBadge(t('coverage.coverage'), (stats.coveragePercentage != null ? stats.coveragePercentage : 0).toFixed(1) + '%', coverageClass(stats.coveragePercentage || 0));
+        html += metricBadge(t('coverage.requirements'), stats.totalRequirements, 'bg-info text-dark');
+        html += metricBadge(t('coverage.avg.per.node'), (stats.avgRequirementsPerNode != null ? stats.avgRequirementsPerNode : 0).toFixed(2), 'bg-secondary');
         html += '</div>';
 
         /* Top-covered nodes */
         if (stats.topCovered && stats.topCovered.length > 0) {
-            html += '<div class="small text-muted mb-1">Top covered nodes:</div>';
+            html += '<div class="small text-muted mb-1">' + t('coverage.top.covered') + '</div>';
             html += '<table class="table table-sm table-bordered mb-2 coverage-table" style="font-size:0.82em;">';
-            html += '<thead><tr><th>Node code</th><th>Requirements</th></tr></thead><tbody>';
+            html += '<thead><tr><th>' + t('coverage.table.node') + '</th><th>' + t('coverage.table.requirements') + '</th></tr></thead><tbody>';
             stats.topCovered.forEach(function (e) {
                 html += '<tr>';
                 html += '<td><a href="#" class="coverage-node-link" data-code="' + escapeHtml(e.nodeCode) + '">' + escapeHtml(e.nodeCode) + '</a></td>';
@@ -80,9 +81,9 @@
 
         /* Gap candidates */
         if (stats.gapCandidates && stats.gapCandidates.length > 0) {
-            html += '<div class="small text-muted mb-1">Gap candidates (no coverage):</div>';
+            html += '<div class="small text-muted mb-1">' + t('coverage.gap.candidates') + '</div>';
             html += '<table class="table table-sm table-bordered mb-0 coverage-table" style="font-size:0.82em;">';
-            html += '<thead><tr><th>Node code</th><th>Requirements</th></tr></thead><tbody>';
+            html += '<thead><tr><th>' + t('coverage.table.node') + '</th><th>' + t('coverage.table.requirements') + '</th></tr></thead><tbody>';
             stats.gapCandidates.forEach(function (e) {
                 html += '<tr>';
                 html += '<td>' + escapeHtml(e.nodeCode) + '</td>';
@@ -92,7 +93,7 @@
             html += '</tbody></table>';
         }
 
-        content.innerHTML = html || '<div class="text-muted small p-2">No coverage data available. Use \u201cRecord Current Analysis\u201d to start.</div>';
+        content.innerHTML = html || '<div class="text-muted small p-2">' + t('coverage.no.data.hint') + '</div>';
 
         /* Attach click handlers for node code links */
         content.querySelectorAll('.coverage-node-link').forEach(function (link) {
@@ -109,16 +110,16 @@
     function loadNodeCoverage(nodeCode) {
         var content = document.getElementById('coverageDashboardContent');
         if (!content) return;
-        content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> Loading node coverage\u2026</div>';
+        content.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('coverage.loading.node') + '</div>';
 
         fetch('/api/coverage/node/' + encodeURIComponent(nodeCode))
             .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
             .then(function (entries) {
-                var html = '<div class="mb-2"><button id="coverageBackBtn" class="btn btn-sm btn-outline-secondary">\u2190 Back</button>'
-                         + ' <strong>' + escapeHtml(nodeCode) + '</strong> — ' + entries.length + ' requirement(s)</div>';
+                var html = '<div class="mb-2"><button id="coverageBackBtn" class="btn btn-sm btn-outline-secondary">' + t('coverage.back') + '</button>'
+                         + ' <strong>' + escapeHtml(nodeCode) + '</strong> \u2014 ' + t('coverage.node.requirements', entries.length) + '</div>';
                 if (entries.length > 0) {
                     html += '<table class="table table-sm table-bordered mb-0" style="font-size:0.82em;">';
-                    html += '<thead><tr><th>Requirement ID</th><th>Score</th><th>Analysed at</th></tr></thead><tbody>';
+                    html += '<thead><tr><th>' + t('coverage.table.req.id') + '</th><th>' + t('coverage.table.score') + '</th><th>' + t('coverage.table.analyzed') + '</th></tr></thead><tbody>';
                     entries.forEach(function (e) {
                         html += '<tr>';
                         html += '<td title="' + escapeHtml(e.requirementText || '') + '">' + escapeHtml(e.requirementId) + '</td>';
@@ -128,14 +129,14 @@
                     });
                     html += '</tbody></table>';
                 } else {
-                    html += '<div class="text-muted small">No requirements cover this node.</div>';
+                    html += '<div class="text-muted small">' + t('coverage.node.no.requirements') + '</div>';
                 }
                 content.innerHTML = html;
                 var backBtn = document.getElementById('coverageBackBtn');
                 if (backBtn) backBtn.addEventListener('click', loadCoverageDashboard);
             })
             .catch(function () {
-                content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F Failed to load node coverage.</div>';
+                content.innerHTML = '<div class="text-danger small p-2">\u26A0\uFE0F ' + t('coverage.load.node.failed') + '</div>';
             });
     }
 
@@ -145,11 +146,11 @@
     function recordCurrentAnalysis() {
         var scores = (typeof window._getCurrentScores === 'function') ? window._getCurrentScores() : null;
         if (!scores || Object.keys(scores).length === 0) {
-            alert('No analysis scores available. Please run an analysis first.');
+            alert(t('coverage.no.scores'));
             return;
         }
 
-        var reqId = prompt('Enter a requirement identifier (e.g. REQ-101):');
+        var reqId = prompt(t('coverage.prompt.req.id'));
         if (!reqId || reqId.trim() === '') return;
 
         var reqText = '';
@@ -170,11 +171,11 @@
             if (r.ok) {
                 loadCoverageDashboard();
             } else {
-                alert('Failed to record coverage (HTTP ' + r.status + ').');
+                alert(t('coverage.record.failed', r.status));
             }
         })
         .catch(function () {
-            alert('Failed to record coverage. Check the console for details.');
+            alert(t('coverage.record.error'));
         });
     }
 

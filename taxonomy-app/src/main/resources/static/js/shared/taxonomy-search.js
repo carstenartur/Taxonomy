@@ -7,6 +7,7 @@
  */
 (function () {
     'use strict';
+    var t = TaxonomyI18n.t;
 
     /* ------------------------------------------------------------------ */
     /*  State                                                              */
@@ -63,13 +64,13 @@
         if (data.available) {
             badge.classList.remove('bg-secondary');
             badge.classList.add('bg-info', 'text-dark');
-            badge.textContent = '\uD83E\uDDE0 Embeddings: ' + data.indexedNodes + ' nodes';
-            badge.title = 'Semantic embeddings available — model: ' + (data.modelUrl || 'unknown');
+            badge.textContent = t('search.embeddings.available', data.indexedNodes);
+            badge.title = t('search.embeddings.available.title', data.modelUrl || 'unknown');
         } else {
             badge.classList.remove('bg-info', 'text-dark');
             badge.classList.add('bg-secondary');
-            badge.textContent = '\uD83E\uDDE0 Embeddings: unavailable';
-            badge.title = 'Embeddings not loaded — semantic/hybrid/graph search disabled';
+            badge.textContent = t('search.embeddings.unavailable');
+            badge.title = t('search.embeddings.unavailable.title');
         }
     }
 
@@ -94,7 +95,7 @@
 
         var area = document.getElementById('searchResultsArea');
         area.style.display = 'block';
-        area.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> Searching\u2026</div>';
+        area.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('search.searching') + '</div>';
 
         var url;
         switch (mode) {
@@ -134,10 +135,10 @@
     function renderSearchResults(nodes) {
         var area = document.getElementById('searchResultsArea');
         if (!nodes || nodes.length === 0) {
-            area.innerHTML = '<div class="text-muted small p-2">No results found.</div>';
+            area.innerHTML = '<div class="text-muted small p-2">' + t('search.no.results') + '</div>';
             return;
         }
-        var html = '<div class="small text-muted mb-1">' + nodes.length + ' result(s)</div>';
+        var html = '<div class="small text-muted mb-1">' + t('search.results.count', nodes.length) + '</div>';
         html += '<div class="list-group list-group-flush search-results-list">';
         nodes.forEach(function (n) {
             var pct = (typeof n.matchPercentage === 'number') ? n.matchPercentage : '';
@@ -167,7 +168,7 @@
             html += '<div class="small fst-italic mb-2">' + escapeHtml(data.summary) + '</div>';
         }
         if (data.matchedNodes && data.matchedNodes.length > 0) {
-            html += '<div class="small text-muted mb-1">' + data.matchedNodes.length + ' matched node(s)</div>';
+            html += '<div class="small text-muted mb-1">' + t('search.matched.nodes', data.matchedNodes.length) + '</div>';
             html += '<div class="list-group list-group-flush search-results-list">';
             data.matchedNodes.forEach(function (n) {
                 html += '<a href="#" class="list-group-item list-group-item-action py-1 px-2 d-flex align-items-center search-result-item" data-code="' + escapeHtml(n.code) + '">';
@@ -178,14 +179,14 @@
             html += '</div>';
         }
         if (data.topRelationTypes && Object.keys(data.topRelationTypes).length > 0) {
-            html += '<div class="small text-muted mt-2 mb-1">Top relation types:</div>';
+            html += '<div class="small text-muted mt-2 mb-1">' + t('search.top.relation.types') + '</div>';
             html += '<div class="d-flex gap-1 flex-wrap">';
             Object.entries(data.topRelationTypes).forEach(function (entry) {
                 html += '<span class="badge bg-secondary">' + escapeHtml(entry[0]) + ' (' + entry[1] + ')</span>';
             });
             html += '</div>';
         }
-        area.innerHTML = html || '<div class="text-muted small p-2">No graph results found.</div>';
+        area.innerHTML = html || '<div class="text-muted small p-2">' + t('search.no.graph.results') + '</div>';
 
         area.querySelectorAll('.search-result-item').forEach(function (el) {
             el.addEventListener('click', function (e) {
@@ -229,7 +230,7 @@
         }
         if (area) {
             area.style.display = 'block';
-            area.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> Finding similar nodes\u2026</div>';
+            area.innerHTML = '<div class="text-center text-muted py-2"><div class="spinner-border spinner-border-sm" role="status"></div> ' + t('search.finding.similar') + '</div>';
         }
 
         fetch('/api/search/similar/' + encodeURIComponent(code) + '?topK=10')

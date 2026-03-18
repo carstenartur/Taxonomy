@@ -14,6 +14,8 @@
 (function () {
     'use strict';
 
+    var t = TaxonomyI18n.t;
+
     // ── DOM references ──────────────────────────────────────────────
     var parseBtn, validateBtn, formatBtn, commitBtn, materializeBtn, loadCurrentBtn;
     var branchSelect, newBranchBtn, authorInput, messageInput;
@@ -95,19 +97,19 @@
 
     // ── Load current architecture as DSL ────────────────────────────
     function loadCurrent() {
-        showStatus('Loading current architecture…', 'info');
+        showStatus(t('dsl.loading'), 'info');
         fetch('/api/dsl/export')
             .then(function (r) { return r.text(); })
             .then(function (text) {
                 setEditorContent(text);
-                showStatus('Loaded current architecture DSL (' + text.length + ' chars)', 'success');
+                showStatus(t('dsl.loaded', text.length), 'success');
             })
-            .catch(function (e) { showStatus('Failed to load: ' + e.message, 'error'); });
+            .catch(function (e) { showStatus(t('dsl.load.failed', e.message), 'error'); });
     }
 
     // ── Parse ───────────────────────────────────────────────────────
     function parseDsl() {
-        showStatus('Parsing…', 'info');
+        showStatus(t('dsl.parsing'), 'info');
         fetch('/api/dsl/parse', {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
@@ -116,14 +118,14 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 renderValidation(data);
-                showStatus('Parsed: ' + data.elements + ' elements, ' + data.relations + ' relations', 'success');
+                showStatus(t('dsl.parsed', data.elements, data.relations), 'success');
             })
-            .catch(function (e) { showStatus('Parse error: ' + e.message, 'error'); });
+            .catch(function (e) { showStatus(t('dsl.parse.error', e.message), 'error'); });
     }
 
     // ── Validate ────────────────────────────────────────────────────
     function validateDsl() {
-        showStatus('Validating…', 'info');
+        showStatus(t('dsl.validating'), 'info');
         fetch('/api/dsl/validate', {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
@@ -132,14 +134,14 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 renderValidation(data);
-                showStatus(data.valid ? '✅ Valid DSL' : '❌ Validation errors', data.valid ? 'success' : 'error');
+                showStatus(data.valid ? t('dsl.valid') : t('dsl.invalid'), data.valid ? 'success' : 'error');
             })
-            .catch(function (e) { showStatus('Validate error: ' + e.message, 'error'); });
+            .catch(function (e) { showStatus(t('dsl.validate.error', e.message), 'error'); });
     }
 
     // ── Format ──────────────────────────────────────────────────────
     function formatDsl() {
-        showStatus('Formatting…', 'info');
+        showStatus(t('dsl.formatting'), 'info');
         fetch('/api/dsl/format', {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
@@ -148,9 +150,9 @@
             .then(function (r) { return r.text(); })
             .then(function (formatted) {
                 setEditorContent(formatted);
-                showStatus('✨ Formatted', 'success');
+                showStatus(t('dsl.formatted'), 'success');
             })
-            .catch(function (e) { showStatus('Format error: ' + e.message, 'error'); });
+            .catch(function (e) { showStatus(t('dsl.format.error', e.message), 'error'); });
     }
 
     function renderValidation(data) {
@@ -183,8 +185,8 @@
         var branch = branchSelect ? branchSelect.value : 'draft';
         var author = authorInput ? authorInput.value.trim() : '';
         var message = messageInput ? messageInput.value.trim() : '';
-        if (!message) { message = 'Manual commit'; }
-        showStatus('Committing to branch "' + branch + '"…', 'info');
+        if (!message) { message = t('dsl.commit.default.message'); }
+        showStatus(t('dsl.committing', branch), 'info');
         var url = '/api/dsl/commit?branch=' + encodeURIComponent(branch);
         if (author) url += '&author=' + encodeURIComponent(author);
         if (message) url += '&message=' + encodeURIComponent(message);
@@ -196,21 +198,21 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (data.valid === false) {
-                    showStatus('Commit rejected: validation errors', 'error');
+                    showStatus(t('dsl.commit.rejected'), 'error');
                     renderValidation(data);
                     return;
                 }
-                showStatus('✅ Committed: ' + (data.commitId || data.documentId), 'success');
+                showStatus(t('dsl.committed', data.commitId || data.documentId), 'success');
                 if (messageInput) messageInput.value = '';
                 loadHistory(branch);
             })
-            .catch(function (e) { showStatus('Commit error: ' + e.message, 'error'); });
+            .catch(function (e) { showStatus(t('dsl.commit.error', e.message), 'error'); });
     }
 
     // ── Materialize (full) ──────────────────────────────────────────
     function materializeDsl() {
         var branch = branchSelect ? branchSelect.value : '';
-        showStatus('Materializing…', 'info');
+        showStatus(t('dsl.materializing'), 'info');
         var url = '/api/dsl/materialize';
         if (branch) url += '?branch=' + encodeURIComponent(branch);
         fetch(url, {
@@ -221,27 +223,26 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (data.valid === false) {
-                    showStatus('Materialization failed: validation errors', 'error');
+                    showStatus(t('dsl.materialize.validation.failed'), 'error');
                     renderValidation(data);
                     return;
                 }
-                showStatus('✅ Materialized: ' + data.relationsCreated + ' relations, ' +
-                    data.hypothesesCreated + ' hypotheses (doc #' + data.documentId + ')', 'success');
+                showStatus(t('dsl.materialized', data.relationsCreated, data.elementsCreated), 'success');
             })
-            .catch(function (e) { showStatus('Materialize error: ' + e.message, 'error'); });
+            .catch(function (e) { showStatus(t('dsl.materialize.error', e.message), 'error'); });
     }
 
     // ── Materialize incremental ─────────────────────────────────────
     function materializeIncremental() {
         // Get the last two documents from history to do an incremental materialization
         var branch = branchSelect ? branchSelect.value : 'draft';
-        showStatus('Loading history for incremental materialization…', 'info');
+        showStatus(t('dsl.incremental.loading'), 'info');
         fetch('/api/dsl/history?branch=' + encodeURIComponent(branch))
             .then(function (r) { return r.json(); })
             .then(function (response) {
                 var docs = response.commits || response;
                 if (docs.length < 2) {
-                    showStatus('Need at least 2 commits on branch "' + branch + '" for incremental materialization', 'error');
+                    showStatus(t('dsl.incremental.need.commits', branch), 'error');
                     return;
                 }
                 var afterId = docs[0].documentId;
@@ -252,10 +253,9 @@
             })
             .then(function (data) {
                 if (!data) return;
-                showStatus('✅ Incremental: ' + data.relationsCreated + ' relations, ' +
-                    data.hypothesesCreated + ' hypotheses', 'success');
+                showStatus(t('dsl.incremental.done', data.relationsCreated, data.elementsCreated), 'success');
             })
-            .catch(function (e) { showStatus('Incremental error: ' + e.message, 'error'); });
+            .catch(function (e) { showStatus(t('dsl.incremental.error', e.message), 'error'); });
     }
 
     // ── Branches ────────────────────────────────────────────────────
@@ -329,14 +329,14 @@
                 renderHistory(docs);
             })
             .catch(function () {
-                historyBody.innerHTML = '<tr><td colspan="4" class="text-muted">Failed to load history</td></tr>';
+                historyBody.innerHTML = '<tr><td colspan="4" class="text-muted">' + t('dsl.history.failed') + '</td></tr>';
             });
     }
 
     function renderHistory(docs) {
         if (!historyBody) return;
         if (!docs || docs.length === 0) {
-            historyBody.innerHTML = '<tr><td colspan="4" class="text-muted">No commits yet</td></tr>';
+            historyBody.innerHTML = '<tr><td colspan="4" class="text-muted">' + t('dsl.history.empty') + '</td></tr>';
             return;
         }
         var html = '';
