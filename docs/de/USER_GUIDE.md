@@ -323,7 +323,11 @@ Die Baumansicht stellt die Taxonomie als interaktives Knoten-Verbindungs-Diagram
 
 Die Entscheidungskarten-Ansicht zeigt die Taxonomie als Entscheidungsbaum-Layout, das für die Auswahl relevanter Knoten basierend auf den Analysebewertungen optimiert ist.
 
-![Entscheidungskarten-Ansicht](../images/08-decision-map-view.png)
+![Entscheidungskarten-Ansicht (bewertet)](../images/69-decision-map-scored.png)
+
+> **Hinweis:** Vor dem Ausführen einer Analyse zeigt die Entscheidungskarte einen leeren Zustand, der Sie auffordert, zuerst eine Analyse durchzuführen.
+>
+> ![Entscheidungskarte — leerer Zustand](../images/08-decision-map-view.png)
 
 ### Zusammenfassungsansicht (📋 Summary)
 
