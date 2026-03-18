@@ -159,7 +159,7 @@
         if (!validationOutput) return;
         var html = '';
         if (data.valid) {
-            html = '<span class="text-success">✅ Valid</span>';
+            html = '<span class="text-success">' + t('views.valid') + '</span>';
             if (data.elements !== undefined) {
                 html += ' — ' + data.elements + ' elements, ' + data.relations + ' relations';
             }
@@ -309,10 +309,10 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (data.error) {
-                    showStatus('Branch creation failed: ' + data.error, 'error');
+                    showStatus(t('dsl.branch.create.failed', data.error), 'error');
                     return;
                 }
-                showStatus('✅ Created branch "' + name + '"', 'success');
+                showStatus(t('dsl.branch.create.success', name), 'success');
                 loadBranches();
                 if (branchSelect) branchSelect.value = name;
             })
@@ -385,7 +385,7 @@
     }
 
     function loadCommitById(commitId) {
-        showStatus('Loading commit ' + commitId.substring(0, 8) + '…', 'info');
+        showStatus(t('dsl.commit.loading', commitId.substring(0, 8)), 'info');
         fetch('/api/dsl/git/commit/' + encodeURIComponent(commitId))
             .then(function (r) {
                 if (!r.ok) throw new Error('Commit not found');
@@ -394,9 +394,9 @@
             .then(function (data) {
                 if (data.dslText) {
                     setEditorContent(data.dslText);
-                    showStatus('Loaded commit ' + commitId.substring(0, 8), 'success');
+                    showStatus(t('dsl.commit.loaded', commitId.substring(0, 8)), 'success');
                 } else {
-                    showStatus('Commit ' + commitId.substring(0, 8) + ' has no DSL content', 'error');
+                    showStatus(t('dsl.commit.no.content', commitId.substring(0, 8)), 'error');
                 }
             })
             .catch(function (e) { showStatus('Load error: ' + e.message, 'error'); });
@@ -410,10 +410,10 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 renderDiff(data, beforeId, afterId);
-                showStatus('Diff: ' + data.totalChanges + ' changes', 'success');
+                showStatus(t('dsl.diff.changes', data.totalChanges), 'success');
             })
             .catch(function (e) {
-                diffOutput.innerHTML = '<span class="text-danger">Diff failed: ' + escapeHtml(e.message) + '</span>';
+                diffOutput.innerHTML = '<span class="text-danger">' + t('dsl.diff.failed', e.message) + '</span>';
                 showStatus('Diff error: ' + e.message, 'error');
             });
     }
@@ -436,10 +436,10 @@
                 diffOutput.querySelector('.dsl-semantic-diff-toggle').addEventListener('click', function () {
                     loadDiff(this.getAttribute('data-before'), this.getAttribute('data-after'));
                 });
-                showStatus('Text diff loaded', 'success');
+                showStatus(t('dsl.textdiff.loaded'), 'success');
             })
             .catch(function (e) {
-                diffOutput.innerHTML = '<span class="text-danger">Text diff failed: ' + escapeHtml(e.message) + '</span>';
+                diffOutput.innerHTML = '<span class="text-danger">' + t('dsl.textdiff.failed', e.message) + '</span>';
                 showStatus('Text diff error: ' + e.message, 'error');
             });
     }
@@ -462,10 +462,10 @@
             html += '<strong>' + data.totalChanges + ' change(s)</strong><br>';
         }
 
-        if (data.addedElements > 0) html += '<span class="text-success"><span aria-hidden="true">✅</span> + ' + data.addedElements + ' element(s) added</span><br>';
+        if (data.addedElements > 0) html += '<span class="text-success"><span aria-hidden="true">✅</span> ' + t('dsl.incr.elements.added', data.addedElements) + '</span><br>';
         if (data.removedElements > 0) html += '<span class="text-danger"><span aria-hidden="true">❌</span> − ' + data.removedElements + ' element(s) removed</span><br>';
         if (data.changedElements > 0) html += '<span class="text-warning"><span aria-hidden="true">⚠️</span> ~ ' + data.changedElements + ' element(s) changed</span><br>';
-        if (data.addedRelations > 0) html += '<span class="text-success"><span aria-hidden="true">✅</span> + ' + data.addedRelations + ' relation(s) added</span><br>';
+        if (data.addedRelations > 0) html += '<span class="text-success"><span aria-hidden="true">✅</span> ' + t('dsl.incr.relations.added', data.addedRelations) + '</span><br>';
         if (data.removedRelations > 0) html += '<span class="text-danger"><span aria-hidden="true">❌</span> − ' + data.removedRelations + ' relation(s) removed</span><br>';
         if (data.changedRelations > 0) html += '<span class="text-warning"><span aria-hidden="true">⚠️</span> ~ ' + data.changedRelations + ' relation(s) changed</span><br>';
 
@@ -473,7 +473,7 @@
         if (data.details) {
             var d = data.details;
             if (d.addedElements && d.addedElements.length > 0) {
-                html += '<details class="mt-2"><summary class="text-success"><span aria-hidden="true">+</span> Added Elements (' + d.addedElements.length + ')</summary><ul>';
+                html += '<details class="mt-2"><summary class="text-success"><span aria-hidden="true">+</span> ' + t('dsl.incr.section.elements', d.addedElements.length) + '</summary><ul>';
                 d.addedElements.forEach(function (e) {
                     html += '<li><code>' + escapeHtml(e.id) + '</code> ' + escapeHtml(e.title || '') + ' <small class="text-muted">(' + escapeHtml(e.type || '') + ')</small></li>';
                 });
@@ -487,7 +487,7 @@
                 html += '</ul></details>';
             }
             if (d.addedRelations && d.addedRelations.length > 0) {
-                html += '<details class="mt-1"><summary class="text-success"><span aria-hidden="true">+</span> Added Relations (' + d.addedRelations.length + ')</summary><ul>';
+                html += '<details class="mt-1"><summary class="text-success"><span aria-hidden="true">+</span> ' + t('dsl.incr.section.relations', d.addedRelations.length) + '</summary><ul>';
                 d.addedRelations.forEach(function (r) {
                     html += '<li><code>' + escapeHtml(r.sourceId) + '</code> —[' + escapeHtml(r.relationType) + ']→ <code>' + escapeHtml(r.targetId) + '</code></li>';
                 });
@@ -537,13 +537,13 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (data.error) {
-                    showStatus('Cherry-pick failed: ' + data.error, 'error');
+                    showStatus(t('dsl.cherrypick.failed', data.error), 'error');
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError('Cherry-Pick Failed', data.error);
+                        window.TaxonomyOperationResult.showError(t('dsl.cherrypick.failed.title'), data.error);
                     }
                     return;
                 }
-                showStatus('✅ Cherry-picked onto "' + data.targetBranch + '" → ' + data.commitId.substring(0, 8), 'success');
+                showStatus(t('dsl.cherrypick.success', data.targetBranch, data.commitId.substring(0, 8)), 'success');
                 if (window.TaxonomyOperationResult) {
                     window.TaxonomyOperationResult.showSuccess('Cherry-Pick Successful',
                         'Applied onto "' + data.targetBranch + '" → ' + data.commitId.substring(0, 8));
@@ -578,13 +578,13 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (data.error) {
-                    showStatus('Merge failed: ' + data.error, 'error');
+                    showStatus(t('dsl.merge.failed', data.error), 'error');
                     if (window.TaxonomyOperationResult) {
-                        window.TaxonomyOperationResult.showError('Merge Failed', data.error);
+                        window.TaxonomyOperationResult.showError(t('dsl.merge.failed.title'), data.error);
                     }
                     return;
                 }
-                showStatus('✅ Merged "' + data.fromBranch + '" into "' + data.intoBranch + '" → ' + data.commitId.substring(0, 8), 'success');
+                showStatus(t('dsl.merge.success', data.fromBranch, data.intoBranch, data.commitId.substring(0, 8)), 'success');
                 if (window.TaxonomyOperationResult) {
                     window.TaxonomyOperationResult.showSuccess('Merge Successful',
                         'Merged "' + data.fromBranch + '" into "' + data.intoBranch + '" → ' + data.commitId.substring(0, 8));

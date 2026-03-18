@@ -15,6 +15,8 @@
 window.TaxonomyActionGuards = (function () {
     'use strict';
 
+    var t = TaxonomyI18n.t;
+
     // Guard rule definitions: which operations are blocked / warned
     var BLOCK_ON_OPERATION = ['commit', 'merge', 'cherry-pick', 'import', 'materialize'];
     var BLOCK_ON_READ_ONLY = ['commit', 'merge', 'cherry-pick', 'import', 'materialize'];
@@ -90,7 +92,7 @@ window.TaxonomyActionGuards = (function () {
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
         if (ctx && ctx.mode === 'READ_ONLY' && BLOCK_ON_READ_ONLY.indexOf(guardType) !== -1) {
             btn.classList.add('guard-blocked');
-            btn.setAttribute('title', 'Blocked: Context is read-only — return to origin or switch context first');
+            btn.setAttribute('title', t('guard.blocked.readonly'));
             btn.disabled = true;
             btn.setAttribute(GUARD_BLOCKED_ATTR, 'true');
             return;
@@ -100,7 +102,7 @@ window.TaxonomyActionGuards = (function () {
         if (state.operationInProgress && BLOCK_ON_OPERATION.indexOf(guardType) !== -1) {
             btn.classList.add('guard-blocked');
             btn.setAttribute('title',
-                'Blocked: ' + escapeHtml(state.operationKind || 'operation') + ' in progress — complete it first');
+                t('guard.blocked.operation', escapeHtml(state.operationKind || 'operation')));
             btn.disabled = true;
             btn.setAttribute(GUARD_BLOCKED_ATTR, 'true');
             return;
@@ -108,17 +110,17 @@ window.TaxonomyActionGuards = (function () {
 
         // Check warnings
         if (state.projectionStale && WARN_ON_PROJECTION_STALE.indexOf(guardType) !== -1) {
-            addWarningBadge(btn, 'Projection stale');
-            btn.setAttribute('title', 'Warning: DB projection is stale — data may not reflect latest Git changes');
+            addWarningBadge(btn, t('guard.warning.projection.badge'));
+            btn.setAttribute('title', t('guard.warning.projection'));
         }
 
         if (state.indexStale && WARN_ON_INDEX_STALE.indexOf(guardType) !== -1) {
-            addWarningBadge(btn, 'Index stale');
-            btn.setAttribute('title', 'Warning: Search index outdated — results may be incomplete');
+            addWarningBadge(btn, t('guard.warning.index.badge'));
+            btn.setAttribute('title', t('guard.warning.index'));
         }
 
         if (state.projectionStale && guardType === 'materialize') {
-            addWarningBadge(btn, 'Re-materialization needed');
+            addWarningBadge(btn, t('guard.warning.rematerialize.badge'));
         }
     }
 
@@ -197,7 +199,7 @@ window.TaxonomyActionGuards = (function () {
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (preview) {
                 if (!preview) {
-                    showMergePreviewModal('Could not load merge preview.', 'warning', fromBranch, intoBranch, onProceed);
+                    showMergePreviewModal(t('guard.merge.preview.failed'), 'warning', fromBranch, intoBranch, onProceed);
                     return;
                 }
                 if (!preview.canMerge) {
@@ -209,32 +211,31 @@ window.TaxonomyActionGuards = (function () {
                     if (isBranchError) {
                         // Non-conflict failure — show warning, not conflict modal
                         var warnMsg = hasWarnings ? preview.warnings.join('; ') :
-                            'Merge from "' + fromBranch + '" into "' + intoBranch + '" cannot proceed.';
+                            t('guard.merge.cannot.proceed', fromBranch, intoBranch);
                         showMergePreviewModal(warnMsg, 'danger', fromBranch, intoBranch, null);
                     } else if (window.TaxonomyMergeResolution) {
                         window.TaxonomyMergeResolution.showMergeConflict(fromBranch, intoBranch);
                     } else {
                         showMergePreviewModal(
-                            '\u26A0\uFE0F Merge conflict expected! The merge from "' + fromBranch +
-                            '" into "' + intoBranch + '" would fail due to conflicts.',
+                            t('guard.merge.conflict.expected', fromBranch, intoBranch),
                             'danger', fromBranch, intoBranch, null);
                     }
                 } else if (preview.alreadyMerged) {
                     showMergePreviewModal(
-                        'Already merged: "' + fromBranch + '" is already an ancestor of "' + intoBranch + '".',
+                        t('guard.merge.already.merged', fromBranch, intoBranch),
                         'info', fromBranch, intoBranch, null);
                 } else if (preview.fastForwardable) {
                     showMergePreviewModal(
-                        '\u2705 Fast-forward merge possible. No conflicts detected.',
+                        t('guard.merge.fastforward'),
                         'success', fromBranch, intoBranch, onProceed);
                 } else {
                     showMergePreviewModal(
-                        'Merge preview: commits to merge from "' + fromBranch + '" into "' + intoBranch + '". No conflicts detected.',
+                        t('guard.merge.preview.ok', fromBranch, intoBranch),
                         'success', fromBranch, intoBranch, onProceed);
                 }
             })
             .catch(function () {
-                showMergePreviewModal('Merge preview unavailable.', 'warning', fromBranch, intoBranch, onProceed);
+                showMergePreviewModal(t('guard.merge.preview.unavailable'), 'warning', fromBranch, intoBranch, onProceed);
             });
     }
 
@@ -248,7 +249,7 @@ window.TaxonomyActionGuards = (function () {
 
         if (!modalEl || !contentEl) {
             // Fallback to confirm if modal not available
-            if (onProceed && confirm(message + '\n\nProceed?')) {
+            if (onProceed && confirm(message + '\n\n' + t('guard.proceed'))) {
                 onProceed();
             }
             return;
@@ -296,7 +297,7 @@ window.TaxonomyActionGuards = (function () {
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (preview) {
                 if (!preview) {
-                    showCherryPickPreviewModal('Could not load cherry-pick preview.',
+                    showCherryPickPreviewModal(t('guard.cherrypick.preview.failed'),
                         'warning', commitId, targetBranch, onProceed);
                     return;
                 }
@@ -308,25 +309,23 @@ window.TaxonomyActionGuards = (function () {
                     if (isInputError) {
                         // Non-conflict failure — show warning, not conflict modal
                         var warnMsg = hasWarnings ? preview.warnings.join('; ') :
-                            'Cherry-pick of ' + commitId.substring(0, 7) + ' cannot proceed.';
+                            t('guard.cherrypick.cannot.proceed', commitId.substring(0, 7));
                         showCherryPickPreviewModal(warnMsg, 'danger', commitId, targetBranch, null);
                     } else if (window.TaxonomyMergeResolution) {
                         window.TaxonomyMergeResolution.showCherryPickConflict(commitId, targetBranch);
                     } else {
                         showCherryPickPreviewModal(
-                            '\u26A0\uFE0F Cherry-pick would cause conflicts! Commit ' +
-                            commitId.substring(0, 7) + ' cannot be cleanly applied to "' + targetBranch + '".',
+                            t('guard.cherrypick.conflict.expected', commitId.substring(0, 7), targetBranch),
                             'danger', commitId, targetBranch, null);
                     }
                 } else {
                     showCherryPickPreviewModal(
-                        '\u2705 Cherry-pick looks clean. Apply commit ' +
-                        commitId.substring(0, 7) + ' onto "' + targetBranch + '"?',
+                        t('guard.cherrypick.clean', commitId.substring(0, 7), targetBranch),
                         'success', commitId, targetBranch, onProceed);
                 }
             })
             .catch(function () {
-                showCherryPickPreviewModal('Cherry-pick preview unavailable.',
+                showCherryPickPreviewModal(t('guard.cherrypick.preview.unavailable'),
                     'warning', commitId, targetBranch, onProceed);
             });
     }
@@ -340,7 +339,7 @@ window.TaxonomyActionGuards = (function () {
         var proceedBtn = document.getElementById('cherryPickPreviewProceedBtn');
 
         if (!modalEl || !contentEl) {
-            if (onProceed && confirm(message + '\n\nProceed?')) {
+            if (onProceed && confirm(message + '\n\n' + t('guard.proceed'))) {
                 onProceed();
             }
             return;

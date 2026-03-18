@@ -95,7 +95,7 @@
     function renderSunburst(container, data, scores) {
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
-            container.innerHTML = '<div class="alert alert-warning mt-2">D3.js is required for this view. Please check your internet connection.</div>';
+            container.innerHTML = '<div class="alert alert-warning mt-2">' + t('views.d3.required') + '</div>';
             return;
         }
         if (container._taxObserver) {
@@ -183,7 +183,7 @@
             .style('font-size', '11px')
             .style('fill', '#003580')
             .style('pointer-events', 'none')
-            .text('↩ back');
+            .text(t('views.back'));
 
         centerGroup.on('click', function () {
             if (currentZoom && currentZoom.parent) {
@@ -226,7 +226,7 @@
                 .attrTween('transform', function (d) { return function () { return labelTransform(d.current); }; });
 
             // Show/hide back button
-            centerText.text(p === hierarchy ? '' : '↩ back');
+            centerText.text(p === hierarchy ? '' : t('views.back'));
         }
 
         function arcVisible(d) {
@@ -267,7 +267,7 @@
     function renderTreeDiagram(container, data, scores) {
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
-            container.innerHTML = '<div class="alert alert-warning mt-2">D3.js is required for this view. Please check your internet connection.</div>';
+            container.innerHTML = '<div class="alert alert-warning mt-2">' + t('views.d3.required') + '</div>';
             return;
         }
         if (container._taxObserver) {
@@ -465,7 +465,7 @@
     function renderDecisionMap(container, data, scores) {
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
-            container.innerHTML = '<div class="alert alert-warning mt-2">D3.js is required for this view. Please check your internet connection.</div>';
+            container.innerHTML = '<div class="alert alert-warning mt-2">' + t('views.d3.required') + '</div>';
             return;
         }
         if (container._taxObserver) {
@@ -897,7 +897,7 @@
     function renderTreeCanvas(container, data, scores) {
         container.removeAttribute('data-view-rendered');
         if (typeof d3 === 'undefined') {
-            container.innerHTML = '<div class="alert alert-warning mt-2">D3.js is required for this view. Please check your internet connection.</div>';
+            container.innerHTML = '<div class="alert alert-warning mt-2">' + t('views.d3.required') + '</div>';
             return;
         }
         if (container._taxObserver) {

@@ -9,6 +9,8 @@
 window.TaxonomyHistorySearch = (function () {
     'use strict';
 
+    var t = TaxonomyI18n.t;
+
     /**
      * Execute a versioned search and render results into the given container.
      *
@@ -28,7 +30,7 @@ window.TaxonomyHistorySearch = (function () {
             })
             .catch(function () {
                 var container = document.getElementById(containerId);
-                if (container) container.innerHTML = '<p class="text-muted">Search failed.</p>';
+                if (container) container.innerHTML = '<p class="text-muted">' + escapeHtml(t('history.search.failed')) + '</p>';
             });
     }
 
@@ -44,7 +46,7 @@ window.TaxonomyHistorySearch = (function () {
         if (!container) return;
 
         if (!results || results.length === 0) {
-            container.innerHTML = '<p class="text-muted">No results found.</p>';
+            container.innerHTML = '<p class="text-muted">' + escapeHtml(t('history.search.no.results')) + '</p>';
             return;
         }
 
@@ -62,13 +64,13 @@ window.TaxonomyHistorySearch = (function () {
 
             // Badges
             if (r.latestOverall) {
-                html += ' <span class="badge bg-success">newest</span>';
+                html += ' <span class="badge bg-success">' + escapeHtml(t('history.search.newest')) + '</span>';
             }
             if (r.onCurrentLineage) {
-                html += ' <span class="badge bg-primary">current branch</span>';
+                html += ' <span class="badge bg-primary">' + escapeHtml(t('history.search.current.branch')) + '</span>';
             }
             if (!r.latestOnCurrentBranch && r.onCurrentLineage) {
-                html += ' <span class="badge bg-warning text-dark">older</span>';
+                html += ' <span class="badge bg-warning text-dark">' + escapeHtml(t('history.search.older')) + '</span>';
             }
 
             html += '</div>';
@@ -76,16 +78,16 @@ window.TaxonomyHistorySearch = (function () {
             // Action buttons
             html += '<div class="btn-group btn-group-sm">';
             if (r.contextOpenActions && r.contextOpenActions.indexOf('OPEN_READ_ONLY') >= 0) {
-                html += '<button class="btn btn-outline-secondary" onclick="TaxonomyHistorySearch.openReadOnly(\'' + escapeHtml(r.branch) + '\',\'' + escapeHtml(r.commitId) + '\')">&#128065; View</button>';
+                html += '<button class="btn btn-outline-secondary" onclick="TaxonomyHistorySearch.openReadOnly(\'' + escapeHtml(r.branch) + '\',\'' + escapeHtml(r.commitId) + '\')">' + escapeHtml(t('history.search.btn.view')) + '</button>';
             }
             if (r.contextOpenActions && r.contextOpenActions.indexOf('SWITCH') >= 0) {
-                html += '<button class="btn btn-outline-primary" onclick="TaxonomyHistorySearch.switchTo(\'' + escapeHtml(r.branch) + '\',\'' + escapeHtml(r.commitId) + '\')">Switch</button>';
+                html += '<button class="btn btn-outline-primary" onclick="TaxonomyHistorySearch.switchTo(\'' + escapeHtml(r.branch) + '\',\'' + escapeHtml(r.commitId) + '\')">' + escapeHtml(t('history.search.btn.switch')) + '</button>';
             }
             if (r.contextOpenActions && r.contextOpenActions.indexOf('CREATE_VARIANT') >= 0) {
-                html += '<button class="btn btn-outline-success" onclick="TaxonomyHistorySearch.createVariant(\'' + escapeHtml(r.branch) + '\')">Variant</button>';
+                html += '<button class="btn btn-outline-success" onclick="TaxonomyHistorySearch.createVariant(\'' + escapeHtml(r.branch) + '\')">' + escapeHtml(t('history.search.btn.variant')) + '</button>';
             }
             if (r.contextOpenActions && r.contextOpenActions.indexOf('COMPARE') >= 0) {
-                html += '<button class="btn btn-outline-info" onclick="TaxonomyHistorySearch.compare(\'' + escapeHtml(r.commitId) + '\')">Compare</button>';
+                html += '<button class="btn btn-outline-info" onclick="TaxonomyHistorySearch.compare(\'' + escapeHtml(r.commitId) + '\')">' + escapeHtml(t('history.search.btn.compare')) + '</button>';
             }
             html += '</div>';
 
@@ -96,7 +98,7 @@ window.TaxonomyHistorySearch = (function () {
                 html += '<p class="mb-0 mt-1 small text-muted">' + escapeHtml(r.matchedText) + '</p>';
             }
             if (r.matchedElementId) {
-                html += '<small class="text-info">Matched: ' + escapeHtml(r.matchedElementId) + '</small>';
+                html += '<small class="text-info">' + escapeHtml(t('history.search.matched')) + ' ' + escapeHtml(r.matchedElementId) + '</small>';
             }
 
             html += '</div>';

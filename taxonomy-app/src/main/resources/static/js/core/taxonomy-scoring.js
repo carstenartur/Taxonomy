@@ -144,7 +144,7 @@
     function runAnalysis() {
         const text = document.getElementById('businessText').value.trim();
         if (!text) {
-            B().showStatus('warning', 'Please enter a business requirement text before analyzing.');
+            B().showStatus('warning', t('scoring.enter.requirement'));
             return;
         }
 
@@ -205,7 +205,7 @@
                         ' ' + matchedCount + ' node(s) matched so far.');
                 } else if (result.status === 'ERROR') {
                     B().showStatus('danger',
-                        '❌ Analysis failed: ' + (result.errorMessage || 'Unknown error.'));
+                        '❌ ' + t('scoring.analysis.failed', result.errorMessage || 'Unknown error.'));
                 } else {
                     if (matchedCount === 0) {
                         B().showStatus('warning',
@@ -268,12 +268,12 @@
             })
             .catch(err => {
                 setAnalyzing(false);
-                B().showStatus('danger', 'Analysis failed: ' + err.message);
+                B().showStatus('danger', t('scoring.analysis.error', err.message));
                 updateAnalysisLog({
                     timestamp: analysisStart,
                     totalNodes: 0,
                     matchedEntries: [],
-                    warnings: ['Error: ' + err.message],
+                    warnings: [t('scoring.error', err.message)],
                     status: 'ERROR'
                 });
             });
@@ -283,7 +283,7 @@
     function runInteractiveAnalysis() {
         const text = document.getElementById('businessText').value.trim();
         if (!text) {
-            B().showStatus('warning', 'Please enter a business requirement text before analyzing.');
+            B().showStatus('warning', t('scoring.enter.requirement'));
             return;
         }
 
@@ -310,7 +310,7 @@
     function runStreamingAnalysis() {
         const text = document.getElementById('businessText').value.trim();
         if (!text) {
-            B().showStatus('warning', 'Please enter a business requirement text before analyzing.');
+            B().showStatus('warning', t('scoring.enter.requirement'));
             return;
         }
 
@@ -545,7 +545,7 @@
                 btnEl.disabled = false;
                 btnEl.textContent = originalText;
                 console.error('[Taxonomy] Failed to get leaf justification for', nodeCode, err);
-                B().showStatus('danger', 'Failed to get justification for ' + nodeCode + ': ' + err.message);
+                B().showStatus('danger', t('scoring.justify.failed', nodeCode, err.message));
             });
     }
 
@@ -734,11 +734,11 @@
             if (row) { row.classList.add('table-success'); row.style.opacity = '1'; }
             var actions = row && row.querySelector('td:last-child');
             if (actions) actions.innerHTML = '<span class="badge bg-success">Accepted</span>';
-            B().showStatus('success', '✅ Relationship accepted: ' + h.sourceCode + ' → ' + h.targetCode);
+            B().showStatus('success', t('scoring.relation.accepted', h.sourceCode, h.targetCode));
         })
         .catch(function (err) {
             if (row) row.style.opacity = '1';
-            B().showStatus('danger', '❌ Failed to accept: ' + err.message);
+            B().showStatus('danger', t('scoring.relation.accept.failed', err.message));
         });
     };
 
