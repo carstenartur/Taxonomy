@@ -1,5 +1,10 @@
 # Taxonomy Architecture Analyzer — Curl Workflow Examples
 
+> **Purpose:** These examples show how to automate Taxonomy Architecture Analyzer
+> workflows using command-line tools. They are intended for CI/CD pipelines,
+> batch processing, and system integration — **not** as a substitute for the
+> [web-based GUI](USER_GUIDE.md) for interactive use.
+
 End-to-end curl workflows for common tasks. For the full endpoint reference, see [API Reference](API_REFERENCE.md)
 or [Swagger UI](http://localhost:8080/swagger-ui.html).
 
