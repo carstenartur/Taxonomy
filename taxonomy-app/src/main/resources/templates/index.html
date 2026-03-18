@@ -1381,6 +1381,11 @@
         if (pageName === 'versions' && window.TaxonomyVersions) {
             window.TaxonomyVersions.loadTimeline();
         }
+
+        // Ensure export button visibility is up-to-date when switching to the export tab
+        if (pageName === 'export' && window.TaxonomyBrowse) {
+            window.TaxonomyBrowse.updateExportGroupVisibility();
+        }
     }
 
     // Click handlers on nav links

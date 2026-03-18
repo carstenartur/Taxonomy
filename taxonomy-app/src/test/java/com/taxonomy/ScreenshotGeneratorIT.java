@@ -1756,7 +1756,7 @@ class ScreenshotGeneratorIT {
         wait(15).until(d -> {
             WebElement bar = d.findElement(By.id("contextBar"));
             String html = bar.getAttribute("innerHTML");
-            return html != null && !html.isEmpty() && html.contains("context-bar");
+            return html != null && !html.isEmpty() && html.contains("workspace-bar");
         });
         saveElementScreenshot(driver.findElement(By.id("contextBar")),
                 "44-context-bar.png");
