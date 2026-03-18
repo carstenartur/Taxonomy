@@ -45,6 +45,7 @@ Die explizite Einstellung `LLM_PROVIDER=LOCAL_ONNX` aktiviert die Offline-Semant
 | `TAXONOMY_EMBEDDING_MODEL_DIR` | `embedding.model.dir` | Pfad | *(leer)* | Absoluter Pfad zu einem vorab heruntergeladenen Modellverzeichnis. Wenn leer, lädt DJL das Modell automatisch bei der ersten Verwendung herunter. |
 | `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | String | `djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5` | DJL-Modell-URL oder HuggingFace-Modellname. Nur ändern, wenn Sie ein anderes Embedding-Modell verwenden möchten. |
 | `TAXONOMY_EMBEDDING_QUERY_PREFIX` | `embedding.query.prefix` | String | `Represent this sentence for searching relevant passages: ` | Präfix, das Abfragetexten für asymmetrisches Retrieval vorangestellt wird. Auf leeren String setzen, um es zu deaktivieren (z. B. bei Verwendung eines symmetrischen Modells). |
+| `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | `embedding.allow-download` | Boolean | `true` | Auf `false` setzen, um den Download von Modellen zur Laufzeit zu verhindern. Wenn deaktiviert, muss ein lokales Modell über `TAXONOMY_EMBEDDING_MODEL_DIR` bereitgestellt werden. Empfohlen für CI-Umgebungen. |
 
 ### Vorab-Download des Embedding-Modells (Deployments ohne Internetzugang)
 

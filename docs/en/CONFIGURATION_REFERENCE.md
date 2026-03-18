@@ -47,6 +47,7 @@ key or internet connection is required (after the first model download).
 | `TAXONOMY_EMBEDDING_MODEL_DIR` | `embedding.model.dir` | Path | *(empty)* | Absolute path to a pre-downloaded model directory. When empty, DJL downloads the model automatically on first use. |
 | `TAXONOMY_EMBEDDING_MODEL_NAME` | `embedding.model.name` | String | `djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5` | DJL model URL or HuggingFace model name. Change only if you want a different embedding model. |
 | `TAXONOMY_EMBEDDING_QUERY_PREFIX` | `embedding.query.prefix` | String | `Represent this sentence for searching relevant passages: ` | Prefix prepended to query texts for asymmetric retrieval. Set to empty string to disable (e.g. when using a symmetric model). |
+| `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD` | `embedding.allow-download` | Boolean | `true` | Set to `false` to prevent runtime model downloads. When disabled, a local model must be provided via `TAXONOMY_EMBEDDING_MODEL_DIR`. Recommended for CI environments. |
 
 ### Pre-Downloading the Embedding Model (Air-Gapped Deployments)
 

@@ -42,6 +42,9 @@ import com.taxonomy.search.NodeEmbeddingBinder;
  *       empty = DJL auto-download to {@code ~/.djl.ai/}.</li>
  *   <li>{@code TAXONOMY_EMBEDDING_MODEL_NAME} — DJL model URL;
  *       default {@code djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5}.</li>
+ *   <li>{@code TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD} (default {@code true}) — set to
+ *       {@code false} to prevent runtime model downloads (CI mode).  When disabled, a local
+ *       model must be provided via {@code TAXONOMY_EMBEDDING_MODEL_DIR}.</li>
  * </ul>
  *
  * <h2>Graceful degradation</h2>
@@ -96,6 +99,9 @@ public class LocalEmbeddingService {
     @Value("${embedding.query.prefix:Represent this sentence for searching relevant passages: }")
     private String queryPrefix;
 
+    @Value("${embedding.allow-download:true}")
+    private boolean allowDownload;
+
     // ── DJL model (lazy) ──────────────────────────────────────────────────────
 
     private volatile ZooModel<String, float[]> model;
@@ -145,6 +151,14 @@ public class LocalEmbeddingService {
             synchronized (modelLock) {
                 if (model == null) {
                     String url = effectiveModelUrl();
+                    // When downloads are disabled, only local paths are allowed
+                    if (!allowDownload && url.startsWith("djl://")) {
+                        modelLoadFailed = true;
+                        log.error("Model download disabled (embedding.allow-download=false) "
+                                + "and no local model found. Set TAXONOMY_EMBEDDING_MODEL_DIR.");
+                        throw new IllegalStateException(
+                                "No local model and download disabled (TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false)");
+                    }
                     log.info("Loading embedding model via DJL / ONNX Runtime from {} …", url);
                     try {
                         model = loadFromUrl(url);
@@ -152,7 +166,7 @@ public class LocalEmbeddingService {
                     } catch (Exception primary) {
                         // When the djl:// protocol fails (e.g. URL truncation in Alpine),
                         // try loading directly from HuggingFace before giving up.
-                        if (url.startsWith("djl://")) {
+                        if (url.startsWith("djl://") && allowDownload) {
                             log.warn("djl:// URL failed ({}), trying HuggingFace fallback…",
                                     primary.getMessage());
                             try {
@@ -197,8 +211,9 @@ public class LocalEmbeddingService {
 
     /**
      * If {@code url} points to a local directory that contains an ONNX model file but no
-     * {@code serving.properties}, this method generates a minimal one so that DJL can
-     * discover the model.
+     * valid {@code serving.properties}, this method generates a minimal one so that DJL can
+     * discover the model.  Also detects and repairs malformed files (e.g. with leading
+     * whitespace from YAML heredoc indentation in CI workflows).
      */
     private void ensureServingProperties(String url) {
         try {
@@ -206,7 +221,17 @@ public class LocalEmbeddingService {
             java.nio.file.Path dir = java.nio.file.Path.of(path);
             if (!java.nio.file.Files.isDirectory(dir)) return;
             java.nio.file.Path servingProps = dir.resolve("serving.properties");
-            if (java.nio.file.Files.exists(servingProps)) return;
+
+            // Check if existing file has valid content (e.g. no leading whitespace corruption)
+            if (java.nio.file.Files.exists(servingProps)) {
+                String existing = java.nio.file.Files.readString(servingProps);
+                if (existing.lines().anyMatch(l -> l.startsWith("engine="))) {
+                    return; // file is valid
+                }
+                log.warn("serving.properties exists but appears malformed; regenerating");
+                // fall through to regeneration
+            }
+
             // Only generate if there is actually an ONNX model file present
             boolean hasOnnx = java.nio.file.Files.list(dir)
                     .anyMatch(p -> p.getFileName().toString().endsWith(".onnx"));
