@@ -189,7 +189,7 @@ window.TaxonomyContextBar = (function () {
     }
 
     /**
-     * Return to the origin context.
+     * Return to the origin context
      */
     function returnToOrigin() {
         fetch('/api/context/return-to-origin', { method: 'POST' })
