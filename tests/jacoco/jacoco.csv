@@ -91,6 +91,7 @@ Taxonomy Application,com.taxonomy.versioning.service,ConflictDetectionService.Ch
 Taxonomy Application,com.taxonomy.versioning.service,ConflictDetectionService.ConflictDetails,21,0,0,0,1,0,1,0,1,0
 Taxonomy Application,com.taxonomy.versioning.service,VersioningFacade.VariantPreview,9,0,0,0,1,0,1,0,1,0
 Taxonomy Application,com.taxonomy.versioning.service,VersioningFacade,105,0,0,0,23,0,6,0,6,0
+Taxonomy Application,com.taxonomy.versioning.service,GitRepositoryBootstrap,17,64,2,4,7,18,2,4,0,3
 Taxonomy Application,com.taxonomy.versioning.service,VersioningFacade.FullContextState,12,0,0,0,1,0,1,0,1,0
 Taxonomy Application,com.taxonomy.versioning.service,HypothesisService,24,583,10,30,5,116,10,26,0,16
 Taxonomy Application,com.taxonomy.versioning.service,SelectiveTransferService,241,187,25,15,42,47,20,12,5,7
