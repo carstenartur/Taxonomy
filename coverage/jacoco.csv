@@ -51,7 +51,7 @@ Taxonomy Application,com.taxonomy.relations.controller,RelationApiController,4,1
 Taxonomy Application,com.taxonomy.relations.controller,CoverageApiController.RecordCoverageRequest,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.security.service,DatabaseUserDetailsService,46,6,2,0,11,3,4,1,3,1
 Taxonomy Application,com.taxonomy.shared.controller,PreferencesController,67,10,4,0,17,4,6,2,4,2
-Taxonomy Application,com.taxonomy.shared.controller,HelpController,104,874,20,8,24,48,14,11,1,10
+Taxonomy Application,com.taxonomy.shared.controller,HelpController,104,895,20,8,24,48,14,11,1,10
 Taxonomy Application,com.taxonomy.shared.controller,I18nApiController,6,61,1,3,2,16,1,4,0,3
 Taxonomy Application,com.taxonomy.shared.controller,HelpController.DocEntry,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.controller,AdminApiController,56,361,18,16,11,71,16,13,1,11
@@ -137,7 +137,7 @@ Taxonomy Application,com.taxonomy.relations.model,RelationEvidence,55,32,1,1,16,
 Taxonomy Application,com.taxonomy.relations.model,RelationProposal,8,75,1,1,2,23,3,20,2,20
 Taxonomy Application,com.taxonomy.shared.model,FloatArrayConverter,0,68,0,8,0,13,0,7,0,3
 Taxonomy Application,com.taxonomy.shared.service,PromptTemplateService,46,268,6,12,13,59,6,17,1,13
-Taxonomy Application,com.taxonomy.shared.service,LocalEmbeddingService,427,245,30,28,92,61,32,20,8,15
+Taxonomy Application,com.taxonomy.shared.service,LocalEmbeddingService,448,260,36,30,96,65,36,21,8,16
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.State,0,33,0,0,0,6,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService,0,77,0,4,0,13,0,10,0,8
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.StateSnapshot,0,15,0,0,0,1,0,1,0,1
