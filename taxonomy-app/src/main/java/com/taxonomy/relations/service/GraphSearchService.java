@@ -80,17 +80,26 @@ public class GraphSearchService {
                     .map(this::toFlatDto)
                     .collect(Collectors.toList());
 
-            // 2. Search TaxonomyRelation index by KNN with workspace filter
+            // 2. Search TaxonomyRelation index by KNN with optional workspace filter
             WorkspaceContext ctx = contextResolver.resolveCurrentContext();
-            List<TaxonomyRelation> relationHits = session.search(TaxonomyRelation.class)
-                    .where(f -> f.bool()
-                            .must(f.bool()
-                                    .should(f.match().field("workspaceId").matching(ctx.workspaceId()))
-                                    .should(f.not(f.exists().field("workspaceId")))
-                            )
-                            .must(f.knn(maxResults * 2).field("embedding").matching(queryVector))
-                    )
-                    .fetchHits(maxResults * 2);
+            List<TaxonomyRelation> relationHits;
+            if (ctx.workspaceId() != null) {
+                // Provisioned workspace — filter to workspace-owned + shared (null) relations
+                relationHits = session.search(TaxonomyRelation.class)
+                        .where(f -> f.bool()
+                                .must(f.bool()
+                                        .should(f.match().field("workspaceId").matching(ctx.workspaceId()))
+                                        .should(f.not(f.exists().field("workspaceId")))
+                                )
+                                .must(f.knn(maxResults * 2).field("embedding").matching(queryVector))
+                        )
+                        .fetchHits(maxResults * 2);
+            } else {
+                // SHARED context — no workspace filter, return all relations
+                relationHits = session.search(TaxonomyRelation.class)
+                        .where(f -> f.knn(maxResults * 2).field("embedding").matching(queryVector))
+                        .fetchHits(maxResults * 2);
+            }
 
             // 3. Aggregate relation hits by taxonomy root (via sourceNode.taxonomyRoot)
             Map<String, Long> relationCountByRoot = relationHits.stream()

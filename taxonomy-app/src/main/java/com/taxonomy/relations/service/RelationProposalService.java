@@ -86,7 +86,7 @@ public class RelationProposalService {
             TaxonomyNodeDto candidate = candidates.get(i);
 
             // Skip if a proposal already exists for this triple in this workspace
-            if (ctx.workspaceId() != null && !"shared".equals(ctx.workspaceId())) {
+            if (ctx.workspaceId() != null) {
                 if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationTypeAndWorkspaceId(
                         sourceNodeCode, candidate.getCode(), relationType, ctx.workspaceId())) {
                     log.debug("Proposal already exists: {} → {} [{}] (workspace={})",
@@ -137,7 +137,7 @@ public class RelationProposalService {
     public List<RelationProposalDto> getPendingProposals() {
         WorkspaceContext ctx = contextResolver.resolveCurrentContext();
         List<RelationProposal> proposals;
-        if (ctx.workspaceId() != null && !"shared".equals(ctx.workspaceId())) {
+        if (ctx.workspaceId() != null) {
             proposals = proposalRepository.findByStatusAndWorkspace(ProposalStatus.PENDING, ctx.workspaceId());
         } else {
             proposals = proposalRepository.findByStatus(ProposalStatus.PENDING);
@@ -149,7 +149,7 @@ public class RelationProposalService {
     public List<RelationProposalDto> getAllProposals() {
         WorkspaceContext ctx = contextResolver.resolveCurrentContext();
         List<RelationProposal> proposals;
-        if (ctx.workspaceId() != null && !"shared".equals(ctx.workspaceId())) {
+        if (ctx.workspaceId() != null) {
             proposals = proposalRepository.findByWorkspaceIdIsNullOrWorkspaceId(ctx.workspaceId());
         } else {
             proposals = proposalRepository.findAll();
@@ -161,7 +161,7 @@ public class RelationProposalService {
     public List<RelationProposalDto> getProposalsForNode(String sourceCode) {
         WorkspaceContext ctx = contextResolver.resolveCurrentContext();
         List<RelationProposal> proposals;
-        if (ctx.workspaceId() != null && !"shared".equals(ctx.workspaceId())) {
+        if (ctx.workspaceId() != null) {
             proposals = proposalRepository.findBySourceNodeCodeAndWorkspace(sourceCode, ctx.workspaceId());
         } else {
             proposals = proposalRepository.findBySourceNodeCode(sourceCode);

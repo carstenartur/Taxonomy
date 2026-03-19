@@ -167,14 +167,16 @@ public class HypothesisService {
         boolean relationCreated = false;
         if (nodeRepository.findByCode(hypothesis.getSourceNodeId()).isPresent()
                 && nodeRepository.findByCode(hypothesis.getTargetNodeId()).isPresent()) {
-            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+            // Use the hypothesis's stored workspace (not the current user's context)
+            String workspaceId = hypothesis.getWorkspaceId();
+            String ownerUsername = hypothesis.getOwnerUsername();
             relationService.createRelation(
                     hypothesis.getSourceNodeId(),
                     hypothesis.getTargetNodeId(),
                     hypothesis.getRelationType(),
                     "Accepted from hypothesis " + hypothesisId,
                     "hypothesis-accepted",
-                    ctx.workspaceId(), ctx.username());
+                    workspaceId, ownerUsername);
             relationCreated = true;
         } else {
             log.warn("Could not create relation for hypothesis {}: source or target node not found",
@@ -250,7 +252,7 @@ public class HypothesisService {
     @Transactional(readOnly = true)
     public List<RelationHypothesis> findByStatus(HypothesisStatus status) {
         WorkspaceContext ctx = contextResolver.resolveCurrentContext();
-        if (ctx.workspaceId() != null && !"shared".equals(ctx.workspaceId())) {
+        if (ctx.workspaceId() != null) {
             return hypothesisRepository.findByStatusAndWorkspace(status, ctx.workspaceId());
         }
         return hypothesisRepository.findByStatus(status);
@@ -262,7 +264,7 @@ public class HypothesisService {
     @Transactional(readOnly = true)
     public List<RelationHypothesis> findAll() {
         WorkspaceContext ctx = contextResolver.resolveCurrentContext();
-        if (ctx.workspaceId() != null && !"shared".equals(ctx.workspaceId())) {
+        if (ctx.workspaceId() != null) {
             return hypothesisRepository.findByWorkspaceIdIsNullOrWorkspaceId(ctx.workspaceId());
         }
         return hypothesisRepository.findAll();

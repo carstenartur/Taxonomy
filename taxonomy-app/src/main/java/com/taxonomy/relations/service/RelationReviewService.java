@@ -4,8 +4,6 @@ import com.taxonomy.dto.RelationProposalDto;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.*;
 import com.taxonomy.relations.repository.RelationProposalRepository;
-import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,20 +27,21 @@ public class RelationReviewService {
     private final RelationProposalRepository proposalRepository;
     private final TaxonomyRelationService relationService;
     private final RelationProposalService proposalService;
-    private final WorkspaceContextResolver contextResolver;
 
     public RelationReviewService(RelationProposalRepository proposalRepository,
                                  TaxonomyRelationService relationService,
-                                 RelationProposalService proposalService,
-                                 WorkspaceContextResolver contextResolver) {
+                                 RelationProposalService proposalService) {
         this.proposalRepository = proposalRepository;
         this.relationService = relationService;
         this.proposalService = proposalService;
-        this.contextResolver = contextResolver;
     }
 
     /**
      * Accept a proposal: creates a real TaxonomyRelation and marks the proposal as ACCEPTED.
+     *
+     * <p>The relation is created in the proposal's workspace (using the proposal's stored
+     * {@code workspaceId}/{@code ownerUsername}). For legacy proposals with null workspace,
+     * the relation is created in the shared/legacy scope.
      */
     @Transactional
     public TaxonomyRelationDto acceptProposal(Long proposalId) {
@@ -55,15 +54,16 @@ public class RelationReviewService {
                     "Proposal " + proposalId + " is already " + proposal.getStatus());
         }
 
-        // Create the real relation in the proposal's workspace
-        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+        // Create the real relation in the proposal's workspace (not the current user's)
+        String workspaceId = proposal.getWorkspaceId();
+        String ownerUsername = proposal.getOwnerUsername();
         TaxonomyRelationDto relation = relationService.createRelation(
                 proposal.getSourceNode().getCode(),
                 proposal.getTargetNode().getCode(),
                 proposal.getRelationType(),
                 proposal.getRationale(),
                 "proposal-pipeline",
-                ctx.workspaceId(), ctx.username());
+                workspaceId, ownerUsername);
 
         // Mark proposal as accepted
         proposal.setStatus(ProposalStatus.ACCEPTED);

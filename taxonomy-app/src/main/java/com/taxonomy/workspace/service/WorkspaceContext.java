@@ -8,10 +8,14 @@ package com.taxonomy.workspace.service;
  * to the active workspace.
  *
  * <p>A special {@link #SHARED} instance represents the system-wide / legacy scope
- * where no per-user isolation applies.
+ * where no per-user isolation applies. Its {@code workspaceId} is {@code null},
+ * which maps directly to the {@code workspace_id IS NULL} condition in OR-null
+ * queries — ensuring that SHARED callers see all legacy/shared data without
+ * accidental workspace filtering.
  *
  * @param username      the authenticated user's username
- * @param workspaceId   the unique workspace identifier (from {@link com.taxonomy.workspace.model.UserWorkspace})
+ * @param workspaceId   the unique workspace identifier (from {@link com.taxonomy.workspace.model.UserWorkspace}),
+ *                      or {@code null} for the shared / legacy scope
  * @param currentBranch the Git branch the user is currently working on
  */
 public record WorkspaceContext(
@@ -19,7 +23,15 @@ public record WorkspaceContext(
         String workspaceId,
         String currentBranch
 ) {
-    /** Shared / legacy context — used when no per-user workspace is active. */
+    /**
+     * Shared / legacy context — used when no per-user workspace is active.
+     *
+     * <p>{@code workspaceId} is {@code null} so that downstream services skip
+     * workspace filtering and return all data (shared + legacy). The
+     * {@code currentBranch} is set to the conventional default; callers that
+     * need the configurable shared branch should resolve it via
+     * {@link SystemRepositoryService#getSharedBranch()}.
+     */
     public static final WorkspaceContext SHARED =
-            new WorkspaceContext("system", "shared", "draft");
+            new WorkspaceContext("system", null, "draft");
 }

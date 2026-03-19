@@ -25,9 +25,12 @@ public class WorkspaceContextResolver {
     private static final Logger log = LoggerFactory.getLogger(WorkspaceContextResolver.class);
 
     private final WorkspaceManager workspaceManager;
+    private final SystemRepositoryService systemRepositoryService;
 
-    public WorkspaceContextResolver(WorkspaceManager workspaceManager) {
+    public WorkspaceContextResolver(WorkspaceManager workspaceManager,
+                                     SystemRepositoryService systemRepositoryService) {
         this.workspaceManager = workspaceManager;
+        this.systemRepositoryService = systemRepositoryService;
     }
 
     /**
@@ -60,7 +63,9 @@ public class WorkspaceContextResolver {
         // Check persistent (provisioned) workspace only
         UserWorkspace ws = workspaceManager.findUserWorkspace(username);
         if (ws != null && ws.getWorkspaceId() != null) {
-            String branch = ws.getCurrentBranch() != null ? ws.getCurrentBranch() : "draft";
+            String branch = ws.getCurrentBranch() != null
+                    ? ws.getCurrentBranch()
+                    : systemRepositoryService.getSharedBranch();
             log.debug("Resolved workspace context for user '{}': workspace={}, branch={}",
                     username, ws.getWorkspaceId(), branch);
             return new WorkspaceContext(username, ws.getWorkspaceId(), branch);

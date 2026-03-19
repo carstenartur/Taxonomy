@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import com.taxonomy.dto.WorkspaceInfo;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.UserWorkspaceState;
 import com.taxonomy.workspace.service.WorkspaceManager;
 
@@ -41,11 +42,14 @@ public class RepositoryStateService {
 
     private final DslGitRepository gitRepository;
     private final WorkspaceManager workspaceManager;
+    private final SystemRepositoryService systemRepositoryService;
 
     public RepositoryStateService(DslGitRepository gitRepository,
-                                  WorkspaceManager workspaceManager) {
+                                  WorkspaceManager workspaceManager,
+                                  SystemRepositoryService systemRepositoryService) {
         this.gitRepository = gitRepository;
         this.workspaceManager = workspaceManager;
+        this.systemRepositoryService = systemRepositoryService;
     }
 
     // ── Workspace-aware methods ─────────────────────────────────────
@@ -225,18 +229,19 @@ public class RepositoryStateService {
     // ── Internal helpers ────────────────────────────────────────────
 
     /**
-     * Resolve the workspace branch for a user. Falls back to "draft" if the
-     * user does not have a specific workspace branch configured.
+     * Resolve the workspace branch for a user. Falls back to the configured
+     * shared branch (via {@link SystemRepositoryService#getSharedBranch()})
+     * if the user does not have a specific workspace branch configured.
      *
      * @param username the username to resolve the branch for
-     * @return the user's active branch, or "draft" as default
+     * @return the user's active branch, or the shared branch as default
      */
     public String resolveWorkspaceBranch(String username) {
         WorkspaceInfo info = workspaceManager.getWorkspaceInfo(username);
         if (info != null && info.currentBranch() != null) {
             return info.currentBranch();
         }
-        return "draft";
+        return systemRepositoryService.getSharedBranch();
     }
 
     private UserWorkspaceState resolveState(String username) {

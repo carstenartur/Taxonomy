@@ -355,7 +355,11 @@ Das System unterstützt gleichzeitige Mehrbenutzer-Bearbeitung durch ein Workspa
 | **RelationProposal** | Pro Workspace | `workspace_id`-Spalte |
 | **ArchitectureCommitIndex** | Pro Branch | Vorhandenes `branch` `@KeywordField`, gefiltert nach `currentBranch` |
 
-Der `WorkspaceContextResolver` löst den `WorkspaceContext` (Benutzername, WorkspaceId, aktueller Branch) des aktuellen Benutzers aus dem Spring-Security-Kontext und den persistenten `UserWorkspace`-Metadaten auf. Alle Relation-Queries, Materialisierung und Graph-Suchen verwenden diesen Kontext zur Filterung.
+Der `WorkspaceContextResolver` löst den `WorkspaceContext` (Benutzername, WorkspaceId, aktueller Branch) des aktuellen Benutzers aus dem Spring-Security-Kontext und den persistenten `UserWorkspace`-Metadaten auf. Alle Relation-Queries, Materialisierung und Graph-Suchen verwenden diesen Kontext zur Filterung. Der Branch-Fallback verwendet `SystemRepositoryService.getSharedBranch()` (konfigurierbar, Standard: `"draft"`).
+
+`WorkspaceContext.SHARED` hat `workspaceId = null`, wodurch die Workspace-Filterung übersprungen wird und nicht provisionierte Benutzer sowie Legacy-Aufrufer alle Daten sehen.
+
+Bei der Annahme von Vorschlägen oder Hypothesen wird die Relation im **gespeicherten Workspace der Entität** erstellt (nicht im Workspace des aktuellen Reviewers), um die korrekte Workspace-Zugehörigkeit sicherzustellen.
 
 Legacy-Daten mit `workspace_id = NULL` werden als geteilt behandelt und bleiben für alle Workspaces sichtbar.
 

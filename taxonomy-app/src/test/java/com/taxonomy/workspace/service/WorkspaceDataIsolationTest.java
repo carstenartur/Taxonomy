@@ -43,11 +43,14 @@ class WorkspaceDataIsolationTest {
     @Mock
     private WorkspaceManager workspaceManager;
 
+    @Mock
+    private SystemRepositoryService systemRepositoryService;
+
     private WorkspaceContextResolver resolver;
 
     @BeforeEach
     void setUp() {
-        resolver = new WorkspaceContextResolver(workspaceManager);
+        resolver = new WorkspaceContextResolver(workspaceManager, systemRepositoryService);
     }
 
     // ── WorkspaceContext resolution ────────────────────────────────────
@@ -76,13 +79,13 @@ class WorkspaceDataIsolationTest {
 
             WorkspaceContext ctx = resolver.resolveForUser("charlie");
             assertThat(ctx).isEqualTo(WorkspaceContext.SHARED);
-            assertThat(ctx.workspaceId()).isEqualTo("shared");
+            assertThat(ctx.workspaceId()).isNull();
         }
 
         @Test
-        void sharedContextHasKnownValues() {
+        void sharedContextHasNullWorkspaceId() {
             assertThat(WorkspaceContext.SHARED.username()).isEqualTo("system");
-            assertThat(WorkspaceContext.SHARED.workspaceId()).isEqualTo("shared");
+            assertThat(WorkspaceContext.SHARED.workspaceId()).isNull();
             assertThat(WorkspaceContext.SHARED.currentBranch()).isEqualTo("draft");
         }
 
@@ -195,6 +198,11 @@ class WorkspaceDataIsolationTest {
             WorkspaceContext ctx = resolver.resolveForUser("alice");
             assertThat(ctx).isNotEqualTo(WorkspaceContext.SHARED);
         }
+
+        @Test
+        void sharedHasNullWorkspaceId() {
+            assertThat(WorkspaceContext.SHARED.workspaceId()).isNull();
+        }
     }
 
     // ── Workspace branch resolution ──────────────────────────────────
@@ -220,6 +228,19 @@ class WorkspaceDataIsolationTest {
         @Test
         void sharedContextAlwaysUsesDraft() {
             assertThat(WorkspaceContext.SHARED.currentBranch()).isEqualTo("draft");
+        }
+
+        @Test
+        void provisionedWorkspaceWithNullBranchUsesSharedBranch() {
+            UserWorkspace ws = new UserWorkspace();
+            ws.setUsername("eve");
+            ws.setWorkspaceId("eve-ws");
+            ws.setCurrentBranch(null);
+            when(workspaceManager.findUserWorkspace("eve")).thenReturn(ws);
+            when(systemRepositoryService.getSharedBranch()).thenReturn("draft");
+
+            WorkspaceContext ctx = resolver.resolveForUser("eve");
+            assertThat(ctx.currentBranch()).isEqualTo("draft");
         }
     }
 

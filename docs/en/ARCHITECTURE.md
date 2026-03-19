@@ -355,7 +355,11 @@ Beyond branch and state isolation, workspace-scoped data entities provide per-us
 | **RelationProposal** | Per-workspace | `workspace_id` column |
 | **ArchitectureCommitIndex** | Per-branch | Existing `branch` `@KeywordField` filtered via `currentBranch` |
 
-The `WorkspaceContextResolver` resolves the current user's `WorkspaceContext` (username, workspaceId, currentBranch) from the Spring Security context and the persistent `UserWorkspace` metadata. All relation queries, materialization, and graph searches use this context for scoping.
+The `WorkspaceContextResolver` resolves the current user's `WorkspaceContext` (username, workspaceId, currentBranch) from the Spring Security context and the persistent `UserWorkspace` metadata. All relation queries, materialization, and graph searches use this context for scoping. The branch fallback uses `SystemRepositoryService.getSharedBranch()` (configurable, defaults to `"draft"`).
+
+`WorkspaceContext.SHARED` has `workspaceId = null`, which naturally skips workspace filtering so that unprovisioned users and legacy callers see all data.
+
+When accepting proposals or hypotheses, the relation is created in the **entity's stored workspace** (not the current reviewer's workspace), ensuring correct workspace ownership.
 
 Legacy data with `workspace_id = NULL` is treated as shared and remains visible to all workspaces.
 

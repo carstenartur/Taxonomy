@@ -19,11 +19,14 @@ class WorkspaceContextResolverTest {
     @Mock
     private WorkspaceManager workspaceManager;
 
+    @Mock
+    private SystemRepositoryService systemRepositoryService;
+
     private WorkspaceContextResolver resolver;
 
     @BeforeEach
     void setUp() {
-        resolver = new WorkspaceContextResolver(workspaceManager);
+        resolver = new WorkspaceContextResolver(workspaceManager, systemRepositoryService);
     }
 
     @Test
@@ -64,22 +67,23 @@ class WorkspaceContextResolverTest {
     }
 
     @Test
-    void provisionedWorkspaceWithNullBranchDefaultsToDraft() {
+    void provisionedWorkspaceWithNullBranchFallsBackToSharedBranch() {
         UserWorkspace ws = new UserWorkspace();
         ws.setUsername("bob");
         ws.setWorkspaceId("bob-ws");
         ws.setCurrentBranch(null);
 
         when(workspaceManager.findUserWorkspace("bob")).thenReturn(ws);
+        when(systemRepositoryService.getSharedBranch()).thenReturn("draft");
 
         WorkspaceContext ctx = resolver.resolveForUser("bob");
         assertThat(ctx.currentBranch()).isEqualTo("draft");
     }
 
     @Test
-    void sharedContextIsWellKnown() {
+    void sharedContextHasNullWorkspaceId() {
         assertThat(WorkspaceContext.SHARED.username()).isEqualTo("system");
-        assertThat(WorkspaceContext.SHARED.workspaceId()).isEqualTo("shared");
+        assertThat(WorkspaceContext.SHARED.workspaceId()).isNull();
         assertThat(WorkspaceContext.SHARED.currentBranch()).isEqualTo("draft");
     }
 
