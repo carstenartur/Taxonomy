@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SourceVersion.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.model</a> &gt; <span class="el_source">SourceVersion.java</span></div><h1>SourceVersion.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.model;
+
+import jakarta.persistence.*;
+import java.time.Instant;
+import java.time.LocalDate;
+
+/**
+ * Represents a concrete retrieved or imported version of a
+ * {@link SourceArtifact}.
+ */
+@Entity
+@Table(name = &quot;source_version&quot;)
+public class SourceVersion {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;source_artifact_id&quot;, nullable = false)
+    private SourceArtifact sourceArtifact;
+
+    @Column(name = &quot;version_label&quot;, length = 200)
+    private String versionLabel;
+
+    @Column(name = &quot;retrieved_at&quot;, nullable = false)
+    private Instant retrievedAt;
+
+    @Column(name = &quot;effective_date&quot;)
+    private LocalDate effectiveDate;
+
+    @Column(name = &quot;content_hash&quot;, length = 128)
+    private String contentHash;
+
+    @Column(name = &quot;mime_type&quot;, length = 100)
+    private String mimeType;
+
+    @Column(name = &quot;storage_location&quot;, length = 1000)
+    private String storageLocation;
+
+    @Column(name = &quot;raw_text_location&quot;, length = 1000)
+    private String rawTextLocation;
+
+<span class="fc" id="L44">    protected SourceVersion() {}</span>
+
+<span class="fc" id="L46">    public SourceVersion(SourceArtifact sourceArtifact) {</span>
+<span class="fc" id="L47">        this.sourceArtifact = sourceArtifact;</span>
+<span class="fc" id="L48">        this.retrievedAt = Instant.now();</span>
+<span class="fc" id="L49">    }</span>
+
+    // ── Accessors ──────────────────────────────────────────────────────────────
+
+<span class="fc" id="L53">    public Long getId() { return id; }</span>
+<span class="fc" id="L54">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L56">    public SourceArtifact getSourceArtifact() { return sourceArtifact; }</span>
+<span class="nc" id="L57">    public void setSourceArtifact(SourceArtifact sourceArtifact) { this.sourceArtifact = sourceArtifact; }</span>
+
+<span class="fc" id="L59">    public String getVersionLabel() { return versionLabel; }</span>
+<span class="fc" id="L60">    public void setVersionLabel(String versionLabel) { this.versionLabel = versionLabel; }</span>
+
+<span class="fc" id="L62">    public Instant getRetrievedAt() { return retrievedAt; }</span>
+<span class="nc" id="L63">    public void setRetrievedAt(Instant retrievedAt) { this.retrievedAt = retrievedAt; }</span>
+
+<span class="nc" id="L65">    public LocalDate getEffectiveDate() { return effectiveDate; }</span>
+<span class="nc" id="L66">    public void setEffectiveDate(LocalDate effectiveDate) { this.effectiveDate = effectiveDate; }</span>
+
+<span class="fc" id="L68">    public String getContentHash() { return contentHash; }</span>
+<span class="fc" id="L69">    public void setContentHash(String contentHash) { this.contentHash = contentHash; }</span>
+
+<span class="fc" id="L71">    public String getMimeType() { return mimeType; }</span>
+<span class="fc" id="L72">    public void setMimeType(String mimeType) { this.mimeType = mimeType; }</span>
+
+<span class="fc" id="L74">    public String getStorageLocation() { return storageLocation; }</span>
+<span class="fc" id="L75">    public void setStorageLocation(String storageLocation) { this.storageLocation = storageLocation; }</span>
+
+<span class="fc" id="L77">    public String getRawTextLocation() { return rawTextLocation; }</span>
+<span class="fc" id="L78">    public void setRawTextLocation(String rawTextLocation) { this.rawTextLocation = rawTextLocation; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -51,7 +51,7 @@ Taxonomy Application,com.taxonomy.relations.controller,RelationApiController,9,1
 Taxonomy Application,com.taxonomy.relations.controller,CoverageApiController.RecordCoverageRequest,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.security.service,DatabaseUserDetailsService,46,6,2,0,11,3,4,1,3,1
 Taxonomy Application,com.taxonomy.shared.controller,PreferencesController,67,10,4,0,17,4,6,2,4,2
-Taxonomy Application,com.taxonomy.shared.controller,HelpController,104,937,20,8,24,48,14,11,1,10
+Taxonomy Application,com.taxonomy.shared.controller,HelpController,104,958,20,8,24,48,14,11,1,10
 Taxonomy Application,com.taxonomy.shared.controller,I18nApiController,6,61,1,3,2,16,1,4,0,3
 Taxonomy Application,com.taxonomy.shared.controller,HelpController.DocEntry,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.controller,AdminApiController,56,361,18,16,11,71,16,13,1,11
@@ -67,6 +67,10 @@ Taxonomy Application,com.taxonomy.versioning.model,ContextHistoryRecord,7,73,0,0
 Taxonomy Application,com.taxonomy.dsl.export,DslMaterializeService.MaterializeResult,0,21,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.dsl.export,TaxDslExportService,0,133,0,6,0,32,0,6,0,3
 Taxonomy Application,com.taxonomy.dsl.export,DslMaterializeService,250,416,29,25,45,88,21,14,1,7
+Taxonomy Application,com.taxonomy.provenance.model,SourceVersion,15,60,0,0,4,19,4,16,4,16
+Taxonomy Application,com.taxonomy.provenance.model,SourceArtifact,20,76,0,0,5,24,5,20,5,20
+Taxonomy Application,com.taxonomy.provenance.model,SourceFragment,22,46,0,0,6,15,6,12,6,12
+Taxonomy Application,com.taxonomy.provenance.model,RequirementSourceLink,12,59,0,0,3,19,3,15,3,15
 Taxonomy Application,com.taxonomy,TaxonomyApplication,8,0,0,0,3,0,2,0,2,0
 Taxonomy Application,com.taxonomy,AppConfig,0,57,0,0,0,16,0,5,0,5
 Taxonomy Application,com.taxonomy.export.controller,ExportApiController,40,265,9,25,9,54,9,15,0,7
@@ -134,10 +138,13 @@ Taxonomy Application,com.taxonomy.architecture.service,ExplanationTraceService,6
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureGraphQueryServiceImpl,62,963,23,84,13,197,19,55,0,20
 Taxonomy Application,com.taxonomy.architecture.service,CommitIndexService,135,354,9,21,40,83,9,21,1,14
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService.PatternTemplate,0,9,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.provenance.service,SourceProvenanceService,15,248,2,2,3,54,3,12,1,12
+Taxonomy Application,com.taxonomy.provenance.service,DocumentParserService,86,268,24,32,17,62,19,17,0,8
 Taxonomy Application,com.taxonomy.dsl.storage,DslBranch,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.dsl.storage,DslGitRepository,162,1448,27,73,30,307,26,53,2,27
 Taxonomy Application,com.taxonomy.dsl.storage,DslStorageConfig,0,15,0,0,0,4,0,3,0,3
 Taxonomy Application,com.taxonomy.dsl.storage,DslCommit,0,15,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.provenance.controller,DocumentImportController,149,92,14,6,31,24,9,7,1,5
 Taxonomy Application,com.taxonomy.relations.model,RelationHypothesis,8,82,1,1,2,25,3,22,2,22
 Taxonomy Application,com.taxonomy.relations.model,RequirementCoverage,0,39,0,0,0,15,0,8,0,8
 Taxonomy Application,com.taxonomy.relations.model,RelationEvidence,55,32,1,1,16,10,17,8,16,8

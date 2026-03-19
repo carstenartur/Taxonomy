@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SourceArtifact.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.model</a> &gt; <span class="el_source">SourceArtifact.java</span></div><h1>SourceArtifact.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.model;
+
+import com.taxonomy.model.SourceType;
+import jakarta.persistence.*;
+import java.time.Instant;
+
+/**
+ * Represents the logical identity of a source material from which requirements
+ * may originate (e.g. a regulation document, a business request, a meeting
+ * note).
+ */
+@Entity
+@Table(name = &quot;source_artifact&quot;)
+public class SourceArtifact {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;source_type&quot;, nullable = false)
+    private SourceType sourceType;
+
+    @Column(nullable = false, length = 500)
+    private String title;
+
+    @Column(name = &quot;canonical_identifier&quot;, length = 500)
+    private String canonicalIdentifier;
+
+    @Column(name = &quot;canonical_url&quot;, length = 1000)
+    private String canonicalUrl;
+
+    @Column(name = &quot;origin_system&quot;, length = 200)
+    private String originSystem;
+
+    @Column(length = 200)
+    private String author;
+
+    @Column(length = 2000)
+    private String description;
+
+    @Column(length = 10)
+    private String language;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;updated_at&quot;)
+    private Instant updatedAt;
+
+<span class="fc" id="L51">    protected SourceArtifact() {}</span>
+
+<span class="fc" id="L53">    public SourceArtifact(SourceType sourceType, String title) {</span>
+<span class="fc" id="L54">        this.sourceType = sourceType;</span>
+<span class="fc" id="L55">        this.title = title;</span>
+<span class="fc" id="L56">        this.createdAt = Instant.now();</span>
+<span class="fc" id="L57">    }</span>
+
+    @PreUpdate
+<span class="nc" id="L60">    void onUpdate() { this.updatedAt = Instant.now(); }</span>
+
+    // ── Accessors ──────────────────────────────────────────────────────────────
+
+<span class="fc" id="L64">    public Long getId() { return id; }</span>
+<span class="fc" id="L65">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L67">    public SourceType getSourceType() { return sourceType; }</span>
+<span class="nc" id="L68">    public void setSourceType(SourceType sourceType) { this.sourceType = sourceType; }</span>
+
+<span class="fc" id="L70">    public String getTitle() { return title; }</span>
+<span class="nc" id="L71">    public void setTitle(String title) { this.title = title; }</span>
+
+<span class="fc" id="L73">    public String getCanonicalIdentifier() { return canonicalIdentifier; }</span>
+<span class="fc" id="L74">    public void setCanonicalIdentifier(String canonicalIdentifier) { this.canonicalIdentifier = canonicalIdentifier; }</span>
+
+<span class="fc" id="L76">    public String getCanonicalUrl() { return canonicalUrl; }</span>
+<span class="fc" id="L77">    public void setCanonicalUrl(String canonicalUrl) { this.canonicalUrl = canonicalUrl; }</span>
+
+<span class="fc" id="L79">    public String getOriginSystem() { return originSystem; }</span>
+<span class="fc" id="L80">    public void setOriginSystem(String originSystem) { this.originSystem = originSystem; }</span>
+
+<span class="fc" id="L82">    public String getAuthor() { return author; }</span>
+<span class="fc" id="L83">    public void setAuthor(String author) { this.author = author; }</span>
+
+<span class="fc" id="L85">    public String getDescription() { return description; }</span>
+<span class="fc" id="L86">    public void setDescription(String description) { this.description = description; }</span>
+
+<span class="fc" id="L88">    public String getLanguage() { return language; }</span>
+<span class="fc" id="L89">    public void setLanguage(String language) { this.language = language; }</span>
+
+<span class="fc" id="L91">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="nc" id="L92">    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }</span>
+
+<span class="fc" id="L94">    public Instant getUpdatedAt() { return updatedAt; }</span>
+<span class="nc" id="L95">    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
