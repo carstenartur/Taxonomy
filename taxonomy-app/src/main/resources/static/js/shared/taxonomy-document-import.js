@@ -72,8 +72,8 @@
     });
 
     function getSelectedMode() {
-        var checked = document.querySelector('input[name="importMode"]:checked');
-        return checked ? checked.value : 'extract';
+        var selectedRadio = document.querySelector('input[name="importMode"]:checked');
+        return selectedRadio ? selectedRadio.value : 'extract';
     }
 
     // ── Rule-based extraction (existing) ───────────────────────────────────────
