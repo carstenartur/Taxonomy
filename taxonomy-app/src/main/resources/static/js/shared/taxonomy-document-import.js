@@ -153,7 +153,7 @@
             }).join('\n\n---\n\n');
 
             // Put the combined text into the analysis textarea
-            var textarea = document.getElementById('businessText');
+            const textarea = document.getElementById('businessText');
             if (textarea) {
                 textarea.value = combinedText;
             }
@@ -189,7 +189,7 @@
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     function escapeHtml(text) {
-        var div = document.createElement('div');
+        const div = document.createElement('div');
         div.appendChild(document.createTextNode(text));
         return div.innerHTML;
     }

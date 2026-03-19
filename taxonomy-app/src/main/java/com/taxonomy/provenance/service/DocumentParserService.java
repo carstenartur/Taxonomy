@@ -76,8 +76,14 @@ public class DocumentParserService {
         } else if (MIME_DOCX.equals(contentType)) {
             try (InputStream in = file.getInputStream();
                  XWPFDocument doc = new XWPFDocument(in)) {
-                pageCount = Math.max(1, doc.getProperties().getExtendedProperties()
-                        .getUnderlyingProperties().getPages());
+                pageCount = 1;
+                try {
+                    int p = doc.getProperties().getExtendedProperties()
+                            .getUnderlyingProperties().getPages();
+                    if (p > 0) pageCount = p;
+                } catch (Exception ignored) {
+                    // Page count unavailable in minimal DOCX files
+                }
                 rawText = extractDocxText(doc);
             }
         } else {
