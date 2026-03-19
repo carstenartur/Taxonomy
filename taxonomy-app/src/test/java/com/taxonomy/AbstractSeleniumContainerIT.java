@@ -227,7 +227,8 @@ abstract class AbstractSeleniumContainerIT {
         helpTab.click();
 
         new WebDriverWait(driver, Duration.ofSeconds(10))
-                .until(ExpectedConditions.presenceOfElementLocated(By.id("helpTocList")));
+                .until(ExpectedConditions.presenceOfElementLocated(
+                        By.cssSelector("#helpTocList .help-toc-item")));
 
         List<WebElement> tocItems = driver.findElements(
                 By.cssSelector("#helpTocList .help-toc-item"));
@@ -237,6 +238,9 @@ abstract class AbstractSeleniumContainerIT {
     @Test
     @Order(16)
     void helpTabLoadsDocument() {
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(ExpectedConditions.elementToBeClickable(
+                        By.cssSelector("#helpTocList .help-toc-item")));
         WebElement firstItem = driver.findElement(
                 By.cssSelector("#helpTocList .help-toc-item"));
         firstItem.click();
