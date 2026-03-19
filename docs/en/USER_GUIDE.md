@@ -3,8 +3,6 @@
 > **This guide covers the primary way to use the Taxonomy Architecture Analyzer: the web-based GUI.**
 > All major features described here are designed to be used interactively through the browser.
 > For automation and scripting, see the [API Reference](API_REFERENCE.md).
->
-> For automation and scripting, see the [API Reference](API_REFERENCE.md).
 
 ## Fastest Path — Your First Analysis in 5 Steps
 
