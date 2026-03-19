@@ -7,6 +7,8 @@ import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.relations.service.GraphSearchService;
 import com.taxonomy.relations.service.HybridSearchService;
 import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -19,6 +21,12 @@ import java.util.Map;
  * &lt;p&gt;Provides coarse-grained operations for full-text, semantic,
  * hybrid, and graph search, as well as embedding status, so that
  * the {@code SearchApiController} only needs a single dependency.
+ *
+ * &lt;p&gt;Node searches (full-text, semantic, hybrid, similar) operate on the
+ * global {@link com.taxonomy.catalog.model.TaxonomyNode} index and are
+ * &lt;b&gt;not&lt;/b&gt; workspace-scoped — taxonomy nodes are shared across all
+ * workspaces. Graph search, which queries {@link com.taxonomy.catalog.model.TaxonomyRelation},
+ * is workspace-scoped via {@link WorkspaceContextResolver}.
  */
 @Service
 public class SearchFacade {
@@ -28,78 +36,92 @@ public class SearchFacade {
     private final HybridSearchService hybridSearchService;
     private final LocalEmbeddingService embeddingService;
     private final GraphSearchService graphSearchService;
+    private final WorkspaceContextResolver contextResolver;
 
     public SearchFacade(TaxonomyService taxonomyService,
                         SearchService searchService,
                         HybridSearchService hybridSearchService,
                         LocalEmbeddingService embeddingService,
-<span class="fc" id="L36">                        GraphSearchService graphSearchService) {</span>
-<span class="fc" id="L37">        this.taxonomyService = taxonomyService;</span>
-<span class="fc" id="L38">        this.searchService = searchService;</span>
-<span class="fc" id="L39">        this.hybridSearchService = hybridSearchService;</span>
-<span class="fc" id="L40">        this.embeddingService = embeddingService;</span>
-<span class="fc" id="L41">        this.graphSearchService = graphSearchService;</span>
-<span class="fc" id="L42">    }</span>
+                        GraphSearchService graphSearchService,
+<span class="fc" id="L46">                        WorkspaceContextResolver contextResolver) {</span>
+<span class="fc" id="L47">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L48">        this.searchService = searchService;</span>
+<span class="fc" id="L49">        this.hybridSearchService = hybridSearchService;</span>
+<span class="fc" id="L50">        this.embeddingService = embeddingService;</span>
+<span class="fc" id="L51">        this.graphSearchService = graphSearchService;</span>
+<span class="fc" id="L52">        this.contextResolver = contextResolver;</span>
+<span class="fc" id="L53">    }</span>
 
     /**
      * Check whether the taxonomy has been fully initialized.
      */
     public boolean isInitialized() {
-<span class="fc" id="L48">        return taxonomyService.isInitialized();</span>
+<span class="fc" id="L59">        return taxonomyService.isInitialized();</span>
     }
 
     /**
      * Returns the current taxonomy initialization status message.
      */
     public String getInitStatus() {
-<span class="nc" id="L55">        return taxonomyService.getInitStatus();</span>
+<span class="nc" id="L66">        return taxonomyService.getInitStatus();</span>
     }
 
     /**
      * Full-text search across taxonomy nodes using Lucene.
+     * Nodes are global — no workspace filtering needed.
      */
     public List&lt;TaxonomyNodeDto&gt; fullTextSearch(String query, int maxResults) {
-<span class="fc" id="L62">        return searchService.search(query, maxResults);</span>
+<span class="fc" id="L74">        return searchService.search(query, maxResults);</span>
     }
 
     /**
      * Semantic search using embedding similarity (KNN).
+     * Nodes are global — no workspace filtering needed.
      */
     public List&lt;TaxonomyNodeDto&gt; semanticSearch(String query, int maxResults) {
-<span class="fc" id="L69">        return embeddingService.semanticSearch(query, maxResults);</span>
+<span class="fc" id="L82">        return embeddingService.semanticSearch(query, maxResults);</span>
     }
 
     /**
      * Hybrid search combining full-text and semantic results via Reciprocal Rank Fusion.
+     * Nodes are global — no workspace filtering needed.
      */
     public List&lt;TaxonomyNodeDto&gt; hybridSearch(String query, int maxResults) {
-<span class="fc" id="L76">        return hybridSearchService.hybridSearch(query, maxResults);</span>
+<span class="fc" id="L90">        return hybridSearchService.hybridSearch(query, maxResults);</span>
     }
 
     /**
      * Find taxonomy nodes semantically similar to the given node code.
+     * Nodes are global — no workspace filtering needed.
      */
     public List&lt;TaxonomyNodeDto&gt; findSimilarNodes(String code, int topK) {
-<span class="fc" id="L83">        return embeddingService.findSimilarNodes(code, topK);</span>
+<span class="fc" id="L98">        return embeddingService.findSimilarNodes(code, topK);</span>
     }
 
     /**
      * Graph-semantic search combining node and relation KNN queries.
+     *
+     * &lt;p&gt;The relation KNN query is workspace-scoped: only relations
+     * belonging to the current user's workspace (or shared/legacy relations
+     * with {@code workspace_id = NULL}) are included.
+     *
+     * &lt;p&gt;The workspace context is resolved internally by the
+     * {@link GraphSearchService}.
      */
     public GraphSearchResult graphSearch(String query, int maxResults) {
-<span class="fc" id="L90">        return graphSearchService.graphSearch(query, maxResults);</span>
+<span class="fc" id="L112">        return graphSearchService.graphSearch(query, maxResults);</span>
     }
 
     /**
      * Returns the current status of the local embedding model.
      */
     public Map&lt;String, Object&gt; getEmbeddingStatus() {
-<span class="fc" id="L97">        Map&lt;String, Object&gt; status = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L98">        status.put(&quot;enabled&quot;, embeddingService.isEnabled());</span>
-<span class="fc" id="L99">        status.put(&quot;available&quot;, embeddingService.isAvailable());</span>
-<span class="fc" id="L100">        status.put(&quot;modelUrl&quot;, embeddingService.effectiveModelUrl());</span>
-<span class="fc" id="L101">        status.put(&quot;indexedNodes&quot;, embeddingService.indexedNodeCount());</span>
-<span class="fc" id="L102">        return status;</span>
+<span class="fc" id="L119">        Map&lt;String, Object&gt; status = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L120">        status.put(&quot;enabled&quot;, embeddingService.isEnabled());</span>
+<span class="fc" id="L121">        status.put(&quot;available&quot;, embeddingService.isAvailable());</span>
+<span class="fc" id="L122">        status.put(&quot;modelUrl&quot;, embeddingService.effectiveModelUrl());</span>
+<span class="fc" id="L123">        status.put(&quot;indexedNodes&quot;, embeddingService.indexedNodeCount());</span>
+<span class="fc" id="L124">        return status;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
