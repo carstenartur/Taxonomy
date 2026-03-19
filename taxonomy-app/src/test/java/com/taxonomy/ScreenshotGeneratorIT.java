@@ -58,6 +58,32 @@ class ScreenshotGeneratorIT {
             "element CR type CoreService {\\n  title: \"Core Services\";\\n}\\n\\n" +
             "relation CP REALIZES CR {\\n  status: accepted;\\n}\\n";
 
+    /**
+     * DSL content committed on the {@code draft} branch during {@link #buildGitHistory()}.
+     * Uses the actual taxonomy code CP-1023 with a title that will differ from the feature branch.
+     */
+    private static final String DRAFT_DSL =
+            "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+            "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n}\n\n" +
+            "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
+            "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n";
+
+    /**
+     * DSL content committed on the {@code feature-voice} branch during {@link #buildGitHistory()}.
+     * Deliberately differs from {@link #DRAFT_DSL} in the CP-1023 title and adds an extra element,
+     * so that diff, merge-preview, and conflict-resolution screenshots show meaningful content.
+     */
+    private static final String FEATURE_VOICE_DSL =
+            "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+            "element CP-1023 type Capability {\n  title: \"Secure Voice Service\";\n  description: \"Encrypted real-time voice communication\";\n}\n\n" +
+            "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
+            "element CO-1011 type Component {\n  title: \"Voice Gateway\";\n  description: \"SIP/RTP gateway for voice traffic\";\n}\n\n" +
+            "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
+            "relation CO-1011 USES CR-1047 {\n  status: proposed;\n}\n";
+
+    /** Guard flag: {@link #buildGitHistory()} runs at most once per test class execution. */
+    private static boolean gitHistoryBuilt;
+
     /** Regex matching any terminal analysis status (success, error, or unavailable). */
     private static final java.util.regex.Pattern ANALYSIS_DONE_PATTERN =
             java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable|0 matches");
@@ -634,6 +660,73 @@ class ScreenshotGeneratorIT {
            " <span class=\"git-sep\">\\u2502</span>" +
            " <span class=\"git-indicator\">1 variant</span>';" +
            " bar.classList.remove('d-none'); }");
+    }
+
+    /**
+     * Builds a realistic Git history with branches by committing DSL content via the REST API.
+     * <p>
+     * Creates:
+     * <ol>
+     *   <li>A commit on {@code draft} with {@link #DRAFT_DSL} (base architecture)</li>
+     *   <li>A {@code feature-voice} branch forked from {@code draft}</li>
+     *   <li>A commit on {@code feature-voice} with {@link #FEATURE_VOICE_DSL}
+     *       (modified title + extra element)</li>
+     * </ol>
+     * This gives downstream screenshot tests real data for version history, diffs,
+     * branch compare, merge previews, and the DSL editor.
+     * <p>
+     * Guarded by {@link #gitHistoryBuilt} — runs at most once per test class execution.
+     */
+    private void buildGitHistory() {
+        if (gitHistoryBuilt) return;
+        gitHistoryBuilt = true;
+
+        // 1. Commit base DSL on draft
+        js("fetch('/api/dsl/commit?branch=draft&message=Initial+architecture+definition', " +
+           "{ method: 'POST', headers: {'Content-Type': 'text/plain'}, " +
+           "  body: " + jsStringLiteral(DRAFT_DSL) + " " +
+           "}).then(r => r.json()).then(d => { window.__draftCommit = d; });");
+
+        // Wait for draft commit to complete
+        wait(15).until(d -> {
+            Object result = ((JavascriptExecutor) d).executeScript(
+                    "return window.__draftCommit && window.__draftCommit.commitId ? 'ok' : null;");
+            return "ok".equals(result);
+        });
+
+        // 2. Create feature-voice branch from draft
+        js("fetch('/api/dsl/branches?name=feature-voice&fromBranch=draft', " +
+           "{ method: 'POST' " +
+           "}).then(r => r.json()).then(d => { window.__featureBranch = d; });");
+
+        wait(15).until(d -> {
+            Object result = ((JavascriptExecutor) d).executeScript(
+                    "return window.__featureBranch && window.__featureBranch.branch === 'feature-voice' ? 'ok' : null;");
+            return "ok".equals(result);
+        });
+
+        // 3. Commit modified DSL on feature-voice (diverges from draft)
+        js("fetch('/api/dsl/commit?branch=feature-voice&message=Add+Voice+Gateway+component', " +
+           "{ method: 'POST', headers: {'Content-Type': 'text/plain'}, " +
+           "  body: " + jsStringLiteral(FEATURE_VOICE_DSL) + " " +
+           "}).then(r => r.json()).then(d => { window.__featureCommit = d; });");
+
+        wait(15).until(d -> {
+            Object result = ((JavascriptExecutor) d).executeScript(
+                    "return window.__featureCommit && window.__featureCommit.commitId ? 'ok' : null;");
+            return "ok".equals(result);
+        });
+    }
+
+    /**
+     * Returns a JavaScript string literal (with surrounding quotes) for use in
+     * {@code js()} calls. Escapes backslashes, quotes, and newlines.
+     */
+    private static String jsStringLiteral(String s) {
+        return "'" + s.replace("\\", "\\\\")
+                      .replace("'", "\\'")
+                      .replace("\n", "\\n")
+                      .replace("\r", "") + "'";
     }
 
     /**
@@ -1400,6 +1493,8 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(34)
     void captureDslEditorPanel() throws IOException {
+        // Ensure Git history with branches exists for realistic DSL content
+        buildGitHistory();
         navigateToTab("dsl-editor");
         // Fetch DSL export and populate CodeMirror 6 editor (dslEditorContainer + window.dslCmView)
         js("fetch('/api/dsl/export').then(r => r.text()).then(t => {" +
@@ -1678,6 +1773,8 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(41)
     void captureVersionsTabHistory() throws IOException {
+        // Ensure Git history with branches exists for realistic version timeline
+        buildGitHistory();
         navigateToTab("versions");
         // Wait for the version history timeline to load (contains timeline entries or "No versions")
         wait(15).until(d -> {
@@ -1800,6 +1897,8 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(47)
     void captureVariantsBrowserTab() throws IOException {
+        // Ensure Git history with branches exists so the variants browser shows real branches
+        buildGitHistory();
         navigateToTab("versions");
         // Switch to the Variants sub-tab
         js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +

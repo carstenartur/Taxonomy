@@ -1066,13 +1066,17 @@ Diese Garantien bedeuten, dass **dieselbe Architektur immer zum selben Text seri
 
 ### DSL-Editor-Panel
 
-Der DSL-Editor-Tab in der Anwendung bietet:
+Der DSL-Editor-Tab in der Anwendung bietet eine vollwertige Code-Bearbeitungsoberfläche auf Basis von **CodeMirror 6**:
 
-1. **Load Current** — Exportiert den aktuellen Architekturzustand als DSL-Text
-2. **Edit** — Bearbeiten Sie den DSL-Text direkt im Editor
-3. **Validate** — Prüft die DSL auf Fehler und Warnungen
-4. **Commit** — Speichert Änderungen im Git-gestützten Repository mit einer Commit-Nachricht
-5. **Branch management** — Erstellen von Branches, Cherry-Pick und Merge
+1. **Syntaxhervorhebung** — DSL-Schlüsselwörter (`element`, `relation`, `meta`, `view`), Taxonomie-Codes, Beziehungstypen und Eigenschaftsnamen werden farblich hervorgehoben
+2. **Autovervollständigung** — Kontextbezogene Vorschläge erscheinen während der Eingabe: Block-Schlüsselwörter, Elementtypen, Beziehungstypen und Taxonomie-Codes
+3. **Live-Validierung** — Fehler und Warnungen vom serverseitigen Validator werden inline mit roten/gelben Markierungen im Randbereich angezeigt
+4. **Load Current** — Exportiert den aktuellen Architekturzustand als DSL-Text
+5. **Edit** — Bearbeiten Sie den DSL-Text direkt im Editor
+6. **Validate** — Prüft die DSL auf Fehler und Warnungen
+7. **Format** — DSL in kanonischen Stil formatieren (Shift+Alt+F)
+8. **Commit** — Speichert Änderungen im Git-gestützten Repository mit einer Commit-Nachricht
+9. **Branch management** — Erstellen von Branches, Cherry-Pick und Merge
 
 ![DSL-Editor-Panel](../images/34-dsl-editor-panel.png)
 
@@ -1236,6 +1240,12 @@ Wenn ein Merge oder Cherry-Pick nicht automatisch abgeschlossen werden kann (bei
 - **Schnellaktionen**: Schaltflächen **Use Ours** und **Use Theirs**, um eine Seite vollständig zu übernehmen
 - **Manuelle Bearbeitung**: Ein Textfeld, in dem Sie den endgültigen aufgelösten Inhalt erstellen
 - **Resolve & Commit**: Committet den aufgelösten Inhalt in den Ziel-Branch
+
+![Merge-Konfliktlösungs-Modal](../images/52-merge-conflict-modal.png)
+
+Cherry-Pick-Konflikte verwenden dasselbe Modal mit einem Cherry-Pick-spezifischen Titel:
+
+![Cherry-Pick-Konfliktlösung](../images/54-cherry-pick-conflict-modal.png)
 
 Nach der Auflösung bestätigt eine Erfolgs-Toast-Benachrichtigung die Operation.
 

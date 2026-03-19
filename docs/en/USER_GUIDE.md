@@ -1,5 +1,13 @@
 # Taxonomy Architecture Analyzer — User Guide
 
+> **This guide covers the primary way to use the Taxonomy Architecture Analyzer: the web-based GUI.**
+> All major features described here are designed to be used interactively through the browser.
+> For automation and scripting, see the [API Reference](API_REFERENCE.md).
+>
+> **Dieser Leitfaden beschreibt den Hauptweg zur Nutzung des Taxonomy Architecture Analyzers: die webbasierte Benutzeroberfläche.**
+> Alle hier beschriebenen Funktionen sind primär für die interaktive Nutzung im Browser gedacht.
+> Für Automatisierung und Skripting siehe die [API-Referenz](API_REFERENCE.md).
+
 ## Fastest Path — Your First Analysis in 5 Steps
 
 | Step | Action | Where |
@@ -1077,13 +1085,17 @@ These guarantees mean that **the same architecture always serializes to the same
 
 ### DSL Editor Panel
 
-The DSL Editor tab in the application provides:
+The DSL Editor tab in the application provides a full-featured code editing experience powered by **CodeMirror 6**:
 
-1. **Load Current** — Export the current architecture state as DSL text
-2. **Edit** — Modify the DSL text directly in the editor
-3. **Validate** — Check the DSL for errors and warnings
-4. **Commit** — Save changes to the Git-backed repository with a commit message
-5. **Branch management** — Create branches, cherry-pick, and merge
+1. **Syntax highlighting** — DSL keywords (`element`, `relation`, `meta`, `view`), taxonomy codes, relation types, and property names are colour-coded for readability
+2. **Autocompletion** — Context-aware suggestions appear as you type: block keywords, element types, relation types, and taxonomy codes
+3. **Live validation** — Errors and warnings from the server-side validator are displayed inline with red/yellow markers in the gutter
+4. **Load Current** — Export the current architecture state as DSL text
+5. **Edit** — Modify the DSL text directly in the editor
+6. **Validate** — Check the DSL for errors and warnings
+7. **Format** — Reformat DSL to canonical style (Shift+Alt+F)
+8. **Commit** — Save changes to the Git-backed repository with a commit message
+9. **Branch management** — Create branches, cherry-pick, and merge
 
 ![DSL Editor panel](../images/34-dsl-editor-panel.png)
 
@@ -1247,6 +1259,12 @@ When a merge or cherry-pick cannot be completed automatically (both sides modifi
 - **Quick actions**: "Use Ours" and "Use Theirs" buttons to accept one side entirely
 - **Manual editing**: A textarea where you compose the final resolved content
 - **Resolve & Commit**: Commits the resolved content to the target branch
+
+![Merge conflict resolution modal](../images/52-merge-conflict-modal.png)
+
+Cherry-pick conflicts use the same modal with a cherry-pick-specific title:
+
+![Cherry-pick conflict resolution](../images/54-cherry-pick-conflict-modal.png)
 
 After resolution, a success toast notification confirms the operation.
 

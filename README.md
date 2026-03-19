@@ -120,11 +120,18 @@ mvn verify            # Unit + integration tests (requires Docker)
 
 ---
 
-## REST API
+## REST API (for Automation & Integration)
 
-Interactive documentation: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html)
+The primary way to use this product is through the **web-based GUI** (see [Core Workflow](#core-workflow-ui) above).
 
-All endpoints require HTTP Basic authentication (`-u admin:admin`). For the full reference with request/response examples, see [API Reference](docs/en/API_REFERENCE.md). For end-to-end curl workflows, see [Curl Workflow Examples](docs/en/CURL_EXAMPLES.md).
+For **scripting, CI pipelines, and system integration**, a REST API is available:
+
+- Interactive documentation: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html)
+- [API Reference](docs/en/API_REFERENCE.md) — endpoint overview
+- [Curl Workflow Examples](docs/en/CURL_EXAMPLES.md) — end-to-end automation examples
+
+> **Note:** The REST API is not intended as a replacement for the GUI for end-user workflows.
+> All user-facing features are designed to be used through the web interface first.
 
 ---
 
@@ -156,6 +163,7 @@ Taxonomy/
 | **[Security](docs/en/SECURITY.md)** | Authentication, roles, permissions, deployment hardening |
 | **[Architecture](docs/en/ARCHITECTURE.md)** | System design, modules, DSL storage, pipelines |
 | **[Developer Guide](docs/en/DEVELOPER_GUIDE.md)** | Module architecture, testing, extending the system |
+| **[Feature Matrix](docs/en/FEATURE_MATRIX.md)** | Feature completeness tracking (GUI, REST, docs, i18n) |
 | **[Keycloak Setup](docs/en/KEYCLOAK_SETUP.md)** | SSO/OIDC integration with Keycloak |
 | **[SSO Integration](docs/en/SSO_INTEGRATION.md)** | Single Sign-On configuration and setup |
 | **[AI Transparency](docs/en/AI_TRANSPARENCY.md)** | AI/LLM usage transparency documentation |
@@ -194,6 +202,11 @@ The Taxonomy Architecture Analyzer includes comprehensive documentation for depl
 3. Run tests (`mvn test`)
 4. Commit your changes
 5. Open a pull request
+
+> **Important:** For user-facing features, please read the
+> [Definition of Done](docs/en/DEVELOPER_GUIDE.md#definition-of-done--user-facing-features)
+> before opening a PR. Features that only add a REST endpoint without GUI support
+> are not considered complete.
 
 ## License
 

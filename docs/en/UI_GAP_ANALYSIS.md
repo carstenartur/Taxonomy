@@ -40,3 +40,32 @@ Status of GUI dialogs and their implementation.
 | `taxonomy-variants.js` | Updated | Delete button added for non-protected branches |
 | `taxonomy-workspace-sync.js` | Updated | Resolve button for DIVERGED state, toast notifications |
 | `taxonomy-dsl-editor.js` | Updated | Toast notifications for merge/cherry-pick results |
+
+---
+
+## Features Currently REST-Only (GUI Gap)
+
+These features have REST endpoints but no corresponding GUI workflow.
+They are tracked as open gaps per the [Definition of Done](DEVELOPER_GUIDE.md#definition-of-done--user-facing-features).
+
+| Feature | REST Endpoint | GUI Status | Priority |
+|---|---|---|---|
+| Leaf justification | `POST /api/justify-leaf` | ❌ No GUI | High |
+| Gap analysis | `POST /api/gap/analyze` | ❌ No GUI (or unclear) | High |
+| Recommendations | `POST /api/recommend` | ❌ No GUI (or unclear) | Medium |
+| Pattern detection | `GET/POST /api/patterns/detect` | ❌ No GUI (or unclear) | Medium |
+| Reports (MD/HTML/DOCX) | `POST /api/report/*` | ❌ No GUI trigger | High |
+| Requirement impact analysis | `POST /api/graph/impact` | ❌ No GUI (or unclear) | Medium |
+
+## Documentation Gaps
+
+| Feature area | GUI exists | User Guide section | Screenshot | Help text |
+|---|---|---|---|---|
+| Workspace sync/publish | ✅ | ❌ Missing | ❌ | ❌ |
+| Version history browsing | ✅ | ❌ Missing | ❌ | ❌ |
+| Branch compare | ✅ | ❌ Missing | ❌ | ❌ |
+| Variant creation | ✅ | ❌ Missing | ❌ | ❌ |
+| DSL editor | ✅ | ❌ Missing | ❌ | ❌ |
+| Merge conflict resolution | ✅ | ❌ Missing | ❌ | ❌ |
+
+> **Action:** Each row should be resolved before the feature is considered complete.
