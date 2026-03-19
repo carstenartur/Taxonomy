@@ -3,7 +3,6 @@
 import jakarta.persistence.*;
 
 import java.time.Instant;
-import com.taxonomy.workspace.service.WorkspaceManager;
 
 /**
  * Persistent workspace metadata for a user.
@@ -37,13 +36,13 @@ public class UserWorkspace {
     @Column(name = &quot;display_name&quot;)
     private String displayName;
 
-<span class="fc" id="L40">    @Column(name = &quot;current_branch&quot;, nullable = false)</span>
+<span class="fc" id="L39">    @Column(name = &quot;current_branch&quot;, nullable = false)</span>
     private String currentBranch = &quot;draft&quot;;
 
-<span class="fc" id="L43">    @Column(name = &quot;base_branch&quot;)</span>
+<span class="fc" id="L42">    @Column(name = &quot;base_branch&quot;)</span>
     private String baseBranch = &quot;draft&quot;;
 
-<span class="fc" id="L46">    @Column(nullable = false)</span>
+<span class="fc" id="L45">    @Column(nullable = false)</span>
     private boolean shared = false;
 
     @Column(name = &quot;created_at&quot;, nullable = false)
@@ -52,79 +51,169 @@ public class UserWorkspace {
     @Column(name = &quot;last_accessed_at&quot;)
     private Instant lastAccessedAt;
 
-<span class="fc" id="L55">    public UserWorkspace() {</span>
-<span class="fc" id="L56">    }</span>
+<span class="fc" id="L54">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;provisioning_status&quot;, nullable = false)
+    private WorkspaceProvisioningStatus provisioningStatus = WorkspaceProvisioningStatus.READY;
+
+<span class="fc" id="L58">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;topology_mode&quot;, nullable = false)
+    private RepositoryTopologyMode topologyMode = RepositoryTopologyMode.INTERNAL_SHARED;
+
+    @Column(name = &quot;source_repository_id&quot;)
+    private String sourceRepositoryId;
+
+    @Column(name = &quot;base_commit&quot;)
+    private String baseCommit;
+
+    @Column(name = &quot;current_commit&quot;)
+    private String currentCommit;
+
+    @Column(name = &quot;sync_target_branch&quot;)
+    private String syncTargetBranch;
+
+    @Column(name = &quot;provisioned_at&quot;)
+    private Instant provisionedAt;
+
+    @Column(name = &quot;provisioning_error&quot;)
+    private String provisioningError;
+
+<span class="fc" id="L80">    public UserWorkspace() {</span>
+<span class="fc" id="L81">    }</span>
 
     public Long getId() {
-<span class="nc" id="L59">        return id;</span>
+<span class="nc" id="L84">        return id;</span>
     }
 
     public void setId(Long id) {
-<span class="nc" id="L63">        this.id = id;</span>
-<span class="nc" id="L64">    }</span>
+<span class="nc" id="L88">        this.id = id;</span>
+<span class="nc" id="L89">    }</span>
 
     public String getWorkspaceId() {
-<span class="fc" id="L67">        return workspaceId;</span>
+<span class="fc" id="L92">        return workspaceId;</span>
     }
 
     public void setWorkspaceId(String workspaceId) {
-<span class="fc" id="L71">        this.workspaceId = workspaceId;</span>
-<span class="fc" id="L72">    }</span>
+<span class="fc" id="L96">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L97">    }</span>
 
     public String getUsername() {
-<span class="nc" id="L75">        return username;</span>
+<span class="fc" id="L100">        return username;</span>
     }
 
     public void setUsername(String username) {
-<span class="fc" id="L79">        this.username = username;</span>
-<span class="fc" id="L80">    }</span>
+<span class="fc" id="L104">        this.username = username;</span>
+<span class="fc" id="L105">    }</span>
 
     public String getDisplayName() {
-<span class="nc" id="L83">        return displayName;</span>
+<span class="nc" id="L108">        return displayName;</span>
     }
 
     public void setDisplayName(String displayName) {
-<span class="fc" id="L87">        this.displayName = displayName;</span>
-<span class="fc" id="L88">    }</span>
+<span class="fc" id="L112">        this.displayName = displayName;</span>
+<span class="fc" id="L113">    }</span>
 
     public String getCurrentBranch() {
-<span class="nc" id="L91">        return currentBranch;</span>
+<span class="fc" id="L116">        return currentBranch;</span>
     }
 
     public void setCurrentBranch(String currentBranch) {
-<span class="fc" id="L95">        this.currentBranch = currentBranch;</span>
-<span class="fc" id="L96">    }</span>
+<span class="fc" id="L120">        this.currentBranch = currentBranch;</span>
+<span class="fc" id="L121">    }</span>
 
     public String getBaseBranch() {
-<span class="nc" id="L99">        return baseBranch;</span>
+<span class="fc" id="L124">        return baseBranch;</span>
     }
 
     public void setBaseBranch(String baseBranch) {
-<span class="fc" id="L103">        this.baseBranch = baseBranch;</span>
-<span class="fc" id="L104">    }</span>
+<span class="fc" id="L128">        this.baseBranch = baseBranch;</span>
+<span class="fc" id="L129">    }</span>
 
     public boolean isShared() {
-<span class="nc" id="L107">        return shared;</span>
+<span class="nc" id="L132">        return shared;</span>
     }
 
     public void setShared(boolean shared) {
-<span class="fc" id="L111">        this.shared = shared;</span>
-<span class="fc" id="L112">    }</span>
+<span class="fc" id="L136">        this.shared = shared;</span>
+<span class="fc" id="L137">    }</span>
 
     public Instant getCreatedAt() {
-<span class="nc" id="L115">        return createdAt;</span>
+<span class="nc" id="L140">        return createdAt;</span>
     }
 
     public void setCreatedAt(Instant createdAt) {
-<span class="fc" id="L119">        this.createdAt = createdAt;</span>
-<span class="fc" id="L120">    }</span>
+<span class="fc" id="L144">        this.createdAt = createdAt;</span>
+<span class="fc" id="L145">    }</span>
 
     public Instant getLastAccessedAt() {
-<span class="nc" id="L123">        return lastAccessedAt;</span>
+<span class="nc" id="L148">        return lastAccessedAt;</span>
     }
 
     public void setLastAccessedAt(Instant lastAccessedAt) {
-<span class="fc" id="L127">        this.lastAccessedAt = lastAccessedAt;</span>
-<span class="fc" id="L128">    }</span>
+<span class="fc" id="L152">        this.lastAccessedAt = lastAccessedAt;</span>
+<span class="fc" id="L153">    }</span>
+
+    public WorkspaceProvisioningStatus getProvisioningStatus() {
+<span class="fc" id="L156">        return provisioningStatus;</span>
+    }
+
+    public void setProvisioningStatus(WorkspaceProvisioningStatus provisioningStatus) {
+<span class="fc" id="L160">        this.provisioningStatus = provisioningStatus;</span>
+<span class="fc" id="L161">    }</span>
+
+    public RepositoryTopologyMode getTopologyMode() {
+<span class="fc" id="L164">        return topologyMode;</span>
+    }
+
+    public void setTopologyMode(RepositoryTopologyMode topologyMode) {
+<span class="fc" id="L168">        this.topologyMode = topologyMode;</span>
+<span class="fc" id="L169">    }</span>
+
+    public String getSourceRepositoryId() {
+<span class="fc" id="L172">        return sourceRepositoryId;</span>
+    }
+
+    public void setSourceRepositoryId(String sourceRepositoryId) {
+<span class="fc" id="L176">        this.sourceRepositoryId = sourceRepositoryId;</span>
+<span class="fc" id="L177">    }</span>
+
+    public String getBaseCommit() {
+<span class="nc" id="L180">        return baseCommit;</span>
+    }
+
+    public void setBaseCommit(String baseCommit) {
+<span class="fc" id="L184">        this.baseCommit = baseCommit;</span>
+<span class="fc" id="L185">    }</span>
+
+    public String getCurrentCommit() {
+<span class="nc" id="L188">        return currentCommit;</span>
+    }
+
+    public void setCurrentCommit(String currentCommit) {
+<span class="fc" id="L192">        this.currentCommit = currentCommit;</span>
+<span class="fc" id="L193">    }</span>
+
+    public String getSyncTargetBranch() {
+<span class="nc" id="L196">        return syncTargetBranch;</span>
+    }
+
+    public void setSyncTargetBranch(String syncTargetBranch) {
+<span class="fc" id="L200">        this.syncTargetBranch = syncTargetBranch;</span>
+<span class="fc" id="L201">    }</span>
+
+    public Instant getProvisionedAt() {
+<span class="fc" id="L204">        return provisionedAt;</span>
+    }
+
+    public void setProvisionedAt(Instant provisionedAt) {
+<span class="fc" id="L208">        this.provisionedAt = provisionedAt;</span>
+<span class="fc" id="L209">    }</span>
+
+    public String getProvisioningError() {
+<span class="fc" id="L212">        return provisioningError;</span>
+    }
+
+    public void setProvisioningError(String provisioningError) {
+<span class="fc" id="L216">        this.provisioningError = provisioningError;</span>
+<span class="fc" id="L217">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
