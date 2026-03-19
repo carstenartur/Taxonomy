@@ -169,7 +169,7 @@ Taxonomy Application,com.taxonomy.shared.config,DslAnalyzer,0,18,0,0,0,4,0,2,0,2
 Taxonomy Application,com.taxonomy.shared.config,I18nConfig,0,23,0,0,0,6,0,2,0,2
 Taxonomy Application,com.taxonomy.shared.config,GlobalExceptionHandler,114,74,2,2,15,15,5,3,3,3
 Taxonomy Application,com.taxonomy.analysis.service,AnalysisRelationGenerator.ScoredNode,0,15,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.analysis.service,SavedAnalysisService,2,170,1,21,0,40,1,16,0,6
+Taxonomy Application,com.taxonomy.analysis.service,SavedAnalysisService,2,189,1,23,0,44,1,18,0,7
 Taxonomy Application,com.taxonomy.analysis.service,LlmRateLimitException,9,0,0,0,4,0,2,0,2,0
 Taxonomy Application,com.taxonomy.analysis.service,LlmService.ScoreParseResult,6,41,0,2,2,4,1,3,1,2
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
