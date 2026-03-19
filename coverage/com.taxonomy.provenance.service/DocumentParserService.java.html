@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocumentParserService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.service</a> &gt; <span class="el_source">DocumentParserService.java</span></div><h1>DocumentParserService.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.service;
+
+import com.taxonomy.dto.DocumentParseResult;
+import com.taxonomy.dto.RequirementCandidate;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+import java.util.regex.Pattern;
+
+/**
+ * Parses uploaded PDF and DOCX documents into requirement candidates.
+ *
+ * &lt;p&gt;This first-stage parser performs:
+ * &lt;ul&gt;
+ *   &lt;li&gt;Raw text extraction&lt;/li&gt;
+ *   &lt;li&gt;Section/heading detection&lt;/li&gt;
+ *   &lt;li&gt;Requirement candidate splitting (paragraph-based)&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;It does &lt;em&gt;not&lt;/em&gt; attempt to fully interpret legal semantics.
+ */
+@Service
+<span class="fc" id="L36">public class DocumentParserService {</span>
+
+<span class="fc" id="L38">    private static final Logger log = LoggerFactory.getLogger(DocumentParserService.class);</span>
+
+    /** Minimum length for a paragraph to be considered a requirement candidate. */
+    private static final int MIN_CANDIDATE_LENGTH = 40;
+
+    /** Maximum length for a single candidate text. */
+    private static final int MAX_CANDIDATE_LENGTH = 2000;
+
+    /** Maximum characters for the raw text preview. */
+    private static final int RAW_TEXT_PREVIEW_LENGTH = 2000;
+
+    private static final String MIME_PDF = &quot;application/pdf&quot;;
+    private static final String MIME_DOCX = &quot;application/vnd.openxmlformats-officedocument.wordprocessingml.document&quot;;
+
+    /** Pattern to detect likely section headings. */
+<span class="fc" id="L53">    private static final Pattern HEADING_PATTERN = Pattern.compile(</span>
+            &quot;^(?:§\\s*\\d+|Art\\.?\\s*\\d+|\\d+\\.\\d*\\s+[A-ZÄÖÜ]|[IVXLCDM]+\\.\\s+|Kapitel\\s+\\d+|&quot; +
+            &quot;Chapter\\s+\\d+|Section\\s+\\d+|Abschnitt\\s+\\d+|Artikel\\s+\\d+).*&quot;,
+            Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Parses an uploaded document and extracts requirement candidates.
+     *
+     * @param file the uploaded PDF or DOCX file
+     * @return the parse result with candidates
+     * @throws IOException if the file cannot be read
+     */
+    public DocumentParseResult parse(MultipartFile file) throws IOException {
+<span class="fc" id="L66">        String contentType = detectMimeType(file);</span>
+        String rawText;
+        int pageCount;
+
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if (MIME_PDF.equals(contentType)) {</span>
+<span class="nc" id="L71">            try (PDDocument pdf = Loader.loadPDF(file.getBytes())) {</span>
+<span class="nc" id="L72">                pageCount = pdf.getNumberOfPages();</span>
+<span class="nc" id="L73">                PDFTextStripper stripper = new PDFTextStripper();</span>
+<span class="nc" id="L74">                rawText = stripper.getText(pdf);</span>
+            }
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        } else if (MIME_DOCX.equals(contentType)) {</span>
+<span class="fc" id="L77">            try (InputStream in = file.getInputStream();</span>
+<span class="fc" id="L78">                 XWPFDocument doc = new XWPFDocument(in)) {</span>
+<span class="fc" id="L79">                pageCount = 1;</span>
+                try {
+<span class="fc" id="L81">                    int p = doc.getProperties().getExtendedProperties()</span>
+<span class="fc" id="L82">                            .getUnderlyingProperties().getPages();</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">                    if (p &gt; 0) pageCount = p;</span>
+<span class="nc" id="L84">                } catch (Exception ignored) {</span>
+                    // Page count unavailable in minimal DOCX files
+<span class="fc" id="L86">                }</span>
+<span class="fc" id="L87">                rawText = extractDocxText(doc);</span>
+            }
+        } else {
+<span class="nc" id="L90">            throw new IOException(&quot;Unsupported file type: &quot; + contentType</span>
+                    + &quot;. Only PDF and DOCX files are supported.&quot;);
+        }
+
+<span class="fc" id="L94">        List&lt;RequirementCandidate&gt; candidates = extractCandidates(rawText);</span>
+
+<span class="fc" id="L96">        DocumentParseResult result = new DocumentParseResult();</span>
+<span class="fc" id="L97">        result.setFileName(file.getOriginalFilename());</span>
+<span class="fc" id="L98">        result.setMimeType(contentType);</span>
+<span class="fc" id="L99">        result.setTotalPages(pageCount);</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">        result.setRawTextPreview(rawText.length() &gt; RAW_TEXT_PREVIEW_LENGTH</span>
+<span class="nc" id="L101">                ? rawText.substring(0, RAW_TEXT_PREVIEW_LENGTH) + &quot;…&quot;</span>
+<span class="fc" id="L102">                : rawText);</span>
+<span class="fc" id="L103">        result.setCandidates(candidates);</span>
+<span class="fc" id="L104">        result.setWarnings(new ArrayList&lt;&gt;());</span>
+
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        if (candidates.isEmpty()) {</span>
+<span class="nc" id="L107">            result.getWarnings().add(&quot;No requirement candidates were extracted from this document.&quot;);</span>
+        }
+
+<span class="fc" id="L110">        log.info(&quot;Parsed document '{}': {} pages, {} candidates extracted&quot;,</span>
+<span class="fc" id="L111">                file.getOriginalFilename(), pageCount, candidates.size());</span>
+
+<span class="fc" id="L113">        return result;</span>
+    }
+
+    /**
+     * Computes a SHA-256 content hash for deduplication.
+     */
+    public String computeContentHash(byte[] content) {
+        try {
+<span class="fc" id="L121">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L122">            byte[] hash = digest.digest(content);</span>
+<span class="fc" id="L123">            return HexFormat.of().formatHex(hash);</span>
+<span class="nc" id="L124">        } catch (NoSuchAlgorithmException e) {</span>
+<span class="nc" id="L125">            throw new IllegalStateException(&quot;SHA-256 not available&quot;, e);</span>
+        }
+    }
+
+    // ── Private helpers ────────────────────────────────────────────────────────
+
+    private String detectMimeType(MultipartFile file) {
+<span class="fc" id="L132">        String ct = file.getContentType();</span>
+<span class="pc bpc" id="L133" title="2 of 4 branches missed.">        if (ct != null &amp;&amp; !ct.isBlank()) {</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">            if (ct.contains(&quot;pdf&quot;)) return MIME_PDF;</span>
+<span class="pc bpc" id="L135" title="3 of 4 branches missed.">            if (ct.contains(&quot;wordprocessingml&quot;) || ct.contains(&quot;docx&quot;)) return MIME_DOCX;</span>
+        }
+<span class="nc" id="L137">        String name = file.getOriginalFilename();</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">        if (name != null) {</span>
+<span class="nc" id="L139">            String lower = name.toLowerCase();</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">            if (lower.endsWith(&quot;.pdf&quot;)) return MIME_PDF;</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">            if (lower.endsWith(&quot;.docx&quot;)) return MIME_DOCX;</span>
+        }
+<span class="nc bnc" id="L143" title="All 2 branches missed.">        return ct != null ? ct : &quot;application/octet-stream&quot;;</span>
+    }
+
+    private String extractDocxText(XWPFDocument doc) {
+<span class="fc" id="L147">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        for (XWPFParagraph para : doc.getParagraphs()) {</span>
+<span class="fc" id="L149">            String text = para.getText();</span>
+<span class="pc bpc" id="L150" title="2 of 4 branches missed.">            if (text != null &amp;&amp; !text.isBlank()) {</span>
+<span class="fc" id="L151">                sb.append(text).append(&quot;\n\n&quot;);</span>
+            }
+<span class="fc" id="L153">        }</span>
+<span class="fc" id="L154">        return sb.toString();</span>
+    }
+
+    /**
+     * Splits raw text into requirement candidates based on paragraph boundaries
+     * and heading detection.
+     */
+    public List&lt;RequirementCandidate&gt; extractCandidates(String rawText) {
+<span class="fc" id="L162">        List&lt;RequirementCandidate&gt; candidates = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L163">        String[] paragraphs = rawText.split(&quot;\\n\\s*\\n&quot;);</span>
+<span class="fc" id="L164">        String currentHeading = null;</span>
+<span class="fc" id="L165">        int index = 0;</span>
+
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        for (String para : paragraphs) {</span>
+<span class="fc" id="L168">            String trimmed = para.strip();</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">            if (trimmed.isEmpty()) continue;</span>
+
+            // Detect headings
+<span class="fc bfc" id="L172" title="All 2 branches covered.">            if (isLikelyHeading(trimmed)) {</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">                currentHeading = trimmed.length() &gt; 200</span>
+<span class="pc" id="L174">                        ? trimmed.substring(0, 200) : trimmed;</span>
+<span class="fc" id="L175">                continue;</span>
+            }
+
+            // Skip very short paragraphs (page numbers, headers, footers)
+<span class="fc bfc" id="L179" title="All 2 branches covered.">            if (trimmed.length() &lt; MIN_CANDIDATE_LENGTH) continue;</span>
+
+            // Truncate very long paragraphs
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">            String candidateText = trimmed.length() &gt; MAX_CANDIDATE_LENGTH</span>
+<span class="nc" id="L183">                    ? trimmed.substring(0, MAX_CANDIDATE_LENGTH) + &quot;…&quot;</span>
+<span class="fc" id="L184">                    : trimmed;</span>
+
+<span class="fc" id="L186">            candidates.add(new RequirementCandidate(index++, currentHeading, candidateText, null));</span>
+        }
+
+<span class="fc" id="L189">        return candidates;</span>
+    }
+
+    private boolean isLikelyHeading(String text) {
+        // Short text with all caps or matching heading patterns
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (text.length() &gt; 200) return false;</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (HEADING_PATTERN.matcher(text).matches()) return true;</span>
+        // All-caps short lines are likely headings
+<span class="pc bpc" id="L197" title="1 of 6 branches missed.">        if (text.length() &lt; 80 &amp;&amp; text.equals(text.toUpperCase()) &amp;&amp; text.matches(&quot;.*[A-ZÄÖÜ].*&quot;)) {</span>
+<span class="fc" id="L198">            return true;</span>
+        }
+<span class="fc" id="L200">        return false;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

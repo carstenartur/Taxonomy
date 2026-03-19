@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SourceFragment.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.model</a> &gt; <span class="el_source">SourceFragment.java</span></div><h1>SourceFragment.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.model;
+
+import jakarta.persistence.*;
+
+/**
+ * A traceable fragment (section, paragraph, page range) within a
+ * {@link SourceVersion}.
+ */
+@Entity
+@Table(name = &quot;source_fragment&quot;)
+public class SourceFragment {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;source_version_id&quot;, nullable = false)
+    private SourceVersion sourceVersion;
+
+    @Column(name = &quot;section_path&quot;, length = 500)
+    private String sectionPath;
+
+    @Column(name = &quot;paragraph_ref&quot;, length = 100)
+    private String paragraphRef;
+
+    @Column(name = &quot;page_from&quot;)
+    private Integer pageFrom;
+
+    @Column(name = &quot;page_to&quot;)
+    private Integer pageTo;
+
+    @Column(name = &quot;fragment_text&quot;, length = 4000)
+    private String fragmentText;
+
+    @Column(name = &quot;fragment_hash&quot;, length = 128)
+    private String fragmentHash;
+
+<span class="fc" id="L39">    protected SourceFragment() {}</span>
+
+<span class="fc" id="L41">    public SourceFragment(SourceVersion sourceVersion, String fragmentText) {</span>
+<span class="fc" id="L42">        this.sourceVersion = sourceVersion;</span>
+<span class="fc" id="L43">        this.fragmentText = fragmentText;</span>
+<span class="fc" id="L44">    }</span>
+
+    // ── Accessors ──────────────────────────────────────────────────────────────
+
+<span class="fc" id="L48">    public Long getId() { return id; }</span>
+<span class="fc" id="L49">    public void setId(Long id) { this.id = id; }</span>
+
+<span class="fc" id="L51">    public SourceVersion getSourceVersion() { return sourceVersion; }</span>
+<span class="nc" id="L52">    public void setSourceVersion(SourceVersion sourceVersion) { this.sourceVersion = sourceVersion; }</span>
+
+<span class="fc" id="L54">    public String getSectionPath() { return sectionPath; }</span>
+<span class="fc" id="L55">    public void setSectionPath(String sectionPath) { this.sectionPath = sectionPath; }</span>
+
+<span class="nc" id="L57">    public String getParagraphRef() { return paragraphRef; }</span>
+<span class="nc" id="L58">    public void setParagraphRef(String paragraphRef) { this.paragraphRef = paragraphRef; }</span>
+
+<span class="fc" id="L60">    public Integer getPageFrom() { return pageFrom; }</span>
+<span class="fc" id="L61">    public void setPageFrom(Integer pageFrom) { this.pageFrom = pageFrom; }</span>
+
+<span class="fc" id="L63">    public Integer getPageTo() { return pageTo; }</span>
+<span class="fc" id="L64">    public void setPageTo(Integer pageTo) { this.pageTo = pageTo; }</span>
+
+<span class="fc" id="L66">    public String getFragmentText() { return fragmentText; }</span>
+<span class="nc" id="L67">    public void setFragmentText(String fragmentText) { this.fragmentText = fragmentText; }</span>
+
+<span class="nc" id="L69">    public String getFragmentHash() { return fragmentHash; }</span>
+<span class="nc" id="L70">    public void setFragmentHash(String fragmentHash) { this.fragmentHash = fragmentHash; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
