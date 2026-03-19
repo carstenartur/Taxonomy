@@ -9,6 +9,7 @@ window.TaxonomyViewContext = (function () {
     'use strict';
 
     var escapeHtml = TaxonomyUtils.escapeHtml;
+    var t = TaxonomyI18n.t;
 
     /**
      * Render a ViewContext badge into a DOM container.
@@ -32,7 +33,7 @@ window.TaxonomyViewContext = (function () {
             : '';
 
         parts.push(
-            '<span class="vc-commit">&#128204; Based on: <strong>' + branch +
+            '<span class="vc-commit">' + escapeHtml(t('context.based.on')) + ' <strong>' + branch +
             '</strong> @ <code>' + sha + '</code>' +
             (ts ? ' <small class="text-muted">(' + ts + ')</small>' : '') +
             '</span>'
@@ -41,29 +42,29 @@ window.TaxonomyViewContext = (function () {
         // Provisional relations warning
         if (viewContext.includesProvisionalRelations) {
             parts.push(
-                '<span class="vc-warning">&#9888;&#65039; Includes provisional relations</span>'
+                '<span class="vc-warning">' + escapeHtml(t('context.provisional.warning')) + '</span>'
             );
         }
 
         // Projection staleness
         if (viewContext.projectionStale) {
             parts.push(
-                '<span class="vc-stale"><span class="dot stale"></span> Projection: STALE</span>'
+                '<span class="vc-stale"><span class="dot stale"></span> ' + escapeHtml(t('context.projection.stale')) + '</span>'
             );
         } else {
             parts.push(
-                '<span class="vc-fresh"><span class="dot fresh"></span> Projection: fresh</span>'
+                '<span class="vc-fresh"><span class="dot fresh"></span> ' + escapeHtml(t('context.projection.fresh')) + '</span>'
             );
         }
 
         // Index staleness
         if (viewContext.indexStale) {
             parts.push(
-                '<span class="vc-stale"><span class="dot stale"></span> Index: STALE</span>'
+                '<span class="vc-stale"><span class="dot stale"></span> ' + escapeHtml(t('context.index.stale')) + '</span>'
             );
         } else {
             parts.push(
-                '<span class="vc-fresh"><span class="dot fresh"></span> Index: fresh</span>'
+                '<span class="vc-fresh"><span class="dot fresh"></span> ' + escapeHtml(t('context.index.fresh')) + '</span>'
             );
         }
 

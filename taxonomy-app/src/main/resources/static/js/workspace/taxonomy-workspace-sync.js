@@ -71,7 +71,7 @@ window.TaxonomyWorkspaceSync = (function () {
         span.id = 'syncStatusIndicator';
         span.innerHTML = '<span class="git-sep">\u2502</span>' +
             '<span class="git-indicator">' +
-            '<span class="dot ' + dot + '"></span> Sync: ' + escapeHtml(label) +
+            '<span class="dot ' + dot + '"></span> ' + escapeHtml(t('workspace.sync.indicator')) + ' ' + escapeHtml(label) +
             '</span>';
         bar.appendChild(span);
     }
