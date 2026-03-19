@@ -72,11 +72,11 @@ jobs:
           fail-on-error: false
           max-annotations: '50'
 
-      - name: Generate Surefire HTML report
+      - name: Generate test HTML reports
         if: always()
         run: |
           mvn install --no-transfer-progress -DskipTests -q
-          mvn surefire-report:report-only --no-transfer-progress -DskipTests -pl taxonomy-app -am
+          mvn surefire-report:report-only surefire-report:failsafe-report-only --no-transfer-progress -DskipTests -pl taxonomy-app -am
           mvn site --no-transfer-progress -DskipTests -DgenerateReports=false -pl taxonomy-app
 
       - name: Generate badge JSON files
@@ -117,7 +117,8 @@ jobs:
 
           # --- Tests badge ---
           try:
-              files = glob.glob('**/target/surefire-reports/TEST-*.xml', recursive=True)
+              files = (glob.glob('**/target/surefire-reports/TEST-*.xml', recursive=True) +
+                       glob.glob('**/target/failsafe-reports/TEST-*.xml', recursive=True))
               total_tests = total_failures = total_errors = 0
               for path in files:
                   root = ET.parse(path).getroot()
