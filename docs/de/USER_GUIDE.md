@@ -1452,6 +1452,40 @@ Das System verwendet 10 Beziehungstypen, die jeweils einer spezifischen Beziehun
 
 ---
 
+## 15a. Dokumentenimport & Quellenherkunft
+
+### Dokumente importieren
+
+Sie können Anforderungen direkt aus PDF- oder DOCX-Dokumenten importieren:
+
+1. Im **Analyse**-Tab das Panel **📄 Dokumentenimport** aufklappen
+2. Eine PDF- oder DOCX-Datei auswählen (z. B. eine Verwaltungsvorschrift)
+3. Optional einen Titel und Quellentyp festlegen
+4. **📄 Hochladen & Extrahieren** klicken, um das Dokument zu parsen
+
+### Extrahierte Kandidaten überprüfen
+
+Nach dem Upload zeigt das System extrahierte Anforderungskandidaten:
+
+- Jeden Kandidaten-Absatz überprüfen
+- **Alle auswählen** / **Alle abwählen** für Stapeloperationen verwenden
+- Irrelevante Inhalte (Kopfzeilen, Fußzeilen, Inhaltsverzeichnis) abwählen
+- **🔍 Ausgewählte analysieren** klicken, um Kandidaten in den Analyse-Workflow
+  zu übertragen
+
+### Quellenherkunft
+
+Jede Anforderung verfolgt ihre Herkunft.  Nach dem Import eines Dokuments zeigt
+das Panel **🔗 Quellenherkunft**:
+
+- Quelldokumentname und -typ
+- Eindeutige Artefakt-Kennung
+- Anzahl der ausgewählten Kandidaten
+
+Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPORT.md).
+
+---
+
 ## 16. Tipps und Best Practices
 
 ### Effektive Anforderungen formulieren
