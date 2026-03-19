@@ -716,7 +716,7 @@
                 // Proposal already exists, mark as already processed
                 if (row) { row.classList.add('table-info'); row.style.opacity = '1'; }
                 var actions = row && row.querySelector('td:last-child');
-                if (actions) actions.innerHTML = '<span class="badge bg-info">Already exists</span>';
+                if (actions) actions.innerHTML = '<span class="badge bg-info">' + escapeHtml(t('scoring.badge.already.exists')) + '</span>';
                 B().showStatus('info', 'ℹ️ Proposal already exists for ' + h.sourceCode + ' → ' + h.targetCode);
                 return null;
             }
@@ -733,7 +733,7 @@
         .then(function () {
             if (row) { row.classList.add('table-success'); row.style.opacity = '1'; }
             var actions = row && row.querySelector('td:last-child');
-            if (actions) actions.innerHTML = '<span class="badge bg-success">Accepted</span>';
+            if (actions) actions.innerHTML = '<span class="badge bg-success">' + escapeHtml(t('scoring.badge.accepted')) + '</span>';
             B().showStatus('success', t('scoring.relation.accepted', h.sourceCode, h.targetCode));
         })
         .catch(function (err) {
@@ -749,7 +749,7 @@
         var row = document.getElementById('suggested-row-' + idx);
         if (row) { row.classList.add('table-danger'); row.style.opacity = '0.4'; }
         var actions = row && row.querySelector('td:last-child');
-        if (actions) actions.innerHTML = '<span class="badge bg-secondary">Dismissed</span>';
+        if (actions) actions.innerHTML = '<span class="badge bg-secondary">' + escapeHtml(t('scoring.badge.dismissed')) + '</span>';
     };
 
     /**
@@ -772,7 +772,7 @@
         // Mark in UI
         if (row) { row.classList.add('table-info'); }
         var actions = row && row.querySelector('td:last-child');
-        if (actions) actions.innerHTML = '<span class="badge bg-info">📌 Session only</span>';
+        if (actions) actions.innerHTML = '<span class="badge bg-info">' + escapeHtml(t('scoring.badge.session.only')) + '</span>';
         h.appliedInCurrentAnalysis = true;
         B().showStatus('info', '📌 Applied for this session: ' + h.sourceCode + ' → ' + h.targetCode);
     };
@@ -797,7 +797,7 @@
 
         var view = S.currentArchView;
         if (!view || !view.includedElements || view.includedElements.length === 0) {
-            container.innerHTML = '<div class="summary-view"><p class="text-muted">No architecture view available. Enable "🏗️ Architecture View" checkbox and run an analysis first.</p></div>';
+            container.innerHTML = '<div class="summary-view"><p class="text-muted">' + escapeHtml(t('scoring.no.archview')) + '</p></div>';
             return;
         }
 

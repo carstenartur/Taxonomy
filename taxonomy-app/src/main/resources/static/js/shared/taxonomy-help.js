@@ -140,7 +140,7 @@
         highlightActive(docName);
         docTitle.classList.add('d-none');
         safeSetHtml(docBody, '<div class="text-center text-muted py-4">' +
-            '<div class="spinner-border spinner-border-sm" role="status"></div> Loading&hellip;</div>');
+            '<div class="spinner-border spinner-border-sm" role="status"></div> ' + TaxonomyUtils.escapeHtml(t('help.loading')) + '</div>');
         backToTop.classList.add('d-none');
 
         fetch('/help/' + encodeURIComponent(docName))

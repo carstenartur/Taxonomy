@@ -442,6 +442,12 @@ The product UI supports both German and English. The current i18n mechanism uses
 3. Use the message key in the Thymeleaf template or JS module — never hard-code text
 4. Verify both languages by switching the browser locale
 
+> **User-facing features are not complete if they exist only via REST.**
+> Every visible text in templates must use `th:text="#{...}"`. Every JavaScript-generated
+> string must use `TaxonomyI18n.t('key')`. Hard-coded text literals are not acceptable.
+> Existing tests `I18nApiControllerTest.englishAndGermanHaveSameKeys()` and
+> `HelpControllerTest.everyRegisteredDocHasI18nKeys()` enforce this at CI level.
+
 ### Documentation language policy
 
 | Content | Language |

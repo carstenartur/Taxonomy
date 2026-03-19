@@ -33,7 +33,7 @@
             content.innerHTML =
                 '<div class="text-center text-muted py-2">' +
                 '<div class="spinner-border spinner-border-sm me-1" role="status"></div> ' +
-                'Querying graph&hellip;</div>';
+                escapeHtml(t('graph.loading')) + '</div>';
         }
     }
 
@@ -56,8 +56,8 @@
     }
 
     function hopBadge(hop) {
-        if (hop === 0) return '<span class="badge bg-dark">origin</span>';
-        return '<span class="badge bg-light text-dark border">hop ' + hop + '</span>';
+        if (hop === 0) return '<span class="badge bg-dark">' + escapeHtml(t('graph.badge.origin')) + '</span>';
+        return '<span class="badge bg-light text-dark border">' + escapeHtml(t('graph.badge.hop', hop)) + '</span>';
     }
 
     function renderElementsTable(elements, title) {
@@ -65,7 +65,7 @@
         var html = '<h6 class="graph-section-title">' + escapeHtml(title) +
             ' <span class="badge bg-secondary">' + elements.length + '</span></h6>';
         html += '<div class="table-responsive"><table class="table table-sm table-hover graph-table mb-2">';
-        html += '<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hop</th><th>Reason</th></tr></thead><tbody>';
+        html += '<thead><tr><th>' + escapeHtml(t('graph.header.code')) + '</th><th>' + escapeHtml(t('graph.header.title')) + '</th><th>' + escapeHtml(t('graph.header.sheet')) + '</th><th>' + escapeHtml(t('graph.header.relevance')) + '</th><th>' + escapeHtml(t('graph.header.hop')) + '</th><th>' + escapeHtml(t('graph.header.reason')) + '</th></tr></thead><tbody>';
         elements.forEach(function (e) {
             html += '<tr class="graph-element-row" data-code="' + escapeHtml(e.nodeCode) + '">' +
                 '<td><a href="#" class="graph-node-link" data-code="' + escapeHtml(e.nodeCode) + '">' +
@@ -83,10 +83,10 @@
 
     function renderRelationshipsTable(rels) {
         if (!rels || rels.length === 0) return '';
-        var html = '<h6 class="graph-section-title">Traversed Relationships' +
+        var html = '<h6 class="graph-section-title">' + escapeHtml(t('graph.section.relationships')) +
             ' <span class="badge bg-secondary">' + rels.length + '</span></h6>';
         html += '<div class="table-responsive"><table class="table table-sm table-hover graph-table mb-0">';
-        html += '<thead><tr><th>Source</th><th></th><th>Target</th><th>Type</th><th>Relevance</th><th>Hop</th></tr></thead><tbody>';
+        html += '<thead><tr><th>' + escapeHtml(t('graph.header.source')) + '</th><th></th><th>' + escapeHtml(t('graph.header.target')) + '</th><th>' + escapeHtml(t('graph.header.type')) + '</th><th>' + escapeHtml(t('graph.header.relevance')) + '</th><th>' + escapeHtml(t('graph.header.hop')) + '</th></tr></thead><tbody>';
         rels.forEach(function (r) {
             html += '<tr>' +
                 '<td>' + escapeHtml(r.sourceCode) + '</td>' +

@@ -527,7 +527,7 @@
         var statsDiv = document.createElement('div');
         statsDiv.className = 'decision-stats';
         if (scoredCount === 0) {
-            statsDiv.innerHTML = '<span class="decision-stats-item">No scored nodes yet. Run an analysis to see the Decision Map.</span>';
+            statsDiv.innerHTML = '<span class="decision-stats-item">' + t('views.no.scored.nodes') + '</span>';
         } else {
             var best = allScored[0];
             var bestName = nameMap[best[0]] || '';
@@ -554,7 +554,7 @@
         if (filteredData.length === 0) {
             var noDataMsg = document.createElement('div');
             noDataMsg.className = 'alert alert-info mt-2';
-            noDataMsg.textContent = 'No scored nodes yet. Run an analysis to see the Decision Map.';
+            noDataMsg.textContent = t('views.no.scored.nodes');
             container.appendChild(noDataMsg);
             renderDecisionTable(container, allScored, nameMap, pathMap, levelMap, isLeafSet, rankMap);
             container.setAttribute('data-view-rendered', 'decision');
@@ -849,7 +849,7 @@
 
             if (rows.length === 0) {
                 var tr = document.createElement('tr');
-                tr.innerHTML = '<td colspan="6" class="text-muted text-center">No nodes match the filter criteria.</td>';
+                tr.innerHTML = '<td colspan="6" class="text-muted text-center">' + t('views.no.filter.match') + '</td>';
                 tbody.appendChild(tr);
             }
         }

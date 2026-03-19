@@ -216,4 +216,123 @@ abstract class AbstractSeleniumContainerIT {
     void pageHasCorrectTitle() {
         assertThat(driver.getTitle()).isNotEmpty();
     }
+
+    // ── Help-Tab tests ───────────────────────────────────────────────────────
+
+    @Test
+    @Order(15)
+    void helpTabLoadsAndDisplaysToc() {
+        WebElement helpTab = driver.findElement(
+                By.cssSelector("#mainNavTabs .nav-link[data-page='help']"));
+        helpTab.click();
+
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(ExpectedConditions.presenceOfElementLocated(
+                        By.cssSelector("#helpTocList .help-toc-item")));
+
+        List<WebElement> tocItems = driver.findElements(
+                By.cssSelector("#helpTocList .help-toc-item"));
+        assertThat(tocItems).isNotEmpty();
+    }
+
+    @Test
+    @Order(16)
+    void helpTabLoadsDocument() {
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(ExpectedConditions.elementToBeClickable(
+                        By.cssSelector("#helpTocList .help-toc-item")));
+        WebElement firstItem = driver.findElement(
+                By.cssSelector("#helpTocList .help-toc-item"));
+        firstItem.click();
+
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(ExpectedConditions.presenceOfElementLocated(
+                        By.cssSelector("#helpDocBody h1, #helpDocBody h2")));
+
+        WebElement docBody = driver.findElement(By.id("helpDocBody"));
+        assertThat(docBody.getText()).isNotEmpty();
+    }
+
+    // ── i18n Language Switch tests ───────────────────────────────────────────
+
+    @Test
+    @Order(17)
+    void languageSwitchToGermanChangesUiLabels() {
+        // Navigate to home first (in English by default)
+        driver.get("http://app:8080/");
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+
+        // Get English label for the Analyze tab
+        WebElement analyzeTab = driver.findElement(
+                By.cssSelector("#mainNavTabs .nav-link[data-page='analyze']"));
+        String englishText = analyzeTab.getText().trim();
+
+        // Switch to German via lang selector
+        org.openqa.selenium.support.ui.Select langSelect =
+                new org.openqa.selenium.support.ui.Select(
+                        driver.findElement(By.id("langSelector")));
+        langSelect.selectByValue("de");
+
+        // Wait for page reload with German locale
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .until(ExpectedConditions.presenceOfElementLocated(
+                        By.cssSelector("#taxonomyTree .tax-node")));
+
+        // Verify German label is different from English
+        WebElement analyzeTabDe = driver.findElement(
+                By.cssSelector("#mainNavTabs .nav-link[data-page='analyze']"));
+        String germanText = analyzeTabDe.getText().trim();
+        assertThat(germanText).isNotEqualTo(englishText);
+    }
+
+    @Test
+    @Order(18)
+    void helpTabServesGermanDocsWhenLocaleIsDe() {
+        // Should still be in German locale from previous test
+        // Navigate to Help tab
+        WebElement helpTab = driver.findElement(
+                By.cssSelector("#mainNavTabs .nav-link[data-page='help']"));
+        helpTab.click();
+
+        // Wait for TOC to load
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(ExpectedConditions.presenceOfElementLocated(
+                        By.cssSelector("#helpTocList .help-toc-item")));
+
+        // Click first TOC entry
+        driver.findElement(By.cssSelector("#helpTocList .help-toc-item")).click();
+
+        // Wait for document to render
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(ExpectedConditions.presenceOfElementLocated(
+                        By.cssSelector("#helpDocBody h1, #helpDocBody h2")));
+
+        // Verify document contains German text (docs/de/ has German translations)
+        String content = driver.findElement(By.id("helpDocBody")).getText();
+        assertThat(content).isNotEmpty();
+        // German docs should contain typical German words
+        assertThat(content).containsAnyOf(
+                "Benutzer", "Geschäftsanforderung", "Taxonomie",
+                "Architektur", "Konfiguration", "Übersicht",
+                "Anforderung", "Analysator");
+    }
+
+    @Test
+    @Order(19)
+    void switchBackToEnglish() {
+        // Switch back to English to not affect any further tests
+        org.openqa.selenium.support.ui.Select langSelect =
+                new org.openqa.selenium.support.ui.Select(
+                        driver.findElement(By.id("langSelector")));
+        langSelect.selectByValue("en");
+
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .until(ExpectedConditions.presenceOfElementLocated(
+                        By.cssSelector("#taxonomyTree .tax-node")));
+
+        WebElement analyzeTab = driver.findElement(
+                By.cssSelector("#mainNavTabs .nav-link[data-page='analyze']"));
+        assertThat(analyzeTab.getText().trim()).contains("Analyze");
+    }
 }

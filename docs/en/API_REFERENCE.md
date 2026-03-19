@@ -1,5 +1,8 @@
 # Taxonomy Architecture Analyzer — API Reference
 
+> **📌 This API reference documents the REST interface for automation and integration.**
+> For end-user workflows, use the GUI. Features are not complete when only available via REST.
+
 > **Audience:** This reference is for developers building **automations, CI/CD integrations,
 > and administrative scripts**. If you are an end user, start with the
 > [User Guide](USER_GUIDE.md) — all features described there are available through the

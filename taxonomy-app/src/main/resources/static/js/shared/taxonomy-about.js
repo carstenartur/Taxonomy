@@ -10,6 +10,7 @@ window.TaxonomyAbout = (function () {
     function el(id) { return document.getElementById(id); }
 
     var escapeHtml = TaxonomyUtils.escapeHtml;
+    var t = TaxonomyI18n.t;
 
     function formatDate(val) {
         if (!val) return '—';
@@ -73,7 +74,7 @@ window.TaxonomyAbout = (function () {
                 contentEl.textContent = text;
             })
             .catch(function () {
-                contentEl.textContent = 'Could not load third-party notices.';
+                contentEl.textContent = t('about.third.party.error');
             });
     }
 

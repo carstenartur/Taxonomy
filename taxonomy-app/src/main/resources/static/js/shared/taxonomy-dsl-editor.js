@@ -278,7 +278,7 @@
                 if (!hasDraft) {
                     var opt = document.createElement('option');
                     opt.value = 'draft';
-                    opt.textContent = 'draft (new)';
+                    opt.textContent = t('dsl.branch.draft.new');
                     branchSelect.insertBefore(opt, branchSelect.firstChild);
                 }
                 branchSelect.value = current;
@@ -447,7 +447,7 @@
     function renderDiff(data, beforeId, afterId) {
         if (!diffOutput) return;
         if (data.isEmpty) {
-            diffOutput.innerHTML = '<span class="text-muted">No changes</span>';
+            diffOutput.innerHTML = '<span class="text-muted">' + TaxonomyUtils.escapeHtml(t('dsl.diff.no.changes')) + '</span>';
             return;
         }
         var html = '<div class="small">';
