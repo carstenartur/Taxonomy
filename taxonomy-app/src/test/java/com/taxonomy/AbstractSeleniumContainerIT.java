@@ -309,8 +309,9 @@ abstract class AbstractSeleniumContainerIT {
         assertThat(content).isNotEmpty();
         // German docs should contain typical German words
         assertThat(content).containsAnyOf(
-                "Benutzer", "Analyse", "Anforderung", "Taxonomie",
-                "Architektur", "Anleitung", "Konfiguration", "Übersicht");
+                "Benutzer", "Geschäftsanforderung", "Taxonomie",
+                "Architektur", "Konfiguration", "Übersicht",
+                "Anforderung", "Analysator");
     }
 
     @Test

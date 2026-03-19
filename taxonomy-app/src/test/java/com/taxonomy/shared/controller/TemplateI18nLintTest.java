@@ -30,7 +30,9 @@ class TemplateI18nLintTest {
         }
         String template = Files.readString(templatePath);
 
-        // Match card-header divs that contain visible text (non-empty content)
+        // Match card-header divs that contain direct visible text (non-empty content
+        // between tags). This intentionally only matches simple <div class="card-header">Text</div>
+        // patterns — card-headers with nested <span> elements should use th:text on the spans.
         Pattern pattern = Pattern.compile(
                 "<div[^>]*class=\"[^\"]*card-header[^\"]*\"[^>]*>[^<]+</div>");
         Matcher m = pattern.matcher(template);
