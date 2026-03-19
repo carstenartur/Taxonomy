@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SystemRepositoryService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">SystemRepositoryService.java</span></div><h1>SystemRepositoryService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.model.RepositoryTopologyMode;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.repository.SystemRepositoryRepository;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.UUID;
+
+/**
+ * Manages the system-owned central repository configuration.
+ *
+ * &lt;p&gt;On application startup, this service ensures that exactly one primary
+ * system repository record exists. The system repository defines the shared
+ * integration branch name and topology mode used by all user workspaces.
+ *
+ * &lt;p&gt;Other services (e.g. {@link SyncIntegrationService}) use this service
+ * to look up the shared branch name instead of hardcoding it.
+ */
+@Service
+public class SystemRepositoryService {
+
+<span class="fc" id="L27">    private static final Logger log = LoggerFactory.getLogger(SystemRepositoryService.class);</span>
+
+    private final SystemRepositoryRepository repository;
+
+<span class="fc" id="L31">    public SystemRepositoryService(SystemRepositoryRepository repository) {</span>
+<span class="fc" id="L32">        this.repository = repository;</span>
+<span class="fc" id="L33">    }</span>
+
+    /**
+     * Ensure a primary system repository record exists on startup.
+     *
+     * &lt;p&gt;If no primary repository is found, a new one is created with
+     * default values (INTERNAL_SHARED topology, &quot;draft&quot; default branch).
+     */
+    @PostConstruct
+    public void ensureSystemRepository() {
+        try {
+<span class="fc bfc" id="L44" title="All 2 branches covered.">            if (repository.findByPrimaryRepoTrue().isEmpty()) {</span>
+<span class="fc" id="L45">                SystemRepository sysRepo = new SystemRepository();</span>
+<span class="fc" id="L46">                sysRepo.setRepositoryId(UUID.randomUUID().toString());</span>
+<span class="fc" id="L47">                sysRepo.setDisplayName(&quot;Shared Architecture Repository&quot;);</span>
+<span class="fc" id="L48">                sysRepo.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);</span>
+<span class="fc" id="L49">                sysRepo.setDefaultBranch(&quot;draft&quot;);</span>
+<span class="fc" id="L50">                sysRepo.setPrimaryRepo(true);</span>
+<span class="fc" id="L51">                sysRepo.setCreatedAt(Instant.now());</span>
+<span class="fc" id="L52">                repository.save(sysRepo);</span>
+<span class="fc" id="L53">                log.info(&quot;Created primary system repository (topology=INTERNAL_SHARED, branch=draft)&quot;);</span>
+            }
+<span class="nc" id="L55">        } catch (Exception e) {</span>
+<span class="nc" id="L56">            log.warn(&quot;Could not ensure system repository: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L57">        }</span>
+<span class="fc" id="L58">    }</span>
+
+    /**
+     * Get the primary system repository.
+     *
+     * @return the primary system repository entity
+     * @throws IllegalStateException if no primary repository is configured
+     */
+    public SystemRepository getPrimaryRepository() {
+<span class="fc" id="L67">        return repository.findByPrimaryRepoTrue()</span>
+<span class="fc" id="L68">                .orElseThrow(() -&gt; new IllegalStateException(&quot;No primary system repository configured&quot;));</span>
+    }
+
+    /**
+     * Get the shared branch name from the primary system repository.
+     *
+     * &lt;p&gt;Falls back to {@code &quot;draft&quot;} if the system repository is not yet
+     * available (e.g. during early startup or test scenarios).
+     *
+     * @return the shared branch name
+     */
+    public String getSharedBranch() {
+        try {
+<span class="fc" id="L81">            return getPrimaryRepository().getDefaultBranch();</span>
+<span class="fc" id="L82">        } catch (Exception e) {</span>
+<span class="fc" id="L83">            log.debug(&quot;System repository not available, falling back to 'draft': {}&quot;, e.getMessage());</span>
+<span class="fc" id="L84">            return &quot;draft&quot;;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

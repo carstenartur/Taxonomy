@@ -29,20 +29,24 @@ public class SyncIntegrationService {
 
 <span class="fc" id="L30">    private static final Logger log = LoggerFactory.getLogger(SyncIntegrationService.class);</span>
 
-    /** The default shared integration branch name. */
-    private static final String SHARED_BRANCH = &quot;draft&quot;;
-
     private final SyncStateRepository syncStateRepository;
     private final DslGitRepository gitRepository;
     private final UserWorkspaceRepository workspaceRepository;
+    private final SystemRepositoryService systemRepositoryService;
 
     public SyncIntegrationService(SyncStateRepository syncStateRepository,
                                   DslGitRepository gitRepository,
-<span class="fc" id="L41">                                  UserWorkspaceRepository workspaceRepository) {</span>
-<span class="fc" id="L42">        this.syncStateRepository = syncStateRepository;</span>
-<span class="fc" id="L43">        this.gitRepository = gitRepository;</span>
-<span class="fc" id="L44">        this.workspaceRepository = workspaceRepository;</span>
+                                  UserWorkspaceRepository workspaceRepository,
+<span class="fc" id="L40">                                  SystemRepositoryService systemRepositoryService) {</span>
+<span class="fc" id="L41">        this.syncStateRepository = syncStateRepository;</span>
+<span class="fc" id="L42">        this.gitRepository = gitRepository;</span>
+<span class="fc" id="L43">        this.workspaceRepository = workspaceRepository;</span>
+<span class="fc" id="L44">        this.systemRepositoryService = systemRepositoryService;</span>
 <span class="fc" id="L45">    }</span>
+
+    private String getSharedBranch() {
+<span class="fc" id="L48">        return systemRepositoryService.getSharedBranch();</span>
+    }
 
     /**
      * Get or create the sync state for a user.
@@ -56,30 +60,30 @@ public class SyncIntegrationService {
      * @return the sync state entity (never null)
      */
     public SyncState getSyncState(String username) {
-<span class="fc" id="L59">        return syncStateRepository.findByUsername(username)</span>
-<span class="fc" id="L60">                .orElseGet(() -&gt; createSyncState(username));</span>
+<span class="fc" id="L63">        return syncStateRepository.findByUsername(username)</span>
+<span class="fc" id="L64">                .orElseGet(() -&gt; createSyncState(username));</span>
     }
 
     private SyncState createSyncState(String username) {
-<span class="fc" id="L64">        log.info(&quot;Creating sync state for user '{}'&quot;, username);</span>
-<span class="fc" id="L65">        SyncState state = new SyncState();</span>
-<span class="fc" id="L66">        state.setUsername(username);</span>
+<span class="fc" id="L68">        log.info(&quot;Creating sync state for user '{}'&quot;, username);</span>
+<span class="fc" id="L69">        SyncState state = new SyncState();</span>
+<span class="fc" id="L70">        state.setUsername(username);</span>
         // Link to existing UserWorkspace if available; otherwise generate a new ID
-<span class="fc" id="L68">        String wsId = workspaceRepository.findByUsernameAndSharedFalse(username)</span>
-<span class="fc" id="L69">                .map(UserWorkspace::getWorkspaceId)</span>
-<span class="fc" id="L70">                .orElseGet(() -&gt; UUID.randomUUID().toString());</span>
-<span class="fc" id="L71">        state.setWorkspaceId(wsId);</span>
-<span class="fc" id="L72">        state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
-<span class="fc" id="L73">        state.setUnpublishedCommitCount(0);</span>
-<span class="fc" id="L74">        state.setCreatedAt(Instant.now());</span>
+<span class="fc" id="L72">        String wsId = workspaceRepository.findByUsernameAndSharedFalse(username)</span>
+<span class="fc" id="L73">                .map(UserWorkspace::getWorkspaceId)</span>
+<span class="fc" id="L74">                .orElseGet(() -&gt; UUID.randomUUID().toString());</span>
+<span class="fc" id="L75">        state.setWorkspaceId(wsId);</span>
+<span class="fc" id="L76">        state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
+<span class="fc" id="L77">        state.setUnpublishedCommitCount(0);</span>
+<span class="fc" id="L78">        state.setCreatedAt(Instant.now());</span>
         try {
-<span class="fc" id="L76">            return syncStateRepository.save(state);</span>
-<span class="nc" id="L77">        } catch (Exception e) {</span>
+<span class="fc" id="L80">            return syncStateRepository.save(state);</span>
+<span class="nc" id="L81">        } catch (Exception e) {</span>
             // Non-fatal: sync state can be recreated; subsequent calls
             // will retry persistence via the orElseGet path.
-<span class="nc" id="L80">            log.warn(&quot;Could not persist sync state for user '{}': {}&quot;,</span>
-<span class="nc" id="L81">                    username, e.getMessage());</span>
-<span class="nc" id="L82">            return state;</span>
+<span class="nc" id="L84">            log.warn(&quot;Could not persist sync state for user '{}': {}&quot;,</span>
+<span class="nc" id="L85">                    username, e.getMessage());</span>
+<span class="nc" id="L86">            return state;</span>
         }
     }
 
@@ -96,34 +100,34 @@ public class SyncIntegrationService {
      * @throws IOException if the Git merge operation fails
      */
     public String syncFromShared(String username, String userBranch) throws IOException {
-<span class="fc" id="L99">        log.info(&quot;User '{}': syncing from shared branch '{}' into '{}'&quot;,</span>
-                username, SHARED_BRANCH, userBranch);
+<span class="fc" id="L103">        log.info(&quot;User '{}': syncing from shared branch '{}' into '{}'&quot;,</span>
+<span class="fc" id="L104">                username, getSharedBranch(), userBranch);</span>
 
-<span class="fc" id="L102">        String mergeCommit = gitRepository.merge(SHARED_BRANCH, userBranch);</span>
+<span class="fc" id="L106">        String mergeCommit = gitRepository.merge(getSharedBranch(), userBranch);</span>
 
-<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        if (mergeCommit == null) {</span>
-<span class="nc" id="L105">            log.warn(&quot;User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)&quot;,</span>
-                    username, SHARED_BRANCH, userBranch);
-<span class="nc" id="L107">            throw new IOException(&quot;Sync failed: merge returned null (branch missing or conflict)&quot;);</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">        if (mergeCommit == null) {</span>
+<span class="nc" id="L109">            log.warn(&quot;User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)&quot;,</span>
+<span class="nc" id="L110">                    username, getSharedBranch(), userBranch);</span>
+<span class="nc" id="L111">            throw new IOException(&quot;Sync failed: merge returned null (branch missing or conflict)&quot;);</span>
         }
 
         // Update sync state
         try {
-<span class="fc" id="L112">            SyncState state = getSyncState(username);</span>
-<span class="fc" id="L113">            String sharedHead = gitRepository.getHeadCommit(SHARED_BRANCH);</span>
-<span class="fc" id="L114">            state.setLastSyncedCommitId(sharedHead);</span>
-<span class="fc" id="L115">            state.setLastSyncTimestamp(Instant.now());</span>
-<span class="fc" id="L116">            state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
-<span class="fc" id="L117">            state.setUpdatedAt(Instant.now());</span>
-<span class="fc" id="L118">            syncStateRepository.save(state);</span>
-<span class="nc" id="L119">        } catch (Exception e) {</span>
-<span class="nc" id="L120">            log.warn(&quot;Could not update sync state after pull for user '{}': {}&quot;,</span>
-<span class="nc" id="L121">                    username, e.getMessage());</span>
-<span class="fc" id="L122">        }</span>
+<span class="fc" id="L116">            SyncState state = getSyncState(username);</span>
+<span class="fc" id="L117">            String sharedHead = gitRepository.getHeadCommit(getSharedBranch());</span>
+<span class="fc" id="L118">            state.setLastSyncedCommitId(sharedHead);</span>
+<span class="fc" id="L119">            state.setLastSyncTimestamp(Instant.now());</span>
+<span class="fc" id="L120">            state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
+<span class="fc" id="L121">            state.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L122">            syncStateRepository.save(state);</span>
+<span class="nc" id="L123">        } catch (Exception e) {</span>
+<span class="nc" id="L124">            log.warn(&quot;Could not update sync state after pull for user '{}': {}&quot;,</span>
+<span class="nc" id="L125">                    username, e.getMessage());</span>
+<span class="fc" id="L126">        }</span>
 
-<span class="fc" id="L124">        log.info(&quot;User '{}': sync from shared complete, merge commit='{}'&quot;,</span>
-<span class="fc" id="L125">                username, abbreviateSha(mergeCommit));</span>
-<span class="fc" id="L126">        return mergeCommit;</span>
+<span class="fc" id="L128">        log.info(&quot;User '{}': sync from shared complete, merge commit='{}'&quot;,</span>
+<span class="fc" id="L129">                username, abbreviateSha(mergeCommit));</span>
+<span class="fc" id="L130">        return mergeCommit;</span>
     }
 
     /**
@@ -139,34 +143,34 @@ public class SyncIntegrationService {
      * @throws IOException if the Git merge operation fails
      */
     public String publishToShared(String username, String userBranch) throws IOException {
-<span class="fc" id="L142">        log.info(&quot;User '{}': publishing branch '{}' to shared branch '{}'&quot;,</span>
-                username, userBranch, SHARED_BRANCH);
+<span class="fc" id="L146">        log.info(&quot;User '{}': publishing branch '{}' to shared branch '{}'&quot;,</span>
+<span class="fc" id="L147">                username, userBranch, getSharedBranch());</span>
 
-<span class="fc" id="L145">        String mergeCommit = gitRepository.merge(userBranch, SHARED_BRANCH);</span>
+<span class="fc" id="L149">        String mergeCommit = gitRepository.merge(userBranch, getSharedBranch());</span>
 
-<span class="pc bpc" id="L147" title="1 of 2 branches missed.">        if (mergeCommit == null) {</span>
-<span class="nc" id="L148">            log.warn(&quot;User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)&quot;,</span>
-                    username, userBranch, SHARED_BRANCH);
-<span class="nc" id="L150">            throw new IOException(&quot;Publish failed: merge returned null (branch missing or conflict)&quot;);</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        if (mergeCommit == null) {</span>
+<span class="nc" id="L152">            log.warn(&quot;User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)&quot;,</span>
+<span class="nc" id="L153">                    username, userBranch, getSharedBranch());</span>
+<span class="nc" id="L154">            throw new IOException(&quot;Publish failed: merge returned null (branch missing or conflict)&quot;);</span>
         }
 
         // Update sync state
         try {
-<span class="fc" id="L155">            SyncState state = getSyncState(username);</span>
-<span class="fc" id="L156">            state.setLastPublishedCommitId(mergeCommit);</span>
-<span class="fc" id="L157">            state.setLastPublishTimestamp(Instant.now());</span>
-<span class="fc" id="L158">            state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
-<span class="fc" id="L159">            state.setUnpublishedCommitCount(0);</span>
-<span class="fc" id="L160">            state.setUpdatedAt(Instant.now());</span>
-<span class="fc" id="L161">            syncStateRepository.save(state);</span>
-<span class="nc" id="L162">        } catch (Exception e) {</span>
-<span class="nc" id="L163">            log.warn(&quot;Could not update sync state after publish for user '{}': {}&quot;,</span>
-<span class="nc" id="L164">                    username, e.getMessage());</span>
-<span class="fc" id="L165">        }</span>
+<span class="fc" id="L159">            SyncState state = getSyncState(username);</span>
+<span class="fc" id="L160">            state.setLastPublishedCommitId(mergeCommit);</span>
+<span class="fc" id="L161">            state.setLastPublishTimestamp(Instant.now());</span>
+<span class="fc" id="L162">            state.setSyncStatus(&quot;UP_TO_DATE&quot;);</span>
+<span class="fc" id="L163">            state.setUnpublishedCommitCount(0);</span>
+<span class="fc" id="L164">            state.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L165">            syncStateRepository.save(state);</span>
+<span class="nc" id="L166">        } catch (Exception e) {</span>
+<span class="nc" id="L167">            log.warn(&quot;Could not update sync state after publish for user '{}': {}&quot;,</span>
+<span class="nc" id="L168">                    username, e.getMessage());</span>
+<span class="fc" id="L169">        }</span>
 
-<span class="fc" id="L167">        log.info(&quot;User '{}': publish to shared complete, merge commit='{}'&quot;,</span>
-<span class="fc" id="L168">                username, abbreviateSha(mergeCommit));</span>
-<span class="fc" id="L169">        return mergeCommit;</span>
+<span class="fc" id="L171">        log.info(&quot;User '{}': publish to shared complete, merge commit='{}'&quot;,</span>
+<span class="fc" id="L172">                username, abbreviateSha(mergeCommit));</span>
+<span class="fc" id="L173">        return mergeCommit;</span>
     }
 
     /**
@@ -187,37 +191,37 @@ public class SyncIntegrationService {
      * @throws IOException if Git operations fail
      */
     public int getLocalChanges(String username, String userBranch) throws IOException {
-<span class="fc" id="L190">        int[] aheadBehind = gitRepository.getAheadBehindCounts(userBranch, SHARED_BRANCH);</span>
-<span class="fc" id="L191">        int ahead = aheadBehind[0];</span>
-<span class="fc" id="L192">        int behind = aheadBehind[1];</span>
+<span class="fc" id="L194">        int[] aheadBehind = gitRepository.getAheadBehindCounts(userBranch, getSharedBranch());</span>
+<span class="fc" id="L195">        int ahead = aheadBehind[0];</span>
+<span class="fc" id="L196">        int behind = aheadBehind[1];</span>
 
         String status;
-<span class="pc bpc" id="L195" title="2 of 4 branches missed.">        if (ahead == 0 &amp;&amp; behind == 0) {</span>
-<span class="fc" id="L196">            status = &quot;UP_TO_DATE&quot;;</span>
-<span class="nc bnc" id="L197" title="All 4 branches missed.">        } else if (ahead &gt; 0 &amp;&amp; behind == 0) {</span>
-<span class="nc" id="L198">            status = &quot;AHEAD&quot;;</span>
-<span class="nc bnc" id="L199" title="All 4 branches missed.">        } else if (ahead == 0 &amp;&amp; behind &gt; 0) {</span>
-<span class="nc" id="L200">            status = &quot;BEHIND&quot;;</span>
+<span class="pc bpc" id="L199" title="2 of 4 branches missed.">        if (ahead == 0 &amp;&amp; behind == 0) {</span>
+<span class="fc" id="L200">            status = &quot;UP_TO_DATE&quot;;</span>
+<span class="nc bnc" id="L201" title="All 4 branches missed.">        } else if (ahead &gt; 0 &amp;&amp; behind == 0) {</span>
+<span class="nc" id="L202">            status = &quot;AHEAD&quot;;</span>
+<span class="nc bnc" id="L203" title="All 4 branches missed.">        } else if (ahead == 0 &amp;&amp; behind &gt; 0) {</span>
+<span class="nc" id="L204">            status = &quot;BEHIND&quot;;</span>
         } else {
-<span class="nc" id="L202">            status = &quot;DIVERGED&quot;;</span>
+<span class="nc" id="L206">            status = &quot;DIVERGED&quot;;</span>
         }
 
-<span class="fc" id="L205">        updateUnpublishedCount(username, ahead, status);</span>
-<span class="fc" id="L206">        return ahead;</span>
+<span class="fc" id="L209">        updateUnpublishedCount(username, ahead, status);</span>
+<span class="fc" id="L210">        return ahead;</span>
     }
 
     private void updateUnpublishedCount(String username, int count, String status) {
         try {
-<span class="fc" id="L211">            SyncState state = getSyncState(username);</span>
-<span class="fc" id="L212">            state.setUnpublishedCommitCount(count);</span>
-<span class="fc" id="L213">            state.setSyncStatus(status);</span>
-<span class="fc" id="L214">            state.setUpdatedAt(Instant.now());</span>
-<span class="fc" id="L215">            syncStateRepository.save(state);</span>
-<span class="nc" id="L216">        } catch (Exception e) {</span>
-<span class="nc" id="L217">            log.warn(&quot;Could not update unpublished count for user '{}': {}&quot;,</span>
-<span class="nc" id="L218">                    username, e.getMessage());</span>
-<span class="fc" id="L219">        }</span>
-<span class="fc" id="L220">    }</span>
+<span class="fc" id="L215">            SyncState state = getSyncState(username);</span>
+<span class="fc" id="L216">            state.setUnpublishedCommitCount(count);</span>
+<span class="fc" id="L217">            state.setSyncStatus(status);</span>
+<span class="fc" id="L218">            state.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L219">            syncStateRepository.save(state);</span>
+<span class="nc" id="L220">        } catch (Exception e) {</span>
+<span class="nc" id="L221">            log.warn(&quot;Could not update unpublished count for user '{}': {}&quot;,</span>
+<span class="nc" id="L222">                    username, e.getMessage());</span>
+<span class="fc" id="L223">        }</span>
+<span class="fc" id="L224">    }</span>
 
     /**
      * Check if the workspace has unpublished changes.
@@ -230,13 +234,13 @@ public class SyncIntegrationService {
      */
     public boolean isDirty(String username) {
         try {
-<span class="fc" id="L233">            SyncState state = getSyncState(username);</span>
-<span class="pc bpc" id="L234" title="1 of 2 branches missed.">            return state.getUnpublishedCommitCount() &gt; 0</span>
-<span class="pc bpc" id="L235" title="1 of 2 branches missed.">                    || &quot;AHEAD&quot;.equals(state.getSyncStatus())</span>
-<span class="pc bpc" id="L236" title="1 of 2 branches missed.">                    || &quot;DIVERGED&quot;.equals(state.getSyncStatus());</span>
-<span class="nc" id="L237">        } catch (Exception e) {</span>
-<span class="nc" id="L238">            log.warn(&quot;Could not check dirty state for user '{}': {}&quot;, username, e.getMessage());</span>
-<span class="nc" id="L239">            return false;</span>
+<span class="fc" id="L237">            SyncState state = getSyncState(username);</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">            return state.getUnpublishedCommitCount() &gt; 0</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">                    || &quot;AHEAD&quot;.equals(state.getSyncStatus())</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">                    || &quot;DIVERGED&quot;.equals(state.getSyncStatus());</span>
+<span class="nc" id="L241">        } catch (Exception e) {</span>
+<span class="nc" id="L242">            log.warn(&quot;Could not check dirty state for user '{}': {}&quot;, username, e.getMessage());</span>
+<span class="nc" id="L243">            return false;</span>
         }
     }
 
@@ -245,13 +249,13 @@ public class SyncIntegrationService {
     /**
      * Resolution strategy for a diverged sync state.
      */
-<span class="fc" id="L248">    public enum DivergedStrategy {</span>
+<span class="fc" id="L252">    public enum DivergedStrategy {</span>
         /** Merge the shared branch into the user's branch. */
-<span class="fc" id="L250">        MERGE,</span>
+<span class="fc" id="L254">        MERGE,</span>
         /** Keep the user's branch, discard shared changes. */
-<span class="fc" id="L252">        KEEP_MINE,</span>
+<span class="fc" id="L256">        KEEP_MINE,</span>
         /** Replace the user's branch with the shared branch. */
-<span class="fc" id="L254">        TAKE_SHARED</span>
+<span class="fc" id="L258">        TAKE_SHARED</span>
     }
 
     /**
@@ -272,81 +276,81 @@ public class SyncIntegrationService {
      */
     public String resolveDiverged(String username, String userBranch, DivergedStrategy strategy)
             throws IOException {
-<span class="fc" id="L275">        log.info(&quot;User '{}': resolving DIVERGED state with strategy {} on branch '{}'&quot;,</span>
+<span class="fc" id="L279">        log.info(&quot;User '{}': resolving DIVERGED state with strategy {} on branch '{}'&quot;,</span>
                 username, strategy, userBranch);
 
-<span class="pc bpc" id="L278" title="1 of 4 branches missed.">        switch (strategy) {</span>
+<span class="pc bpc" id="L282" title="1 of 4 branches missed.">        switch (strategy) {</span>
             case MERGE:
-<span class="fc" id="L280">                String mergeCommit = gitRepository.merge(SHARED_BRANCH, userBranch);</span>
-<span class="fc bfc" id="L281" title="All 2 branches covered.">                if (mergeCommit == null) {</span>
-<span class="fc" id="L282">                    throw new IOException(&quot;Merge failed — conflict could not be auto-resolved. &quot; +</span>
+<span class="fc" id="L284">                String mergeCommit = gitRepository.merge(getSharedBranch(), userBranch);</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">                if (mergeCommit == null) {</span>
+<span class="fc" id="L286">                    throw new IOException(&quot;Merge failed — conflict could not be auto-resolved. &quot; +</span>
                             &quot;Try KEEP_MINE or TAKE_SHARED strategy instead.&quot;);
                 }
-<span class="fc" id="L285">                updateSyncStateAfterResolve(username, &quot;UP_TO_DATE&quot;,</span>
-<span class="fc" id="L286">                        gitRepository.getHeadCommit(SHARED_BRANCH), null);</span>
-<span class="fc" id="L287">                return &quot;Merged shared into your branch: &quot; + abbreviateSha(mergeCommit);</span>
+<span class="fc" id="L289">                updateSyncStateAfterResolve(username, &quot;UP_TO_DATE&quot;,</span>
+<span class="fc" id="L290">                        gitRepository.getHeadCommit(getSharedBranch()), null);</span>
+<span class="fc" id="L291">                return &quot;Merged shared into your branch: &quot; + abbreviateSha(mergeCommit);</span>
 
             case KEEP_MINE:
                 // Force publish: merge user → shared
-<span class="fc" id="L291">                String publishCommit = gitRepository.merge(userBranch, SHARED_BRANCH);</span>
-<span class="pc bpc" id="L292" title="1 of 2 branches missed.">                if (publishCommit == null) {</span>
+<span class="fc" id="L295">                String publishCommit = gitRepository.merge(userBranch, getSharedBranch());</span>
+<span class="pc bpc" id="L296" title="1 of 2 branches missed.">                if (publishCommit == null) {</span>
                     // If merge fails, restore from user's HEAD
-<span class="nc" id="L294">                    String userHead = gitRepository.getHeadCommit(userBranch);</span>
-<span class="nc" id="L295">                    publishCommit = gitRepository.restore(userHead, SHARED_BRANCH);</span>
-<span class="nc bnc" id="L296" title="All 2 branches missed.">                    if (publishCommit == null) {</span>
-<span class="nc" id="L297">                        throw new IOException(&quot;Could not force-publish user branch to shared&quot;);</span>
+<span class="nc" id="L298">                    String userHead = gitRepository.getHeadCommit(userBranch);</span>
+<span class="nc" id="L299">                    publishCommit = gitRepository.restore(userHead, getSharedBranch());</span>
+<span class="nc bnc" id="L300" title="All 2 branches missed.">                    if (publishCommit == null) {</span>
+<span class="nc" id="L301">                        throw new IOException(&quot;Could not force-publish user branch to shared&quot;);</span>
                     }
                 }
-<span class="fc" id="L300">                updateSyncStateAfterResolve(username, &quot;UP_TO_DATE&quot;,</span>
+<span class="fc" id="L304">                updateSyncStateAfterResolve(username, &quot;UP_TO_DATE&quot;,</span>
                         null, publishCommit);
-<span class="fc" id="L302">                return &quot;Published your changes to shared: &quot; + abbreviateSha(publishCommit);</span>
+<span class="fc" id="L306">                return &quot;Published your changes to shared: &quot; + abbreviateSha(publishCommit);</span>
 
             case TAKE_SHARED:
                 // Force sync: restore user branch from shared HEAD
-<span class="fc" id="L306">                String sharedHead = gitRepository.getHeadCommit(SHARED_BRANCH);</span>
-<span class="pc bpc" id="L307" title="1 of 2 branches missed.">                if (sharedHead == null) {</span>
-<span class="nc" id="L308">                    throw new IOException(&quot;Shared branch has no commits&quot;);</span>
+<span class="fc" id="L310">                String sharedHead = gitRepository.getHeadCommit(getSharedBranch());</span>
+<span class="pc bpc" id="L311" title="1 of 2 branches missed.">                if (sharedHead == null) {</span>
+<span class="nc" id="L312">                    throw new IOException(&quot;Shared branch has no commits&quot;);</span>
                 }
-<span class="fc" id="L310">                String restoreCommit = gitRepository.restore(sharedHead, userBranch);</span>
-<span class="pc bpc" id="L311" title="1 of 2 branches missed.">                if (restoreCommit == null) {</span>
-<span class="nc" id="L312">                    throw new IOException(&quot;Could not restore user branch from shared&quot;);</span>
+<span class="fc" id="L314">                String restoreCommit = gitRepository.restore(sharedHead, userBranch);</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">                if (restoreCommit == null) {</span>
+<span class="nc" id="L316">                    throw new IOException(&quot;Could not restore user branch from shared&quot;);</span>
                 }
-<span class="fc" id="L314">                updateSyncStateAfterResolve(username, &quot;UP_TO_DATE&quot;,</span>
+<span class="fc" id="L318">                updateSyncStateAfterResolve(username, &quot;UP_TO_DATE&quot;,</span>
                         sharedHead, null);
-<span class="fc" id="L316">                return &quot;Replaced your branch with shared content: &quot; + abbreviateSha(restoreCommit);</span>
+<span class="fc" id="L320">                return &quot;Replaced your branch with shared content: &quot; + abbreviateSha(restoreCommit);</span>
 
             default:
-<span class="nc" id="L319">                throw new IllegalArgumentException(&quot;Unknown strategy: &quot; + strategy);</span>
+<span class="nc" id="L323">                throw new IllegalArgumentException(&quot;Unknown strategy: &quot; + strategy);</span>
         }
     }
 
     private void updateSyncStateAfterResolve(String username, String status,
                                               String syncedCommitId, String publishedCommitId) {
         try {
-<span class="fc" id="L326">            SyncState state = getSyncState(username);</span>
-<span class="fc" id="L327">            state.setSyncStatus(status);</span>
-<span class="fc" id="L328">            state.setUnpublishedCommitCount(0);</span>
-<span class="fc" id="L329">            state.setLastSyncTimestamp(Instant.now());</span>
-<span class="fc" id="L330">            state.setUpdatedAt(Instant.now());</span>
-<span class="fc bfc" id="L331" title="All 2 branches covered.">            if (syncedCommitId != null) {</span>
-<span class="fc" id="L332">                state.setLastSyncedCommitId(syncedCommitId);</span>
+<span class="fc" id="L330">            SyncState state = getSyncState(username);</span>
+<span class="fc" id="L331">            state.setSyncStatus(status);</span>
+<span class="fc" id="L332">            state.setUnpublishedCommitCount(0);</span>
+<span class="fc" id="L333">            state.setLastSyncTimestamp(Instant.now());</span>
+<span class="fc" id="L334">            state.setUpdatedAt(Instant.now());</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">            if (syncedCommitId != null) {</span>
+<span class="fc" id="L336">                state.setLastSyncedCommitId(syncedCommitId);</span>
             }
-<span class="fc bfc" id="L334" title="All 2 branches covered.">            if (publishedCommitId != null) {</span>
-<span class="fc" id="L335">                state.setLastPublishedCommitId(publishedCommitId);</span>
-<span class="fc" id="L336">                state.setLastPublishTimestamp(Instant.now());</span>
+<span class="fc bfc" id="L338" title="All 2 branches covered.">            if (publishedCommitId != null) {</span>
+<span class="fc" id="L339">                state.setLastPublishedCommitId(publishedCommitId);</span>
+<span class="fc" id="L340">                state.setLastPublishTimestamp(Instant.now());</span>
             }
-<span class="fc" id="L338">            syncStateRepository.save(state);</span>
-<span class="nc" id="L339">        } catch (Exception e) {</span>
-<span class="nc" id="L340">            log.warn(&quot;Could not update sync state after resolve for user '{}': {}&quot;,</span>
-<span class="nc" id="L341">                    username, e.getMessage());</span>
-<span class="fc" id="L342">        }</span>
-<span class="fc" id="L343">    }</span>
+<span class="fc" id="L342">            syncStateRepository.save(state);</span>
+<span class="nc" id="L343">        } catch (Exception e) {</span>
+<span class="nc" id="L344">            log.warn(&quot;Could not update sync state after resolve for user '{}': {}&quot;,</span>
+<span class="nc" id="L345">                    username, e.getMessage());</span>
+<span class="fc" id="L346">        }</span>
+<span class="fc" id="L347">    }</span>
 
     // ── Internal helpers (private) ──────────────────────────────────
 
     private String abbreviateSha(String commitId) {
-<span class="pc bpc" id="L348" title="1 of 2 branches missed.">        if (commitId == null) return &quot;null&quot;;</span>
-<span class="fc" id="L349">        return commitId.substring(0, Math.min(7, commitId.length()));</span>
+<span class="pc bpc" id="L352" title="1 of 2 branches missed.">        if (commitId == null) return &quot;null&quot;;</span>
+<span class="fc" id="L353">        return commitId.substring(0, Math.min(7, commitId.length()));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
