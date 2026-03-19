@@ -5,6 +5,7 @@ Der Taxonomy Architecture Analyzer verwendet **JGit**, um eine vollständige Git
 ## Inhaltsverzeichnis
 
 - [Überblick](#überblick)
+- [Datenmodell-Schichten](#datenmodell-schichten)
 - [Repository-Architektur](#repository-architektur)
 - [Branching](#branching)
 - [Commit-Historie](#commit-historie)
@@ -12,10 +13,12 @@ Der Taxonomy Architecture Analyzer verwendet **JGit**, um eine vollständige Git
 - [Cherry-Pick](#cherry-pick)
 - [Merge](#merge)
 - [Konflikterkennung](#konflikterkennung)
+- [Praxisnahe Workflow-Beispiele](#praxisnahe-workflow-beispiele)
 - [Materialisierung](#materialisierung)
 - [Veralterungsverfolgung](#veralterungsverfolgung)
 - [Hypothesen-Lebenszyklus](#hypothesen-lebenszyklus)
 - [Commit-Historie-Suche](#commit-historie-suche)
+- [Taxonomie-Pflege](#taxonomie-pflege)
 - [REST-API-Endpunkte](#rest-api-endpunkte)
 - [Verwandte Dokumentation](#verwandte-dokumentation)
 
@@ -26,6 +29,53 @@ Der Taxonomy Architecture Analyzer verwendet **JGit**, um eine vollständige Git
 Architecture-DSL-Dokumente (`.taxdsl`-Dateien) werden in einem JGit-DFS-Repository (Distributed File System) gespeichert, das durch HSQLDB-Tabellen (`git_packs`, `git_reflog`) unterstützt wird. Jede Änderung an der DSL erzeugt einen Git-Commit mit Autor, Zeitstempel und Commit-Nachricht — und bietet damit eine vollständige Audit-Spur.
 
 Der Git-Zustand wird über die UI-Statusleiste und die REST-API bereitgestellt, sodass Sie den Zustand des Repositorys überwachen, veraltete Projektionen erkennen und Merge-/Cherry-Pick-Operationen vor der Ausführung in der Vorschau betrachten können.
+
+---
+
+## Datenmodell-Schichten
+
+Das System unterscheidet zwischen **importierten kanonischen Taxonomie-Daten** (in normalen Workflows schreibgeschützt) und **benutzergesteuerten Architektur-Overlays** (frei bearbeitbar). Das Verständnis dieser Trennung ist für produktives Arbeiten wesentlich.
+
+### Schicht 1 — Importierte Taxonomie-Basislinie (schreibgeschützt)
+
+| Attribut | Beschreibung |
+|---|---|
+| **Knoten-Codes** | Hierarchische Kennungen aus dem C3 Taxonomy Catalogue (z. B. `CP-1023`, `CR-1047`) |
+| **Titel** | Offizielle englische Namen gemäß Katalogsveröffentlichung |
+| **Beschreibungen** | Offizielle Beschreibungen aus dem Katalog |
+| **Hierarchie** | Eltern-Kind-Struktur und Ebenen-Zuordnungen |
+
+Diese Attribute werden beim Anwendungsstart aus dem Excel-Arbeitsbuch geladen. **Normale Benutzer-Workflows ändern sie nicht.** Wenn Taxonomie-Elemente in DSL-Dokumenten erscheinen, spiegeln ihre Titel und Beschreibungen die kanonischen Katalogswerte wider.
+
+### Schicht 2 — Architektur-Beziehungen, Zuordnungen, Ansichten, Nachweise (benutzerseitig änderbar)
+
+| Blocktyp | Zweck | Beispiel |
+|---|---|---|
+| `relation` | Gerichtete Verknüpfungen zwischen Elementen | `relation CP-1023 REALIZES CR-1047 { status: accepted; }` |
+| `mapping` | Anforderung-zu-Element-Verknüpfungen | `mapping REQ-001 -> CP-1023 { score: 92; }` |
+| `view` | Benannte Teilmengen für Diagramme | `view "CIS Overview" { include: CP-1023, CR-1047; }` |
+| `evidence` | Begründung für eine Beziehung | `evidence E-001 { relation: CP-1023 REALIZES CR-1047; text: "..."; }` |
+
+Dies sind die primären Objekte, die Benutzer in ihrer täglichen Architekturarbeit erstellen, ändern und versionskontrollieren.
+
+### Schicht 3 — Lokale Erweiterungen und Annotationen (benutzerseitig änderbar)
+
+Erweiterungsattribute mit dem Präfix `x-` können zu jedem Element- oder Beziehungsblock hinzugefügt werden. Sie werden bei der Round-Trip-Serialisierung beibehalten, aber vom System nicht validiert.
+
+```
+element CP-1023 type Capability {
+  title: "Secure Voice";                // ← kanonisch (nicht ändern)
+  x-alias: "SecVoice";                  // ← lokale Annotation (benutzerdefiniert)
+  x-owner: "CIS Division";             // ← lokale Metadaten (benutzerdefiniert)
+  x-criticality: "high";               // ← lokale Metadaten (benutzerdefiniert)
+}
+```
+
+Häufige Verwendungszwecke: projektspezifische Aliase, Zuständigkeitsannotationen, Kritikalitätsbewertungen, Prüfnotizen.
+
+### Schicht 4 — Taxonomie-Pflege (eingeschränkt)
+
+Das Ändern kanonischer Taxonomie-Daten (Titel, Beschreibungen, Hierarchie) ist eine privilegierte Operation, die Taxonomie-Administratoren vorbehalten ist. Siehe [Taxonomie-Pflege](#taxonomie-pflege) für Details.
 
 ---
 
@@ -202,6 +252,109 @@ Der `RepositoryStateGuard` prüft, ob eine Schreiboperation auf dem gegebenen Br
 
 ---
 
+## Praxisnahe Workflow-Beispiele
+
+Die folgenden Beispiele zeigen typische Benutzer-Workflows. Beachten Sie, dass **kanonische Taxonomie-Titel unverändert bleiben** — Benutzer ändern Beziehungen, Zuordnungen, Ansichten, lokale Erweiterungen und Beziehungsstatus.
+
+### Beispiel: Feature-Branch mit neuen Beziehungen
+
+Ein Benutzer erstellt einen Feature-Branch, um neue Architektur-Beziehungen vorzuschlagen:
+
+**Basis (draft-Branch):**
+```
+element CP-1023 type Capability {
+  title: "Secure Voice";
+  description: "Encrypted voice communication";
+}
+
+element CR-1047 type CoreService {
+  title: "Core Communication Services";
+}
+
+relation CP-1023 REALIZES CR-1047 {
+  status: accepted;
+}
+```
+
+**Feature-Branch (feature/voice-gateway):**
+```
+element CP-1023 type Capability {
+  title: "Secure Voice";
+  description: "Encrypted voice communication";
+  x-alias: "SecVoice";
+}
+
+element CR-1047 type CoreService {
+  title: "Core Communication Services";
+}
+
+element CO-1011 type Component {
+  title: "Voice Gateway";
+  description: "SIP/RTP gateway for voice traffic";
+}
+
+relation CP-1023 REALIZES CR-1047 {
+  status: accepted;
+}
+
+relation CO-1011 USES CR-1047 {
+  status: proposed;
+}
+```
+
+**Was sich geändert hat** (typische Diff-Ausgabe):
+- ✅ Lokaler Alias `x-alias: "SecVoice"` zu CP-1023 hinzugefügt
+- ✅ Neues Element CO-1011 (Voice Gateway) hinzugefügt
+- ✅ Neue Beziehung CO-1011 → CR-1047 hinzugefügt
+- ❌ Keine kanonischen Titel oder Beschreibungen wurden geändert
+
+### Beispiel: Cherry-Pick einer Beziehungsstatus-Änderung
+
+Ein Reviewer akzeptiert eine vorgeschlagene Beziehung auf dem `review`-Branch. Die Änderung wird per Cherry-Pick auf `draft` übertragen:
+
+```
+POST /api/dsl/cherry-pick
+{
+  "commitId": "a3f8c2d...",
+  "targetBranch": "draft"
+}
+```
+
+Der Cherry-Pick-Commit ändert nur den Beziehungsstatus:
+```diff
+ relation CO-1011 USES CR-1047 {
+-  status: proposed;
++  status: accepted;
+ }
+```
+
+### Beispiel: Merge mit Konflikt beim Beziehungsstatus
+
+Wenn zwei Branches denselben Beziehungsstatus ändern, tritt ein Konflikt auf:
+
+- **Ours (draft):** `status: proposed;`
+- **Theirs (feature-voice):** `status: accepted;`
+
+Die Benutzeroberfläche zur Konfliktlösung ermöglicht die Auswahl des gewünschten Status oder die manuelle Erstellung des endgültigen Inhalts. Kanonische Taxonomie-Elementtitel sind in normalen Workflows nie Teil solcher Konflikte.
+
+### Beispiel: Ansichts- und Zuordnungsänderungen
+
+Benutzer ändern häufig Architekturansichten und Anforderungszuordnungen:
+
+```diff
++view "CIS Architecture" {
++  include: CP-1023, CR-1047, CO-1011;
++  layout: hierarchical;
++}
++
++mapping REQ-001 -> CP-1023 {
++  score: 92;
++  rationale: "Core secure voice capability";
++}
+```
+
+---
+
 ## Materialisierung
 
 DSL-Dokumente werden in die Anwendungsdatenbank **materialisiert**. Dadurch werden `TaxonomyRelation`-Entitäten aus DSL-Beziehungen erstellt, die im Graph Explorer, in den Beziehungsvorschlägen und in der Architekturansicht sichtbar werden.
@@ -258,6 +411,38 @@ PENDING  →  ACCEPTED  (erstellt TaxonomyRelation)
 ```
 
 Die Hypothesen-API (`/api/dsl/hypotheses`) ermöglicht das Abfragen, Akzeptieren und Ablehnen von Hypothesen, wobei für jede unterstützende Nachweise verfügbar sind.
+
+---
+
+## Taxonomie-Pflege
+
+Das Ändern kanonischer Taxonomie-Daten (Knotentitel, Beschreibungen, Hierarchiestruktur) ist eine **privilegierte administrative Operation**, die von normaler Architekturarbeit getrennt ist.
+
+### Wann Taxonomie-Pflege erforderlich ist
+
+- Korrektur eines Fehlers in einem importierten Katalogtitel
+- Aktualisierung von Beschreibungen entsprechend einer neuen Katalogrevision
+- Hinzufügen lokal definierter Erweiterungsknoten, die im veröffentlichten Katalog nicht vorhanden sind
+
+### Unterschied zu normalen Workflows
+
+| Aspekt | Normale Architekturarbeit | Taxonomie-Pflege |
+|---|---|---|
+| **Was sich ändert** | Beziehungen, Zuordnungen, Ansichten, Nachweise, lokale Erweiterungen | Knotentitel, Beschreibungen, Hierarchie |
+| **Wer führt es durch** | Jeder Architekt oder Analyst | Taxonomie-Administrator |
+| **Häufigkeit** | Täglich | Selten (pro Katalogrevision) |
+| **Prüfprozess** | Standard-Branch-/Merge-Workflow | Administrative Prüfung erforderlich |
+| **Umfang** | Benutzer-Arbeitsbereich oder Feature-Branch | Gemeinsame Basislinie für alle Benutzer |
+
+### Empfohlener Prozess
+
+1. Einen dedizierten Branch erstellen (z. B. `taxonomy-update/2026-q2`)
+2. Element-Titel oder -Beschreibungen in der DSL ändern
+3. Änderungen mit dem Taxonomie-Governance-Team prüfen
+4. Nach Genehmigung in den gemeinsamen Branch zusammenführen
+5. Erneut materialisieren, um Änderungen an alle Arbeitsbereiche zu propagieren
+
+> **Wichtig:** Normale Benutzer-Workflows sollten `x-`-Erweiterungsattribute (z. B. `x-alias`, `x-note`) für lokale Anpassungen verwenden, anstatt kanonische Titel direkt zu ändern.
 
 ---
 

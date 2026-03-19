@@ -248,6 +248,19 @@ Die interne Darstellung einer in DSL beschriebenen Architektur. Es enthält:
 - **Ansichten** — benannte Teilmengen von Elementen und Beziehungen
 - **Nachweise** — Begründungsdaten für Beziehungen
 
+### Datenmodell-Schichten
+
+Das System trennt **importierte kanonische Taxonomie-Daten** von **benutzergesteuerten Architektur-Overlays**:
+
+| Schicht | Inhalt | Änderbarkeit |
+|---|---|---|
+| **Importierte Taxonomie-Basislinie** | Knoten-Codes, Titel, Beschreibungen, Hierarchie (aus C3-Katalog) | In normalen Workflows schreibgeschützt |
+| **Architektur-Overlays** | Beziehungen, Zuordnungen, Ansichten, Nachweise | Frei bearbeitbar durch Benutzer |
+| **Lokale Erweiterungen** | `x-*`-Attribute (Aliase, Notizen, Zuständigkeiten, Kritikalität) | Frei bearbeitbar durch Benutzer |
+| **Taxonomie-Pflege** | Korrekturen an kanonischen Titeln/Beschreibungen | Auf Administratoren beschränkt |
+
+Normale Benutzer-Workflows erstellen und ändern hauptsächlich Architektur-Overlays (Schicht 2) und lokale Erweiterungen (Schicht 3). Importierte Taxonomie-Titel und -Beschreibungen (Schicht 1) werden als schreibgeschützt behandelt, es sei denn, der Benutzer führt explizite Taxonomie-Pflege durch. Siehe [Git-Integration — Datenmodell-Schichten](GIT_INTEGRATION.md#datenmodell-schichten) für Details.
+
 ---
 
 ## Framework-Zuordnung

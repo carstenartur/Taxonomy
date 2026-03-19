@@ -5,6 +5,7 @@ The Taxonomy Architecture Analyzer uses **JGit** to provide full Git version con
 ## Table of Contents
 
 - [Overview](#overview)
+- [Data Model Layers](#data-model-layers)
 - [Repository Architecture](#repository-architecture)
 - [Branching](#branching)
 - [Commit History](#commit-history)
@@ -12,10 +13,12 @@ The Taxonomy Architecture Analyzer uses **JGit** to provide full Git version con
 - [Cherry-Pick](#cherry-pick)
 - [Merge](#merge)
 - [Conflict Detection](#conflict-detection)
+- [Realistic Workflow Examples](#realistic-workflow-examples)
 - [Materialization](#materialization)
 - [Staleness Tracking](#staleness-tracking)
 - [Hypotheses Lifecycle](#hypotheses-lifecycle)
 - [Commit History Search](#commit-history-search)
+- [Taxonomy Maintenance](#taxonomy-maintenance)
 - [REST API Endpoints](#rest-api-endpoints)
 - [Related Documentation](#related-documentation)
 
@@ -26,6 +29,53 @@ The Taxonomy Architecture Analyzer uses **JGit** to provide full Git version con
 Architecture DSL documents (`.taxdsl` files) are stored in a JGit DFS (Distributed File System) repository backed by HSQLDB tables (`git_packs`, `git_reflog`). Every change to the DSL creates a Git commit with author, timestamp, and commit message — providing a complete audit trail.
 
 The Git state is exposed through the UI status bar and REST API, allowing you to monitor repository health, detect stale projections, and preview merge/cherry-pick operations before executing them.
+
+---
+
+## Data Model Layers
+
+The system distinguishes between **imported canonical taxonomy data** (read-only in normal workflows) and **user-managed architecture overlays** (freely editable). Understanding this separation is essential for productive use.
+
+### Layer 1 — Imported Taxonomy Baseline (read-only)
+
+| Attribute | Description |
+|---|---|
+| **Node codes** | Hierarchical identifiers from the C3 Taxonomy Catalogue (e.g. `CP-1023`, `CR-1047`) |
+| **Titles** | Official English names as published in the catalogue |
+| **Descriptions** | Official descriptions from the catalogue |
+| **Hierarchy** | Parent–child structure and level assignments |
+
+These attributes are loaded from the Excel workbook at application startup. **Normal user workflows do not modify them.** When taxonomy elements appear in DSL documents, their titles and descriptions reflect the canonical catalogue values.
+
+### Layer 2 — Architecture Relations, Mappings, Views, Evidence (user-mutable)
+
+| Block type | Purpose | Example |
+|---|---|---|
+| `relation` | Directed links between elements | `relation CP-1023 REALIZES CR-1047 { status: accepted; }` |
+| `mapping` | Requirement-to-element links | `mapping REQ-001 -> CP-1023 { score: 92; }` |
+| `view` | Named subsets for diagrams | `view "CIS Overview" { include: CP-1023, CR-1047; }` |
+| `evidence` | Justification for a relation | `evidence E-001 { relation: CP-1023 REALIZES CR-1047; text: "..."; }` |
+
+These are the primary objects that users create, modify, and version-control in their daily architecture work.
+
+### Layer 3 — Local Extensions and Annotations (user-mutable)
+
+Extension attributes prefixed with `x-` can be added to any element or relation block. They are preserved during round-trip serialization but not validated by the system.
+
+```
+element CP-1023 type Capability {
+  title: "Secure Voice";                // ← canonical (do not modify)
+  x-alias: "SecVoice";                  // ← local annotation (user-defined)
+  x-owner: "CIS Division";             // ← local metadata (user-defined)
+  x-criticality: "high";               // ← local metadata (user-defined)
+}
+```
+
+Common uses: project-specific aliases, ownership annotations, criticality ratings, review notes.
+
+### Layer 4 — Taxonomy Maintenance (restricted)
+
+Modifying canonical taxonomy data (titles, descriptions, hierarchy) is a privileged operation reserved for taxonomy administrators. See [Taxonomy Maintenance](#taxonomy-maintenance) for details.
 
 ---
 
@@ -202,6 +252,109 @@ The `RepositoryStateGuard` checks whether a write operation is safe to proceed o
 
 ---
 
+## Realistic Workflow Examples
+
+The following examples show typical user workflows. Notice that **canonical taxonomy titles remain unchanged** — users modify relations, mappings, views, local extensions, and relation statuses.
+
+### Example: Feature Branch with New Relations
+
+A user creates a feature branch to propose new architecture relations:
+
+**Base (draft branch):**
+```
+element CP-1023 type Capability {
+  title: "Secure Voice";
+  description: "Encrypted voice communication";
+}
+
+element CR-1047 type CoreService {
+  title: "Core Communication Services";
+}
+
+relation CP-1023 REALIZES CR-1047 {
+  status: accepted;
+}
+```
+
+**Feature branch (feature/voice-gateway):**
+```
+element CP-1023 type Capability {
+  title: "Secure Voice";
+  description: "Encrypted voice communication";
+  x-alias: "SecVoice";
+}
+
+element CR-1047 type CoreService {
+  title: "Core Communication Services";
+}
+
+element CO-1011 type Component {
+  title: "Voice Gateway";
+  description: "SIP/RTP gateway for voice traffic";
+}
+
+relation CP-1023 REALIZES CR-1047 {
+  status: accepted;
+}
+
+relation CO-1011 USES CR-1047 {
+  status: proposed;
+}
+```
+
+**What changed** (typical diff output):
+- ✅ Added local alias `x-alias: "SecVoice"` to CP-1023
+- ✅ Added new element CO-1011 (Voice Gateway)
+- ✅ Added new relation CO-1011 → CR-1047
+- ❌ No canonical titles or descriptions were modified
+
+### Example: Cherry-Pick a Relation Status Change
+
+A reviewer accepts a proposed relation on the `review` branch. The change is cherry-picked to `draft`:
+
+```
+POST /api/dsl/cherry-pick
+{
+  "commitId": "a3f8c2d...",
+  "targetBranch": "draft"
+}
+```
+
+The cherry-picked commit changes only the relation status:
+```diff
+ relation CO-1011 USES CR-1047 {
+-  status: proposed;
++  status: accepted;
+ }
+```
+
+### Example: Merge with Conflict on Relation Status
+
+When two branches modify the same relation status, a conflict occurs:
+
+- **Ours (draft):** `status: proposed;`
+- **Theirs (feature-voice):** `status: accepted;`
+
+The conflict resolution UI lets the user choose which status to keep, or manually compose the final content. Canonical taxonomy element titles are never part of such conflicts in normal workflows.
+
+### Example: View and Mapping Changes
+
+Users commonly modify architecture views and requirement mappings:
+
+```diff
++view "CIS Architecture" {
++  include: CP-1023, CR-1047, CO-1011;
++  layout: hierarchical;
++}
++
++mapping REQ-001 -> CP-1023 {
++  score: 92;
++  rationale: "Core secure voice capability";
++}
+```
+
+---
+
 ## Materialization
 
 DSL documents are **materialized** into the application database. This creates `TaxonomyRelation` entities from DSL relations, making them visible in the Graph Explorer, Relation Proposals, and Architecture View.
@@ -258,6 +411,38 @@ PENDING  →  ACCEPTED  (creates TaxonomyRelation)
 ```
 
 The Hypotheses API (`/api/dsl/hypotheses`) allows querying, accepting, and rejecting hypotheses, with supporting evidence available for each.
+
+---
+
+## Taxonomy Maintenance
+
+Modifying canonical taxonomy data (node titles, descriptions, hierarchy structure) is a **privileged administrative operation** that is separate from normal architecture work.
+
+### When Taxonomy Maintenance is Needed
+
+- Correcting an error in an imported catalogue title
+- Updating descriptions to match a new catalogue revision
+- Adding locally-defined extension nodes not present in the published catalogue
+
+### How it Differs from Normal Workflows
+
+| Aspect | Normal Architecture Work | Taxonomy Maintenance |
+|---|---|---|
+| **What changes** | Relations, mappings, views, evidence, local extensions | Node titles, descriptions, hierarchy |
+| **Who performs it** | Any architect or analyst | Taxonomy administrator |
+| **Frequency** | Daily | Rare (per catalogue revision) |
+| **Review process** | Standard branch/merge workflow | Administrative review required |
+| **Scope** | User workspace or feature branch | Shared baseline for all users |
+
+### Recommended Process
+
+1. Create a dedicated branch (e.g. `taxonomy-update/2026-q2`)
+2. Modify element titles or descriptions in the DSL
+3. Review changes with the taxonomy governance team
+4. Merge into the shared branch after approval
+5. Re-materialize to propagate changes to all workspaces
+
+> **Important:** Normal user workflows should use `x-` extension attributes (e.g. `x-alias`, `x-note`) for local customizations rather than modifying canonical titles directly.
 
 ---
 
