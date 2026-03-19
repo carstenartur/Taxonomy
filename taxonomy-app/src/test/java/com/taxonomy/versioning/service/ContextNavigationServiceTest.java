@@ -47,7 +47,8 @@ class ContextNavigationServiceTest {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         workspaceManager = new WorkspaceManager(wsRepo, 50,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
-        stateService = new RepositoryStateService(gitRepo, workspaceManager);
+        stateService = new RepositoryStateService(gitRepo, workspaceManager,
+                mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
         navService = new ContextNavigationService(gitRepo, stateService, workspaceManager, 50);
     }
 

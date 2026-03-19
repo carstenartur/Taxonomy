@@ -116,7 +116,9 @@ public class AnalysisApiController {
             }
 
             result.setViewContext(repositoryStateService.getViewContext(
-                    workspaceResolver.resolveCurrentUsername(), "draft"));
+                    workspaceResolver.resolveCurrentUsername(),
+                    repositoryStateService.resolveWorkspaceBranch(
+                            workspaceResolver.resolveCurrentUsername())));
 
             return ResponseEntity.ok(result);
         } finally {

@@ -343,6 +343,26 @@ Das System unterstützt gleichzeitige Mehrbenutzer-Bearbeitung durch ein Workspa
 2. **Status-Isolation** — Navigationskontext, Projektionsverfolgung und Operationsstatus sind benutzerspezifisch.
 3. **Synchronisierungs-Workflow** — Benutzer pullen explizit vom gemeinsamen Repository (Sync) und pushen explizit zum gemeinsamen Repository (Veröffentlichen).
 
+### Datenisolation
+
+Über Branch- und Status-Isolation hinaus bieten workspace-spezifische Datenentitäten benutzerspezifische Sichten auf veränderliche Daten:
+
+| Entität | Isolation | Mechanismus |
+|---|---|---|
+| **TaxonomyNode** | Global (geteilt) | Schreibgeschützter Katalog aus Excel — kein Workspace-Filter |
+| **TaxonomyRelation** | Pro Workspace | `workspace_id`-Spalte + OR-null JPA/Hibernate-Search-Queries |
+| **RelationHypothesis** | Pro Workspace | `workspace_id`-Spalte |
+| **RelationProposal** | Pro Workspace | `workspace_id`-Spalte |
+| **ArchitectureCommitIndex** | Pro Branch | Vorhandenes `branch` `@KeywordField`, gefiltert nach `currentBranch` |
+
+Der `WorkspaceContextResolver` löst den `WorkspaceContext` (Benutzername, WorkspaceId, aktueller Branch) des aktuellen Benutzers aus dem Spring-Security-Kontext und den persistenten `UserWorkspace`-Metadaten auf. Alle Relation-Queries, Materialisierung und Graph-Suchen verwenden diesen Kontext zur Filterung. Der Branch-Fallback verwendet `SystemRepositoryService.getSharedBranch()` (konfigurierbar, Standard: `"draft"`).
+
+`WorkspaceContext.SHARED` hat `workspaceId = null`, wodurch die Workspace-Filterung übersprungen wird und nicht provisionierte Benutzer sowie Legacy-Aufrufer alle Daten sehen.
+
+Bei der Annahme von Vorschlägen oder Hypothesen wird die Relation im **gespeicherten Workspace der Entität** erstellt (nicht im Workspace des aktuellen Reviewers), um die korrekte Workspace-Zugehörigkeit sicherzustellen.
+
+Legacy-Daten mit `workspace_id = NULL` werden als geteilt behandelt und bleiben für alle Workspaces sichtbar.
+
 ### Datenfluss
 
 ```

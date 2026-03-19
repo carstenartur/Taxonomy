@@ -38,6 +38,10 @@ public class RelationReviewService {
 
     /**
      * Accept a proposal: creates a real TaxonomyRelation and marks the proposal as ACCEPTED.
+     *
+     * <p>The relation is created in the proposal's workspace (using the proposal's stored
+     * {@code workspaceId}/{@code ownerUsername}). For legacy proposals with null workspace,
+     * the relation is created in the shared/legacy scope.
      */
     @Transactional
     public TaxonomyRelationDto acceptProposal(Long proposalId) {
@@ -50,13 +54,16 @@ public class RelationReviewService {
                     "Proposal " + proposalId + " is already " + proposal.getStatus());
         }
 
-        // Create the real relation
+        // Create the real relation in the proposal's workspace (not the current user's)
+        String workspaceId = proposal.getWorkspaceId();
+        String ownerUsername = proposal.getOwnerUsername();
         TaxonomyRelationDto relation = relationService.createRelation(
                 proposal.getSourceNode().getCode(),
                 proposal.getTargetNode().getCode(),
                 proposal.getRelationType(),
                 proposal.getRationale(),
-                "proposal-pipeline");
+                "proposal-pipeline",
+                workspaceId, ownerUsername);
 
         // Mark proposal as accepted
         proposal.setStatus(ProposalStatus.ACCEPTED);

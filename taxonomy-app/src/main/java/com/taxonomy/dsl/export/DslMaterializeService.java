@@ -12,6 +12,8 @@ import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,6 +62,8 @@ public class DslMaterializeService {
     private final RepositoryStateService repositoryStateService;
     @Nullable
     private final WorkspaceResolver workspaceResolver;
+    @Nullable
+    private final WorkspaceContextResolver contextResolver;
 
     private final TaxDslParser parser = new TaxDslParser();
     private final AstToModelMapper astMapper = new AstToModelMapper();
@@ -70,12 +74,14 @@ public class DslMaterializeService {
                                   RelationHypothesisRepository hypothesisRepository,
                                   ArchitectureDslDocumentRepository documentRepository,
                                   @Nullable RepositoryStateService repositoryStateService,
-                                  @Nullable WorkspaceResolver workspaceResolver) {
+                                  @Nullable WorkspaceResolver workspaceResolver,
+                                  @Nullable WorkspaceContextResolver contextResolver) {
         this.relationService = relationService;
         this.hypothesisRepository = hypothesisRepository;
         this.documentRepository = documentRepository;
         this.repositoryStateService = repositoryStateService;
         this.workspaceResolver = workspaceResolver;
+        this.contextResolver = contextResolver;
     }
 
     /**
@@ -112,6 +118,10 @@ public class DslMaterializeService {
                     0, 0, null);
         }
 
+        // Resolve workspace context for data isolation
+        WorkspaceContext ctx = contextResolver != null
+                ? contextResolver.resolveCurrentContext() : WorkspaceContext.SHARED;
+
         // 3. Materialize relations
         int relationsCreated = 0;
         int hypothesesCreated = 0;
@@ -124,7 +134,8 @@ public class DslMaterializeService {
                     RelationType type = RelationType.valueOf(rel.getRelationType());
                     relationService.createRelation(
                             rel.getSourceId(), rel.getTargetId(), type,
-                            "Materialized from DSL", "dsl-materialize");
+                            "Materialized from DSL", "dsl-materialize",
+                            ctx.workspaceId(), ctx.username());
                     relationsCreated++;
                 } catch (IllegalArgumentException e) {
                     log.warn("Skipped relation {} → {}: {}", rel.getSourceId(), rel.getTargetId(), e.getMessage());
@@ -142,6 +153,8 @@ public class DslMaterializeService {
                     hypothesis.setStatus(hStatus);
                     hypothesis.setConfidence(rel.getConfidence());
                     hypothesis.setAnalysisSessionId("dsl-materialize");
+                    hypothesis.setWorkspaceId(ctx.workspaceId());
+                    hypothesis.setOwnerUsername(ctx.username());
 
                     hypothesisRepository.save(hypothesis);
                     hypothesesCreated++;
@@ -220,6 +233,10 @@ public class DslMaterializeService {
         int hypothesesCreated = 0;
         List<String> warnings = new ArrayList<>();
 
+        // Resolve workspace context for data isolation
+        WorkspaceContext ctx = contextResolver != null
+                ? contextResolver.resolveCurrentContext() : WorkspaceContext.SHARED;
+
         // Process added relations
         for (ArchitectureRelation rel : diff.addedRelations()) {
             String status = rel.getStatus() != null ? rel.getStatus().toLowerCase() : "accepted";
@@ -228,7 +245,8 @@ public class DslMaterializeService {
                     RelationType type = RelationType.valueOf(rel.getRelationType());
                     relationService.createRelation(
                             rel.getSourceId(), rel.getTargetId(), type,
-                            "Materialized incrementally from DSL", "dsl-incremental");
+                            "Materialized incrementally from DSL", "dsl-incremental",
+                            ctx.workspaceId(), ctx.username());
                     relationsCreated++;
                 } catch (IllegalArgumentException e) {
                     warnings.add("Skipped relation " + rel.getSourceId() + " → " + rel.getTargetId() + ": " + e.getMessage());
@@ -246,6 +264,8 @@ public class DslMaterializeService {
                     hypothesis.setStatus(hStatus);
                     hypothesis.setConfidence(rel.getConfidence());
                     hypothesis.setAnalysisSessionId("dsl-incremental");
+                    hypothesis.setWorkspaceId(ctx.workspaceId());
+                    hypothesis.setOwnerUsername(ctx.username());
 
                     hypothesisRepository.save(hypothesis);
                     hypothesesCreated++;
@@ -266,7 +286,8 @@ public class DslMaterializeService {
                     RelationType type = RelationType.valueOf(change.after().getRelationType());
                     relationService.createRelation(
                             change.after().getSourceId(), change.after().getTargetId(), type,
-                            "Promoted from " + oldStatus + " via DSL", "dsl-incremental");
+                            "Promoted from " + oldStatus + " via DSL", "dsl-incremental",
+                            ctx.workspaceId(), ctx.username());
                     relationsCreated++;
                 } catch (IllegalArgumentException e) {
                     warnings.add("Skipped promotion " + change.after().getSourceId() + " → " + change.after().getTargetId() + ": " + e.getMessage());

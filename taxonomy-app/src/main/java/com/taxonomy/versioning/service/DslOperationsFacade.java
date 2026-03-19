@@ -287,6 +287,17 @@ public class DslOperationsFacade {
         return workspaceResolver.resolveCurrentUsername();
     }
 
+    /**
+     * Resolve the workspace branch for a user. Falls back to "draft" if no
+     * workspace branch is configured.
+     *
+     * @param username the username to resolve the branch for
+     * @return the user's workspace branch, or "draft" as default
+     */
+    public String resolveWorkspaceBranch(String username) {
+        return repositoryStateService.resolveWorkspaceBranch(username);
+    }
+
     // ── Document listing ────────────────────────────────────────────
 
     /**

@@ -7,6 +7,8 @@ import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.relations.service.GraphSearchService;
 import com.taxonomy.relations.service.HybridSearchService;
 import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -19,6 +21,12 @@ import java.util.Map;
  * <p>Provides coarse-grained operations for full-text, semantic,
  * hybrid, and graph search, as well as embedding status, so that
  * the {@code SearchApiController} only needs a single dependency.
+ *
+ * <p>Node searches (full-text, semantic, hybrid, similar) operate on the
+ * global {@link com.taxonomy.catalog.model.TaxonomyNode} index and are
+ * <b>not</b> workspace-scoped — taxonomy nodes are shared across all
+ * workspaces. Graph search, which queries {@link com.taxonomy.catalog.model.TaxonomyRelation},
+ * is workspace-scoped via {@link WorkspaceContextResolver}.
  */
 @Service
 public class SearchFacade {
@@ -28,17 +36,20 @@ public class SearchFacade {
     private final HybridSearchService hybridSearchService;
     private final LocalEmbeddingService embeddingService;
     private final GraphSearchService graphSearchService;
+    private final WorkspaceContextResolver contextResolver;
 
     public SearchFacade(TaxonomyService taxonomyService,
                         SearchService searchService,
                         HybridSearchService hybridSearchService,
                         LocalEmbeddingService embeddingService,
-                        GraphSearchService graphSearchService) {
+                        GraphSearchService graphSearchService,
+                        WorkspaceContextResolver contextResolver) {
         this.taxonomyService = taxonomyService;
         this.searchService = searchService;
         this.hybridSearchService = hybridSearchService;
         this.embeddingService = embeddingService;
         this.graphSearchService = graphSearchService;
+        this.contextResolver = contextResolver;
     }
 
     /**
@@ -57,6 +68,7 @@ public class SearchFacade {
 
     /**
      * Full-text search across taxonomy nodes using Lucene.
+     * Nodes are global — no workspace filtering needed.
      */
     public List<TaxonomyNodeDto> fullTextSearch(String query, int maxResults) {
         return searchService.search(query, maxResults);
@@ -64,6 +76,7 @@ public class SearchFacade {
 
     /**
      * Semantic search using embedding similarity (KNN).
+     * Nodes are global — no workspace filtering needed.
      */
     public List<TaxonomyNodeDto> semanticSearch(String query, int maxResults) {
         return embeddingService.semanticSearch(query, maxResults);
@@ -71,6 +84,7 @@ public class SearchFacade {
 
     /**
      * Hybrid search combining full-text and semantic results via Reciprocal Rank Fusion.
+     * Nodes are global — no workspace filtering needed.
      */
     public List<TaxonomyNodeDto> hybridSearch(String query, int maxResults) {
         return hybridSearchService.hybridSearch(query, maxResults);
@@ -78,6 +92,7 @@ public class SearchFacade {
 
     /**
      * Find taxonomy nodes semantically similar to the given node code.
+     * Nodes are global — no workspace filtering needed.
      */
     public List<TaxonomyNodeDto> findSimilarNodes(String code, int topK) {
         return embeddingService.findSimilarNodes(code, topK);
@@ -85,6 +100,13 @@ public class SearchFacade {
 
     /**
      * Graph-semantic search combining node and relation KNN queries.
+     *
+     * <p>The relation KNN query is workspace-scoped: only relations
+     * belonging to the current user's workspace (or shared/legacy relations
+     * with {@code workspace_id = NULL}) are included.
+     *
+     * <p>The workspace context is resolved internally by the
+     * {@link GraphSearchService}.
      */
     public GraphSearchResult graphSearch(String query, int maxResults) {
         return graphSearchService.graphSearch(query, maxResults);

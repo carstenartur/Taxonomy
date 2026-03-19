@@ -4,6 +4,8 @@ import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.hibernate.search.mapper.orm.Search;
@@ -40,12 +42,15 @@ public class GraphSearchService {
     private static final Logger log = LoggerFactory.getLogger(GraphSearchService.class);
 
     private final LocalEmbeddingService embeddingService;
+    private final WorkspaceContextResolver contextResolver;
 
     @PersistenceContext
     private EntityManager entityManager;
 
-    public GraphSearchService(LocalEmbeddingService embeddingService) {
+    public GraphSearchService(LocalEmbeddingService embeddingService,
+                               WorkspaceContextResolver contextResolver) {
         this.embeddingService = embeddingService;
+        this.contextResolver = contextResolver;
     }
 
     /**
@@ -75,10 +80,26 @@ public class GraphSearchService {
                     .map(this::toFlatDto)
                     .collect(Collectors.toList());
 
-            // 2. Search TaxonomyRelation index by KNN
-            List<TaxonomyRelation> relationHits = session.search(TaxonomyRelation.class)
-                    .where(f -> f.knn(maxResults * 2).field("embedding").matching(queryVector))
-                    .fetchHits(maxResults * 2);
+            // 2. Search TaxonomyRelation index by KNN with optional workspace filter
+            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+            List<TaxonomyRelation> relationHits;
+            if (ctx.workspaceId() != null) {
+                // Provisioned workspace — filter to workspace-owned + shared (null) relations
+                relationHits = session.search(TaxonomyRelation.class)
+                        .where(f -> f.bool()
+                                .must(f.bool()
+                                        .should(f.match().field("workspaceId").matching(ctx.workspaceId()))
+                                        .should(f.not(f.exists().field("workspaceId")))
+                                )
+                                .must(f.knn(maxResults * 2).field("embedding").matching(queryVector))
+                        )
+                        .fetchHits(maxResults * 2);
+            } else {
+                // SHARED context — no workspace filter, return all relations
+                relationHits = session.search(TaxonomyRelation.class)
+                        .where(f -> f.knn(maxResults * 2).field("embedding").matching(queryVector))
+                        .fetchHits(maxResults * 2);
+            }
 
             // 3. Aggregate relation hits by taxonomy root (via sourceNode.taxonomyRoot)
             Map<String, Long> relationCountByRoot = relationHits.stream()
