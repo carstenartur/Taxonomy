@@ -4,6 +4,8 @@ import com.taxonomy.dto.RelationProposalDto;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.*;
 import com.taxonomy.relations.repository.RelationProposalRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -27,13 +29,16 @@ public class RelationReviewService {
     private final RelationProposalRepository proposalRepository;
     private final TaxonomyRelationService relationService;
     private final RelationProposalService proposalService;
+    private final WorkspaceContextResolver contextResolver;
 
     public RelationReviewService(RelationProposalRepository proposalRepository,
                                  TaxonomyRelationService relationService,
-                                 RelationProposalService proposalService) {
+                                 RelationProposalService proposalService,
+                                 WorkspaceContextResolver contextResolver) {
         this.proposalRepository = proposalRepository;
         this.relationService = relationService;
         this.proposalService = proposalService;
+        this.contextResolver = contextResolver;
     }
 
     /**
@@ -50,13 +55,15 @@ public class RelationReviewService {
                     "Proposal " + proposalId + " is already " + proposal.getStatus());
         }
 
-        // Create the real relation
+        // Create the real relation in the proposal's workspace
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
         TaxonomyRelationDto relation = relationService.createRelation(
                 proposal.getSourceNode().getCode(),
                 proposal.getTargetNode().getCode(),
                 proposal.getRelationType(),
                 proposal.getRationale(),
-                "proposal-pipeline");
+                "proposal-pipeline",
+                ctx.workspaceId(), ctx.username());
 
         // Mark proposal as accepted
         proposal.setStatus(ProposalStatus.ACCEPTED);

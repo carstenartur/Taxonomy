@@ -22,6 +22,8 @@ import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationEvidence;
 import com.taxonomy.relations.model.RelationHypothesis;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 
 /**
  * Manages the lifecycle of relation hypotheses: persistence, acceptance, and rejection.
@@ -47,17 +49,20 @@ public class HypothesisService {
     private final TaxonomyRelationService relationService;
     private final TaxonomyNodeRepository nodeRepository;
     private final DslGitRepository gitRepository;
+    private final WorkspaceContextResolver contextResolver;
 
     public HypothesisService(RelationHypothesisRepository hypothesisRepository,
                              RelationEvidenceRepository evidenceRepository,
                              TaxonomyRelationService relationService,
                              TaxonomyNodeRepository nodeRepository,
-                             DslGitRepository gitRepository) {
+                             DslGitRepository gitRepository,
+                             WorkspaceContextResolver contextResolver) {
         this.hypothesisRepository = hypothesisRepository;
         this.evidenceRepository = evidenceRepository;
         this.relationService = relationService;
         this.nodeRepository = nodeRepository;
         this.gitRepository = gitRepository;
+        this.contextResolver = contextResolver;
     }
 
     /**
@@ -103,6 +108,10 @@ public class HypothesisService {
             entity.setConfidence(dto.getConfidence());
             entity.setStatus(HypothesisStatus.PROVISIONAL);
             entity.setAnalysisSessionId(effectiveSessionId);
+
+            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+            entity.setWorkspaceId(ctx.workspaceId());
+            entity.setOwnerUsername(ctx.username());
 
             RelationHypothesis saved = hypothesisRepository.save(entity);
             persisted.add(saved);
@@ -158,12 +167,14 @@ public class HypothesisService {
         boolean relationCreated = false;
         if (nodeRepository.findByCode(hypothesis.getSourceNodeId()).isPresent()
                 && nodeRepository.findByCode(hypothesis.getTargetNodeId()).isPresent()) {
+            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
             relationService.createRelation(
                     hypothesis.getSourceNodeId(),
                     hypothesis.getTargetNodeId(),
                     hypothesis.getRelationType(),
                     "Accepted from hypothesis " + hypothesisId,
-                    "hypothesis-accepted");
+                    "hypothesis-accepted",
+                    ctx.workspaceId(), ctx.username());
             relationCreated = true;
         } else {
             log.warn("Could not create relation for hypothesis {}: source or target node not found",
