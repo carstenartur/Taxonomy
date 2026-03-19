@@ -86,7 +86,14 @@ public class RelationProposalService {
             TaxonomyNodeDto candidate = candidates.get(i);
 
             // Skip if a proposal already exists for this triple in this workspace
-            if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationType(
+            if (ctx.workspaceId() != null && !"shared".equals(ctx.workspaceId())) {
+                if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationTypeAndWorkspaceId(
+                        sourceNodeCode, candidate.getCode(), relationType, ctx.workspaceId())) {
+                    log.debug("Proposal already exists: {} → {} [{}] (workspace={})",
+                            sourceNodeCode, candidate.getCode(), relationType, ctx.workspaceId());
+                    continue;
+                }
+            } else if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationType(
                     sourceNodeCode, candidate.getCode(), relationType)) {
                 log.debug("Proposal already exists: {} → {} [{}]",
                         sourceNodeCode, candidate.getCode(), relationType);
