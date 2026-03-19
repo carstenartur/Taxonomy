@@ -23,7 +23,7 @@ A feature is only complete when all required columns show ✅.
 | Gap analysis | ✅ | ✅ | ✅ §11e | ✅ #26, 27 | ✅ | ✅ | ✅ Complete |
 | Pattern detection | ✅ | ✅ | ✅ §11f | ✅ | ✅ | ✅ | ✅ Complete |
 | Recommendations (Copilot) | ✅ | ✅ | ✅ §4 | ✅ | ✅ | ✅ | ✅ Complete |
-| Reports (MD/HTML/DOCX) | ✅ | ✅ | ⚠️ | ✅ #23 | ✅ | ✅ | ⚠️ User Guide section needed |
+| Reports (MD/HTML/DOCX) | ✅ | ✅ | ✅ §10a | ✅ #23 | ✅ | ✅ | ✅ Complete |
 | Workspace management | ✅ | ✅ | ✅ §13 | ✅ #43–45 | ✅ | ✅ | ✅ Complete |
 | Branch compare | ✅ | ✅ | ✅ §12 | ✅ #48 | ✅ | ✅ | ✅ Complete |
 | Context transfer (copy back) | ✅ | ✅ | ✅ §12 | ✅ #49 | ✅ | ✅ | ✅ Complete |

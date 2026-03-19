@@ -1,6 +1,6 @@
 # UI Gap Analysis
 
-**Status:** Updated — 15 March 2026  
+**Status:** Updated — 19 March 2026  
 **Related Issues:** #180 (Multi-User Workspace Model), #182 (UI Refactor for Workspace)
 
 ---
@@ -43,7 +43,6 @@ The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.ht
 |---|---|---|
 | Compare Diff View Enhancement | Medium | Current compare shows summary + semantic changes. Could add inline diff highlighting. |
 | Workspace Switcher | Low | Currently no way to switch between multiple workspaces from the UI (admin can view all). |
-| Conflict Resolution UI | Low | Merge conflicts are reported but not visually resolved in the UI. |
 | History Timeline Visualization | Low | Navigation history is available via API but not visualized as a timeline in the UI. |
 
 ---
@@ -77,6 +76,9 @@ The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.ht
 | 23 | `taxonomy-onboarding.js` | First-use onboarding | N/A |
 | 24 | `taxonomy-help.js` | Help panel | N/A |
 | 25 | `taxonomy-about.js` | About dialog | N/A |
+| 26 | `taxonomy-merge-resolution.js` | Merge conflict resolution UI | ✅ |
+| 27 | `taxonomy-operation-result.js` | Toast notification system for Git operations | ✅ |
+| 28 | `taxonomy-browse.js` | Main browse panel, report export logic | Via username |
 
 ---
 
@@ -108,3 +110,21 @@ The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.ht
 | 49 | `49-copy-back-button.png` | `captureCopyBackButton()` | ✅ Test added |
 | 50 | `50-read-only-mode-badge.png` | `captureReadOnlyModeBadge()` | ✅ Test added |
 | 51 | `51-context-bar-with-origin.png` | `captureContextBarWithOrigin()` | ✅ Test added |
+| 52 | `52-merge-conflict-modal.png` | `captureMergeConflictModal()` | ✅ Test added |
+| 53 | `53-merge-conflict-resolved.png` | `captureMergeConflictResolved()` | ✅ Test added |
+| 54 | `54-cherry-pick-conflict-modal.png` | `captureCherryPickConflictModal()` | ✅ Test added |
+| 55 | `55-sync-diverged-state.png` | `captureSyncDivergedState()` | ✅ Test added |
+| 56 | `56-sync-resolve-modal.png` | `captureSyncResolveModal()` | ✅ Test added |
+| 57 | `57-variant-delete-confirm.png` | `captureVariantDeleteConfirm()` | ✅ Test added |
+| 58 | `58-merge-success-toast.png` | `captureMergeSuccessToast()` | ✅ Test added |
+| 59 | `59-cherry-pick-success-toast.png` | `captureCherryPickSuccessToast()` | ✅ Test added |
+| 60 | `60-merge-preview-modal.png` | `captureMergePreviewModal()` | ✅ Test added |
+| 61 | `61-merge-preview-fast-forward.png` | `captureMergePreviewFastForward()` | ✅ Test added |
+| 62 | `62-cherry-pick-preview-modal.png` | `captureCherryPickPreviewModal()` | ✅ Test added |
+| 63 | `63-sync-tab-up-to-date.png` | `captureSyncTabUpToDate()` | ✅ Test added |
+| 64 | `64-sync-tab-ahead.png` | `captureSyncTabAhead()` | ✅ Test added |
+| 65 | `65-sync-tab-behind.png` | `captureSyncTabBehind()` | ✅ Test added |
+| 66 | `66-versions-timeline.png` | `captureVersionsTimeline()` | ✅ Test added |
+| 67 | `67-version-restore-confirm.png` | `captureVersionRestoreConfirm()` | ✅ Test added |
+| 68 | `68-diff-view.png` | `captureDiffView()` | ✅ Test added |
+| 69 | `69-decision-map-scored.png` | `captureDecisionMapScored()` | ✅ Test added |
