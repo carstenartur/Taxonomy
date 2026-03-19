@@ -4,9 +4,7 @@
 > All major features described here are designed to be used interactively through the browser.
 > For automation and scripting, see the [API Reference](API_REFERENCE.md).
 >
-> **Dieser Leitfaden beschreibt den Hauptweg zur Nutzung des Taxonomy Architecture Analyzers: die webbasierte Benutzeroberfläche.**
-> Alle hier beschriebenen Funktionen sind primär für die interaktive Nutzung im Browser gedacht.
-> Für Automatisierung und Skripting siehe die [API-Referenz](API_REFERENCE.md).
+> For automation and scripting, see the [API Reference](API_REFERENCE.md).
 
 ## Fastest Path — Your First Analysis in 5 Steps
 

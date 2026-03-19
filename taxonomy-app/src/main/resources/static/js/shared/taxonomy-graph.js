@@ -33,7 +33,7 @@
             content.innerHTML =
                 '<div class="text-center text-muted py-2">' +
                 '<div class="spinner-border spinner-border-sm me-1" role="status"></div> ' +
-                'Querying graph&hellip;</div>';
+                escapeHtml(t('graph.loading')) + '</div>';
         }
     }
 
@@ -65,7 +65,7 @@
         var html = '<h6 class="graph-section-title">' + escapeHtml(title) +
             ' <span class="badge bg-secondary">' + elements.length + '</span></h6>';
         html += '<div class="table-responsive"><table class="table table-sm table-hover graph-table mb-2">';
-        html += '<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hop</th><th>Reason</th></tr></thead><tbody>';
+        html += '<thead><tr><th>' + escapeHtml(t('graph.header.code')) + '</th><th>' + escapeHtml(t('graph.header.title')) + '</th><th>' + escapeHtml(t('graph.header.sheet')) + '</th><th>' + escapeHtml(t('graph.header.relevance')) + '</th><th>' + escapeHtml(t('graph.header.hop')) + '</th><th>' + escapeHtml(t('graph.header.reason')) + '</th></tr></thead><tbody>';
         elements.forEach(function (e) {
             html += '<tr class="graph-element-row" data-code="' + escapeHtml(e.nodeCode) + '">' +
                 '<td><a href="#" class="graph-node-link" data-code="' + escapeHtml(e.nodeCode) + '">' +
