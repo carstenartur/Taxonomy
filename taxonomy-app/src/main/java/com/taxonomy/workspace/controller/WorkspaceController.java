@@ -8,9 +8,12 @@ import com.taxonomy.versioning.model.ContextHistoryRecord;
 import com.taxonomy.versioning.service.ContextCompareService;
 import com.taxonomy.versioning.service.ContextHistoryService;
 import com.taxonomy.workspace.service.SyncIntegrationService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.service.WorkspaceProjectionService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.UserWorkspace;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
@@ -44,19 +47,22 @@ public class WorkspaceController {
     private final ContextHistoryService contextHistoryService;
     private final SyncIntegrationService syncIntegrationService;
     private final WorkspaceProjectionService workspaceProjectionService;
+    private final SystemRepositoryService systemRepositoryService;
 
     public WorkspaceController(WorkspaceManager workspaceManager,
                                WorkspaceResolver workspaceResolver,
                                ContextCompareService contextCompareService,
                                ContextHistoryService contextHistoryService,
                                SyncIntegrationService syncIntegrationService,
-                               WorkspaceProjectionService workspaceProjectionService) {
+                               WorkspaceProjectionService workspaceProjectionService,
+                               SystemRepositoryService systemRepositoryService) {
         this.workspaceManager = workspaceManager;
         this.workspaceResolver = workspaceResolver;
         this.contextCompareService = contextCompareService;
         this.contextHistoryService = contextHistoryService;
         this.syncIntegrationService = syncIntegrationService;
         this.workspaceProjectionService = workspaceProjectionService;
+        this.systemRepositoryService = systemRepositoryService;
     }
 
     @GetMapping("/current")
@@ -295,6 +301,59 @@ public class WorkspaceController {
     public ResponseEntity<Map<String, Object>> getProjection() {
         String user = workspaceResolver.resolveCurrentUsername();
         return ResponseEntity.ok(workspaceProjectionService.getProjectionInfo(user));
+    }
+
+    // ── Provisioning & Topology ────────────────────────────────────
+
+    @GetMapping("/provisioning-status")
+    @Operation(summary = "Get workspace provisioning status",
+            description = "Returns the current provisioning state of the user's workspace.")
+    public ResponseEntity<Map<String, Object>> getProvisioningStatus() {
+        String user = workspaceResolver.resolveCurrentUsername();
+        UserWorkspace ws = workspaceManager.findUserWorkspace(user);
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (ws == null) {
+            result.put("status", "NOT_PROVISIONED");
+        } else {
+            result.put("status", ws.getProvisioningStatus().name());
+            result.put("topologyMode", ws.getTopologyMode().name());
+            result.put("sourceRepository", ws.getSourceRepositoryId());
+            result.put("error", ws.getProvisioningError());
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/provision")
+    @Operation(summary = "Provision workspace repository",
+            description = "Creates the user's personal branch from the shared repository.")
+    public ResponseEntity<Map<String, Object>> provisionWorkspace() {
+        String user = workspaceResolver.resolveCurrentUsername();
+        try {
+            UserWorkspace ws = workspaceManager.provisionWorkspaceRepository(user);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("status", ws.getProvisioningStatus().name());
+            result.put("branch", ws.getCurrentBranch());
+            result.put("baseBranch", ws.getBaseBranch());
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "error", "Provisioning failed",
+                    "message", e.getMessage()
+            ));
+        }
+    }
+
+    @GetMapping("/topology")
+    @Operation(summary = "Get repository topology",
+            description = "Returns the repository topology mode and shared source information.")
+    public ResponseEntity<Map<String, Object>> getTopology() {
+        SystemRepository sysRepo = systemRepositoryService.getPrimaryRepository();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("mode", sysRepo.getTopologyMode().name());
+        result.put("sharedBranch", sysRepo.getDefaultBranch());
+        result.put("systemRepositoryId", sysRepo.getRepositoryId());
+        result.put("displayName", sysRepo.getDisplayName());
+        return ResponseEntity.ok(result);
     }
 
     // ── Internal helpers ────────────────────────────────────────────

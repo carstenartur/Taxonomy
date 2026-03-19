@@ -634,6 +634,52 @@ curl -u alice:password http://localhost:8080/api/workspace/projection
 }
 ```
 
+### Arbeitsbereich-Bereitstellung & Topologie
+
+**Bereitstellungsstatus abfragen:**
+```bash
+curl -u alice:password http://localhost:8080/api/workspace/provisioning-status
+```
+
+**Antwort:**
+```json
+{
+  "status": "READY",
+  "topologyMode": "INTERNAL_SHARED",
+  "sourceRepository": "uuid-des-system-repos",
+  "error": null
+}
+```
+
+**Arbeitsbereich bereitstellen (persönlichen Branch erstellen):**
+```bash
+curl -u alice:password -X POST http://localhost:8080/api/workspace/provision
+```
+
+**Antwort:**
+```json
+{
+  "status": "READY",
+  "branch": "alice/workspace",
+  "baseBranch": "draft"
+}
+```
+
+**Repository-Topologie abfragen:**
+```bash
+curl -u alice:password http://localhost:8080/api/workspace/topology
+```
+
+**Antwort:**
+```json
+{
+  "mode": "INTERNAL_SHARED",
+  "sharedBranch": "draft",
+  "systemRepositoryId": "uuid-des-system-repos",
+  "displayName": "Shared Architecture Repository"
+}
+```
+
 ---
 
 ## Weitere Referenzen

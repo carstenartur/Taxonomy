@@ -41,7 +41,8 @@ class RepositoryStateGuardTest {
     void setUp() {
         gitRepo = new DslGitRepository();
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
-        WorkspaceManager workspaceManager = new WorkspaceManager(wsRepo, 50);
+        WorkspaceManager workspaceManager = new WorkspaceManager(wsRepo, 50,
+                mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
         stateService = new RepositoryStateService(gitRepo, workspaceManager);
         guard = new RepositoryStateGuard(stateService, null);
     }

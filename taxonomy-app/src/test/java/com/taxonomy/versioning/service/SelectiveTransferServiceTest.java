@@ -70,7 +70,8 @@ class SelectiveTransferServiceTest {
     void setUp() {
         gitRepo = new DslGitRepository();
         var wsRepo = mock(com.taxonomy.workspace.repository.UserWorkspaceRepository.class);
-        var workspaceManager = new WorkspaceManager(wsRepo, 50);
+        var workspaceManager = new WorkspaceManager(wsRepo, 50,
+                mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
         var stateService = new RepositoryStateService(gitRepo, workspaceManager);
         navService = new ContextNavigationService(gitRepo, stateService, workspaceManager, 50);
         var workspaceResolver = mock(WorkspaceResolver.class);

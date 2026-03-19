@@ -204,7 +204,49 @@ The sync state machine:
 
 ---
 
-## 9. Future Considerations
+## 9. System Repository & Topology Modes
+
+The system uses a **System-owned Central Repository** model with configurable topology:
+
+### SystemRepository Entity
+
+```
+SystemRepository (JPA Entity)
+├── repositoryId: UUID (unique)
+├── topologyMode: INTERNAL_SHARED | EXTERNAL_CANONICAL
+├── defaultBranch: "draft" (configurable)
+├── externalUrl: optional URL for EXTERNAL_CANONICAL mode
+├── primaryRepo: boolean (exactly one true)
+└── createdAt: Instant
+```
+
+- Auto-created on startup by `SystemRepositoryService.@PostConstruct`
+- Provides the shared branch name via `getSharedBranch()` (replaces hardcoded `SHARED_BRANCH`)
+- `SyncIntegrationService` reads the shared branch from this service
+
+### Workspace Provisioning
+
+New workspaces are created with **lazy provisioning**:
+
+1. **Metadata only** — `ensurePersistentWorkspace()` creates a `UserWorkspace` with status `NOT_PROVISIONED`
+2. **Explicit provisioning** — `provisionWorkspaceRepository()` creates the Git branch when requested
+3. **Status tracking** — `WorkspaceProvisioningStatus` enum tracks: `NOT_PROVISIONED → PROVISIONING → READY | FAILED`
+
+### UserWorkspace Extended Fields
+
+```
+provisioningStatus: WorkspaceProvisioningStatus (default: READY for backward compat)
+topologyMode: RepositoryTopologyMode (mirrors SystemRepository)
+sourceRepositoryId: String (links to SystemRepository)
+baseCommit / currentCommit: String (Git SHAs)
+syncTargetBranch: String (configurable sync target)
+provisionedAt: Instant
+provisioningError: String
+```
+
+---
+
+## 10. Future Considerations
 
 - **Keycloak OIDC** — Replace form-login with JWT-based auth; workspace ownership from token claims
 - **Per-user projection tables** — Currently logical isolation; future: physical table-per-user or discriminator column

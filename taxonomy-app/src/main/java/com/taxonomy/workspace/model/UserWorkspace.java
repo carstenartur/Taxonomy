@@ -3,7 +3,6 @@ package com.taxonomy.workspace.model;
 import jakarta.persistence.*;
 
 import java.time.Instant;
-import com.taxonomy.workspace.service.WorkspaceManager;
 
 /**
  * Persistent workspace metadata for a user.
@@ -51,6 +50,32 @@ public class UserWorkspace {
 
     @Column(name = "last_accessed_at")
     private Instant lastAccessedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "provisioning_status", nullable = false)
+    private WorkspaceProvisioningStatus provisioningStatus = WorkspaceProvisioningStatus.READY;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "topology_mode", nullable = false)
+    private RepositoryTopologyMode topologyMode = RepositoryTopologyMode.INTERNAL_SHARED;
+
+    @Column(name = "source_repository_id")
+    private String sourceRepositoryId;
+
+    @Column(name = "base_commit")
+    private String baseCommit;
+
+    @Column(name = "current_commit")
+    private String currentCommit;
+
+    @Column(name = "sync_target_branch")
+    private String syncTargetBranch;
+
+    @Column(name = "provisioned_at")
+    private Instant provisionedAt;
+
+    @Column(name = "provisioning_error")
+    private String provisioningError;
 
     public UserWorkspace() {
     }
@@ -125,5 +150,69 @@ public class UserWorkspace {
 
     public void setLastAccessedAt(Instant lastAccessedAt) {
         this.lastAccessedAt = lastAccessedAt;
+    }
+
+    public WorkspaceProvisioningStatus getProvisioningStatus() {
+        return provisioningStatus;
+    }
+
+    public void setProvisioningStatus(WorkspaceProvisioningStatus provisioningStatus) {
+        this.provisioningStatus = provisioningStatus;
+    }
+
+    public RepositoryTopologyMode getTopologyMode() {
+        return topologyMode;
+    }
+
+    public void setTopologyMode(RepositoryTopologyMode topologyMode) {
+        this.topologyMode = topologyMode;
+    }
+
+    public String getSourceRepositoryId() {
+        return sourceRepositoryId;
+    }
+
+    public void setSourceRepositoryId(String sourceRepositoryId) {
+        this.sourceRepositoryId = sourceRepositoryId;
+    }
+
+    public String getBaseCommit() {
+        return baseCommit;
+    }
+
+    public void setBaseCommit(String baseCommit) {
+        this.baseCommit = baseCommit;
+    }
+
+    public String getCurrentCommit() {
+        return currentCommit;
+    }
+
+    public void setCurrentCommit(String currentCommit) {
+        this.currentCommit = currentCommit;
+    }
+
+    public String getSyncTargetBranch() {
+        return syncTargetBranch;
+    }
+
+    public void setSyncTargetBranch(String syncTargetBranch) {
+        this.syncTargetBranch = syncTargetBranch;
+    }
+
+    public Instant getProvisionedAt() {
+        return provisionedAt;
+    }
+
+    public void setProvisionedAt(Instant provisionedAt) {
+        this.provisionedAt = provisionedAt;
+    }
+
+    public String getProvisioningError() {
+        return provisioningError;
+    }
+
+    public void setProvisioningError(String provisioningError) {
+        this.provisioningError = provisioningError;
     }
 }

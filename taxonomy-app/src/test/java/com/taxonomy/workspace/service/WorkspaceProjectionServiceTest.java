@@ -44,7 +44,8 @@ class WorkspaceProjectionServiceTest {
         gitRepo = new DslGitRepository();
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         when(wsRepo.findByUsernameAndSharedFalse(anyString())).thenReturn(Optional.empty());
-        workspaceManager = new WorkspaceManager(wsRepo, 50);
+        workspaceManager = new WorkspaceManager(wsRepo, 50,
+                mock(SystemRepositoryService.class), gitRepo);
         projectionRepo = mock(WorkspaceProjectionRepository.class);
         projectionService = new WorkspaceProjectionService(projectionRepo, workspaceManager, gitRepo, wsRepo);
     }

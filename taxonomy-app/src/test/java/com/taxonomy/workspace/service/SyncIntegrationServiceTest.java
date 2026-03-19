@@ -44,7 +44,9 @@ class SyncIntegrationServiceTest {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         when(wsRepo.findByUsernameAndSharedFalse(anyString())).thenReturn(Optional.empty());
         syncStateRepo = mock(SyncStateRepository.class);
-        syncService = new SyncIntegrationService(syncStateRepo, gitRepo, wsRepo);
+        SystemRepositoryService sysRepoService = mock(SystemRepositoryService.class);
+        when(sysRepoService.getSharedBranch()).thenReturn("draft");
+        syncService = new SyncIntegrationService(syncStateRepo, gitRepo, wsRepo, sysRepoService);
 
         // Default: no existing sync state, save returns the argument
         when(syncStateRepo.findByUsername(anyString())).thenReturn(Optional.empty());

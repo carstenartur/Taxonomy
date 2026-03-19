@@ -3,7 +3,9 @@ package com.taxonomy.workspace.service;
 import com.taxonomy.dto.ContextRef;
 import com.taxonomy.dto.WorkspaceInfo;
 import com.taxonomy.dto.WorkspaceRole;
+import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,13 +43,19 @@ public class WorkspaceManager {
 
     private final UserWorkspaceRepository workspaceRepository;
     private final int maxHistory;
+    private final SystemRepositoryService systemRepositoryService;
+    private final DslGitRepository gitRepository;
 
     private final ConcurrentMap<String, UserWorkspaceState> activeWorkspaces = new ConcurrentHashMap<>();
 
     public WorkspaceManager(UserWorkspaceRepository workspaceRepository,
-                            @Value("${taxonomy.context.max-history:50}") int maxHistory) {
+                            @Value("${taxonomy.context.max-history:50}") int maxHistory,
+                            SystemRepositoryService systemRepositoryService,
+                            DslGitRepository gitRepository) {
         this.workspaceRepository = workspaceRepository;
         this.maxHistory = maxHistory;
+        this.systemRepositoryService = systemRepositoryService;
+        this.gitRepository = gitRepository;
     }
 
     /**
@@ -127,6 +135,81 @@ public class WorkspaceManager {
         return activeWorkspaces.size();
     }
 
+    /**
+     * Find the persistent workspace entity for a user.
+     *
+     * @param username the user's username
+     * @return the workspace entity, or null if not found
+     */
+    public UserWorkspace findUserWorkspace(String username) {
+        try {
+            return workspaceRepository.findByUsernameAndSharedFalse(username).orElse(null);
+        } catch (Exception e) {
+            log.debug("Could not find workspace for '{}': {}", username, e.getMessage());
+            return null;
+        }
+    }
+
+    // ── Provisioning ───────────────────────────────────────────────
+
+    /**
+     * Provision a user's workspace repository by creating a personal Git branch.
+     *
+     * <p>This method implements lazy provisioning: workspace metadata is created
+     * eagerly on first access, but the actual Git branch is only created when
+     * explicitly requested (e.g. when the user first needs write access).
+     *
+     * <p>If the workspace is already provisioned ({@code READY}), this method
+     * is a no-op and returns the existing workspace.
+     *
+     * @param username the authenticated user's username
+     * @return the provisioned workspace entity
+     * @throws RuntimeException if provisioning fails
+     */
+    public UserWorkspace provisionWorkspaceRepository(String username) {
+        UserWorkspace ws = workspaceRepository.findByUsernameAndSharedFalse(username)
+                .orElseThrow(() -> new IllegalStateException("No workspace metadata for " + username));
+
+        if (ws.getProvisioningStatus() == WorkspaceProvisioningStatus.READY) {
+            return ws;
+        }
+
+        ws.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
+        workspaceRepository.save(ws);
+
+        try {
+            var sysRepo = systemRepositoryService.getPrimaryRepository();
+            String baseBranch = sysRepo.getDefaultBranch();
+            String userBranch = username + "/workspace";
+
+            String baseCommit = gitRepository.getHeadCommit(baseBranch);
+            if (baseCommit != null) {
+                gitRepository.createBranch(userBranch, baseBranch);
+            }
+
+            ws.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
+            ws.setSourceRepositoryId(sysRepo.getRepositoryId());
+            ws.setTopologyMode(sysRepo.getTopologyMode());
+            ws.setBaseBranch(baseBranch);
+            ws.setBaseCommit(baseCommit);
+            ws.setCurrentBranch(userBranch);
+            ws.setCurrentCommit(baseCommit);
+            ws.setSyncTargetBranch(baseBranch);
+            ws.setProvisionedAt(Instant.now());
+            ws.setProvisioningError(null);
+            workspaceRepository.save(ws);
+
+            log.info("Provisioned workspace for user '{}': branch='{}', base='{}'",
+                    username, userBranch, baseBranch);
+            return ws;
+        } catch (Exception e) {
+            ws.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);
+            ws.setProvisioningError(e.getMessage());
+            workspaceRepository.save(ws);
+            throw new RuntimeException("Could not provision workspace for " + username, e);
+        }
+    }
+
     // ── Internal ────────────────────────────────────────────────────
 
     private void ensurePersistentWorkspace(String username) {
@@ -139,6 +222,8 @@ public class WorkspaceManager {
                 ws.setCurrentBranch("draft");
                 ws.setBaseBranch("draft");
                 ws.setShared(false);
+                ws.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
+                ws.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
                 ws.setCreatedAt(Instant.now());
                 ws.setLastAccessedAt(Instant.now());
                 workspaceRepository.save(ws);
@@ -158,6 +243,22 @@ public class WorkspaceManager {
 
     private WorkspaceInfo toWorkspaceInfo(UserWorkspaceState state) {
         ContextRef ctx = state.getCurrentContext();
+        String provisioningStatus = "READY";
+        String topologyMode = "INTERNAL_SHARED";
+        String sourceRepositoryId = null;
+
+        try {
+            UserWorkspace ws = workspaceRepository.findByUsernameAndSharedFalse(state.getUsername())
+                    .orElse(null);
+            if (ws != null) {
+                provisioningStatus = ws.getProvisioningStatus().name();
+                topologyMode = ws.getTopologyMode().name();
+                sourceRepositoryId = ws.getSourceRepositoryId();
+            }
+        } catch (Exception e) {
+            log.debug("Could not read provisioning info for '{}': {}", state.getUsername(), e.getMessage());
+        }
+
         return new WorkspaceInfo(
                 state.getUsername() + "-workspace",
                 state.getUsername(),
@@ -167,7 +268,10 @@ public class WorkspaceManager {
                 false,
                 ctx,
                 Instant.now(),
-                Instant.now()
+                Instant.now(),
+                provisioningStatus,
+                topologyMode,
+                sourceRepositoryId
         );
     }
 }
