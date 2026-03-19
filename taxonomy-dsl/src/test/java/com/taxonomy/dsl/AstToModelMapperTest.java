@@ -227,4 +227,101 @@ class AstToModelMapperTest {
         assertThat(model.getViews()).hasSize(1);
         assertThat(model.getEvidence()).hasSize(1);
     }
+
+    // ── Provenance block mapping ──────────────────────────────────────────────
+
+    @Test
+    void mapSource() {
+        String dsl = """
+                source SRC-001 {
+                  type: "REGULATION";
+                  title: "Test Regulation";
+                  canonicalIdentifier: "VV-2026-001";
+                  canonicalUrl: "https://example.gov/vv/2026/001";
+                  originSystem: "gov-portal";
+                  language: "de";
+                }
+                """;
+        DocumentAst doc = parser.parse(dsl);
+        CanonicalArchitectureModel model = mapper.map(doc);
+
+        assertThat(model.getSources()).hasSize(1);
+        ArchitectureSource src = model.getSources().get(0);
+        assertThat(src.getId()).isEqualTo("SRC-001");
+        assertThat(src.getSourceType()).isEqualTo("REGULATION");
+        assertThat(src.getTitle()).isEqualTo("Test Regulation");
+        assertThat(src.getCanonicalIdentifier()).isEqualTo("VV-2026-001");
+        assertThat(src.getLanguage()).isEqualTo("de");
+    }
+
+    @Test
+    void mapSourceVersion() {
+        String dsl = """
+                sourceVersion SRCV-001 {
+                  source: "SRC-001";
+                  versionLabel: "2026-04";
+                  contentHash: "sha256:abc123";
+                  mimeType: "application/pdf";
+                }
+                """;
+        DocumentAst doc = parser.parse(dsl);
+        CanonicalArchitectureModel model = mapper.map(doc);
+
+        assertThat(model.getSourceVersions()).hasSize(1);
+        ArchitectureSourceVersion sv = model.getSourceVersions().get(0);
+        assertThat(sv.getId()).isEqualTo("SRCV-001");
+        assertThat(sv.getSourceId()).isEqualTo("SRC-001");
+        assertThat(sv.getVersionLabel()).isEqualTo("2026-04");
+        assertThat(sv.getContentHash()).isEqualTo("sha256:abc123");
+    }
+
+    @Test
+    void mapSourceFragment() {
+        String dsl = """
+                sourceFragment SFR-001 {
+                  sourceVersion: "SRCV-001";
+                  sectionPath: "Chapter 2";
+                  paragraphRef: "§ 4 Abs. 2";
+                  pageFrom: 3;
+                  pageTo: 5;
+                  text: "The authority must ensure...";
+                  fragmentHash: "sha256:def456";
+                }
+                """;
+        DocumentAst doc = parser.parse(dsl);
+        CanonicalArchitectureModel model = mapper.map(doc);
+
+        assertThat(model.getSourceFragments()).hasSize(1);
+        ArchitectureSourceFragment sf = model.getSourceFragments().get(0);
+        assertThat(sf.getId()).isEqualTo("SFR-001");
+        assertThat(sf.getSourceVersionId()).isEqualTo("SRCV-001");
+        assertThat(sf.getSectionPath()).isEqualTo("Chapter 2");
+        assertThat(sf.getPageFrom()).isEqualTo(3);
+        assertThat(sf.getPageTo()).isEqualTo(5);
+    }
+
+    @Test
+    void mapRequirementSourceLink() {
+        String dsl = """
+                requirementSourceLink RSL-001 {
+                  requirement: "REQ-001";
+                  source: "SRC-001";
+                  sourceVersion: "SRCV-001";
+                  linkType: "EXTRACTED_FROM";
+                  confidence: 0.91;
+                  note: "Parsed from regulation";
+                }
+                """;
+        DocumentAst doc = parser.parse(dsl);
+        CanonicalArchitectureModel model = mapper.map(doc);
+
+        assertThat(model.getRequirementSourceLinks()).hasSize(1);
+        ArchitectureRequirementSourceLink rsl = model.getRequirementSourceLinks().get(0);
+        assertThat(rsl.getId()).isEqualTo("RSL-001");
+        assertThat(rsl.getRequirementId()).isEqualTo("REQ-001");
+        assertThat(rsl.getSourceId()).isEqualTo("SRC-001");
+        assertThat(rsl.getLinkType()).isEqualTo("EXTRACTED_FROM");
+        assertThat(rsl.getConfidence()).isEqualTo(0.91);
+        assertThat(rsl.getNote()).isEqualTo("Parsed from regulation");
+    }
 }

@@ -271,6 +271,32 @@ Das Architecture-DSL-Subsystem verwendet JGit DFS (Distributed File System), wob
 
 **Wichtig:** `DfsBlockCache` ist ein JVM-globaler Singleton. Pack-Namen **müssen** über alle `HibernateObjDatabase`-Instanzen innerhalb derselben JVM eindeutig sein. Der `packIdCounter` ist pro Instanz und wird mit `System.nanoTime()` initialisiert, um Kollisionen bei Test-Kontext-Neustarts zu vermeiden.
 
+### Quell-Provenienz-Architektur
+
+Die DSL unterstützt **Provenienz-Blöcke**, die Anforderungen mit ihrem
+ursprünglichen Quellmaterial verknüpfen. Das Provenienz-Modell besteht aus drei
+Schichten:
+
+1. **DSL-Schicht** (`taxonomy-dsl`): Vier neue Blocktypen — `source`,
+   `sourceVersion`, `sourceFragment`, `requirementSourceLink` — werden wie
+   `element`- oder `relation`-Blöcke geparst und serialisiert.
+
+2. **JSON-Export-Schicht** (`taxonomy-domain`): `SavedAnalysis` (Version 2) kann
+   optional `sources`, `sourceVersions`, `sourceFragments` und
+   `requirementSourceLinks` enthalten.
+
+3. **Laufzeit/DB-Schicht** (`taxonomy-app`): JPA-Entitäten `SourceArtifact`,
+   `SourceVersion`, `SourceFragment` und `RequirementSourceLink` speichern
+   Provenienz-Daten in der Datenbank.
+
+Bei der Ergänzung neuer Provenienz-Features:
+
+- Neue Blocktypen in `TaxDslParser.KNOWN_BLOCK_TYPES` registrieren
+- Modellklassen in `com.taxonomy.dsl.model` hinzufügen
+- `AstToModelMapper` und `ModelToAstMapper` erweitern
+- Eigenschaftsreihenfolge in `TaxDslSerializer.PROPERTY_ORDER` hinzufügen
+- Tokens in `DslTokenizer.STRUCTURE_TOKENS` registrieren
+
 ---
 
 ## Hibernate Search und Lucene

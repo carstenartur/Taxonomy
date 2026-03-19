@@ -1051,6 +1051,10 @@ view hospital-comms-overview {
 | `mapping` | `mapping <ReqID> -> <ElementID> {` | Zuordnung einer Anforderung zu einem Element mit Bewertung |
 | `view` | `view <ID> {` | Benannte Teilmenge von Elementen zur Diagrammerstellung |
 | `evidence` | `evidence <ID> {` | Unterstützender Nachweis für eine Beziehung; Ziel wird über die Eigenschaft `for-relation` angegeben |
+| `source` | `source <ID> {` | Quellartefakt-Identität (Vorschrift, Dokument usw.) |
+| `sourceVersion` | `sourceVersion <ID> {` | Konkrete Version/Snapshot einer Quelle |
+| `sourceFragment` | `sourceFragment <ID> {` | Nachverfolgbares Fragment innerhalb einer Quellversion |
+| `requirementSourceLink` | `requirementSourceLink <ID> {` | Verknüpft eine Anforderung mit ihren Quellen |
 
 ### Elementtypen
 
@@ -1068,6 +1072,73 @@ view hospital-comms-overview {
 ### Beziehungstypen
 
 Siehe [§15 Referenz der Beziehungstypen](#15-relation-types-reference) für die vollständige Liste der 10 Beziehungstypen und deren Kompatibilitätsregeln.
+
+### Quell-Provenienz in der DSL
+
+Anforderungen können mit ihrem Ursprung über Provenienz-Blöcke verknüpft werden.
+Dies ermöglicht die Rückverfolgbarkeit von Architekturentscheidungen bis zum
+ursprünglichen Quellmaterial.
+
+#### Quellartefakt
+
+```text
+source SRC-001 {
+  type: "REGULATION";
+  title: "Verwaltungsvorschrift Beispiel";
+  canonicalIdentifier: "VV-2026-001";
+  canonicalUrl: "https://example.gov/vv/2026/001";
+  originSystem: "gov-portal";
+  language: "de";
+}
+```
+
+Unterstützte `type`-Werte: `BUSINESS_REQUEST`, `REGULATION`, `FIM_ENTRY`,
+`UPLOADED_DOCUMENT`, `EMAIL`, `MEETING_NOTE`, `WEB_RESOURCE`, `MANUAL_ENTRY`,
+`LEGACY_IMPORT`.
+
+#### Quellversion
+
+```text
+sourceVersion SRCV-001 {
+  source: "SRC-001";
+  versionLabel: "2026-04-01";
+  retrievedAt: "2026-04-15T09:32:00Z";
+  effectiveDate: "2026-04-01";
+  mimeType: "application/pdf";
+  contentHash: "sha256:abc123...";
+}
+```
+
+#### Quellfragment
+
+```text
+sourceFragment SFR-001 {
+  sourceVersion: "SRCV-001";
+  sectionPath: "Kapitel 2 > Abschnitt 2.1";
+  paragraphRef: "§ 4 Abs. 2";
+  pageFrom: 3;
+  pageTo: 3;
+  text: "Die Behörde muss sicherstellen, dass ...";
+  fragmentHash: "sha256:def456...";
+}
+```
+
+#### Anforderungs-Quell-Verknüpfung
+
+```text
+requirementSourceLink RSL-001 {
+  requirement: "REQ-001";
+  source: "SRC-001";
+  sourceVersion: "SRCV-001";
+  sourceFragment: "SFR-001";
+  linkType: "EXTRACTED_FROM";
+  confidence: 0.91;
+  note: "Automatisch extrahiert aus Verwaltungsvorschrift-Parser";
+}
+```
+
+Unterstützte `linkType`-Werte: `IMPORTED_FROM`, `EXTRACTED_FROM`, `QUOTED_FROM`,
+`DERIVED_FROM`, `CONFIRMED_BY`, `REFERENCES`.
 
 ### Erweiterungsattribute
 

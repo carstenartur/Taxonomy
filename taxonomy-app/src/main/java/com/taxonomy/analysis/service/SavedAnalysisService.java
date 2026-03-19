@@ -1,6 +1,8 @@
 package com.taxonomy.analysis.service;
 
+import com.taxonomy.dto.RequirementSourceLinkDto;
 import com.taxonomy.dto.SavedAnalysis;
+import com.taxonomy.dto.SourceArtifactDto;
 import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +32,8 @@ public class SavedAnalysisService {
 
     private static final Logger log = LoggerFactory.getLogger(SavedAnalysisService.class);
 
-    private static final int SUPPORTED_VERSION = 1;
+    private static final int CURRENT_VERSION = 2;
+    private static final int MIN_SUPPORTED_VERSION = 1;
 
     private final ObjectMapper objectMapper;
     private final TaxonomyService taxonomyService;
@@ -54,12 +57,35 @@ public class SavedAnalysisService {
                                      Map<String, String> reasons,
                                      String provider) {
         SavedAnalysis saved = new SavedAnalysis();
-        saved.setVersion(SUPPORTED_VERSION);
+        saved.setVersion(CURRENT_VERSION);
         saved.setRequirement(requirement);
         saved.setTimestamp(Instant.now().toString());
         saved.setProvider(provider);
         saved.setScores(scores);
         saved.setReasons(reasons);
+        return saved;
+    }
+
+    /**
+     * Builds a {@link SavedAnalysis} with provenance data, ready for JSON serialization.
+     *
+     * @param requirement          the business requirement text
+     * @param scores               node code → score (0 = scored zero, absent = not evaluated)
+     * @param reasons              node code → reason text (may be null or sparse)
+     * @param provider             LLM provider name (informational)
+     * @param sources              source artifacts (optional, may be null)
+     * @param requirementSourceLinks requirement-to-source links (optional, may be null)
+     * @return populated {@link SavedAnalysis} with provenance
+     */
+    public SavedAnalysis buildExport(String requirement,
+                                     Map<String, Integer> scores,
+                                     Map<String, String> reasons,
+                                     String provider,
+                                     List<SourceArtifactDto> sources,
+                                     List<RequirementSourceLinkDto> requirementSourceLinks) {
+        SavedAnalysis saved = buildExport(requirement, scores, reasons, provider);
+        saved.setSources(sources);
+        saved.setRequirementSourceLinks(requirementSourceLinks);
         return saved;
     }
 
@@ -82,9 +108,10 @@ public class SavedAnalysisService {
     public SavedAnalysis importFromJson(String json) throws IOException {
         SavedAnalysis saved = objectMapper.readValue(json, SavedAnalysis.class);
 
-        if (saved.getVersion() != SUPPORTED_VERSION) {
+        if (saved.getVersion() < MIN_SUPPORTED_VERSION || saved.getVersion() > CURRENT_VERSION) {
             throw new IllegalArgumentException(
-                    "Unsupported version: " + saved.getVersion() + " (expected " + SUPPORTED_VERSION + ")");
+                    "Unsupported version: " + saved.getVersion()
+                            + " (supported: " + MIN_SUPPORTED_VERSION + "–" + CURRENT_VERSION + ")");
         }
         if (saved.getRequirement() == null || saved.getRequirement().isBlank()) {
             throw new IllegalArgumentException("requirement must not be blank");

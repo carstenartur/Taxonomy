@@ -30,20 +30,25 @@ public class TaxDslSerializer {
      * Unknown block types sort after all known types.
      */
     private static final List<String> BLOCK_KIND_ORDER = List.of(
-            "element", "relation", "requirement", "mapping", "view", "evidence");
+            "element", "relation", "requirement", "mapping", "view", "evidence",
+            "source", "sourceVersion", "sourceFragment", "requirementSourceLink", "candidate");
 
     /**
      * Canonical property ordering per block kind.
      * Properties are serialized in this order; any property not listed sorts alphabetically
      * after the listed ones but before extension attributes.
      */
-    private static final Map<String, List<String>> PROPERTY_ORDER = Map.of(
-            "element", List.of("title", "description", "taxonomy"),
-            "relation", List.of("status", "confidence", "provenance"),
-            "requirement", List.of("title", "text"),
-            "mapping", List.of("score", "source"),
-            "view", List.of("title", "include", "layout"),
-            "evidence", List.of("for-relation", "type", "model", "confidence", "summary")
+    private static final Map<String, List<String>> PROPERTY_ORDER = Map.ofEntries(
+            Map.entry("element", List.of("title", "description", "taxonomy")),
+            Map.entry("relation", List.of("status", "confidence", "provenance")),
+            Map.entry("requirement", List.of("title", "text")),
+            Map.entry("mapping", List.of("score", "source")),
+            Map.entry("view", List.of("title", "include", "layout")),
+            Map.entry("evidence", List.of("for-relation", "type", "model", "confidence", "summary")),
+            Map.entry("source", List.of("type", "title", "canonicalIdentifier", "canonicalUrl", "originSystem", "language")),
+            Map.entry("sourceVersion", List.of("source", "versionLabel", "retrievedAt", "effectiveDate", "mimeType", "contentHash")),
+            Map.entry("sourceFragment", List.of("sourceVersion", "sectionPath", "paragraphRef", "pageFrom", "pageTo", "text", "fragmentHash")),
+            Map.entry("requirementSourceLink", List.of("requirement", "source", "sourceVersion", "sourceFragment", "linkType", "confidence", "note"))
     );
 
     /**

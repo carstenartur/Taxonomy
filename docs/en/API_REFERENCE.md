@@ -295,6 +295,38 @@ curl -u admin:admin -X POST http://localhost:8080/api/scores/import \
   -d @saved-analysis.json
 ```
 
+#### Version 2 Format (with provenance)
+
+Starting with version 2, the export JSON can optionally include source
+provenance data:
+
+```json
+{
+  "version": 2,
+  "requirement": "Digital application processing",
+  "timestamp": "2026-03-19T10:00:00Z",
+  "provider": "GEMINI",
+  "scores": { "CP-1023": 92 },
+  "reasons": { "CP-1023": "Direct capability match" },
+  "sources": [
+    {
+      "sourceType": "REGULATION",
+      "title": "VV Digitale Anträge"
+    }
+  ],
+  "requirementSourceLinks": [
+    {
+      "requirementId": "REQ-001",
+      "linkType": "EXTRACTED_FROM",
+      "confidence": 0.91
+    }
+  ]
+}
+```
+
+Both version 1 (without provenance) and version 2 JSON files are accepted by
+the import endpoint.
+
 ---
 
 ## Reports

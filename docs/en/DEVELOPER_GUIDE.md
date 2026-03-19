@@ -271,6 +271,31 @@ The Architecture DSL subsystem uses JGit DFS (Distributed File System) with all 
 
 **Important:** `DfsBlockCache` is a JVM-global singleton. Pack names **must** be unique across all `HibernateObjDatabase` instances in the same JVM. The `packIdCounter` is per-instance and initialised with `System.nanoTime()` to avoid collisions during test context restarts.
 
+### Source Provenance Architecture
+
+The DSL supports **provenance blocks** that link requirements to their original
+source materials.  The provenance model consists of three layers:
+
+1. **DSL Layer** (`taxonomy-dsl`): Four new block types — `source`,
+   `sourceVersion`, `sourceFragment`, `requirementSourceLink` — are parsed and
+   serialized just like `element` or `relation` blocks.
+
+2. **JSON Export Layer** (`taxonomy-domain`): `SavedAnalysis` (version 2) can
+   optionally include `sources`, `sourceVersions`, `sourceFragments`, and
+   `requirementSourceLinks`.
+
+3. **Runtime/DB Layer** (`taxonomy-app`): JPA entities `SourceArtifact`,
+   `SourceVersion`, `SourceFragment`, and `RequirementSourceLink` store
+   provenance data in the database.
+
+When adding new provenance features:
+
+- Register new block types in `TaxDslParser.KNOWN_BLOCK_TYPES`
+- Add model classes in `com.taxonomy.dsl.model`
+- Extend `AstToModelMapper` and `ModelToAstMapper`
+- Add property ordering in `TaxDslSerializer.PROPERTY_ORDER`
+- Register tokens in `DslTokenizer.STRUCTURE_TOKENS`
+
 ---
 
 ## Hibernate Search and Lucene

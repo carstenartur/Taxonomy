@@ -127,7 +127,7 @@ Das Projekt ist ein Multi-Modul-Maven-Build mit vier Modulen:
 
 ```
 taxonomy-domain/       Reine Domänentypen (DTOs, Enums) — keine Framework-Abhängigkeiten
-taxonomy-dsl/          Architektur-DSL (Parser, Modell, Validator, Differ) — keine Framework-Abhängigkeiten
+taxonomy-dsl/          Architektur-DSL (Parser, Modell, Validator, Differ); Provenienz-Modell (source, sourceVersion, sourceFragment, requirementSourceLink) — keine Framework-Abhängigkeiten
 taxonomy-export/       Export-Services (ArchiMate, Visio, Mermaid, Diagramm) — keine Framework-Abhängigkeiten
 taxonomy-app/          Spring-Boot-Anwendung (Controller, Services, JPA, Suche, Speicher)
 ```
@@ -163,7 +163,7 @@ DSL-Text  →  JGit-Commit  →  HibernateRepository  →  HSQLDB (git_packs- & 
 | Reflog-Entität | `GitReflogEntity` | JPA-Entität für die `git_reflog`-Tabelle |
 | Konfiguration | `DslStorageConfig` | Spring-`@Configuration`, die die `DslGitRepository`-Bean verdrahtet |
 
-DSL-Dokumente werden unter dem Dateinamen `architecture.taxdsl` gespeichert. Der `DslApiController` stellt Endpunkte für Commit, Verlauf, Diff, Branching, Merge und Cherry-Pick-Operationen bereit.
+DSL-Dokumente werden unter dem Dateinamen `architecture.taxdsl` gespeichert. Der `DslApiController` stellt Endpunkte für Commit, Verlauf, Diff, Branching, Merge und Cherry-Pick-Operationen bereit. Provenienz-Blöcke (`source`, `sourceVersion`, `sourceFragment`, `requirementSourceLink`) werden im selben JGit-DFS-Repository zusammen mit Architekturblöcken gespeichert.
 
 ---
 

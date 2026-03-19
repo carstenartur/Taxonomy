@@ -330,7 +330,7 @@ class TaxonomyApplicationTests {
                                 + "\"reasons\":{\"CO\":\"Voice comms\"},"
                                 + "\"provider\":\"GEMINI\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.version").value(2))
                 .andExpect(jsonPath("$.requirement").value("Provide secure voice communications"))
                 .andExpect(jsonPath("$.timestamp").isString())
                 .andExpect(jsonPath("$.scores.CO").value(35))

@@ -24,7 +24,9 @@ public class DslTokenizer {
     /** DSL block keywords. */
     private static final Set<String> STRUCTURE_TOKENS = Set.of(
             "element", "relation", "mapping", "view", "evidence",
-            "requirement", "meta", "constraint", "decision", "pattern");
+            "requirement", "meta", "constraint", "decision", "pattern",
+            // Provenance tokens (stored lowercase for case-insensitive matching)
+            "source", "sourceversion", "sourcefragment", "requirementsourcelink", "candidate");
 
     /** Recognized relation types. */
     private static final Set<String> RELATION_TOKENS = Set.of(
@@ -48,6 +50,10 @@ public class DslTokenizer {
     /** Pattern for requirement-style identifiers: REQ-NNN or EV-NNN. */
     private static final Pattern REQ_PATTERN = Pattern.compile("\\b(REQ-\\d{1,5}|EV-\\d{1,5})\\b");
 
+    /** Pattern for provenance-style identifiers: SRC-NNN, SRCV-NNN, SFR-NNN, RSL-NNN, CAND-NNN. */
+    private static final Pattern PROVENANCE_ID_PATTERN = Pattern.compile(
+            "\\b(SRC-\\d{1,5}|SRCV-\\d{1,5}|SFR-\\d{1,5}|RSL-\\d{1,5}|CAND-\\d{1,5})\\b");
+
     /**
      * Tokenize DSL text into a space-separated string of categorized tokens.
      *
@@ -69,6 +75,10 @@ public class DslTokenizer {
         Matcher reqMatcher = REQ_PATTERN.matcher(dslText);
         while (reqMatcher.find()) {
             tokens.add(reqMatcher.group(1));
+        }
+        Matcher provMatcher = PROVENANCE_ID_PATTERN.matcher(dslText);
+        while (provMatcher.find()) {
+            tokens.add(provMatcher.group(1));
         }
 
         // Extract word tokens
@@ -107,6 +117,10 @@ public class DslTokenizer {
         Matcher reqMatcher = REQ_PATTERN.matcher(dslText);
         while (reqMatcher.find()) {
             ids.add(reqMatcher.group(1));
+        }
+        Matcher provMatcher = PROVENANCE_ID_PATTERN.matcher(dslText);
+        while (provMatcher.find()) {
+            ids.add(provMatcher.group(1));
         }
         return ids;
     }

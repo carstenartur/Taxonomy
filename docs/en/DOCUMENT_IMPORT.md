@@ -88,6 +88,16 @@ After importing and analyzing a document, the **Source Provenance** panel shows:
 | PDF    | `.pdf`    | Full text extraction, heading detection |
 | DOCX   | `.docx`   | Full text extraction, heading detection |
 
+## DSL Representation
+
+When an analysis with source provenance is committed to Git, the provenance
+information is represented in the DSL as `source`, `sourceVersion`, and
+`requirementSourceLink` blocks.  This enables full traceability in the
+version-controlled architecture repository.
+
+See the [User Guide](USER_GUIDE.md#source-provenance-in-the-dsl) for DSL syntax
+details.
+
 ## Limitations
 
 - The parser extracts **requirement candidates** but does not interpret legal

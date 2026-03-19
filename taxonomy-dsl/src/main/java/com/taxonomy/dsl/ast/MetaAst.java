@@ -11,5 +11,5 @@ public record MetaAst(String language, String version, String namespace, SourceL
     /** Default language identifier. */
     public static final String LANGUAGE_ID = "taxdsl";
     /** Current DSL version. */
-    public static final String CURRENT_VERSION = "2.0";
+    public static final String CURRENT_VERSION = "2.1";
 }
