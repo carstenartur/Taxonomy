@@ -53,10 +53,10 @@ class ScreenshotGeneratorIT {
             "Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments";
 
     private static final String FALLBACK_DSL_TEXT =
-            "meta {\\n  language: \"taxdsl\";\\n  version: \"2.0\";\\n  namespace: \"default\";\\n}\\n\\n" +
-            "element CP type Capability {\\n  title: \"Capability Packages\";\\n}\\n\\n" +
-            "element CR type CoreService {\\n  title: \"Core Services\";\\n}\\n\\n" +
-            "relation CP REALIZES CR {\\n  status: accepted;\\n}\\n";
+            "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+            "element CP type Capability {\n  title: \"Capability Packages\";\n}\n\n" +
+            "element CR type CoreService {\n  title: \"Core Services\";\n}\n\n" +
+            "relation CP REALIZES CR {\n  status: accepted;\n}\n";
 
     /**
      * DSL content committed on the {@code draft} branch during {@link #buildGitHistory()}.
@@ -1515,7 +1515,7 @@ class ScreenshotGeneratorIT {
         } catch (org.openqa.selenium.TimeoutException e) {
             // Fallback: inject representative DSL into CodeMirror editor
             js("var view = window.dslCmView;" +
-               "if (view) view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: '" + FALLBACK_DSL_TEXT + "'}});");
+               "if (view) view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: " + jsStringLiteral(FALLBACK_DSL_TEXT) + "}});");
         }
         saveScreenshot("34-dsl-editor-panel.png");
     }
@@ -1763,7 +1763,7 @@ class ScreenshotGeneratorIT {
         } catch (org.openqa.selenium.TimeoutException e) {
             // Fallback: inject DSL with relation blocks into CodeMirror editor
             js("var view = window.dslCmView;" +
-               "if (view) view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: '" + FALLBACK_DSL_TEXT + "'}});");
+               "if (view) view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: " + jsStringLiteral(FALLBACK_DSL_TEXT) + "}});");
         }
         // Inject healthy status badges to avoid capturing "unavailable" / error states
         // (AI badge, Embeddings badge, Git status bar) in the documentation screenshot
