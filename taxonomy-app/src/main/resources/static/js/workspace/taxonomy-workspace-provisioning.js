@@ -164,11 +164,11 @@ window.TaxonomyWorkspaceProvisioning = (function () {
             '    <div class="modal-header">' +
             '      <h5 class="modal-title text-success">' +
             '        <i class="bi bi-check-circle me-2"></i>' +
-                     t('workspace.provisioning.ready') +
+                     t('workspace.provisioning.ready.title') +
             '      </h5>' +
             '    </div>' +
             '    <div class="modal-body text-center">' +
-            '      <p>' + t('workspace.provisioning.ready') + '</p>' +
+            '      <p>' + t('workspace.provisioning.ready.message') + '</p>' +
             '    </div>' +
             '  </div>' +
             '</div>';
