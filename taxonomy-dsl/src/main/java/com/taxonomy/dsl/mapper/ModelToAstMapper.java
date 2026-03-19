@@ -36,6 +36,18 @@ public class ModelToAstMapper {
         for (ArchitectureEvidence ev : model.getEvidence()) {
             blocks.add(evidenceToBlock(ev));
         }
+        for (ArchitectureSource src : model.getSources()) {
+            blocks.add(sourceToBlock(src));
+        }
+        for (ArchitectureSourceVersion sv : model.getSourceVersions()) {
+            blocks.add(sourceVersionToBlock(sv));
+        }
+        for (ArchitectureSourceFragment sf : model.getSourceFragments()) {
+            blocks.add(sourceFragmentToBlock(sf));
+        }
+        for (ArchitectureRequirementSourceLink rsl : model.getRequirementSourceLinks()) {
+            blocks.add(requirementSourceLinkToBlock(rsl));
+        }
 
         return new DocumentAst(meta, blocks);
     }
@@ -138,6 +150,78 @@ public class ModelToAstMapper {
         addExtensions(props, ev.getExtensions());
 
         return new BlockAst("evidence", headerTokens, props, List.of(), ev.getExtensions(), null);
+    }
+
+    private BlockAst sourceToBlock(ArchitectureSource src) {
+        List<String> headerTokens = new ArrayList<>();
+        if (src.getId() != null) headerTokens.add(src.getId());
+
+        List<PropertyAst> props = new ArrayList<>();
+        addProperty(props, "type", src.getSourceType());
+        addProperty(props, "title", src.getTitle());
+        addProperty(props, "canonicalIdentifier", src.getCanonicalIdentifier());
+        addProperty(props, "canonicalUrl", src.getCanonicalUrl());
+        addProperty(props, "originSystem", src.getOriginSystem());
+        addProperty(props, "language", src.getLanguage());
+        addExtensions(props, src.getExtensions());
+
+        return new BlockAst("source", headerTokens, props, List.of(), src.getExtensions(), null);
+    }
+
+    private BlockAst sourceVersionToBlock(ArchitectureSourceVersion sv) {
+        List<String> headerTokens = new ArrayList<>();
+        if (sv.getId() != null) headerTokens.add(sv.getId());
+
+        List<PropertyAst> props = new ArrayList<>();
+        addProperty(props, "source", sv.getSourceId());
+        addProperty(props, "versionLabel", sv.getVersionLabel());
+        addProperty(props, "retrievedAt", sv.getRetrievedAt());
+        addProperty(props, "effectiveDate", sv.getEffectiveDate());
+        addProperty(props, "mimeType", sv.getMimeType());
+        addProperty(props, "contentHash", sv.getContentHash());
+        addExtensions(props, sv.getExtensions());
+
+        return new BlockAst("sourceVersion", headerTokens, props, List.of(), sv.getExtensions(), null);
+    }
+
+    private BlockAst sourceFragmentToBlock(ArchitectureSourceFragment sf) {
+        List<String> headerTokens = new ArrayList<>();
+        if (sf.getId() != null) headerTokens.add(sf.getId());
+
+        List<PropertyAst> props = new ArrayList<>();
+        addProperty(props, "sourceVersion", sf.getSourceVersionId());
+        addProperty(props, "sectionPath", sf.getSectionPath());
+        addProperty(props, "paragraphRef", sf.getParagraphRef());
+        if (sf.getPageFrom() != null) {
+            addProperty(props, "pageFrom", String.valueOf(sf.getPageFrom()));
+        }
+        if (sf.getPageTo() != null) {
+            addProperty(props, "pageTo", String.valueOf(sf.getPageTo()));
+        }
+        addProperty(props, "text", sf.getText());
+        addProperty(props, "fragmentHash", sf.getFragmentHash());
+        addExtensions(props, sf.getExtensions());
+
+        return new BlockAst("sourceFragment", headerTokens, props, List.of(), sf.getExtensions(), null);
+    }
+
+    private BlockAst requirementSourceLinkToBlock(ArchitectureRequirementSourceLink rsl) {
+        List<String> headerTokens = new ArrayList<>();
+        if (rsl.getId() != null) headerTokens.add(rsl.getId());
+
+        List<PropertyAst> props = new ArrayList<>();
+        addProperty(props, "requirement", rsl.getRequirementId());
+        addProperty(props, "source", rsl.getSourceId());
+        addProperty(props, "sourceVersion", rsl.getSourceVersionId());
+        addProperty(props, "sourceFragment", rsl.getSourceFragmentId());
+        addProperty(props, "linkType", rsl.getLinkType());
+        if (rsl.getConfidence() != null) {
+            addProperty(props, "confidence", String.valueOf(rsl.getConfidence()));
+        }
+        addProperty(props, "note", rsl.getNote());
+        addExtensions(props, rsl.getExtensions());
+
+        return new BlockAst("requirementSourceLink", headerTokens, props, List.of(), rsl.getExtensions(), null);
     }
 
     private void addProperty(List<PropertyAst> props, String key, String value) {

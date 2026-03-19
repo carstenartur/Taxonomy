@@ -32,7 +32,7 @@ class SavedAnalysisServiceTest {
         SavedAnalysis saved = savedAnalysisService.buildExport(
                 "Provide secure voice comms", scores, reasons, "GEMINI");
 
-        assertThat(saved.getVersion()).isEqualTo(1);
+        assertThat(saved.getVersion()).isEqualTo(2);
         assertThat(saved.getRequirement()).isEqualTo("Provide secure voice comms");
         assertThat(saved.getTimestamp()).isNotBlank();
         assertThat(saved.getProvider()).isEqualTo("GEMINI");

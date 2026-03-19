@@ -1,6 +1,7 @@
 package com.taxonomy.dsl;
 
 import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.ast.MetaAst;
 import com.taxonomy.dsl.mapper.AstToModelMapper;
 import com.taxonomy.dsl.mapper.ModelToAstMapper;
 import com.taxonomy.dsl.model.*;
@@ -161,7 +162,7 @@ class ModelToAstMapperTest {
 
         assertThat(dsl).contains("meta {");
         assertThat(dsl).contains("language: \"taxdsl\"");
-        assertThat(dsl).contains("version: \"2.0\"");
+        assertThat(dsl).contains("version: \"" + MetaAst.CURRENT_VERSION + "\"");
         assertThat(dsl).contains("namespace: \"mission.secure-voice\"");
     }
 }

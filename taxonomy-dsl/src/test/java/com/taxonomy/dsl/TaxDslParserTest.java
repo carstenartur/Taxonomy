@@ -273,7 +273,7 @@ class TaxDslParserTest {
         String dsl = """
                 meta {
                   language: "taxdsl";
-                  version: "2.0";
+                  version: "2.1";
                   namespace: "mission.secure-voice";
                 }
                 """;

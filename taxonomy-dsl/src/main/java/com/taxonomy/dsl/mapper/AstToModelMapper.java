@@ -27,6 +27,10 @@ public class AstToModelMapper {
                 case "mapping" -> mapMapping(block, model);
                 case "view" -> mapView(block, model);
                 case "evidence" -> mapEvidence(block, model);
+                case "source" -> mapSource(block, model);
+                case "sourceVersion" -> mapSourceVersion(block, model);
+                case "sourceFragment" -> mapSourceFragment(block, model);
+                case "requirementSourceLink" -> mapRequirementSourceLink(block, model);
                 default -> { /* unknown block type — preserved in AST */ }
             }
         }
@@ -159,5 +163,91 @@ public class AstToModelMapper {
         ev.setExtensions(block.getExtensions());
 
         model.getEvidence().add(ev);
+    }
+
+    private void mapSource(BlockAst block, CanonicalArchitectureModel model) {
+        List<String> tokens = block.getHeaderTokens();
+        ArchitectureSource src = new ArchitectureSource();
+
+        if (!tokens.isEmpty()) {
+            src.setId(tokens.get(0));
+        }
+        src.setSourceType(block.property("type"));
+        src.setTitle(block.property("title"));
+        src.setCanonicalIdentifier(block.property("canonicalIdentifier"));
+        src.setCanonicalUrl(block.property("canonicalUrl"));
+        src.setOriginSystem(block.property("originSystem"));
+        src.setLanguage(block.property("language"));
+        src.setExtensions(block.getExtensions());
+
+        model.getSources().add(src);
+    }
+
+    private void mapSourceVersion(BlockAst block, CanonicalArchitectureModel model) {
+        List<String> tokens = block.getHeaderTokens();
+        ArchitectureSourceVersion sv = new ArchitectureSourceVersion();
+
+        if (!tokens.isEmpty()) {
+            sv.setId(tokens.get(0));
+        }
+        sv.setSourceId(block.property("source"));
+        sv.setVersionLabel(block.property("versionLabel"));
+        sv.setRetrievedAt(block.property("retrievedAt"));
+        sv.setEffectiveDate(block.property("effectiveDate"));
+        sv.setMimeType(block.property("mimeType"));
+        sv.setContentHash(block.property("contentHash"));
+        sv.setExtensions(block.getExtensions());
+
+        model.getSourceVersions().add(sv);
+    }
+
+    private void mapSourceFragment(BlockAst block, CanonicalArchitectureModel model) {
+        List<String> tokens = block.getHeaderTokens();
+        ArchitectureSourceFragment sf = new ArchitectureSourceFragment();
+
+        if (!tokens.isEmpty()) {
+            sf.setId(tokens.get(0));
+        }
+        sf.setSourceVersionId(block.property("sourceVersion"));
+        sf.setSectionPath(block.property("sectionPath"));
+        sf.setParagraphRef(block.property("paragraphRef"));
+        String pageFrom = block.property("pageFrom");
+        if (pageFrom != null) {
+            try { sf.setPageFrom(Integer.parseInt(pageFrom)); }
+            catch (NumberFormatException ignored) { /* keep null */ }
+        }
+        String pageTo = block.property("pageTo");
+        if (pageTo != null) {
+            try { sf.setPageTo(Integer.parseInt(pageTo)); }
+            catch (NumberFormatException ignored) { /* keep null */ }
+        }
+        sf.setText(block.property("text"));
+        sf.setFragmentHash(block.property("fragmentHash"));
+        sf.setExtensions(block.getExtensions());
+
+        model.getSourceFragments().add(sf);
+    }
+
+    private void mapRequirementSourceLink(BlockAst block, CanonicalArchitectureModel model) {
+        List<String> tokens = block.getHeaderTokens();
+        ArchitectureRequirementSourceLink rsl = new ArchitectureRequirementSourceLink();
+
+        if (!tokens.isEmpty()) {
+            rsl.setId(tokens.get(0));
+        }
+        rsl.setRequirementId(block.property("requirement"));
+        rsl.setSourceId(block.property("source"));
+        rsl.setSourceVersionId(block.property("sourceVersion"));
+        rsl.setSourceFragmentId(block.property("sourceFragment"));
+        rsl.setLinkType(block.property("linkType"));
+        String conf = block.property("confidence");
+        if (conf != null) {
+            try { rsl.setConfidence(Double.parseDouble(conf)); }
+            catch (NumberFormatException ignored) { /* keep null */ }
+        }
+        rsl.setNote(block.property("note"));
+        rsl.setExtensions(block.getExtensions());
+
+        model.getRequirementSourceLinks().add(rsl);
     }
 }
