@@ -91,6 +91,17 @@ Nach dem Import und der Analyse eines Dokuments zeigt das Panel
 | PDF    | `.pdf`      | Volltextextraktion, Überschriftenerkennung |
 | DOCX   | `.docx`     | Volltextextraktion, Überschriftenerkennung |
 
+## DSL-Darstellung
+
+Wenn eine Analyse mit Quell-Provenienz in Git committet wird, werden die
+Provenienz-Informationen als `source`-, `sourceVersion`- und
+`requirementSourceLink`-Blöcke in der DSL dargestellt. Dies ermöglicht
+vollständige Rückverfolgbarkeit im versionskontrollierten
+Architektur-Repository.
+
+Siehe den [Benutzerhandbuch](USER_GUIDE.md#quell-provenienz-in-der-dsl) für
+Details zur DSL-Syntax.
+
 ## Einschränkungen
 
 - Der Parser extrahiert **Anforderungskandidaten**, interpretiert aber keine
