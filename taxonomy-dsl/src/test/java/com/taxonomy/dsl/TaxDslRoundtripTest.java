@@ -246,4 +246,113 @@ class TaxDslRoundtripTest {
         String serialized2 = serializer.serialize(doc2);
         assertThat(serialized2).isEqualTo(serialized);
     }
+
+    // ── Provenance round-trip ─────────────────────────────────────────────────
+
+    @Test
+    void roundtripProvenanceBlocks() {
+        String dsl = """
+                source SRC-001 {
+                  type: "REGULATION";
+                  title: "Test Regulation";
+                }
+
+                sourceVersion SRCV-001 {
+                  source: "SRC-001";
+                  versionLabel: "2026-04";
+                  contentHash: "sha256:abc123";
+                }
+
+                sourceFragment SFR-001 {
+                  sourceVersion: "SRCV-001";
+                  sectionPath: "Chapter 2";
+                  paragraphRef: "§ 4";
+                  pageFrom: 3;
+                  pageTo: 5;
+                  text: "The authority must ensure...";
+                  fragmentHash: "sha256:def456";
+                }
+
+                requirementSourceLink RSL-001 {
+                  requirement: "REQ-001";
+                  source: "SRC-001";
+                  sourceVersion: "SRCV-001";
+                  sourceFragment: "SFR-001";
+                  linkType: "EXTRACTED_FROM";
+                  confidence: 0.91;
+                  note: "Parsed from regulation";
+                }
+                """;
+        DocumentAst doc1 = parser.parse(dsl);
+        String serialized = serializer.serialize(doc1);
+        DocumentAst doc2 = parser.parse(serialized);
+
+        assertThat(doc2.blocksOfKind("source")).hasSize(1);
+        assertThat(doc2.blocksOfKind("sourceVersion")).hasSize(1);
+        assertThat(doc2.blocksOfKind("sourceFragment")).hasSize(1);
+        assertThat(doc2.blocksOfKind("requirementSourceLink")).hasSize(1);
+
+        // Verify content preserved
+        var src = doc2.blocksOfKind("source").get(0);
+        assertThat(src.property("type")).isEqualTo("REGULATION");
+        assertThat(src.property("title")).isEqualTo("Test Regulation");
+
+        var rsl = doc2.blocksOfKind("requirementSourceLink").get(0);
+        assertThat(rsl.property("linkType")).isEqualTo("EXTRACTED_FROM");
+        assertThat(rsl.property("confidence")).isEqualTo("0.91");
+
+        // Double serialization is stable
+        String serialized2 = serializer.serialize(doc2);
+        assertThat(serialized2).isEqualTo(serialized);
+    }
+
+    @Test
+    void roundtripMixedArchitectureAndProvenanceBlocks() {
+        String dsl = """
+                meta {
+                  language: "taxdsl";
+                  version: "2.1";
+                  namespace: "test.provenance";
+                }
+
+                element CP-1023 type Capability {
+                  title: "Test Capability";
+                }
+
+                requirement REQ-001 {
+                  title: "Test Requirement";
+                  text: "Requirement text";
+                }
+
+                source SRC-001 {
+                  type: "REGULATION";
+                  title: "Test Source";
+                }
+
+                requirementSourceLink RSL-001 {
+                  requirement: "REQ-001";
+                  source: "SRC-001";
+                  linkType: "EXTRACTED_FROM";
+                  confidence: 0.85;
+                }
+                """;
+        DocumentAst doc1 = parser.parse(dsl);
+        String serialized = serializer.serialize(doc1);
+        DocumentAst doc2 = parser.parse(serialized);
+
+        assertThat(doc2.getMeta()).isNotNull();
+        assertThat(doc2.blocksOfKind("element")).hasSize(1);
+        assertThat(doc2.blocksOfKind("requirement")).hasSize(1);
+        assertThat(doc2.blocksOfKind("source")).hasSize(1);
+        assertThat(doc2.blocksOfKind("requirementSourceLink")).hasSize(1);
+
+        // Verify deterministic ordering: element before requirement before source
+        int elemPos = serialized.indexOf("element CP-1023");
+        int reqPos = serialized.indexOf("requirement REQ-001");
+        int srcPos = serialized.indexOf("source SRC-001");
+        int rslPos = serialized.indexOf("requirementSourceLink RSL-001");
+        assertThat(elemPos).isLessThan(reqPos);
+        assertThat(reqPos).isLessThan(srcPos);
+        assertThat(srcPos).isLessThan(rslPos);
+    }
 }

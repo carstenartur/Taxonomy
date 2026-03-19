@@ -297,4 +297,97 @@ class TaxDslParserTest {
         assertThat(block.property("title")).isEqualTo("He said \"hello\"");
         assertThat(block.property("description")).isEqualTo("Path: C:\\Users\\test");
     }
+
+    // ── Provenance block parsing ──────────────────────────────────────────────
+
+    @Test
+    void parseSourceBlock() {
+        String dsl = """
+                source SRC-001 {
+                  type: "REGULATION";
+                  title: "Verwaltungsvorschrift Beispiel";
+                  canonicalIdentifier: "VV-2026-001";
+                  canonicalUrl: "https://example.gov/vv/2026/001";
+                  originSystem: "gov-portal";
+                  language: "de";
+                }
+                """;
+        DocumentAst doc = parser.parse(dsl);
+        assertThat(doc.getBlocks()).hasSize(1);
+        BlockAst block = doc.getBlocks().get(0);
+        assertThat(block.getKind()).isEqualTo("source");
+        assertThat(block.getHeaderTokens()).containsExactly("SRC-001");
+        assertThat(block.property("type")).isEqualTo("REGULATION");
+        assertThat(block.property("title")).isEqualTo("Verwaltungsvorschrift Beispiel");
+        assertThat(block.property("canonicalIdentifier")).isEqualTo("VV-2026-001");
+        assertThat(block.property("canonicalUrl")).isEqualTo("https://example.gov/vv/2026/001");
+    }
+
+    @Test
+    void parseSourceVersionBlock() {
+        String dsl = """
+                sourceVersion SRCV-001 {
+                  source: "SRC-001";
+                  versionLabel: "2026-04";
+                  retrievedAt: "2026-04-15T09:32:00Z";
+                  effectiveDate: "2026-04-01";
+                  mimeType: "application/pdf";
+                  contentHash: "sha256:abc123";
+                }
+                """;
+        DocumentAst doc = parser.parse(dsl);
+        assertThat(doc.getBlocks()).hasSize(1);
+        BlockAst block = doc.getBlocks().get(0);
+        assertThat(block.getKind()).isEqualTo("sourceVersion");
+        assertThat(block.getHeaderTokens()).containsExactly("SRCV-001");
+        assertThat(block.property("source")).isEqualTo("SRC-001");
+        assertThat(block.property("versionLabel")).isEqualTo("2026-04");
+        assertThat(block.property("contentHash")).isEqualTo("sha256:abc123");
+    }
+
+    @Test
+    void parseSourceFragmentBlock() {
+        String dsl = """
+                sourceFragment SFR-001 {
+                  sourceVersion: "SRCV-001";
+                  sectionPath: "Kapitel 2 > Abschnitt 2.1";
+                  paragraphRef: "§ 4 Abs. 2";
+                  pageFrom: 3;
+                  pageTo: 3;
+                  text: "Die Behörde muss sicherstellen, dass ...";
+                  fragmentHash: "sha256:def456";
+                }
+                """;
+        DocumentAst doc = parser.parse(dsl);
+        assertThat(doc.getBlocks()).hasSize(1);
+        BlockAst block = doc.getBlocks().get(0);
+        assertThat(block.getKind()).isEqualTo("sourceFragment");
+        assertThat(block.getHeaderTokens()).containsExactly("SFR-001");
+        assertThat(block.property("sourceVersion")).isEqualTo("SRCV-001");
+        assertThat(block.property("paragraphRef")).isEqualTo("§ 4 Abs. 2");
+        assertThat(block.property("pageFrom")).isEqualTo("3");
+    }
+
+    @Test
+    void parseRequirementSourceLinkBlock() {
+        String dsl = """
+                requirementSourceLink RSL-001 {
+                  requirement: "REQ-001";
+                  source: "SRC-001";
+                  sourceVersion: "SRCV-001";
+                  sourceFragment: "SFR-001";
+                  linkType: "EXTRACTED_FROM";
+                  confidence: 0.91;
+                  note: "Automatically extracted from regulation parser";
+                }
+                """;
+        DocumentAst doc = parser.parse(dsl);
+        assertThat(doc.getBlocks()).hasSize(1);
+        BlockAst block = doc.getBlocks().get(0);
+        assertThat(block.getKind()).isEqualTo("requirementSourceLink");
+        assertThat(block.getHeaderTokens()).containsExactly("RSL-001");
+        assertThat(block.property("requirement")).isEqualTo("REQ-001");
+        assertThat(block.property("linkType")).isEqualTo("EXTRACTED_FROM");
+        assertThat(block.property("confidence")).isEqualTo("0.91");
+    }
 }

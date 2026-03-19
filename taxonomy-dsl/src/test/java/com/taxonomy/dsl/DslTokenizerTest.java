@@ -148,4 +148,49 @@ class DslTokenizerTest {
         long cpCount = java.util.Arrays.stream(parts).filter(t -> t.equals("CP-1023")).count();
         assertThat(cpCount).isEqualTo(1);
     }
+
+    // ── Provenance tokenization ───────────────────────────────────────────────
+
+    @Test
+    void tokenizeSourceBlocks() {
+        String dsl = "source SRC-001 {\n  type: \"REGULATION\";\n}";
+        String tokens = tokenizer.tokenize(dsl);
+        assertThat(tokens).contains("STRUCT:source");
+        assertThat(tokens).contains("SRC-001");
+    }
+
+    @Test
+    void tokenizeProvenanceIds() {
+        String dsl = """
+                source SRC-001 {
+                  type: "REGULATION";
+                }
+                sourceVersion SRCV-001 {
+                  source: "SRC-001";
+                }
+                sourceFragment SFR-001 {
+                  sourceVersion: "SRCV-001";
+                }
+                requirementSourceLink RSL-001 {
+                  requirement: "REQ-001";
+                }
+                """;
+        String tokens = tokenizer.tokenize(dsl);
+        assertThat(tokens).contains("SRC-001");
+        assertThat(tokens).contains("SRCV-001");
+        assertThat(tokens).contains("SFR-001");
+        assertThat(tokens).contains("RSL-001");
+        assertThat(tokens).contains("STRUCT:source");
+        assertThat(tokens).contains("STRUCT:sourceversion");
+        assertThat(tokens).contains("STRUCT:sourcefragment");
+        assertThat(tokens).contains("STRUCT:requirementsourcelink");
+    }
+
+    @Test
+    void extractElementIdsIncludesProvenanceIds() {
+        String dsl = "source SRC-001 { }\nrequirementSourceLink RSL-001 { }";
+        Set<String> ids = tokenizer.extractElementIds(dsl);
+        assertThat(ids).contains("SRC-001");
+        assertThat(ids).contains("RSL-001");
+    }
 }

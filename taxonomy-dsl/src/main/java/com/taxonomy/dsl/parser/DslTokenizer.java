@@ -25,8 +25,8 @@ public class DslTokenizer {
     private static final Set<String> STRUCTURE_TOKENS = Set.of(
             "element", "relation", "mapping", "view", "evidence",
             "requirement", "meta", "constraint", "decision", "pattern",
-            // Provenance tokens
-            "source", "sourceVersion", "sourceFragment", "requirementSourceLink", "candidate");
+            // Provenance tokens (stored lowercase for case-insensitive matching)
+            "source", "sourceversion", "sourcefragment", "requirementsourcelink", "candidate");
 
     /** Recognized relation types. */
     private static final Set<String> RELATION_TOKENS = Set.of(

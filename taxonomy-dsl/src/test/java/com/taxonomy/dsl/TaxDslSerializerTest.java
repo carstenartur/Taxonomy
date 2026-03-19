@@ -260,4 +260,103 @@ class TaxDslSerializerTest {
         int zebraPos = result.indexOf("x-zebra");
         assertThat(alphaPos).isLessThan(zebraPos);
     }
+
+    // ── Provenance block serialization ────────────────────────────────────────
+
+    @Test
+    void serializeSourceBlock() {
+        BlockAst block = new BlockAst("source",
+                List.of("SRC-001"),
+                List.of(
+                        new PropertyAst("type", "REGULATION", null),
+                        new PropertyAst("title", "BayVwVfG §23", null)
+                ),
+                List.of(), Map.of(), null);
+        DocumentAst doc = new DocumentAst(null, List.of(block));
+        String result = serializer.serialize(doc);
+        assertThat(result).contains("source SRC-001 {");
+        assertThat(result).contains("  type: REGULATION;");
+        assertThat(result).contains("  title: \"BayVwVfG §23\";");
+    }
+
+    @Test
+    void serializeSourceVersionBlock() {
+        BlockAst block = new BlockAst("sourceVersion",
+                List.of("SRCV-001"),
+                List.of(
+                        new PropertyAst("source", "SRC-001", null),
+                        new PropertyAst("versionLabel", "2026-04", null),
+                        new PropertyAst("contentHash", "sha256:abc123", null)
+                ),
+                List.of(), Map.of(), null);
+        DocumentAst doc = new DocumentAst(null, List.of(block));
+        String result = serializer.serialize(doc);
+        assertThat(result).contains("sourceVersion SRCV-001 {");
+        assertThat(result).contains("  source: \"SRC-001\";");
+        assertThat(result).contains("  versionLabel: \"2026-04\";");
+    }
+
+    @Test
+    void serializeRequirementSourceLinkBlock() {
+        BlockAst block = new BlockAst("requirementSourceLink",
+                List.of("RSL-001"),
+                List.of(
+                        new PropertyAst("requirement", "REQ-001", null),
+                        new PropertyAst("source", "SRC-001", null),
+                        new PropertyAst("linkType", "EXTRACTED_FROM", null),
+                        new PropertyAst("confidence", "0.91", null)
+                ),
+                List.of(), Map.of(), null);
+        DocumentAst doc = new DocumentAst(null, List.of(block));
+        String result = serializer.serialize(doc);
+        assertThat(result).contains("requirementSourceLink RSL-001 {");
+        assertThat(result).contains("  requirement: \"REQ-001\";");
+        assertThat(result).contains("  linkType: \"EXTRACTED_FROM\";");
+        assertThat(result).contains("  confidence: 0.91;");
+    }
+
+    @Test
+    void serializeProvenanceBlocksSortedAfterEvidence() {
+        BlockAst source = new BlockAst("source",
+                List.of("SRC-001"),
+                List.of(new PropertyAst("title", "Test Source", null)),
+                List.of(), Map.of(), null);
+        BlockAst evidence = new BlockAst("evidence",
+                List.of("EV-001"),
+                List.of(new PropertyAst("type", "LLM", null)),
+                List.of(), Map.of(), null);
+        BlockAst element = new BlockAst("element",
+                List.of("CP-1023"),
+                List.of(new PropertyAst("title", "Test", null)),
+                List.of(), Map.of(), null);
+
+        DocumentAst doc = new DocumentAst(null, List.of(source, evidence, element));
+        String result = serializer.serialize(doc);
+
+        int elemPos = result.indexOf("element CP-1023");
+        int evidPos = result.indexOf("evidence EV-001");
+        int srcPos = result.indexOf("source SRC-001");
+        assertThat(elemPos).isLessThan(evidPos);
+        assertThat(evidPos).isLessThan(srcPos);
+    }
+
+    @Test
+    void serializeSourcePropertiesInCanonicalOrder() {
+        BlockAst block = new BlockAst("source",
+                List.of("SRC-001"),
+                List.of(
+                        new PropertyAst("language", "de", null),
+                        new PropertyAst("title", "Test", null),
+                        new PropertyAst("type", "REGULATION", null)
+                ),
+                List.of(), Map.of(), null);
+        DocumentAst doc = new DocumentAst(null, List.of(block));
+        String result = serializer.serialize(doc);
+
+        int typePos = result.indexOf("  type: ");
+        int titlePos = result.indexOf("  title: ");
+        int langPos = result.indexOf("  language: ");
+        assertThat(typePos).isLessThan(titlePos);
+        assertThat(titlePos).isLessThan(langPos);
+    }
 }

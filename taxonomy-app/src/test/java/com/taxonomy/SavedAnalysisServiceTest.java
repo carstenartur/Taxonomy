@@ -323,4 +323,69 @@ class SavedAnalysisServiceTest {
         assertThat(nonZeroBrNodes).as("All BR nodes must be zero when root BR=0")
                 .isEqualTo(0L);
     }
+
+    // ── Provenance import/export ──────────────────────────────────────────────
+
+    @Test
+    void importV1JsonStillWorks() throws IOException {
+        // Version 1 JSON (legacy format without provenance) must still be importable
+        String json = "{\"version\":1,\"requirement\":\"Legacy requirement\","
+                + "\"scores\":{\"CO\":35},\"reasons\":{\"CO\":\"Voice comms\"}}";
+
+        SavedAnalysis imported = savedAnalysisService.importFromJson(json);
+        assertThat(imported.getVersion()).isEqualTo(1);
+        assertThat(imported.getRequirement()).isEqualTo("Legacy requirement");
+        assertThat(imported.getScores()).containsEntry("CO", 35);
+        assertThat(imported.getSources()).isNull();
+        assertThat(imported.getRequirementSourceLinks()).isNull();
+    }
+
+    @Test
+    void importV2JsonWithProvenance() throws IOException {
+        String json = "{\"version\":2,\"requirement\":\"Test requirement\","
+                + "\"scores\":{\"CO\":35},\"reasons\":{\"CO\":\"Voice comms\"},"
+                + "\"sources\":[{\"sourceType\":\"REGULATION\",\"title\":\"Test Source\"}],"
+                + "\"requirementSourceLinks\":[{\"requirementId\":\"REQ-001\","
+                + "\"linkType\":\"EXTRACTED_FROM\",\"confidence\":0.91}]}";
+
+        SavedAnalysis imported = savedAnalysisService.importFromJson(json);
+        assertThat(imported.getVersion()).isEqualTo(2);
+        assertThat(imported.getRequirement()).isEqualTo("Test requirement");
+        assertThat(imported.getSources()).hasSize(1);
+        assertThat(imported.getSources().get(0).getTitle()).isEqualTo("Test Source");
+        assertThat(imported.getRequirementSourceLinks()).hasSize(1);
+        assertThat(imported.getRequirementSourceLinks().get(0).getConfidence()).isEqualTo(0.91);
+    }
+
+    @Test
+    void importRejectsVersionZero() {
+        String json = "{\"version\":0,\"requirement\":\"Test\","
+                + "\"scores\":{\"CO\":35},\"reasons\":{}}";
+
+        assertThatThrownBy(() -> savedAnalysisService.importFromJson(json))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unsupported version");
+    }
+
+    @Test
+    void buildExportWithProvenancePopulatesFields() {
+        Map<String, Integer> scores = Map.of("CO", 35);
+        Map<String, String> reasons = Map.of("CO", "Voice comms");
+
+        com.taxonomy.dto.SourceArtifactDto src = new com.taxonomy.dto.SourceArtifactDto();
+        src.setTitle("Test Source");
+
+        com.taxonomy.dto.RequirementSourceLinkDto link = new com.taxonomy.dto.RequirementSourceLinkDto();
+        link.setRequirementId("REQ-001");
+
+        SavedAnalysis saved = savedAnalysisService.buildExport(
+                "Test requirement", scores, reasons, "GEMINI",
+                List.of(src), List.of(link));
+
+        assertThat(saved.getVersion()).isEqualTo(2);
+        assertThat(saved.getSources()).hasSize(1);
+        assertThat(saved.getSources().get(0).getTitle()).isEqualTo("Test Source");
+        assertThat(saved.getRequirementSourceLinks()).hasSize(1);
+        assertThat(saved.getRequirementSourceLinks().get(0).getRequirementId()).isEqualTo("REQ-001");
+    }
 }

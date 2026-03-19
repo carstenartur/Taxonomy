@@ -165,4 +165,81 @@ class ModelToAstMapperTest {
         assertThat(dsl).contains("version: \"" + MetaAst.CURRENT_VERSION + "\"");
         assertThat(dsl).contains("namespace: \"mission.secure-voice\"");
     }
+
+    // ── Provenance model-to-AST mapping ───────────────────────────────────────
+
+    @Test
+    void mapSourceToAst() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        ArchitectureSource src = new ArchitectureSource("SRC-001", "REGULATION", "Test Regulation");
+        src.setCanonicalIdentifier("VV-2026-001");
+        src.setLanguage("de");
+        model.getSources().add(src);
+
+        DocumentAst doc = mapper.toDocument(model, "test");
+        String dsl = serializer.serialize(doc);
+
+        assertThat(dsl).contains("source SRC-001 {");
+        assertThat(dsl).contains("type: REGULATION;");
+        assertThat(dsl).contains("title: \"Test Regulation\"");
+        assertThat(dsl).contains("canonicalIdentifier: \"VV-2026-001\"");
+        assertThat(dsl).contains("language: \"de\"");
+    }
+
+    @Test
+    void mapRequirementSourceLinkToAst() {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        ArchitectureRequirementSourceLink rsl = new ArchitectureRequirementSourceLink(
+                "RSL-001", "REQ-001", "SRC-001");
+        rsl.setLinkType("EXTRACTED_FROM");
+        rsl.setConfidence(0.91);
+        rsl.setNote("Parsed from regulation");
+        model.getRequirementSourceLinks().add(rsl);
+
+        DocumentAst doc = mapper.toDocument(model, "test");
+        String dsl = serializer.serialize(doc);
+
+        assertThat(dsl).contains("requirementSourceLink RSL-001 {");
+        assertThat(dsl).contains("requirement: \"REQ-001\"");
+        assertThat(dsl).contains("source: \"SRC-001\"");
+        assertThat(dsl).contains("linkType: \"EXTRACTED_FROM\"");
+        assertThat(dsl).contains("confidence: 0.91;");
+    }
+
+    @Test
+    void fullRoundtripWithProvenance() {
+        CanonicalArchitectureModel original = new CanonicalArchitectureModel();
+        original.getElements().add(new ArchitectureElement("CP-1023", "Capability", "Cap One", "Desc", "CP"));
+        original.getRequirements().add(new ArchitectureRequirement("REQ-001", "Req One", "Req text"));
+
+        ArchitectureSource src = new ArchitectureSource("SRC-001", "REGULATION", "Test Regulation");
+        original.getSources().add(src);
+
+        ArchitectureSourceVersion sv = new ArchitectureSourceVersion("SRCV-001", "SRC-001");
+        sv.setVersionLabel("2026-04");
+        original.getSourceVersions().add(sv);
+
+        ArchitectureRequirementSourceLink rsl = new ArchitectureRequirementSourceLink(
+                "RSL-001", "REQ-001", "SRC-001");
+        rsl.setSourceVersionId("SRCV-001");
+        rsl.setLinkType("EXTRACTED_FROM");
+        rsl.setConfidence(0.91);
+        original.getRequirementSourceLinks().add(rsl);
+
+        // Model → AST → DSL → AST → Model
+        DocumentAst doc = mapper.toDocument(original, "test");
+        String dsl = serializer.serialize(doc);
+        DocumentAst reparsed = parser.parse(dsl);
+        CanonicalArchitectureModel restored = astToModel.map(reparsed);
+
+        assertThat(restored.getElements()).hasSize(1);
+        assertThat(restored.getRequirements()).hasSize(1);
+        assertThat(restored.getSources()).hasSize(1);
+        assertThat(restored.getSourceVersions()).hasSize(1);
+        assertThat(restored.getRequirementSourceLinks()).hasSize(1);
+
+        assertThat(restored.getSources().get(0).getId()).isEqualTo("SRC-001");
+        assertThat(restored.getSources().get(0).getSourceType()).isEqualTo("REGULATION");
+        assertThat(restored.getRequirementSourceLinks().get(0).getConfidence()).isEqualTo(0.91);
+    }
 }
