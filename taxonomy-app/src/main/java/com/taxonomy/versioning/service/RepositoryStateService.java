@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
+import com.taxonomy.dto.WorkspaceInfo;
 import com.taxonomy.workspace.service.UserWorkspaceState;
 import com.taxonomy.workspace.service.WorkspaceManager;
 
@@ -222,6 +223,21 @@ public class RepositoryStateService {
     }
 
     // ── Internal helpers ────────────────────────────────────────────
+
+    /**
+     * Resolve the workspace branch for a user. Falls back to "draft" if the
+     * user does not have a specific workspace branch configured.
+     *
+     * @param username the username to resolve the branch for
+     * @return the user's active branch, or "draft" as default
+     */
+    public String resolveWorkspaceBranch(String username) {
+        WorkspaceInfo info = workspaceManager.getWorkspaceInfo(username);
+        if (info != null && info.currentBranch() != null) {
+            return info.currentBranch();
+        }
+        return "draft";
+    }
 
     private UserWorkspaceState resolveState(String username) {
         return workspaceManager.getOrCreateWorkspace(username);

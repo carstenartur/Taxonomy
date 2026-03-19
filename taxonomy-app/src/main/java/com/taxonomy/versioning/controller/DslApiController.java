@@ -22,6 +22,7 @@ import com.taxonomy.versioning.service.ConflictDetectionService;
 import com.taxonomy.versioning.service.DslOperationsFacade;
 import com.taxonomy.versioning.service.HypothesisService;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -53,6 +54,7 @@ public class DslApiController {
 
     private final DslOperationsFacade dslOps;
     private final HypothesisService hypothesisService;
+    private final WorkspaceResolver workspaceResolver;
 
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
@@ -61,9 +63,11 @@ public class DslApiController {
     private final DslValidator validator = new DslValidator();
 
     public DslApiController(DslOperationsFacade dslOps,
-                            HypothesisService hypothesisService) {
+                            HypothesisService hypothesisService,
+                            WorkspaceResolver workspaceResolver) {
         this.dslOps = dslOps;
         this.hypothesisService = hypothesisService;
+        this.workspaceResolver = workspaceResolver;
     }
 
     // ── Export & current state ────────────────────────────────────────
@@ -82,6 +86,8 @@ public class DslApiController {
     @Operation(summary = "Get current architecture state as structured JSON")
     public ResponseEntity<Map<String, Object>> getCurrentArchitecture() {
         CanonicalArchitectureModel model = dslOps.buildCanonicalModel();
+        String username = workspaceResolver.resolveCurrentUsername();
+        String branch = dslOps.resolveWorkspaceBranch(username);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("elements", model.getElements());
         result.put("relations", model.getRelations());
@@ -89,7 +95,7 @@ public class DslApiController {
         result.put("mappings", model.getMappings());
         result.put("views", model.getViews());
         result.put("evidence", model.getEvidence());
-        result.put("viewContext", dslOps.getViewContext("draft"));
+        result.put("viewContext", dslOps.getViewContext(branch));
         return ResponseEntity.ok(result);
     }
 

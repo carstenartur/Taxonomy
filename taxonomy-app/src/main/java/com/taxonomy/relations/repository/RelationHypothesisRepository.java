@@ -28,4 +28,8 @@ public interface RelationHypothesisRepository extends JpaRepository<RelationHypo
 
     @Query("SELECT h FROM RelationHypothesis h WHERE h.workspaceId = :wsId OR h.workspaceId IS NULL")
     List<RelationHypothesis> findByWorkspaceIdIsNullOrWorkspaceId(@Param("wsId") String workspaceId);
+
+    @Query("SELECT h FROM RelationHypothesis h WHERE h.status = :status AND (h.workspaceId = :wsId OR h.workspaceId IS NULL)")
+    List<RelationHypothesis> findByStatusAndWorkspace(@Param("status") HypothesisStatus status,
+                                                       @Param("wsId") String workspaceId);
 }

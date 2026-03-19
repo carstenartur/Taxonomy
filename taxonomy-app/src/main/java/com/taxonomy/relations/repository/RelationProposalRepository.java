@@ -51,4 +51,12 @@ public interface RelationProposalRepository extends JpaRepository<RelationPropos
 
     @Query("SELECT p FROM RelationProposal p WHERE p.workspaceId = :wsId OR p.workspaceId IS NULL")
     List<RelationProposal> findByWorkspaceIdIsNullOrWorkspaceId(@Param("wsId") String workspaceId);
+
+    @Query("SELECT p FROM RelationProposal p WHERE p.status = :status AND (p.workspaceId = :wsId OR p.workspaceId IS NULL)")
+    List<RelationProposal> findByStatusAndWorkspace(@Param("status") ProposalStatus status,
+                                                     @Param("wsId") String workspaceId);
+
+    @Query("SELECT p FROM RelationProposal p WHERE p.sourceNode.code = :code AND (p.workspaceId = :wsId OR p.workspaceId IS NULL)")
+    List<RelationProposal> findBySourceNodeCodeAndWorkspace(@Param("code") String sourceCode,
+                                                             @Param("wsId") String workspaceId);
 }

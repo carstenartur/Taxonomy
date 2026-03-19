@@ -135,20 +135,38 @@ public class RelationProposalService {
 
     @Transactional(readOnly = true)
     public List<RelationProposalDto> getPendingProposals() {
-        return proposalRepository.findByStatus(ProposalStatus.PENDING)
-                .stream().map(this::toDto).toList();
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+        List<RelationProposal> proposals;
+        if (ctx.workspaceId() != null && !"shared".equals(ctx.workspaceId())) {
+            proposals = proposalRepository.findByStatusAndWorkspace(ProposalStatus.PENDING, ctx.workspaceId());
+        } else {
+            proposals = proposalRepository.findByStatus(ProposalStatus.PENDING);
+        }
+        return proposals.stream().map(this::toDto).toList();
     }
 
     @Transactional(readOnly = true)
     public List<RelationProposalDto> getAllProposals() {
-        return proposalRepository.findAll()
-                .stream().map(this::toDto).toList();
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+        List<RelationProposal> proposals;
+        if (ctx.workspaceId() != null && !"shared".equals(ctx.workspaceId())) {
+            proposals = proposalRepository.findByWorkspaceIdIsNullOrWorkspaceId(ctx.workspaceId());
+        } else {
+            proposals = proposalRepository.findAll();
+        }
+        return proposals.stream().map(this::toDto).toList();
     }
 
     @Transactional(readOnly = true)
     public List<RelationProposalDto> getProposalsForNode(String sourceCode) {
-        return proposalRepository.findBySourceNodeCode(sourceCode)
-                .stream().map(this::toDto).toList();
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+        List<RelationProposal> proposals;
+        if (ctx.workspaceId() != null && !"shared".equals(ctx.workspaceId())) {
+            proposals = proposalRepository.findBySourceNodeCodeAndWorkspace(sourceCode, ctx.workspaceId());
+        } else {
+            proposals = proposalRepository.findBySourceNodeCode(sourceCode);
+        }
+        return proposals.stream().map(this::toDto).toList();
     }
 
     /**

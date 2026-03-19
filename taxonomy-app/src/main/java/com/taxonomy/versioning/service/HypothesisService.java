@@ -245,18 +245,26 @@ public class HypothesisService {
     }
 
     /**
-     * List hypotheses by status.
+     * List hypotheses by status, scoped to the current workspace.
      */
     @Transactional(readOnly = true)
     public List<RelationHypothesis> findByStatus(HypothesisStatus status) {
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+        if (ctx.workspaceId() != null && !"shared".equals(ctx.workspaceId())) {
+            return hypothesisRepository.findByStatusAndWorkspace(status, ctx.workspaceId());
+        }
         return hypothesisRepository.findByStatus(status);
     }
 
     /**
-     * List all hypotheses.
+     * List all hypotheses, scoped to the current workspace.
      */
     @Transactional(readOnly = true)
     public List<RelationHypothesis> findAll() {
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+        if (ctx.workspaceId() != null && !"shared".equals(ctx.workspaceId())) {
+            return hypothesisRepository.findByWorkspaceIdIsNullOrWorkspaceId(ctx.workspaceId());
+        }
         return hypothesisRepository.findAll();
     }
 

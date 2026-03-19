@@ -197,6 +197,32 @@ class WorkspaceDataIsolationTest {
         }
     }
 
+    // ── Workspace branch resolution ──────────────────────────────────
+
+    @Nested
+    @DisplayName("Workspace branch resolution")
+    class BranchResolution {
+
+        @Test
+        void provisionedUserGetsBranchFromWorkspace() {
+            provisionWorkspace("alice", "alice-ws", "feature-a");
+            WorkspaceContext ctx = resolver.resolveForUser("alice");
+            assertThat(ctx.currentBranch()).isEqualTo("feature-a");
+        }
+
+        @Test
+        void unprovisionedUserGetsDraftBranch() {
+            when(workspaceManager.findUserWorkspace("charlie")).thenReturn(null);
+            WorkspaceContext ctx = resolver.resolveForUser("charlie");
+            assertThat(ctx.currentBranch()).isEqualTo("draft");
+        }
+
+        @Test
+        void sharedContextAlwaysUsesDraft() {
+            assertThat(WorkspaceContext.SHARED.currentBranch()).isEqualTo("draft");
+        }
+    }
+
     // ── Helper ────────────────────────────────────────────────────────
 
     private void provisionWorkspace(String username, String wsId, String branch) {
