@@ -152,7 +152,7 @@ public class DocumentParserService {
      * Splits raw text into requirement candidates based on paragraph boundaries
      * and heading detection.
      */
-    List<RequirementCandidate> extractCandidates(String rawText) {
+    public List<RequirementCandidate> extractCandidates(String rawText) {
         List<RequirementCandidate> candidates = new ArrayList<>();
         String[] paragraphs = rawText.split("\\n\\s*\\n");
         String currentHeading = null;
