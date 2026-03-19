@@ -43,29 +43,28 @@ Status of GUI dialogs and their implementation.
 
 ---
 
-## Features Currently REST-Only (GUI Gap)
+## Resolved Gaps (March 2026)
 
-These features have REST endpoints but no corresponding GUI workflow.
-They are tracked as open gaps per the [Definition of Done](DEVELOPER_GUIDE.md#definition-of-done--user-facing-features).
+All previously identified gaps have been resolved. See [FEATURE_MATRIX.md](FEATURE_MATRIX.md) for current status.
 
-| Feature | REST Endpoint | GUI Status | Priority |
+### Former REST-Only Features — Now Complete with GUI
+
+| Feature | GUI Element | User Guide | Screenshot |
 |---|---|---|---|
-| Leaf justification | `POST /api/justify-leaf` | ❌ No GUI | High |
-| Gap analysis | `POST /api/gap/analyze` | ❌ No GUI (or unclear) | High |
-| Recommendations | `POST /api/recommend` | ❌ No GUI (or unclear) | Medium |
-| Pattern detection | `GET/POST /api/patterns/detect` | ❌ No GUI (or unclear) | Medium |
-| Reports (MD/HTML/DOCX) | `POST /api/report/*` | ❌ No GUI trigger | High |
-| Requirement impact analysis | `POST /api/graph/impact` | ❌ No GUI (or unclear) | Medium |
+| Leaf justification | `leafJustificationModal` | §6 | #18 |
+| Gap analysis | `gapAnalysisPanel` + `gapAnalyzeBtn` | §11e | #26, 27 |
+| Recommendations | `recommendationPanel` + `recommendBtn` | §4 | ✅ |
+| Pattern detection | `patternDetectionPanel` + `patternDetectBtn` | §11f | ✅ |
+| Reports (MD/HTML/DOCX) | `exportReportMd/Html/Docx` buttons | §10a | #23 |
+| Requirement impact analysis | `requirementImpactBtn` | §8 | ✅ |
 
-## Documentation Gaps
+### Former Documentation Gaps — Now Complete
 
-| Feature area | GUI exists | User Guide section | Screenshot | Help text |
-|---|---|---|---|---|
-| Workspace sync/publish | ✅ | ❌ Missing | ❌ | ❌ |
-| Version history browsing | ✅ | ❌ Missing | ❌ | ❌ |
-| Branch compare | ✅ | ❌ Missing | ❌ | ❌ |
-| Variant creation | ✅ | ❌ Missing | ❌ | ❌ |
-| DSL editor | ✅ | ❌ Missing | ❌ | ❌ |
-| Merge conflict resolution | ✅ | ❌ Missing | ❌ | ❌ |
-
-> **Action:** Each row should be resolved before the feature is considered complete.
+| Feature area | User Guide | Screenshot | Help text |
+|---|---|---|---|
+| Workspace sync/publish | ✅ §12 | ✅ #55, 56, 63–65 | ✅ |
+| Version history browsing | ✅ §12 | ✅ #41, 66–68 | ✅ |
+| Branch compare | ✅ §12 | ✅ #48 | ✅ |
+| Variant creation | ✅ §12 | ✅ #46, 47 | ✅ |
+| DSL editor | ✅ §11g | ✅ #34, 40 | ✅ |
+| Merge conflict resolution | ✅ §12 | ✅ #52, 53, 58, 60, 61 | ✅ |

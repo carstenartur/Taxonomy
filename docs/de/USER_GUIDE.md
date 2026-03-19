@@ -35,6 +35,7 @@ Das System bewertet jeden Taxonomieknoten (0–100), hebt die relevantesten Elem
 8. [Den Graph Explorer verwenden](#8-using-the-graph-explorer)
 9. [Arbeiten mit Beziehungsvorschlägen](#9-working-with-relation-proposals)
 10. [Ergebnisse exportieren](#10-exporting-results)
+    - [Berichte erstellen (MD/HTML/DOCX)](#10a-generating-reports-mdhtmldocx)
 11. [Suche](#11-search)
     - [Qualitäts-Dashboard](#11a-quality-dashboard)
     - [Beziehungs-Browser](#11b-relations-browser)
@@ -643,6 +644,38 @@ Dies ermöglicht **Offline-Überprüfung** und **Reproduzierbarkeit** — Sie k�
 ### Wann Export-Schaltflächen erscheinen
 
 Die Export-Schaltflächen erscheinen nur, nachdem eine Analyse durchgeführt wurde und mindestens ein Taxonomie-Knoten eine Bewertung größer als 0 hat. Wenn Sie die Seite verlassen oder aktualisieren, gehen die Bewertungen verloren und die Schaltflächen verschwinden. Ein Hinweis **"📋 Analyze first to enable exports"** wird angezeigt, wenn Exporte nicht verfügbar sind. Führen Sie die Analyse erneut durch oder verwenden Sie **📤 Load Scores**, um die Export-Schaltflächen wiederherzustellen.
+
+---
+
+### 10a. Berichte erstellen (MD/HTML/DOCX)
+
+Der Export-Tab enthält einen Abschnitt **📄 Full Report** mit drei Schaltflächen, die einen umfassenden Architekturanalyse-Bericht in verschiedenen Formaten erstellen:
+
+![Export-Tab mit Report-Buttons](../images/23-export-buttons.png)
+
+| Schaltfläche | Format | Ausgabe |
+|---|---|---|
+| **📄 Report (.md)** | Markdown | Eine `.md`-Datei, anzeigbar in jedem Markdown-Editor oder Repository (GitHub, GitLab) |
+| **📄 Report (.html)** | HTML | Eine eigenständige `.html`-Datei, die in jedem Browser geöffnet werden kann |
+| **📄 Report (.docx)** | Word | Eine `.docx`-Datei für Microsoft Word oder LibreOffice Writer |
+
+#### Einen Bericht erstellen
+
+1. Führen Sie eine Analyse auf dem **Analyze**-Tab durch (Bewertungen müssen vorhanden sein).
+2. Wechseln Sie zum **Export**-Tab.
+3. Scrollen Sie zu **📄 Full Report** und klicken Sie auf die gewünschte Format-Schaltfläche.
+4. Der Bericht wird serverseitig generiert und automatisch heruntergeladen.
+
+#### Inhalt des Berichts
+
+Jeder Bericht enthält:
+
+- Den originalen **Geschäftsanforderungs**-Text.
+- Einen bewerteten Taxonomie-Baum mit allen Knoten mit einer Bewertung ≥ 20.
+- **Architekturempfehlungen** basierend auf der Analyse.
+- Zusammenfassende Statistiken (Gesamtzahl bewerteter Knoten, Top-Kategorien).
+
+> **Hinweis:** Die Bericht-Schaltflächen erscheinen nur, wenn Analysebewertungen vorhanden sind — dieselbe Bedingung wie bei den anderen Export-Schaltflächen (siehe [Wann Export-Schaltflächen erscheinen](#wann-export-schaltflächen-erscheinen)).
 
 ---
 

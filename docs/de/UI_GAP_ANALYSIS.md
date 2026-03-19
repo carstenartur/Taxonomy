@@ -40,3 +40,31 @@ Status der GUI-Dialoge und deren Implementierung.
 | `taxonomy-variants.js` | Aktualisiert | Lösch-Button für nicht geschützte Branches hinzugefügt |
 | `taxonomy-workspace-sync.js` | Aktualisiert | Auflösen-Button für DIVERGED-Status, Toast-Benachrichtigungen |
 | `taxonomy-dsl-editor.js` | Aktualisiert | Toast-Benachrichtigungen für Merge-/Cherry-Pick-Ergebnisse |
+
+---
+
+## Behobene Lücken (März 2026)
+
+Alle zuvor identifizierten Lücken wurden geschlossen. Siehe [FEATURE_MATRIX.md](../en/FEATURE_MATRIX.md) für den aktuellen Status.
+
+### Ehemals REST-Only Features — Jetzt mit GUI komplett
+
+| Feature | GUI-Element | Benutzerhandbuch | Screenshot |
+|---|---|---|---|
+| Blatt-Begründung | `leafJustificationModal` | §6 | #18 |
+| Lückenanalyse | `gapAnalysisPanel` + `gapAnalyzeBtn` | §11e | #26, 27 |
+| Empfehlungen | `recommendationPanel` + `recommendBtn` | §4 | ✅ |
+| Mustererkennung | `patternDetectionPanel` + `patternDetectBtn` | §11f | ✅ |
+| Berichte (MD/HTML/DOCX) | `exportReportMd/Html/Docx` Buttons | §10a | #23 |
+| Anforderungs-Auswirkungsanalyse | `requirementImpactBtn` | §8 | ✅ |
+
+### Ehemals Dokumentationslücken — Jetzt komplett
+
+| Bereich | Benutzerhandbuch | Screenshot | Hilfetext |
+|---|---|---|---|
+| Workspace Sync/Publish | ✅ §12 | ✅ #55, 56, 63–65 | ✅ |
+| Versionshistorie | ✅ §12 | ✅ #41, 66–68 | ✅ |
+| Branch-Vergleich | ✅ §12 | ✅ #48 | ✅ |
+| Varianten-Erstellung | ✅ §12 | ✅ #46, 47 | ✅ |
+| DSL-Editor | ✅ §11g | ✅ #34, 40 | ✅ |
+| Merge-Konfliktlösung | ✅ §12 | ✅ #52, 53, 58, 60, 61 | ✅ |

@@ -43,6 +43,7 @@ The system scores every taxonomy node (0–100), highlights the most relevant el
 8. [Using the Graph Explorer](#8-using-the-graph-explorer)
 9. [Working with Relation Proposals](#9-working-with-relation-proposals)
 10. [Exporting Results](#10-exporting-results)
+    - [Generating Reports (MD/HTML/DOCX)](#10a-generating-reports-mdhtmldocx)
 11. [Search](#11-search)
     - [Quality Dashboard](#11a-quality-dashboard)
     - [Relations Browser](#11b-relations-browser)
@@ -651,6 +652,38 @@ This enables **offline review** and **reproducibility** — you can share a scor
 ### When Export Buttons Appear
 
 The export buttons only appear after analysis has been run and at least one taxonomy node has a score greater than 0. If you navigate away or refresh the page, scores are lost and the buttons disappear. A hint message **"📋 Analyze first to enable exports"** is shown when exports are unavailable. Re-run the analysis or use **📤 Load Scores** to restore the export buttons.
+
+---
+
+### 10a. Generating Reports (MD/HTML/DOCX)
+
+The Export tab includes a **📄 Full Report** section with three buttons that generate a comprehensive architecture analysis report in different formats:
+
+![Export tab with report buttons](../images/23-export-buttons.png)
+
+| Button | Format | Output |
+|---|---|---|
+| **📄 Report (.md)** | Markdown | A `.md` file viewable in any Markdown editor or repository (GitHub, GitLab) |
+| **📄 Report (.html)** | HTML | A self-contained `.html` file that opens in any browser |
+| **📄 Report (.docx)** | Word | A `.docx` file for Microsoft Word or LibreOffice Writer |
+
+#### How to Generate a Report
+
+1. Run an analysis on the **Analyze** tab (scores must be present).
+2. Switch to the **Export** tab.
+3. Scroll to **📄 Full Report** and click the desired format button.
+4. The report is generated server-side and downloaded automatically.
+
+#### What the Report Contains
+
+Each report includes:
+
+- The original **business requirement** text.
+- A scored taxonomy tree showing all nodes with a score ≥ 20.
+- **Architectural recommendations** derived from the analysis.
+- Summary statistics (total nodes scored, top categories).
+
+> **Note:** The report buttons only appear when analysis scores are available — the same condition as the other export buttons (see [When Export Buttons Appear](#when-export-buttons-appear)).
 
 ---
 
