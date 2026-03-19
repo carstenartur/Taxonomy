@@ -35,6 +35,8 @@ A feature is only complete when all required columns show ✅.
 | Version history (commits) | ✅ | ✅ | ✅ §12 | ✅ #41, 66, 67, 68 | ✅ | ✅ | ✅ Complete |
 | Sync from shared / Publish | ✅ | ✅ | ✅ §12 | ✅ #55, 56, 63–65 | ✅ | ✅ | ✅ Complete |
 | Leaf justification | ✅ | ✅ | ✅ §6 | ✅ #18 | ✅ | ✅ | ✅ Complete |
+| Document import (PDF/DOCX) | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Complete |
+| Source provenance tracking | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Complete |
 
 ## Admin/Automation Features (API-first — no GUI required)
 

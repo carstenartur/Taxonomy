@@ -1467,6 +1467,39 @@ The system uses 10 relation types, each corresponding to a specific relationship
 
 ---
 
+## 15a. Document Import & Source Provenance
+
+### Importing Documents
+
+You can import requirements directly from PDF or DOCX documents:
+
+1. In the **Analyze** tab, expand the **📄 Document Import** panel
+2. Select a PDF or DOCX file (e.g. an administrative regulation)
+3. Optionally set a title and source type
+4. Click **📄 Upload & Extract** to parse the document
+
+### Reviewing Extracted Candidates
+
+After upload, the system shows extracted requirement candidates:
+
+- Review each candidate paragraph
+- Use **Select All** / **Deselect All** for batch operations
+- Deselect irrelevant content (headers, footers, table of contents)
+- Click **🔍 Analyze Selected** to transfer candidates to the analysis workflow
+
+### Source Provenance
+
+Every requirement tracks where it came from.  After importing a document, the
+**🔗 Source Provenance** panel shows:
+
+- Source document name and type
+- Unique artifact identifier
+- Number of candidates selected
+
+For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
+
+---
+
 ## 16. Tips and Best Practices
 
 ### Writing Effective Requirements
