@@ -379,6 +379,24 @@ The product UI supports both German and English users:
 - **Validation:** When adding a new UI element, confirm both `messages_en.properties`
   and `messages_de.properties` (or equivalent i18n mechanism) contain the translation
 
+### Terminology Rules
+
+User-facing text must use domain-appropriate terms instead of raw Git terminology:
+
+| Use this | Not this |
+|----------|----------|
+| "Shared Space" / "Gemeinsamer Bereich" | "central repository" |
+| "My Workspace" / "Mein Arbeitsbereich" | "user repository" |
+| "Variant" / "Variante" | "branch" (in user-facing contexts) |
+| "Publish for Team" / "Für Team veröffentlichen" | "push" or "merge" |
+| "Sync from Team" / "Vom Team synchronisieren" | "pull" or "fetch" |
+| "Current Version" / "Aktuelle Version" | "HEAD" |
+| "Apply Single Change" / "Einzeländerung übernehmen" | "cherry-pick" |
+| "Integrate" / "Integrieren" | "merge" (in user-facing contexts) |
+
+**Never** expose raw Git terms (`fork`, `clone`, `fetch`, `refs`, `rebase`) in the
+standard user interface. These may appear in developer documentation and admin tools.
+
 ---
 
 ## Screenshot Conventions

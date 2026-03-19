@@ -642,6 +642,52 @@ curl -u alice:password http://localhost:8080/api/workspace/projection
 }
 ```
 
+### Workspace Provisioning & Topology
+
+**Get provisioning status:**
+```bash
+curl -u alice:password http://localhost:8080/api/workspace/provisioning-status
+```
+
+**Response:**
+```json
+{
+  "status": "READY",
+  "topologyMode": "INTERNAL_SHARED",
+  "sourceRepository": "uuid-of-system-repo",
+  "error": null
+}
+```
+
+**Provision workspace (create personal branch):**
+```bash
+curl -u alice:password -X POST http://localhost:8080/api/workspace/provision
+```
+
+**Response:**
+```json
+{
+  "status": "READY",
+  "branch": "alice/workspace",
+  "baseBranch": "draft"
+}
+```
+
+**Get repository topology:**
+```bash
+curl -u alice:password http://localhost:8080/api/workspace/topology
+```
+
+**Response:**
+```json
+{
+  "mode": "INTERNAL_SHARED",
+  "sharedBranch": "draft",
+  "systemRepositoryId": "uuid-of-system-repo",
+  "displayName": "Shared Architecture Repository"
+}
+```
+
 ---
 
 ## Additional References
