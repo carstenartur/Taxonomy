@@ -101,6 +101,10 @@ mvn spring-boot:run
 
 Open <http://localhost:8080> and log in with `admin` / `admin`.
 
+> ⚠️ **Local development only:** The default credentials `admin` / `admin` are intended
+> for local development. For any non-local deployment, set the `TAXONOMY_ADMIN_PASSWORD`
+> environment variable before exposing the application.
+
 **→ Now follow the [Core Workflow](#core-workflow-ui) above to run your first analysis.**
 
 ### Docker

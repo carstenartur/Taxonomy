@@ -216,4 +216,36 @@ abstract class AbstractSeleniumContainerIT {
     void pageHasCorrectTitle() {
         assertThat(driver.getTitle()).isNotEmpty();
     }
+
+    // ── Help-Tab tests ───────────────────────────────────────────────────────
+
+    @Test
+    @Order(15)
+    void helpTabLoadsAndDisplaysToc() {
+        WebElement helpTab = driver.findElement(
+                By.cssSelector("#mainNavTabs .nav-link[data-page='help']"));
+        helpTab.click();
+
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(ExpectedConditions.presenceOfElementLocated(By.id("helpTocList")));
+
+        List<WebElement> tocItems = driver.findElements(
+                By.cssSelector("#helpTocList .help-toc-item"));
+        assertThat(tocItems).isNotEmpty();
+    }
+
+    @Test
+    @Order(16)
+    void helpTabLoadsDocument() {
+        WebElement firstItem = driver.findElement(
+                By.cssSelector("#helpTocList .help-toc-item"));
+        firstItem.click();
+
+        new WebDriverWait(driver, Duration.ofSeconds(10))
+                .until(ExpectedConditions.presenceOfElementLocated(
+                        By.cssSelector("#helpDocBody h1, #helpDocBody h2")));
+
+        WebElement docBody = driver.findElement(By.id("helpDocBody"));
+        assertThat(docBody.getText()).isNotEmpty();
+    }
 }

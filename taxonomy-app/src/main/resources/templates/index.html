@@ -326,7 +326,7 @@
                 <!-- Architecture View Panel -->
                 <div id="architectureViewPanel" class="mb-3" style="display:none;">
                     <div class="card shadow-sm">
-                        <div class="card-header fw-semibold">&#127959;&#65039; Requirement Architecture View</div>
+                        <div class="card-header fw-semibold" th:text="#{architecture.requirement.view.title}">&#127959;&#65039; Requirement Architecture View</div>
                         <div class="card-body" id="architectureViewContent"></div>
                     </div>
                 </div>
@@ -496,7 +496,7 @@
                 <div id="exportViewContext" class="view-context-bar d-none"></div>
 
                 <div class="card shadow-sm mb-3">
-                    <div class="card-header fw-semibold">&#128229; Export Architecture</div>
+                    <div class="card-header fw-semibold" th:text="#{export.card.title}">&#128229; Export Architecture</div>
                     <div class="card-body">
 
                         <p class="text-muted small mb-3">
@@ -559,7 +559,7 @@
 
                 <!-- Framework Import Card -->
                 <div class="card shadow-sm mb-3">
-                    <div class="card-header fw-semibold">&#128228; Framework Import</div>
+                    <div class="card-header fw-semibold" th:text="#{framework.import.card.title}">&#128228; Framework Import</div>
                     <div class="card-body">
                         <p class="text-muted small mb-3">
                             Import architecture models from external frameworks (UAF, APQC, C4/Structurizr).
@@ -895,7 +895,7 @@
 
                 <!-- Section 1: LLM Configuration -->
                 <div class="card mb-3">
-                    <div class="card-header fw-semibold">&#129302; LLM Configuration</div>
+                    <div class="card-header fw-semibold" th:text="#{preferences.section.llm}">&#129302; LLM Configuration</div>
                     <div class="card-body">
                         <div class="row g-3">
                             <div class="col-md-6">
@@ -925,7 +925,7 @@
 
                 <!-- Section 2: JGit / DSL Configuration -->
                 <div class="card mb-3">
-                    <div class="card-header fw-semibold">&#128194; JGit / DSL Configuration</div>
+                    <div class="card-header fw-semibold" th:text="#{preferences.section.jgit}">&#128194; JGit / DSL Configuration</div>
                     <div class="card-body">
                         <div class="row g-3">
                             <div class="col-md-6">
@@ -970,7 +970,7 @@
 
                 <!-- Section 3: Size Limits -->
                 <div class="card mb-3">
-                    <div class="card-header fw-semibold">&#128200; Size Limits</div>
+                    <div class="card-header fw-semibold" th:text="#{preferences.section.limits}">&#128200; Size Limits</div>
                     <div class="card-body">
                         <div class="row g-3">
                             <div class="col-md-4">
