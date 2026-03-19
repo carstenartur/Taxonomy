@@ -14,6 +14,7 @@ This document shows worked examples of common tasks in the Taxonomy Architecture
 - [6. Diagram Export](#6-diagram-export)
 - [7. Field Service Monitoring — End-to-End](#7-field-service-monitoring--end-to-end)
 - [8. Architecture DSL Workflow](#8-architecture-dsl-workflow)
+- [9. JSON Export with Source Provenance](#9-json-export-with-source-provenance)
 
 ---
 
@@ -377,3 +378,52 @@ curl -u admin:admin -X POST "http://localhost:8080/api/dsl/merge?fromBranch=draf
 ```
 
 The merged changes are materialized into the relation database and become visible in the graph and architecture views.
+
+---
+
+## 9. JSON Export with Source Provenance
+
+When exporting analysis results that include source provenance, the JSON file
+contains additional fields linking requirements to their original source
+documents.
+
+### Export
+
+```bash
+curl -s http://localhost:8080/api/scores/export \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "requirement": "Digitale Antragsverarbeitung",
+    "scores": {"CP-1023": 92, "BP-1327": 45},
+    "reasons": {"CP-1023": "Direkte Fähigkeitszuordnung"},
+    "provider": "GEMINI"
+  }' | jq .
+```
+
+The response includes `"version": 2` and can optionally contain `sources` and
+`requirementSourceLinks` arrays when provenance data is available.
+
+### Import with Provenance
+
+```bash
+curl -s http://localhost:8080/api/scores/import \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "version": 2,
+    "requirement": "Digitale Antragsverarbeitung",
+    "scores": {"CP-1023": 92},
+    "reasons": {"CP-1023": "Direkte Fähigkeitszuordnung"},
+    "provider": "GEMINI",
+    "sources": [{
+      "sourceType": "REGULATION",
+      "title": "VV Digitale Anträge"
+    }],
+    "requirementSourceLinks": [{
+      "requirementId": "REQ-001",
+      "linkType": "EXTRACTED_FROM",
+      "confidence": 0.91
+    }]
+  }' | jq .
+```
+
+Legacy version 1 JSON files (without provenance) are still accepted.
