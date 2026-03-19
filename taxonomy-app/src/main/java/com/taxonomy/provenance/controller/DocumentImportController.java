@@ -39,6 +39,9 @@ public class DocumentImportController {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentImportController.class);
 
+    /** Maximum upload size: 50 MB. */
+    private static final long MAX_UPLOAD_SIZE = 50L * 1024 * 1024;
+
     private final DocumentParserService parserService;
     private final SourceProvenanceService provenanceService;
 
@@ -63,6 +66,10 @@ public class DocumentImportController {
             @RequestParam(value = "sourceType", required = false, defaultValue = "REGULATION") String sourceType) {
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "File is empty"));
+        }
+        if (file.getSize() > MAX_UPLOAD_SIZE) {
+            return ResponseEntity.badRequest().body(Map.of("error",
+                    "File exceeds maximum size of " + (MAX_UPLOAD_SIZE / (1024 * 1024)) + " MB"));
         }
 
         try {
@@ -94,7 +101,7 @@ public class DocumentImportController {
         } catch (Exception e) {
             log.error("Document upload failed for file '{}'", file.getOriginalFilename(), e);
             return ResponseEntity.badRequest().body(Map.of(
-                    "error", "Failed to parse document: " + e.getMessage()));
+                    "error", "Failed to parse document. Please check file format and try again."));
         }
     }
 

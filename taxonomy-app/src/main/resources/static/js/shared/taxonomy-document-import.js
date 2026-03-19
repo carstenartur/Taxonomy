@@ -60,7 +60,7 @@
 
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({ error: 'Upload failed' }));
-                statusArea.innerHTML = '<span class="text-danger">❌ ' + (err.error || 'Upload failed') + '</span>';
+                statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(err.error || 'Upload failed') + '</span>';
                 return;
             }
 
@@ -74,7 +74,7 @@
 
             showCandidateReview(result);
         } catch (e) {
-            statusArea.innerHTML = '<span class="text-danger">❌ ' + e.message + '</span>';
+            statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(e.message) + '</span>';
         } finally {
             spinner.classList.add('d-none');
             uploadBtn.disabled = false;
