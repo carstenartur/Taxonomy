@@ -149,10 +149,32 @@ public class TaxonomyRelationService {
         return createRelation(sourceCode, targetCode, type, description, provenance, null, null);
     }
 
+    /**
+     * Delete a relation by ID, with optional workspace ownership check.
+     *
+     * <p>If {@code workspaceId} is non-null, the relation must either belong to
+     * the given workspace or be a shared (null workspace) relation. If it belongs
+     * to a different workspace, an {@link IllegalArgumentException} is thrown.
+     */
+    @Transactional
+    public void deleteRelation(Long id, @Nullable String workspaceId) {
+        if (workspaceId != null) {
+            TaxonomyRelation relation = relationRepository.findById(id).orElse(null);
+            if (relation != null && relation.getWorkspaceId() != null
+                    && !workspaceId.equals(relation.getWorkspaceId())) {
+                throw new IllegalArgumentException(
+                        "Relation " + id + " belongs to workspace '" + relation.getWorkspaceId()
+                                + "', not '" + workspaceId + "'");
+            }
+        }
+        relationRepository.deleteById(id);
+        log.info("Deleted relation with id: {} (workspace={})", id, workspaceId);
+    }
+
+    /** Legacy overload — deletes without workspace ownership check. */
     @Transactional
     public void deleteRelation(Long id) {
-        relationRepository.deleteById(id);
-        log.info("Deleted relation with id: {}", id);
+        deleteRelation(id, null);
     }
 
     /**
@@ -186,7 +208,16 @@ public class TaxonomyRelationService {
     }
 
     @Transactional(readOnly = true)
-    public long countRelations() {
+    public long countRelations(@Nullable String workspaceId) {
+        if (workspaceId != null) {
+            return relationRepository.countByWorkspaceIdIsNullOrWorkspaceId(workspaceId);
+        }
         return relationRepository.count();
+    }
+
+    /** Legacy overload — counts all relations. */
+    @Transactional(readOnly = true)
+    public long countRelations() {
+        return countRelations(null);
     }
 }

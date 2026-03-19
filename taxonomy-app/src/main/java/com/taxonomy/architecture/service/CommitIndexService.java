@@ -116,8 +116,6 @@ public class CommitIndexService {
      * Returns {@code null} if no branch filter should be applied (SHARED context).
      */
     private String resolveBranchFilter() {
-        // TODO: re-enable workspace branch filtering once Hibernate Search
-        // EntityManager interaction is verified safe.
         try {
             WorkspaceContext ctx = contextResolver.resolveCurrentContext();
             if (!WorkspaceContext.SHARED.equals(ctx)) {

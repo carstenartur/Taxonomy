@@ -246,7 +246,78 @@ provisioningError: String
 
 ---
 
-## 10. Future Considerations
+## 10. Data Isolation Model
+
+Workspace isolation applies to **mutable, user-generated data**, not to the read-only taxonomy catalog:
+
+### Scoping Strategy
+
+| Data Type | Isolated? | Reason |
+|---|---|---|
+| **TaxonomyNode** (catalog) | ❌ No | Immutable nodes from Excel. Shared across all workspaces. |
+| **TaxonomyRelation** (DSL-materialized) | ✅ Yes | Created per workspace via DSL materialization. `workspace_id` column. |
+| **RelationHypothesis** (analysis) | ✅ Yes | Generated per workspace during analysis. `workspace_id` column. |
+| **RelationProposal** (user) | ✅ Yes | User-generated proposals, scoped to workspace. `workspace_id` column. |
+| **ArchitectureCommitIndex** | ⚠️ Branch-filtered | Branch field already exists as `@KeywordField`. Filtered by `currentBranch`. |
+| **ArchitectureDslDocument** | ⚠️ Branch-filtered | Has `branch` and `commitId`. Workspace derived from branch. |
+
+### Entity Extensions
+
+Three entities carry `workspace_id` and `owner_username` columns:
+
+```
+TaxonomyRelation
+  + workspace_id    VARCHAR  @KeywordField  (nullable – NULL = shared/legacy)
+  + owner_username  VARCHAR  @KeywordField  (nullable)
+  Unique constraint: (source_node_id, target_node_id, relation_type, workspace_id)
+  Indexes: idx_rel_workspace, idx_rel_owner
+
+RelationHypothesis
+  + workspace_id    VARCHAR  (nullable)
+  + owner_username  VARCHAR  (nullable)
+
+RelationProposal
+  + workspace_id    VARCHAR  (nullable)
+  + owner_username  VARCHAR  (nullable)
+```
+
+### WorkspaceContext Resolution
+
+```
+WorkspaceContext record:
+  username       – authenticated user
+  workspaceId    – from UserWorkspace entity
+  currentBranch  – active Git branch
+
+WorkspaceContextResolver:
+  1. Extract username from SecurityContextHolder
+  2. Look up provisioned UserWorkspace via WorkspaceManager
+  3. If provisioned → WorkspaceContext(user, wsId, branch)
+  4. If not provisioned → WorkspaceContext.SHARED (no isolation)
+```
+
+### Query Patterns
+
+All workspace-scoped queries use the **OR-null** pattern for backward compatibility:
+
+```sql
+-- JPA: shared + workspace-specific relations
+WHERE (workspace_id = :wsId OR workspace_id IS NULL)
+
+-- Hibernate Search: workspace filter on KNN
+must(bool()
+  .should(match().field("workspaceId").matching(wsId))
+  .should(not(exists().field("workspaceId")))
+)
+```
+
+### Legacy Data
+
+`NULL` workspace = shared/legacy data, visible to all workspaces. No migration needed — existing relations remain globally visible.
+
+---
+
+## 11. Future Considerations
 
 - **Keycloak OIDC** — Replace form-login with JWT-based auth; workspace ownership from token claims
 - **Per-user projection tables** — Currently logical isolation; future: physical table-per-user or discriminator column

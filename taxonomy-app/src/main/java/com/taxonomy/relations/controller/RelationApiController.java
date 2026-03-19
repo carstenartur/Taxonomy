@@ -90,13 +90,19 @@ public class RelationApiController {
     @Operation(summary = "Delete relation", description = "Deletes a taxonomy relation by ID")
     @DeleteMapping("/relations/{id}")
     public ResponseEntity<Void> deleteRelation(@PathVariable Long id) {
-        relationService.deleteRelation(id);
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+        try {
+            relationService.deleteRelation(id, ctx.workspaceId());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(403).build();
+        }
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Count relations", description = "Returns the total number of taxonomy relations")
+    @Operation(summary = "Count relations", description = "Returns the total number of taxonomy relations visible in the current workspace")
     @GetMapping("/relations/count")
     public ResponseEntity<Map<String, Long>> countRelations() {
-        return ResponseEntity.ok(Map.of("count", relationService.countRelations()));
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+        return ResponseEntity.ok(Map.of("count", relationService.countRelations(ctx.workspaceId())));
     }
 }

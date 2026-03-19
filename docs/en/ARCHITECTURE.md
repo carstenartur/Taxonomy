@@ -343,6 +343,22 @@ The system supports concurrent multi-user editing through a workspace isolation 
 2. **State isolation** — Navigation context, projection tracking, and operation state are per-user.
 3. **Sync workflow** — Users pull from shared (sync) and push to shared (publish) explicitly.
 
+### Data Isolation
+
+Beyond branch and state isolation, workspace-scoped data entities provide per-user views of mutable data:
+
+| Entity | Isolation | Mechanism |
+|---|---|---|
+| **TaxonomyNode** | Global (shared) | Read-only catalog from Excel — no workspace filter |
+| **TaxonomyRelation** | Per-workspace | `workspace_id` column + OR-null JPA/Hibernate Search queries |
+| **RelationHypothesis** | Per-workspace | `workspace_id` column |
+| **RelationProposal** | Per-workspace | `workspace_id` column |
+| **ArchitectureCommitIndex** | Per-branch | Existing `branch` `@KeywordField` filtered via `currentBranch` |
+
+The `WorkspaceContextResolver` resolves the current user's `WorkspaceContext` (username, workspaceId, currentBranch) from the Spring Security context and the persistent `UserWorkspace` metadata. All relation queries, materialization, and graph searches use this context for scoping.
+
+Legacy data with `workspace_id = NULL` is treated as shared and remains visible to all workspaces.
+
 ### Data Flow
 
 ```

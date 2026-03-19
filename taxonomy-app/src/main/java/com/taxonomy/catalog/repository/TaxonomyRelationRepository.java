@@ -53,4 +53,7 @@ public interface TaxonomyRelationRepository extends JpaRepository<TaxonomyRelati
                                                                @Param("sourceCode") String sourceCode,
                                                                @Param("targetCode") String targetCode,
                                                                @Param("type") RelationType type);
+
+    @Query("SELECT COUNT(r) FROM TaxonomyRelation r WHERE r.workspaceId = :wsId OR r.workspaceId IS NULL")
+    long countByWorkspaceIdIsNullOrWorkspaceId(@Param("wsId") String workspaceId);
 }
