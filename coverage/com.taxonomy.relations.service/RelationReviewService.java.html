@@ -38,38 +38,45 @@ public class RelationReviewService {
 
     /**
      * Accept a proposal: creates a real TaxonomyRelation and marks the proposal as ACCEPTED.
+     *
+     * &lt;p&gt;The relation is created in the proposal's workspace (using the proposal's stored
+     * {@code workspaceId}/{@code ownerUsername}). For legacy proposals with null workspace,
+     * the relation is created in the shared/legacy scope.
      */
     @Transactional
     public TaxonomyRelationDto acceptProposal(Long proposalId) {
-<span class="fc" id="L44">        RelationProposal proposal = proposalRepository.findById(proposalId)</span>
-<span class="fc" id="L45">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+<span class="fc" id="L48">        RelationProposal proposal = proposalRepository.findById(proposalId)</span>
+<span class="fc" id="L49">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
                         &quot;Proposal not found: &quot; + proposalId));
 
-<span class="pc bpc" id="L48" title="1 of 2 branches missed.">        if (proposal.getStatus() != ProposalStatus.PENDING) {</span>
-<span class="nc" id="L49">            throw new IllegalStateException(</span>
-<span class="nc" id="L50">                    &quot;Proposal &quot; + proposalId + &quot; is already &quot; + proposal.getStatus());</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (proposal.getStatus() != ProposalStatus.PENDING) {</span>
+<span class="nc" id="L53">            throw new IllegalStateException(</span>
+<span class="nc" id="L54">                    &quot;Proposal &quot; + proposalId + &quot; is already &quot; + proposal.getStatus());</span>
         }
 
-        // Create the real relation
-<span class="fc" id="L54">        TaxonomyRelationDto relation = relationService.createRelation(</span>
-<span class="fc" id="L55">                proposal.getSourceNode().getCode(),</span>
-<span class="fc" id="L56">                proposal.getTargetNode().getCode(),</span>
-<span class="fc" id="L57">                proposal.getRelationType(),</span>
-<span class="fc" id="L58">                proposal.getRationale(),</span>
-                &quot;proposal-pipeline&quot;);
+        // Create the real relation in the proposal's workspace (not the current user's)
+<span class="fc" id="L58">        String workspaceId = proposal.getWorkspaceId();</span>
+<span class="fc" id="L59">        String ownerUsername = proposal.getOwnerUsername();</span>
+<span class="fc" id="L60">        TaxonomyRelationDto relation = relationService.createRelation(</span>
+<span class="fc" id="L61">                proposal.getSourceNode().getCode(),</span>
+<span class="fc" id="L62">                proposal.getTargetNode().getCode(),</span>
+<span class="fc" id="L63">                proposal.getRelationType(),</span>
+<span class="fc" id="L64">                proposal.getRationale(),</span>
+                &quot;proposal-pipeline&quot;,
+                workspaceId, ownerUsername);
 
         // Mark proposal as accepted
-<span class="fc" id="L62">        proposal.setStatus(ProposalStatus.ACCEPTED);</span>
-<span class="fc" id="L63">        proposal.setReviewedAt(Instant.now());</span>
-<span class="fc" id="L64">        proposalRepository.save(proposal);</span>
+<span class="fc" id="L69">        proposal.setStatus(ProposalStatus.ACCEPTED);</span>
+<span class="fc" id="L70">        proposal.setReviewedAt(Instant.now());</span>
+<span class="fc" id="L71">        proposalRepository.save(proposal);</span>
 
-<span class="fc" id="L66">        log.info(&quot;Accepted proposal {}: {} → {} [{}]&quot;,</span>
+<span class="fc" id="L73">        log.info(&quot;Accepted proposal {}: {} → {} [{}]&quot;,</span>
                 proposalId,
-<span class="fc" id="L68">                proposal.getSourceNode().getCode(),</span>
-<span class="fc" id="L69">                proposal.getTargetNode().getCode(),</span>
-<span class="fc" id="L70">                proposal.getRelationType());</span>
+<span class="fc" id="L75">                proposal.getSourceNode().getCode(),</span>
+<span class="fc" id="L76">                proposal.getTargetNode().getCode(),</span>
+<span class="fc" id="L77">                proposal.getRelationType());</span>
 
-<span class="fc" id="L72">        return relation;</span>
+<span class="fc" id="L79">        return relation;</span>
     }
 
     /**
@@ -77,26 +84,26 @@ public class RelationReviewService {
      */
     @Transactional
     public RelationProposalDto rejectProposal(Long proposalId) {
-<span class="fc" id="L80">        RelationProposal proposal = proposalRepository.findById(proposalId)</span>
-<span class="fc" id="L81">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+<span class="fc" id="L87">        RelationProposal proposal = proposalRepository.findById(proposalId)</span>
+<span class="fc" id="L88">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
                         &quot;Proposal not found: &quot; + proposalId));
 
-<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        if (proposal.getStatus() != ProposalStatus.PENDING) {</span>
-<span class="nc" id="L85">            throw new IllegalStateException(</span>
-<span class="nc" id="L86">                    &quot;Proposal &quot; + proposalId + &quot; is already &quot; + proposal.getStatus());</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (proposal.getStatus() != ProposalStatus.PENDING) {</span>
+<span class="nc" id="L92">            throw new IllegalStateException(</span>
+<span class="nc" id="L93">                    &quot;Proposal &quot; + proposalId + &quot; is already &quot; + proposal.getStatus());</span>
         }
 
-<span class="fc" id="L89">        proposal.setStatus(ProposalStatus.REJECTED);</span>
-<span class="fc" id="L90">        proposal.setReviewedAt(Instant.now());</span>
-<span class="fc" id="L91">        proposalRepository.save(proposal);</span>
+<span class="fc" id="L96">        proposal.setStatus(ProposalStatus.REJECTED);</span>
+<span class="fc" id="L97">        proposal.setReviewedAt(Instant.now());</span>
+<span class="fc" id="L98">        proposalRepository.save(proposal);</span>
 
-<span class="fc" id="L93">        log.info(&quot;Rejected proposal {}: {} → {} [{}]&quot;,</span>
+<span class="fc" id="L100">        log.info(&quot;Rejected proposal {}: {} → {} [{}]&quot;,</span>
                 proposalId,
-<span class="fc" id="L95">                proposal.getSourceNode().getCode(),</span>
-<span class="fc" id="L96">                proposal.getTargetNode().getCode(),</span>
-<span class="fc" id="L97">                proposal.getRelationType());</span>
+<span class="fc" id="L102">                proposal.getSourceNode().getCode(),</span>
+<span class="fc" id="L103">                proposal.getTargetNode().getCode(),</span>
+<span class="fc" id="L104">                proposal.getRelationType());</span>
 
-<span class="fc" id="L99">        return proposalService.toDto(proposal);</span>
+<span class="fc" id="L106">        return proposalService.toDto(proposal);</span>
     }
 
     /**
@@ -105,36 +112,36 @@ public class RelationReviewService {
      */
     @Transactional
     public RelationProposalDto revertProposal(Long proposalId) {
-<span class="fc" id="L108">        RelationProposal proposal = proposalRepository.findById(proposalId)</span>
-<span class="pc" id="L109">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+<span class="fc" id="L115">        RelationProposal proposal = proposalRepository.findById(proposalId)</span>
+<span class="pc" id="L116">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
                         &quot;Proposal not found: &quot; + proposalId));
 
-<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (proposal.getStatus() == ProposalStatus.PENDING) {</span>
-<span class="nc" id="L113">            throw new IllegalStateException(</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (proposal.getStatus() == ProposalStatus.PENDING) {</span>
+<span class="nc" id="L120">            throw new IllegalStateException(</span>
                     &quot;Proposal &quot; + proposalId + &quot; is already PENDING&quot;);
         }
 
-<span class="nc" id="L117">        ProposalStatus oldStatus = proposal.getStatus();</span>
+<span class="nc" id="L124">        ProposalStatus oldStatus = proposal.getStatus();</span>
 
         // If accepted, remove the created relation
-<span class="nc bnc" id="L120" title="All 2 branches missed.">        if (oldStatus == ProposalStatus.ACCEPTED) {</span>
-<span class="nc" id="L121">            relationService.deleteRelationBySourceTargetType(</span>
-<span class="nc" id="L122">                    proposal.getSourceNode().getCode(),</span>
-<span class="nc" id="L123">                    proposal.getTargetNode().getCode(),</span>
-<span class="nc" id="L124">                    proposal.getRelationType());</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (oldStatus == ProposalStatus.ACCEPTED) {</span>
+<span class="nc" id="L128">            relationService.deleteRelationBySourceTargetType(</span>
+<span class="nc" id="L129">                    proposal.getSourceNode().getCode(),</span>
+<span class="nc" id="L130">                    proposal.getTargetNode().getCode(),</span>
+<span class="nc" id="L131">                    proposal.getRelationType());</span>
         }
 
-<span class="nc" id="L127">        proposal.setStatus(ProposalStatus.PENDING);</span>
-<span class="nc" id="L128">        proposal.setReviewedAt(null);</span>
-<span class="nc" id="L129">        proposalRepository.save(proposal);</span>
+<span class="nc" id="L134">        proposal.setStatus(ProposalStatus.PENDING);</span>
+<span class="nc" id="L135">        proposal.setReviewedAt(null);</span>
+<span class="nc" id="L136">        proposalRepository.save(proposal);</span>
 
-<span class="nc" id="L131">        log.info(&quot;Reverted proposal {} from {} to PENDING: {} → {} [{}]&quot;,</span>
+<span class="nc" id="L138">        log.info(&quot;Reverted proposal {} from {} to PENDING: {} → {} [{}]&quot;,</span>
                 proposalId, oldStatus,
-<span class="nc" id="L133">                proposal.getSourceNode().getCode(),</span>
-<span class="nc" id="L134">                proposal.getTargetNode().getCode(),</span>
-<span class="nc" id="L135">                proposal.getRelationType());</span>
+<span class="nc" id="L140">                proposal.getSourceNode().getCode(),</span>
+<span class="nc" id="L141">                proposal.getTargetNode().getCode(),</span>
+<span class="nc" id="L142">                proposal.getRelationType());</span>
 
-<span class="nc" id="L137">        return proposalService.toDto(proposal);</span>
+<span class="nc" id="L144">        return proposalService.toDto(proposal);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

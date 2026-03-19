@@ -3,6 +3,8 @@
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,77 +20,90 @@ import java.util.Map;
 public class RelationApiController {
 
     private final TaxonomyRelationService relationService;
+    private final WorkspaceContextResolver contextResolver;
 
-<span class="fc" id="L22">    public RelationApiController(TaxonomyRelationService relationService) {</span>
-<span class="fc" id="L23">        this.relationService = relationService;</span>
-<span class="fc" id="L24">    }</span>
+    public RelationApiController(TaxonomyRelationService relationService,
+<span class="fc" id="L26">                                  WorkspaceContextResolver contextResolver) {</span>
+<span class="fc" id="L27">        this.relationService = relationService;</span>
+<span class="fc" id="L28">        this.contextResolver = contextResolver;</span>
+<span class="fc" id="L29">    }</span>
 
     @Operation(summary = &quot;List relations&quot;, description = &quot;Returns all taxonomy relations, optionally filtered by type&quot;)
     @GetMapping(&quot;/relations&quot;)
     public ResponseEntity&lt;List&lt;TaxonomyRelationDto&gt;&gt; getRelations(
             @Parameter(description = &quot;Filter by relation type&quot;) @RequestParam(required = false) String type) {
-<span class="pc bpc" id="L30" title="1 of 4 branches missed.">        if (type != null &amp;&amp; !type.isBlank()) {</span>
+<span class="fc" id="L35">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="pc bpc" id="L36" title="1 of 4 branches missed.">        if (type != null &amp;&amp; !type.isBlank()) {</span>
             RelationType relationType;
             try {
-<span class="fc" id="L33">                relationType = RelationType.valueOf(type.toUpperCase());</span>
-<span class="nc" id="L34">            } catch (IllegalArgumentException e) {</span>
-<span class="nc" id="L35">                return ResponseEntity.badRequest().build();</span>
-<span class="fc" id="L36">            }</span>
-<span class="fc" id="L37">            return ResponseEntity.ok(relationService.getRelationsByType(relationType));</span>
+<span class="fc" id="L39">                relationType = RelationType.valueOf(type.toUpperCase());</span>
+<span class="nc" id="L40">            } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L41">                return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L42">            }</span>
+<span class="fc" id="L43">            return ResponseEntity.ok(relationService.getRelationsByType(relationType, ctx.workspaceId()));</span>
         }
-<span class="fc" id="L39">        return ResponseEntity.ok(relationService.getAllRelations());</span>
+<span class="fc" id="L45">        return ResponseEntity.ok(relationService.getAllRelations(ctx.workspaceId()));</span>
     }
 
     @Operation(summary = &quot;Get node relations&quot;, description = &quot;Returns all relations for a specific taxonomy node&quot;)
     @GetMapping(&quot;/node/{code}/relations&quot;)
     public ResponseEntity&lt;List&lt;TaxonomyRelationDto&gt;&gt; getRelationsForNode(
             @PathVariable String code) {
-<span class="fc" id="L46">        return ResponseEntity.ok(relationService.getRelationsForNode(code));</span>
+<span class="fc" id="L52">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="fc" id="L53">        return ResponseEntity.ok(relationService.getRelationsForNode(code, ctx.workspaceId()));</span>
     }
 
     @Operation(summary = &quot;Create relation&quot;, description = &quot;Creates a new taxonomy relation between two nodes&quot;)
     @PostMapping(&quot;/relations&quot;)
     public ResponseEntity&lt;TaxonomyRelationDto&gt; createRelation(
             @RequestBody Map&lt;String, String&gt; body) {
-<span class="fc" id="L53">        String sourceCode = body.get(&quot;sourceCode&quot;);</span>
-<span class="fc" id="L54">        String targetCode = body.get(&quot;targetCode&quot;);</span>
-<span class="fc" id="L55">        String relationTypeStr = body.get(&quot;relationType&quot;);</span>
-<span class="fc" id="L56">        String description = body.get(&quot;description&quot;);</span>
-<span class="fc" id="L57">        String provenance = body.get(&quot;provenance&quot;);</span>
+<span class="fc" id="L60">        String sourceCode = body.get(&quot;sourceCode&quot;);</span>
+<span class="fc" id="L61">        String targetCode = body.get(&quot;targetCode&quot;);</span>
+<span class="fc" id="L62">        String relationTypeStr = body.get(&quot;relationType&quot;);</span>
+<span class="fc" id="L63">        String description = body.get(&quot;description&quot;);</span>
+<span class="fc" id="L64">        String provenance = body.get(&quot;provenance&quot;);</span>
 
-<span class="pc bpc" id="L59" title="2 of 6 branches missed.">        if (sourceCode == null || sourceCode.isBlank() ||</span>
-<span class="pc bpc" id="L60" title="2 of 4 branches missed.">                targetCode == null || targetCode.isBlank() ||</span>
-<span class="pc bpc" id="L61" title="1 of 2 branches missed.">                relationTypeStr == null || relationTypeStr.isBlank()) {</span>
-<span class="fc" id="L62">            return ResponseEntity.badRequest().build();</span>
+<span class="pc bpc" id="L66" title="2 of 6 branches missed.">        if (sourceCode == null || sourceCode.isBlank() ||</span>
+<span class="pc bpc" id="L67" title="2 of 4 branches missed.">                targetCode == null || targetCode.isBlank() ||</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                relationTypeStr == null || relationTypeStr.isBlank()) {</span>
+<span class="fc" id="L69">            return ResponseEntity.badRequest().build();</span>
         }
 
         RelationType relationType;
         try {
-<span class="fc" id="L67">            relationType = RelationType.valueOf(relationTypeStr.toUpperCase());</span>
-<span class="fc" id="L68">        } catch (IllegalArgumentException e) {</span>
-<span class="fc" id="L69">            return ResponseEntity.badRequest().build();</span>
-<span class="fc" id="L70">        }</span>
+<span class="fc" id="L74">            relationType = RelationType.valueOf(relationTypeStr.toUpperCase());</span>
+<span class="fc" id="L75">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L76">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L77">        }</span>
 
         try {
-<span class="fc" id="L73">            TaxonomyRelationDto dto = relationService.createRelation(</span>
-                    sourceCode, targetCode, relationType, description, provenance);
-<span class="fc" id="L75">            return ResponseEntity.ok(dto);</span>
-<span class="fc" id="L76">        } catch (IllegalArgumentException e) {</span>
-<span class="fc" id="L77">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L80">            WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="fc" id="L81">            TaxonomyRelationDto dto = relationService.createRelation(</span>
+                    sourceCode, targetCode, relationType, description, provenance,
+<span class="fc" id="L83">                    ctx.workspaceId(), ctx.username());</span>
+<span class="fc" id="L84">            return ResponseEntity.ok(dto);</span>
+<span class="fc" id="L85">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L86">            return ResponseEntity.badRequest().build();</span>
         }
     }
 
     @Operation(summary = &quot;Delete relation&quot;, description = &quot;Deletes a taxonomy relation by ID&quot;)
     @DeleteMapping(&quot;/relations/{id}&quot;)
     public ResponseEntity&lt;Void&gt; deleteRelation(@PathVariable Long id) {
-<span class="fc" id="L84">        relationService.deleteRelation(id);</span>
-<span class="fc" id="L85">        return ResponseEntity.noContent().build();</span>
+<span class="fc" id="L93">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+        try {
+<span class="fc" id="L95">            relationService.deleteRelation(id, ctx.workspaceId());</span>
+<span class="nc" id="L96">        } catch (IllegalArgumentException e) {</span>
+<span class="nc" id="L97">            return ResponseEntity.status(403).build();</span>
+<span class="fc" id="L98">        }</span>
+<span class="fc" id="L99">        return ResponseEntity.noContent().build();</span>
     }
 
-    @Operation(summary = &quot;Count relations&quot;, description = &quot;Returns the total number of taxonomy relations&quot;)
+    @Operation(summary = &quot;Count relations&quot;, description = &quot;Returns the total number of taxonomy relations visible in the current workspace&quot;)
     @GetMapping(&quot;/relations/count&quot;)
     public ResponseEntity&lt;Map&lt;String, Long&gt;&gt; countRelations() {
-<span class="fc" id="L91">        return ResponseEntity.ok(Map.of(&quot;count&quot;, relationService.countRelations()));</span>
+<span class="fc" id="L105">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="fc" id="L106">        return ResponseEntity.ok(Map.of(&quot;count&quot;, relationService.countRelations(ctx.workspaceId())));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

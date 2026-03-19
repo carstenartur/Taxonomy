@@ -8,6 +8,7 @@ import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,74 +18,164 @@ import java.util.List;
 @Service
 public class TaxonomyRelationService {
 
-<span class="fc" id="L20">    private static final Logger log = LoggerFactory.getLogger(TaxonomyRelationService.class);</span>
+<span class="fc" id="L21">    private static final Logger log = LoggerFactory.getLogger(TaxonomyRelationService.class);</span>
 
     private final TaxonomyRelationRepository relationRepository;
     private final TaxonomyNodeRepository nodeRepository;
 
     public TaxonomyRelationService(TaxonomyRelationRepository relationRepository,
-<span class="fc" id="L26">                                   TaxonomyNodeRepository nodeRepository) {</span>
-<span class="fc" id="L27">        this.relationRepository = relationRepository;</span>
-<span class="fc" id="L28">        this.nodeRepository = nodeRepository;</span>
-<span class="fc" id="L29">    }</span>
+<span class="fc" id="L27">                                   TaxonomyNodeRepository nodeRepository) {</span>
+<span class="fc" id="L28">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L29">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L30">    }</span>
+
+    // ── Workspace-scoped read methods ───────────────────────────────
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getRelationsForNode(String code, @Nullable String workspaceId) {
+        List&lt;TaxonomyRelation&gt; relations;
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
+<span class="nc" id="L38">            relations = relationRepository.findByWorkspaceAndNodeCode(workspaceId, code);</span>
+        } else {
+<span class="fc" id="L40">            relations = relationRepository.findBySourceNodeCodeOrTargetNodeCode(code, code);</span>
+        }
+<span class="fc" id="L42">        List&lt;TaxonomyRelationDto&gt; dtos = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        for (TaxonomyRelation relation : relations) {</span>
+<span class="fc" id="L44">            dtos.add(toDto(relation));</span>
+<span class="fc" id="L45">        }</span>
+<span class="fc" id="L46">        return dtos;</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getRelationsByType(RelationType type, @Nullable String workspaceId) {
+        List&lt;TaxonomyRelation&gt; relations;
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
+<span class="nc" id="L53">            relations = relationRepository.findByWorkspaceAndRelationType(workspaceId, type);</span>
+        } else {
+<span class="fc" id="L55">            relations = relationRepository.findByRelationType(type);</span>
+        }
+<span class="fc" id="L57">        List&lt;TaxonomyRelationDto&gt; dtos = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (TaxonomyRelation relation : relations) {</span>
+<span class="fc" id="L59">            dtos.add(toDto(relation));</span>
+<span class="fc" id="L60">        }</span>
+<span class="fc" id="L61">        return dtos;</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;TaxonomyRelationDto&gt; getAllRelations(@Nullable String workspaceId) {
+        List&lt;TaxonomyRelation&gt; relations;
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
+<span class="nc" id="L68">            relations = relationRepository.findByWorkspaceIdIsNullOrWorkspaceId(workspaceId);</span>
+        } else {
+<span class="fc" id="L70">            relations = relationRepository.findAll();</span>
+        }
+<span class="fc" id="L72">        List&lt;TaxonomyRelationDto&gt; dtos = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (TaxonomyRelation relation : relations) {</span>
+<span class="fc" id="L74">            dtos.add(toDto(relation));</span>
+<span class="fc" id="L75">        }</span>
+<span class="fc" id="L76">        return dtos;</span>
+    }
+
+    // ── Legacy delegating read methods (backward-compatible) ─────────
 
     @Transactional(readOnly = true)
     public List&lt;TaxonomyRelationDto&gt; getRelationsForNode(String code) {
-<span class="fc" id="L33">        List&lt;TaxonomyRelation&gt; relations =</span>
-<span class="fc" id="L34">                relationRepository.findBySourceNodeCodeOrTargetNodeCode(code, code);</span>
-<span class="fc" id="L35">        List&lt;TaxonomyRelationDto&gt; dtos = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L36" title="All 2 branches covered.">        for (TaxonomyRelation relation : relations) {</span>
-<span class="fc" id="L37">            dtos.add(toDto(relation));</span>
-<span class="fc" id="L38">        }</span>
-<span class="fc" id="L39">        return dtos;</span>
+<span class="fc" id="L83">        return getRelationsForNode(code, null);</span>
     }
 
     @Transactional(readOnly = true)
     public List&lt;TaxonomyRelationDto&gt; getRelationsByType(RelationType type) {
-<span class="fc" id="L44">        List&lt;TaxonomyRelation&gt; relations = relationRepository.findByRelationType(type);</span>
-<span class="fc" id="L45">        List&lt;TaxonomyRelationDto&gt; dtos = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L46" title="All 2 branches covered.">        for (TaxonomyRelation relation : relations) {</span>
-<span class="fc" id="L47">            dtos.add(toDto(relation));</span>
-<span class="fc" id="L48">        }</span>
-<span class="fc" id="L49">        return dtos;</span>
+<span class="fc" id="L88">        return getRelationsByType(type, null);</span>
     }
 
     @Transactional(readOnly = true)
     public List&lt;TaxonomyRelationDto&gt; getAllRelations() {
-<span class="fc" id="L54">        List&lt;TaxonomyRelation&gt; relations = relationRepository.findAll();</span>
-<span class="fc" id="L55">        List&lt;TaxonomyRelationDto&gt; dtos = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L56" title="All 2 branches covered.">        for (TaxonomyRelation relation : relations) {</span>
-<span class="fc" id="L57">            dtos.add(toDto(relation));</span>
-<span class="fc" id="L58">        }</span>
-<span class="fc" id="L59">        return dtos;</span>
+<span class="fc" id="L93">        return getAllRelations(null);</span>
     }
+
+    // ── Workspace-scoped write methods ──────────────────────────────
 
     @Transactional
     public TaxonomyRelationDto createRelation(String sourceCode, String targetCode,
                                               RelationType type, String description,
-                                              String provenance) {
-<span class="fc" id="L66">        TaxonomyNode source = nodeRepository.findByCode(sourceCode)</span>
-<span class="fc" id="L67">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Source node not found: &quot; + sourceCode));</span>
-<span class="fc" id="L68">        TaxonomyNode target = nodeRepository.findByCode(targetCode)</span>
-<span class="pc" id="L69">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Target node not found: &quot; + targetCode));</span>
+                                              String provenance,
+                                              @Nullable String workspaceId,
+                                              @Nullable String ownerUsername) {
+<span class="fc" id="L104">        TaxonomyNode source = nodeRepository.findByCode(sourceCode)</span>
+<span class="fc" id="L105">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Source node not found: &quot; + sourceCode));</span>
+<span class="fc" id="L106">        TaxonomyNode target = nodeRepository.findByCode(targetCode)</span>
+<span class="pc" id="L107">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Target node not found: &quot; + targetCode));</span>
 
-<span class="fc" id="L71">        TaxonomyRelation relation = new TaxonomyRelation();</span>
-<span class="fc" id="L72">        relation.setSourceNode(source);</span>
-<span class="fc" id="L73">        relation.setTargetNode(target);</span>
-<span class="fc" id="L74">        relation.setRelationType(type);</span>
-<span class="fc" id="L75">        relation.setDescription(description);</span>
-<span class="fc" id="L76">        relation.setProvenance(provenance);</span>
+        // Programmatic duplicate check (covers NULL workspace_id in unique constraint)
+        List&lt;TaxonomyRelation&gt; existing;
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
+<span class="nc" id="L112">            existing = relationRepository.findByWorkspaceAndSourceTargetType(</span>
+                    workspaceId, sourceCode, targetCode, type);
+        } else {
+<span class="fc" id="L115">            existing = relationRepository.findBySourceNodeCodeAndTargetNodeCodeAndRelationType(</span>
+                    sourceCode, targetCode, type);
+            // Filter to only those with null workspace for exact match
+<span class="fc" id="L118">            existing = existing.stream()</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                    .filter(r -&gt; r.getWorkspaceId() == null)</span>
+<span class="fc" id="L120">                    .toList();</span>
+        }
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if (!existing.isEmpty()) {</span>
+<span class="fc" id="L123">            throw new IllegalArgumentException(String.format(</span>
+                    &quot;Relation already exists: %s --[%s]--&gt; %s (workspace=%s)&quot;,
+                    sourceCode, type, targetCode, workspaceId));
+        }
 
-<span class="fc" id="L78">        TaxonomyRelation saved = relationRepository.save(relation);</span>
-<span class="fc" id="L79">        log.info(&quot;Created relation: {} --[{}]--&gt; {}&quot;, sourceCode, type, targetCode);</span>
-<span class="fc" id="L80">        return toDto(saved);</span>
+<span class="fc" id="L128">        TaxonomyRelation relation = new TaxonomyRelation();</span>
+<span class="fc" id="L129">        relation.setSourceNode(source);</span>
+<span class="fc" id="L130">        relation.setTargetNode(target);</span>
+<span class="fc" id="L131">        relation.setRelationType(type);</span>
+<span class="fc" id="L132">        relation.setDescription(description);</span>
+<span class="fc" id="L133">        relation.setProvenance(provenance);</span>
+<span class="fc" id="L134">        relation.setWorkspaceId(workspaceId);</span>
+<span class="fc" id="L135">        relation.setOwnerUsername(ownerUsername);</span>
+
+<span class="fc" id="L137">        TaxonomyRelation saved = relationRepository.save(relation);</span>
+<span class="fc" id="L138">        log.info(&quot;Created relation: {} --[{}]--&gt; {} (workspace={})&quot;, sourceCode, type, targetCode, workspaceId);</span>
+<span class="fc" id="L139">        return toDto(saved);</span>
     }
 
+    /**
+     * Legacy overload — delegates to workspace-aware method with null workspace.
+     */
+    @Transactional
+    public TaxonomyRelationDto createRelation(String sourceCode, String targetCode,
+                                              RelationType type, String description,
+                                              String provenance) {
+<span class="fc" id="L149">        return createRelation(sourceCode, targetCode, type, description, provenance, null, null);</span>
+    }
+
+    /**
+     * Delete a relation by ID, with optional workspace ownership check.
+     *
+     * &lt;p&gt;If {@code workspaceId} is non-null, the relation must either belong to
+     * the given workspace or be a shared (null workspace) relation. If it belongs
+     * to a different workspace, an {@link IllegalArgumentException} is thrown.
+     */
+    @Transactional
+    public void deleteRelation(Long id, @Nullable String workspaceId) {
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
+<span class="nc" id="L162">            TaxonomyRelation relation = relationRepository.findById(id).orElse(null);</span>
+<span class="nc bnc" id="L163" title="All 4 branches missed.">            if (relation != null &amp;&amp; relation.getWorkspaceId() != null</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">                    &amp;&amp; !workspaceId.equals(relation.getWorkspaceId())) {</span>
+<span class="nc" id="L165">                throw new IllegalArgumentException(</span>
+<span class="nc" id="L166">                        &quot;Relation &quot; + id + &quot; belongs to workspace '&quot; + relation.getWorkspaceId()</span>
+                                + &quot;', not '&quot; + workspaceId + &quot;'&quot;);
+            }
+        }
+<span class="fc" id="L170">        relationRepository.deleteById(id);</span>
+<span class="fc" id="L171">        log.info(&quot;Deleted relation with id: {} (workspace={})&quot;, id, workspaceId);</span>
+<span class="fc" id="L172">    }</span>
+
+    /** Legacy overload — deletes without workspace ownership check. */
     @Transactional
     public void deleteRelation(Long id) {
-<span class="fc" id="L85">        relationRepository.deleteById(id);</span>
-<span class="fc" id="L86">        log.info(&quot;Deleted relation with id: {}&quot;, id);</span>
-<span class="fc" id="L87">    }</span>
+<span class="fc" id="L177">        deleteRelation(id, null);</span>
+<span class="fc" id="L178">    }</span>
 
     /**
      * Delete all relations matching a specific source, target, and type combination.
@@ -93,32 +184,41 @@ public class TaxonomyRelationService {
     @Transactional
     public void deleteRelationBySourceTargetType(String sourceCode, String targetCode,
                                                   RelationType type) {
-<span class="nc" id="L96">        List&lt;TaxonomyRelation&gt; matches = relationRepository</span>
-<span class="nc" id="L97">                .findBySourceNodeCodeAndTargetNodeCodeAndRelationType(sourceCode, targetCode, type);</span>
-<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (!matches.isEmpty()) {</span>
-<span class="nc" id="L99">            relationRepository.deleteAll(matches);</span>
-<span class="nc" id="L100">            log.info(&quot;Deleted {} relation(s): {} --[{}]--&gt; {}&quot;, matches.size(), sourceCode, type, targetCode);</span>
+<span class="nc" id="L187">        List&lt;TaxonomyRelation&gt; matches = relationRepository</span>
+<span class="nc" id="L188">                .findBySourceNodeCodeAndTargetNodeCodeAndRelationType(sourceCode, targetCode, type);</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">        if (!matches.isEmpty()) {</span>
+<span class="nc" id="L190">            relationRepository.deleteAll(matches);</span>
+<span class="nc" id="L191">            log.info(&quot;Deleted {} relation(s): {} --[{}]--&gt; {}&quot;, matches.size(), sourceCode, type, targetCode);</span>
         }
-<span class="nc" id="L102">    }</span>
+<span class="nc" id="L193">    }</span>
 
     public TaxonomyRelationDto toDto(TaxonomyRelation relation) {
-<span class="fc" id="L105">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
-<span class="fc" id="L106">        dto.setId(relation.getId());</span>
-<span class="fc" id="L107">        dto.setSourceCode(relation.getSourceNode().getCode());</span>
-<span class="fc" id="L108">        dto.setSourceName(relation.getSourceNode().getNameEn());</span>
-<span class="fc" id="L109">        dto.setTargetCode(relation.getTargetNode().getCode());</span>
-<span class="fc" id="L110">        dto.setTargetName(relation.getTargetNode().getNameEn());</span>
-<span class="fc" id="L111">        dto.setRelationType(relation.getRelationType().name());</span>
-<span class="fc" id="L112">        dto.setDescription(relation.getDescription());</span>
-<span class="fc" id="L113">        dto.setProvenance(relation.getProvenance());</span>
-<span class="fc" id="L114">        dto.setWeight(relation.getWeight());</span>
-<span class="fc" id="L115">        dto.setBidirectional(relation.isBidirectional());</span>
-<span class="fc" id="L116">        return dto;</span>
+<span class="fc" id="L196">        TaxonomyRelationDto dto = new TaxonomyRelationDto();</span>
+<span class="fc" id="L197">        dto.setId(relation.getId());</span>
+<span class="fc" id="L198">        dto.setSourceCode(relation.getSourceNode().getCode());</span>
+<span class="fc" id="L199">        dto.setSourceName(relation.getSourceNode().getNameEn());</span>
+<span class="fc" id="L200">        dto.setTargetCode(relation.getTargetNode().getCode());</span>
+<span class="fc" id="L201">        dto.setTargetName(relation.getTargetNode().getNameEn());</span>
+<span class="fc" id="L202">        dto.setRelationType(relation.getRelationType().name());</span>
+<span class="fc" id="L203">        dto.setDescription(relation.getDescription());</span>
+<span class="fc" id="L204">        dto.setProvenance(relation.getProvenance());</span>
+<span class="fc" id="L205">        dto.setWeight(relation.getWeight());</span>
+<span class="fc" id="L206">        dto.setBidirectional(relation.isBidirectional());</span>
+<span class="fc" id="L207">        return dto;</span>
     }
 
     @Transactional(readOnly = true)
+    public long countRelations(@Nullable String workspaceId) {
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
+<span class="nc" id="L213">            return relationRepository.countByWorkspaceIdIsNullOrWorkspaceId(workspaceId);</span>
+        }
+<span class="fc" id="L215">        return relationRepository.count();</span>
+    }
+
+    /** Legacy overload — counts all relations. */
+    @Transactional(readOnly = true)
     public long countRelations() {
-<span class="fc" id="L121">        return relationRepository.count();</span>
+<span class="fc" id="L221">        return countRelations(null);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

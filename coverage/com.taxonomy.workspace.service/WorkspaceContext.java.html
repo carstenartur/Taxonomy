@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceContext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceContext.java</span></div><h1>WorkspaceContext.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+/**
+ * Immutable value object representing the current workspace context for a user.
+ *
+ * &lt;p&gt;Carries the {@code username}, {@code workspaceId}, and {@code currentBranch}
+ * needed to scope data operations (relations, hypotheses, proposals, commit search)
+ * to the active workspace.
+ *
+ * &lt;p&gt;A special {@link #SHARED} instance represents the system-wide / legacy scope
+ * where no per-user isolation applies. Its {@code workspaceId} is {@code null},
+ * which maps directly to the {@code workspace_id IS NULL} condition in OR-null
+ * queries — ensuring that SHARED callers see all legacy/shared data without
+ * accidental workspace filtering.
+ *
+ * @param username      the authenticated user's username
+ * @param workspaceId   the unique workspace identifier (from {@link com.taxonomy.workspace.model.UserWorkspace}),
+ *                      or {@code null} for the shared / legacy scope
+ * @param currentBranch the Git branch the user is currently working on
+ */
+<span class="fc" id="L21">public record WorkspaceContext(</span>
+        String username,
+        String workspaceId,
+        String currentBranch
+) {
+    /**
+     * Shared / legacy context — used when no per-user workspace is active.
+     *
+     * &lt;p&gt;{@code workspaceId} is {@code null} so that downstream services skip
+     * workspace filtering and return all data (shared + legacy). The
+     * {@code currentBranch} is set to the conventional default; callers that
+     * need the configurable shared branch should resolve it via
+     * {@link SystemRepositoryService#getSharedBranch()}.
+     */
+<span class="fc" id="L35">    public static final WorkspaceContext SHARED =</span>
+            new WorkspaceContext(&quot;system&quot;, null, &quot;draft&quot;);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

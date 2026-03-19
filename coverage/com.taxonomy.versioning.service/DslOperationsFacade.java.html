@@ -287,13 +287,24 @@ public class DslOperationsFacade {
 <span class="fc" id="L287">        return workspaceResolver.resolveCurrentUsername();</span>
     }
 
+    /**
+     * Resolve the workspace branch for a user. Falls back to &quot;draft&quot; if no
+     * workspace branch is configured.
+     *
+     * @param username the username to resolve the branch for
+     * @return the user's workspace branch, or &quot;draft&quot; as default
+     */
+    public String resolveWorkspaceBranch(String username) {
+<span class="fc" id="L298">        return repositoryStateService.resolveWorkspaceBranch(username);</span>
+    }
+
     // ── Document listing ────────────────────────────────────────────
 
     /**
      * List all stored DSL documents.
      */
     public List&lt;ArchitectureDslDocument&gt; listDocuments() {
-<span class="fc" id="L296">        return documentRepository.findAll();</span>
+<span class="fc" id="L307">        return documentRepository.findAll();</span>
     }
 
     // ── History search ──────────────────────────────────────────────
@@ -302,41 +313,41 @@ public class DslOperationsFacade {
      * Index commits on a branch for history search.
      */
     public int indexBranch(String branch) {
-<span class="fc" id="L305">        return commitIndexService.indexBranch(branch);</span>
+<span class="fc" id="L316">        return commitIndexService.indexBranch(branch);</span>
     }
 
     /**
      * Search architecture commit history.
      */
     public List&lt;ArchitectureCommitIndex&gt; searchHistory(String query, int maxResults) {
-<span class="fc" id="L312">        return commitIndexService.search(query, maxResults);</span>
+<span class="fc" id="L323">        return commitIndexService.search(query, maxResults);</span>
     }
 
     /**
      * Find commits that affected a specific element.
      */
     public List&lt;ArchitectureCommitIndex&gt; findByElement(String elementId) {
-<span class="fc" id="L319">        return commitIndexService.findByElement(elementId);</span>
+<span class="fc" id="L330">        return commitIndexService.findByElement(elementId);</span>
     }
 
     /**
      * Find commits that affected a specific relation.
      */
     public List&lt;ArchitectureCommitIndex&gt; findByRelation(String key) {
-<span class="nc" id="L326">        return commitIndexService.findByRelation(key);</span>
+<span class="nc" id="L337">        return commitIndexService.findByRelation(key);</span>
     }
 
     /**
      * Get aggregated history for an element.
      */
     public ElementHistoryAggregation aggregateElementHistory(String elementId) {
-<span class="nc" id="L333">        return commitIndexService.aggregateElementHistory(elementId);</span>
+<span class="nc" id="L344">        return commitIndexService.aggregateElementHistory(elementId);</span>
     }
 
     // ── Internal helpers ────────────────────────────────────────────
 
     private static boolean looksLikeGitSha(String s) {
-<span class="pc bpc" id="L339" title="2 of 6 branches missed.">        return s != null &amp;&amp; s.length() == 40 &amp;&amp; s.matches(&quot;[0-9a-f]+&quot;);</span>
+<span class="pc bpc" id="L350" title="2 of 6 branches missed.">        return s != null &amp;&amp; s.length() == 40 &amp;&amp; s.matches(&quot;[0-9a-f]+&quot;);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

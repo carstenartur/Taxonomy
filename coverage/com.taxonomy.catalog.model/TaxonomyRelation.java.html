@@ -11,10 +11,14 @@ import com.taxonomy.shared.model.FloatArrayConverter;
 @Entity
 @Table(name = &quot;taxonomy_relation&quot;,
         uniqueConstraints = @UniqueConstraint(
-                columnNames = {&quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relation_type&quot;}))
+                columnNames = {&quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relation_type&quot;, &quot;workspace_id&quot;}),
+        indexes = {
+                @Index(name = &quot;idx_rel_workspace&quot;, columnList = &quot;workspace_id&quot;),
+                @Index(name = &quot;idx_rel_owner&quot;, columnList = &quot;owner_username&quot;)
+        })
 @Indexed
 @TypeBinding(binder = @TypeBinderRef(type = RelationEmbeddingBinder.class))
-<span class="fc" id="L17">public class TaxonomyRelation {</span>
+<span class="fc" id="L21">public class TaxonomyRelation {</span>
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -35,6 +39,14 @@ import com.taxonomy.shared.model.FloatArrayConverter;
     @KeywordField
     private RelationType relationType;
 
+    @Column(name = &quot;workspace_id&quot;)
+    @KeywordField
+    private String workspaceId;
+
+    @Column(name = &quot;owner_username&quot;)
+    @KeywordField
+    private String ownerUsername;
+
     @Nationalized
     @Column(length = 2000)
     @FullTextField(analyzer = &quot;english&quot;)
@@ -45,7 +57,7 @@ import com.taxonomy.shared.model.FloatArrayConverter;
 
     private Integer weight;
 
-<span class="fc" id="L48">    private boolean bidirectional = false;</span>
+<span class="fc" id="L60">    private boolean bidirectional = false;</span>
 
     @Lob
     @Convert(converter = FloatArrayConverter.class)
@@ -56,37 +68,43 @@ import com.taxonomy.shared.model.FloatArrayConverter;
     @Column(name = &quot;has_embedding&quot;)
     private boolean hasEmbedding;
 
-<span class="fc" id="L59">    public Long getId() { return id; }</span>
-<span class="nc" id="L60">    public void setId(Long id) { this.id = id; }</span>
+<span class="fc" id="L71">    public Long getId() { return id; }</span>
+<span class="nc" id="L72">    public void setId(Long id) { this.id = id; }</span>
 
-<span class="fc" id="L62">    public TaxonomyNode getSourceNode() { return sourceNode; }</span>
-<span class="fc" id="L63">    public void setSourceNode(TaxonomyNode sourceNode) { this.sourceNode = sourceNode; }</span>
+<span class="fc" id="L74">    public TaxonomyNode getSourceNode() { return sourceNode; }</span>
+<span class="fc" id="L75">    public void setSourceNode(TaxonomyNode sourceNode) { this.sourceNode = sourceNode; }</span>
 
-<span class="fc" id="L65">    public TaxonomyNode getTargetNode() { return targetNode; }</span>
-<span class="fc" id="L66">    public void setTargetNode(TaxonomyNode targetNode) { this.targetNode = targetNode; }</span>
+<span class="fc" id="L77">    public TaxonomyNode getTargetNode() { return targetNode; }</span>
+<span class="fc" id="L78">    public void setTargetNode(TaxonomyNode targetNode) { this.targetNode = targetNode; }</span>
 
-<span class="fc" id="L68">    public RelationType getRelationType() { return relationType; }</span>
-<span class="fc" id="L69">    public void setRelationType(RelationType relationType) { this.relationType = relationType; }</span>
+<span class="fc" id="L80">    public RelationType getRelationType() { return relationType; }</span>
+<span class="fc" id="L81">    public void setRelationType(RelationType relationType) { this.relationType = relationType; }</span>
 
-<span class="fc" id="L71">    public String getDescription() { return description; }</span>
-<span class="fc" id="L72">    public void setDescription(String description) { this.description = description; }</span>
+<span class="fc" id="L83">    public String getDescription() { return description; }</span>
+<span class="fc" id="L84">    public void setDescription(String description) { this.description = description; }</span>
 
-<span class="fc" id="L74">    public String getProvenance() { return provenance; }</span>
-<span class="fc" id="L75">    public void setProvenance(String provenance) { this.provenance = provenance; }</span>
+<span class="fc" id="L86">    public String getProvenance() { return provenance; }</span>
+<span class="fc" id="L87">    public void setProvenance(String provenance) { this.provenance = provenance; }</span>
 
-<span class="fc" id="L77">    public Integer getWeight() { return weight; }</span>
-<span class="nc" id="L78">    public void setWeight(Integer weight) { this.weight = weight; }</span>
+<span class="fc" id="L89">    public Integer getWeight() { return weight; }</span>
+<span class="nc" id="L90">    public void setWeight(Integer weight) { this.weight = weight; }</span>
 
-<span class="fc" id="L80">    public boolean isBidirectional() { return bidirectional; }</span>
-<span class="nc" id="L81">    public void setBidirectional(boolean bidirectional) { this.bidirectional = bidirectional; }</span>
+<span class="fc" id="L92">    public boolean isBidirectional() { return bidirectional; }</span>
+<span class="nc" id="L93">    public void setBidirectional(boolean bidirectional) { this.bidirectional = bidirectional; }</span>
 
-<span class="nc" id="L83">    public float[] getSemanticEmbedding() { return semanticEmbedding; }</span>
+<span class="nc" id="L95">    public float[] getSemanticEmbedding() { return semanticEmbedding; }</span>
     public void setSemanticEmbedding(float[] semanticEmbedding) {
-<span class="nc" id="L85">        this.semanticEmbedding = semanticEmbedding;</span>
-<span class="nc bnc" id="L86" title="All 2 branches missed.">        this.hasEmbedding = (semanticEmbedding != null);</span>
-<span class="nc" id="L87">    }</span>
+<span class="nc" id="L97">        this.semanticEmbedding = semanticEmbedding;</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        this.hasEmbedding = (semanticEmbedding != null);</span>
+<span class="nc" id="L99">    }</span>
 
-<span class="nc" id="L89">    public boolean isHasEmbedding() { return hasEmbedding; }</span>
-<span class="nc" id="L90">    private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }</span>
+<span class="nc" id="L101">    public boolean isHasEmbedding() { return hasEmbedding; }</span>
+<span class="nc" id="L102">    private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }</span>
+
+<span class="fc" id="L104">    public String getWorkspaceId() { return workspaceId; }</span>
+<span class="fc" id="L105">    public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }</span>
+
+<span class="fc" id="L107">    public String getOwnerUsername() { return ownerUsername; }</span>
+<span class="fc" id="L108">    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
