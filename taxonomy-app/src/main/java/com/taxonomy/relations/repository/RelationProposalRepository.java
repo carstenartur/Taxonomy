@@ -41,4 +41,14 @@ public interface RelationProposalRepository extends JpaRepository<RelationPropos
 
     long countBySourceNodeTaxonomyRootAndTargetNodeTaxonomyRootAndRelationTypeAndStatus(
             String sourceRoot, String targetRoot, RelationType relationType, ProposalStatus status);
+
+    // ── Workspace-scoped queries ─────────────────────────────────────
+
+    boolean existsBySourceNodeCodeAndTargetNodeCodeAndRelationTypeAndWorkspaceId(
+            String sourceCode, String targetCode, RelationType relationType, String workspaceId);
+
+    List<RelationProposal> findByWorkspaceId(String workspaceId);
+
+    @Query("SELECT p FROM RelationProposal p WHERE p.workspaceId = :wsId OR p.workspaceId IS NULL")
+    List<RelationProposal> findByWorkspaceIdIsNullOrWorkspaceId(@Param("wsId") String workspaceId);
 }

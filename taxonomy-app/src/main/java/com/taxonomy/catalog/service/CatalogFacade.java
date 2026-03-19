@@ -4,6 +4,8 @@ import com.taxonomy.dto.ArchiMateImportResult;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,15 +31,18 @@ public class CatalogFacade {
     private final TaxonomyRelationService relationService;
     private final ArchiMateXmlImporter archiMateXmlImporter;
     private final SearchService searchService;
+    private final WorkspaceContextResolver contextResolver;
 
     public CatalogFacade(TaxonomyService taxonomyService,
                          TaxonomyRelationService relationService,
                          ArchiMateXmlImporter archiMateXmlImporter,
-                         SearchService searchService) {
+                         SearchService searchService,
+                         WorkspaceContextResolver contextResolver) {
         this.taxonomyService = taxonomyService;
         this.relationService = relationService;
         this.archiMateXmlImporter = archiMateXmlImporter;
         this.searchService = searchService;
+        this.contextResolver = contextResolver;
     }
 
     /**
@@ -58,7 +63,8 @@ public class CatalogFacade {
 
         TaxonomyNodeDto dto = taxonomyService.toDto(node);
 
-        List<TaxonomyRelationDto> relations = relationService.getRelationsForNode(rootCode);
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+        List<TaxonomyRelationDto> relations = relationService.getRelationsForNode(rootCode, ctx.workspaceId());
         List<TaxonomyRelationDto> outgoing = relations.stream()
                 .filter(r -> rootCode.equals(r.getSourceCode()))
                 .toList();
@@ -98,8 +104,9 @@ public class CatalogFacade {
     public List<TaxonomyNodeDto> searchWithContext(String query, int maxResults) {
         List<TaxonomyNodeDto> results = searchService.search(query, maxResults);
 
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
         for (TaxonomyNodeDto dto : results) {
-            List<TaxonomyRelationDto> relations = relationService.getRelationsForNode(dto.getCode());
+            List<TaxonomyRelationDto> relations = relationService.getRelationsForNode(dto.getCode(), ctx.workspaceId());
             List<TaxonomyRelationDto> outgoing = relations.stream()
                     .filter(r -> dto.getCode().equals(r.getSourceCode()))
                     .toList();

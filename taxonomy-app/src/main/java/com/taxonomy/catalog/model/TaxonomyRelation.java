@@ -11,7 +11,11 @@ import com.taxonomy.shared.model.FloatArrayConverter;
 @Entity
 @Table(name = "taxonomy_relation",
         uniqueConstraints = @UniqueConstraint(
-                columnNames = {"source_node_id", "target_node_id", "relation_type"}))
+                columnNames = {"source_node_id", "target_node_id", "relation_type", "workspace_id"}),
+        indexes = {
+                @Index(name = "idx_rel_workspace", columnList = "workspace_id"),
+                @Index(name = "idx_rel_owner", columnList = "owner_username")
+        })
 @Indexed
 @TypeBinding(binder = @TypeBinderRef(type = RelationEmbeddingBinder.class))
 public class TaxonomyRelation {
@@ -34,6 +38,14 @@ public class TaxonomyRelation {
     @Column(name = "relation_type", nullable = false)
     @KeywordField
     private RelationType relationType;
+
+    @Column(name = "workspace_id")
+    @KeywordField
+    private String workspaceId;
+
+    @Column(name = "owner_username")
+    @KeywordField
+    private String ownerUsername;
 
     @Nationalized
     @Column(length = 2000)
@@ -88,4 +100,10 @@ public class TaxonomyRelation {
 
     public boolean isHasEmbedding() { return hasEmbedding; }
     private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }
+
+    public String getWorkspaceId() { return workspaceId; }
+    public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
+
+    public String getOwnerUsername() { return ownerUsername; }
+    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }
 }

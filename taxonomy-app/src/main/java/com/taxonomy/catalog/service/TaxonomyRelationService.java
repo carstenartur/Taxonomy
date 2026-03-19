@@ -8,6 +8,7 @@ import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,45 +29,101 @@ public class TaxonomyRelationService {
         this.nodeRepository = nodeRepository;
     }
 
+    // ── Workspace-scoped read methods ───────────────────────────────
+
     @Transactional(readOnly = true)
-    public List<TaxonomyRelationDto> getRelationsForNode(String code) {
-        List<TaxonomyRelation> relations =
-                relationRepository.findBySourceNodeCodeOrTargetNodeCode(code, code);
+    public List<TaxonomyRelationDto> getRelationsForNode(String code, @Nullable String workspaceId) {
+        List<TaxonomyRelation> relations;
+        if (workspaceId != null) {
+            relations = relationRepository.findByWorkspaceAndNodeCode(workspaceId, code);
+        } else {
+            relations = relationRepository.findBySourceNodeCodeOrTargetNodeCode(code, code);
+        }
         List<TaxonomyRelationDto> dtos = new ArrayList<>();
         for (TaxonomyRelation relation : relations) {
             dtos.add(toDto(relation));
         }
         return dtos;
+    }
+
+    @Transactional(readOnly = true)
+    public List<TaxonomyRelationDto> getRelationsByType(RelationType type, @Nullable String workspaceId) {
+        List<TaxonomyRelation> relations;
+        if (workspaceId != null) {
+            relations = relationRepository.findByWorkspaceAndRelationType(workspaceId, type);
+        } else {
+            relations = relationRepository.findByRelationType(type);
+        }
+        List<TaxonomyRelationDto> dtos = new ArrayList<>();
+        for (TaxonomyRelation relation : relations) {
+            dtos.add(toDto(relation));
+        }
+        return dtos;
+    }
+
+    @Transactional(readOnly = true)
+    public List<TaxonomyRelationDto> getAllRelations(@Nullable String workspaceId) {
+        List<TaxonomyRelation> relations;
+        if (workspaceId != null) {
+            relations = relationRepository.findByWorkspaceIdIsNullOrWorkspaceId(workspaceId);
+        } else {
+            relations = relationRepository.findAll();
+        }
+        List<TaxonomyRelationDto> dtos = new ArrayList<>();
+        for (TaxonomyRelation relation : relations) {
+            dtos.add(toDto(relation));
+        }
+        return dtos;
+    }
+
+    // ── Legacy delegating read methods (backward-compatible) ─────────
+
+    @Transactional(readOnly = true)
+    public List<TaxonomyRelationDto> getRelationsForNode(String code) {
+        return getRelationsForNode(code, null);
     }
 
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getRelationsByType(RelationType type) {
-        List<TaxonomyRelation> relations = relationRepository.findByRelationType(type);
-        List<TaxonomyRelationDto> dtos = new ArrayList<>();
-        for (TaxonomyRelation relation : relations) {
-            dtos.add(toDto(relation));
-        }
-        return dtos;
+        return getRelationsByType(type, null);
     }
 
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getAllRelations() {
-        List<TaxonomyRelation> relations = relationRepository.findAll();
-        List<TaxonomyRelationDto> dtos = new ArrayList<>();
-        for (TaxonomyRelation relation : relations) {
-            dtos.add(toDto(relation));
-        }
-        return dtos;
+        return getAllRelations(null);
     }
+
+    // ── Workspace-scoped write methods ──────────────────────────────
 
     @Transactional
     public TaxonomyRelationDto createRelation(String sourceCode, String targetCode,
                                               RelationType type, String description,
-                                              String provenance) {
+                                              String provenance,
+                                              @Nullable String workspaceId,
+                                              @Nullable String ownerUsername) {
         TaxonomyNode source = nodeRepository.findByCode(sourceCode)
                 .orElseThrow(() -> new IllegalArgumentException("Source node not found: " + sourceCode));
         TaxonomyNode target = nodeRepository.findByCode(targetCode)
                 .orElseThrow(() -> new IllegalArgumentException("Target node not found: " + targetCode));
+
+        // Programmatic duplicate check (covers NULL workspace_id in unique constraint)
+        List<TaxonomyRelation> existing;
+        if (workspaceId != null) {
+            existing = relationRepository.findByWorkspaceAndSourceTargetType(
+                    workspaceId, sourceCode, targetCode, type);
+        } else {
+            existing = relationRepository.findBySourceNodeCodeAndTargetNodeCodeAndRelationType(
+                    sourceCode, targetCode, type);
+            // Filter to only those with null workspace for exact match
+            existing = existing.stream()
+                    .filter(r -> r.getWorkspaceId() == null)
+                    .toList();
+        }
+        if (!existing.isEmpty()) {
+            throw new IllegalArgumentException(String.format(
+                    "Relation already exists: %s --[%s]--> %s (workspace=%s)",
+                    sourceCode, type, targetCode, workspaceId));
+        }
 
         TaxonomyRelation relation = new TaxonomyRelation();
         relation.setSourceNode(source);
@@ -74,10 +131,22 @@ public class TaxonomyRelationService {
         relation.setRelationType(type);
         relation.setDescription(description);
         relation.setProvenance(provenance);
+        relation.setWorkspaceId(workspaceId);
+        relation.setOwnerUsername(ownerUsername);
 
         TaxonomyRelation saved = relationRepository.save(relation);
-        log.info("Created relation: {} --[{}]--> {}", sourceCode, type, targetCode);
+        log.info("Created relation: {} --[{}]--> {} (workspace={})", sourceCode, type, targetCode, workspaceId);
         return toDto(saved);
+    }
+
+    /**
+     * Legacy overload — delegates to workspace-aware method with null workspace.
+     */
+    @Transactional
+    public TaxonomyRelationDto createRelation(String sourceCode, String targetCode,
+                                              RelationType type, String description,
+                                              String provenance) {
+        return createRelation(sourceCode, targetCode, type, description, provenance, null, null);
     }
 
     @Transactional

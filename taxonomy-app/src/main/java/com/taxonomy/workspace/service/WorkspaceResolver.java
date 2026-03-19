@@ -15,6 +15,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class WorkspaceResolver {
 
+    private final WorkspaceContextResolver contextResolver;
+
+    public WorkspaceResolver(WorkspaceContextResolver contextResolver) {
+        this.contextResolver = contextResolver;
+    }
+
     /**
      * Resolve the current user's username from the security context.
      *
@@ -27,5 +33,14 @@ public class WorkspaceResolver {
             return auth.getName();
         }
         return WorkspaceManager.DEFAULT_USER;
+    }
+
+    /**
+     * Resolve the full workspace context for the currently authenticated user.
+     *
+     * @return the active workspace context (never {@code null})
+     */
+    public WorkspaceContext resolveCurrentContext() {
+        return contextResolver.resolveCurrentContext();
     }
 }

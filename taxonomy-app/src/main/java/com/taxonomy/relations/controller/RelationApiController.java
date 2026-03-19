@@ -3,6 +3,8 @@ package com.taxonomy.relations.controller;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,15 +20,19 @@ import java.util.Map;
 public class RelationApiController {
 
     private final TaxonomyRelationService relationService;
+    private final WorkspaceContextResolver contextResolver;
 
-    public RelationApiController(TaxonomyRelationService relationService) {
+    public RelationApiController(TaxonomyRelationService relationService,
+                                  WorkspaceContextResolver contextResolver) {
         this.relationService = relationService;
+        this.contextResolver = contextResolver;
     }
 
     @Operation(summary = "List relations", description = "Returns all taxonomy relations, optionally filtered by type")
     @GetMapping("/relations")
     public ResponseEntity<List<TaxonomyRelationDto>> getRelations(
             @Parameter(description = "Filter by relation type") @RequestParam(required = false) String type) {
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
         if (type != null && !type.isBlank()) {
             RelationType relationType;
             try {
@@ -34,16 +40,17 @@ public class RelationApiController {
             } catch (IllegalArgumentException e) {
                 return ResponseEntity.badRequest().build();
             }
-            return ResponseEntity.ok(relationService.getRelationsByType(relationType));
+            return ResponseEntity.ok(relationService.getRelationsByType(relationType, ctx.workspaceId()));
         }
-        return ResponseEntity.ok(relationService.getAllRelations());
+        return ResponseEntity.ok(relationService.getAllRelations(ctx.workspaceId()));
     }
 
     @Operation(summary = "Get node relations", description = "Returns all relations for a specific taxonomy node")
     @GetMapping("/node/{code}/relations")
     public ResponseEntity<List<TaxonomyRelationDto>> getRelationsForNode(
             @PathVariable String code) {
-        return ResponseEntity.ok(relationService.getRelationsForNode(code));
+        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+        return ResponseEntity.ok(relationService.getRelationsForNode(code, ctx.workspaceId()));
     }
 
     @Operation(summary = "Create relation", description = "Creates a new taxonomy relation between two nodes")
@@ -70,8 +77,10 @@ public class RelationApiController {
         }
 
         try {
+            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
             TaxonomyRelationDto dto = relationService.createRelation(
-                    sourceCode, targetCode, relationType, description, provenance);
+                    sourceCode, targetCode, relationType, description, provenance,
+                    ctx.workspaceId(), ctx.username());
             return ResponseEntity.ok(dto);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();

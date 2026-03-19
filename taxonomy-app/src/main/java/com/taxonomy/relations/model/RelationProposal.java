@@ -56,6 +56,12 @@ public class RelationProposal {
     @Column(name = "reviewed_at")
     private Instant reviewedAt;
 
+    @Column(name = "workspace_id")
+    private String workspaceId;
+
+    @Column(name = "owner_username")
+    private String ownerUsername;
+
     @PrePersist
     void onCreate() {
         if (createdAt == null) {
@@ -94,4 +100,10 @@ public class RelationProposal {
 
     public Instant getReviewedAt() { return reviewedAt; }
     public void setReviewedAt(Instant reviewedAt) { this.reviewedAt = reviewedAt; }
+
+    public String getWorkspaceId() { return workspaceId; }
+    public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
+
+    public String getOwnerUsername() { return ownerUsername; }
+    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }
 }

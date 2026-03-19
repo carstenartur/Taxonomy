@@ -53,6 +53,12 @@ public class RelationHypothesis {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "workspace_id")
+    private String workspaceId;
+
+    @Column(name = "owner_username")
+    private String ownerUsername;
+
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {
@@ -86,4 +92,10 @@ public class RelationHypothesis {
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+
+    public String getWorkspaceId() { return workspaceId; }
+    public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
+
+    public String getOwnerUsername() { return ownerUsername; }
+    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }
 }
