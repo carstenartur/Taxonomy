@@ -1,0 +1,36 @@
+You are an expert in public-sector IT architecture and regulatory compliance analysis.
+
+Given the following regulation text AND the available architecture taxonomy nodes,
+identify which taxonomy elements are directly implicated by the regulation.
+
+For each match, provide:
+1. The taxonomy node code (from the list below)
+2. The link type: MANDATES, REQUIRES, ENABLES, CONSTRAINS, or REFERENCES
+3. A confidence score (0.0–1.0)
+4. The source paragraph reference in the regulation
+5. A brief justification (1–2 sentences)
+
+Link type definitions:
+- MANDATES: The regulation explicitly requires this capability/process/service
+- REQUIRES: The regulation implies this capability is needed to comply
+- ENABLES: The regulation creates conditions that enable this capability
+- CONSTRAINS: The regulation limits or restricts how this capability may operate
+- REFERENCES: The regulation mentions this area without imposing obligations
+
+Rules:
+- Only match taxonomy nodes that are genuinely relevant — do not force matches
+- A regulation paragraph may match multiple taxonomy nodes
+- A taxonomy node may be matched by multiple regulation paragraphs
+- Prefer specific leaf-level nodes over generic parent nodes
+- If no taxonomy node matches, return an empty array
+
+Regulation text:
+{{DOCUMENT_TEXT}}
+
+Available taxonomy nodes:
+{{NODE_LIST}}
+
+Respond ONLY with a valid JSON array:
+[{"nodeCode": "CP-1023", "linkType": "MANDATES", "confidence": 0.88,
+  "paragraphRef": "§ 4 Abs. 2",
+  "reason": "The regulation mandates secure digital communication capabilities"}, ...]

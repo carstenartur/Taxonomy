@@ -1,6 +1,8 @@
 package com.taxonomy.provenance.controller;
 
+import com.taxonomy.dto.AiExtractedCandidate;
 import com.taxonomy.dto.DocumentParseResult;
+import com.taxonomy.dto.RegulationArchitectureMatch;
 import com.taxonomy.dto.RequirementSourceLinkDto;
 import com.taxonomy.dto.SourceArtifactDto;
 import com.taxonomy.model.LinkType;
@@ -8,6 +10,7 @@ import com.taxonomy.model.SourceType;
 import com.taxonomy.provenance.model.SourceArtifact;
 import com.taxonomy.provenance.model.SourceFragment;
 import com.taxonomy.provenance.model.SourceVersion;
+import com.taxonomy.provenance.service.DocumentAnalysisService;
 import com.taxonomy.provenance.service.DocumentParserService;
 import com.taxonomy.provenance.service.SourceProvenanceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,6 +31,8 @@ import java.util.Map;
  * <p>Endpoints:
  * <ul>
  *   <li>{@code POST /api/documents/upload}  — Upload and parse a PDF/DOCX document</li>
+ *   <li>{@code POST /api/documents/extract-ai}  — AI-assisted requirement extraction</li>
+ *   <li>{@code POST /api/documents/map-regulation}  — Direct regulation-to-architecture mapping</li>
  *   <li>{@code GET  /api/provenance/sources} — List all source artifacts</li>
  *   <li>{@code GET  /api/provenance/links/{requirementId}} — Get provenance links for a requirement</li>
  * </ul>
@@ -44,11 +49,14 @@ public class DocumentImportController {
 
     private final DocumentParserService parserService;
     private final SourceProvenanceService provenanceService;
+    private final DocumentAnalysisService analysisService;
 
     public DocumentImportController(DocumentParserService parserService,
-                                     SourceProvenanceService provenanceService) {
+                                     SourceProvenanceService provenanceService,
+                                     DocumentAnalysisService analysisService) {
         this.parserService = parserService;
         this.provenanceService = provenanceService;
+        this.analysisService = analysisService;
     }
 
     /**
@@ -102,6 +110,81 @@ public class DocumentImportController {
             log.error("Document upload failed for file '{}'", file.getOriginalFilename(), e);
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "Failed to parse document. Please check file format and try again."));
+        }
+    }
+
+    /**
+     * Uploads and parses a PDF or DOCX document, then uses the LLM to extract
+     * requirement candidates with AI assistance.  Returns both the rule-based
+     * parse result and AI-extracted candidates.
+     */
+    @Operation(summary = "AI-assisted extraction",
+               description = "Uploads a document and uses AI to extract requirement candidates " +
+                       "with confidence scores and requirement type classification.")
+    @PostMapping(value = "/documents/extract-ai", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> extractWithAi(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "sourceType", defaultValue = "REGULATION") String sourceType) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "File is empty"));
+        }
+        if (file.getSize() > MAX_UPLOAD_SIZE) {
+            return ResponseEntity.badRequest().body(Map.of("error",
+                    "File exceeds maximum size of " + (MAX_UPLOAD_SIZE / (1024 * 1024)) + " MB"));
+        }
+
+        try {
+            DocumentParseResult parseResult = parserService.parse(file);
+            // Build full text from all candidates for AI analysis
+            String fullText = buildFullTextFromCandidates(parseResult);
+            List<AiExtractedCandidate> aiCandidates =
+                    analysisService.extractWithAi(fullText, sourceType);
+
+            return ResponseEntity.ok(Map.of(
+                    "fileName", parseResult.getFileName() != null ? parseResult.getFileName() : "",
+                    "totalPages", parseResult.getTotalPages(),
+                    "ruleBased", parseResult.getCandidates() != null ? parseResult.getCandidates() : List.of(),
+                    "aiCandidates", aiCandidates));
+        } catch (Exception e) {
+            log.error("AI extraction failed for file '{}'", file.getOriginalFilename(), e);
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "AI extraction failed: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Uploads a regulation document and maps it directly to architecture taxonomy
+     * nodes using the LLM.  Returns matches with confidence scores, link types,
+     * and paragraph references.
+     */
+    @Operation(summary = "Direct regulation-to-architecture mapping",
+               description = "Uploads a regulation document and maps it directly to architecture " +
+                       "taxonomy nodes with confidence scores and link types.")
+    @PostMapping(value = "/documents/map-regulation", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> mapRegulation(@RequestParam("file") MultipartFile file) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "File is empty"));
+        }
+        if (file.getSize() > MAX_UPLOAD_SIZE) {
+            return ResponseEntity.badRequest().body(Map.of("error",
+                    "File exceeds maximum size of " + (MAX_UPLOAD_SIZE / (1024 * 1024)) + " MB"));
+        }
+
+        try {
+            DocumentParseResult parseResult = parserService.parse(file);
+            // Build full text from all candidates for regulation mapping
+            String fullText = buildFullTextFromCandidates(parseResult);
+            List<RegulationArchitectureMatch> matches =
+                    analysisService.mapRegulationToArchitecture(fullText);
+
+            return ResponseEntity.ok(Map.of(
+                    "fileName", parseResult.getFileName() != null ? parseResult.getFileName() : "",
+                    "totalPages", parseResult.getTotalPages(),
+                    "matches", matches));
+        } catch (Exception e) {
+            log.error("Regulation mapping failed for file '{}'", file.getOriginalFilename(), e);
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Regulation mapping failed: " + e.getMessage()));
         }
     }
 
@@ -175,5 +258,25 @@ public class DocumentImportController {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "Failed to confirm candidates: " + e.getMessage()));
         }
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Builds a full document text from all parsed candidates, preserving section headings.
+     * This provides richer context to the LLM than the truncated rawTextPreview.
+     */
+    private String buildFullTextFromCandidates(DocumentParseResult result) {
+        if (result.getCandidates() == null || result.getCandidates().isEmpty()) {
+            return result.getRawTextPreview() != null ? result.getRawTextPreview() : "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (var candidate : result.getCandidates()) {
+            if (candidate.getSectionHeading() != null && !candidate.getSectionHeading().isBlank()) {
+                sb.append(candidate.getSectionHeading()).append(":\n");
+            }
+            sb.append(candidate.getText()).append("\n\n");
+        }
+        return sb.toString();
     }
 }

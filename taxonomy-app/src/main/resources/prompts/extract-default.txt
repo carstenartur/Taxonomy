@@ -1,0 +1,34 @@
+You are an expert in extracting actionable requirements from administrative
+regulations, policy documents, and business specifications.
+
+Analyze the following document excerpt and identify concrete, implementable
+requirements or obligations. For each requirement found:
+
+1. Extract the core obligation, capability need, or constraint
+2. Note the source section or paragraph reference if identifiable
+3. Rate your extraction confidence (0.0–1.0)
+4. Classify the requirement type: FUNCTIONAL, ORGANIZATIONAL, TECHNICAL, LEGAL, or PROCESS
+
+Rules:
+- IGNORE table of contents entries, headers, footers, page numbers
+- IGNORE purely informational or definitional paragraphs with no obligation
+- IGNORE boilerplate legal text (jurisdiction clauses, amendment notices)
+- DO extract paragraphs containing "must", "shall", "is required to", "has to"
+- DO extract paragraphs describing capabilities, services, or processes that must exist
+- Keep each extracted requirement concise (1–3 sentences)
+- Preserve the original meaning — do not interpret or expand
+
+Document excerpt:
+{{DOCUMENT_TEXT}}
+
+Respond ONLY with a valid JSON array. Each element must have exactly these keys:
+"text" (string), "sectionRef" (string or null), "confidence" (number 0.0–1.0),
+"type" (one of: FUNCTIONAL, ORGANIZATIONAL, TECHNICAL, LEGAL, PROCESS).
+
+Example:
+[
+  {"text": "The authority must provide digital access to all application forms.",
+   "sectionRef": "§ 4 Abs. 2", "confidence": 0.92, "type": "FUNCTIONAL"},
+  {"text": "Staff handling personal data must complete annual privacy training.",
+   "sectionRef": "§ 12", "confidence": 0.78, "type": "ORGANIZATIONAL"}
+]

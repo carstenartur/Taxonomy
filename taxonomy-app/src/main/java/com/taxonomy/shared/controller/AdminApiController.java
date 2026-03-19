@@ -4,6 +4,7 @@ import com.taxonomy.dto.AiAvailabilityLevel;
 import com.taxonomy.dto.AiStatusResponse;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.shared.service.PromptTemplateService;
+import com.taxonomy.shared.service.PromptTemplateService.PromptCategory;
 import com.taxonomy.catalog.service.TaxonomyService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -173,6 +174,31 @@ public class AdminApiController {
         result.put("code", code);
         result.put("overridden", false);
         return ResponseEntity.ok(result);
+    }
+
+    @Operation(summary = "List prompt templates by category",
+               description = "Returns all prompt templates grouped by category (admin-only)",
+               tags = {"Administration"})
+    @GetMapping("/prompts/categories")
+    public ResponseEntity<Map<String, List<Map<String, Object>>>> getPromptsByCategory(
+            HttpServletRequest request) {
+        if (!isAdminAuthorized(request)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        Map<String, List<Map<String, Object>>> categorized = new LinkedHashMap<>();
+        for (PromptCategory category : PromptCategory.values()) {
+            List<Map<String, Object>> entries = new ArrayList<>();
+            for (String code : promptTemplateService.getTemplateCodesByCategory(category)) {
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("code", code);
+                entry.put("name", promptTemplateService.getTaxonomyName(code));
+                entry.put("template", promptTemplateService.getTemplate(code));
+                entry.put("overridden", promptTemplateService.isOverridden(code));
+                entries.add(entry);
+            }
+            categorized.put(category.name(), entries);
+        }
+        return ResponseEntity.ok(categorized);
     }
 
     // ── Admin authorization helper ────────────────────────────────────────────

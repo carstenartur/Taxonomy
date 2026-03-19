@@ -27,6 +27,20 @@ public class PromptTemplateService {
 
     private static final Logger log = LoggerFactory.getLogger(PromptTemplateService.class);
 
+    /**
+     * Categorizes prompt templates into logical families.
+     */
+    public enum PromptCategory {
+        /** Scoring prompts: distribute parent relevance score across children. */
+        SCORING,
+        /** Extraction prompts: extract requirement candidates from document text. */
+        EXTRACTION,
+        /** Regulation-mapping prompts: map regulations to architecture taxonomy nodes. */
+        REGULATION_MAPPING,
+        /** Justification prompts: justify leaf-node classification. */
+        JUSTIFICATION
+    }
+
     /** Human-readable names for known taxonomy root codes. */
     private static final Map<String, String> TAXONOMY_NAMES;
     static {
@@ -39,6 +53,9 @@ public class PromptTemplateService {
         m.put("CR", "Core Services");
         m.put("IP", "Information Products");
         m.put("UA", "User Applications");
+        m.put("extract-default", "Document Extraction (General)");
+        m.put("extract-regulation", "Document Extraction (Regulations)");
+        m.put("reg-map-default", "Regulation \u2192 Architecture Mapping");
         TAXONOMY_NAMES = Collections.unmodifiableMap(m);
     }
 
@@ -207,5 +224,59 @@ public class PromptTemplateService {
     /** Returns the human-readable taxonomy name for a code, or the code itself if unknown. */
     public String getTaxonomyName(String taxonomyCode) {
         return TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode);
+    }
+
+    // ── Prompt categories ─────────────────────────────────────────────────────
+
+    /**
+     * Returns all template codes for a specific category.
+     */
+    public List<String> getTemplateCodesByCategory(PromptCategory category) {
+        return getAllTemplateCodes().stream()
+                .filter(code -> categorizeCode(code) == category)
+                .toList();
+    }
+
+    /**
+     * Determines the {@link PromptCategory} for a given template code.
+     */
+    public PromptCategory categorizeCode(String code) {
+        if (code.startsWith("extract-")) return PromptCategory.EXTRACTION;
+        if (code.startsWith("reg-map-")) return PromptCategory.REGULATION_MAPPING;
+        if ("justify-leaf".equals(code)) return PromptCategory.JUSTIFICATION;
+        return PromptCategory.SCORING;
+    }
+
+    // ── Extraction prompt rendering ───────────────────────────────────────────
+
+    /**
+     * Renders an extraction prompt for document text.
+     *
+     * @param extractionCode the extraction template code (e.g. "extract-default")
+     * @param documentText   the raw document text to analyze
+     * @return the rendered prompt string ready to send to the LLM
+     */
+    public String renderExtractionPrompt(String extractionCode, String documentText) {
+        String template = getTemplate(extractionCode);
+        return template.replace("{{DOCUMENT_TEXT}}", documentText);
+    }
+
+    // ── Regulation-mapping prompt rendering ───────────────────────────────────
+
+    /**
+     * Renders a regulation-to-architecture mapping prompt.
+     *
+     * @param mappingCode  the mapping template code (e.g. "reg-map-default")
+     * @param documentText the raw regulation text
+     * @param nodeList     the formatted list of taxonomy nodes
+     * @return the rendered prompt string ready to send to the LLM
+     */
+    public String renderRegulationMappingPrompt(String mappingCode,
+                                                 String documentText,
+                                                 String nodeList) {
+        String template = getTemplate(mappingCode);
+        return template
+                .replace("{{DOCUMENT_TEXT}}", documentText)
+                .replace("{{NODE_LIST}}", nodeList);
     }
 }

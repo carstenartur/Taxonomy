@@ -321,6 +321,19 @@
                     <summary class="fw-semibold" style="cursor:pointer;" th:text="#{docimport.panel.title}">&#128196; Document Import</summary>
                     <div class="mt-2 p-2 border rounded bg-light">
                         <p class="small text-muted" th:text="#{docimport.panel.description}">Upload a PDF or DOCX document (e.g. an administrative regulation) to extract requirement candidates.</p>
+
+                        <!-- Import mode selector -->
+                        <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Import mode">
+                            <input type="radio" class="btn-check" name="importMode" id="modeExtract" value="extract" checked>
+                            <label class="btn btn-outline-secondary" for="modeExtract" th:text="#{docimport.mode.extract}">&#128221; Extract Candidates</label>
+
+                            <input type="radio" class="btn-check" name="importMode" id="modeAiExtract" value="ai-extract">
+                            <label class="btn btn-outline-primary" for="modeAiExtract" th:text="#{docimport.mode.ai}">&#129302; AI-Assisted Extraction</label>
+
+                            <input type="radio" class="btn-check" name="importMode" id="modeRegMap" value="reg-map">
+                            <label class="btn btn-outline-success" for="modeRegMap" th:text="#{docimport.mode.regmap}">&#127963;&#65039; Architecture Mapping</label>
+                        </div>
+
                         <div class="row g-2 mb-2">
                             <div class="col-md-5">
                                 <label for="docImportFile" class="form-label small" th:text="#{docimport.file.label}">Document file</label>
@@ -362,6 +375,50 @@
                                 <button id="docSelectAllBtn" class="btn btn-sm btn-outline-secondary" th:text="#{docimport.btn.selectall}">Select All</button>
                                 <button id="docDeselectAllBtn" class="btn btn-sm btn-outline-secondary" th:text="#{docimport.btn.deselectall}">Deselect All</button>
                                 <button id="docAnalyzeSelectedBtn" class="btn btn-sm btn-primary" th:text="#{docimport.btn.analyze}">&#128269; Analyze Selected</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Extraction Results Panel -->
+                <div id="docAiResultPanel" class="mt-3" style="display:none;">
+                    <div class="card shadow-sm border-primary">
+                        <div class="card-header fw-semibold d-flex justify-content-between align-items-center bg-primary bg-opacity-10" th:text="#{docimport.ai.results.title}">
+                            &#129302; AI-Extracted Requirements
+                        </div>
+                        <div class="card-body p-3">
+                            <div id="docAiComparisonBadge" class="small text-muted mb-2"></div>
+                            <div id="docAiCandidateList" style="max-height:400px; overflow-y:auto;"></div>
+                            <div class="mt-2 d-flex gap-2">
+                                <button id="docAiSelectAllBtn" class="btn btn-sm btn-outline-secondary" th:text="#{docimport.btn.selectall}">Select All</button>
+                                <button id="docAiDeselectAllBtn" class="btn btn-sm btn-outline-secondary" th:text="#{docimport.btn.deselectall}">Deselect All</button>
+                                <button id="docAiAnalyzeBtn" class="btn btn-sm btn-primary" th:text="#{docimport.btn.analyze}">&#128269; Analyze Selected</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Regulation Mapping Results Panel -->
+                <div id="docRegMapResultPanel" class="mt-3" style="display:none;">
+                    <div class="card shadow-sm border-success">
+                        <div class="card-header fw-semibold d-flex justify-content-between align-items-center bg-success bg-opacity-10" th:text="#{docimport.regmap.results.title}">
+                            &#127963;&#65039; Regulation → Architecture Mapping
+                        </div>
+                        <div class="card-body p-3">
+                            <div id="docRegMapSourceInfo" class="small text-muted mb-2"></div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th th:text="#{docimport.regmap.col.node}">Taxonomy Node</th>
+                                            <th th:text="#{docimport.regmap.col.linktype}">Link Type</th>
+                                            <th th:text="#{docimport.regmap.col.confidence}">Confidence</th>
+                                            <th th:text="#{docimport.regmap.col.ref}">§ Reference</th>
+                                            <th th:text="#{docimport.regmap.col.reason}">Reason</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="docRegMapTableBody"></tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
