@@ -60,7 +60,8 @@ class ScreenshotGeneratorIT {
 
     /**
      * DSL content committed on the {@code draft} branch during {@link #buildGitHistory()}.
-     * Uses the actual taxonomy code CP-1023 with a title that will differ from the feature branch.
+     * Uses actual taxonomy codes with canonical titles from the imported catalogue.
+     * Normal user workflows do NOT modify these imported titles.
      */
     private static final String DRAFT_DSL =
             "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
@@ -70,12 +71,14 @@ class ScreenshotGeneratorIT {
 
     /**
      * DSL content committed on the {@code feature-voice} branch during {@link #buildGitHistory()}.
-     * Deliberately differs from {@link #DRAFT_DSL} in the CP-1023 title and adds an extra element,
-     * so that diff, merge-preview, and conflict-resolution screenshots show meaningful content.
+     * Deliberately differs from {@link #DRAFT_DSL} by adding new architecture elements,
+     * relations, and a local annotation — without modifying canonical taxonomy titles.
+     * This reflects realistic user workflows where imported taxonomy data remains
+     * read-only and users modify architecture overlays (relations, views, extensions).
      */
     private static final String FEATURE_VOICE_DSL =
             "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
-            "element CP-1023 type Capability {\n  title: \"Secure Voice Service\";\n  description: \"Encrypted real-time voice communication\";\n}\n\n" +
+            "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n  x-alias: \"SecVoice\";\n}\n\n" +
             "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
             "element CO-1011 type Component {\n  title: \"Voice Gateway\";\n  description: \"SIP/RTP gateway for voice traffic\";\n}\n\n" +
             "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
@@ -2030,15 +2033,16 @@ class ScreenshotGeneratorIT {
     void captureMergeConflictModal() throws IOException {
         navigateToTab("analyze");
         showModalViaDOM("mergeConflictModal");
-        // Populate conflict modal with sample content
+        // Populate conflict modal with sample content — realistic architecture overlay
+        // conflict (relation status change), not canonical title rename
         js("document.getElementById('conflictOursLabel').textContent = 'Ours (draft)';" +
            "document.getElementById('conflictTheirsLabel').textContent = 'Theirs (feature-voice)';" +
            "document.getElementById('conflictOursContent').textContent = " +
-           "'element CP-1023 type Capability {\\n  title: \"Secure Voice\";\\n}';" +
+           "'relation CO-1011 USES CR-1047 {\\n  status: proposed;\\n}';" +
            "document.getElementById('conflictTheirsContent').textContent = " +
-           "'element CP-1023 type Capability {\\n  title: \"Secure Voice Service\";\\n}';" +
+           "'relation CO-1011 USES CR-1047 {\\n  status: accepted;\\n}';" +
            "document.getElementById('conflictResolvedContent').value = " +
-           "'element CP-1023 type Capability {\\n  title: \"Secure Voice Service\";\\n}';");
+           "'relation CO-1011 USES CR-1047 {\\n  status: accepted;\\n}';");
         saveScreenshot("52-merge-conflict-modal.png");
         closeModalViaDOM("mergeConflictModal");
     }
@@ -2069,15 +2073,15 @@ class ScreenshotGeneratorIT {
     void captureCherryPickConflictModal() throws IOException {
         navigateToTab("analyze");
         showModalViaDOM("mergeConflictModal");
-        // Populate as cherry-pick conflict
+        // Populate as cherry-pick conflict — realistic relation change, not title rename
         js("document.getElementById('mergeConflictModalLabel').textContent = " +
            "'\\u26A0\\uFE0F Cherry-Pick Conflict — Manual Resolution Required';" +
            "document.getElementById('conflictOursLabel').textContent = 'Ours (review)';" +
            "document.getElementById('conflictTheirsLabel').textContent = 'Theirs (commit a3f8c2d)';" +
            "document.getElementById('conflictOursContent').textContent = " +
-           "'element CP-1023 type Capability {\\n  title: \"Secure Voice\";\\n}';" +
+           "'relation CP-1023 REALIZES CR-1047 {\\n  status: proposed;\\n}';" +
            "document.getElementById('conflictTheirsContent').textContent = " +
-           "'element CP-1023 type Capability {\\n  title: \"Encrypted Voice\";\\n}';" +
+           "'relation CP-1023 REALIZES CR-1047 {\\n  status: accepted;\\n}';" +
            "document.getElementById('conflictResolvedContent').value = '';");
         saveScreenshot("54-cherry-pick-conflict-modal.png");
         closeModalViaDOM("mergeConflictModal");
@@ -2363,17 +2367,26 @@ class ScreenshotGeneratorIT {
     @Order(68)
     void captureDiffView() throws IOException {
         navigateToTab("dsl-editor");
-        // Inject a diff view into the DSL editor area
+        // Inject a diff view — shows realistic architecture changes (local extension,
+        // new element, new relation) rather than canonical title modification
         js("var area = document.getElementById('dslDiffOutput');" +
            "if (area) {" +
            "  area.textContent = '--- a/architecture.taxdsl\\n" +
            "+++ b/architecture.taxdsl\\n" +
-           "@@ -1,5 +1,6 @@\\n" +
+           "@@ -3,4 +3,13 @@\\n" +
            " element CP-1023 type Capability {\\n" +
-           "-  title: \"Secure Voice\";\\n" +
-           "+  title: \"Secure Voice Service\";\\n" +
-           "+  description: \"Encrypted real-time voice communication\";\\n" +
-           " }\\n';" +
+           "   title: \"Secure Voice\";\\n" +
+           "+  x-alias: \"SecVoice\";\\n" +
+           " }\\n" +
+           "+\\n" +
+           "+element CO-1011 type Component {\\n" +
+           "+  title: \"Voice Gateway\";\\n" +
+           "+  description: \"SIP/RTP gateway for voice traffic\";\\n" +
+           "+}\\n" +
+           "+\\n" +
+           "+relation CO-1011 USES CR-1047 {\\n" +
+           "+  status: proposed;\\n" +
+           "+}\\n';" +
            "  area.style.display = 'block';" +
            "}");
         saveScreenshot("68-diff-view.png");

@@ -248,6 +248,19 @@ The internal representation of an architecture described in DSL. It contains:
 - **Views** — named subsets of elements and relations
 - **Evidence** — justification data for relations
 
+### Data Model Layers
+
+The system separates **imported canonical taxonomy data** from **user-managed architecture overlays**:
+
+| Layer | Content | Mutability |
+|---|---|---|
+| **Imported Taxonomy Baseline** | Node codes, titles, descriptions, hierarchy (from C3 Catalogue) | Read-only in normal workflows |
+| **Architecture Overlays** | Relations, mappings, views, evidence | Freely editable by users |
+| **Local Extensions** | `x-*` attributes (aliases, notes, ownership, criticality) | Freely editable by users |
+| **Taxonomy Maintenance** | Corrections to canonical titles/descriptions | Restricted to administrators |
+
+Normal user workflows primarily create and modify architecture overlays (Layer 2) and local extensions (Layer 3). Imported taxonomy titles and descriptions (Layer 1) are treated as read-only unless the user is performing explicit taxonomy maintenance. See [Git Integration — Data Model Layers](GIT_INTEGRATION.md#data-model-layers) for details.
+
 ---
 
 ## Framework Mapping
