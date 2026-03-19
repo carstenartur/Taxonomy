@@ -1540,14 +1540,42 @@ The system uses 10 relation types, each corresponding to a specific relationship
 
 ## 15a. Document Import & Source Provenance
 
+### Import Modes
+
+The Document Import panel offers three modes:
+
+| Mode | Icon | Best For | Uses AI? |
+|------|------|----------|----------|
+| **Extract Candidates** | 📝 | Quick paragraph extraction | ❌ Rule-based |
+| **AI-Assisted Extraction** | 🤖 | Intelligent requirement detection | ✅ LLM |
+| **Direct Architecture Mapping** | 🏛️ | Known regulations → architecture | ✅ LLM |
+
 ### Importing Documents
 
 You can import requirements directly from PDF or DOCX documents:
 
 1. In the **Analyze** tab, expand the **📄 Document Import** panel
-2. Select a PDF or DOCX file (e.g. an administrative regulation)
-3. Optionally set a title and source type
-4. Click **📄 Upload & Extract** to parse the document
+2. Select an import mode using the radio buttons
+3. Select a PDF or DOCX file (e.g. an administrative regulation)
+4. Optionally set a title and source type
+5. Click **📄 Upload & Extract** to process the document
+
+#### Extract Candidates (Default)
+
+Rule-based paragraph splitting. Fast, no API cost.
+Best for exploring unfamiliar documents.
+
+#### AI-Assisted Extraction
+
+Uses a specialized LLM prompt to identify actual requirements.
+Filters out boilerplate, headers, and non-requirement content.
+Best when you want cleaner, fewer, more precise candidates.
+
+#### Direct Architecture Mapping
+
+Sends the regulation directly to the LLM along with the taxonomy.
+Returns architecture node matches with confidence and paragraph references.
+Best for well-known regulations where you want immediate architecture impact.
 
 ### Reviewing Extracted Candidates
 

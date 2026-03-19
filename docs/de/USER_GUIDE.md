@@ -1525,14 +1525,40 @@ Das System verwendet 10 Beziehungstypen, die jeweils einer spezifischen Beziehun
 
 ## 15a. Dokumentenimport & Quellenherkunft
 
+### Import-Modi
+
+Das Dokumentenimport-Panel bietet drei Modi:
+
+| Modus | Symbol | Geeignet für | KI? |
+|-------|--------|--------------|-----|
+| **Kandidaten extrahieren** | 📝 | Schnelle Absatz-Extraktion | ❌ Regelbasiert |
+| **KI-gestützte Extraktion** | 🤖 | Intelligente Anforderungserkennung | ✅ LLM |
+| **Architektur-Mapping** | 🏛️ | Bekannte Vorschriften → Architektur | ✅ LLM |
+
 ### Dokumente importieren
 
 Sie können Anforderungen direkt aus PDF- oder DOCX-Dokumenten importieren:
 
 1. Im **Analyse**-Tab das Panel **📄 Dokumentenimport** aufklappen
-2. Eine PDF- oder DOCX-Datei auswählen (z. B. eine Verwaltungsvorschrift)
-3. Optional einen Titel und Quellentyp festlegen
-4. **📄 Hochladen & Extrahieren** klicken, um das Dokument zu parsen
+2. Einen Import-Modus über die Optionsfelder wählen
+3. Eine PDF- oder DOCX-Datei auswählen (z. B. eine Verwaltungsvorschrift)
+4. Optional einen Titel und Quellentyp festlegen
+5. **📄 Hochladen & Extrahieren** klicken, um das Dokument zu verarbeiten
+
+#### Kandidaten extrahieren (Standard)
+
+Regelbasierte Absatz-Aufteilung. Schnell, keine API-Kosten.
+Am besten geeignet für die Erkundung unbekannter Dokumente.
+
+#### KI-gestützte Extraktion
+
+Verwendet einen spezialisierten LLM-Prompt zur Identifizierung tatsächlicher
+Anforderungen. Filtert Standardtexte heraus und klassifiziert Anforderungen.
+
+#### Direktes Architektur-Mapping
+
+Sendet die Vorschrift direkt an das LLM zusammen mit der Taxonomie.
+Gibt Architektur-Knoten-Treffer mit Konfidenz und Absatzreferenzen zurück.
 
 ### Extrahierte Kandidaten überprüfen
 

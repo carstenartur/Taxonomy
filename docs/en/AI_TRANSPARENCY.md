@@ -58,6 +58,25 @@ The application uses AI in two distinct areas:
 | **Model** | BAAI/bge-small-en-v1.5 (384 dimensions, ONNX Runtime) |
 | **Data location** | Entirely local — no external API calls |
 
+### 3. AI in Document Import
+
+The document import feature offers two AI-powered modes in addition to the
+rule-based extraction:
+
+| Mode | Prompt Code | Purpose | Data Sent to LLM |
+|------|-------------|---------|-------------------|
+| **AI-Assisted Extraction** | `extract-default` / `extract-regulation` | Extract actionable requirements from document text | Document text (truncated to 15,000 chars) |
+| **Direct Architecture Mapping** | `reg-map-default` | Map regulation text to taxonomy nodes | Document text + full taxonomy node list |
+
+**Data sensitivity notes:**
+
+- Document text is sent to the configured LLM provider (cloud or local)
+- The full taxonomy node list (code + name, ~2,500 nodes) is included in
+  regulation mapping prompts
+- No personal data should be included in uploaded documents
+- All AI outputs are presented for human review before being applied
+- Prompts are customizable via the Admin panel (see [Document Import](DOCUMENT_IMPORT.md))
+
 ---
 
 ## Supported LLM Providers

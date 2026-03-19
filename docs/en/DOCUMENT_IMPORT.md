@@ -100,7 +100,7 @@ details.
 
 ## Limitations
 
-- The parser extracts **requirement candidates** but does not interpret legal
+- The rule-based parser extracts **requirement candidates** but does not interpret legal
   meaning.  Users must review and select relevant candidates.
 - Not all paragraphs in a regulation are requirements — the parser intentionally
   casts a wide net and relies on user review.
@@ -108,9 +108,76 @@ details.
   numbered sections).
 - Page-level attribution is available for PDF documents but may not be precise
   for all layouts.
+- AI-assisted extraction and regulation mapping require a configured LLM provider
+  (e.g. Gemini API key).  These modes are unavailable when no LLM is configured.
+- AI extraction quality depends on document structure and language.  German
+  administrative regulations are best supported by the specialized
+  `extract-regulation` prompt.
 - This is the first stage of administrative integration.  Future versions will
   support FIM catalogue import, XÖV schema mapping, and 115 knowledge base
   connections.
+
+## Import Modes
+
+The Document Import panel offers three modes:
+
+| Mode | Icon | Best For | Uses AI? |
+|------|------|----------|----------|
+| **Extract Candidates** | 📝 | Quick paragraph extraction | ❌ Rule-based |
+| **AI-Assisted Extraction** | 🤖 | Intelligent requirement detection | ✅ LLM |
+| **Direct Architecture Mapping** | 🏛️ | Known regulations → architecture | ✅ LLM |
+
+### Extract Candidates (Default)
+
+Rule-based paragraph splitting.  Fast, no API cost.
+Best for exploring unfamiliar documents.  Uses heading detection and paragraph
+splitting to identify candidate paragraphs.
+
+### AI-Assisted Extraction
+
+Uses a specialized LLM prompt to identify actual requirements within the
+document text.  The AI:
+
+- Filters out boilerplate, headers, and non-requirement content
+- Classifies each requirement (FUNCTIONAL, ORGANIZATIONAL, TECHNICAL, LEGAL, PROCESS)
+- Assigns a confidence score (0.0–1.0) to each extraction
+- Preserves section/paragraph references where identifiable
+
+Best when you want cleaner, fewer, more precise candidates.
+
+Two prompt variants are available (configurable in the Admin panel):
+
+| Prompt | Code | Best For |
+|--------|------|----------|
+| General Extraction | `extract-default` | Any document type |
+| Regulation Extraction | `extract-regulation` | German administrative regulations |
+
+The system automatically selects `extract-regulation` when the source type is
+set to "Regulation".
+
+### Direct Architecture Mapping
+
+Sends the regulation directly to the LLM along with the full taxonomy node list.
+Returns architecture node matches with:
+
+- **Node Code**: The matched taxonomy element
+- **Link Type**: MANDATES, REQUIRES, ENABLES, CONSTRAINS, or REFERENCES
+- **Confidence**: 0.0–1.0 match confidence
+- **Paragraph Reference**: Source location in the regulation
+- **Reason**: Brief justification for the match
+
+Best for well-known regulations where you want immediate architecture impact
+analysis without going through the standard scoring workflow.
+
+## Prompt Customization
+
+All three prompt families can be customized in the Admin panel under
+**Prompt Templates**.  Templates are grouped by category:
+
+- **📊 Scoring** — Standard taxonomy scoring prompts (per root code)
+- **📄 Extraction** — AI-assisted document extraction prompts
+- **🏛️ Regulation Mapping** — Regulation-to-architecture mapping prompts
+- **📝 Justification** — Leaf-node justification prompts
 
 ## Best Practices
 

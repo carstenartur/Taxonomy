@@ -104,18 +104,77 @@ Details zur DSL-Syntax.
 
 ## Einschränkungen
 
-- Der Parser extrahiert **Anforderungskandidaten**, interpretiert aber keine
-  rechtliche Bedeutung.  Benutzer müssen relevante Kandidaten überprüfen und
-  auswählen.
+- Der regelbasierte Parser extrahiert **Anforderungskandidaten**, interpretiert
+  aber keine rechtliche Bedeutung.  Benutzer müssen relevante Kandidaten
+  überprüfen und auswählen.
 - Nicht alle Absätze in einer Vorschrift sind Anforderungen — der Parser wirft
   absichtlich ein weites Netz und verlässt sich auf die Benutzerüberprüfung.
 - Die Erkennung von Abschnittsüberschriften funktioniert am besten mit
   Standard-Überschriftenformaten (§, Art., nummerierte Abschnitte).
 - Die seitengenaue Zuordnung ist für PDF-Dokumente verfügbar, kann aber nicht
   für alle Layouts präzise sein.
+- KI-gestützte Extraktion und Regulation-Mapping erfordern einen konfigurierten
+  LLM-Anbieter (z. B. Gemini API-Schlüssel).  Diese Modi sind nicht verfügbar,
+  wenn kein LLM konfiguriert ist.
+- Die KI-Extraktionsqualität hängt von Dokumentstruktur und Sprache ab.  Deutsche
+  Verwaltungsvorschriften werden am besten durch den spezialisierten
+  `extract-regulation`-Prompt unterstützt.
 - Dies ist die erste Stufe der Verwaltungsintegration.  Zukünftige Versionen
   werden FIM-Katalogimport, XÖV-Schema-Mapping und 115-Wissensbasis-
   Verbindungen unterstützen.
+
+## Import-Modi
+
+Das Dokumentenimport-Panel bietet drei Modi:
+
+| Modus | Symbol | Geeignet für | KI? |
+|-------|--------|--------------|-----|
+| **Kandidaten extrahieren** | 📝 | Schnelle Absatz-Extraktion | ❌ Regelbasiert |
+| **KI-gestützte Extraktion** | 🤖 | Intelligente Anforderungserkennung | ✅ LLM |
+| **Architektur-Mapping** | 🏛️ | Bekannte Vorschriften → Architektur | ✅ LLM |
+
+### Kandidaten extrahieren (Standard)
+
+Regelbasierte Absatz-Aufteilung.  Schnell, keine API-Kosten.
+Am besten geeignet für die Erkundung unbekannter Dokumente.
+
+### KI-gestützte Extraktion
+
+Verwendet einen spezialisierten LLM-Prompt zur Identifizierung tatsächlicher
+Anforderungen im Dokumenttext.  Die KI:
+
+- Filtert Standardtexte, Überschriften und Nicht-Anforderungsinhalte heraus
+- Klassifiziert jede Anforderung (FUNCTIONAL, ORGANIZATIONAL, TECHNICAL, LEGAL, PROCESS)
+- Weist jeder Extraktion einen Konfidenzwert (0,0–1,0) zu
+- Bewahrt Abschnitts-/Absatzreferenzen wo identifizierbar
+
+Zwei Prompt-Varianten stehen zur Verfügung (konfigurierbar im Admin-Panel):
+
+| Prompt | Code | Geeignet für |
+|--------|------|-------------|
+| Allgemeine Extraktion | `extract-default` | Jeder Dokumenttyp |
+| Regulation-Extraktion | `extract-regulation` | Deutsche Verwaltungsvorschriften |
+
+### Direktes Architektur-Mapping
+
+Sendet die Vorschrift direkt an das LLM zusammen mit der vollständigen
+Taxonomie-Knotenliste.  Gibt Architektur-Knoten-Treffer zurück mit:
+
+- **Knotencode**: Das zugeordnete Taxonomie-Element
+- **Verbindungstyp**: MANDATES, REQUIRES, ENABLES, CONSTRAINS oder REFERENCES
+- **Konfidenz**: 0,0–1,0 Übereinstimmungskonfidenz
+- **Absatzreferenz**: Quellposition in der Vorschrift
+- **Begründung**: Kurze Begründung für die Zuordnung
+
+## Prompt-Anpassung
+
+Alle drei Prompt-Familien können im Admin-Panel unter **Prompt Templates**
+angepasst werden.  Templates sind nach Kategorien gruppiert:
+
+- **📊 Scoring** — Standard-Taxonomie-Scoring-Prompts (pro Wurzelcode)
+- **📄 Extraction** — KI-gestützte Dokumentenextraktions-Prompts
+- **🏛️ Regulation Mapping** — Regulation-zu-Architektur-Mapping-Prompts
+- **📝 Justification** — Blattknoten-Begründungs-Prompts
 
 ## Best Practices
 

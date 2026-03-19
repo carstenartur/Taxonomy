@@ -217,4 +217,96 @@ class PromptTemplateTests {
 
         assertThat(promptTemplateService.isOverridden("BP")).isFalse();
     }
+
+    // ── Tests for new prompt categories and templates ──────────────────────────
+
+    @Test
+    void extractionPromptTemplateLoaded() {
+        String template = promptTemplateService.getTemplate("extract-default");
+        assertThat(template).contains("{{DOCUMENT_TEXT}}");
+        assertThat(template).doesNotContain("{{NODE_LIST}}");
+    }
+
+    @Test
+    void extractionRegulationPromptTemplateLoaded() {
+        String template = promptTemplateService.getTemplate("extract-regulation");
+        assertThat(template).contains("{{DOCUMENT_TEXT}}");
+        assertThat(template).doesNotContain("{{NODE_LIST}}");
+    }
+
+    @Test
+    void regulationMappingPromptTemplateLoaded() {
+        String template = promptTemplateService.getTemplate("reg-map-default");
+        assertThat(template).contains("{{DOCUMENT_TEXT}}");
+        assertThat(template).contains("{{NODE_LIST}}");
+    }
+
+    @Test
+    void renderExtractionPromptSubstitutesPlaceholders() {
+        String rendered = promptTemplateService.renderExtractionPrompt(
+                "extract-default", "§ 4: Die Behörde muss...");
+        assertThat(rendered).contains("§ 4: Die Behörde muss...");
+        assertThat(rendered).doesNotContain("{{DOCUMENT_TEXT}}");
+    }
+
+    @Test
+    void renderRegulationMappingPromptSubstitutesAll() {
+        String rendered = promptTemplateService.renderRegulationMappingPrompt(
+                "reg-map-default", "§ 4: Die Behörde muss...", "CP-1023: Capabilities");
+        assertThat(rendered).contains("§ 4: Die Behörde muss...");
+        assertThat(rendered).contains("CP-1023: Capabilities");
+        assertThat(rendered).doesNotContain("{{DOCUMENT_TEXT}}");
+        assertThat(rendered).doesNotContain("{{NODE_LIST}}");
+    }
+
+    @Test
+    void categorizeCodeReturnsCorrectCategory() {
+        assertThat(promptTemplateService.categorizeCode("BP"))
+                .isEqualTo(PromptTemplateService.PromptCategory.SCORING);
+        assertThat(promptTemplateService.categorizeCode("extract-default"))
+                .isEqualTo(PromptTemplateService.PromptCategory.EXTRACTION);
+        assertThat(promptTemplateService.categorizeCode("extract-regulation"))
+                .isEqualTo(PromptTemplateService.PromptCategory.EXTRACTION);
+        assertThat(promptTemplateService.categorizeCode("reg-map-default"))
+                .isEqualTo(PromptTemplateService.PromptCategory.REGULATION_MAPPING);
+        assertThat(promptTemplateService.categorizeCode("justify-leaf"))
+                .isEqualTo(PromptTemplateService.PromptCategory.JUSTIFICATION);
+    }
+
+    @Test
+    void getTemplateCodesByCategoryReturnsCorrectCodes() {
+        List<String> scoringCodes = promptTemplateService.getTemplateCodesByCategory(
+                PromptTemplateService.PromptCategory.SCORING);
+        assertThat(scoringCodes).contains("BP", "CP", "default");
+        assertThat(scoringCodes).doesNotContain("extract-default", "reg-map-default");
+
+        List<String> extractionCodes = promptTemplateService.getTemplateCodesByCategory(
+                PromptTemplateService.PromptCategory.EXTRACTION);
+        assertThat(extractionCodes).contains("extract-default", "extract-regulation");
+        assertThat(extractionCodes).doesNotContain("BP", "reg-map-default");
+
+        List<String> mappingCodes = promptTemplateService.getTemplateCodesByCategory(
+                PromptTemplateService.PromptCategory.REGULATION_MAPPING);
+        assertThat(mappingCodes).contains("reg-map-default");
+    }
+
+    @Test
+    void getTaxonomyNameReturnsNamesForNewPrompts() {
+        assertThat(promptTemplateService.getTaxonomyName("extract-default"))
+                .isEqualTo("Document Extraction (General)");
+        assertThat(promptTemplateService.getTaxonomyName("extract-regulation"))
+                .isEqualTo("Document Extraction (Regulations)");
+        assertThat(promptTemplateService.getTaxonomyName("reg-map-default"))
+                .contains("Architecture Mapping");
+    }
+
+    @Test
+    void getPromptsByCategoryEndpointReturnsCategorized() throws Exception {
+        mockMvc.perform(get("/api/prompts/categories").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.SCORING").isArray())
+                .andExpect(jsonPath("$.EXTRACTION").isArray())
+                .andExpect(jsonPath("$.REGULATION_MAPPING").isArray())
+                .andExpect(jsonPath("$.JUSTIFICATION").isArray());
+    }
 }
