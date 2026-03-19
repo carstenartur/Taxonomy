@@ -49,7 +49,8 @@ class MultiUserWorkspaceIsolationTest {
     void setUp() {
         gitRepo = new DslGitRepository();
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
-        workspaceManager = new WorkspaceManager(wsRepo, 50);
+        workspaceManager = new WorkspaceManager(wsRepo, 50,
+                mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
         stateService = new RepositoryStateService(gitRepo, workspaceManager);
         navService = new ContextNavigationService(gitRepo, stateService, workspaceManager, 50);
         guard = new RepositoryStateGuard(stateService, navService);

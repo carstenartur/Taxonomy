@@ -1,6 +1,7 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.dto.WorkspaceInfo;
+import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,9 @@ class WorkspaceManagerTest {
     @BeforeEach
     void setUp() {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
-        manager = new WorkspaceManager(wsRepo, 50);
+        SystemRepositoryService sysRepoService = mock(SystemRepositoryService.class);
+        DslGitRepository gitRepo = mock(DslGitRepository.class);
+        manager = new WorkspaceManager(wsRepo, 50, sysRepoService, gitRepo);
     }
 
     @Test

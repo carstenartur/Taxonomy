@@ -29,19 +29,23 @@ public class SyncIntegrationService {
 
     private static final Logger log = LoggerFactory.getLogger(SyncIntegrationService.class);
 
-    /** The default shared integration branch name. */
-    private static final String SHARED_BRANCH = "draft";
-
     private final SyncStateRepository syncStateRepository;
     private final DslGitRepository gitRepository;
     private final UserWorkspaceRepository workspaceRepository;
+    private final SystemRepositoryService systemRepositoryService;
 
     public SyncIntegrationService(SyncStateRepository syncStateRepository,
                                   DslGitRepository gitRepository,
-                                  UserWorkspaceRepository workspaceRepository) {
+                                  UserWorkspaceRepository workspaceRepository,
+                                  SystemRepositoryService systemRepositoryService) {
         this.syncStateRepository = syncStateRepository;
         this.gitRepository = gitRepository;
         this.workspaceRepository = workspaceRepository;
+        this.systemRepositoryService = systemRepositoryService;
+    }
+
+    private String getSharedBranch() {
+        return systemRepositoryService.getSharedBranch();
     }
 
     /**
@@ -97,20 +101,20 @@ public class SyncIntegrationService {
      */
     public String syncFromShared(String username, String userBranch) throws IOException {
         log.info("User '{}': syncing from shared branch '{}' into '{}'",
-                username, SHARED_BRANCH, userBranch);
+                username, getSharedBranch(), userBranch);
 
-        String mergeCommit = gitRepository.merge(SHARED_BRANCH, userBranch);
+        String mergeCommit = gitRepository.merge(getSharedBranch(), userBranch);
 
         if (mergeCommit == null) {
             log.warn("User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)",
-                    username, SHARED_BRANCH, userBranch);
+                    username, getSharedBranch(), userBranch);
             throw new IOException("Sync failed: merge returned null (branch missing or conflict)");
         }
 
         // Update sync state
         try {
             SyncState state = getSyncState(username);
-            String sharedHead = gitRepository.getHeadCommit(SHARED_BRANCH);
+            String sharedHead = gitRepository.getHeadCommit(getSharedBranch());
             state.setLastSyncedCommitId(sharedHead);
             state.setLastSyncTimestamp(Instant.now());
             state.setSyncStatus("UP_TO_DATE");
@@ -140,13 +144,13 @@ public class SyncIntegrationService {
      */
     public String publishToShared(String username, String userBranch) throws IOException {
         log.info("User '{}': publishing branch '{}' to shared branch '{}'",
-                username, userBranch, SHARED_BRANCH);
+                username, userBranch, getSharedBranch());
 
-        String mergeCommit = gitRepository.merge(userBranch, SHARED_BRANCH);
+        String mergeCommit = gitRepository.merge(userBranch, getSharedBranch());
 
         if (mergeCommit == null) {
             log.warn("User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)",
-                    username, userBranch, SHARED_BRANCH);
+                    username, userBranch, getSharedBranch());
             throw new IOException("Publish failed: merge returned null (branch missing or conflict)");
         }
 
@@ -187,7 +191,7 @@ public class SyncIntegrationService {
      * @throws IOException if Git operations fail
      */
     public int getLocalChanges(String username, String userBranch) throws IOException {
-        int[] aheadBehind = gitRepository.getAheadBehindCounts(userBranch, SHARED_BRANCH);
+        int[] aheadBehind = gitRepository.getAheadBehindCounts(userBranch, getSharedBranch());
         int ahead = aheadBehind[0];
         int behind = aheadBehind[1];
 
@@ -277,22 +281,22 @@ public class SyncIntegrationService {
 
         switch (strategy) {
             case MERGE:
-                String mergeCommit = gitRepository.merge(SHARED_BRANCH, userBranch);
+                String mergeCommit = gitRepository.merge(getSharedBranch(), userBranch);
                 if (mergeCommit == null) {
                     throw new IOException("Merge failed — conflict could not be auto-resolved. " +
                             "Try KEEP_MINE or TAKE_SHARED strategy instead.");
                 }
                 updateSyncStateAfterResolve(username, "UP_TO_DATE",
-                        gitRepository.getHeadCommit(SHARED_BRANCH), null);
+                        gitRepository.getHeadCommit(getSharedBranch()), null);
                 return "Merged shared into your branch: " + abbreviateSha(mergeCommit);
 
             case KEEP_MINE:
                 // Force publish: merge user → shared
-                String publishCommit = gitRepository.merge(userBranch, SHARED_BRANCH);
+                String publishCommit = gitRepository.merge(userBranch, getSharedBranch());
                 if (publishCommit == null) {
                     // If merge fails, restore from user's HEAD
                     String userHead = gitRepository.getHeadCommit(userBranch);
-                    publishCommit = gitRepository.restore(userHead, SHARED_BRANCH);
+                    publishCommit = gitRepository.restore(userHead, getSharedBranch());
                     if (publishCommit == null) {
                         throw new IOException("Could not force-publish user branch to shared");
                     }
@@ -303,7 +307,7 @@ public class SyncIntegrationService {
 
             case TAKE_SHARED:
                 // Force sync: restore user branch from shared HEAD
-                String sharedHead = gitRepository.getHeadCommit(SHARED_BRANCH);
+                String sharedHead = gitRepository.getHeadCommit(getSharedBranch());
                 if (sharedHead == null) {
                     throw new IOException("Shared branch has no commits");
                 }
