@@ -1864,6 +1864,8 @@ class ScreenshotGeneratorIT {
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewSunburst"), "class", "btn-primary"));
         // Wait for the sunburst SVG to actually finish rendering
         wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "sunburst"));
+        // Scroll sunburst into viewport before capturing — by test 39 the page may have scrolled
+        js("document.getElementById('taxonomyTree').scrollIntoView({behavior:'instant', block:'center'});");
         saveScreenshot("39-scored-sunburst.png");
         // Reset to list view
         safeClick(By.id("viewList"));
