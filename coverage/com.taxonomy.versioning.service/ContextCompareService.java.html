@@ -78,85 +78,96 @@ public class ContextCompareService {
 <span class="fc" id="L78">        DiffSummary summary = buildDiffSummary(diff);</span>
 <span class="fc" id="L79">        List&lt;SemanticChange&gt; changes = buildSemanticChanges(diff);</span>
 
-<span class="fc" id="L81">        return new ContextComparison(left, right, summary, changes, null);</span>
+<span class="fc" id="L81">        String rawDiff = null;</span>
+        try {
+<span class="fc" id="L83">            String leftCommit = gitRepository.getHeadCommit(left.branch());</span>
+<span class="fc" id="L84">            String rightCommit = gitRepository.getHeadCommit(right.branch());</span>
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">            if (leftCommit != null &amp;&amp; rightCommit != null) {</span>
+<span class="fc" id="L86">                rawDiff = gitRepository.textDiff(leftCommit, rightCommit);</span>
+            }
+<span class="nc" id="L88">        } catch (Exception e) {</span>
+<span class="nc" id="L89">            log.debug(&quot;Could not generate raw diff for branch compare: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L90">        }</span>
+
+<span class="fc" id="L92">        return new ContextComparison(left, right, summary, changes, rawDiff);</span>
     }
 
     // ── Internal helpers ────────────────────────────────────────────
 
     DiffSummary buildDiffSummary(ModelDiff diff) {
-<span class="fc" id="L87">        return new DiffSummary(</span>
-<span class="fc" id="L88">                diff.addedElements().size(),</span>
-<span class="fc" id="L89">                diff.changedElements().size(),</span>
-<span class="fc" id="L90">                diff.removedElements().size(),</span>
-<span class="fc" id="L91">                diff.addedRelations().size(),</span>
-<span class="fc" id="L92">                diff.changedRelations().size(),</span>
-<span class="fc" id="L93">                diff.removedRelations().size()</span>
+<span class="fc" id="L98">        return new DiffSummary(</span>
+<span class="fc" id="L99">                diff.addedElements().size(),</span>
+<span class="fc" id="L100">                diff.changedElements().size(),</span>
+<span class="fc" id="L101">                diff.removedElements().size(),</span>
+<span class="fc" id="L102">                diff.addedRelations().size(),</span>
+<span class="fc" id="L103">                diff.changedRelations().size(),</span>
+<span class="fc" id="L104">                diff.removedRelations().size()</span>
         );
     }
 
     List&lt;SemanticChange&gt; buildSemanticChanges(ModelDiff diff) {
-<span class="fc" id="L98">        List&lt;SemanticChange&gt; changes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L109">        List&lt;SemanticChange&gt; changes = new ArrayList&lt;&gt;();</span>
 
-<span class="fc bfc" id="L100" title="All 2 branches covered.">        for (ArchitectureElement el : diff.addedElements()) {</span>
-<span class="fc" id="L101">            changes.add(new SemanticChange(</span>
-<span class="fc" id="L102">                    &quot;ADD&quot;, &quot;ELEMENT&quot;, el.getId(),</span>
-<span class="fc" id="L103">                    &quot;Element &quot; + el.getId() + &quot; added (&quot; + el.getType() + &quot;)&quot;,</span>
-<span class="fc" id="L104">                    null, el.getTitle()));</span>
-<span class="fc" id="L105">        }</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        for (ArchitectureElement el : diff.addedElements()) {</span>
+<span class="fc" id="L112">            changes.add(new SemanticChange(</span>
+<span class="fc" id="L113">                    &quot;ADD&quot;, &quot;ELEMENT&quot;, el.getId(),</span>
+<span class="fc" id="L114">                    &quot;Element &quot; + el.getId() + &quot; added (&quot; + el.getType() + &quot;)&quot;,</span>
+<span class="fc" id="L115">                    null, el.getTitle()));</span>
+<span class="fc" id="L116">        }</span>
 
-<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        for (ArchitectureElement el : diff.removedElements()) {</span>
-<span class="nc" id="L108">            changes.add(new SemanticChange(</span>
-<span class="nc" id="L109">                    &quot;REMOVE&quot;, &quot;ELEMENT&quot;, el.getId(),</span>
-<span class="nc" id="L110">                    &quot;Element &quot; + el.getId() + &quot; removed (&quot; + el.getType() + &quot;)&quot;,</span>
-<span class="nc" id="L111">                    el.getTitle(), null));</span>
-<span class="nc" id="L112">        }</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        for (ArchitectureElement el : diff.removedElements()) {</span>
+<span class="nc" id="L119">            changes.add(new SemanticChange(</span>
+<span class="nc" id="L120">                    &quot;REMOVE&quot;, &quot;ELEMENT&quot;, el.getId(),</span>
+<span class="nc" id="L121">                    &quot;Element &quot; + el.getId() + &quot; removed (&quot; + el.getType() + &quot;)&quot;,</span>
+<span class="nc" id="L122">                    el.getTitle(), null));</span>
+<span class="nc" id="L123">        }</span>
 
-<span class="fc bfc" id="L114" title="All 2 branches covered.">        for (ModelDiff.ElementChange change : diff.changedElements()) {</span>
-<span class="fc" id="L115">            changes.add(new SemanticChange(</span>
-<span class="fc" id="L116">                    &quot;MODIFY&quot;, &quot;ELEMENT&quot;, change.after().getId(),</span>
-<span class="fc" id="L117">                    &quot;Element &quot; + change.after().getId() + &quot; modified&quot;,</span>
-<span class="fc" id="L118">                    change.before().getTitle(),</span>
-<span class="fc" id="L119">                    change.after().getTitle()));</span>
-<span class="fc" id="L120">        }</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        for (ModelDiff.ElementChange change : diff.changedElements()) {</span>
+<span class="fc" id="L126">            changes.add(new SemanticChange(</span>
+<span class="fc" id="L127">                    &quot;MODIFY&quot;, &quot;ELEMENT&quot;, change.after().getId(),</span>
+<span class="fc" id="L128">                    &quot;Element &quot; + change.after().getId() + &quot; modified&quot;,</span>
+<span class="fc" id="L129">                    change.before().getTitle(),</span>
+<span class="fc" id="L130">                    change.after().getTitle()));</span>
+<span class="fc" id="L131">        }</span>
 
-<span class="fc bfc" id="L122" title="All 2 branches covered.">        for (ArchitectureRelation rel : diff.addedRelations()) {</span>
-<span class="fc" id="L123">            String key = rel.getSourceId() + &quot; &quot; + rel.getRelationType() + &quot; &quot; + rel.getTargetId();</span>
-<span class="fc" id="L124">            changes.add(new SemanticChange(</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        for (ArchitectureRelation rel : diff.addedRelations()) {</span>
+<span class="fc" id="L134">            String key = rel.getSourceId() + &quot; &quot; + rel.getRelationType() + &quot; &quot; + rel.getTargetId();</span>
+<span class="fc" id="L135">            changes.add(new SemanticChange(</span>
                     &quot;ADD&quot;, &quot;RELATION&quot;, key,
                     &quot;Relation added: &quot; + key,
                     null, key));
-<span class="fc" id="L128">        }</span>
+<span class="fc" id="L139">        }</span>
 
-<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        for (ArchitectureRelation rel : diff.removedRelations()) {</span>
-<span class="nc" id="L131">            String key = rel.getSourceId() + &quot; &quot; + rel.getRelationType() + &quot; &quot; + rel.getTargetId();</span>
-<span class="nc" id="L132">            changes.add(new SemanticChange(</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        for (ArchitectureRelation rel : diff.removedRelations()) {</span>
+<span class="nc" id="L142">            String key = rel.getSourceId() + &quot; &quot; + rel.getRelationType() + &quot; &quot; + rel.getTargetId();</span>
+<span class="nc" id="L143">            changes.add(new SemanticChange(</span>
                     &quot;REMOVE&quot;, &quot;RELATION&quot;, key,
                     &quot;Relation removed: &quot; + key,
                     key, null));
-<span class="nc" id="L136">        }</span>
+<span class="nc" id="L147">        }</span>
 
-<span class="pc bpc" id="L138" title="1 of 2 branches missed.">        for (ModelDiff.RelationChange change : diff.changedRelations()) {</span>
-<span class="nc" id="L139">            String key = change.after().getSourceId() + &quot; &quot;</span>
-<span class="nc" id="L140">                    + change.after().getRelationType() + &quot; &quot; + change.after().getTargetId();</span>
-<span class="nc" id="L141">            changes.add(new SemanticChange(</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">        for (ModelDiff.RelationChange change : diff.changedRelations()) {</span>
+<span class="nc" id="L150">            String key = change.after().getSourceId() + &quot; &quot;</span>
+<span class="nc" id="L151">                    + change.after().getRelationType() + &quot; &quot; + change.after().getTargetId();</span>
+<span class="nc" id="L152">            changes.add(new SemanticChange(</span>
                     &quot;MODIFY&quot;, &quot;RELATION&quot;, key,
                     &quot;Relation modified: &quot; + key,
-<span class="nc" id="L144">                    change.before().getStatus(),</span>
-<span class="nc" id="L145">                    change.after().getStatus()));</span>
-<span class="nc" id="L146">        }</span>
+<span class="nc" id="L155">                    change.before().getStatus(),</span>
+<span class="nc" id="L156">                    change.after().getStatus()));</span>
+<span class="nc" id="L157">        }</span>
 
-<span class="fc" id="L148">        return changes;</span>
+<span class="fc" id="L159">        return changes;</span>
     }
 
     private String resolveCommit(ContextRef ctx) {
-<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (ctx.commitId() != null) {</span>
-<span class="fc" id="L153">            return ctx.commitId();</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (ctx.commitId() != null) {</span>
+<span class="fc" id="L164">            return ctx.commitId();</span>
         }
         try {
-<span class="fc" id="L156">            return gitRepository.getHeadCommit(ctx.branch());</span>
-<span class="nc" id="L157">        } catch (IOException e) {</span>
-<span class="nc" id="L158">            log.warn(&quot;Could not resolve HEAD for branch '{}': {}&quot;, ctx.branch(), e.getMessage());</span>
-<span class="nc" id="L159">            return null;</span>
+<span class="fc" id="L167">            return gitRepository.getHeadCommit(ctx.branch());</span>
+<span class="nc" id="L168">        } catch (IOException e) {</span>
+<span class="nc" id="L169">            log.warn(&quot;Could not resolve HEAD for branch '{}': {}&quot;, ctx.branch(), e.getMessage());</span>
+<span class="nc" id="L170">            return null;</span>
         }
     }
 }

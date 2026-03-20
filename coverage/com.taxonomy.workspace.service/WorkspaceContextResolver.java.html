@@ -60,28 +60,33 @@ public class WorkspaceContextResolver {
 <span class="fc" id="L60">            return WorkspaceContext.SHARED;</span>
         }
 
-        // Check persistent (provisioned) workspace only
-<span class="fc" id="L64">        UserWorkspace ws = workspaceManager.findUserWorkspace(username);</span>
-<span class="fc bfc" id="L65" title="All 4 branches covered.">        if (ws != null &amp;&amp; ws.getWorkspaceId() != null) {</span>
-<span class="fc bfc" id="L66" title="All 2 branches covered.">            String branch = ws.getCurrentBranch() != null</span>
-<span class="fc" id="L67">                    ? ws.getCurrentBranch()</span>
-<span class="fc" id="L68">                    : systemRepositoryService.getSharedBranch();</span>
-<span class="fc" id="L69">            log.debug(&quot;Resolved workspace context for user '{}': workspace={}, branch={}&quot;,</span>
-<span class="fc" id="L70">                    username, ws.getWorkspaceId(), branch);</span>
-<span class="fc" id="L71">            return new WorkspaceContext(username, ws.getWorkspaceId(), branch);</span>
+        // Try active workspace first (multi-workspace aware)
+<span class="fc" id="L64">        UserWorkspace ws = workspaceManager.findActiveWorkspace(username);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (ws == null) {</span>
+            // Fall back to legacy single-workspace lookup for backward compatibility
+<span class="fc" id="L67">            ws = workspaceManager.findUserWorkspace(username);</span>
         }
 
-<span class="fc" id="L74">        log.debug(&quot;No provisioned workspace for user '{}'; falling back to SHARED&quot;, username);</span>
-<span class="fc" id="L75">        return WorkspaceContext.SHARED;</span>
+<span class="fc bfc" id="L70" title="All 4 branches covered.">        if (ws != null &amp;&amp; ws.getWorkspaceId() != null) {</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            String branch = ws.getCurrentBranch() != null</span>
+<span class="fc" id="L72">                    ? ws.getCurrentBranch()</span>
+<span class="fc" id="L73">                    : systemRepositoryService.getSharedBranch();</span>
+<span class="fc" id="L74">            log.debug(&quot;Resolved workspace context for user '{}': workspace={}, branch={}&quot;,</span>
+<span class="fc" id="L75">                    username, ws.getWorkspaceId(), branch);</span>
+<span class="fc" id="L76">            return new WorkspaceContext(username, ws.getWorkspaceId(), branch);</span>
+        }
+
+<span class="fc" id="L79">        log.debug(&quot;No provisioned workspace for user '{}'; falling back to SHARED&quot;, username);</span>
+<span class="fc" id="L80">        return WorkspaceContext.SHARED;</span>
     }
 
     private String resolveUsername() {
-<span class="fc" id="L79">        Authentication auth = SecurityContextHolder.getContext().getAuthentication();</span>
-<span class="pc bpc" id="L80" title="2 of 4 branches missed.">        if (auth != null &amp;&amp; auth.isAuthenticated()</span>
-<span class="pc bpc" id="L81" title="1 of 2 branches missed.">                &amp;&amp; !&quot;anonymousUser&quot;.equals(auth.getPrincipal())) {</span>
-<span class="fc" id="L82">            return auth.getName();</span>
+<span class="fc" id="L84">        Authentication auth = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="pc bpc" id="L85" title="2 of 4 branches missed.">        if (auth != null &amp;&amp; auth.isAuthenticated()</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                &amp;&amp; !&quot;anonymousUser&quot;.equals(auth.getPrincipal())) {</span>
+<span class="fc" id="L87">            return auth.getName();</span>
         }
-<span class="nc" id="L84">        return WorkspaceManager.DEFAULT_USER;</span>
+<span class="nc" id="L89">        return WorkspaceManager.DEFAULT_USER;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
