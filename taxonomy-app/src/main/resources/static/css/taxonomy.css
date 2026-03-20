@@ -894,6 +894,138 @@
 .layer-comm .summary-layer-title { color: #E74C3C; }
 .layer-comm .summary-layer-element { background: #E74C3C; }
 
+/* ── Impact Map (Architecture View) ────────────────────────────────────── */
+.impact-summary-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 8px 12px;
+    background: #f0f4f8;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    font-size: 0.82rem;
+    margin-bottom: 12px;
+    color: #333;
+}
+
+.impact-summary-bar .impact-kpi {
+    white-space: nowrap;
+}
+
+.impact-map {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-bottom: 12px;
+}
+
+.impact-swimlane {
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    padding: 8px 12px;
+    position: relative;
+}
+
+.impact-swimlane-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.impact-swimlane-nodes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.impact-node {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    cursor: default;
+    color: #fff;
+    position: relative;
+    border: 1px solid rgba(255,255,255,0.3);
+}
+
+.impact-node-anchor {
+    border-width: 3px;
+    border-color: rgba(255,255,255,0.6);
+    font-weight: 600;
+}
+
+.impact-node .impact-badge {
+    font-size: 0.68rem;
+    opacity: 0.9;
+    font-weight: 700;
+}
+
+.impact-node-hotspot {
+    box-shadow: 0 0 0 3px #e67e22;
+}
+
+.impact-edge {
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.78rem;
+    padding: 2px 0;
+    line-height: 1.2;
+}
+
+.impact-edge .impact-edge-label {
+    font-size: 0.7rem;
+    color: #888;
+    background: #f8f9fa;
+    padding: 1px 6px;
+    border-radius: 3px;
+    display: inline-block;
+    margin: 0 2px;
+}
+
+/* Layer colours for impact nodes */
+.impact-swimlane.layer-cap { border-color: #4A90D9; }
+.impact-swimlane.layer-cap .impact-swimlane-title { color: #4A90D9; }
+.impact-swimlane.layer-cap .impact-node { background: #4A90D9; }
+
+.impact-swimlane.layer-proc { border-color: #27AE60; }
+.impact-swimlane.layer-proc .impact-swimlane-title { color: #27AE60; }
+.impact-swimlane.layer-proc .impact-node { background: #27AE60; }
+
+.impact-swimlane.layer-svc { border-color: #F39C12; }
+.impact-swimlane.layer-svc .impact-swimlane-title { color: #F39C12; }
+.impact-swimlane.layer-svc .impact-node { background: #F39C12; }
+
+.impact-swimlane.layer-app { border-color: #8E44AD; }
+.impact-swimlane.layer-app .impact-swimlane-title { color: #8E44AD; }
+.impact-swimlane.layer-app .impact-node { background: #8E44AD; }
+
+.impact-swimlane.layer-info { border-color: #3498DB; }
+.impact-swimlane.layer-info .impact-swimlane-title { color: #3498DB; }
+.impact-swimlane.layer-info .impact-node { background: #3498DB; }
+
+.impact-swimlane.layer-comm { border-color: #E74C3C; }
+.impact-swimlane.layer-comm .impact-swimlane-title { color: #E74C3C; }
+.impact-swimlane.layer-comm .impact-node { background: #E74C3C; }
+
+/* Detail tables inside architecture view */
+.impact-details summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #555;
+    padding: 4px 0;
+}
+
+.impact-details summary:hover {
+    color: #003580;
+}
+
 /* ── Force-Directed Graph ──────────────────────────────────────────────── */
 .graph-view-toggle {
     display: flex;
@@ -1083,6 +1215,29 @@
     background: #2b3035;
     border-color: #444;
     color: #9ca3af;
+}
+
+[data-bs-theme="dark"] .impact-summary-bar {
+    background: #2b3035;
+    border-color: #444;
+    color: #9ca3af;
+}
+
+[data-bs-theme="dark"] .impact-swimlane {
+    border-color: #444;
+}
+
+[data-bs-theme="dark"] .impact-edge-label {
+    background: #2b3035;
+    color: #9ca3af;
+}
+
+[data-bs-theme="dark"] .impact-details summary {
+    color: #9ca3af;
+}
+
+[data-bs-theme="dark"] .impact-details summary:hover {
+    color: #6ea8fe;
 }
 
 [data-bs-theme="dark"] .force-graph-container {

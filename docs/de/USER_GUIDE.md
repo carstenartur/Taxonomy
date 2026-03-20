@@ -402,29 +402,30 @@ Die Warnung wird nach einer 300-ms-Verzögerung (Debounce) ausgelöst, wenn Sie 
 
 ---
 
-## 7. Architekturansicht
+## 7. Architekturansicht — Anforderungs-Wirkungsanalyse
 
-Die Architekturansicht zeigt, wie die am höchsten bewerteten Taxonomieknoten über bestätigte Architekturbeziehungen (gespeichert in der Wissensbasis) miteinander verbunden sind. Sie bietet Ihnen eine strukturierte Ansicht der Architekturelemente, die für Ihre Anforderung relevant sind.
+Die Architekturansicht zeigt, wie die am höchsten bewerteten Taxonomieknoten über bestätigte Architekturbeziehungen (gespeichert in der Wissensbasis) miteinander verbunden sind. Sie bietet eine **Anforderungs-Wirkungsanalyse** — eine schichtbasierte Visualisierung der Architekturelemente, die für Ihre Anforderung relevant sind.
 
 ### Das Architekturansicht-Kontrollkästchen aktivieren
 
-Aktivieren Sie vor der Analyse das **Architecture View**-Kontrollkästchen in der Business Requirement Analysis Karte. Nach Abschluss der Analyse erscheint das **Architekturansicht-Panel** im rechten Panel.
+Aktivieren Sie vor der Analyse das **Architecture View**-Kontrollkästchen in der Business Requirement Analysis Karte. Nach Abschluss der Analyse erscheint die **Anforderungs-Wirkungsanalyse** im rechten Panel.
 
-### Was im Architekturansicht-Panel erscheint
+### Was in der Wirkungsanalyse erscheint
 
-Das Panel zeigt drei Abschnitte:
+Das Panel zeigt drei Bereiche:
 
-| Abschnitt | Inhalt |
+| Bereich | Inhalt |
 |---|---|
-| **Anker** | Die am höchsten bewerteten Blattknoten — die primären Übereinstimmungen für Ihre Anforderung |
-| **Elemente** | Alle Taxonomieknoten, die von den Ankern über bestätigte Beziehungen erreichbar sind |
-| **Beziehungen** | Die gerichteten Kanten, die Elemente verbinden |
+| **Impact Summary Bar** | Eine kompakte KPI-Zeile: direkte Treffer, betroffene Elemente, Beziehungen, Schichten und Änderungs-Hotspots |
+| **Schichtbasierte Wirkungskarte** | Eine Swimlane-Visualisierung, die Elemente nach Architekturschicht gruppiert, mit Kanten die Beziehungstypen zwischen Schichten zeigen |
+| **Detail-Tabellen** | Aufklappbare Tabellen mit allen Elementen und Beziehungen samt vollständigen Metadaten (über die 📋-Zusammenfassungszeile aufklappbar) |
 
-### Anker, Elemente und Beziehungen verstehen
+### Die Visualisierung verstehen
 
-- **Anker** sind Ihre direkten Treffer — die Knoten, die die KI als beste Antwort auf Ihre Anforderung betrachtet.
-- **Elemente** erweitern das Bild: Wenn ein Ankerknoten eine Fähigkeit *realisiert*, erscheint diese Fähigkeit ebenfalls als Element.
-- **Beziehungen** zeigen die Richtung und den Typ der Verbindung (z. B. REALIZES, SUPPORTS, DEPENDS_ON).
+- **Anker** (★) sind Ihre direkten Treffer — die Knoten, die die KI als beste Antwort auf Ihre Anforderung betrachtet. Sie erscheinen mit einem fetten Rahmen und ihrem Score-Prozentsatz.
+- **Propagierte Elemente** (↳) erweitern das Bild: Wenn ein Ankerknoten eine Fähigkeit *realisiert*, erscheint diese Fähigkeit ebenfalls als Element mit ihrer Hop-Distanz.
+- **Änderungs-Hotspots** (⚠️) heben Knoten hervor, die entweder Anker mit mehreren ausgehenden Beziehungen sind, oder Knoten, die von mehreren verschiedenen Ankern erreicht werden — sie zeigen Bereiche mit hoher Änderungswirkung an.
+- **Schicht-Kanten** zeigen die Beziehungstypen (z. B. REALIZES, SUPPORTS), die verschiedene Architekturschichten verbinden.
 
 ![Architekturansicht](../images/20-architecture-view.png)
 
