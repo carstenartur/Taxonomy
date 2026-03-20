@@ -1027,6 +1027,69 @@
     color: #003580;
 }
 
+/* ── Impact Graph (D3 Force-Directed) ──────────────────────────────────── */
+.impact-graph-toggle {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.impact-graph-toggle .btn {
+    font-size: 0.78rem;
+    padding: 2px 10px;
+}
+
+.impact-graph-container {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    overflow: hidden;
+    position: relative;
+}
+
+.impact-graph-container svg text {
+    fill: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Pulsing animation for hotspot nodes */
+@keyframes hotspot-pulse {
+    0% { stroke-opacity: 1; }
+    50% { stroke-opacity: 0.4; }
+    100% { stroke-opacity: 1; }
+}
+
+.impact-node-pulse circle {
+    animation: hotspot-pulse 2s ease-in-out infinite;
+}
+
+/* Rich tooltip for impact graph */
+.impact-graph-tooltip {
+    position: absolute;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    pointer-events: none;
+    max-width: 280px;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    line-height: 1.4;
+}
+
+/* Impact graph legend */
+.impact-graph-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 8px 12px;
+    font-size: 0.72rem;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.3);
+    color: #ccc;
+}
+
 /* ── Force-Directed Graph ──────────────────────────────────────────────── */
 .graph-view-toggle {
     display: flex;
@@ -1249,6 +1312,21 @@
 [data-bs-theme="dark"] .force-graph-legend {
     background: #2b3035;
     border-color: #444;
+}
+
+[data-bs-theme="dark"] .impact-graph-container {
+    background: linear-gradient(135deg, #0d0d1a 0%, #0f1729 100%);
+    border-color: #444;
+}
+
+[data-bs-theme="dark"] .impact-graph-legend {
+    background: rgba(0,0,0,0.5);
+    border-color: #333;
+}
+
+[data-bs-theme="dark"] .impact-graph-toggle .btn-outline-secondary {
+    color: #9ca3af;
+    border-color: #555;
 }
 
 [data-bs-theme="dark"] .onboarding-card {

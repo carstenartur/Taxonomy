@@ -423,15 +423,19 @@ The panel shows three areas:
 | Area | Contents |
 |---|---|
 | **Impact Summary Bar** | A compact KPI row: direct matches, affected elements, relations, layers, and change hotspots |
-| **Layered Impact Map** | A swimlane visualization grouping elements by architecture layer, with edges showing relationship types between layers |
+| **Interactive Network Graph** | An interactive force-directed network graph (default view) showing all impacted elements as draggable nodes connected by directed edges. Toggle to "🏗️ Layer View" for the traditional swimlane layout. |
 | **Detail Tables** | Collapsible tables listing all elements and relationships with full metadata (expand via the 📋 summary line) |
 
 ### Understanding the Visualization
 
-- **Anchors** (★) are your direct hits — the nodes the AI considers the best answer to your requirement. They appear with a bold border and their score percentage.
-- **Propagated elements** (↳) extend the picture: if an anchor node *realizes* a capability, that capability also appears as an element with its hop distance shown.
-- **Change hotspots** (⚠️) highlight nodes that are either anchors with multiple outgoing relationships, or nodes reached from multiple different anchors — they indicate areas of high change impact.
-- **Layer edges** show the relationship types (e.g., REALIZES, SUPPORTS) connecting different architecture layers.
+The main visualization is an **interactive force-directed network graph** showing all impacted elements and their relationships. Nodes are circles colored by taxonomy layer, with size proportional to relevance.
+
+- **★ Anchor nodes** (direct matches) have a gold border and display their score percentage. These are the nodes the AI considers the best answer to your requirement.
+- **⚠️ Hotspot nodes** pulse red, highlighting areas of high change impact — either anchors with multiple outgoing relationships, or nodes reached from multiple different anchors.
+- **Propagated elements** extend the picture: if an anchor node *realizes* a capability, that capability also appears with its hop distance shown.
+- **Directed edges** connect specific source → target nodes, colored by relationship type (e.g., green for SUPPORTS, blue for REALIZES). Thicker edges indicate higher propagated relevance.
+- **Drag** nodes to rearrange the layout, **hover** for a detailed tooltip (code, title, layer, relevance, hop distance, anchor/hotspot status), and **click** to open the node in Graph Explorer.
+- Toggle to **"🏗️ Layer View"** for the traditional swimlane layout grouping elements by architecture layer.
 
 ![Architecture View](../images/20-architecture-view.png)
 

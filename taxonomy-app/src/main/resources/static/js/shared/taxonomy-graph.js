@@ -312,6 +312,307 @@
             .html('<span class="force-graph-legend-dot" style="background:#000;border:2px solid #000;width:10px;height:10px;"></span> Origin');
     }
 
+    // ── Impact Force Graph (Architecture View) ──────────────────────────────
+
+    var IMPACT_MAX_HEIGHT = 500;
+    var IMPACT_MIN_HEIGHT = 280;
+    var IMPACT_HEIGHT_PER_NODE = 30;
+    var IMPACT_MAX_NODES = 25;
+
+    var RELATION_COLORS = {
+        'SUPPORTS': '#27AE60',
+        'REALIZES': '#4A90D9',
+        'USES': '#F39C12',
+        'REQUIRES': '#E74C3C',
+        'DEPENDS_ON': '#8E44AD',
+        'FULFILLS': '#2ECC71',
+        'CONSUMES': '#E67E22',
+        'ASSIGNED_TO': '#1ABC9C',
+        'PRODUCES': '#3498DB',
+        'COMMUNICATES_WITH': '#9B59B6',
+        'CONTAINS': '#95A5A6',
+        'RELATED_TO': '#BDC3C7'
+    };
+
+    /**
+     * Render a D3 force-directed graph tailored for the Architecture View impact map.
+     * @param {HTMLElement} container - DOM element to render into
+     * @param {Array} nodes - Array of {nodeCode, title, taxonomySheet, hopDistance, relevance, anchor, includedBecause}
+     * @param {Array} edges - Array of {sourceCode, targetCode, relationType, propagatedRelevance}
+     * @param {Object} options - {anchorCodes: Set, hotspotCodes: Set, hotspotReasons: Object, layerConfig: Object}
+     */
+    function renderImpactForceGraph(container, nodes, edges, options) {
+        if (typeof d3 === 'undefined' || !nodes || nodes.length === 0) return;
+
+        var anchorCodes = options.anchorCodes || new Set();
+        var hotspotCodes = options.hotspotCodes || new Set();
+        var hotspotReasons = options.hotspotReasons || {};
+        var layerConfig = options.layerConfig || {};
+
+        // Cap nodes for readability
+        var cappedNodes = nodes.slice(0, IMPACT_MAX_NODES);
+        var cappedNodeCodes = new Set(cappedNodes.map(function (n) { return n.nodeCode; }));
+
+        var width = container.clientWidth || 600;
+        var height = Math.min(IMPACT_MAX_HEIGHT, Math.max(IMPACT_MIN_HEIGHT, cappedNodes.length * IMPACT_HEIGHT_PER_NODE));
+
+        // Deduplicate nodes
+        var nodeMap = {};
+        cappedNodes.forEach(function (n) {
+            if (!nodeMap[n.nodeCode]) nodeMap[n.nodeCode] = n;
+        });
+        var nodeList = Object.values(nodeMap);
+
+        // Build D3-compatible data
+        var d3Nodes = nodeList.map(function (n) {
+            var cfg = layerConfig[n.taxonomySheet] || {};
+            return {
+                id: n.nodeCode,
+                title: n.title || n.nodeCode,
+                sheet: n.taxonomySheet || '',
+                sheetLabel: cfg.label || n.taxonomySheet || '',
+                hop: n.hopDistance || 0,
+                relevance: n.relevance || 0,
+                isAnchor: anchorCodes.has(n.nodeCode),
+                isHotspot: hotspotCodes.has(n.nodeCode),
+                hotspotReason: hotspotReasons[n.nodeCode] || '',
+                includedBecause: n.includedBecause || ''
+            };
+        });
+
+        var nodeIdSet = new Set(d3Nodes.map(function (n) { return n.id; }));
+        var d3Links = (edges || []).filter(function (e) {
+            return cappedNodeCodes.has(e.sourceCode) && cappedNodeCodes.has(e.targetCode);
+        }).map(function (e) {
+            return {
+                source: e.sourceCode,
+                target: e.targetCode,
+                type: e.relationType || '',
+                relevance: e.propagatedRelevance || 0
+            };
+        });
+
+        // SVG setup with dark background
+        var graphDiv = d3.select(container)
+            .append('div').attr('class', 'impact-graph-container');
+
+        var svg = graphDiv.append('svg')
+            .attr('width', width)
+            .attr('height', height)
+            .attr('viewBox', [0, 0, width, height].join(' '));
+
+        // Tooltip div
+        var tooltip = graphDiv.append('div')
+            .attr('class', 'impact-graph-tooltip')
+            .style('opacity', 0);
+
+        // Arrow markers per relation type
+        var defs = svg.append('defs');
+        Object.keys(RELATION_COLORS).forEach(function (relType) {
+            defs.append('marker')
+                .attr('id', 'impact-arrow-' + relType)
+                .attr('viewBox', '-0 -5 10 10')
+                .attr('refX', 22)
+                .attr('refY', 0)
+                .attr('orient', 'auto')
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .append('path')
+                .attr('d', 'M 0,-5 L 10,0 L 0,5')
+                .attr('fill', RELATION_COLORS[relType]);
+        });
+        // Default arrow
+        defs.append('marker')
+            .attr('id', 'impact-arrow-default')
+            .attr('viewBox', '-0 -5 10 10')
+            .attr('refX', 22)
+            .attr('refY', 0)
+            .attr('orient', 'auto')
+            .attr('markerWidth', 6)
+            .attr('markerHeight', 6)
+            .append('path')
+            .attr('d', 'M 0,-5 L 10,0 L 0,5')
+            .attr('fill', '#999');
+
+        // Force simulation
+        var simulation = d3.forceSimulation(d3Nodes)
+            .force('link', d3.forceLink(d3Links).id(function (d) { return d.id; }).distance(120))
+            .force('charge', d3.forceManyBody().strength(-300))
+            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('collision', d3.forceCollide().radius(35));
+
+        // Links
+        var link = svg.append('g')
+            .selectAll('line')
+            .data(d3Links)
+            .join('line')
+            .attr('stroke', function (d) { return RELATION_COLORS[d.type] || '#999'; })
+            .attr('stroke-opacity', 0.7)
+            .attr('stroke-width', function (d) { return Math.max(1, 1 + d.relevance * 3); })
+            .attr('marker-end', function (d) {
+                return 'url(#impact-arrow-' + (RELATION_COLORS[d.type] ? d.type : 'default') + ')';
+            });
+
+        // Link labels
+        var linkLabel = svg.append('g')
+            .selectAll('text')
+            .data(d3Links)
+            .join('text')
+            .attr('font-size', '7px')
+            .attr('fill', '#aaa')
+            .attr('text-anchor', 'middle')
+            .text(function (d) { return d.type; });
+
+        // Nodes
+        var node = svg.append('g')
+            .selectAll('g')
+            .data(d3Nodes)
+            .join('g')
+            .call(d3.drag()
+                .on('start', function (event, d) {
+                    if (!event.active) simulation.alphaTarget(0.3).restart();
+                    d.fx = d.x;
+                    d.fy = d.y;
+                })
+                .on('drag', function (event, d) {
+                    d.fx = event.x;
+                    d.fy = event.y;
+                })
+                .on('end', function (event, d) {
+                    if (!event.active) simulation.alphaTarget(0);
+                    d.fx = null;
+                    d.fy = null;
+                }));
+
+        node.append('circle')
+            .attr('r', function (d) {
+                if (d.isAnchor) return 14;
+                return Math.max(6, 6 + d.relevance * 8);
+            })
+            .attr('fill', function (d) {
+                var color = getNodeColor(d.sheet);
+                var opacity = 0.6 + d.relevance * 0.4;
+                // Convert hex to rgba
+                var r = parseInt(color.slice(1, 3), 16);
+                var g = parseInt(color.slice(3, 5), 16);
+                var b = parseInt(color.slice(5, 7), 16);
+                return 'rgba(' + r + ',' + g + ',' + b + ',' + opacity.toFixed(2) + ')';
+            })
+            .attr('stroke', function (d) {
+                if (d.isAnchor) return '#FFD700';
+                if (d.isHotspot) return '#E74C3C';
+                return '#fff';
+            })
+            .attr('stroke-width', function (d) {
+                if (d.isAnchor) return 3;
+                if (d.isHotspot) return 2.5;
+                return 1.5;
+            })
+            .style('cursor', 'pointer');
+
+        // Hotspot pulse animation
+        node.filter(function (d) { return d.isHotspot; })
+            .classed('impact-node-pulse', true);
+
+        // Labels: code + short title + score for anchors
+        node.append('text')
+            .attr('dx', 16)
+            .attr('dy', 4)
+            .attr('font-size', '9px')
+            .attr('fill', '#e0e0e0')
+            .text(function (d) {
+                var label = d.id;
+                if (d.title && d.title !== d.id) {
+                    label += ' ' + d.title.substring(0, 18);
+                }
+                if (d.isAnchor) label += ' \u2605' + (d.relevance * 100).toFixed(0) + '%';
+                return label;
+            });
+
+        // Rich tooltip on hover
+        node.on('mouseover', function (event, d) {
+            var lines = [];
+            lines.push('<strong>' + d.id + '</strong> ' + d.title);
+            lines.push('Layer: ' + d.sheetLabel);
+            lines.push('Relevance: ' + (d.relevance * 100).toFixed(0) + '%');
+            var hopLabel = d.hop === 0 ? '0 (direct match) \u2605' : d.hop;
+            lines.push('Hop: ' + hopLabel);
+            if (d.isAnchor) lines.push('\u2605 Direct Match (Anchor)');
+            if (d.isHotspot) lines.push('\u26A0\uFE0F Hotspot: ' + d.hotspotReason);
+            if (d.includedBecause) lines.push('Reason: ' + d.includedBecause);
+
+            tooltip.html(lines.join('<br>'))
+                .style('left', (event.offsetX + 15) + 'px')
+                .style('top', (event.offsetY - 10) + 'px')
+                .style('opacity', 1);
+        })
+        .on('mousemove', function (event) {
+            tooltip
+                .style('left', (event.offsetX + 15) + 'px')
+                .style('top', (event.offsetY - 10) + 'px');
+        })
+        .on('mouseout', function () {
+            tooltip.style('opacity', 0);
+        });
+
+        // Click to open in Graph Explorer
+        node.on('click', function (event, d) {
+            if (typeof openGraphExplorer === 'function') {
+                openGraphExplorer(d.id);
+            } else {
+                var input = document.getElementById('graphNodeInput');
+                if (input) input.value = d.id;
+            }
+        });
+
+        // Tick handler
+        simulation.on('tick', function () {
+            link
+                .attr('x1', function (d) { return d.source.x; })
+                .attr('y1', function (d) { return d.source.y; })
+                .attr('x2', function (d) { return d.target.x; })
+                .attr('y2', function (d) { return d.target.y; });
+
+            linkLabel
+                .attr('x', function (d) { return (d.source.x + d.target.x) / 2; })
+                .attr('y', function (d) { return (d.source.y + d.target.y) / 2; });
+
+            node.attr('transform', function (d) {
+                d.x = Math.max(15, Math.min(width - 15, d.x));
+                d.y = Math.max(15, Math.min(height - 15, d.y));
+                return 'translate(' + d.x + ',' + d.y + ')';
+            });
+        });
+
+        // Legend
+        var legendDiv = graphDiv.append('div').attr('class', 'impact-graph-legend');
+
+        var usedSheets = new Set(d3Nodes.map(function (n) { return n.sheet; }));
+        usedSheets.forEach(function (sheet) {
+            if (sheet) {
+                var label = (layerConfig[sheet] && layerConfig[sheet].label) ? layerConfig[sheet].label : sheet;
+                legendDiv.append('span').attr('class', 'force-graph-legend-item')
+                    .html('<span class="force-graph-legend-dot" style="background:' +
+                        getNodeColor(sheet) + '"></span> ' + label);
+            }
+        });
+        legendDiv.append('span').attr('class', 'force-graph-legend-item')
+            .html('<span class="force-graph-legend-dot" style="background:#FFD700;border:2px solid #FFD700;width:10px;height:10px;"></span> \u2605 Anchor');
+        legendDiv.append('span').attr('class', 'force-graph-legend-item')
+            .html('<span class="force-graph-legend-dot" style="background:#E74C3C;border:2px solid #E74C3C;width:10px;height:10px;"></span> \u26A0\uFE0F Hotspot');
+
+        // Relation type legend
+        var usedRelTypes = new Set(d3Links.map(function (l) { return l.type; }));
+        usedRelTypes.forEach(function (relType) {
+            if (relType) {
+                var color = RELATION_COLORS[relType] || '#999';
+                legendDiv.append('span').attr('class', 'force-graph-legend-item')
+                    .html('<span style="display:inline-block;width:20px;height:2px;background:' +
+                        color + ';vertical-align:middle;margin-right:4px;"></span> ' + relType);
+            }
+        });
+    }
+
     /**
      * Wrap graph results with a toggle for Graph/Table view.
      */
@@ -726,7 +1027,8 @@
         fetchFailureImpact: fetchFailureImpact,
         showInModal: showInModal,
         renderNeighborhoodResult: renderNeighborhoodResult,
-        renderFailureResult: renderFailureResult
+        renderFailureResult: renderFailureResult,
+        renderImpactForceGraph: renderImpactForceGraph
     };
 
 })();
