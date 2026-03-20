@@ -437,7 +437,7 @@ public class TaxonomyService {
             return;
         }
 
-        List<TaxonomyRelation> relations = new ArrayList<>();
+        List<TaxonomyRelation> relations = new ArrayList<>(seedRows.size());
         for (com.taxonomy.dto.RelationSeedRow row : seedRows) {
             Long sourceId = codeToId.get(row.sourceCode());
             Long targetId = codeToId.get(row.targetCode());
