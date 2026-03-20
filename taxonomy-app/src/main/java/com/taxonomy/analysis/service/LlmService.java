@@ -1120,6 +1120,52 @@ public class LlmService {
         }
     }
 
+    // ── Raw LLM call (free-form prompt → raw text) ────────────────────────────
+
+    /**
+     * Sends a free-form prompt to the active LLM provider and returns the raw text response.
+     * This method is provider-agnostic and handles Gemini / OpenAI-compatible endpoints.
+     *
+     * @param prompt the prompt text to send
+     * @return the raw text response, or {@code null} if the LLM is unavailable or the call failed
+     */
+    public String callLlmRaw(String prompt) {
+        if (providerConfig.isMockMode()) {
+            recordSuccess();
+            return "[]"; // Return empty JSON array for mock mode
+        }
+
+        LlmProvider provider = getActiveProvider();
+        if (provider == LlmProvider.LOCAL_ONNX) {
+            log.warn("callLlmRaw is not supported for LOCAL_ONNX provider");
+            return null;
+        }
+
+        String apiKey = getApiKey(provider);
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("No API key for provider {} — cannot call LLM", provider);
+            return null;
+        }
+
+        try {
+            String body;
+            if (provider == LlmProvider.GEMINI) {
+                body = callGeminiHttpBody(prompt, apiKey);
+                return body != null ? responseParser.extractGeminiText(body) : null;
+            } else {
+                body = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
+                return body != null ? responseParser.extractOpenAiText(body) : null;
+            }
+        } catch (LlmRateLimitException e) {
+            recordFailure(e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to call LLM raw", e);
+            recordFailure(e.getMessage());
+            return null;
+        }
+    }
+
     // ── Outgoing RPM throttle ─────────────────────────────────────────────────
 
     /**

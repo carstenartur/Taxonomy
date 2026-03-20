@@ -86,6 +86,7 @@ graph TB
 | `CommitIndexService` | Indexiert DSL-Commit-Verlauf in Hibernate Search / Lucene für die Volltextsuche über Commit-Nachrichten und Änderungsinhalte. |
 | `HypothesisService` | Verwaltet Beziehungshypothesen, die während der Analyse generiert werden. Hypothesen können akzeptiert (erzeugt `TaxonomyRelation`), abgelehnt oder nur für die aktuelle Sitzung angewendet werden. |
 | `LlmResponseParser` | Zustandsloser Parser für LLM-Antworten. Verarbeitet Gemini- und OpenAI-Antwortformate, Bewertungsextraktion (Ganzzahl und Bewertung+Begründung), Bewertungsnormalisierung (Größter-Rest-Methode) und JSON-Extraktion. |
+| `DocumentAnalysisService` | KI-gestützte Dokumentenanalyse. Bietet LLM-gestützte Extraktion von Anforderungskandidaten aus Dokumenttext (`extractWithAi`) und direktes Regulation-zu-Architektur-Taxonomie-Mapping (`mapRegulationToArchitecture`). Verwendet spezialisierte Prompt-Templates (`extract-*`, `reg-map-*`). |
 | `RateLimitFilter` | In-Memory-Ratenbegrenzer pro IP für LLM-gestützte Endpunkte (`/api/analyze`, `/api/analyze-stream`, `/api/analyze-node`, `/api/justify-leaf`). Konfigurierbar über `TAXONOMY_RATE_LIMIT_PER_MINUTE`. |
 | `RelationCompatibilityMatrix` | Definiert, welche Beziehungstypen zwischen welchen Taxonomie-Wurzelkategorien gültig sind (z. B. `REALIZES` erfordert CP → CR). Wird vom Validator und Vorschlagsgenerator verwendet. |
 

@@ -58,6 +58,25 @@ Die Anwendung nutzt KI in zwei unterschiedlichen Bereichen:
 | **Modell** | BAAI/bge-small-en-v1.5 (384 Dimensionen, ONNX Runtime) |
 | **Datenspeicherort** | Vollständig lokal — keine externen API-Aufrufe |
 
+### 3. KI im Dokumentenimport
+
+Die Dokumentenimport-Funktion bietet neben der regelbasierten Extraktion zwei
+KI-gestützte Modi:
+
+| Modus | Prompt-Code | Zweck | An LLM gesendete Daten |
+|-------|-------------|-------|------------------------|
+| **KI-gestützte Extraktion** | `extract-default` / `extract-regulation` | Umsetzbare Anforderungen aus Dokumenttext extrahieren | Dokumenttext (auf 15.000 Zeichen gekürzt) |
+| **Direktes Architektur-Mapping** | `reg-map-default` | Regulierungstext auf Taxonomie-Knoten abbilden | Dokumenttext + vollständige Taxonomie-Knotenliste |
+
+**Hinweise zur Datensensitivität:**
+
+- Dokumenttext wird an den konfigurierten LLM-Anbieter gesendet (Cloud oder lokal)
+- Die vollständige Taxonomie-Knotenliste (Code + Name, ca. 2.500 Knoten) ist in
+  Regulation-Mapping-Prompts enthalten
+- Es sollten keine personenbezogenen Daten in hochgeladenen Dokumenten enthalten sein
+- Alle KI-Ausgaben werden zur menschlichen Überprüfung präsentiert
+- Prompts sind über das Admin-Panel anpassbar (siehe [Dokumentenimport](DOCUMENT_IMPORT.md))
+
 ---
 
 ## Unterstützte LLM-Anbieter

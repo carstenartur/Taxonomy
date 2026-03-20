@@ -1860,22 +1860,56 @@
         const resetBtn = document.getElementById('promptResetBtn');
         if (!select || !saveBtn || !resetBtn) return;
 
-        fetch('/api/prompts', { headers: getAdminHeaders() })
+        // Try categorized endpoint first, fall back to flat list
+        fetch('/api/prompts/categories', { headers: getAdminHeaders() })
             .then(r => {
                 if (r.status === 401) { return null; }
+                if (!r.ok) {
+                    // Fall back to flat list if categories endpoint unavailable
+                    return fetch('/api/prompts', { headers: getAdminHeaders() })
+                        .then(r2 => r2.ok ? r2.json().then(list => ({ _flat: list })) : null);
+                }
                 return r.json();
             })
-            .then(function (templates) {
-                if (!templates) { return; }
-                promptTemplates = templates;
-                templates.forEach(function (t) {
-                    const opt = document.createElement('option');
-                    opt.value = t.code;
-                    opt.textContent = t.code + ' — ' + t.name;
-                    select.appendChild(opt);
-                });
-                if (templates.length > 0) {
-                    loadPromptIntoEditor(templates[0].code);
+            .then(function (data) {
+                if (!data) { return; }
+
+                if (data._flat) {
+                    // Flat list fallback
+                    promptTemplates = data._flat;
+                    data._flat.forEach(function (t) {
+                        const opt = document.createElement('option');
+                        opt.value = t.code;
+                        opt.textContent = t.code + ' — ' + t.name;
+                        select.appendChild(opt);
+                    });
+                } else {
+                    // Categorized display
+                    promptTemplates = [];
+                    var categoryLabels = {
+                        'SCORING': '\uD83D\uDCCA Scoring',
+                        'EXTRACTION': '\uD83D\uDCC4 Extraction',
+                        'REGULATION_MAPPING': '\uD83C\uDFDB\uFE0F Regulation Mapping',
+                        'JUSTIFICATION': '\uD83D\uDCDD Justification'
+                    };
+                    Object.keys(data).forEach(function (category) {
+                        var entries = data[category];
+                        if (entries.length === 0) return;
+                        var optgroup = document.createElement('optgroup');
+                        optgroup.label = categoryLabels[category] || category;
+                        entries.forEach(function (t) {
+                            var opt = document.createElement('option');
+                            opt.value = t.code;
+                            opt.textContent = t.code + ' — ' + t.name;
+                            optgroup.appendChild(opt);
+                            promptTemplates.push(t);
+                        });
+                        select.appendChild(optgroup);
+                    });
+                }
+
+                if (promptTemplates.length > 0) {
+                    loadPromptIntoEditor(promptTemplates[0].code);
                 }
             })
             .catch(function () {
