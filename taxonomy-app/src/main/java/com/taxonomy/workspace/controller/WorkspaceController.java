@@ -137,7 +137,7 @@ public class WorkspaceController {
             UserWorkspace ws = workspaceManager.createWorkspace(user, displayName, description);
             return ResponseEntity.ok(workspaceToMap(ws));
         } catch (Exception e) {
-            log.warn("Failed to create workspace for user '{}': {}", user, e.getMessage());
+            log.warn("Failed to create workspace for user '{}'", user, e);
             return ResponseEntity.internalServerError().body(Map.of(
                     "error", "Failed to create workspace",
                     "message", e.getMessage()

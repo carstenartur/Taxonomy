@@ -92,8 +92,10 @@ public class WorkspaceManager {
         ensurePersistentWorkspace(user);
 
         // Find the default (or first) workspace for this user
-        UserWorkspace ws = workspaceRepository.findByUsernameAndIsDefaultTrue(user)
-                .orElseGet(() -> workspaceRepository.findByUsernameAndSharedFalse(user).orElse(null));
+        UserWorkspace ws = workspaceRepository.findByUsernameAndIsDefaultTrue(user).orElse(null);
+        if (ws == null) {
+            ws = workspaceRepository.findByUsernameAndSharedFalse(user).orElse(null);
+        }
 
         String workspaceId;
         if (ws != null) {
@@ -303,7 +305,7 @@ public class WorkspaceManager {
 
         // Remove from active state if loaded
         activeWorkspaces.remove(workspaceId);
-        activeWorkspaceByUser.values().remove(workspaceId);
+        activeWorkspaceByUser.entrySet().removeIf(entry -> entry.getValue().equals(workspaceId));
         log.info("Archived workspace '{}'", workspaceId);
         return ws;
     }
@@ -330,7 +332,7 @@ public class WorkspaceManager {
 
         // Remove from active state
         activeWorkspaces.remove(workspaceId);
-        activeWorkspaceByUser.values().remove(workspaceId);
+        activeWorkspaceByUser.entrySet().removeIf(entry -> entry.getValue().equals(workspaceId));
 
         workspaceRepository.delete(ws);
         log.info("Deleted workspace '{}' for user '{}'", workspaceId, username);
