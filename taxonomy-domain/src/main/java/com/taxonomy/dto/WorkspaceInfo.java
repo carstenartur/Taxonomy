@@ -22,6 +22,9 @@ import java.time.Instant;
  * @param provisioningStatus   provisioning lifecycle state (e.g. READY, NOT_PROVISIONED)
  * @param topologyMode         repository topology mode (e.g. INTERNAL_SHARED)
  * @param sourceRepositoryId   the system repository this workspace is linked to (may be null)
+ * @param description          optional description of the workspace (may be null)
+ * @param archived             whether this workspace has been soft-deleted
+ * @param isDefault            whether this is the user's default workspace
  */
 public record WorkspaceInfo(
     String workspaceId,
@@ -35,8 +38,24 @@ public record WorkspaceInfo(
     Instant lastAccessedAt,
     String provisioningStatus,
     String topologyMode,
-    String sourceRepositoryId
+    String sourceRepositoryId,
+    String description,
+    boolean archived,
+    boolean isDefault
 ) {
+
+    /**
+     * Backward-compatible constructor without the new multi-workspace fields.
+     */
+    public WorkspaceInfo(
+            String workspaceId, String username, String displayName,
+            String currentBranch, String baseBranch, boolean shared,
+            ContextRef currentContext, Instant createdAt, Instant lastAccessedAt,
+            String provisioningStatus, String topologyMode, String sourceRepositoryId) {
+        this(workspaceId, username, displayName, currentBranch, baseBranch, shared,
+                currentContext, createdAt, lastAccessedAt, provisioningStatus,
+                topologyMode, sourceRepositoryId, null, false, false);
+    }
 
     /**
      * Backward-compatible constructor for existing code that does not supply

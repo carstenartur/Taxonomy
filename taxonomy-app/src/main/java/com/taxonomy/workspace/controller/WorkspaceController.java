@@ -3,10 +3,12 @@ package com.taxonomy.workspace.controller;
 import com.taxonomy.dto.ContextComparison;
 import com.taxonomy.dto.ContextMode;
 import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.SemanticChange;
 import com.taxonomy.dto.WorkspaceInfo;
 import com.taxonomy.versioning.model.ContextHistoryRecord;
 import com.taxonomy.versioning.service.ContextCompareService;
 import com.taxonomy.versioning.service.ContextHistoryService;
+import com.taxonomy.versioning.service.ContextNavigationService;
 import com.taxonomy.workspace.service.SyncIntegrationService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceManager;
@@ -21,9 +23,11 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -45,14 +49,18 @@ public class WorkspaceController {
     private final WorkspaceResolver workspaceResolver;
     private final ContextCompareService contextCompareService;
     private final ContextHistoryService contextHistoryService;
+    private final ContextNavigationService contextNavigationService;
     private final SyncIntegrationService syncIntegrationService;
     private final WorkspaceProjectionService workspaceProjectionService;
     private final SystemRepositoryService systemRepositoryService;
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(WorkspaceController.class);
 
     public WorkspaceController(WorkspaceManager workspaceManager,
                                WorkspaceResolver workspaceResolver,
                                ContextCompareService contextCompareService,
                                ContextHistoryService contextHistoryService,
+                               ContextNavigationService contextNavigationService,
                                SyncIntegrationService syncIntegrationService,
                                WorkspaceProjectionService workspaceProjectionService,
                                SystemRepositoryService systemRepositoryService) {
@@ -60,6 +68,7 @@ public class WorkspaceController {
         this.workspaceResolver = workspaceResolver;
         this.contextCompareService = contextCompareService;
         this.contextHistoryService = contextHistoryService;
+        this.contextNavigationService = contextNavigationService;
         this.syncIntegrationService = syncIntegrationService;
         this.workspaceProjectionService = workspaceProjectionService;
         this.systemRepositoryService = systemRepositoryService;
@@ -105,6 +114,143 @@ public class WorkspaceController {
         ));
     }
 
+    // ── Multi-Workspace Management ────────────────────────────────
+
+    @GetMapping("/list")
+    @Operation(summary = "List all workspaces for the current user",
+            description = "Returns all non-archived workspaces for the authenticated user.")
+    public ResponseEntity<List<Map<String, Object>>> listWorkspaces() {
+        String user = workspaceResolver.resolveCurrentUsername();
+        List<UserWorkspace> workspaces = workspaceManager.listUserWorkspaces(user);
+        List<Map<String, Object>> result = workspaces.stream()
+                .map(this::workspaceToMap)
+                .toList();
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/create")
+    @Operation(summary = "Create a new workspace",
+            description = "Creates a new workspace for the authenticated user.")
+    public ResponseEntity<Map<String, Object>> createWorkspace(@RequestBody Map<String, String> body) {
+        String user = workspaceResolver.resolveCurrentUsername();
+        String displayName = body.get("displayName");
+        String description = body.get("description");
+        if (displayName == null || displayName.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "displayName is required"
+            ));
+        }
+        try {
+            UserWorkspace ws = workspaceManager.createWorkspace(user, displayName, description);
+            return ResponseEntity.ok(workspaceToMap(ws));
+        } catch (Exception e) {
+            log.warn("Failed to create workspace for user '{}'", user, e);
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "error", "Failed to create workspace",
+                    "message", e.getMessage()
+            ));
+        }
+    }
+
+    @PutMapping("/{id}/rename")
+    @Operation(summary = "Rename a workspace",
+            description = "Changes the display name of a workspace.")
+    public ResponseEntity<Map<String, Object>> renameWorkspace(
+            @PathVariable String id, @RequestBody Map<String, String> body) {
+        String user = workspaceResolver.resolveCurrentUsername();
+        String displayName = body.get("displayName");
+        if (displayName == null || displayName.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "displayName is required"
+            ));
+        }
+        try {
+            UserWorkspace ws = workspaceManager.renameWorkspace(user, id, displayName);
+            return ResponseEntity.ok(workspaceToMap(ws));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @PutMapping("/{id}/description")
+    @Operation(summary = "Update workspace description",
+            description = "Updates the description of a workspace.")
+    public ResponseEntity<Map<String, Object>> updateDescription(
+            @PathVariable String id, @RequestBody Map<String, String> body) {
+        String user = workspaceResolver.resolveCurrentUsername();
+        String description = body.get("description");
+        try {
+            UserWorkspace ws = workspaceManager.updateDescription(user, id, description);
+            return ResponseEntity.ok(workspaceToMap(ws));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @PostMapping("/{id}/switch")
+    @Operation(summary = "Switch active workspace",
+            description = "Switches the current user's active workspace.")
+    public ResponseEntity<Map<String, Object>> switchWorkspace(@PathVariable String id) {
+        String user = workspaceResolver.resolveCurrentUsername();
+        try {
+            UserWorkspace ws = workspaceManager.switchWorkspace(user, id);
+            return ResponseEntity.ok(workspaceToMap(ws));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @PostMapping("/{id}/archive")
+    @Operation(summary = "Archive a workspace",
+            description = "Soft-deletes a workspace by marking it as archived.")
+    public ResponseEntity<Map<String, Object>> archiveWorkspace(@PathVariable String id) {
+        String user = workspaceResolver.resolveCurrentUsername();
+        try {
+            UserWorkspace ws = workspaceManager.archiveWorkspace(id, user);
+            return ResponseEntity.ok(workspaceToMap(ws));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Delete a workspace",
+            description = "Permanently deletes a workspace. Only the owner can delete " +
+                    "their own non-shared, non-default workspaces.")
+    public ResponseEntity<Map<String, Object>> deleteWorkspace(@PathVariable String id) {
+        String user = workspaceResolver.resolveCurrentUsername();
+        try {
+            workspaceManager.deleteWorkspace(id, user);
+            return ResponseEntity.ok(Map.of(
+                    "deleted", id,
+                    "success", true
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @GetMapping("/{id}/info")
+    @Operation(summary = "Get workspace info by ID",
+            description = "Returns workspace metadata for the specified workspace.")
+    public ResponseEntity<Map<String, Object>> getWorkspaceInfo(@PathVariable String id) {
+        UserWorkspace ws = workspaceManager.getWorkspaceById(id);
+        if (ws == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(workspaceToMap(ws));
+    }
+
     // ── Compare ─────────────────────────────────────────────────────
 
     @PostMapping("/compare")
@@ -116,7 +262,8 @@ public class WorkspaceController {
             @RequestParam String leftBranch,
             @RequestParam String rightBranch,
             @RequestParam(required = false) String leftCommit,
-            @RequestParam(required = false) String rightCommit) {
+            @RequestParam(required = false) String rightCommit,
+            @RequestParam(required = false) Set<String> filter) {
         try {
             ContextRef left = readOnlyContextRef(leftBranch, leftCommit);
             ContextRef right = readOnlyContextRef(rightBranch, rightCommit);
@@ -127,7 +274,7 @@ public class WorkspaceController {
             } else {
                 comparison = contextCompareService.compareBranches(left, right);
             }
-            return ResponseEntity.ok(comparison);
+            return ResponseEntity.ok(applyFilter(comparison, filter));
         } catch (IOException e) {
             return ResponseEntity.internalServerError().body(Map.of(
                     "error", "Compare failed",
@@ -380,5 +527,108 @@ public class WorkspaceController {
                 UUID.randomUUID().toString(), branch, commitId,
                 Instant.now(), ContextMode.READ_ONLY,
                 null, null, null, null, null, false);
+    }
+
+    /**
+     * Convert a {@link UserWorkspace} entity to a response map.
+     */
+    private Map<String, Object> workspaceToMap(UserWorkspace ws) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("workspaceId", ws.getWorkspaceId());
+        map.put("username", ws.getUsername());
+        map.put("displayName", ws.getDisplayName());
+        map.put("description", ws.getDescription());
+        map.put("currentBranch", ws.getCurrentBranch());
+        map.put("baseBranch", ws.getBaseBranch());
+        map.put("shared", ws.isShared());
+        map.put("archived", ws.isArchived());
+        map.put("isDefault", ws.isDefault());
+        map.put("provisioningStatus", ws.getProvisioningStatus().name());
+        map.put("topologyMode", ws.getTopologyMode().name());
+        map.put("createdAt", ws.getCreatedAt() != null ? ws.getCreatedAt().toString() : null);
+        map.put("lastAccessedAt", ws.getLastAccessedAt() != null ? ws.getLastAccessedAt().toString() : null);
+        return map;
+    }
+
+    private ContextComparison applyFilter(ContextComparison comparison, Set<String> filter) {
+        if (filter == null || filter.isEmpty()) {
+            return comparison;
+        }
+        List<SemanticChange> filtered = comparison.changes().stream()
+                .filter(c -> {
+                    if (filter.contains("elements") && "ELEMENT".equals(c.category())) return true;
+                    if (filter.contains("relations") && "RELATION".equals(c.category())) return true;
+                    return false;
+                })
+                .toList();
+        return new ContextComparison(comparison.left(), comparison.right(),
+                comparison.summary(), filtered, comparison.rawDslDiff());
+    }
+
+    @GetMapping("/history/origin-stack")
+    @Operation(summary = "Get origin stack from current context",
+            description = "Returns the chain of origin contexts from the current context back to the root.")
+    public ResponseEntity<List<ContextHistoryRecord>> getOriginStack() {
+        String user = workspaceResolver.resolveCurrentUsername();
+        List<ContextHistoryRecord> history = contextHistoryService.getHistory(user);
+        // Filter to only entries that form the origin chain
+        // Walk backwards from most recent, following originContextId links
+        List<ContextHistoryRecord> originStack = new ArrayList<>();
+        if (!history.isEmpty()) {
+            // Start with the most recent entry
+            ContextHistoryRecord current = history.get(0);
+            originStack.add(current);
+            // Follow origin chain
+            for (ContextHistoryRecord record : history) {
+                if (current.getOriginContextId() != null
+                        && current.getOriginContextId().equals(record.getToContextId())) {
+                    originStack.add(record);
+                    current = record;
+                }
+            }
+        }
+        return ResponseEntity.ok(originStack);
+    }
+
+    @PostMapping("/history/return-to")
+    @Operation(summary = "Return to a specific history entry",
+            description = "Navigates to a specific context from the navigation history, " +
+                    "updating the user's current context and recording the navigation event.")
+    public ResponseEntity<Map<String, Object>> returnToHistoryEntry(
+            @RequestParam String contextId) {
+        String user = workspaceResolver.resolveCurrentUsername();
+        List<ContextHistoryRecord> history = contextHistoryService.getHistory(user);
+        // Find the target entry
+        ContextHistoryRecord target = history.stream()
+                .filter(r -> contextId.equals(r.getToContextId()))
+                .findFirst()
+                .orElse(null);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (target != null) {
+            // Perform actual navigation via the context navigation service
+            ContextRef newContext = contextNavigationService.switchContext(
+                    user, target.getToBranch(), target.getToCommitId());
+            result.put("success", true);
+            result.put("branch", newContext.branch());
+            result.put("commitId", newContext.commitId());
+            result.put("contextId", newContext.contextId());
+        } else {
+            result.put("success", false);
+            result.put("error", "History entry not found for contextId: " + contextId);
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    @DeleteMapping("/history")
+    @Operation(summary = "Clear navigation history",
+            description = "Deletes all navigation history entries for the current user.")
+    public ResponseEntity<Map<String, Object>> clearHistory() {
+        String user = workspaceResolver.resolveCurrentUsername();
+        contextHistoryService.clearHistory(user);
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "History cleared for user: " + user
+        ));
     }
 }

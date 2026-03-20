@@ -60,8 +60,13 @@ public class WorkspaceContextResolver {
             return WorkspaceContext.SHARED;
         }
 
-        // Check persistent (provisioned) workspace only
-        UserWorkspace ws = workspaceManager.findUserWorkspace(username);
+        // Try active workspace first (multi-workspace aware)
+        UserWorkspace ws = workspaceManager.findActiveWorkspace(username);
+        if (ws == null) {
+            // Fall back to legacy single-workspace lookup for backward compatibility
+            ws = workspaceManager.findUserWorkspace(username);
+        }
+
         if (ws != null && ws.getWorkspaceId() != null) {
             String branch = ws.getCurrentBranch() != null
                     ? ws.getCurrentBranch()

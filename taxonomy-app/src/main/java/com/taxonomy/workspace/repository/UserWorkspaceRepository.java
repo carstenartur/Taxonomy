@@ -22,4 +22,12 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
     Optional<UserWorkspace> findBySharedTrue();
 
     boolean existsByUsername(String username);
+
+    List<UserWorkspace> findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc(String username);
+
+    Optional<UserWorkspace> findByUsernameAndIsDefaultTrue(String username);
+
+    Optional<UserWorkspace> findByUsernameAndDisplayName(String username, String displayName);
+
+    long countByUsernameAndArchivedFalse(String username);
 }

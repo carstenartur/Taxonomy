@@ -78,7 +78,18 @@ public class ContextCompareService {
         DiffSummary summary = buildDiffSummary(diff);
         List<SemanticChange> changes = buildSemanticChanges(diff);
 
-        return new ContextComparison(left, right, summary, changes, null);
+        String rawDiff = null;
+        try {
+            String leftCommit = gitRepository.getHeadCommit(left.branch());
+            String rightCommit = gitRepository.getHeadCommit(right.branch());
+            if (leftCommit != null && rightCommit != null) {
+                rawDiff = gitRepository.textDiff(leftCommit, rightCommit);
+            }
+        } catch (Exception e) {
+            log.debug("Could not generate raw diff for branch compare: {}", e.getMessage());
+        }
+
+        return new ContextComparison(left, right, summary, changes, rawDiff);
     }
 
     // ── Internal helpers ────────────────────────────────────────────

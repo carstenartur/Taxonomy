@@ -3,6 +3,7 @@ package com.taxonomy.versioning.controller;
 import com.taxonomy.dto.ContextComparison;
 import com.taxonomy.dto.ContextHistoryEntry;
 import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.SemanticChange;
 import com.taxonomy.dto.TransferConflict;
 import com.taxonomy.dto.TransferSelection;
 import com.taxonomy.versioning.service.ContextCompareService;
@@ -20,6 +21,7 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * REST API for architecture context navigation.
@@ -138,7 +140,8 @@ public class ContextNavigationController {
             @RequestParam String leftBranch,
             @RequestParam(required = false) String leftCommit,
             @RequestParam String rightBranch,
-            @RequestParam(required = false) String rightCommit) {
+            @RequestParam(required = false) String rightCommit,
+            @RequestParam(required = false) Set<String> filter) {
         try {
             ContextRef left = new ContextRef(
                     null, leftBranch, leftCommit, null, null,
@@ -148,12 +151,12 @@ public class ContextNavigationController {
                     null, null, null, null, null, false);
 
             ContextComparison comparison;
-            if (leftCommit != null && rightCommit != null) {
+            if (leftCommit != null || rightCommit != null) {
                 comparison = compareService.compareContexts(left, right);
             } else {
                 comparison = compareService.compareBranches(left, right);
             }
-            return ResponseEntity.ok(comparison);
+            return ResponseEntity.ok(applyFilter(comparison, filter));
         } catch (IOException e) {
             log.error("Compare failed", e);
             return ResponseEntity.internalServerError().build();
@@ -200,5 +203,22 @@ public class ContextNavigationController {
             return ResponseEntity.internalServerError().body(
                     Map.of("error", "Transfer failed: " + e.getMessage()));
         }
+    }
+
+    // ── Internal helpers ────────────────────────────────────────────
+
+    private ContextComparison applyFilter(ContextComparison comparison, Set<String> filter) {
+        if (filter == null || filter.isEmpty()) {
+            return comparison;
+        }
+        List<SemanticChange> filtered = comparison.changes().stream()
+                .filter(c -> {
+                    if (filter.contains("elements") && "ELEMENT".equals(c.category())) return true;
+                    if (filter.contains("relations") && "RELATION".equals(c.category())) return true;
+                    return false;
+                })
+                .toList();
+        return new ContextComparison(comparison.left(), comparison.right(),
+                comparison.summary(), filtered, comparison.rawDslDiff());
     }
 }
