@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocumentAnalysisService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.service</a> &gt; <span class="el_source">DocumentAnalysisService.java</span></div><h1>DocumentAnalysisService.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.service;
+
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AiExtractedCandidate;
+import com.taxonomy.dto.RegulationArchitectureMatch;
+import com.taxonomy.shared.service.PromptTemplateService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * AI-powered document analysis service that provides:
+ * &lt;ul&gt;
+ *   &lt;li&gt;LLM-assisted extraction of requirement candidates from document text&lt;/li&gt;
+ *   &lt;li&gt;Direct regulation-to-architecture taxonomy mapping via LLM&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;Falls back gracefully when the LLM is unavailable or returns invalid responses.
+ */
+@Service
+public class DocumentAnalysisService {
+
+<span class="fc" id="L30">    private static final Logger log = LoggerFactory.getLogger(DocumentAnalysisService.class);</span>
+
+    /** Maximum characters of document text sent to the LLM in a single prompt. */
+    private static final int MAX_DOCUMENT_LENGTH = 15_000;
+
+    private final PromptTemplateService promptTemplateService;
+    private final LlmService llmService;
+    private final TaxonomyService taxonomyService;
+    private final ObjectMapper objectMapper;
+
+    public DocumentAnalysisService(PromptTemplateService promptTemplateService,
+                                    LlmService llmService,
+                                    TaxonomyService taxonomyService,
+<span class="fc" id="L43">                                    ObjectMapper objectMapper) {</span>
+<span class="fc" id="L44">        this.promptTemplateService = promptTemplateService;</span>
+<span class="fc" id="L45">        this.llmService = llmService;</span>
+<span class="fc" id="L46">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L47">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L48">    }</span>
+
+    /**
+     * Extracts requirement candidates from document text using the LLM.
+     * Falls back to an empty list if the LLM is unavailable or returns invalid JSON.
+     *
+     * @param documentText raw document text
+     * @param sourceType   &quot;REGULATION&quot; uses the specialized regulation extraction prompt;
+     *                     all other values use the general extraction prompt
+     * @return list of AI-extracted requirement candidates
+     */
+    public List&lt;AiExtractedCandidate&gt; extractWithAi(String documentText, String sourceType) {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (!llmService.isAvailable()) {</span>
+<span class="fc" id="L61">            log.warn(&quot;LLM is not available — AI extraction skipped&quot;);</span>
+<span class="fc" id="L62">            return Collections.emptyList();</span>
+        }
+
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        String promptCode = &quot;REGULATION&quot;.equalsIgnoreCase(sourceType)</span>
+<span class="fc" id="L66">                ? &quot;extract-regulation&quot; : &quot;extract-default&quot;;</span>
+<span class="fc" id="L67">        String prompt = promptTemplateService.renderExtractionPrompt(</span>
+<span class="fc" id="L68">                promptCode, truncateIfNeeded(documentText));</span>
+
+<span class="fc" id="L70">        log.info(&quot;Calling LLM for AI extraction (prompt code: {})&quot;, promptCode);</span>
+<span class="fc" id="L71">        String response = llmService.callLlmRaw(prompt);</span>
+<span class="fc" id="L72">        return parseExtractionResponse(response);</span>
+    }
+
+    /**
+     * Maps regulation text directly to architecture taxonomy nodes using the LLM.
+     * Returns direct node matches with confidence and paragraph references.
+     *
+     * @param regulationText raw regulation text
+     * @return list of regulation-to-architecture matches
+     */
+    public List&lt;RegulationArchitectureMatch&gt; mapRegulationToArchitecture(String regulationText) {
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (!llmService.isAvailable()) {</span>
+<span class="fc" id="L84">            log.warn(&quot;LLM is not available — regulation mapping skipped&quot;);</span>
+<span class="fc" id="L85">            return Collections.emptyList();</span>
+        }
+
+<span class="fc" id="L88">        String nodeList = buildFullNodeList();</span>
+<span class="fc" id="L89">        String prompt = promptTemplateService.renderRegulationMappingPrompt(</span>
+<span class="fc" id="L90">                &quot;reg-map-default&quot;, truncateIfNeeded(regulationText), nodeList);</span>
+
+<span class="fc" id="L92">        log.info(&quot;Calling LLM for regulation-to-architecture mapping&quot;);</span>
+<span class="fc" id="L93">        String response = llmService.callLlmRaw(prompt);</span>
+<span class="fc" id="L94">        return parseRegulationMappingResponse(response);</span>
+    }
+
+    // ── Internal helpers ──────────────────────────────────────────────────────
+
+    List&lt;AiExtractedCandidate&gt; parseExtractionResponse(String response) {
+<span class="pc bpc" id="L100" title="1 of 4 branches missed.">        if (response == null || response.isBlank()) {</span>
+<span class="fc" id="L101">            log.warn(&quot;Empty LLM response for AI extraction&quot;);</span>
+<span class="fc" id="L102">            return Collections.emptyList();</span>
+        }
+        try {
+<span class="fc" id="L105">            String json = extractJsonArray(response);</span>
+<span class="fc" id="L106">            return objectMapper.readValue(json, new TypeReference&lt;List&lt;AiExtractedCandidate&gt;&gt;() {});</span>
+<span class="fc" id="L107">        } catch (Exception e) {</span>
+<span class="fc" id="L108">            log.warn(&quot;Failed to parse AI extraction response: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L109">            return Collections.emptyList();</span>
+        }
+    }
+
+    List&lt;RegulationArchitectureMatch&gt; parseRegulationMappingResponse(String response) {
+<span class="pc bpc" id="L114" title="2 of 4 branches missed.">        if (response == null || response.isBlank()) {</span>
+<span class="nc" id="L115">            log.warn(&quot;Empty LLM response for regulation mapping&quot;);</span>
+<span class="nc" id="L116">            return Collections.emptyList();</span>
+        }
+        try {
+<span class="fc" id="L119">            String json = extractJsonArray(response);</span>
+<span class="fc" id="L120">            return objectMapper.readValue(json, new TypeReference&lt;List&lt;RegulationArchitectureMatch&gt;&gt;() {});</span>
+<span class="nc" id="L121">        } catch (Exception e) {</span>
+<span class="nc" id="L122">            log.warn(&quot;Failed to parse regulation mapping response: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L123">            return Collections.emptyList();</span>
+        }
+    }
+
+    String truncateIfNeeded(String text) {
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (text == null) return &quot;&quot;;</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (text.length() &lt;= MAX_DOCUMENT_LENGTH) return text;</span>
+<span class="fc" id="L130">        log.info(&quot;Document text truncated from {} to {} characters&quot;, text.length(), MAX_DOCUMENT_LENGTH);</span>
+<span class="fc" id="L131">        return text.substring(0, MAX_DOCUMENT_LENGTH) + &quot;\n\n[... truncated ...]&quot;;</span>
+    }
+
+    private String buildFullNodeList() {
+<span class="fc" id="L135">        List&lt;TaxonomyNode&gt; roots = taxonomyService.getRootNodes();</span>
+<span class="fc" id="L136">        StringBuilder sb = new StringBuilder();</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        for (TaxonomyNode root : roots) {</span>
+<span class="nc" id="L138">            appendNodeTree(sb, root, 0);</span>
+<span class="nc" id="L139">        }</span>
+<span class="fc" id="L140">        return sb.toString();</span>
+    }
+
+    private void appendNodeTree(StringBuilder sb, TaxonomyNode node, int depth) {
+<span class="nc" id="L144">        sb.append(&quot;  &quot;.repeat(depth))</span>
+<span class="nc" id="L145">          .append(node.getCode()).append(&quot;: &quot;).append(node.getName()).append(&quot;\n&quot;);</span>
+<span class="nc" id="L146">        List&lt;TaxonomyNode&gt; children = taxonomyService.getChildrenOf(node.getCode());</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">        for (TaxonomyNode child : children) {</span>
+<span class="nc" id="L148">            appendNodeTree(sb, child, depth + 1);</span>
+<span class="nc" id="L149">        }</span>
+<span class="nc" id="L150">    }</span>
+
+    /**
+     * Extracts a JSON array from a text response that may contain markdown code fences
+     * or surrounding prose.
+     */
+    private String extractJsonArray(String text) {
+        // Strip markdown code fences
+<span class="fc" id="L158">        String stripped = text.strip();</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (stripped.startsWith(&quot;```&quot;)) {</span>
+<span class="fc" id="L160">            int firstNewline = stripped.indexOf('\n');</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">            if (firstNewline &gt; 0) {</span>
+<span class="fc" id="L162">                stripped = stripped.substring(firstNewline + 1);</span>
+            }
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">            if (stripped.endsWith(&quot;```&quot;)) {</span>
+<span class="fc" id="L165">                stripped = stripped.substring(0, stripped.length() - 3);</span>
+            }
+<span class="fc" id="L167">            stripped = stripped.strip();</span>
+        }
+        // Find outermost JSON array
+<span class="fc" id="L170">        int start = stripped.indexOf('[');</span>
+<span class="fc" id="L171">        int end = stripped.lastIndexOf(']');</span>
+<span class="pc bpc" id="L172" title="1 of 4 branches missed.">        if (start &gt;= 0 &amp;&amp; end &gt; start) {</span>
+<span class="fc" id="L173">            return stripped.substring(start, end + 1);</span>
+        }
+<span class="fc" id="L175">        return stripped;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

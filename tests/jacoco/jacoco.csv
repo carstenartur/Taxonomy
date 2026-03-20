@@ -54,7 +54,7 @@ Taxonomy Application,com.taxonomy.shared.controller,PreferencesController,67,10,
 Taxonomy Application,com.taxonomy.shared.controller,HelpController,104,958,20,8,24,48,14,11,1,10
 Taxonomy Application,com.taxonomy.shared.controller,I18nApiController,6,61,1,3,2,16,1,4,0,3
 Taxonomy Application,com.taxonomy.shared.controller,HelpController.DocEntry,0,15,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.shared.controller,AdminApiController,56,361,18,16,11,71,16,13,1,11
+Taxonomy Application,com.taxonomy.shared.controller,AdminApiController,60,450,19,21,12,85,17,16,1,12
 Taxonomy Application,com.taxonomy.shared.controller,AboutController,26,129,5,5,9,24,6,4,1,4
 Taxonomy Application,com.taxonomy.security.controller,ChangePasswordController,97,15,14,0,25,6,8,3,1,3
 Taxonomy Application,com.taxonomy.security.controller,UserManagementController,240,300,38,16,49,64,30,15,6,12
@@ -140,17 +140,21 @@ Taxonomy Application,com.taxonomy.architecture.service,CommitIndexService,135,35
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService.PatternTemplate,0,9,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.provenance.service,SourceProvenanceService,15,248,2,2,3,54,3,12,1,12
 Taxonomy Application,com.taxonomy.provenance.service,DocumentParserService,86,268,24,32,17,62,19,17,0,8
+Taxonomy Application,com.taxonomy.provenance.service,DocumentAnalysisService,66,236,10,22,14,58,10,16,1,9
+Taxonomy Application,com.taxonomy.provenance.service,DocumentAnalysisService.new TypeReference() {...},0,6,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.provenance.service,DocumentAnalysisService.new TypeReference() {...},0,6,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.dsl.storage,DslBranch,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.dsl.storage,DslGitRepository,162,1448,27,73,30,307,26,53,2,27
 Taxonomy Application,com.taxonomy.dsl.storage,DslStorageConfig,0,15,0,0,0,4,0,3,0,3
 Taxonomy Application,com.taxonomy.dsl.storage,DslCommit,0,15,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.provenance.controller,DocumentImportController,149,92,14,6,31,24,9,7,1,5
+Taxonomy Application,com.taxonomy.provenance.controller,DocumentImportController,345,95,40,6,71,25,25,7,4,5
 Taxonomy Application,com.taxonomy.relations.model,RelationHypothesis,8,82,1,1,2,25,3,22,2,22
 Taxonomy Application,com.taxonomy.relations.model,RequirementCoverage,0,39,0,0,0,15,0,8,0,8
 Taxonomy Application,com.taxonomy.relations.model,RelationEvidence,55,32,1,1,16,10,17,8,16,8
 Taxonomy Application,com.taxonomy.relations.model,RelationProposal,8,89,1,1,2,27,3,24,2,24
 Taxonomy Application,com.taxonomy.shared.model,FloatArrayConverter,0,68,0,8,0,13,0,7,0,3
-Taxonomy Application,com.taxonomy.shared.service,PromptTemplateService,46,268,6,12,13,59,6,17,1,13
+Taxonomy Application,com.taxonomy.shared.service,PromptTemplateService,46,342,6,20,13,75,6,26,1,18
+Taxonomy Application,com.taxonomy.shared.service,PromptTemplateService.PromptCategory,0,27,0,0,0,5,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.service,LocalEmbeddingService,448,260,36,30,96,65,36,21,8,16
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.State,0,33,0,0,0,6,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService,0,77,0,4,0,13,0,10,0,8
@@ -175,7 +179,7 @@ Taxonomy Application,com.taxonomy.analysis.service,LlmService.ScoreParseResult,6
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},6,0,0,0,1,0,1,0,1,0
-Taxonomy Application,com.taxonomy.analysis.service,LlmService,1912,846,195,57,392,196,131,36,17,24
+Taxonomy Application,com.taxonomy.analysis.service,LlmService,1996,846,209,57,415,196,139,36,18,24
 Taxonomy Application,com.taxonomy.analysis.service,LlmProvider,0,45,0,0,0,8,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,AnalysisFacade,25,0,0,0,7,0,3,0,3,0
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser,409,157,45,9,81,27,30,10,7,6

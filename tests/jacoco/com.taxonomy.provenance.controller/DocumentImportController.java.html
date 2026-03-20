@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocumentImportController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.controller</a> &gt; <span class="el_source">DocumentImportController.java</span></div><h1>DocumentImportController.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.controller;
 
+import com.taxonomy.dto.AiExtractedCandidate;
 import com.taxonomy.dto.DocumentParseResult;
+import com.taxonomy.dto.RegulationArchitectureMatch;
 import com.taxonomy.dto.RequirementSourceLinkDto;
 import com.taxonomy.dto.SourceArtifactDto;
 import com.taxonomy.model.LinkType;
@@ -8,6 +10,7 @@ import com.taxonomy.model.SourceType;
 import com.taxonomy.provenance.model.SourceArtifact;
 import com.taxonomy.provenance.model.SourceFragment;
 import com.taxonomy.provenance.model.SourceVersion;
+import com.taxonomy.provenance.service.DocumentAnalysisService;
 import com.taxonomy.provenance.service.DocumentParserService;
 import com.taxonomy.provenance.service.SourceProvenanceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,6 +31,8 @@ import java.util.Map;
  * &lt;p&gt;Endpoints:
  * &lt;ul&gt;
  *   &lt;li&gt;{@code POST /api/documents/upload}  — Upload and parse a PDF/DOCX document&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/documents/extract-ai}  — AI-assisted requirement extraction&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/documents/map-regulation}  — Direct regulation-to-architecture mapping&lt;/li&gt;
  *   &lt;li&gt;{@code GET  /api/provenance/sources} — List all source artifacts&lt;/li&gt;
  *   &lt;li&gt;{@code GET  /api/provenance/links/{requirementId}} — Get provenance links for a requirement&lt;/li&gt;
  * &lt;/ul&gt;
@@ -37,19 +42,22 @@ import java.util.Map;
 @Tag(name = &quot;Document Import &amp; Provenance&quot;)
 public class DocumentImportController {
 
-<span class="fc" id="L40">    private static final Logger log = LoggerFactory.getLogger(DocumentImportController.class);</span>
+<span class="fc" id="L45">    private static final Logger log = LoggerFactory.getLogger(DocumentImportController.class);</span>
 
     /** Maximum upload size: 50 MB. */
     private static final long MAX_UPLOAD_SIZE = 50L * 1024 * 1024;
 
     private final DocumentParserService parserService;
     private final SourceProvenanceService provenanceService;
+    private final DocumentAnalysisService analysisService;
 
     public DocumentImportController(DocumentParserService parserService,
-<span class="fc" id="L49">                                     SourceProvenanceService provenanceService) {</span>
-<span class="fc" id="L50">        this.parserService = parserService;</span>
-<span class="fc" id="L51">        this.provenanceService = provenanceService;</span>
-<span class="fc" id="L52">    }</span>
+                                     SourceProvenanceService provenanceService,
+<span class="fc" id="L56">                                     DocumentAnalysisService analysisService) {</span>
+<span class="fc" id="L57">        this.parserService = parserService;</span>
+<span class="fc" id="L58">        this.provenanceService = provenanceService;</span>
+<span class="fc" id="L59">        this.analysisService = analysisService;</span>
+<span class="fc" id="L60">    }</span>
 
     /**
      * Uploads and parses a PDF or DOCX document, extracting requirement
@@ -64,44 +72,119 @@ public class DocumentImportController {
             @RequestParam(&quot;file&quot;) MultipartFile file,
             @RequestParam(value = &quot;title&quot;, required = false) String title,
             @RequestParam(value = &quot;sourceType&quot;, required = false, defaultValue = &quot;REGULATION&quot;) String sourceType) {
-<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
-<span class="fc" id="L68">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;File is empty&quot;));</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
+<span class="fc" id="L76">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;File is empty&quot;));</span>
         }
-<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
-<span class="nc" id="L71">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
+<span class="nc" id="L79">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
                     &quot;File exceeds maximum size of &quot; + (MAX_UPLOAD_SIZE / (1024 * 1024)) + &quot; MB&quot;));
         }
 
         try {
             // Parse the document
-<span class="fc" id="L77">            DocumentParseResult result = parserService.parse(file);</span>
+<span class="fc" id="L85">            DocumentParseResult result = parserService.parse(file);</span>
 
             // Determine source type
             SourceType type;
             try {
-<span class="fc" id="L82">                type = SourceType.valueOf(sourceType.toUpperCase());</span>
-<span class="fc" id="L83">            } catch (IllegalArgumentException e) {</span>
-<span class="fc" id="L84">                type = SourceType.UPLOADED_DOCUMENT;</span>
-<span class="fc" id="L85">            }</span>
+<span class="fc" id="L90">                type = SourceType.valueOf(sourceType.toUpperCase());</span>
+<span class="fc" id="L91">            } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L92">                type = SourceType.UPLOADED_DOCUMENT;</span>
+<span class="fc" id="L93">            }</span>
 
             // Create source artifact
-<span class="pc bpc" id="L88" title="1 of 4 branches missed.">            String artifactTitle = (title != null &amp;&amp; !title.isBlank())</span>
-<span class="fc" id="L89">                    ? title : file.getOriginalFilename();</span>
-<span class="fc" id="L90">            SourceArtifact artifact = provenanceService.createArtifact(type, artifactTitle);</span>
+<span class="pc bpc" id="L96" title="1 of 4 branches missed.">            String artifactTitle = (title != null &amp;&amp; !title.isBlank())</span>
+<span class="fc" id="L97">                    ? title : file.getOriginalFilename();</span>
+<span class="fc" id="L98">            SourceArtifact artifact = provenanceService.createArtifact(type, artifactTitle);</span>
 
             // Create source version
-<span class="fc" id="L93">            String contentHash = parserService.computeContentHash(file.getBytes());</span>
-<span class="fc" id="L94">            SourceVersion version = provenanceService.createVersion(</span>
-<span class="fc" id="L95">                    artifact, result.getMimeType(), contentHash);</span>
+<span class="fc" id="L101">            String contentHash = parserService.computeContentHash(file.getBytes());</span>
+<span class="fc" id="L102">            SourceVersion version = provenanceService.createVersion(</span>
+<span class="fc" id="L103">                    artifact, result.getMimeType(), contentHash);</span>
 
-<span class="fc" id="L97">            result.setSourceArtifactId(artifact.getId());</span>
-<span class="fc" id="L98">            result.setSourceVersionId(version.getId());</span>
+<span class="fc" id="L105">            result.setSourceArtifactId(artifact.getId());</span>
+<span class="fc" id="L106">            result.setSourceVersionId(version.getId());</span>
 
-<span class="fc" id="L100">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L101">        } catch (Exception e) {</span>
-<span class="nc" id="L102">            log.error(&quot;Document upload failed for file '{}'&quot;, file.getOriginalFilename(), e);</span>
-<span class="nc" id="L103">            return ResponseEntity.badRequest().body(Map.of(</span>
+<span class="fc" id="L108">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L109">        } catch (Exception e) {</span>
+<span class="nc" id="L110">            log.error(&quot;Document upload failed for file '{}'&quot;, file.getOriginalFilename(), e);</span>
+<span class="nc" id="L111">            return ResponseEntity.badRequest().body(Map.of(</span>
                     &quot;error&quot;, &quot;Failed to parse document. Please check file format and try again.&quot;));
+        }
+    }
+
+    /**
+     * Uploads and parses a PDF or DOCX document, then uses the LLM to extract
+     * requirement candidates with AI assistance.  Returns both the rule-based
+     * parse result and AI-extracted candidates.
+     */
+    @Operation(summary = &quot;AI-assisted extraction&quot;,
+               description = &quot;Uploads a document and uses AI to extract requirement candidates &quot; +
+                       &quot;with confidence scores and requirement type classification.&quot;)
+    @PostMapping(value = &quot;/documents/extract-ai&quot;, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity&lt;?&gt; extractWithAi(
+            @RequestParam(&quot;file&quot;) MultipartFile file,
+            @RequestParam(value = &quot;sourceType&quot;, defaultValue = &quot;REGULATION&quot;) String sourceType) {
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (file.isEmpty()) {</span>
+<span class="nc" id="L129">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;File is empty&quot;));</span>
+        }
+<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
+<span class="nc" id="L132">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
+                    &quot;File exceeds maximum size of &quot; + (MAX_UPLOAD_SIZE / (1024 * 1024)) + &quot; MB&quot;));
+        }
+
+        try {
+<span class="nc" id="L137">            DocumentParseResult parseResult = parserService.parse(file);</span>
+            // Build full text from all candidates for AI analysis
+<span class="nc" id="L139">            String fullText = buildFullTextFromCandidates(parseResult);</span>
+<span class="nc" id="L140">            List&lt;AiExtractedCandidate&gt; aiCandidates =</span>
+<span class="nc" id="L141">                    analysisService.extractWithAi(fullText, sourceType);</span>
+
+<span class="nc" id="L143">            return ResponseEntity.ok(Map.of(</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">                    &quot;fileName&quot;, parseResult.getFileName() != null ? parseResult.getFileName() : &quot;&quot;,</span>
+<span class="nc" id="L145">                    &quot;totalPages&quot;, parseResult.getTotalPages(),</span>
+<span class="nc bnc" id="L146" title="All 2 branches missed.">                    &quot;ruleBased&quot;, parseResult.getCandidates() != null ? parseResult.getCandidates() : List.of(),</span>
+                    &quot;aiCandidates&quot;, aiCandidates));
+<span class="nc" id="L148">        } catch (Exception e) {</span>
+<span class="nc" id="L149">            log.error(&quot;AI extraction failed for file '{}'&quot;, file.getOriginalFilename(), e);</span>
+<span class="nc" id="L150">            return ResponseEntity.badRequest().body(Map.of(</span>
+<span class="nc" id="L151">                    &quot;error&quot;, &quot;AI extraction failed: &quot; + e.getMessage()));</span>
+        }
+    }
+
+    /**
+     * Uploads a regulation document and maps it directly to architecture taxonomy
+     * nodes using the LLM.  Returns matches with confidence scores, link types,
+     * and paragraph references.
+     */
+    @Operation(summary = &quot;Direct regulation-to-architecture mapping&quot;,
+               description = &quot;Uploads a regulation document and maps it directly to architecture &quot; +
+                       &quot;taxonomy nodes with confidence scores and link types.&quot;)
+    @PostMapping(value = &quot;/documents/map-regulation&quot;, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity&lt;?&gt; mapRegulation(@RequestParam(&quot;file&quot;) MultipartFile file) {
+<span class="nc bnc" id="L165" title="All 2 branches missed.">        if (file.isEmpty()) {</span>
+<span class="nc" id="L166">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;File is empty&quot;));</span>
+        }
+<span class="nc bnc" id="L168" title="All 2 branches missed.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
+<span class="nc" id="L169">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
+                    &quot;File exceeds maximum size of &quot; + (MAX_UPLOAD_SIZE / (1024 * 1024)) + &quot; MB&quot;));
+        }
+
+        try {
+<span class="nc" id="L174">            DocumentParseResult parseResult = parserService.parse(file);</span>
+            // Build full text from all candidates for regulation mapping
+<span class="nc" id="L176">            String fullText = buildFullTextFromCandidates(parseResult);</span>
+<span class="nc" id="L177">            List&lt;RegulationArchitectureMatch&gt; matches =</span>
+<span class="nc" id="L178">                    analysisService.mapRegulationToArchitecture(fullText);</span>
+
+<span class="nc" id="L180">            return ResponseEntity.ok(Map.of(</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">                    &quot;fileName&quot;, parseResult.getFileName() != null ? parseResult.getFileName() : &quot;&quot;,</span>
+<span class="nc" id="L182">                    &quot;totalPages&quot;, parseResult.getTotalPages(),</span>
+                    &quot;matches&quot;, matches));
+<span class="nc" id="L184">        } catch (Exception e) {</span>
+<span class="nc" id="L185">            log.error(&quot;Regulation mapping failed for file '{}'&quot;, file.getOriginalFilename(), e);</span>
+<span class="nc" id="L186">            return ResponseEntity.badRequest().body(Map.of(</span>
+<span class="nc" id="L187">                    &quot;error&quot;, &quot;Regulation mapping failed: &quot; + e.getMessage()));</span>
         }
     }
 
@@ -112,7 +195,7 @@ public class DocumentImportController {
                description = &quot;Returns all registered source artifacts (documents, requests, etc.)&quot;)
     @GetMapping(&quot;/provenance/sources&quot;)
     public ResponseEntity&lt;List&lt;SourceArtifactDto&gt;&gt; listSources() {
-<span class="fc" id="L115">        return ResponseEntity.ok(provenanceService.listAllArtifacts());</span>
+<span class="fc" id="L198">        return ResponseEntity.ok(provenanceService.listAllArtifacts());</span>
     }
 
     /**
@@ -123,7 +206,7 @@ public class DocumentImportController {
     @GetMapping(&quot;/provenance/links/{requirementId}&quot;)
     public ResponseEntity&lt;List&lt;RequirementSourceLinkDto&gt;&gt; getLinks(
             @PathVariable String requirementId) {
-<span class="fc" id="L126">        return ResponseEntity.ok(provenanceService.getLinksForRequirement(requirementId));</span>
+<span class="fc" id="L209">        return ResponseEntity.ok(provenanceService.getLinksForRequirement(requirementId));</span>
     }
 
     /**
@@ -136,45 +219,65 @@ public class DocumentImportController {
     @PostMapping(&quot;/documents/confirm-candidates&quot;)
     public ResponseEntity&lt;?&gt; confirmCandidates(@RequestBody Map&lt;String, Object&gt; body) {
         try {
-<span class="nc" id="L139">            Long artifactId = ((Number) body.get(&quot;sourceArtifactId&quot;)).longValue();</span>
-<span class="nc" id="L140">            Long versionId = ((Number) body.get(&quot;sourceVersionId&quot;)).longValue();</span>
+<span class="nc" id="L222">            Long artifactId = ((Number) body.get(&quot;sourceArtifactId&quot;)).longValue();</span>
+<span class="nc" id="L223">            Long versionId = ((Number) body.get(&quot;sourceVersionId&quot;)).longValue();</span>
             @SuppressWarnings(&quot;unchecked&quot;)
-<span class="nc" id="L142">            List&lt;Map&lt;String, Object&gt;&gt; candidates = (List&lt;Map&lt;String, Object&gt;&gt;) body.get(&quot;candidates&quot;);</span>
+<span class="nc" id="L225">            List&lt;Map&lt;String, Object&gt;&gt; candidates = (List&lt;Map&lt;String, Object&gt;&gt;) body.get(&quot;candidates&quot;);</span>
 
-<span class="nc bnc" id="L144" title="All 4 branches missed.">            if (candidates == null || candidates.isEmpty()) {</span>
-<span class="nc" id="L145">                return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;No candidates provided&quot;));</span>
+<span class="nc bnc" id="L227" title="All 4 branches missed.">            if (candidates == null || candidates.isEmpty()) {</span>
+<span class="nc" id="L228">                return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;No candidates provided&quot;));</span>
             }
 
-<span class="nc" id="L148">            var artifactOpt = provenanceService.findArtifactById(artifactId);</span>
-<span class="nc bnc" id="L149" title="All 2 branches missed.">            if (artifactOpt.isEmpty()) {</span>
-<span class="nc" id="L150">                return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;Source artifact not found&quot;));</span>
+<span class="nc" id="L231">            var artifactOpt = provenanceService.findArtifactById(artifactId);</span>
+<span class="nc bnc" id="L232" title="All 2 branches missed.">            if (artifactOpt.isEmpty()) {</span>
+<span class="nc" id="L233">                return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;Source artifact not found&quot;));</span>
             }
-<span class="nc" id="L152">            var versionOpt = provenanceService.findVersionById(versionId);</span>
+<span class="nc" id="L235">            var versionOpt = provenanceService.findVersionById(versionId);</span>
 
-<span class="nc" id="L154">            int linked = 0;</span>
-<span class="nc bnc" id="L155" title="All 2 branches missed.">            for (Map&lt;String, Object&gt; c : candidates) {</span>
-<span class="nc" id="L156">                String text = (String) c.get(&quot;text&quot;);</span>
-<span class="nc" id="L157">                String section = (String) c.get(&quot;sectionHeading&quot;);</span>
-<span class="nc bnc" id="L158" title="All 4 branches missed.">                if (text == null || text.isBlank()) continue;</span>
+<span class="nc" id="L237">            int linked = 0;</span>
+<span class="nc bnc" id="L238" title="All 2 branches missed.">            for (Map&lt;String, Object&gt; c : candidates) {</span>
+<span class="nc" id="L239">                String text = (String) c.get(&quot;text&quot;);</span>
+<span class="nc" id="L240">                String section = (String) c.get(&quot;sectionHeading&quot;);</span>
+<span class="nc bnc" id="L241" title="All 4 branches missed.">                if (text == null || text.isBlank()) continue;</span>
 
-<span class="nc" id="L160">                SourceFragment fragment = provenanceService.createFragment(</span>
-<span class="nc" id="L161">                        versionOpt.orElse(null), text, section, null);</span>
+<span class="nc" id="L243">                SourceFragment fragment = provenanceService.createFragment(</span>
+<span class="nc" id="L244">                        versionOpt.orElse(null), text, section, null);</span>
 
                 // Create a requirement ID based on artifact + candidate index
-<span class="nc" id="L164">                String reqId = &quot;DOC-&quot; + artifactId + &quot;-&quot; + linked;</span>
-<span class="nc" id="L165">                provenanceService.linkRequirement(reqId, artifactOpt.get(),</span>
-<span class="nc" id="L166">                        versionOpt.orElse(null), fragment, LinkType.EXTRACTED_FROM);</span>
-<span class="nc" id="L167">                linked++;</span>
-<span class="nc" id="L168">            }</span>
+<span class="nc" id="L247">                String reqId = &quot;DOC-&quot; + artifactId + &quot;-&quot; + linked;</span>
+<span class="nc" id="L248">                provenanceService.linkRequirement(reqId, artifactOpt.get(),</span>
+<span class="nc" id="L249">                        versionOpt.orElse(null), fragment, LinkType.EXTRACTED_FROM);</span>
+<span class="nc" id="L250">                linked++;</span>
+<span class="nc" id="L251">            }</span>
 
-<span class="nc" id="L170">            return ResponseEntity.ok(Map.of(</span>
-<span class="nc" id="L171">                    &quot;linked&quot;, linked,</span>
+<span class="nc" id="L253">            return ResponseEntity.ok(Map.of(</span>
+<span class="nc" id="L254">                    &quot;linked&quot;, linked,</span>
                     &quot;message&quot;, linked + &quot; requirement candidate(s) linked to source&quot;));
-<span class="nc" id="L173">        } catch (Exception e) {</span>
-<span class="nc" id="L174">            log.error(&quot;Failed to confirm candidates&quot;, e);</span>
-<span class="nc" id="L175">            return ResponseEntity.badRequest().body(Map.of(</span>
-<span class="nc" id="L176">                    &quot;error&quot;, &quot;Failed to confirm candidates: &quot; + e.getMessage()));</span>
+<span class="nc" id="L256">        } catch (Exception e) {</span>
+<span class="nc" id="L257">            log.error(&quot;Failed to confirm candidates&quot;, e);</span>
+<span class="nc" id="L258">            return ResponseEntity.badRequest().body(Map.of(</span>
+<span class="nc" id="L259">                    &quot;error&quot;, &quot;Failed to confirm candidates: &quot; + e.getMessage()));</span>
         }
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Builds a full document text from all parsed candidates, preserving section headings.
+     * This provides richer context to the LLM than the truncated rawTextPreview.
+     */
+    private String buildFullTextFromCandidates(DocumentParseResult result) {
+<span class="nc bnc" id="L270" title="All 4 branches missed.">        if (result.getCandidates() == null || result.getCandidates().isEmpty()) {</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">            return result.getRawTextPreview() != null ? result.getRawTextPreview() : &quot;&quot;;</span>
+        }
+<span class="nc" id="L273">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L274" title="All 2 branches missed.">        for (var candidate : result.getCandidates()) {</span>
+<span class="nc bnc" id="L275" title="All 4 branches missed.">            if (candidate.getSectionHeading() != null &amp;&amp; !candidate.getSectionHeading().isBlank()) {</span>
+<span class="nc" id="L276">                sb.append(candidate.getSectionHeading()).append(&quot;:\n&quot;);</span>
+            }
+<span class="nc" id="L278">            sb.append(candidate.getText()).append(&quot;\n\n&quot;);</span>
+<span class="nc" id="L279">        }</span>
+<span class="nc" id="L280">        return sb.toString();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
