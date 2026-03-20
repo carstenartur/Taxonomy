@@ -205,6 +205,8 @@ Tipps für gute Anforderungen:
 
 Der vollständig aufgeklappte Baum zeigt Bewertungen auf jeder Ebene und macht es leicht zu erkennen, welche Zweige am relevantesten sind:
 
+> **Detailansicht** — Das Bild unten zeigt den vollständig aufgeklappten BP-Baum auf allen Ebenen. Klicken Sie auf einen beliebigen Knoten, um seine Bewertung und Begründung zu sehen.
+
 ![Bewerteter Taxonomiebaum — vollständig aufgeklappt](../images/35-scored-bp-tree-expanded.png)
 
 ### Interaktiver Modus
@@ -1712,3 +1714,9 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 **Ursache:** Der Admin-Modus ist nicht freigeschaltet.
 
 **Maßnahme:** Klicken Sie auf die **🔒**-Schaltfläche in der Navigationsleiste und geben Sie das Administratorpasswort ein. Wenn Sie das Passwort nicht kennen, kontaktieren Sie Ihren Administrator.
+
+### Der Graph Explorer zeigt ein „Failure Impact"-Ergebnis — ist das ein Fehler?
+
+**Nein.** Die Ausfallauswirkungsansicht (⚠️-Schaltfläche) ist eine bewusste Funktion, kein Fehlerzustand. Sie hebt alle Knoten hervor, die betroffen wären, wenn der ausgewählte Knoten ausfällt oder entfernt wird. Verwenden Sie sie für Änderungsauswirkungs-Analysen und Risikobewertungen. Siehe [Abschnitt 8 — Graph Explorer](#8-den-graph-explorer-verwenden) für alle Details.
+
+![Graph Explorer Ausfallauswirkung](../images/22-graph-explorer-failure.png)

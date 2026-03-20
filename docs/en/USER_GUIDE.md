@@ -209,6 +209,8 @@ Tips for good requirements:
 
 The fully expanded tree shows scores at every level, making it easy to identify which branches are most relevant:
 
+> **Detail view** — the image below shows the full BP tree expanded to all levels. Click any node to see its score and justification.
+
 ![Scored taxonomy tree — fully expanded](../images/35-scored-bp-tree-expanded.png)
 
 ### Interactive Mode
@@ -1728,3 +1730,9 @@ For full details, see the [Document Import guide](DOCUMENT_IMPORT.md).
 **Cause:** Admin mode is not unlocked.
 
 **Action:** Click the **🔒** button in the navigation bar and enter the administrator password. If you do not know the password, contact your administrator.
+
+### The Graph Explorer shows a "Failure Impact" result — is that an error?
+
+**No.** The Failure Impact view (⚠️ button) is a deliberate feature, not an error state. It highlights all nodes that would be affected if the selected node failed or was removed. Use it for change-impact analysis and risk assessment. See [Section 8 — Graph Explorer](#8-using-the-graph-explorer) for full details.
+
+![Graph Explorer failure impact](../images/22-graph-explorer-failure.png)
