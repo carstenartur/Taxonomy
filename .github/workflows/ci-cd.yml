@@ -44,7 +44,7 @@ jobs:
           curl -fsL -o config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json
 
       - name: Build and run tests
-        run: mvn -q verify -DexcludedGroups="real-llm"
+        run: mvn -q install -DexcludedGroups="real-llm"
         env:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
 
@@ -75,8 +75,8 @@ jobs:
       - name: Generate test HTML reports
         if: always()
         run: |
-          mvn install --no-transfer-progress -DskipTests -q
-          mvn site --no-transfer-progress -DskipTests
+          mvn surefire-report:report --no-transfer-progress -DskipTests -Daggregate=true
+          mvn site --no-transfer-progress -DskipTests -DgenerateReports=false
 
       - name: Generate badge JSON files
         if: always()

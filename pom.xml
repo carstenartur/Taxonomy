@@ -64,27 +64,37 @@
                     <includeTestScope>false</includeTestScope>
                 </configuration>
             </plugin>
-        </plugins>
-    </build>
-    <reporting>
-        <plugins>
+            <!-- Pinned to 3.21.0 (Doxia Sitetools 2.x). Fluido skin bundled as
+                 plugin dependency so mvn site resolves it from Maven Central
+                 (cached in .m2) instead of downloading the default skin from
+                 www.apache.org, which is blocked in CI. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-site-plugin</artifactId>
+                <version>3.21.0</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.apache.maven.skins</groupId>
+                        <artifactId>maven-fluido-skin</artifactId>
+                        <version>2.0.0-M11</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+            <!-- Pin to 3.5.2 (Doxia 2.x) to match maven-site-plugin:3.21.0.
+                 Fluido skin 2.0.0-M11 declared here so both plugins share the
+                 same skin version and Doxia generation. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-report-plugin</artifactId>
-                <version>3.5.5</version>
-                <reportSets>
-                    <reportSet>
-                        <reports>
-                            <report>report-only</report>
-                            <report>failsafe-report-only</report>
-                        </reports>
-                        <configuration>
-                            <aggregate>true</aggregate>
-                            <outputName>surefire-report</outputName>
-                        </configuration>
-                    </reportSet>
-                </reportSets>
+                <version>3.5.2</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.apache.maven.skins</groupId>
+                        <artifactId>maven-fluido-skin</artifactId>
+                        <version>2.0.0-M11</version>
+                    </dependency>
+                </dependencies>
             </plugin>
         </plugins>
-    </reporting>
+    </build>
 </project>
