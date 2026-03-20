@@ -170,7 +170,31 @@ DSL-Dokumente werden unter dem Dateinamen `architecture.taxdsl` gespeichert. Der
 
 ## Datenladung
 
-Beim Start lädt `TaxonomyService` den C3-Taxonomiekatalog aus der mitgelieferten Excel-Arbeitsmappe (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) mit Apache POI. Ein CSV-Fallback (`relations.csv`) ist verfügbar, falls die Excel-Datei nicht gelesen werden kann.
+Beim Start lädt `TaxonomyService` den C3-Taxonomiekatalog aus der mitgelieferten Excel-Arbeitsmappe (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) mit Apache POI. Eine CSV-Seed-Datei (`relations.csv`) liefert Standard-Beziehungen, wenn kein Relations-Blatt in der Arbeitsmappe vorhanden ist.
+
+### Beziehungs-Seed-Modell
+
+Die Beziehungs-Seed-CSV (`src/main/resources/data/relations.csv`) unterstützt ein erweitertes Metadatenformat mit den folgenden Spalten:
+
+| Spalte | Pflicht | Beschreibung |
+|---|---|---|
+| SourceCode | ja | Taxonomie-Code des Quellelements (z. B. CP, CR) |
+| TargetCode | ja | Taxonomie-Code des Zielelements |
+| RelationType | ja | Ein gültiger `RelationType`-Enum-Wert |
+| Description | nein | Menschenlesbare Erklärung |
+| SourceStandard | nein | Framework/Standard (z. B. TOGAF, NAF, LOCAL) |
+| SourceReference | nein | Spezifische Referenz im Standard (z. B. NCV-2) |
+| Confidence | nein | Wert zwischen 0.0 und 1.0 (Standard 1.0) |
+| SeedType | nein | TYPE_DEFAULT, FRAMEWORK_SEED oder SOURCE_DERIVED |
+| ReviewRequired | nein | Ob menschliche Überprüfung empfohlen wird (Standard false) |
+| Status | nein | accepted oder proposed (Standard accepted) |
+
+Seed-Typen unterscheiden drei Kategorien:
+- **TYPE_DEFAULT** — Strukturelle Beziehungen, die immer zwischen Taxonomietypen erwartet werden.
+- **FRAMEWORK_SEED** — Beziehungen aus einem Framework-Standard (TOGAF, NAF usw.).
+- **SOURCE_DERIVED** — Beziehungen aus regulatorischen oder Referenzdokumenten.
+
+Siehe [RELATION_SEEDS.md (EN)](../en/RELATION_SEEDS.md) für die vollständige Dokumentation des Seed-Formats.
 
 Die 8 Taxonomie-Wurzelkategorien sind:
 

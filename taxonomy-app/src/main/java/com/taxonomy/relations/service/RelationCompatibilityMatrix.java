@@ -28,32 +28,60 @@ public class RelationCompatibilityMatrix {
 
         // Capability → Core Service
         addRule(RelationType.REALIZES,          "CP",  Set.of("CR"));
-        // Core Service → Business Process
-        addRule(RelationType.SUPPORTS,          "CR",  Set.of("BP"));
+        // Core Service → Business Process / Business Role
+        addRule(RelationType.SUPPORTS,          "CR",  Set.of("BP", "BR"));
+        // COI Service → Business Process / Business Role
+        addRule(RelationType.SUPPORTS,          "CI",  Set.of("BP", "BR"));
+        // Communications Service → Business Process
+        addRule(RelationType.SUPPORTS,          "CO",  Set.of("BP"));
+        // User Application → Business Process
+        addRule(RelationType.SUPPORTS,          "UA",  Set.of("BP"));
         // Business Process → Information Product
         addRule(RelationType.CONSUMES,          "BP",  Set.of("IP"));
-        // User Application → Core Service
-        addRule(RelationType.USES,              "UA",  Set.of("CR"));
+        // Core Service → Information Product
+        addRule(RelationType.CONSUMES,          "CR",  Set.of("IP"));
+        // COI Service → Information Product
+        addRule(RelationType.CONSUMES,          "CI",  Set.of("IP"));
+        // User Application → Information Product / Core Service
+        addRule(RelationType.USES,              "UA",  Set.of("CR", "CI", "CO"));
         // System → System / Core Service (C4 inter-system usage)
         addRule(RelationType.USES,              "SY",  Set.of("SY", "CR"));
+        // Business Process → Core Service / COI Service
+        addRule(RelationType.USES,              "BP",  Set.of("CR", "CI"));
+        // Business Role → Information Product
+        addRule(RelationType.USES,              "BR",  Set.of("IP"));
         // COI Service → Capability
         addRule(RelationType.FULFILLS,          "CI", Set.of("CP"));
+        // Core Service → Capability
+        addRule(RelationType.FULFILLS,          "CR", Set.of("CP"));
         // Business Role → Business Process
         addRule(RelationType.ASSIGNED_TO,       "BR",  Set.of("BP"));
-        // Core Service → Core Service (same root)
-        addRule(RelationType.DEPENDS_ON,        "CR",  Set.of("CR"));
+        // Core Service → Core Service / COI Service (technical dependency)
+        addRule(RelationType.DEPENDS_ON,        "CR",  Set.of("CR", "CI"));
+        // COI Service → Core Service (technical dependency)
+        addRule(RelationType.DEPENDS_ON,        "CI",  Set.of("CR"));
+        // Communications Service → Core Service (network dependency)
+        addRule(RelationType.DEPENDS_ON,        "CO",  Set.of("CR"));
         // System → System (C4 inter-system dependency)
         addRule(RelationType.DEPENDS_ON,        "SY",  Set.of("SY"));
         // Component → Component / Core Service (C4 component dependency)
         addRule(RelationType.DEPENDS_ON,        "CM",  Set.of("CM", "CR"));
         // Business Process → Information Product
         addRule(RelationType.PRODUCES,          "BP",  Set.of("IP"));
-        // Communications Service → Core Service
-        addRule(RelationType.COMMUNICATES_WITH, "CO",  Set.of("CR"));
+        // Core Service → Information Product
+        addRule(RelationType.PRODUCES,          "CR",  Set.of("IP"));
+        // COI Service → Information Product
+        addRule(RelationType.PRODUCES,          "CI",  Set.of("IP"));
+        // User Application → Information Product
+        addRule(RelationType.PRODUCES,          "UA",  Set.of("IP"));
+        // Communications Service → Core Service / COI Service / User Application
+        addRule(RelationType.COMMUNICATES_WITH, "CO",  Set.of("CR", "CI", "UA"));
         // System → User Application / Component (C4 containment)
         addRule(RelationType.CONTAINS,          "SY",  Set.of("UA", "CM"));
         // Component → Component (C4 nesting)
         addRule(RelationType.CONTAINS,          "CM",  Set.of("CM"));
+        // Capability → Information Product (information dependency)
+        addRule(RelationType.REQUIRES,          "CP",  Set.of("IP"));
         // RELATED_TO has no restrictions
     }
 

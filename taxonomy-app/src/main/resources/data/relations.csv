@@ -1,25 +1,37 @@
-SourceCode,TargetCode,RelationType,Description
-CP,CR,REALIZES,Capabilities are realized by Core Services (NAF NCV-2: Capability-to-Service mapping)
-CP,CI,REALIZES,Capabilities are realized by COI Services (NAF NCV-2: domain-specific realization)
-CP,CO,REALIZES,Capabilities are realized by Communications Services (NAF NCV-2: communication capabilities)
-CR,BP,SUPPORTS,Core Services support Business Processes (TOGAF Business Architecture: service enablement)
-CI,BP,SUPPORTS,COI Services support Business Processes (domain-specific process support)
-CO,BP,SUPPORTS,Communications Services support Business Processes (communication infrastructure for processes)
-CO,CR,SUPPORTS,Communications Services support Core Services (network/transport layer for services)
-BP,IP,PRODUCES,Business Processes produce Information Products (TOGAF Data Architecture: process output)
-BP,IP,CONSUMES,Business Processes consume Information Products (TOGAF Data Architecture: process input)
-UA,CR,USES,User Applications use Core Services (NAF NSV-1: application-service binding)
-UA,CI,USES,User Applications use COI Services (end-user access to COI services)
-UA,CO,USES,User Applications use Communications Services (end-user communication binding)
-CI,CP,FULFILLS,COI Services fulfill Capabilities (NAF NCV-5: service-to-capability assignment)
-CR,CP,FULFILLS,Core Services fulfill Capabilities (NAF NCV-5: generic service fulfillment)
-BR,BP,ASSIGNED_TO,Business Roles are assigned to Business Processes (TOGAF Org Mapping: role responsibility)
-CR,CI,DEPENDS_ON,Core Services depend on COI Services (technical dependency: base services to domain)
-CI,CR,DEPENDS_ON,COI Services depend on Core Services (technical dependency: domain to base services)
-CO,CR,DEPENDS_ON,Communications Services depend on Core Services (network requires platform services)
-UA,IP,CONSUMES,User Applications consume Information Products (end-user data visualization)
-CO,CI,COMMUNICATES_WITH,Communications Services communicate with COI Services (NAF NSOV: communication compound)
-CO,UA,COMMUNICATES_WITH,Communications Services communicate with User Applications (network binding of applications)
-BP,CP,RELATED_TO,Business Processes are mapped to Capabilities (business-capability alignment)
-BR,CP,RELATED_TO,Business Roles relate to Capabilities (role competencies to capabilities)
-IP,CP,RELATED_TO,Information Products relate to Capabilities (information support of capabilities)
+SourceCode,TargetCode,RelationType,Description,SourceStandard,SourceReference,Confidence,SeedType,ReviewRequired,Status
+CP,CR,REALIZES,Capabilities are realized by Core Services (NAF NCV-2: Capability-to-Service mapping),NAF,NCV-2,1.0,TYPE_DEFAULT,false,accepted
+CP,CI,REALIZES,Capabilities are realized by COI Services (NAF NCV-2: domain-specific realization),NAF,NCV-2,1.0,TYPE_DEFAULT,false,accepted
+CP,CO,REALIZES,Capabilities are realized by Communications Services (NAF NCV-2: communication capabilities),NAF,NCV-2,1.0,TYPE_DEFAULT,false,accepted
+CR,BP,SUPPORTS,Core Services support Business Processes (TOGAF Business Architecture: service enablement),TOGAF,Business Architecture,1.0,TYPE_DEFAULT,false,accepted
+CI,BP,SUPPORTS,COI Services support Business Processes (domain-specific process support),TOGAF,Business Architecture,1.0,TYPE_DEFAULT,false,accepted
+CO,BP,SUPPORTS,Communications Services support Business Processes (communication infrastructure for processes),TOGAF,Business Architecture,1.0,TYPE_DEFAULT,false,accepted
+CO,CR,SUPPORTS,Communications Services support Core Services (network/transport layer for services),TOGAF,Business Architecture,1.0,TYPE_DEFAULT,false,accepted
+BP,IP,PRODUCES,Business Processes produce Information Products (TOGAF Data Architecture: process output),TOGAF,Data Architecture,1.0,TYPE_DEFAULT,false,accepted
+BP,IP,CONSUMES,Business Processes consume Information Products (TOGAF Data Architecture: process input),TOGAF,Data Architecture,1.0,TYPE_DEFAULT,false,accepted
+UA,CR,USES,User Applications use Core Services (NAF NSV-1: application-service binding),NAF,NSV-1,1.0,TYPE_DEFAULT,false,accepted
+UA,CI,USES,User Applications use COI Services (end-user access to COI services),NAF,NSV-1,1.0,TYPE_DEFAULT,false,accepted
+UA,CO,USES,User Applications use Communications Services (end-user communication binding),NAF,NSV-1,1.0,TYPE_DEFAULT,false,accepted
+CI,CP,FULFILLS,COI Services fulfill Capabilities (NAF NCV-5: service-to-capability assignment),NAF,NCV-5,1.0,TYPE_DEFAULT,false,accepted
+CR,CP,FULFILLS,Core Services fulfill Capabilities (NAF NCV-5: generic service fulfillment),NAF,NCV-5,1.0,TYPE_DEFAULT,false,accepted
+BR,BP,ASSIGNED_TO,Business Roles are assigned to Business Processes (TOGAF Org Mapping: role responsibility),TOGAF,Org Mapping,1.0,TYPE_DEFAULT,false,accepted
+CR,CI,DEPENDS_ON,Core Services depend on COI Services (technical dependency: base services to domain),LOCAL,Technical dependency,1.0,TYPE_DEFAULT,false,accepted
+CI,CR,DEPENDS_ON,COI Services depend on Core Services (technical dependency: domain to base services),LOCAL,Technical dependency,1.0,TYPE_DEFAULT,false,accepted
+CO,CR,DEPENDS_ON,Communications Services depend on Core Services (network requires platform services),LOCAL,Technical dependency,1.0,TYPE_DEFAULT,false,accepted
+UA,IP,CONSUMES,User Applications consume Information Products (end-user data visualization),TOGAF,Data Architecture,1.0,TYPE_DEFAULT,false,accepted
+CO,CI,COMMUNICATES_WITH,Communications Services communicate with COI Services (NAF NSOV: communication compound),NAF,NSOV,1.0,TYPE_DEFAULT,false,accepted
+CO,UA,COMMUNICATES_WITH,Communications Services communicate with User Applications (network binding of applications),NAF,NSOV,1.0,TYPE_DEFAULT,false,accepted
+BP,CP,RELATED_TO,Business Processes are mapped to Capabilities (business-capability alignment),TOGAF,Business Architecture,0.8,TYPE_DEFAULT,false,accepted
+BR,CP,RELATED_TO,Business Roles relate to Capabilities (role competencies to capabilities),TOGAF,Org Mapping,0.8,TYPE_DEFAULT,false,accepted
+IP,CP,RELATED_TO,Information Products relate to Capabilities (information support of capabilities),TOGAF,Data Architecture,0.8,TYPE_DEFAULT,false,accepted
+CR,IP,PRODUCES,Core Services produce Information Products (service data output),TOGAF,Data Architecture,0.9,FRAMEWORK_SEED,false,accepted
+CR,IP,CONSUMES,Core Services consume Information Products (service data input),TOGAF,Data Architecture,0.9,FRAMEWORK_SEED,false,accepted
+CI,IP,PRODUCES,COI Services produce Information Products (domain-specific data output),TOGAF,Data Architecture,0.9,FRAMEWORK_SEED,false,accepted
+CI,IP,CONSUMES,COI Services consume Information Products (domain-specific data input),TOGAF,Data Architecture,0.9,FRAMEWORK_SEED,false,accepted
+UA,IP,PRODUCES,User Applications produce Information Products (user-generated data output),TOGAF,Data Architecture,0.85,FRAMEWORK_SEED,false,accepted
+UA,BP,SUPPORTS,User Applications support Business Processes (application enablement of processes),TOGAF,Application Architecture,0.85,FRAMEWORK_SEED,true,accepted
+CR,BR,SUPPORTS,Core Services support Business Roles (service enablement of role activities),TOGAF,Business Architecture,0.8,FRAMEWORK_SEED,true,accepted
+CI,BR,SUPPORTS,COI Services support Business Roles (domain service enablement of role activities),TOGAF,Business Architecture,0.8,FRAMEWORK_SEED,true,accepted
+BR,IP,USES,Business Roles use Information Products (role-based information consumption),TOGAF,Data Architecture,0.85,FRAMEWORK_SEED,false,accepted
+CP,IP,REQUIRES,Capabilities require Information Products (information dependency for capability delivery),TOGAF,Data Architecture,0.85,FRAMEWORK_SEED,true,accepted
+BP,CR,USES,Business Processes use Core Services (process-to-service dependency),TOGAF,Business Architecture,0.9,FRAMEWORK_SEED,false,accepted
+BP,CI,USES,Business Processes use COI Services (process-to-domain-service dependency),TOGAF,Business Architecture,0.9,FRAMEWORK_SEED,false,accepted

@@ -170,7 +170,33 @@ DSL documents are stored under the filename `architecture.taxdsl`. The `DslApiCo
 
 ## Data Loading
 
-At startup, `TaxonomyService` loads the C3 Taxonomy Catalogue from the bundled Excel workbook (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) using Apache POI. A CSV fallback (`relations.csv`) is available if the Excel file cannot be read.
+At startup, `TaxonomyService` loads the C3 Taxonomy Catalogue from the bundled Excel workbook (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) using Apache POI. A CSV fallback (`relations.csv`) provides seed relations when no Relations sheet is present in the workbook.
+
+### Relation Seed Model
+
+The relation seed CSV (`src/main/resources/data/relations.csv`) supports a rich metadata format with the following columns:
+
+| Column | Required | Description |
+|---|---|---|
+| SourceCode | yes | Taxonomy code of the source element (e.g. CP, CR) |
+| TargetCode | yes | Taxonomy code of the target element |
+| RelationType | yes | A valid `RelationType` enum value |
+| Description | no | Human-readable explanation |
+| SourceStandard | no | Framework/standard (e.g. TOGAF, NAF, LOCAL) |
+| SourceReference | no | Specific reference within the standard (e.g. NCV-2) |
+| Confidence | no | Value between 0.0 and 1.0 (default 1.0) |
+| SeedType | no | TYPE_DEFAULT, FRAMEWORK_SEED, or SOURCE_DERIVED (default TYPE_DEFAULT) |
+| ReviewRequired | no | Whether human review is recommended (default false) |
+| Status | no | accepted or proposed (default accepted) |
+
+Seed types distinguish three categories of relation seeds:
+- **TYPE_DEFAULT** — structural relations always expected between taxonomy types.
+- **FRAMEWORK_SEED** — relations derived from a framework standard (TOGAF, NAF, etc.).
+- **SOURCE_DERIVED** — relations inferred from regulatory or reference documents.
+
+The `RelationSeedParser` handles parsing and validation. Provenance is encoded as `csv-{seedType}:{standard}` (e.g. `csv-default:NAF`, `csv-framework:TOGAF`).
+
+See [RELATION_SEEDS.md](RELATION_SEEDS.md) for the full relation seed format documentation.
 
 The 8 taxonomy root categories are:
 

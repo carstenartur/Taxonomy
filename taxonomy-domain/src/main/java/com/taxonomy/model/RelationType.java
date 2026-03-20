@@ -11,5 +11,6 @@ public enum RelationType {
     PRODUCES,           // Business Process → Information Product (Data flow)
     COMMUNICATES_WITH,  // Communications Service → Core Service (NAF NSOV)
     CONTAINS,           // System → Component containment (C4 model)
+    REQUIRES,           // Capability → Information Product (information dependency)
     RELATED_TO          // Generic fallback relation
 }

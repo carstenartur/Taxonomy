@@ -24,7 +24,7 @@ public class DslValidator {
     private static final Set<String> VALID_RELATION_TYPES = Set.of(
             "REALIZES", "SUPPORTS", "CONSUMES", "USES", "FULFILLS",
             "ASSIGNED_TO", "DEPENDS_ON", "PRODUCES", "COMMUNICATES_WITH",
-            "CONTAINS", "RELATED_TO");
+            "CONTAINS", "REQUIRES", "RELATED_TO");
 
     /** Recognized relation statuses. */
     private static final Set<String> VALID_STATUSES = Set.of(
@@ -39,15 +39,31 @@ public class DslValidator {
     static {
         Map<String, Map<String, Set<String>>> m = new LinkedHashMap<>();
         m.put("REALIZES",          Map.of("CP", Set.of("CR")));
-        m.put("SUPPORTS",          Map.of("CR", Set.of("BP")));
-        m.put("CONSUMES",          Map.of("BP", Set.of("IP")));
-        m.put("USES",              Map.of("UA", Set.of("CR"), "SY", Set.of("SY", "CR")));
-        m.put("FULFILLS",          Map.of("CI", Set.of("CP")));
+        m.put("SUPPORTS",          Map.of("CR", Set.of("BP", "BR"),
+                                          "CI", Set.of("BP", "BR"),
+                                          "CO", Set.of("BP"),
+                                          "UA", Set.of("BP")));
+        m.put("CONSUMES",          Map.of("BP", Set.of("IP"),
+                                          "CR", Set.of("IP"),
+                                          "CI", Set.of("IP")));
+        m.put("USES",              Map.of("UA", Set.of("CR", "CI", "CO"),
+                                          "SY", Set.of("SY", "CR"),
+                                          "BP", Set.of("CR", "CI"),
+                                          "BR", Set.of("IP")));
+        m.put("FULFILLS",          Map.of("CI", Set.of("CP"), "CR", Set.of("CP")));
         m.put("ASSIGNED_TO",       Map.of("BR", Set.of("BP")));
-        m.put("DEPENDS_ON",        Map.of("CR", Set.of("CR"), "SY", Set.of("SY"), "CM", Set.of("CM", "CR")));
-        m.put("PRODUCES",          Map.of("BP", Set.of("IP")));
-        m.put("COMMUNICATES_WITH", Map.of("CO", Set.of("CR")));
+        m.put("DEPENDS_ON",        Map.of("CR", Set.of("CR", "CI"),
+                                          "CI", Set.of("CR"),
+                                          "CO", Set.of("CR"),
+                                          "SY", Set.of("SY"),
+                                          "CM", Set.of("CM", "CR")));
+        m.put("PRODUCES",          Map.of("BP", Set.of("IP"),
+                                          "CR", Set.of("IP"),
+                                          "CI", Set.of("IP"),
+                                          "UA", Set.of("IP")));
+        m.put("COMMUNICATES_WITH", Map.of("CO", Set.of("CR", "CI", "UA")));
         m.put("CONTAINS",          Map.of("SY", Set.of("UA", "CM"), "CM", Set.of("CM")));
+        m.put("REQUIRES",          Map.of("CP", Set.of("IP")));
         // RELATED_TO has no restrictions
         TYPE_MATRIX = Collections.unmodifiableMap(m);
     }

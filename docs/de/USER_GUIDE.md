@@ -1072,7 +1072,7 @@ view hospital-comms-overview {
 
 ### Beziehungstypen
 
-Siehe [§15 Referenz der Beziehungstypen](#15-relation-types-reference) für die vollständige Liste der 10 Beziehungstypen und deren Kompatibilitätsregeln.
+Siehe [§15 Referenz der Beziehungstypen](#15-relation-types-reference) für die vollständige Liste der 12 Beziehungstypen und deren Kompatibilitätsregeln.
 
 ### Quell-Provenienz in der DSL
 
@@ -1507,7 +1507,7 @@ Der **Prompt-Vorlagen-Editor** (nur Admin, einklappbar) ermöglicht es Ihnen, di
 
 ## 15. Referenz der Beziehungstypen
 
-Das System verwendet 10 Beziehungstypen, die jeweils einer spezifischen Beziehung im NATO Architecture Framework (NAF) oder The Open Group Architecture Framework (TOGAF) entsprechen.
+Das System verwendet 12 Beziehungstypen, die jeweils einer spezifischen Beziehung im NATO Architecture Framework (NAF) oder The Open Group Architecture Framework (TOGAF) entsprechen.
 
 | Beziehungstyp | Bedeutung in einfacher Sprache | Standard |
 |---|---|---|
@@ -1520,6 +1520,8 @@ Das System verwendet 10 Beziehungstypen, die jeweils einer spezifischen Beziehun
 | **DEPENDS_ON** | Ein Dienst hängt von einem anderen Dienst ab, um zu funktionieren | Technische Abhängigkeit |
 | **PRODUCES** | Ein Geschäftsprozess erzeugt ein Informationsprodukt | Datenfluss |
 | **COMMUNICATES_WITH** | Ein Kommunikationsdienst kommuniziert mit einem Kerndienst | NAF NSOV |
+| **CONTAINS** | Ein System enthält eine Komponente (strukturelle Zugehörigkeit) | C4-Modell |
+| **REQUIRES** | Eine Fähigkeit erfordert ein Informationsprodukt für die Bereitstellung | TOGAF Data Architecture |
 | **RELATED_TO** | Eine allgemeine Beziehung, wenn kein spezifischer Typ zutrifft | Generischer Fallback |
 
 ---

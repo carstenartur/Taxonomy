@@ -190,7 +190,7 @@ The taxonomy tree can be displayed in five different visual layouts:
 
 ## Relation Type
 
-Each relation has a type that defines the nature of the connection between two taxonomy nodes. The system defines 10 relation types, each corresponding to a standard architecture framework concept:
+Each relation has a type that defines the nature of the connection between two taxonomy nodes. The system defines 12 relation types, each corresponding to a standard architecture framework concept:
 
 | Type | Source → Target | Standard |
 |---|---|---|
@@ -203,6 +203,8 @@ Each relation has a type that defines the nature of the connection between two t
 | **DEPENDS_ON** | Core Service → Core Service | Technical dependency |
 | **PRODUCES** | Business Process → Information Product | Data flow |
 | **COMMUNICATES_WITH** | Communications Service → Core Service | NAF NSOV |
+| **CONTAINS** | System → Component | C4 model |
+| **REQUIRES** | Capability → Information Product | TOGAF Data Architecture |
 | **RELATED_TO** | Any → Any | Generic fallback |
 
 The `RelationCompatibilityMatrix` enforces which source and target root categories are valid for each type.

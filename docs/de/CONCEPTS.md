@@ -190,7 +190,7 @@ Der Taxonomie-Baum kann in fünf verschiedenen visuellen Layouts dargestellt wer
 
 ## Beziehungstyp
 
-Jede Beziehung hat einen Typ, der die Art der Verbindung zwischen zwei Taxonomie-Knoten definiert. Das System definiert 10 Beziehungstypen, die jeweils einem Konzept eines Standard-Architektur-Frameworks entsprechen:
+Jede Beziehung hat einen Typ, der die Art der Verbindung zwischen zwei Taxonomie-Knoten definiert. Das System definiert 12 Beziehungstypen, die jeweils einem Konzept eines Standard-Architektur-Frameworks entsprechen:
 
 | Typ | Quelle → Ziel | Standard |
 |---|---|---|
@@ -203,6 +203,8 @@ Jede Beziehung hat einen Typ, der die Art der Verbindung zwischen zwei Taxonomie
 | **DEPENDS_ON** | Core Service → Core Service | Technical dependency |
 | **PRODUCES** | Business Process → Information Product | Data flow |
 | **COMMUNICATES_WITH** | Communications Service → Core Service | NAF NSOV |
+| **CONTAINS** | System → Component | C4 model |
+| **REQUIRES** | Capability → Information Product | TOGAF Data Architecture |
 | **RELATED_TO** | Any → Any | Generischer Fallback |
 
 Die `RelationCompatibilityMatrix` erzwingt, welche Quell- und Ziel-Stammkategorien für jeden Typ gültig sind.
