@@ -32,6 +32,9 @@
         'UA':                     { order: 4, cls: 'layer-app',  icon: '🟣', label: 'User Applications' }
     };
 
+    // Minimum number of elements required to render the D3 force graph (otherwise show swimlane)
+    var MIN_NODES_FOR_GRAPH = 3;
+
     // ── Utility ───────────────────────────────────────────────────────────────
     var escapeHtml = TaxonomyUtils.escapeHtml;
 
@@ -796,7 +799,7 @@
 
         // ── Render D3 impact graph if available ──
         var graphContainer = document.getElementById('impactGraphView');
-        if (graphContainer && elements.length > 2 &&
+        if (graphContainer && elements.length >= MIN_NODES_FOR_GRAPH &&
             typeof TaxonomyGraph !== 'undefined' && TaxonomyGraph.renderImpactForceGraph) {
 
             var graphNodes = elements.map(function (el) {
@@ -826,7 +829,7 @@
                 hotspotReasons: hotspotReasons,
                 layerConfig: LAYER_CONFIG
             });
-        } else if (graphContainer && elements.length <= 2) {
+        } else if (graphContainer && elements.length < MIN_NODES_FOR_GRAPH) {
             // Too few nodes for a meaningful graph — show swimlane view instead
             graphContainer.style.display = 'none';
             var swimView = document.getElementById('impactSwimView');

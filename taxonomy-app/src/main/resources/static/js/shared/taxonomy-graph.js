@@ -535,7 +535,7 @@
             lines.push('<strong>' + d.id + '</strong> ' + d.title);
             lines.push('Layer: ' + d.sheetLabel);
             lines.push('Relevance: ' + (d.relevance * 100).toFixed(0) + '%');
-            var hopLabel = d.hop === 0 ? '0 (direct match) \u2605' : d.hop;
+            var hopLabel = d.hop === 0 ? '0 (direct match)' : d.hop;
             lines.push('Hop: ' + hopLabel);
             if (d.isAnchor) lines.push('\u2605 Direct Match (Anchor)');
             if (d.isHotspot) lines.push('\u26A0\uFE0F Hotspot: ' + d.hotspotReason);
