@@ -3,6 +3,7 @@ package com.taxonomy.workspace.controller;
 import com.taxonomy.dto.ContextComparison;
 import com.taxonomy.dto.ContextMode;
 import com.taxonomy.dto.ContextRef;
+import com.taxonomy.dto.SemanticChange;
 import com.taxonomy.dto.WorkspaceInfo;
 import com.taxonomy.versioning.model.ContextHistoryRecord;
 import com.taxonomy.versioning.service.ContextCompareService;
@@ -24,6 +25,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -252,7 +254,8 @@ public class WorkspaceController {
             @RequestParam String leftBranch,
             @RequestParam String rightBranch,
             @RequestParam(required = false) String leftCommit,
-            @RequestParam(required = false) String rightCommit) {
+            @RequestParam(required = false) String rightCommit,
+            @RequestParam(required = false) Set<String> filter) {
         try {
             ContextRef left = readOnlyContextRef(leftBranch, leftCommit);
             ContextRef right = readOnlyContextRef(rightBranch, rightCommit);
@@ -263,7 +266,7 @@ public class WorkspaceController {
             } else {
                 comparison = contextCompareService.compareBranches(left, right);
             }
-            return ResponseEntity.ok(comparison);
+            return ResponseEntity.ok(applyFilter(comparison, filter));
         } catch (IOException e) {
             return ResponseEntity.internalServerError().body(Map.of(
                     "error", "Compare failed",
@@ -537,5 +540,20 @@ public class WorkspaceController {
         map.put("createdAt", ws.getCreatedAt() != null ? ws.getCreatedAt().toString() : null);
         map.put("lastAccessedAt", ws.getLastAccessedAt() != null ? ws.getLastAccessedAt().toString() : null);
         return map;
+    }
+
+    private ContextComparison applyFilter(ContextComparison comparison, Set<String> filter) {
+        if (filter == null || filter.isEmpty()) {
+            return comparison;
+        }
+        List<SemanticChange> filtered = comparison.changes().stream()
+                .filter(c -> {
+                    if (filter.contains("elements") && "ELEMENT".equals(c.category())) return true;
+                    if (filter.contains("relations") && "RELATION".equals(c.category())) return true;
+                    return false;
+                })
+                .toList();
+        return new ContextComparison(comparison.left(), comparison.right(),
+                comparison.summary(), filtered, comparison.rawDslDiff());
     }
 }
