@@ -419,15 +419,19 @@ Das Panel zeigt drei Bereiche:
 | Bereich | Inhalt |
 |---|---|
 | **Impact Summary Bar** | Eine kompakte KPI-Zeile: direkte Treffer, betroffene Elemente, Beziehungen, Schichten und Änderungs-Hotspots |
-| **Schichtbasierte Wirkungskarte** | Eine Swimlane-Visualisierung, die Elemente nach Architekturschicht gruppiert, mit Kanten die Beziehungstypen zwischen Schichten zeigen |
+| **Interaktiver Netzwerkgraph** | Ein interaktiver kräftebasierter Netzwerkgraph (Standardansicht), der alle betroffenen Elemente als verschiebbare Knoten zeigt, verbunden durch gerichtete Kanten. Umschalten auf „🏗️ Layer View" für die traditionelle Swimlane-Darstellung. |
 | **Detail-Tabellen** | Aufklappbare Tabellen mit allen Elementen und Beziehungen samt vollständigen Metadaten (über die 📋-Zusammenfassungszeile aufklappbar) |
 
 ### Die Visualisierung verstehen
 
-- **Anker** (★) sind Ihre direkten Treffer — die Knoten, die die KI als beste Antwort auf Ihre Anforderung betrachtet. Sie erscheinen mit einem fetten Rahmen und ihrem Score-Prozentsatz.
-- **Propagierte Elemente** (↳) erweitern das Bild: Wenn ein Ankerknoten eine Fähigkeit *realisiert*, erscheint diese Fähigkeit ebenfalls als Element mit ihrer Hop-Distanz.
-- **Änderungs-Hotspots** (⚠️) heben Knoten hervor, die entweder Anker mit mehreren ausgehenden Beziehungen sind, oder Knoten, die von mehreren verschiedenen Ankern erreicht werden — sie zeigen Bereiche mit hoher Änderungswirkung an.
-- **Schicht-Kanten** zeigen die Beziehungstypen (z. B. REALIZES, SUPPORTS), die verschiedene Architekturschichten verbinden.
+Die Hauptvisualisierung ist ein **interaktiver kräftebasierter Netzwerkgraph**, der alle betroffenen Elemente und ihre Beziehungen zeigt. Knoten sind Kreise, die nach Taxonomieschicht eingefärbt sind, mit einer Größe proportional zur Relevanz.
+
+- **★ Ankerknoten** (direkte Treffer) haben einen goldenen Rahmen und zeigen ihren Score-Prozentsatz an. Dies sind die Knoten, die die KI als beste Antwort auf Ihre Anforderung betrachtet.
+- **⚠️ Hotspot-Knoten** pulsieren rot und heben Bereiche mit hoher Änderungswirkung hervor — entweder Anker mit mehreren ausgehenden Beziehungen oder Knoten, die von mehreren verschiedenen Ankern erreicht werden.
+- **Propagierte Elemente** erweitern das Bild: Wenn ein Ankerknoten eine Fähigkeit *realisiert*, erscheint diese Fähigkeit ebenfalls mit ihrer Hop-Distanz.
+- **Gerichtete Kanten** verbinden spezifische Quell- → Zielknoten, eingefärbt nach Beziehungstyp (z. B. grün für SUPPORTS, blau für REALIZES). Dickere Kanten zeigen höhere propagierte Relevanz an.
+- **Ziehen** Sie Knoten, um das Layout neu anzuordnen, **hovern** Sie für einen detaillierten Tooltip (Code, Titel, Schicht, Relevanz, Hop-Distanz, Anker-/Hotspot-Status) und **klicken** Sie, um den Knoten im Graph Explorer zu öffnen.
+- Wechseln Sie zu **„🏗️ Layer View"** für die traditionelle Swimlane-Darstellung, die Elemente nach Architekturschicht gruppiert.
 
 ![Architekturansicht](../images/20-architecture-view.png)
 

@@ -32,6 +32,9 @@
         'UA':                     { order: 4, cls: 'layer-app',  icon: '🟣', label: 'User Applications' }
     };
 
+    // Minimum number of elements required to render the D3 force graph (otherwise show swimlane)
+    var MIN_NODES_FOR_GRAPH = 3;
+
     // ── Utility ───────────────────────────────────────────────────────────────
     var escapeHtml = TaxonomyUtils.escapeHtml;
 
@@ -654,9 +657,9 @@
         }
         html += '</div>';
 
-        // ── Part 2: Layered Impact Map ──
+        // ── Part 2: Interactive Impact Network Graph + Swimlane Toggle ──
         if (elements.length > 0) {
-            // Collect relationship types between layers for edge labels
+            // Collect relationship types between layers for swimlane edge labels
             const layerRelations = {};
             relationships.forEach(r => {
                 const srcSheet = elByCode[r.sourceCode] ? elByCode[r.sourceCode].taxonomySheet : null;
@@ -668,6 +671,17 @@
                 }
             });
 
+            // Toggle buttons
+            html += '<div class="impact-graph-toggle">';
+            html += '<button class="btn btn-sm btn-primary impact-view-btn" data-mode="graph">🔗 Network Graph</button>';
+            html += '<button class="btn btn-sm btn-outline-secondary impact-view-btn" data-mode="swimlane">🏗️ Layer View</button>';
+            html += '</div>';
+
+            // Graph container (shown by default)
+            html += '<div id="impactGraphView"></div>';
+
+            // Swimlane fallback (hidden by default)
+            html += '<div id="impactSwimView" style="display:none;">';
             html += '<div class="impact-map">';
             for (let i = 0; i < sortedSheets.length; i++) {
                 const sheet = sortedSheets[i];
@@ -720,6 +734,7 @@
                 html += '</div></div>';
             }
             html += '</div>';
+            html += '</div>'; // end impactSwimView
         }
 
         // ── Part 3: Detail Tables (collapsible) ──
@@ -781,6 +796,65 @@
         content.innerHTML = html;
         panel.style.display = '';
         if (placeholder) { placeholder.style.display = 'none'; }
+
+        // ── Render D3 impact graph if available ──
+        var graphContainer = document.getElementById('impactGraphView');
+        if (graphContainer && elements.length >= MIN_NODES_FOR_GRAPH &&
+            typeof TaxonomyGraph !== 'undefined' && TaxonomyGraph.renderImpactForceGraph) {
+
+            var graphNodes = elements.map(function (el) {
+                return {
+                    nodeCode: el.nodeCode,
+                    title: el.title || el.nodeCode,
+                    taxonomySheet: el.taxonomySheet,
+                    hopDistance: el.hopDistance,
+                    relevance: el.relevance,
+                    anchor: el.anchor,
+                    includedBecause: el.includedBecause
+                };
+            });
+
+            var graphEdges = relationships.map(function (r) {
+                return {
+                    sourceCode: r.sourceCode,
+                    targetCode: r.targetCode,
+                    relationType: r.relationType,
+                    propagatedRelevance: r.propagatedRelevance
+                };
+            });
+
+            TaxonomyGraph.renderImpactForceGraph(graphContainer, graphNodes, graphEdges, {
+                anchorCodes: new Set(anchors.map(function (a) { return a.nodeCode; })),
+                hotspotCodes: hotspotCodes,
+                hotspotReasons: hotspotReasons,
+                layerConfig: LAYER_CONFIG
+            });
+        } else if (graphContainer && elements.length < MIN_NODES_FOR_GRAPH) {
+            // Too few nodes for a meaningful graph — show swimlane view instead
+            graphContainer.style.display = 'none';
+            var swimView = document.getElementById('impactSwimView');
+            if (swimView) swimView.style.display = '';
+            // Update toggle button states
+            content.querySelectorAll('.impact-view-btn').forEach(function (btn) {
+                btn.classList.toggle('btn-primary', btn.dataset.mode === 'swimlane');
+                btn.classList.toggle('btn-outline-secondary', btn.dataset.mode !== 'swimlane');
+            });
+        }
+
+        // ── Toggle button handlers ──
+        content.querySelectorAll('.impact-view-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var mode = btn.dataset.mode;
+                var gView = document.getElementById('impactGraphView');
+                var sView = document.getElementById('impactSwimView');
+                if (gView) gView.style.display = mode === 'graph' ? '' : 'none';
+                if (sView) sView.style.display = mode === 'swimlane' ? '' : 'none';
+                content.querySelectorAll('.impact-view-btn').forEach(function (b) {
+                    b.classList.toggle('btn-primary', b.dataset.mode === mode);
+                    b.classList.toggle('btn-outline-secondary', b.dataset.mode !== mode);
+                });
+            });
+        });
     }
 
     /**

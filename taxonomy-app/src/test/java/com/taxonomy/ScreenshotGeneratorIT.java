@@ -311,6 +311,15 @@ class ScreenshotGeneratorIT {
             "<span class=\"impact-kpi\">&#127959;&#65039; 4 layers</span>" +
             "<span class=\"impact-kpi\">&#9888;&#65039; 2 change hotspots</span>" +
             "</div>" +
+            // ── Toggle buttons ──
+            "<div class=\"impact-graph-toggle\">" +
+            "<button class=\"btn btn-sm btn-outline-secondary impact-view-btn\" data-mode=\"graph\">&#128279; Network Graph</button>" +
+            "<button class=\"btn btn-sm btn-primary impact-view-btn\" data-mode=\"swimlane\">&#127959;&#65039; Layer View</button>" +
+            "</div>" +
+            // ── Graph container (hidden in fallback — no D3 simulation) ──
+            "<div id=\"impactGraphView\" style=\"display:none;\"></div>" +
+            // ── Swimlane view (visible in fallback) ──
+            "<div id=\"impactSwimView\">" +
             // ── Layered Impact Map (swimlanes) ──
             "<div class=\"impact-map\">" +
             // Layer 1: Capabilities
@@ -369,6 +378,7 @@ class ScreenshotGeneratorIT {
             "IP-2001 Interoperability Fra <span class=\"impact-badge\">&#8627;2</span></span>" +
             "</div></div>" +
             "</div>" +
+            "</div>" + // end impactSwimView
             // ── Detail tables (collapsible) ──
             "<details class=\"impact-details\">" +
             "<summary>&#128203; Detail: 7 Elements, 5 Relationships</summary>" +
@@ -1274,11 +1284,13 @@ class ScreenshotGeneratorIT {
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
 
-        // If the mock-LLM analysis produced too few swimlanes (< 3 layers), inject a richer
-        // fallback to produce a representative screenshot of the Layered Impact Map.
+        // If the mock-LLM analysis produced too few swimlanes (< 3 layers) and no D3 graph was
+        // rendered, inject a richer fallback to produce a representative screenshot.
         Long swimlaneCount = (Long) ((JavascriptExecutor) driver).executeScript(
                 "return document.querySelectorAll('#architectureViewContent .impact-swimlane').length;");
-        if (swimlaneCount == null || swimlaneCount < 3) {
+        Long graphSvgCount = (Long) ((JavascriptExecutor) driver).executeScript(
+                "return document.querySelectorAll('#architectureViewContent .impact-graph-container svg').length;");
+        if ((graphSvgCount == null || graphSvgCount < 1) && (swimlaneCount == null || swimlaneCount < 3)) {
             js("document.getElementById('architectureViewContent').innerHTML = arguments[0];" +
                "requestAnimationFrame(function() { requestAnimationFrame(function() {" +
                "  document.getElementById('architectureViewContent').dataset.rendered = 'true';" +
@@ -1868,10 +1880,12 @@ class ScreenshotGeneratorIT {
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
 
-        // If the mock-LLM analysis produced too few swimlanes, inject fallback
+        // If the mock-LLM analysis produced too few swimlanes and no D3 graph, inject fallback
         Long swimlaneCount = (Long) ((JavascriptExecutor) driver).executeScript(
                 "return document.querySelectorAll('#architectureViewContent .impact-swimlane').length;");
-        if (swimlaneCount == null || swimlaneCount < 3) {
+        Long graphSvgCount = (Long) ((JavascriptExecutor) driver).executeScript(
+                "return document.querySelectorAll('#architectureViewContent .impact-graph-container svg').length;");
+        if ((graphSvgCount == null || graphSvgCount < 1) && (swimlaneCount == null || swimlaneCount < 3)) {
             js("document.getElementById('architectureViewContent').innerHTML = arguments[0];" +
                "requestAnimationFrame(function() { requestAnimationFrame(function() {" +
                "  document.getElementById('architectureViewContent').dataset.rendered = 'true';" +
