@@ -616,13 +616,17 @@
         const hotspotCodes = new Set();
         const hotspotReasons = {};
         elements.forEach(el => {
+            const reasons = [];
             if (el.anchor && (outCount[el.nodeCode] || 0) >= 2) {
                 hotspotCodes.add(el.nodeCode);
-                hotspotReasons[el.nodeCode] = 'anchor with ' + outCount[el.nodeCode] + ' outgoing relations';
+                reasons.push('anchor with ' + outCount[el.nodeCode] + ' outgoing relations');
             }
             if (reachingAnchors[el.nodeCode] && reachingAnchors[el.nodeCode].size >= 2) {
                 hotspotCodes.add(el.nodeCode);
-                hotspotReasons[el.nodeCode] = 'reached from ' + reachingAnchors[el.nodeCode].size + ' anchors';
+                reasons.push('reached from ' + reachingAnchors[el.nodeCode].size + ' anchors');
+            }
+            if (reasons.length > 0) {
+                hotspotReasons[el.nodeCode] = reasons.join(', ');
             }
         });
 
