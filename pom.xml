@@ -66,25 +66,4 @@
             </plugin>
         </plugins>
     </build>
-    <reporting>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-report-plugin</artifactId>
-                <version>3.5.5</version>
-                <reportSets>
-                    <reportSet>
-                        <reports>
-                            <report>report-only</report>
-                            <report>failsafe-report-only</report>
-                        </reports>
-                        <configuration>
-                            <aggregate>true</aggregate>
-                            <outputName>surefire-report</outputName>
-                        </configuration>
-                    </reportSet>
-                </reportSets>
-            </plugin>
-        </plugins>
-    </reporting>
 </project>
