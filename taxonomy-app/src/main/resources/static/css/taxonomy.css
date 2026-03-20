@@ -1505,3 +1505,22 @@
 [data-bs-theme="dark"] #dslEditorContainer .cm-editor:not(.cm-focused) {
     background: #282c34;
 }
+
+/* Active line subtle background */
+#dslEditorContainer .cm-editor .cm-activeLine {
+    background: rgba(0, 100, 255, 0.04);
+}
+
+[data-bs-theme="dark"] #dslEditorContainer .cm-editor .cm-activeLine {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+/* Matching bracket highlight */
+#dslEditorContainer .cm-editor .cm-matchingBracket {
+    background: rgba(0, 150, 0, 0.15);
+    outline: 1px solid rgba(0, 150, 0, 0.3);
+}
+
+#dslEditorContainer .cm-editor .cm-line {
+    line-height: 1.6;
+}

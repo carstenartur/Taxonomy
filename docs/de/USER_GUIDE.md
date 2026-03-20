@@ -1187,6 +1187,40 @@ Der DSL-Editor-Tab in der Anwendung bietet eine vollwertige Code-Bearbeitungsobe
 8. **Commit** — Speichert Änderungen im Git-gestützten Repository mit einer Commit-Nachricht
 9. **Branch management** — Erstellen von Branches, Cherry-Pick und Merge
 
+#### Syntaxhervorhebung
+
+Der DSL-Editor verwendet farbcodierte Syntaxhervorhebung für alle Token-Typen im hellen und dunklen Modus:
+
+| Element | Farbe (Hell) | Farbe (Dunkel) | Beispiel |
+|---|---|---|---|
+| Block-Schlüsselwörter | **Lila** fett | Lila | `element`, `relation`, `meta` |
+| Domain-Typen | **Orange** | Gelb | `Capability`, `Service` |
+| Beziehungstypen | **Rot** fett | Rot | `REALIZES`, `SUPPORTS` |
+| Eigenschaftsnamen | **Teal** | Grün | `title:`, `description:` |
+| Zeichenketten | **Grün** | Grün | `"Secure Voice"` |
+| Taxonomie-Codes | **Blau** | Blau | `CP-1023`, `BP-1327` |
+| Zahlen | **Cyan** | Cyan | `0.85` |
+| Statuswerte | **Orange** | Orange | `accepted`, `proposed` |
+| Kommentare | **Grau** kursiv | Grau | `# Kommentar` |
+| Klammern | **Schiefergrau** | Grau | `{`, `}` |
+
+#### Autovervollständigung
+
+Kontextbezogene Vorschläge erscheinen während der Eingabe:
+
+| Kontext | Vorschläge |
+|---|---|
+| Zeilenanfang | Block-Schlüsselwörter: `element`, `relation`, `meta`, `view`, … |
+| Nach `element <ID> type ` | Domain-Typen: `Capability`, `Service`, `Process`, … |
+| Nach `element ` | Taxonomie-Codes aus dem Katalog (dynamisch geladen) |
+| Nach `relation <ID> ` | Beziehungstypen: `REALIZES`, `SUPPORTS`, `USES`, … |
+| Innerhalb eines Blocks | Eigenschaftsschlüssel: `title:`, `description:`, `status:`, … |
+| Nach `status: ` | Statuswerte: `accepted`, `proposed`, `provisional`, `rejected` |
+| Nach `confidence: ` | Numerische Vorschläge: `0.0`, `0.1`, …, `1.0` |
+| Nach `provenance: ` | Herkunftswerte: `manual`, `llm-inferred`, `imported`, `propagated` |
+
+Drücken Sie **Strg+Leertaste**, um die Autovervollständigung manuell auszulösen.
+
 ![DSL-Editor-Panel](../images/34-dsl-editor-panel.png)
 
 Nach dem Akzeptieren von Vorschlägen enthält die exportierte DSL `relation`-Blöcke neben `element`-Blöcken und zeigt das vollständige Architekturdatenmodell:

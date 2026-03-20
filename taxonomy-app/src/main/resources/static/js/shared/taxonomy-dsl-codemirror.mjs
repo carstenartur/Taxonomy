@@ -13,7 +13,8 @@
  */
 
 import { EditorView, basicSetup } from 'https://esm.sh/codemirror@6';
-import { StreamLanguage } from 'https://esm.sh/@codemirror/language@6';
+import { StreamLanguage, HighlightStyle, syntaxHighlighting } from 'https://esm.sh/@codemirror/language@6';
+import { tags } from 'https://esm.sh/@lezer/highlight@1';
 import { oneDark } from 'https://esm.sh/@codemirror/theme-one-dark@6';
 import { linter, lintGutter } from 'https://esm.sh/@codemirror/lint@6';
 import { autocompletion } from 'https://esm.sh/@codemirror/autocomplete@6';
@@ -23,18 +24,21 @@ import { keymap } from 'https://esm.sh/@codemirror/view@6';
 // ── TaxDSL token sets ──────────────────────────────────────────────────
 const BLOCK_KEYWORDS = new Set([
     'element', 'relation', 'mapping', 'view', 'evidence',
-    'requirement', 'meta', 'constraint', 'decision', 'pattern'
+    'requirement', 'meta', 'constraint', 'decision', 'pattern',
+    // Provenance block types (v2.1)
+    'source', 'sourceVersion', 'sourceFragment', 'requirementSourceLink', 'candidate'
 ]);
 
 const DOMAIN_TYPES = new Set([
     'Capability', 'Process', 'Service', 'CoreService', 'Application',
-    'InformationProduct', 'UserApplication', 'System', 'Component'
+    'InformationProduct', 'UserApplication', 'System', 'Component',
+    'COIService', 'CommunicationsService', 'BusinessRole'
 ]);
 
 const RELATION_TYPES = new Set([
     'REALIZES', 'SUPPORTS', 'CONSUMES', 'USES', 'FULFILLS',
     'ASSIGNED_TO', 'DEPENDS_ON', 'PRODUCES', 'COMMUNICATES_WITH',
-    'RELATED_TO', 'CONTAINS'
+    'RELATED_TO', 'CONTAINS', 'REQUIRES'
 ]);
 
 const PROPERTY_KEYS = new Set([
@@ -45,11 +49,77 @@ const PROPERTY_KEYS = new Set([
 
 const STATUS_VALUES = new Set(['accepted', 'proposed', 'provisional', 'rejected']);
 
+const PROVENANCE_VALUES = new Set(['manual', 'llm-inferred', 'imported', 'propagated']);
+
+const BLOCK_KEYWORD_INFO = {
+    element:               'Define an architecture element',
+    relation:              'Define a typed relation between elements',
+    meta:                  'Document metadata block',
+    view:                  'Define an architecture view',
+    evidence:              'Define evidence supporting an element or relation',
+    requirement:           'Define a requirement that elements must fulfill',
+    mapping:               'Map elements to requirements or external frameworks',
+    constraint:            'Define an architectural constraint',
+    decision:              'Record an architecture decision',
+    pattern:               'Define an architecture pattern',
+    source:                'Define a provenance source artifact',
+    sourceVersion:         'Define a specific version of a source artifact',
+    sourceFragment:        'Define a fragment within a source version',
+    requirementSourceLink: 'Link a requirement to a source fragment',
+    candidate:             'Define a candidate element for the architecture'
+};
+
+const PROPERTY_DESCRIPTIONS = {
+    title:          'Element or block title',
+    description:    'Detailed description text',
+    taxonomy:       'Taxonomy classification code',
+    status:         'Element status (accepted, proposed, provisional, rejected)',
+    confidence:     'Confidence score (0.0 to 1.0)',
+    provenance:     'Origin of the element (manual, llm-inferred, imported, propagated)',
+    score:          'Numeric score value',
+    source:         'Source reference',
+    text:           'Free-text content',
+    layout:         'View layout configuration',
+    include:        'Include elements in a view',
+    'for-relation': 'Target relation for evidence',
+    type:           'Element domain type',
+    model:          'Model identifier',
+    summary:        'Brief summary'
+};
+
+// ── Dynamic taxonomy code cache ────────────────────────────────────────
+let cachedTaxCodes = null;
+
+async function fetchTaxCodes() {
+    if (cachedTaxCodes) return cachedTaxCodes;
+    try {
+        const resp = await fetch('/api/taxonomy');
+        const data = await resp.json();
+        cachedTaxCodes = extractAllCodes(data);
+        return cachedTaxCodes;
+    } catch {
+        return [];
+    }
+}
+
+function extractAllCodes(node) {
+    const codes = [];
+    if (Array.isArray(node)) {
+        for (const child of node) codes.push(...extractAllCodes(child));
+    } else if (node && typeof node === 'object') {
+        if (node.code) codes.push({ code: node.code, title: node.title || '' });
+        if (node.children) {
+            for (const child of node.children) codes.push(...extractAllCodes(child));
+        }
+    }
+    return codes;
+}
+
 // ── TaxDSL StreamLanguage tokenizer ───────────────────────────────────
 const taxDslMode = {
-    startState: () => ({}),
+    startState: () => ({ braceDepth: 0 }),
 
-    token(stream, _state) {
+    token(stream, state) {
         // Whitespace
         if (stream.eatSpace()) return null;
 
@@ -70,8 +140,9 @@ const taxDslMode = {
             return 'string';
         }
 
-        // Braces
-        if (stream.eat('{') || stream.eat('}')) return 'bracket';
+        // Braces (with depth tracking for context-dependent keywords)
+        if (stream.eat('{')) { state.braceDepth++; return 'bracket'; }
+        if (stream.eat('}')) { if (state.braceDepth > 0) state.braceDepth--; return 'bracket'; }
 
         // Punctuation
         if (stream.eat(';') || stream.eat(':')) return 'punctuation';
@@ -82,6 +153,12 @@ const taxDslMode = {
         // Words / identifiers
         if (stream.match(/^[A-Za-z_][\w-]*/)) {
             const word = stream.current();
+            // "source" is uniquely context-dependent: it is both a block keyword (at line start:
+            // source SRC-001 { ... }) and a property key (inside a block: source: "...").
+            // Other provenance keywords (sourceVersion, etc.) are only block keywords.
+            if (word === 'source') {
+                return state.braceDepth > 0 ? 'propertyName' : 'keyword';
+            }
             if (BLOCK_KEYWORDS.has(word))  return 'keyword';
             if (DOMAIN_TYPES.has(word))    return 'typeName';
             if (RELATION_TYPES.has(word))  return 'operatorKeyword';
@@ -101,7 +178,7 @@ const taxDslMode = {
 const taxDslLanguage = StreamLanguage.define(taxDslMode);
 
 // ── Autocompletion ─────────────────────────────────────────────────────
-function taxDslCompletions(context) {
+async function taxDslCompletions(context) {
     const word = context.matchBefore(/[\w-]*/);
     if (!word || (word.from === word.to && !context.explicit)) return null;
 
@@ -141,17 +218,62 @@ function taxDslCompletions(context) {
         };
     }
 
-    // At the start of a line — suggest block keywords
-    if (/^[\w-]*$/.test(trimmed)) {
+    // After 'confidence: '
+    if (/\bconfidence\s*:\s*[\d.]*$/.test(trimmed)) {
+        return {
+            from: word.from,
+            options: Array.from({ length: 11 }, (_, i) => ({
+                label: (i / 10).toFixed(1),
+                type: 'constant',
+                info: i === 0 ? 'No confidence' : i === 10 ? 'Full confidence' : undefined
+            }))
+        };
+    }
+
+    // After 'provenance: '
+    if (/\bprovenance\s*:\s*[\w-]*$/.test(trimmed)) {
+        return {
+            from: word.from,
+            options: [...PROVENANCE_VALUES].map(v => ({ label: v, type: 'constant' }))
+        };
+    }
+
+    // At the start of a line (no indentation) — suggest block keywords
+    if (/^[\w-]*$/.test(before)) {
         const kwOptions = [...BLOCK_KEYWORDS].map(k => ({
             label: k,
             type: 'keyword',
-            info: k === 'element'  ? 'Define an architecture element' :
-                  k === 'relation' ? 'Define a typed relation between elements' :
-                  k === 'meta'     ? 'Document metadata block' :
-                  k === 'view'     ? 'Define an architecture view' : undefined
+            info: BLOCK_KEYWORD_INFO[k]
         }));
         return { from: word.from, options: kwOptions };
+    }
+
+    // After 'element ' — suggest taxonomy codes for the element ID
+    if (/^element\s+[\w-]*$/.test(trimmed)) {
+        const codes = await fetchTaxCodes();
+        if (codes.length > 0) {
+            return {
+                from: word.from,
+                options: codes.map(c => ({
+                    label: c.code,
+                    type: 'variable',
+                    info: c.title || 'Taxonomy code'
+                }))
+            };
+        }
+    }
+
+    // Inside a block body (indented line) — suggest property keys
+    if (/^\s+[\w-]*$/.test(before)) {
+        return {
+            from: word.from,
+            options: [...PROPERTY_KEYS].map(k => ({
+                label: k + ':',
+                type: 'property',
+                info: PROPERTY_DESCRIPTIONS[k] || '',
+                apply: k + ': '
+            }))
+        };
     }
 
     return null;
@@ -201,10 +323,25 @@ const taxDslLinter = linter(view => {
 // ── Theme compartment ──────────────────────────────────────────────────
 const themeCompartment = new Compartment();
 
+// ── Light-mode syntax highlighting ────────────────────────────────────
+const taxDslLightHighlight = syntaxHighlighting(HighlightStyle.define([
+    { tag: tags.keyword,         color: '#7c3aed', fontWeight: 'bold' },  // Purple — element, relation, meta, view…
+    { tag: tags.typeName,        color: '#d97706' },                       // Orange — Capability, Service, Process…
+    { tag: tags.operatorKeyword, color: '#dc2626', fontWeight: 'bold' },   // Red — REALIZES, SUPPORTS, USES…
+    { tag: tags.propertyName,    color: '#059669' },                       // Teal — title, description, status…
+    { tag: tags.string,          color: '#16a34a' },                       // Green — "Secure Voice Communications"
+    { tag: tags.comment,         color: '#6b7280', fontStyle: 'italic' },  // Grey italic — # comment
+    { tag: tags.variableName,    color: '#2563eb' },                       // Blue — CP-1023, BP-1327, REQ-001
+    { tag: tags.number,          color: '#0891b2' },                       // Cyan — 0.85, 42
+    { tag: tags.bool,            color: '#ea580c' },                       // Orange — accepted, proposed, rejected
+    { tag: tags.bracket,         color: '#64748b' },                       // Slate — { }
+    { tag: tags.punctuation,     color: '#94a3b8' },                       // Light grey — : ;
+]));
+
 function getCurrentTheme() {
     return document.documentElement.getAttribute('data-bs-theme') === 'dark'
         ? oneDark
-        : EditorView.baseTheme({});
+        : taxDslLightHighlight;
 }
 
 // ── Editor initialization ──────────────────────────────────────────────
@@ -244,6 +381,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.dslCmView = view;
     container.dispatchEvent(new CustomEvent('cm-ready'));
+
+    // Pre-fetch taxonomy codes for autocompletion
+    fetchTaxCodes();
 
     // Sync theme when dark mode toggles
     const observer = new MutationObserver(() => {
