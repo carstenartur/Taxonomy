@@ -296,6 +296,106 @@ class ScreenshotGeneratorIT {
             "</div></div></div>" +
             "</div>";
 
+    /**
+     * Fallback architecture view HTML injected when the mock-LLM analysis produces too few
+     * elements for a representative screenshot.  Matches the structure produced by
+     * {@code renderArchitectureView()} in taxonomy-scoring.js, featuring 4 layers, 7 nodes,
+     * 5 relationships, KPI summary bar, hotspot badges, and edge labels.
+     */
+    private static final String FALLBACK_ARCHITECTURE_VIEW_HTML =
+            // ── KPI summary bar ──
+            "<div class=\"impact-summary-bar\">" +
+            "<span class=\"impact-kpi\">&#127919; 3 direct matches</span>" +
+            "<span class=\"impact-kpi\">&#128230; 7 affected elements</span>" +
+            "<span class=\"impact-kpi\">&#128279; 5 relations</span>" +
+            "<span class=\"impact-kpi\">&#127959;&#65039; 4 layers</span>" +
+            "<span class=\"impact-kpi\">&#9888;&#65039; 2 change hotspots</span>" +
+            "</div>" +
+            // ── Layered Impact Map (swimlanes) ──
+            "<div class=\"impact-map\">" +
+            // Layer 1: Capabilities
+            "<div class=\"impact-swimlane layer-cap\">" +
+            "<div class=\"impact-swimlane-title\">&#128309; Capabilities " +
+            "<span class=\"badge bg-secondary\" style=\"font-size:0.7rem;\">2</span></div>" +
+            "<div class=\"impact-swimlane-nodes\">" +
+            "<span class=\"impact-node impact-node-anchor impact-node-hotspot\" style=\"opacity:0.96\" " +
+            "title=\"CP-1023 Secure Voice Communications — direct-match\">" +
+            "CP-1023 Secure Voice Communica <span class=\"impact-badge\">&#9733; 90%</span> &#9888;&#65039;</span>" +
+            "<span class=\"impact-node\" style=\"opacity:0.74\" " +
+            "title=\"CP-1050 Network Management — propagated\">" +
+            "CP-1050 Network Management <span class=\"impact-badge\">&#8627;1</span></span>" +
+            "</div></div>" +
+            // Edge: Capabilities → Core Services
+            "<div class=\"impact-edge\">&#9474; " +
+            "<span class=\"impact-edge-label\">REALIZES</span><br>&#9660;</div>" +
+            // Layer 2: Core Services
+            "<div class=\"impact-swimlane layer-svc\">" +
+            "<div class=\"impact-swimlane-title\">&#128992; Core Services " +
+            "<span class=\"badge bg-secondary\" style=\"font-size:0.7rem;\">2</span></div>" +
+            "<div class=\"impact-swimlane-nodes\">" +
+            "<span class=\"impact-node impact-node-anchor\" style=\"opacity:0.92\" " +
+            "title=\"CR-1047 Data Exchange Services — direct-match\">" +
+            "CR-1047 Data Exchange Service <span class=\"impact-badge\">&#9733; 80%</span></span>" +
+            "<span class=\"impact-node impact-node-hotspot\" style=\"opacity:0.76\" " +
+            "title=\"CR-1023 Core Communication Services — propagated\">" +
+            "CR-1023 Core Communication S <span class=\"impact-badge\">&#8627;1</span> &#9888;&#65039;</span>" +
+            "</div></div>" +
+            // Edge: Core Services → Business Processes
+            "<div class=\"impact-edge\">&#9474; " +
+            "<span class=\"impact-edge-label\">SUPPORTS</span> " +
+            "<span class=\"impact-edge-label\">DEPENDS_ON</span><br>&#9660;</div>" +
+            // Layer 3: Business Processes
+            "<div class=\"impact-swimlane layer-proc\">" +
+            "<div class=\"impact-swimlane-title\">&#128994; Business Processes " +
+            "<span class=\"badge bg-secondary\" style=\"font-size:0.7rem;\">2</span></div>" +
+            "<div class=\"impact-swimlane-nodes\">" +
+            "<span class=\"impact-node impact-node-anchor\" style=\"opacity:0.88\" " +
+            "title=\"BP-1327 Secure Communications Process — direct-match\">" +
+            "BP-1327 Secure Communication <span class=\"impact-badge\">&#9733; 70%</span></span>" +
+            "<span class=\"impact-node\" style=\"opacity:0.70\" " +
+            "title=\"BP-1100 Network Operations — propagated\">" +
+            "BP-1100 Network Operations <span class=\"impact-badge\">&#8627;2</span></span>" +
+            "</div></div>" +
+            // Edge: Business Processes → Information Products
+            "<div class=\"impact-edge\">&#9474; " +
+            "<span class=\"impact-edge-label\">USES</span><br>&#9660;</div>" +
+            // Layer 4: Information Products
+            "<div class=\"impact-swimlane layer-info\">" +
+            "<div class=\"impact-swimlane-title\">&#128311; Information Products " +
+            "<span class=\"badge bg-secondary\" style=\"font-size:0.7rem;\">1</span></div>" +
+            "<div class=\"impact-swimlane-nodes\">" +
+            "<span class=\"impact-node\" style=\"opacity:0.68\" " +
+            "title=\"IP-2001 Interoperability Framework — propagated\">" +
+            "IP-2001 Interoperability Fra <span class=\"impact-badge\">&#8627;2</span></span>" +
+            "</div></div>" +
+            "</div>" +
+            // ── Detail tables (collapsible) ──
+            "<details class=\"impact-details\">" +
+            "<summary>&#128203; Detail: 7 Elements, 5 Relationships</summary>" +
+            "<h6 class=\"mb-1 mt-2\">Included Elements</h6>" +
+            "<div class=\"table-responsive\"><table class=\"table table-sm table-bordered small mb-2\">" +
+            "<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead>" +
+            "<tbody>" +
+            "<tr class=\"table-success\"><td>CP-1023</td><td>Secure Voice Communications</td><td>Capabilities</td><td>90.0%</td><td>0</td><td>&#9733; &#9888;&#65039;</td><td>direct-match</td></tr>" +
+            "<tr class=\"table-success\"><td>CR-1047</td><td>Data Exchange Services</td><td>Core Services</td><td>80.0%</td><td>0</td><td>&#9733;</td><td>direct-match</td></tr>" +
+            "<tr class=\"table-success\"><td>BP-1327</td><td>Secure Communications Process</td><td>Business Processes</td><td>70.0%</td><td>0</td><td>&#9733;</td><td>direct-match</td></tr>" +
+            "<tr><td>CP-1050</td><td>Network Management</td><td>Capabilities</td><td>35.0%</td><td>1</td><td></td><td>propagated</td></tr>" +
+            "<tr><td>CR-1023</td><td>Core Communication Services</td><td>Core Services</td><td>40.0%</td><td>1</td><td>&#9888;&#65039;</td><td>propagated</td></tr>" +
+            "<tr><td>BP-1100</td><td>Network Operations</td><td>Business Processes</td><td>25.0%</td><td>2</td><td></td><td>propagated</td></tr>" +
+            "<tr><td>IP-2001</td><td>Interoperability Framework</td><td>Information Products</td><td>20.0%</td><td>2</td><td></td><td>propagated</td></tr>" +
+            "</tbody></table></div>" +
+            "<h6 class=\"mb-1\">Included Relationships</h6>" +
+            "<div class=\"table-responsive\"><table class=\"table table-sm table-bordered small mb-0\">" +
+            "<thead><tr><th>Source</th><th>&rarr;</th><th>Target</th><th>Type</th><th>Relevance</th><th>Hops</th><th>Reason</th></tr></thead>" +
+            "<tbody>" +
+            "<tr><td>CP-1023</td><td>&rarr;</td><td>CR-1047</td><td>REALIZES</td><td>80.0%</td><td>1</td><td>anchor relation</td></tr>" +
+            "<tr><td>CP-1023</td><td>&rarr;</td><td>CP-1050</td><td>REALIZES</td><td>35.0%</td><td>1</td><td>propagated</td></tr>" +
+            "<tr><td>CR-1047</td><td>&rarr;</td><td>BP-1327</td><td>SUPPORTS</td><td>70.0%</td><td>1</td><td>anchor relation</td></tr>" +
+            "<tr><td>CR-1023</td><td>&rarr;</td><td>BP-1100</td><td>DEPENDS_ON</td><td>25.0%</td><td>2</td><td>propagated</td></tr>" +
+            "<tr><td>BP-1327</td><td>&rarr;</td><td>IP-2001</td><td>USES</td><td>20.0%</td><td>2</td><td>propagated</td></tr>" +
+            "</tbody></table></div>" +
+            "</details>";
+
     private static final Path OUTPUT_DIR = resolveOutputDir();
 
     /**
@@ -966,7 +1066,8 @@ class ScreenshotGeneratorIT {
     @Order(14)
     void captureAdminLockButton() throws IOException {
         showAdminLockButton();
-        saveScreenshot("14-navbar-admin-lock.png");
+        WebElement navbar = driver.findElement(By.cssSelector("nav.navbar"));
+        saveElementScreenshot(navbar, "14-navbar-admin-lock.png");
     }
 
     // ── Screenshots 15–27: LLM-dependent (use mock LLM — no real API key needed) ──
@@ -1137,6 +1238,15 @@ class ScreenshotGeneratorIT {
         // Navigate to Architecture tab to see the panel
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
+
+        // If the mock-LLM analysis produced too few swimlanes (< 3 layers), inject a richer
+        // fallback to produce a representative screenshot of the Layered Impact Map.
+        Long swimlaneCount = (Long) ((JavascriptExecutor) driver).executeScript(
+                "return document.querySelectorAll('#architectureViewContent .impact-swimlane').length;");
+        if (swimlaneCount == null || swimlaneCount < 3) {
+            js("document.getElementById('architectureViewContent').innerHTML = arguments[0];",
+                    FALLBACK_ARCHITECTURE_VIEW_HTML);
+        }
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")), "20-architecture-view.png");
 
         // Reset: navigate back to analyze, switch back to list view and uncheck architecture view
@@ -1283,8 +1393,13 @@ class ScreenshotGeneratorIT {
         }
         navigateToTab("admin");
 
+        // Ensure the <details> panel is open (it may have been closed by tab navigation)
+        WebElement panel = driver.findElement(By.id("coverageDashboard"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
+        openDetails(panel);
+
         // POST coverage record directly via fetch (avoids window.prompt dialog).
-        // A sentinel variable signals completion.
+        // A sentinel variable signals completion; check response.ok to confirm the record was saved.
         js("window._coverageRecorded = false;" +
            "fetch('/api/coverage/record', {" +
            "  method: 'POST'," +
@@ -1295,20 +1410,17 @@ class ScreenshotGeneratorIT {
            "    scores: (typeof window._getCurrentScores === 'function' ? window._getCurrentScores() : {})," +
            "    minScore: 50" +
            "  })" +
-           "}).then(function() { window._coverageRecorded = true; });",
+           "}).then(function(r) { window._coverageRecorded = r.ok; })" +
+           "  .catch(function() { window._coverageRecorded = false; });",
            REQUIREMENT_TEXT);
         wait(10).until(d ->
                 (Boolean) ((JavascriptExecutor) d).executeScript("return window._coverageRecorded === true;"));
 
         // Reload the dashboard so it picks up the newly recorded data
         js("if (window.TaxonomyCoverage) window.TaxonomyCoverage.loadCoverageDashboard();");
-        wait(10).until(d -> {
-            String text = d.findElement(By.id("coverageDashboardContent")).getText();
-            return text != null && !text.contains("Loading") && !text.isEmpty();
-        });
+        wait(10).until(d -> !d.findElements(
+                By.cssSelector("#coverageDashboardContent .coverage-node-link")).isEmpty());
 
-        WebElement panel = driver.findElement(By.id("coverageDashboard"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
         saveElementScreenshot(panel, "27-coverage-dashboard-data.png");
     }
 
@@ -1711,6 +1823,20 @@ class ScreenshotGeneratorIT {
 
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
+
+        // If the mock-LLM analysis produced too few swimlanes, inject fallback
+        Long swimlaneCount = (Long) ((JavascriptExecutor) driver).executeScript(
+                "return document.querySelectorAll('#architectureViewContent .impact-swimlane').length;");
+        if (swimlaneCount == null || swimlaneCount < 3) {
+            js("document.getElementById('architectureViewContent').innerHTML = arguments[0];",
+                    FALLBACK_ARCHITECTURE_VIEW_HTML);
+        }
+
+        // Expand the <details> section so the element/relationship tables are visible
+        // — this differentiates the "detailed" screenshot from the overview (screenshot 20).
+        js("var d = document.querySelector('#architectureViewContent .impact-details');" +
+           "if (d) d.setAttribute('open', '');");
+
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")),
                 "38-architecture-view-detailed.png");
 
