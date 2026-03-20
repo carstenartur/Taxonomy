@@ -950,6 +950,7 @@
     font-size: 0.78rem;
     cursor: default;
     color: #fff;
+    background: #6c757d;
     position: relative;
     border: 1px solid rgba(255,255,255,0.3);
 }

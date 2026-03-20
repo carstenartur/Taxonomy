@@ -10,6 +10,7 @@
 
     // ── Architecture Summary View ─────────────────────────────────────────────
     var LAYER_CONFIG = {
+        // Full sheet names (used by fallback HTML and future backend changes)
         'Capabilities':           { order: 1, cls: 'layer-cap',  icon: '🔵', label: 'Capabilities' },
         'Business Processes':     { order: 2, cls: 'layer-proc', icon: '🟢', label: 'Business Processes' },
         'Business Roles':         { order: 2, cls: 'layer-proc', icon: '🟢', label: 'Business Roles' },
@@ -19,7 +20,16 @@
         'Applications':           { order: 4, cls: 'layer-app',  icon: '🟣', label: 'Applications' },
         'User Applications':      { order: 4, cls: 'layer-app',  icon: '🟣', label: 'User Applications' },
         'Information Products':   { order: 5, cls: 'layer-info', icon: '🔷', label: 'Information Products' },
-        'Communications Services':{ order: 6, cls: 'layer-comm', icon: '🔴', label: 'Communications Services' }
+        'Communications Services':{ order: 6, cls: 'layer-comm', icon: '🔴', label: 'Communications Services' },
+        // 2-letter taxonomy-root prefixes (returned by RequirementArchitectureViewService)
+        'CP':                     { order: 1, cls: 'layer-cap',  icon: '🔵', label: 'Capabilities' },
+        'BP':                     { order: 2, cls: 'layer-proc', icon: '🟢', label: 'Business Processes' },
+        'BR':                     { order: 2, cls: 'layer-proc', icon: '🟢', label: 'Business Roles' },
+        'CI':                     { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'COI Services' },
+        'CO':                     { order: 6, cls: 'layer-comm', icon: '🔴', label: 'Communications Services' },
+        'CR':                     { order: 3, cls: 'layer-svc',  icon: '🟠', label: 'Core Services' },
+        'IP':                     { order: 5, cls: 'layer-info', icon: '🔷', label: 'Information Products' },
+        'UA':                     { order: 4, cls: 'layer-app',  icon: '🟣', label: 'User Applications' }
     };
 
     // ── Utility ───────────────────────────────────────────────────────────────
@@ -604,9 +614,16 @@
             }
         });
         const hotspotCodes = new Set();
+        const hotspotReasons = {};
         elements.forEach(el => {
-            if (el.anchor && (outCount[el.nodeCode] || 0) >= 2) hotspotCodes.add(el.nodeCode);
-            if (reachingAnchors[el.nodeCode] && reachingAnchors[el.nodeCode].size >= 2) hotspotCodes.add(el.nodeCode);
+            if (el.anchor && (outCount[el.nodeCode] || 0) >= 2) {
+                hotspotCodes.add(el.nodeCode);
+                hotspotReasons[el.nodeCode] = 'anchor with ' + outCount[el.nodeCode] + ' outgoing relations';
+            }
+            if (reachingAnchors[el.nodeCode] && reachingAnchors[el.nodeCode].size >= 2) {
+                hotspotCodes.add(el.nodeCode);
+                hotspotReasons[el.nodeCode] = 'reached from ' + reachingAnchors[el.nodeCode].size + ' anchors';
+            }
         });
 
         // ── Group elements by taxonomy sheet ──
@@ -680,8 +697,12 @@
                     if (el.anchor) nodeClasses += ' impact-node-anchor';
                     if (hotspotCodes.has(el.nodeCode)) nodeClasses += ' impact-node-hotspot';
                     const opacity = 0.6 + (el.relevance * 0.4);
+                    let titleParts = el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '');
+                    if (hotspotCodes.has(el.nodeCode)) {
+                        titleParts += ' | ⚠️ hotspot: ' + (hotspotReasons[el.nodeCode] || 'change risk');
+                    }
                     html += '<span class="' + nodeClasses + '" style="opacity:' + opacity.toFixed(2) + '"' +
-                        ' title="' + escapeHtml(el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '')) + '">';
+                        ' title="' + escapeHtml(titleParts) + '">';
                     html += escapeHtml(el.nodeCode);
                     if (el.title) html += ' ' + escapeHtml(el.title.substring(0, 25));
                     if (el.anchor) {
@@ -711,10 +732,12 @@
                 html += '<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead><tbody>';
                 elements.forEach(e => {
                     const rowClass = e.anchor ? 'table-success' : '';
+                    const sheetCfg = LAYER_CONFIG[e.taxonomySheet];
+                    const sheetLabel = sheetCfg ? sheetCfg.label : (e.taxonomySheet || '');
                     html += '<tr class="' + rowClass + '">' +
                         '<td>' + escapeHtml(e.nodeCode) + '</td>' +
                         '<td>' + escapeHtml(e.title || '') + '</td>' +
-                        '<td>' + escapeHtml(e.taxonomySheet || '') + '</td>' +
+                        '<td>' + escapeHtml(sheetLabel) + '</td>' +
                         '<td>' + (e.relevance * 100).toFixed(1) + '%</td>' +
                         '<td>' + e.hopDistance + '</td>' +
                         '<td>' + (e.anchor ? '★' : '') +
