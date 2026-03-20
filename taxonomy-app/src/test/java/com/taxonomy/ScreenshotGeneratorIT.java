@@ -611,6 +611,37 @@ class ScreenshotGeneratorIT {
         ((JavascriptExecutor) driver).executeScript(script, args);
     }
 
+    /**
+     * Pre-seeds 4 taxonomy relations via the REST API so that
+     * {@code RelevancePropagationService.propagate()} has edges to traverse when the
+     * architecture view is rendered.  Without these relations only the 3 anchor nodes
+     * (CO, CR, CP) appear — one per swimlane.  With them, propagation spans 4+ taxonomy
+     * sheets producing a representative multi-layer screenshot.
+     * <p>
+     * Uses root-level taxonomy codes (CP, CR, BP, IP, CO) that are always present after
+     * the catalogue is loaded.  Duplicates are harmless because the propagation just
+     * finds more paths.
+     */
+    private void seedArchitectureViewRelations() {
+        js("window.__relsDone = 0;" +
+           "var rels = [" +
+           "  {sourceCode:'CP',targetCode:'CR',relationType:'REALIZES',description:'arch-seed'}," +
+           "  {sourceCode:'CR',targetCode:'BP',relationType:'SUPPORTS',description:'arch-seed'}," +
+           "  {sourceCode:'BP',targetCode:'IP',relationType:'USES',description:'arch-seed'}," +
+           "  {sourceCode:'CO',targetCode:'CR',relationType:'SUPPORTS',description:'arch-seed'}" +
+           "];" +
+           "rels.forEach(function(rel) {" +
+           "  fetch('/api/relations', {" +
+           "    method: 'POST'," +
+           "    headers: {'Content-Type': 'application/json'}," +
+           "    body: JSON.stringify(rel)" +
+           "  }).then(function() { window.__relsDone++; })" +
+           "   .catch(function() { window.__relsDone++; });" +
+           "});");
+        wait(15).until(d -> 4L == (Long) ((JavascriptExecutor) d).executeScript(
+                "return window.__relsDone;"));
+    }
+
     /** Scrolls the element into the viewport and clicks via JavaScript — prevents ElementClickIntercepted. */
     private void safeClick(WebElement element) {
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", element);
@@ -1204,6 +1235,10 @@ class ScreenshotGeneratorIT {
         // Disable interactive mode so a full analysis runs
         forceNonInteractiveMode();
 
+        // Pre-seed taxonomy relations so that RelevancePropagationService.propagate() has edges
+        // to traverse. Without them only the 3 anchor nodes appear (one swimlane each).
+        seedArchitectureViewRelations();
+
         // Enable architecture view
         WebElement archCb = driver.findElement(By.id("includeArchitectureView"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", archCb);
@@ -1244,8 +1279,13 @@ class ScreenshotGeneratorIT {
         Long swimlaneCount = (Long) ((JavascriptExecutor) driver).executeScript(
                 "return document.querySelectorAll('#architectureViewContent .impact-swimlane').length;");
         if (swimlaneCount == null || swimlaneCount < 3) {
-            js("document.getElementById('architectureViewContent').innerHTML = arguments[0];",
-                    FALLBACK_ARCHITECTURE_VIEW_HTML);
+            js("document.getElementById('architectureViewContent').innerHTML = arguments[0];" +
+               "requestAnimationFrame(function() { requestAnimationFrame(function() {" +
+               "  document.getElementById('architectureViewContent').dataset.rendered = 'true';" +
+               "}); });",
+               FALLBACK_ARCHITECTURE_VIEW_HTML);
+            wait(10).until(ExpectedConditions.attributeToBe(
+                    By.id("architectureViewContent"), "data-rendered", "true"));
         }
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")), "20-architecture-view.png");
 
@@ -1792,6 +1832,10 @@ class ScreenshotGeneratorIT {
         resetPageState();
         forceNonInteractiveMode();
 
+        // Re-seed relations in case the container was restarted between test 20 and test 38,
+        // or in case prior tests didn't run. Duplicates are harmless.
+        seedArchitectureViewRelations();
+
         // Enable architecture view
         WebElement archCb = driver.findElement(By.id("includeArchitectureView"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", archCb);
@@ -1828,8 +1872,13 @@ class ScreenshotGeneratorIT {
         Long swimlaneCount = (Long) ((JavascriptExecutor) driver).executeScript(
                 "return document.querySelectorAll('#architectureViewContent .impact-swimlane').length;");
         if (swimlaneCount == null || swimlaneCount < 3) {
-            js("document.getElementById('architectureViewContent').innerHTML = arguments[0];",
-                    FALLBACK_ARCHITECTURE_VIEW_HTML);
+            js("document.getElementById('architectureViewContent').innerHTML = arguments[0];" +
+               "requestAnimationFrame(function() { requestAnimationFrame(function() {" +
+               "  document.getElementById('architectureViewContent').dataset.rendered = 'true';" +
+               "}); });",
+               FALLBACK_ARCHITECTURE_VIEW_HTML);
+            wait(10).until(ExpectedConditions.attributeToBe(
+                    By.id("architectureViewContent"), "data-rendered", "true"));
         }
 
         // Expand the <details> section so the element/relationship tables are visible
