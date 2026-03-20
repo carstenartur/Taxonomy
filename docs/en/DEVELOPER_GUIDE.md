@@ -79,7 +79,7 @@ Pure data types shared across modules:
 | Package | Contents |
 |---|---|
 | `com.taxonomy.dto` | DTOs (Data Transfer Objects) — `TaxonomyNodeDto`, `AnalysisResult`, `ArchitectureRecommendation`, `GapAnalysisView`, `SavedAnalysis`, etc. |
-| `com.taxonomy.model` | 3 domain enums — `RelationType` (10 values), `HypothesisStatus`, `ProposalStatus` |
+| `com.taxonomy.model` | 5 domain enums — `RelationType` (12 values), `SeedType`, `HypothesisStatus`, `ProposalStatus`, `SourceType` |
 
 ### taxonomy-dsl
 

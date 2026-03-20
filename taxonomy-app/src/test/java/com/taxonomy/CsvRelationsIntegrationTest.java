@@ -34,9 +34,9 @@ class CsvRelationsIntegrationTest {
 
     @Test
     void csvRelationsAreLoadedAtStartup() {
-        // The CSV fallback should have loaded ~24 relations
+        // The CSV fallback should have loaded 36 relations (24 default + 12 framework)
         long count = relationService.countRelations();
-        assertThat(count).isGreaterThanOrEqualTo(20);
+        assertThat(count).isGreaterThanOrEqualTo(36);
     }
 
     @Test

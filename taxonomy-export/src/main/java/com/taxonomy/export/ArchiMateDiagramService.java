@@ -167,7 +167,7 @@ public class ArchiMateDiagramService {
         return switch (relationType) {
             case "SUPPORTS", "ENABLES", "USES", "DEPENDS_ON" -> "Serving";
             case "PRODUCES"                                   -> "Access";
-            case "CONSUMES"                                   -> "Access";
+            case "CONSUMES", "REQUIRES"                       -> "Access";
             case "REALIZES", "IMPLEMENTS", "FULFILLS"         -> "Realization";
             case "ASSIGNED_TO"                                -> "Assignment";
             case "COMMUNICATES_WITH"                          -> "Flow";

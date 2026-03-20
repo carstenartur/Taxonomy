@@ -429,51 +429,34 @@ public class TaxonomyService {
             log.warn("CSV fallback 'data/relations.csv' not found — no relations loaded.");
             return;
         }
-        List<TaxonomyRelation> relations = new ArrayList<>();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(csvResource.getInputStream(), StandardCharsets.UTF_8))) {
-            reader.readLine(); // skip header row
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank()) continue;
-                // Split on comma with limit 4; descriptions in the CSV must not contain commas
-                String[] parts = line.split(",", 4);
-                if (parts.length < 3) continue;
-                String sourceCode  = parts[0].trim();
-                String targetCode  = parts[1].trim();
-                String typeStr     = parts[2].trim();
-                String description = parts.length >= 4 ? parts[3].trim() : null;
-
-                Long sourceId = codeToId.get(sourceCode);
-                Long targetId = codeToId.get(targetCode);
-                if (sourceId == null) {
-                    log.warn("CSV relations: source node '{}' not found — skipping row.", sourceCode);
-                    continue;
-                }
-                if (targetId == null) {
-                    log.warn("CSV relations: target node '{}' not found — skipping row.", targetCode);
-                    continue;
-                }
-
-                RelationType relationType;
-                try {
-                    relationType = RelationType.valueOf(typeStr.toUpperCase());
-                } catch (IllegalArgumentException e) {
-                    log.warn("CSV relations: unknown relation type '{}' — skipping row.", typeStr);
-                    continue;
-                }
-
-                TaxonomyRelation relation = new TaxonomyRelation();
-                relation.setSourceNode(entityManager.getReference(TaxonomyNode.class, sourceId));
-                relation.setTargetNode(entityManager.getReference(TaxonomyNode.class, targetId));
-                relation.setRelationType(relationType);
-                relation.setDescription(truncate(description, 2000));
-                relation.setProvenance("csv-default");
-                relations.add(relation);
-            }
+        List<com.taxonomy.dto.RelationSeedRow> seedRows;
+        try {
+            seedRows = RelationSeedParser.parse(csvResource.getInputStream());
         } catch (Exception e) {
-            log.error("Failed to load relations from CSV fallback", e);
+            log.error("Failed to parse relations from CSV fallback", e);
             return;
+        }
+
+        List<TaxonomyRelation> relations = new ArrayList<>();
+        for (com.taxonomy.dto.RelationSeedRow row : seedRows) {
+            Long sourceId = codeToId.get(row.sourceCode());
+            Long targetId = codeToId.get(row.targetCode());
+            if (sourceId == null) {
+                log.warn("CSV relations: source node '{}' not found — skipping row.", row.sourceCode());
+                continue;
+            }
+            if (targetId == null) {
+                log.warn("CSV relations: target node '{}' not found — skipping row.", row.targetCode());
+                continue;
+            }
+
+            TaxonomyRelation relation = new TaxonomyRelation();
+            relation.setSourceNode(entityManager.getReference(TaxonomyNode.class, sourceId));
+            relation.setTargetNode(entityManager.getReference(TaxonomyNode.class, targetId));
+            relation.setRelationType(row.relationType());
+            relation.setDescription(truncate(row.description(), 2000));
+            relation.setProvenance(row.toProvenance());
+            relations.add(relation);
         }
         relationRepository.saveAll(relations);
         log.info("CSV relations loaded: {} relations.", relations.size());

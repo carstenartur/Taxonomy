@@ -79,7 +79,7 @@ Reine Datentypen, die modulübergreifend genutzt werden:
 | Paket | Inhalt |
 |---|---|
 | `com.taxonomy.dto` | DTOs (Data Transfer Objects) — `TaxonomyNodeDto`, `AnalysisResult`, `ArchitectureRecommendation`, `GapAnalysisView`, `SavedAnalysis` usw. |
-| `com.taxonomy.model` | 3 Domain-Enums — `RelationType` (10 Werte), `HypothesisStatus`, `ProposalStatus` |
+| `com.taxonomy.model` | 5 Domain-Enums — `RelationType` (12 Werte), `SeedType`, `HypothesisStatus`, `ProposalStatus`, `SourceType` |
 
 ### taxonomy-dsl
 

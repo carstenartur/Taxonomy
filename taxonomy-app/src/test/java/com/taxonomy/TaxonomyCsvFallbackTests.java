@@ -26,10 +26,9 @@ class TaxonomyCsvFallbackTests {
     private TaxonomyRelationService relationService;
 
     @Test
-    void csvFallbackLoadsApproximately24RelationsOnStartup() {
-        // The application starts with no Relations sheet in the Excel workbook;
-        // the CSV fallback should have been loaded by @PostConstruct.
-        assertThat(relationService.countRelations()).isGreaterThanOrEqualTo(24);
+    void csvFallbackLoadsRelationsOnStartup() {
+        // 24 original TYPE_DEFAULT + 12 FRAMEWORK_SEED = 36 relations
+        assertThat(relationService.countRelations()).isGreaterThanOrEqualTo(36);
     }
 
     @Test
@@ -44,10 +43,27 @@ class TaxonomyCsvFallbackTests {
     }
 
     @Test
-    void csvFallbackRelationsHaveCsvDefaultProvenance() {
-        // All relations loaded from the CSV fallback must have provenance "csv-default"
+    void csvFallbackRelationsHaveProvenancePrefix() {
+        // All relations loaded from the CSV must have a provenance starting with "csv-"
         List<TaxonomyRelationDto> all = relationService.getAllRelations();
         assertThat(all).isNotEmpty();
-        assertThat(all).allMatch(r -> "csv-default".equals(r.getProvenance()));
+        assertThat(all).allMatch(r -> r.getProvenance() != null && r.getProvenance().startsWith("csv-"));
+    }
+
+    @Test
+    void csvFallbackContainsFrameworkSeedRelations() {
+        // The new FRAMEWORK_SEED relations should have csv-framework provenance
+        List<TaxonomyRelationDto> all = relationService.getAllRelations();
+        assertThat(all).anyMatch(r -> r.getProvenance() != null && r.getProvenance().startsWith("csv-framework"));
+    }
+
+    @Test
+    void csvFallbackContainsNewRequiresRelation() {
+        // CP → IP with REQUIRES is a new FRAMEWORK_SEED relation
+        List<TaxonomyRelationDto> cpRelations = relationService.getRelationsForNode("CP");
+        assertThat(cpRelations).anyMatch(r ->
+                "CP".equals(r.getSourceCode())
+                && "IP".equals(r.getTargetCode())
+                && "REQUIRES".equals(r.getRelationType()));
     }
 }

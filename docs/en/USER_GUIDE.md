@@ -1086,7 +1086,7 @@ view hospital-comms-overview {
 
 ### Relation Types
 
-See [§15 Relation Types Reference](#15-relation-types-reference) for the full list of 10 relation types and their compatibility rules.
+See [§15 Relation Types Reference](#15-relation-types-reference) for the full list of 12 relation types and their compatibility rules.
 
 ### Source Provenance in the DSL
 
@@ -1521,7 +1521,7 @@ The **Prompt Templates Editor** (admin only, collapsible) allows you to customis
 
 ## 15. Relation Types Reference
 
-The system uses 10 relation types, each corresponding to a specific relationship in the NATO Architecture Framework (NAF) or The Open Group Architecture Framework (TOGAF).
+The system uses 12 relation types, each corresponding to a specific relationship in the NATO Architecture Framework (NAF) or The Open Group Architecture Framework (TOGAF).
 
 | Relation Type | Plain-Language Meaning | Standard |
 |---|---|---|
@@ -1534,6 +1534,8 @@ The system uses 10 relation types, each corresponding to a specific relationship
 | **DEPENDS_ON** | One service depends on another service to function | Technical dependency |
 | **PRODUCES** | A business process produces an information product | Data flow |
 | **COMMUNICATES_WITH** | A communications service communicates with a core service | NAF NSOV |
+| **CONTAINS** | A system contains a component (structural containment) | C4 model |
+| **REQUIRES** | A capability requires an information product to be delivered | TOGAF Data Architecture |
 | **RELATED_TO** | A general relationship when no specific type applies | Generic fallback |
 
 ---

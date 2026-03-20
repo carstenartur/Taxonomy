@@ -31,7 +31,8 @@ public class DslTokenizer {
     /** Recognized relation types. */
     private static final Set<String> RELATION_TOKENS = Set.of(
             "REALIZES", "SUPPORTS", "CONSUMES", "USES", "FULFILLS",
-            "ASSIGNED_TO", "DEPENDS_ON", "PRODUCES", "COMMUNICATES_WITH", "RELATED_TO");
+            "ASSIGNED_TO", "DEPENDS_ON", "PRODUCES", "COMMUNICATES_WITH",
+            "REQUIRES", "RELATED_TO");
 
     /** Domain type names (values from TaxonomyRootTypes). */
     private static final Set<String> DOMAIN_TOKENS;
