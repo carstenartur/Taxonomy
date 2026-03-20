@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -555,5 +556,68 @@ public class WorkspaceController {
                 .toList();
         return new ContextComparison(comparison.left(), comparison.right(),
                 comparison.summary(), filtered, comparison.rawDslDiff());
+    }
+
+    @GetMapping("/history/origin-stack")
+    @Operation(summary = "Get origin stack from current context",
+            description = "Returns the chain of origin contexts from the current context back to the root.")
+    public ResponseEntity<List<ContextHistoryRecord>> getOriginStack() {
+        String user = workspaceResolver.resolveCurrentUsername();
+        List<ContextHistoryRecord> history = contextHistoryService.getHistory(user);
+        // Filter to only entries that form the origin chain
+        // Walk backwards from most recent, following originContextId links
+        List<ContextHistoryRecord> originStack = new ArrayList<>();
+        if (!history.isEmpty()) {
+            // Start with the most recent entry
+            ContextHistoryRecord current = history.get(0);
+            originStack.add(current);
+            // Follow origin chain
+            for (ContextHistoryRecord record : history) {
+                if (current.getOriginContextId() != null
+                        && current.getOriginContextId().equals(record.getToContextId())) {
+                    originStack.add(record);
+                    current = record;
+                }
+            }
+        }
+        return ResponseEntity.ok(originStack);
+    }
+
+    @PostMapping("/history/return-to")
+    @Operation(summary = "Return to a specific history entry",
+            description = "Navigates to a specific context from the navigation history.")
+    public ResponseEntity<Map<String, Object>> returnToHistoryEntry(
+            @RequestParam String contextId) {
+        String user = workspaceResolver.resolveCurrentUsername();
+        List<ContextHistoryRecord> history = contextHistoryService.getHistory(user);
+        // Find the target entry
+        ContextHistoryRecord target = history.stream()
+                .filter(r -> contextId.equals(r.getToContextId()))
+                .findFirst()
+                .orElse(null);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (target != null) {
+            result.put("success", true);
+            result.put("branch", target.getToBranch());
+            result.put("commitId", target.getToCommitId());
+            result.put("contextId", target.getToContextId());
+        } else {
+            result.put("success", false);
+            result.put("error", "History entry not found for contextId: " + contextId);
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    @DeleteMapping("/history")
+    @Operation(summary = "Clear navigation history",
+            description = "Deletes all navigation history entries for the current user.")
+    public ResponseEntity<Map<String, Object>> clearHistory() {
+        String user = workspaceResolver.resolveCurrentUsername();
+        contextHistoryService.clearHistory(user);
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "History cleared for user: " + user
+        ));
     }
 }
