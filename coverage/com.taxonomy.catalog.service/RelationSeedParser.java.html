@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationSeedParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">RelationSeedParser.java</span></div><h1>RelationSeedParser.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.dto.RelationSeedRow;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.model.SeedType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * Parses the relation seed CSV file into {@link RelationSeedRow} records.
+ *
+ * &lt;p&gt;The parser supports both the legacy 4-column format
+ * ({@code SourceCode,TargetCode,RelationType,Description}) and the extended
+ * 10-column format that adds {@code SourceStandard}, {@code SourceReference},
+ * {@code Confidence}, {@code SeedType}, {@code ReviewRequired}, and
+ * {@code Status}.
+ *
+ * &lt;p&gt;Rows that cannot be parsed are logged as warnings and skipped.
+ * The parser does not throw exceptions for individual malformed rows.
+ */
+public final class RelationSeedParser {
+
+<span class="fc" id="L32">    private static final Logger log = LoggerFactory.getLogger(RelationSeedParser.class);</span>
+
+    /** Maximum number of columns in the extended CSV format. */
+    private static final int EXTENDED_COLUMN_COUNT = 10;
+
+    /** Minimum number of columns required for a valid row. */
+    private static final int MIN_COLUMN_COUNT = 3;
+
+    private RelationSeedParser() {
+        // utility class
+    }
+
+    /**
+     * Parse the relation seed CSV from the given input stream.
+     *
+     * @param inputStream the CSV input stream (UTF-8 encoded, with header row)
+     * @return an unmodifiable list of parsed seed rows; never {@code null}
+     * @throws IOException if the stream cannot be read
+     */
+    public static List&lt;RelationSeedRow&gt; parse(InputStream inputStream) throws IOException {
+<span class="fc" id="L52">        List&lt;RelationSeedRow&gt; rows = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L53">        try (BufferedReader reader = new BufferedReader(</span>
+                new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+<span class="fc" id="L55">            String header = reader.readLine(); // skip header row</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            if (header == null) {</span>
+<span class="fc" id="L57">                log.warn(&quot;Relation seed CSV is empty.&quot;);</span>
+<span class="fc" id="L58">                return Collections.emptyList();</span>
+            }
+
+<span class="fc" id="L61">            int lineNumber = 1;</span>
+            String line;
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            while ((line = reader.readLine()) != null) {</span>
+<span class="fc" id="L64">                lineNumber++;</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                if (line.isBlank()) continue;</span>
+
+<span class="fc" id="L67">                RelationSeedRow row = parseLine(line, lineNumber);</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                if (row != null) {</span>
+<span class="fc" id="L69">                    rows.add(row);</span>
+                }
+<span class="fc" id="L71">            }</span>
+<span class="fc" id="L72">        }</span>
+<span class="fc" id="L73">        return Collections.unmodifiableList(rows);</span>
+    }
+
+    /**
+     * Parse a single CSV line into a {@link RelationSeedRow}.
+     *
+     * @param line       the raw CSV line
+     * @param lineNumber the 1-based line number (for error messages)
+     * @return the parsed row, or {@code null} if the line is malformed
+     */
+    static RelationSeedRow parseLine(String line, int lineNumber) {
+<span class="fc" id="L84">        String[] parts = line.split(&quot;,&quot;, EXTENDED_COLUMN_COUNT);</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (parts.length &lt; MIN_COLUMN_COUNT) {</span>
+<span class="fc" id="L86">            log.warn(&quot;Relation seed CSV line {}: too few columns ({}) — skipping.&quot;, lineNumber, parts.length);</span>
+<span class="fc" id="L87">            return null;</span>
+        }
+
+<span class="fc" id="L90">        String sourceCode = parts[0].trim();</span>
+<span class="fc" id="L91">        String targetCode = parts[1].trim();</span>
+<span class="fc" id="L92">        String typeStr = parts[2].trim();</span>
+
+<span class="fc bfc" id="L94" title="All 6 branches covered.">        if (sourceCode.isEmpty() || targetCode.isEmpty() || typeStr.isEmpty()) {</span>
+<span class="fc" id="L95">            log.warn(&quot;Relation seed CSV line {}: empty required field — skipping.&quot;, lineNumber);</span>
+<span class="fc" id="L96">            return null;</span>
+        }
+
+        // Parse relation type
+        RelationType relationType;
+        try {
+<span class="fc" id="L102">            relationType = RelationType.valueOf(typeStr.toUpperCase());</span>
+<span class="fc" id="L103">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L104">            log.warn(&quot;Relation seed CSV line {}: unknown relation type '{}' — skipping.&quot;, lineNumber, typeStr);</span>
+<span class="fc" id="L105">            return null;</span>
+<span class="fc" id="L106">        }</span>
+
+        // Column 4: Description (optional)
+<span class="fc" id="L109">        String description = safeGet(parts, 3);</span>
+
+        // Column 5: SourceStandard (optional)
+<span class="fc" id="L112">        String sourceStandard = safeGet(parts, 4);</span>
+
+        // Column 6: SourceReference (optional)
+<span class="fc" id="L115">        String sourceReference = safeGet(parts, 5);</span>
+
+        // Column 7: Confidence (optional, default 1.0)
+<span class="fc" id="L118">        double confidence = parseConfidence(safeGet(parts, 6), lineNumber);</span>
+
+        // Column 8: SeedType (optional, default TYPE_DEFAULT)
+<span class="fc" id="L121">        SeedType seedType = parseSeedType(safeGet(parts, 7), lineNumber);</span>
+
+        // Column 9: ReviewRequired (optional, default false)
+<span class="fc" id="L124">        boolean reviewRequired = parseBoolean(safeGet(parts, 8));</span>
+
+        // Column 10: Status (optional, default &quot;accepted&quot;)
+<span class="fc" id="L127">        String status = safeGet(parts, 9);</span>
+<span class="pc bpc" id="L128" title="1 of 4 branches missed.">        if (status == null || status.isEmpty()) {</span>
+<span class="fc" id="L129">            status = &quot;accepted&quot;;</span>
+        }
+
+<span class="fc" id="L132">        return new RelationSeedRow(</span>
+                sourceCode, targetCode, relationType, description,
+                sourceStandard, sourceReference, confidence,
+                seedType, reviewRequired, status);
+    }
+
+    private static String safeGet(String[] parts, int index) {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (index &gt;= parts.length) return null;</span>
+<span class="fc" id="L140">        String value = parts[index].trim();</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        return value.isEmpty() ? null : value;</span>
+    }
+
+    private static double parseConfidence(String value, int lineNumber) {
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        if (value == null) return 1.0;</span>
+        try {
+<span class="fc" id="L147">            double confidence = Double.parseDouble(value);</span>
+<span class="fc bfc" id="L148" title="All 4 branches covered.">            if (confidence &lt; 0.0 || confidence &gt; 1.0) {</span>
+<span class="fc" id="L149">                log.warn(&quot;Relation seed CSV line {}: confidence {} out of [0.0, 1.0] range — clamping.&quot;,</span>
+<span class="fc" id="L150">                        lineNumber, confidence);</span>
+<span class="fc" id="L151">                return Math.max(0.0, Math.min(1.0, confidence));</span>
+            }
+<span class="fc" id="L153">            return confidence;</span>
+<span class="fc" id="L154">        } catch (NumberFormatException e) {</span>
+<span class="fc" id="L155">            log.warn(&quot;Relation seed CSV line {}: invalid confidence '{}' — using default 1.0.&quot;,</span>
+<span class="fc" id="L156">                    lineNumber, value);</span>
+<span class="fc" id="L157">            return 1.0;</span>
+        }
+    }
+
+    private static SeedType parseSeedType(String value, int lineNumber) {
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        if (value == null) return SeedType.TYPE_DEFAULT;</span>
+        try {
+<span class="fc" id="L164">            return SeedType.valueOf(value.toUpperCase());</span>
+<span class="fc" id="L165">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L166">            log.warn(&quot;Relation seed CSV line {}: unknown seed type '{}' — using TYPE_DEFAULT.&quot;,</span>
+<span class="fc" id="L167">                    lineNumber, value);</span>
+<span class="fc" id="L168">            return SeedType.TYPE_DEFAULT;</span>
+        }
+    }
+
+    private static boolean parseBoolean(String value) {
+<span class="fc" id="L173">        return &quot;true&quot;.equalsIgnoreCase(value);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

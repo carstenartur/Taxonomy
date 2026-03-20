@@ -28,39 +28,67 @@ public class RelationCompatibilityMatrix {
 
         // Capability → Core Service
 <span class="fc" id="L30">        addRule(RelationType.REALIZES,          &quot;CP&quot;,  Set.of(&quot;CR&quot;));</span>
-        // Core Service → Business Process
-<span class="fc" id="L32">        addRule(RelationType.SUPPORTS,          &quot;CR&quot;,  Set.of(&quot;BP&quot;));</span>
+        // Core Service → Business Process / Business Role
+<span class="fc" id="L32">        addRule(RelationType.SUPPORTS,          &quot;CR&quot;,  Set.of(&quot;BP&quot;, &quot;BR&quot;));</span>
+        // COI Service → Business Process / Business Role
+<span class="fc" id="L34">        addRule(RelationType.SUPPORTS,          &quot;CI&quot;,  Set.of(&quot;BP&quot;, &quot;BR&quot;));</span>
+        // Communications Service → Business Process
+<span class="fc" id="L36">        addRule(RelationType.SUPPORTS,          &quot;CO&quot;,  Set.of(&quot;BP&quot;));</span>
+        // User Application → Business Process
+<span class="fc" id="L38">        addRule(RelationType.SUPPORTS,          &quot;UA&quot;,  Set.of(&quot;BP&quot;));</span>
         // Business Process → Information Product
-<span class="fc" id="L34">        addRule(RelationType.CONSUMES,          &quot;BP&quot;,  Set.of(&quot;IP&quot;));</span>
-        // User Application → Core Service
-<span class="fc" id="L36">        addRule(RelationType.USES,              &quot;UA&quot;,  Set.of(&quot;CR&quot;));</span>
+<span class="fc" id="L40">        addRule(RelationType.CONSUMES,          &quot;BP&quot;,  Set.of(&quot;IP&quot;));</span>
+        // Core Service → Information Product
+<span class="fc" id="L42">        addRule(RelationType.CONSUMES,          &quot;CR&quot;,  Set.of(&quot;IP&quot;));</span>
+        // COI Service → Information Product
+<span class="fc" id="L44">        addRule(RelationType.CONSUMES,          &quot;CI&quot;,  Set.of(&quot;IP&quot;));</span>
+        // User Application → Information Product / Core Service
+<span class="fc" id="L46">        addRule(RelationType.USES,              &quot;UA&quot;,  Set.of(&quot;CR&quot;, &quot;CI&quot;, &quot;CO&quot;));</span>
         // System → System / Core Service (C4 inter-system usage)
-<span class="fc" id="L38">        addRule(RelationType.USES,              &quot;SY&quot;,  Set.of(&quot;SY&quot;, &quot;CR&quot;));</span>
+<span class="fc" id="L48">        addRule(RelationType.USES,              &quot;SY&quot;,  Set.of(&quot;SY&quot;, &quot;CR&quot;));</span>
+        // Business Process → Core Service / COI Service
+<span class="fc" id="L50">        addRule(RelationType.USES,              &quot;BP&quot;,  Set.of(&quot;CR&quot;, &quot;CI&quot;));</span>
+        // Business Role → Information Product
+<span class="fc" id="L52">        addRule(RelationType.USES,              &quot;BR&quot;,  Set.of(&quot;IP&quot;));</span>
         // COI Service → Capability
-<span class="fc" id="L40">        addRule(RelationType.FULFILLS,          &quot;CI&quot;, Set.of(&quot;CP&quot;));</span>
+<span class="fc" id="L54">        addRule(RelationType.FULFILLS,          &quot;CI&quot;, Set.of(&quot;CP&quot;));</span>
+        // Core Service → Capability
+<span class="fc" id="L56">        addRule(RelationType.FULFILLS,          &quot;CR&quot;, Set.of(&quot;CP&quot;));</span>
         // Business Role → Business Process
-<span class="fc" id="L42">        addRule(RelationType.ASSIGNED_TO,       &quot;BR&quot;,  Set.of(&quot;BP&quot;));</span>
-        // Core Service → Core Service (same root)
-<span class="fc" id="L44">        addRule(RelationType.DEPENDS_ON,        &quot;CR&quot;,  Set.of(&quot;CR&quot;));</span>
+<span class="fc" id="L58">        addRule(RelationType.ASSIGNED_TO,       &quot;BR&quot;,  Set.of(&quot;BP&quot;));</span>
+        // Core Service → Core Service / COI Service (technical dependency)
+<span class="fc" id="L60">        addRule(RelationType.DEPENDS_ON,        &quot;CR&quot;,  Set.of(&quot;CR&quot;, &quot;CI&quot;));</span>
+        // COI Service → Core Service (technical dependency)
+<span class="fc" id="L62">        addRule(RelationType.DEPENDS_ON,        &quot;CI&quot;,  Set.of(&quot;CR&quot;));</span>
+        // Communications Service → Core Service (network dependency)
+<span class="fc" id="L64">        addRule(RelationType.DEPENDS_ON,        &quot;CO&quot;,  Set.of(&quot;CR&quot;));</span>
         // System → System (C4 inter-system dependency)
-<span class="fc" id="L46">        addRule(RelationType.DEPENDS_ON,        &quot;SY&quot;,  Set.of(&quot;SY&quot;));</span>
+<span class="fc" id="L66">        addRule(RelationType.DEPENDS_ON,        &quot;SY&quot;,  Set.of(&quot;SY&quot;));</span>
         // Component → Component / Core Service (C4 component dependency)
-<span class="fc" id="L48">        addRule(RelationType.DEPENDS_ON,        &quot;CM&quot;,  Set.of(&quot;CM&quot;, &quot;CR&quot;));</span>
+<span class="fc" id="L68">        addRule(RelationType.DEPENDS_ON,        &quot;CM&quot;,  Set.of(&quot;CM&quot;, &quot;CR&quot;));</span>
         // Business Process → Information Product
-<span class="fc" id="L50">        addRule(RelationType.PRODUCES,          &quot;BP&quot;,  Set.of(&quot;IP&quot;));</span>
-        // Communications Service → Core Service
-<span class="fc" id="L52">        addRule(RelationType.COMMUNICATES_WITH, &quot;CO&quot;,  Set.of(&quot;CR&quot;));</span>
+<span class="fc" id="L70">        addRule(RelationType.PRODUCES,          &quot;BP&quot;,  Set.of(&quot;IP&quot;));</span>
+        // Core Service → Information Product
+<span class="fc" id="L72">        addRule(RelationType.PRODUCES,          &quot;CR&quot;,  Set.of(&quot;IP&quot;));</span>
+        // COI Service → Information Product
+<span class="fc" id="L74">        addRule(RelationType.PRODUCES,          &quot;CI&quot;,  Set.of(&quot;IP&quot;));</span>
+        // User Application → Information Product
+<span class="fc" id="L76">        addRule(RelationType.PRODUCES,          &quot;UA&quot;,  Set.of(&quot;IP&quot;));</span>
+        // Communications Service → Core Service / COI Service / User Application
+<span class="fc" id="L78">        addRule(RelationType.COMMUNICATES_WITH, &quot;CO&quot;,  Set.of(&quot;CR&quot;, &quot;CI&quot;, &quot;UA&quot;));</span>
         // System → User Application / Component (C4 containment)
-<span class="fc" id="L54">        addRule(RelationType.CONTAINS,          &quot;SY&quot;,  Set.of(&quot;UA&quot;, &quot;CM&quot;));</span>
+<span class="fc" id="L80">        addRule(RelationType.CONTAINS,          &quot;SY&quot;,  Set.of(&quot;UA&quot;, &quot;CM&quot;));</span>
         // Component → Component (C4 nesting)
-<span class="fc" id="L56">        addRule(RelationType.CONTAINS,          &quot;CM&quot;,  Set.of(&quot;CM&quot;));</span>
+<span class="fc" id="L82">        addRule(RelationType.CONTAINS,          &quot;CM&quot;,  Set.of(&quot;CM&quot;));</span>
+        // Capability → Information Product (information dependency)
+<span class="fc" id="L84">        addRule(RelationType.REQUIRES,          &quot;CP&quot;,  Set.of(&quot;IP&quot;));</span>
         // RELATED_TO has no restrictions
-<span class="fc" id="L58">    }</span>
+<span class="fc" id="L86">    }</span>
 
     private void addRule(RelationType type, String sourceRoot, Set&lt;String&gt; targetRoots) {
-<span class="fc" id="L61">        matrix.computeIfAbsent(type, k -&gt; new HashMap&lt;&gt;())</span>
-<span class="fc" id="L62">              .put(sourceRoot, targetRoots);</span>
-<span class="fc" id="L63">    }</span>
+<span class="fc" id="L89">        matrix.computeIfAbsent(type, k -&gt; new HashMap&lt;&gt;())</span>
+<span class="fc" id="L90">              .put(sourceRoot, targetRoots);</span>
+<span class="fc" id="L91">    }</span>
 
     /**
      * Returns the set of allowed target taxonomy roots for a given source root
@@ -77,13 +105,13 @@ public class RelationCompatibilityMatrix {
      * &lt;p&gt;Use {@link #isCompatible} for a clear yes/no answer that handles both cases.
      */
     public Set&lt;String&gt; allowedTargetRoots(String sourceRoot, RelationType relationType) {
-<span class="fc" id="L80">        Map&lt;String, Set&lt;String&gt;&gt; bySource = matrix.get(relationType);</span>
-<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (bySource == null) {</span>
+<span class="fc" id="L108">        Map&lt;String, Set&lt;String&gt;&gt; bySource = matrix.get(relationType);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (bySource == null) {</span>
             // No rules for this relation type → all roots allowed
-<span class="fc" id="L83">            return Collections.emptySet();</span>
+<span class="fc" id="L111">            return Collections.emptySet();</span>
         }
-<span class="fc" id="L85">        Set&lt;String&gt; targets = bySource.get(sourceRoot);</span>
-<span class="fc bfc" id="L86" title="All 2 branches covered.">        return targets != null ? Collections.unmodifiableSet(targets) : Collections.emptySet();</span>
+<span class="fc" id="L113">        Set&lt;String&gt; targets = bySource.get(sourceRoot);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        return targets != null ? Collections.unmodifiableSet(targets) : Collections.emptySet();</span>
     }
 
     /**
@@ -93,14 +121,14 @@ public class RelationCompatibilityMatrix {
      * @return map of RelationType → Set of target roots that should exist
      */
     public Map&lt;RelationType, Set&lt;String&gt;&gt; getExpectedOutgoingRelations(String sourceRoot) {
-<span class="fc" id="L96">        Map&lt;RelationType, Set&lt;String&gt;&gt; expected = new EnumMap&lt;&gt;(RelationType.class);</span>
-<span class="fc bfc" id="L97" title="All 2 branches covered.">        for (Map.Entry&lt;RelationType, Map&lt;String, Set&lt;String&gt;&gt;&gt; entry : matrix.entrySet()) {</span>
-<span class="fc" id="L98">            Set&lt;String&gt; targets = entry.getValue().get(sourceRoot);</span>
-<span class="pc bpc" id="L99" title="1 of 4 branches missed.">            if (targets != null &amp;&amp; !targets.isEmpty()) {</span>
-<span class="fc" id="L100">                expected.put(entry.getKey(), Collections.unmodifiableSet(targets));</span>
+<span class="fc" id="L124">        Map&lt;RelationType, Set&lt;String&gt;&gt; expected = new EnumMap&lt;&gt;(RelationType.class);</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        for (Map.Entry&lt;RelationType, Map&lt;String, Set&lt;String&gt;&gt;&gt; entry : matrix.entrySet()) {</span>
+<span class="fc" id="L126">            Set&lt;String&gt; targets = entry.getValue().get(sourceRoot);</span>
+<span class="pc bpc" id="L127" title="1 of 4 branches missed.">            if (targets != null &amp;&amp; !targets.isEmpty()) {</span>
+<span class="fc" id="L128">                expected.put(entry.getKey(), Collections.unmodifiableSet(targets));</span>
             }
-<span class="fc" id="L102">        }</span>
-<span class="fc" id="L103">        return expected;</span>
+<span class="fc" id="L130">        }</span>
+<span class="fc" id="L131">        return expected;</span>
     }
 
     /**
@@ -108,18 +136,18 @@ public class RelationCompatibilityMatrix {
      * with the given relation type.
      */
     public boolean isCompatible(String sourceRoot, String targetRoot, RelationType relationType) {
-<span class="fc" id="L111">        Map&lt;String, Set&lt;String&gt;&gt; bySource = matrix.get(relationType);</span>
-<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (bySource == null) {</span>
+<span class="fc" id="L139">        Map&lt;String, Set&lt;String&gt;&gt; bySource = matrix.get(relationType);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (bySource == null) {</span>
             // No rules at all for this relation type → no restriction
-<span class="fc" id="L114">            return true;</span>
+<span class="fc" id="L142">            return true;</span>
         }
-<span class="fc" id="L116">        Set&lt;String&gt; targets = bySource.get(sourceRoot);</span>
-<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (targets == null) {</span>
+<span class="fc" id="L144">        Set&lt;String&gt; targets = bySource.get(sourceRoot);</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        if (targets == null) {</span>
             // The relation type has rules but this sourceRoot is not listed →
             // the sourceRoot is not a valid origin for this relation type
-<span class="fc" id="L120">            return false;</span>
+<span class="fc" id="L148">            return false;</span>
         }
-<span class="fc" id="L122">        return targets.contains(targetRoot);</span>
+<span class="fc" id="L150">        return targets.contains(targetRoot);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
