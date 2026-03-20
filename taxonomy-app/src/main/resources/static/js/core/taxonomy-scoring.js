@@ -563,9 +563,9 @@
 
     // ── Architecture View (Impact Map) ──────────────────────────────────────
     function renderArchitectureView(view) {
-        var panel = document.getElementById('architectureViewPanel');
-        var content = document.getElementById('architectureViewContent');
-        var placeholder = document.getElementById('architecturePlaceholder');
+        const panel = document.getElementById('architectureViewPanel');
+        const content = document.getElementById('architectureViewContent');
+        const placeholder = document.getElementById('architecturePlaceholder');
         if (!panel || !content) return;
 
         if (!view) {
@@ -574,51 +574,51 @@
             return;
         }
 
-        var html = '';
+        let html = '';
 
         // Notes
         if (view.notes && view.notes.length > 0) {
             html += '<div class="alert alert-info py-1 px-2 small mb-2">' +
-                view.notes.map(function (n) { return escapeHtml(n); }).join('<br>') + '</div>';
+                view.notes.map(n => escapeHtml(n)).join('<br>') + '</div>';
         }
 
-        var elements = view.includedElements || [];
-        var relationships = view.includedRelationships || [];
-        var anchors = view.anchors || [];
+        const elements = view.includedElements || [];
+        const relationships = view.includedRelationships || [];
+        const anchors = view.anchors || [];
 
         // ── Build element-to-sheet lookup ──
-        var elByCode = {};
-        elements.forEach(function (el) { elByCode[el.nodeCode] = el; });
+        const elByCode = {};
+        elements.forEach(el => { elByCode[el.nodeCode] = el; });
 
         // ── Detect change hotspots ──
         // A hotspot is an anchor with ≥2 outgoing relationships, or a node reached from ≥2 different anchors
-        var outCount = {};
-        var reachingAnchors = {};
-        relationships.forEach(function (r) {
+        const outCount = {};
+        const reachingAnchors = {};
+        relationships.forEach(r => {
             outCount[r.sourceCode] = (outCount[r.sourceCode] || 0) + 1;
             // track which anchor reaches each target
-            var srcEl = elByCode[r.sourceCode];
+            const srcEl = elByCode[r.sourceCode];
             if (srcEl && srcEl.anchor) {
                 if (!reachingAnchors[r.targetCode]) reachingAnchors[r.targetCode] = new Set();
                 reachingAnchors[r.targetCode].add(r.sourceCode);
             }
         });
-        var hotspotCodes = new Set();
-        elements.forEach(function (el) {
+        const hotspotCodes = new Set();
+        elements.forEach(el => {
             if (el.anchor && (outCount[el.nodeCode] || 0) >= 2) hotspotCodes.add(el.nodeCode);
             if (reachingAnchors[el.nodeCode] && reachingAnchors[el.nodeCode].size >= 2) hotspotCodes.add(el.nodeCode);
         });
 
         // ── Group elements by taxonomy sheet ──
-        var groups = {};
-        elements.forEach(function (el) {
-            var sheet = el.taxonomySheet || 'Unknown';
+        const groups = {};
+        elements.forEach(el => {
+            const sheet = el.taxonomySheet || 'Unknown';
             if (!groups[sheet]) groups[sheet] = [];
             groups[sheet].push(el);
         });
-        var sortedSheets = Object.keys(groups).sort(function (a, b) {
-            var oa = LAYER_CONFIG[a] ? LAYER_CONFIG[a].order : 99;
-            var ob = LAYER_CONFIG[b] ? LAYER_CONFIG[b].order : 99;
+        const sortedSheets = Object.keys(groups).sort((a, b) => {
+            const oa = LAYER_CONFIG[a] ? LAYER_CONFIG[a].order : 99;
+            const ob = LAYER_CONFIG[b] ? LAYER_CONFIG[b].order : 99;
             return oa - ob;
         });
 
@@ -636,32 +636,32 @@
         // ── Part 2: Layered Impact Map ──
         if (elements.length > 0) {
             // Collect relationship types between layers for edge labels
-            var layerRelations = {};
-            relationships.forEach(function (r) {
-                var srcSheet = elByCode[r.sourceCode] ? elByCode[r.sourceCode].taxonomySheet : null;
-                var tgtSheet = elByCode[r.targetCode] ? elByCode[r.targetCode].taxonomySheet : null;
+            const layerRelations = {};
+            relationships.forEach(r => {
+                const srcSheet = elByCode[r.sourceCode] ? elByCode[r.sourceCode].taxonomySheet : null;
+                const tgtSheet = elByCode[r.targetCode] ? elByCode[r.targetCode].taxonomySheet : null;
                 if (srcSheet && tgtSheet && srcSheet !== tgtSheet) {
-                    var key = srcSheet + '→' + tgtSheet;
+                    const key = srcSheet + '→' + tgtSheet;
                     if (!layerRelations[key]) layerRelations[key] = new Set();
                     layerRelations[key].add(r.relationType);
                 }
             });
 
             html += '<div class="impact-map">';
-            for (var i = 0; i < sortedSheets.length; i++) {
-                var sheet = sortedSheets[i];
-                var cfg = LAYER_CONFIG[sheet] || { order: 99, cls: '', icon: '⬜', label: sheet };
-                var layerElements = groups[sheet];
+            for (let i = 0; i < sortedSheets.length; i++) {
+                const sheet = sortedSheets[i];
+                const cfg = LAYER_CONFIG[sheet] || { order: 99, cls: '', icon: '⬜', label: sheet };
+                const layerElements = groups[sheet];
 
                 // Edge between swimlanes
                 if (i > 0) {
-                    var prevSheet = sortedSheets[i - 1];
-                    var key = prevSheet + '→' + sheet;
-                    var rKey = sheet + '→' + prevSheet;
-                    var relTypes = layerRelations[key] || layerRelations[rKey] || new Set();
+                    const prevSheet = sortedSheets[i - 1];
+                    const key = prevSheet + '→' + sheet;
+                    const rKey = sheet + '→' + prevSheet;
+                    const relTypes = layerRelations[key] || layerRelations[rKey] || new Set();
                     html += '<div class="impact-edge">│';
                     if (relTypes.size > 0) {
-                        Array.from(relTypes).forEach(function (rt) {
+                        Array.from(relTypes).forEach(rt => {
                             html += ' <span class="impact-edge-label">' + escapeHtml(rt) + '</span>';
                         });
                     }
@@ -673,13 +673,13 @@
                     ' <span class="badge bg-secondary" style="font-size:0.7rem;">' + layerElements.length + '</span></div>';
 
                 html += '<div class="impact-swimlane-nodes">';
-                layerElements.sort(function (a, b) { return b.relevance - a.relevance; });
-                layerElements.forEach(function (el) {
-                    var pct = (el.relevance * 100).toFixed(0);
-                    var nodeClasses = 'impact-node';
+                layerElements.sort((a, b) => b.relevance - a.relevance);
+                layerElements.forEach(el => {
+                    const pct = (el.relevance * 100).toFixed(0);
+                    let nodeClasses = 'impact-node';
                     if (el.anchor) nodeClasses += ' impact-node-anchor';
                     if (hotspotCodes.has(el.nodeCode)) nodeClasses += ' impact-node-hotspot';
-                    var opacity = 0.6 + (el.relevance * 0.4);
+                    const opacity = 0.6 + (el.relevance * 0.4);
                     html += '<span class="' + nodeClasses + '" style="opacity:' + opacity.toFixed(2) + '"' +
                         ' title="' + escapeHtml(el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '')) + '">';
                     html += escapeHtml(el.nodeCode);
@@ -698,8 +698,8 @@
         }
 
         // ── Part 3: Detail Tables (collapsible) ──
-        var hasElements = elements.length > 0;
-        var hasRelationships = relationships.length > 0;
+        const hasElements = elements.length > 0;
+        const hasRelationships = relationships.length > 0;
         if (hasElements || hasRelationships) {
             html += '<details class="impact-details">';
             html += '<summary>📋 Detail: ' + elements.length + ' Elements, ' + relationships.length + ' Relationships</summary>';
@@ -709,9 +709,8 @@
                 html += '<h6 class="mb-1 mt-2">Included Elements</h6>';
                 html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
                 html += '<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead><tbody>';
-                elements.forEach(function (e) {
-                    var cfg2 = LAYER_CONFIG[e.taxonomySheet] || {};
-                    var rowClass = e.anchor ? 'table-success' : '';
+                elements.forEach(e => {
+                    const rowClass = e.anchor ? 'table-success' : '';
                     html += '<tr class="' + rowClass + '">' +
                         '<td>' + escapeHtml(e.nodeCode) + '</td>' +
                         '<td>' + escapeHtml(e.title || '') + '</td>' +
@@ -731,7 +730,7 @@
                 html += '<h6 class="mb-1">Included Relationships</h6>';
                 html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
                 html += '<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Relevance</th><th>Hops</th><th>Reason</th></tr></thead><tbody>';
-                relationships.forEach(function (r) {
+                relationships.forEach(r => {
                     html += '<tr>' +
                         '<td>' + escapeHtml(r.sourceCode) + '</td>' +
                         '<td>→</td>' +
