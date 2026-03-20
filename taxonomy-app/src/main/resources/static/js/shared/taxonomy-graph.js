@@ -532,14 +532,14 @@
         // Rich tooltip on hover
         node.on('mouseover', function (event, d) {
             var lines = [];
-            lines.push('<strong>' + d.id + '</strong> ' + d.title);
-            lines.push('Layer: ' + d.sheetLabel);
+            lines.push('<strong>' + escapeHtml(d.id) + '</strong> ' + escapeHtml(d.title));
+            lines.push('Layer: ' + escapeHtml(d.sheetLabel));
             lines.push('Relevance: ' + (d.relevance * 100).toFixed(0) + '%');
-            var hopLabel = d.hop === 0 ? '0 (direct match)' : d.hop;
-            lines.push('Hop: ' + hopLabel);
+            var hopLabel = d.hop === 0 ? '0 (direct match)' : String(d.hop);
+            lines.push('Hop: ' + escapeHtml(hopLabel));
             if (d.isAnchor) lines.push('\u2605 Direct Match (Anchor)');
-            if (d.isHotspot) lines.push('\u26A0\uFE0F Hotspot: ' + d.hotspotReason);
-            if (d.includedBecause) lines.push('Reason: ' + d.includedBecause);
+            if (d.isHotspot) lines.push('\u26A0\uFE0F Hotspot: ' + escapeHtml(d.hotspotReason));
+            if (d.includedBecause) lines.push('Reason: ' + escapeHtml(d.includedBecause));
 
             tooltip.html(lines.join('<br>'))
                 .style('left', (event.offsetX + 15) + 'px')
