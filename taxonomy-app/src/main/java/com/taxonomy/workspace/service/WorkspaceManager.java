@@ -91,10 +91,16 @@ public class WorkspaceManager {
         // Ensure a persistent workspace exists and activate it
         ensurePersistentWorkspace(user);
 
-        // Find the default (or first) workspace for this user
-        UserWorkspace ws = workspaceRepository.findByUsernameAndIsDefaultTrue(user).orElse(null);
+        // Find the default (or first) non-archived workspace for this user
+        UserWorkspace ws = safeOptional(workspaceRepository.findByUsernameAndIsDefaultTrue(user));
+        if (ws != null && ws.isArchived()) {
+            ws = null;
+        }
         if (ws == null) {
-            ws = workspaceRepository.findByUsernameAndSharedFalse(user).orElse(null);
+            ws = safeOptional(workspaceRepository.findByUsernameAndSharedFalse(user));
+            if (ws != null && ws.isArchived()) {
+                ws = null;
+            }
         }
 
         String workspaceId;
@@ -258,6 +264,16 @@ public class WorkspaceManager {
         UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)
                 .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
 
+        if (!ws.getUsername().equals(username)) {
+            throw new IllegalArgumentException("Cannot switch to workspace owned by another user");
+        }
+        if (ws.isArchived()) {
+            throw new IllegalArgumentException("Cannot switch to an archived workspace");
+        }
+        if (ws.isShared()) {
+            throw new IllegalArgumentException("Cannot switch to the shared workspace");
+        }
+
         // Evict old active workspace from memory
         String oldWsId = activeWorkspaceByUser.get(username);
         if (oldWsId != null) {
@@ -278,35 +294,59 @@ public class WorkspaceManager {
     /**
      * Rename a workspace.
      *
+     * @param username    the user requesting the rename
      * @param workspaceId the workspace to rename
      * @param newName     the new display name
      * @return the updated workspace entity
      */
-    public UserWorkspace renameWorkspace(String workspaceId, String newName) {
+    public UserWorkspace renameWorkspace(String username, String workspaceId, String newName) {
         UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)
                 .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
+
+        if (!ws.getUsername().equals(username)) {
+            throw new IllegalArgumentException("User '" + username + "' does not own workspace: " + workspaceId);
+        }
+        if (ws.isArchived()) {
+            throw new IllegalStateException("Archived workspace cannot be renamed: " + workspaceId);
+        }
+        if (ws.isShared()) {
+            throw new IllegalStateException("Shared workspace cannot be renamed: " + workspaceId);
+        }
+
         ws.setDisplayName(newName);
         workspaceRepository.save(ws);
-        log.info("Renamed workspace '{}' to '{}'", workspaceId, newName);
+        log.info("User '{}' renamed workspace '{}' to '{}'", username, workspaceId, newName);
         return ws;
     }
 
     /**
      * Archive a workspace (soft-delete).
      *
+     * @param username    the requesting user (must be the owner)
      * @param workspaceId the workspace to archive
      * @return the archived workspace entity
      */
-    public UserWorkspace archiveWorkspace(String workspaceId) {
+    public UserWorkspace archiveWorkspace(String workspaceId, String username) {
         UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)
                 .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
+
+        if (!ws.getUsername().equals(username)) {
+            throw new IllegalArgumentException("Cannot archive workspace owned by another user");
+        }
+        if (ws.isShared()) {
+            throw new IllegalArgumentException("Cannot archive the shared workspace");
+        }
+        if (ws.isDefault()) {
+            throw new IllegalArgumentException("Cannot archive the default workspace");
+        }
+
         ws.setArchived(true);
         workspaceRepository.save(ws);
 
         // Remove from active state if loaded
         activeWorkspaces.remove(workspaceId);
         activeWorkspaceByUser.entrySet().removeIf(entry -> entry.getValue().equals(workspaceId));
-        log.info("Archived workspace '{}'", workspaceId);
+        log.info("Archived workspace '{}' for user '{}'", workspaceId, username);
         return ws;
     }
 
@@ -385,16 +425,25 @@ public class WorkspaceManager {
     /**
      * Update the description of a workspace.
      *
+     * @param username    the user requesting the update
      * @param workspaceId the workspace to update
      * @param description the new description
      * @return the updated workspace entity
      */
-    public UserWorkspace updateDescription(String workspaceId, String description) {
+    public UserWorkspace updateDescription(String username, String workspaceId, String description) {
         UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)
                 .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
+
+        if (!ws.getUsername().equals(username)) {
+            throw new IllegalArgumentException("User '" + username + "' does not own workspace: " + workspaceId);
+        }
+        if (ws.isArchived()) {
+            throw new IllegalStateException("Archived workspace cannot be updated: " + workspaceId);
+        }
+
         ws.setDescription(description);
         workspaceRepository.save(ws);
-        log.info("Updated description for workspace '{}'", workspaceId);
+        log.info("User '{}' updated description for workspace '{}'", username, workspaceId);
         return ws;
     }
 
@@ -436,7 +485,7 @@ public class WorkspaceManager {
         try {
             var sysRepo = systemRepositoryService.getPrimaryRepository();
             String baseBranch = sysRepo.getDefaultBranch();
-            String userBranch = username + "/workspace";
+            String userBranch = username + "/workspace/" + ws.getWorkspaceId();
 
             String baseCommit = gitRepository.getHeadCommit(baseBranch);
             if (baseCommit != null) {
@@ -547,5 +596,12 @@ public class WorkspaceManager {
                 archived,
                 isDefault
         );
+    }
+
+    /**
+     * Safely unwrap an Optional that may itself be null (e.g. from an unstubbed mock).
+     */
+    private static <T> T safeOptional(java.util.Optional<T> opt) {
+        return opt != null ? opt.orElse(null) : null;
     }
 }

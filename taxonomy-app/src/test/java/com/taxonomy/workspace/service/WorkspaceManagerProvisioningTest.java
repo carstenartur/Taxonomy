@@ -58,7 +58,7 @@ class WorkspaceManagerProvisioningTest {
         UserWorkspace result = manager.provisionWorkspaceRepository("alice");
 
         assertEquals(WorkspaceProvisioningStatus.READY, result.getProvisioningStatus());
-        assertEquals("alice/workspace", result.getCurrentBranch());
+        assertTrue(result.getCurrentBranch().startsWith("alice/workspace/"));
         assertEquals("draft", result.getBaseBranch());
         assertEquals(sysRepo.getRepositoryId(), result.getSourceRepositoryId());
         assertEquals(RepositoryTopologyMode.INTERNAL_SHARED, result.getTopologyMode());

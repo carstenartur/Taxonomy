@@ -8,6 +8,7 @@ import com.taxonomy.dto.WorkspaceInfo;
 import com.taxonomy.versioning.model.ContextHistoryRecord;
 import com.taxonomy.versioning.service.ContextCompareService;
 import com.taxonomy.versioning.service.ContextHistoryService;
+import com.taxonomy.versioning.service.ContextNavigationService;
 import com.taxonomy.workspace.service.SyncIntegrationService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceManager;
@@ -48,6 +49,7 @@ public class WorkspaceController {
     private final WorkspaceResolver workspaceResolver;
     private final ContextCompareService contextCompareService;
     private final ContextHistoryService contextHistoryService;
+    private final ContextNavigationService contextNavigationService;
     private final SyncIntegrationService syncIntegrationService;
     private final WorkspaceProjectionService workspaceProjectionService;
     private final SystemRepositoryService systemRepositoryService;
@@ -58,6 +60,7 @@ public class WorkspaceController {
                                WorkspaceResolver workspaceResolver,
                                ContextCompareService contextCompareService,
                                ContextHistoryService contextHistoryService,
+                               ContextNavigationService contextNavigationService,
                                SyncIntegrationService syncIntegrationService,
                                WorkspaceProjectionService workspaceProjectionService,
                                SystemRepositoryService systemRepositoryService) {
@@ -65,6 +68,7 @@ public class WorkspaceController {
         this.workspaceResolver = workspaceResolver;
         this.contextCompareService = contextCompareService;
         this.contextHistoryService = contextHistoryService;
+        this.contextNavigationService = contextNavigationService;
         this.syncIntegrationService = syncIntegrationService;
         this.workspaceProjectionService = workspaceProjectionService;
         this.systemRepositoryService = systemRepositoryService;
@@ -153,6 +157,7 @@ public class WorkspaceController {
             description = "Changes the display name of a workspace.")
     public ResponseEntity<Map<String, Object>> renameWorkspace(
             @PathVariable String id, @RequestBody Map<String, String> body) {
+        String user = workspaceResolver.resolveCurrentUsername();
         String displayName = body.get("displayName");
         if (displayName == null || displayName.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -160,9 +165,9 @@ public class WorkspaceController {
             ));
         }
         try {
-            UserWorkspace ws = workspaceManager.renameWorkspace(id, displayName);
+            UserWorkspace ws = workspaceManager.renameWorkspace(user, id, displayName);
             return ResponseEntity.ok(workspaceToMap(ws));
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", e.getMessage()
             ));
@@ -174,11 +179,12 @@ public class WorkspaceController {
             description = "Updates the description of a workspace.")
     public ResponseEntity<Map<String, Object>> updateDescription(
             @PathVariable String id, @RequestBody Map<String, String> body) {
+        String user = workspaceResolver.resolveCurrentUsername();
         String description = body.get("description");
         try {
-            UserWorkspace ws = workspaceManager.updateDescription(id, description);
+            UserWorkspace ws = workspaceManager.updateDescription(user, id, description);
             return ResponseEntity.ok(workspaceToMap(ws));
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", e.getMessage()
             ));
@@ -204,8 +210,9 @@ public class WorkspaceController {
     @Operation(summary = "Archive a workspace",
             description = "Soft-deletes a workspace by marking it as archived.")
     public ResponseEntity<Map<String, Object>> archiveWorkspace(@PathVariable String id) {
+        String user = workspaceResolver.resolveCurrentUsername();
         try {
-            UserWorkspace ws = workspaceManager.archiveWorkspace(id);
+            UserWorkspace ws = workspaceManager.archiveWorkspace(id, user);
             return ResponseEntity.ok(workspaceToMap(ws));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -585,7 +592,8 @@ public class WorkspaceController {
 
     @PostMapping("/history/return-to")
     @Operation(summary = "Return to a specific history entry",
-            description = "Navigates to a specific context from the navigation history.")
+            description = "Navigates to a specific context from the navigation history, " +
+                    "updating the user's current context and recording the navigation event.")
     public ResponseEntity<Map<String, Object>> returnToHistoryEntry(
             @RequestParam String contextId) {
         String user = workspaceResolver.resolveCurrentUsername();
@@ -598,10 +606,13 @@ public class WorkspaceController {
 
         Map<String, Object> result = new LinkedHashMap<>();
         if (target != null) {
+            // Perform actual navigation via the context navigation service
+            ContextRef newContext = contextNavigationService.switchContext(
+                    user, target.getToBranch(), target.getToCommitId());
             result.put("success", true);
-            result.put("branch", target.getToBranch());
-            result.put("commitId", target.getToCommitId());
-            result.put("contextId", target.getToContextId());
+            result.put("branch", newContext.branch());
+            result.put("commitId", newContext.commitId());
+            result.put("contextId", newContext.contextId());
         } else {
             result.put("success", false);
             result.put("error", "History entry not found for contextId: " + contextId);

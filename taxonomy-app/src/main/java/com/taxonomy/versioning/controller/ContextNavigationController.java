@@ -151,7 +151,7 @@ public class ContextNavigationController {
                     null, null, null, null, null, false);
 
             ContextComparison comparison;
-            if (leftCommit != null && rightCommit != null) {
+            if (leftCommit != null || rightCommit != null) {
                 comparison = compareService.compareContexts(left, right);
             } else {
                 comparison = compareService.compareBranches(left, right);
