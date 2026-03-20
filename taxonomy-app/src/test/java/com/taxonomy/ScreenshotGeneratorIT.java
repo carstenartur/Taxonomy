@@ -966,7 +966,8 @@ class ScreenshotGeneratorIT {
     @Order(14)
     void captureAdminLockButton() throws IOException {
         showAdminLockButton();
-        saveScreenshot("14-navbar-admin-lock.png");
+        WebElement navbar = driver.findElement(By.cssSelector("nav.navbar"));
+        saveElementScreenshot(navbar, "14-navbar-admin-lock.png");
     }
 
     // ── Screenshots 15–27: LLM-dependent (use mock LLM — no real API key needed) ──
@@ -1283,8 +1284,13 @@ class ScreenshotGeneratorIT {
         }
         navigateToTab("admin");
 
+        // Ensure the <details> panel is open (it may have been closed by tab navigation)
+        WebElement panel = driver.findElement(By.id("coverageDashboard"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
+        openDetails(panel);
+
         // POST coverage record directly via fetch (avoids window.prompt dialog).
-        // A sentinel variable signals completion.
+        // A sentinel variable signals completion; check response.ok to confirm the record was saved.
         js("window._coverageRecorded = false;" +
            "fetch('/api/coverage/record', {" +
            "  method: 'POST'," +
@@ -1295,20 +1301,17 @@ class ScreenshotGeneratorIT {
            "    scores: (typeof window._getCurrentScores === 'function' ? window._getCurrentScores() : {})," +
            "    minScore: 50" +
            "  })" +
-           "}).then(function() { window._coverageRecorded = true; });",
+           "}).then(function(r) { window._coverageRecorded = r.ok; })" +
+           "  .catch(function() { window._coverageRecorded = false; });",
            REQUIREMENT_TEXT);
         wait(10).until(d ->
                 (Boolean) ((JavascriptExecutor) d).executeScript("return window._coverageRecorded === true;"));
 
         // Reload the dashboard so it picks up the newly recorded data
         js("if (window.TaxonomyCoverage) window.TaxonomyCoverage.loadCoverageDashboard();");
-        wait(10).until(d -> {
-            String text = d.findElement(By.id("coverageDashboardContent")).getText();
-            return text != null && !text.contains("Loading") && !text.isEmpty();
-        });
+        wait(10).until(d -> !d.findElements(
+                By.cssSelector("#coverageDashboardContent .coverage-node-link")).isEmpty());
 
-        WebElement panel = driver.findElement(By.id("coverageDashboard"));
-        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", panel);
         saveElementScreenshot(panel, "27-coverage-dashboard-data.png");
     }
 

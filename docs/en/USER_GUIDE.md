@@ -491,6 +491,8 @@ The table/graph shows:
 
 ![Graph Explorer upstream results](../images/21-graph-explorer-upstream.png)
 
+> **Failure Impact example:** The screenshot below shows the result of a *Failure Impact* query (⚠️ button). It highlights all nodes that would be affected if the selected node failed.
+
 ![Graph Explorer failure impact](../images/22-graph-explorer-failure.png)
 
 Accepted proposals also appear as graph edges. After accepting a proposal (see [Section 9](#9-working-with-relation-proposals)), the new relation is immediately visible in the Graph Explorer:

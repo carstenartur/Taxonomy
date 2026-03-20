@@ -487,6 +487,8 @@ Die Tabelle/der Graph zeigt:
 
 ![Graph Explorer Upstream-Ergebnisse](../images/21-graph-explorer-upstream.png)
 
+> **Ausfallauswirkung-Beispiel:** Der folgende Screenshot zeigt das Ergebnis einer *Failure Impact*-Abfrage (⚠️-Schaltfläche). Er hebt alle Knoten hervor, die bei einem Ausfall des ausgewählten Knotens betroffen wären.
+
 ![Graph Explorer Ausfallauswirkung](../images/22-graph-explorer-failure.png)
 
 Akzeptierte Vorschläge erscheinen ebenfalls als Graph-Kanten. Nach dem Akzeptieren eines Vorschlags (siehe [Abschnitt 9](#9-working-with-relation-proposals)) ist die neue Beziehung sofort im Graph Explorer sichtbar:
