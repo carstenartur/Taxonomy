@@ -117,7 +117,7 @@ function extractAllCodes(node) {
 
 // ── TaxDSL StreamLanguage tokenizer ───────────────────────────────────
 const taxDslMode = {
-    startState: () => ({ inBlock: false }),
+    startState: () => ({ braceDepth: 0 }),
 
     token(stream, state) {
         // Whitespace
@@ -140,9 +140,9 @@ const taxDslMode = {
             return 'string';
         }
 
-        // Braces (with state tracking)
-        if (stream.eat('{')) { state.inBlock = true; return 'bracket'; }
-        if (stream.eat('}')) { state.inBlock = false; return 'bracket'; }
+        // Braces (with depth tracking for context-dependent keywords)
+        if (stream.eat('{')) { state.braceDepth++; return 'bracket'; }
+        if (stream.eat('}')) { if (state.braceDepth > 0) state.braceDepth--; return 'bracket'; }
 
         // Punctuation
         if (stream.eat(';') || stream.eat(':')) return 'punctuation';
@@ -153,9 +153,11 @@ const taxDslMode = {
         // Words / identifiers
         if (stream.match(/^[A-Za-z_][\w-]*/)) {
             const word = stream.current();
-            // "source" is context-dependent: block keyword at line start, property key inside a block
+            // "source" is uniquely context-dependent: it is both a block keyword (at line start:
+            // source SRC-001 { ... }) and a property key (inside a block: source: "...").
+            // Other provenance keywords (sourceVersion, etc.) are only block keywords.
             if (word === 'source') {
-                return state.inBlock ? 'propertyName' : 'keyword';
+                return state.braceDepth > 0 ? 'propertyName' : 'keyword';
             }
             if (BLOCK_KEYWORDS.has(word))  return 'keyword';
             if (DOMAIN_TYPES.has(word))    return 'typeName';
@@ -379,6 +381,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.dslCmView = view;
     container.dispatchEvent(new CustomEvent('cm-ready'));
+
+    // Pre-fetch taxonomy codes for autocompletion
+    fetchTaxCodes();
 
     // Sync theme when dark mode toggles
     const observer = new MutationObserver(() => {
