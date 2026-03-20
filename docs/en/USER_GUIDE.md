@@ -406,29 +406,30 @@ The warning triggers after a 300 ms debounce when you type in the business text 
 
 ---
 
-## 7. Architecture View
+## 7. Architecture View — Requirement Impact Map
 
-The Architecture View shows how the highest-scoring taxonomy nodes relate to each other through confirmed architecture relationships (stored in the knowledge base). It gives you a structured view of the architecture elements that are relevant to your requirement.
+The Architecture View shows how the highest-scoring taxonomy nodes relate to each other through confirmed architecture relationships (stored in the knowledge base). It provides a **Requirement Impact Map** — a layered visualization of the architecture elements that are relevant to your requirement.
 
 ### Enabling the Architecture View Checkbox
 
-Before running analysis, tick the **Architecture View** checkbox in the Business Requirement Analysis card. After analysis completes, the **Architecture View Panel** will appear in the right panel.
+Before running analysis, tick the **Architecture View** checkbox in the Business Requirement Analysis card. After analysis completes, the **Requirement Impact Map** will appear in the right panel.
 
-### What Appears in the Architecture View Panel
+### What Appears in the Impact Map
 
-The panel shows three sections:
+The panel shows three areas:
 
-| Section | Contents |
+| Area | Contents |
 |---|---|
-| **Anchors** | The highest-scoring leaf nodes — the primary matches for your requirement |
-| **Elements** | All taxonomy nodes reachable from the anchors via confirmed relations |
-| **Relationships** | The directed edges connecting elements |
+| **Impact Summary Bar** | A compact KPI row: direct matches, affected elements, relations, layers, and change hotspots |
+| **Layered Impact Map** | A swimlane visualization grouping elements by architecture layer, with edges showing relationship types between layers |
+| **Detail Tables** | Collapsible tables listing all elements and relationships with full metadata (expand via the 📋 summary line) |
 
-### Understanding Anchors, Elements, and Relationships
+### Understanding the Visualization
 
-- **Anchors** are your direct hits — the nodes the AI considers the best answer to your requirement.
-- **Elements** extend the picture: if an anchor node *realizes* a capability, that capability also appears as an element.
-- **Relationships** show the direction and type of the link (e.g., REALIZES, SUPPORTS, DEPENDS_ON).
+- **Anchors** (★) are your direct hits — the nodes the AI considers the best answer to your requirement. They appear with a bold border and their score percentage.
+- **Propagated elements** (↳) extend the picture: if an anchor node *realizes* a capability, that capability also appears as an element with its hop distance shown.
+- **Change hotspots** (⚠️) highlight nodes that are either anchors with multiple outgoing relationships, or nodes reached from multiple different anchors — they indicate areas of high change impact.
+- **Layer edges** show the relationship types (e.g., REALIZES, SUPPORTS) connecting different architecture layers.
 
 ![Architecture View](../images/20-architecture-view.png)
 

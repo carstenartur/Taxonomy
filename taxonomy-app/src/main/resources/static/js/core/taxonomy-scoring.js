@@ -561,7 +561,7 @@
         bsModal.show();
     }
 
-    // ── Architecture View ─────────────────────────────────────────────────────
+    // ── Architecture View (Impact Map) ──────────────────────────────────────
     function renderArchitectureView(view) {
         const panel = document.getElementById('architectureViewPanel');
         const content = document.getElementById('architectureViewContent');
@@ -582,55 +582,169 @@
                 view.notes.map(n => escapeHtml(n)).join('<br>') + '</div>';
         }
 
-        // Anchors summary
-        if (view.anchors && view.anchors.length > 0) {
-            html += '<h6 class="mb-1">Anchors</h6>';
-            html += '<div class="mb-2 small">';
-            view.anchors.forEach(a => {
-                html += '<span class="badge bg-success me-1">' +
-                    escapeHtml(a.nodeCode) + ' (' + a.directScore + '%) — ' +
-                    escapeHtml(a.reason) + '</span>';
+        const elements = view.includedElements || [];
+        const relationships = view.includedRelationships || [];
+        const anchors = view.anchors || [];
+
+        // ── Build element-to-sheet lookup ──
+        const elByCode = {};
+        elements.forEach(el => { elByCode[el.nodeCode] = el; });
+
+        // ── Detect change hotspots ──
+        // A hotspot is an anchor with ≥2 outgoing relationships, or a node reached from ≥2 different anchors
+        const outCount = {};
+        const reachingAnchors = {};
+        relationships.forEach(r => {
+            outCount[r.sourceCode] = (outCount[r.sourceCode] || 0) + 1;
+            // track which anchor reaches each target
+            const srcEl = elByCode[r.sourceCode];
+            if (srcEl && srcEl.anchor) {
+                if (!reachingAnchors[r.targetCode]) reachingAnchors[r.targetCode] = new Set();
+                reachingAnchors[r.targetCode].add(r.sourceCode);
+            }
+        });
+        const hotspotCodes = new Set();
+        elements.forEach(el => {
+            if (el.anchor && (outCount[el.nodeCode] || 0) >= 2) hotspotCodes.add(el.nodeCode);
+            if (reachingAnchors[el.nodeCode] && reachingAnchors[el.nodeCode].size >= 2) hotspotCodes.add(el.nodeCode);
+        });
+
+        // ── Group elements by taxonomy sheet ──
+        const groups = {};
+        elements.forEach(el => {
+            const sheet = el.taxonomySheet || 'Unknown';
+            if (!groups[sheet]) groups[sheet] = [];
+            groups[sheet].push(el);
+        });
+        const sortedSheets = Object.keys(groups).sort((a, b) => {
+            const oa = LAYER_CONFIG[a] ? LAYER_CONFIG[a].order : 99;
+            const ob = LAYER_CONFIG[b] ? LAYER_CONFIG[b].order : 99;
+            return oa - ob;
+        });
+
+        // ── Part 1: Impact Summary Bar ──
+        html += '<div class="impact-summary-bar">';
+        html += '<span class="impact-kpi">🎯 ' + anchors.length + ' direct matches</span>';
+        html += '<span class="impact-kpi">📦 ' + elements.length + ' affected elements</span>';
+        html += '<span class="impact-kpi">🔗 ' + relationships.length + ' relations</span>';
+        html += '<span class="impact-kpi">🏗️ ' + sortedSheets.length + ' layers</span>';
+        if (hotspotCodes.size > 0) {
+            html += '<span class="impact-kpi">⚠️ ' + hotspotCodes.size + ' change hotspots</span>';
+        }
+        html += '</div>';
+
+        // ── Part 2: Layered Impact Map ──
+        if (elements.length > 0) {
+            // Collect relationship types between layers for edge labels
+            const layerRelations = {};
+            relationships.forEach(r => {
+                const srcSheet = elByCode[r.sourceCode] ? elByCode[r.sourceCode].taxonomySheet : null;
+                const tgtSheet = elByCode[r.targetCode] ? elByCode[r.targetCode].taxonomySheet : null;
+                if (srcSheet && tgtSheet && srcSheet !== tgtSheet) {
+                    const key = srcSheet + '→' + tgtSheet;
+                    if (!layerRelations[key]) layerRelations[key] = new Set();
+                    layerRelations[key].add(r.relationType);
+                }
             });
+
+            html += '<div class="impact-map">';
+            for (let i = 0; i < sortedSheets.length; i++) {
+                const sheet = sortedSheets[i];
+                const cfg = LAYER_CONFIG[sheet] || { order: 99, cls: '', icon: '⬜', label: sheet };
+                const layerElements = groups[sheet];
+
+                // Edge between swimlanes
+                if (i > 0) {
+                    const prevSheet = sortedSheets[i - 1];
+                    const key = prevSheet + '→' + sheet;
+                    const rKey = sheet + '→' + prevSheet;
+                    const relTypes = layerRelations[key] || layerRelations[rKey] || new Set();
+                    html += '<div class="impact-edge">│';
+                    if (relTypes.size > 0) {
+                        Array.from(relTypes).forEach(rt => {
+                            html += ' <span class="impact-edge-label">' + escapeHtml(rt) + '</span>';
+                        });
+                    }
+                    html += '<br>▼</div>';
+                }
+
+                html += '<div class="impact-swimlane ' + cfg.cls + '">';
+                html += '<div class="impact-swimlane-title">' + cfg.icon + ' ' + escapeHtml(cfg.label) +
+                    ' <span class="badge bg-secondary" style="font-size:0.7rem;">' + layerElements.length + '</span></div>';
+
+                html += '<div class="impact-swimlane-nodes">';
+                layerElements.sort((a, b) => b.relevance - a.relevance);
+                layerElements.forEach(el => {
+                    const pct = (el.relevance * 100).toFixed(0);
+                    let nodeClasses = 'impact-node';
+                    if (el.anchor) nodeClasses += ' impact-node-anchor';
+                    if (hotspotCodes.has(el.nodeCode)) nodeClasses += ' impact-node-hotspot';
+                    const opacity = 0.6 + (el.relevance * 0.4);
+                    html += '<span class="' + nodeClasses + '" style="opacity:' + opacity.toFixed(2) + '"' +
+                        ' title="' + escapeHtml(el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '')) + '">';
+                    html += escapeHtml(el.nodeCode);
+                    if (el.title) html += ' ' + escapeHtml(el.title.substring(0, 25));
+                    if (el.anchor) {
+                        html += ' <span class="impact-badge">★ ' + pct + '%</span>';
+                    } else {
+                        html += ' <span class="impact-badge">↳' + el.hopDistance + '</span>';
+                    }
+                    if (hotspotCodes.has(el.nodeCode)) html += ' ⚠️';
+                    html += '</span>';
+                });
+                html += '</div></div>';
+            }
             html += '</div>';
         }
 
-        // Elements table
-        if (view.includedElements && view.includedElements.length > 0) {
-            html += '<h6 class="mb-1">Included Elements</h6>';
-            html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
-            html += '<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead><tbody>';
-            view.includedElements.forEach(e => {
-                const rowClass = e.anchor ? 'table-success' : '';
-                html += '<tr class="' + rowClass + '">' +
-                    '<td>' + escapeHtml(e.nodeCode) + '</td>' +
-                    '<td>' + escapeHtml(e.title || '') + '</td>' +
-                    '<td>' + escapeHtml(e.taxonomySheet || '') + '</td>' +
-                    '<td>' + (e.relevance * 100).toFixed(1) + '%</td>' +
-                    '<td>' + e.hopDistance + '</td>' +
-                    '<td>' + (e.anchor ? '✓' : '') + '</td>' +
-                    '<td>' + escapeHtml(e.includedBecause || '') + '</td>' +
-                    '</tr>';
-            });
-            html += '</tbody></table></div>';
-        }
+        // ── Part 3: Detail Tables (collapsible) ──
+        const hasElements = elements.length > 0;
+        const hasRelationships = relationships.length > 0;
+        if (hasElements || hasRelationships) {
+            html += '<details class="impact-details">';
+            html += '<summary>📋 Detail: ' + elements.length + ' Elements, ' + relationships.length + ' Relationships</summary>';
 
-        // Relationships table
-        if (view.includedRelationships && view.includedRelationships.length > 0) {
-            html += '<h6 class="mb-1">Included Relationships</h6>';
-            html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
-            html += '<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Relevance</th><th>Hops</th><th>Reason</th></tr></thead><tbody>';
-            view.includedRelationships.forEach(r => {
-                html += '<tr>' +
-                    '<td>' + escapeHtml(r.sourceCode) + '</td>' +
-                    '<td>→</td>' +
-                    '<td>' + escapeHtml(r.targetCode) + '</td>' +
-                    '<td>' + escapeHtml(r.relationType) + '</td>' +
-                    '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
-                    '<td>' + r.hopDistance + '</td>' +
-                    '<td>' + escapeHtml(r.includedBecause || '') + '</td>' +
-                    '</tr>';
-            });
-            html += '</tbody></table></div>';
+            // Elements table
+            if (hasElements) {
+                html += '<h6 class="mb-1 mt-2">Included Elements</h6>';
+                html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
+                html += '<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead><tbody>';
+                elements.forEach(e => {
+                    const rowClass = e.anchor ? 'table-success' : '';
+                    html += '<tr class="' + rowClass + '">' +
+                        '<td>' + escapeHtml(e.nodeCode) + '</td>' +
+                        '<td>' + escapeHtml(e.title || '') + '</td>' +
+                        '<td>' + escapeHtml(e.taxonomySheet || '') + '</td>' +
+                        '<td>' + (e.relevance * 100).toFixed(1) + '%</td>' +
+                        '<td>' + e.hopDistance + '</td>' +
+                        '<td>' + (e.anchor ? '★' : '') +
+                        (hotspotCodes.has(e.nodeCode) ? ' ⚠️' : '') + '</td>' +
+                        '<td>' + escapeHtml(e.includedBecause || '') + '</td>' +
+                        '</tr>';
+                });
+                html += '</tbody></table></div>';
+            }
+
+            // Relationships table
+            if (hasRelationships) {
+                html += '<h6 class="mb-1">Included Relationships</h6>';
+                html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
+                html += '<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Relevance</th><th>Hops</th><th>Reason</th></tr></thead><tbody>';
+                relationships.forEach(r => {
+                    html += '<tr>' +
+                        '<td>' + escapeHtml(r.sourceCode) + '</td>' +
+                        '<td>→</td>' +
+                        '<td>' + escapeHtml(r.targetCode) + '</td>' +
+                        '<td>' + escapeHtml(r.relationType) + '</td>' +
+                        '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
+                        '<td>' + r.hopDistance + '</td>' +
+                        '<td>' + escapeHtml(r.includedBecause || '') + '</td>' +
+                        '</tr>';
+                });
+                html += '</tbody></table></div>';
+            }
+
+            html += '</details>';
         }
 
         if (!html) {
