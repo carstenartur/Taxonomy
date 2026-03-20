@@ -1202,6 +1202,40 @@ The DSL Editor tab in the application provides a full-featured code editing expe
 8. **Commit** — Save changes to the Git-backed repository with a commit message
 9. **Branch management** — Create branches, cherry-pick, and merge
 
+#### Syntax Highlighting
+
+The DSL editor uses colour-coded syntax highlighting for all token types in both light and dark mode:
+
+| Element | Colour (Light) | Colour (Dark) | Example |
+|---|---|---|---|
+| Block keywords | **Purple** bold | Purple | `element`, `relation`, `meta` |
+| Domain types | **Orange** | Yellow | `Capability`, `Service` |
+| Relation types | **Red** bold | Red | `REALIZES`, `SUPPORTS` |
+| Property names | **Teal** | Green | `title:`, `description:` |
+| String values | **Green** | Green | `"Secure Voice"` |
+| Taxonomy codes | **Blue** | Blue | `CP-1023`, `BP-1327` |
+| Numbers | **Cyan** | Cyan | `0.85` |
+| Status values | **Orange** | Orange | `accepted`, `proposed` |
+| Comments | **Grey** italic | Grey | `# comment` |
+| Brackets | **Slate** | Grey | `{`, `}` |
+
+#### Autocompletion
+
+Context-aware suggestions appear as you type:
+
+| Context | Suggestions |
+|---|---|
+| Start of line | Block keywords: `element`, `relation`, `meta`, `view`, … |
+| After `element <ID> type ` | Domain types: `Capability`, `Service`, `Process`, … |
+| After `element ` | Taxonomy codes from the catalogue (fetched dynamically) |
+| After `relation <ID> ` | Relation types: `REALIZES`, `SUPPORTS`, `USES`, … |
+| Inside block body | Property keys: `title:`, `description:`, `status:`, … |
+| After `status: ` | Status values: `accepted`, `proposed`, `provisional`, `rejected` |
+| After `confidence: ` | Numeric suggestions: `0.0`, `0.1`, …, `1.0` |
+| After `provenance: ` | Provenance values: `manual`, `llm-inferred`, `imported`, `propagated` |
+
+Press **Ctrl+Space** to trigger autocompletion manually.
+
 ![DSL Editor panel](../images/34-dsl-editor-panel.png)
 
 After accepting proposals, the exported DSL includes `relation` blocks alongside `element` blocks, showing the full architecture data model:
