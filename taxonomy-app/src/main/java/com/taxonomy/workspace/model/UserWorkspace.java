@@ -20,6 +20,8 @@ import java.time.Instant;
 @Table(name = "user_workspace", indexes = {
     @Index(name = "idx_workspace_username", columnList = "username"),
     @Index(name = "idx_workspace_shared", columnList = "shared")
+}, uniqueConstraints = {
+    @UniqueConstraint(name = "uq_workspace_user_name", columnNames = {"username", "display_name"})
 })
 public class UserWorkspace {
 
@@ -76,6 +78,15 @@ public class UserWorkspace {
 
     @Column(name = "provisioning_error")
     private String provisioningError;
+
+    @Column(name = "description", length = 500)
+    private String description;
+
+    @Column(nullable = false)
+    private boolean archived = false;
+
+    @Column(name = "is_default", nullable = false)
+    private boolean isDefault = false;
 
     public UserWorkspace() {
     }
@@ -214,5 +225,29 @@ public class UserWorkspace {
 
     public void setProvisioningError(String provisioningError) {
         this.provisioningError = provisioningError;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
+    }
+
+    public boolean isDefault() {
+        return isDefault;
+    }
+
+    public void setDefault(boolean isDefault) {
+        this.isDefault = isDefault;
     }
 }
