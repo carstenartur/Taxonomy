@@ -1140,8 +1140,8 @@
                             <span id="promptOverrideBadge" class="badge bg-warning text-dark d-none" th:text="#{prompt.badge.overridden}">Overridden</span>
                             <span id="promptDefaultBadge" class="badge bg-secondary d-none" th:text="#{prompt.badge.default}">Default</span>
                         </div>
-                        <div class="mb-1 text-muted small" th:utext="#{prompt.placeholders}">
-                            Placeholders: <code>{{BUSINESS_TEXT}}</code>, <code>{{NODE_LIST}}</code>, <code>{{TAXONOMY_NAME}}</code>
+                        <div class="mb-1 text-muted small" th:text="#{prompt.placeholders}">
+                            Placeholders: {{BUSINESS_TEXT}}, {{NODE_LIST}}, {{TAXONOMY_NAME}}
                         </div>
                         <textarea id="promptTextarea" class="form-control font-monospace mb-2" rows="10" style="font-size:0.82em;"></textarea>
                         <div class="d-flex gap-2 flex-wrap">
