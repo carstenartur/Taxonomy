@@ -1,3 +1,2 @@
-- #182: Refactor the current UI so it properly supports the new multi-user workspace model.
-- #180: multi-user architecture workspace model
-- #153: Import verbessern
+- #218: GUI-First Dokumentation & Feature-Vollständigkeit
+- #198: Abstraktionsebenen zur Reduktion der KI-Kontextlast
