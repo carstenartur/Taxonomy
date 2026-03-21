@@ -9,6 +9,7 @@ import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -18,14 +19,16 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 
 /**
  * Manages per-user workspace state for multi-user architecture editing.
  *
  * <p>Each authenticated user gets their own {@link UserWorkspaceState} with
  * independent context navigation, projection tracking, and operation state.
- * The underlying Git repository ({@code DslGitRepository}) is shared; workspaces
- * provide logical isolation via branches.
+ * When a {@link DslGitRepositoryFactory} is available, each workspace gets its
+ * own logically separate Git repository (same database, different namespace).
+ * Otherwise, workspaces are isolated via branches in a shared repository.
  *
  * <p>The manager maintains an in-memory map of active workspace states (keyed by
  * workspaceId) and persists workspace metadata (branch, timestamps) via
@@ -47,6 +50,7 @@ public class WorkspaceManager {
     private final int maxHistory;
     private final SystemRepositoryService systemRepositoryService;
     private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
 
     /** Active workspace states keyed by workspaceId. */
     private final ConcurrentMap<String, UserWorkspaceState> activeWorkspaces = new ConcurrentHashMap<>();
@@ -54,14 +58,30 @@ public class WorkspaceManager {
     /** Maps username to the currently active workspaceId for that user. */
     private final ConcurrentMap<String, String> activeWorkspaceByUser = new ConcurrentHashMap<>();
 
+    @Autowired
     public WorkspaceManager(UserWorkspaceRepository workspaceRepository,
                             @Value("${taxonomy.context.max-history:50}") int maxHistory,
+                            SystemRepositoryService systemRepositoryService,
+                            DslGitRepositoryFactory repositoryFactory) {
+        this.workspaceRepository = workspaceRepository;
+        this.maxHistory = maxHistory;
+        this.systemRepositoryService = systemRepositoryService;
+        this.gitRepository = repositoryFactory.getSystemRepository();
+        this.repositoryFactory = repositoryFactory;
+    }
+
+    /**
+     * Legacy constructor for backward compatibility (used in tests).
+     */
+    public WorkspaceManager(UserWorkspaceRepository workspaceRepository,
+                            int maxHistory,
                             SystemRepositoryService systemRepositoryService,
                             DslGitRepository gitRepository) {
         this.workspaceRepository = workspaceRepository;
         this.maxHistory = maxHistory;
         this.systemRepositoryService = systemRepositoryService;
         this.gitRepository = gitRepository;
+        this.repositoryFactory = null;
     }
 
     /**
@@ -485,27 +505,55 @@ public class WorkspaceManager {
         try {
             var sysRepo = systemRepositoryService.getPrimaryRepository();
             String baseBranch = sysRepo.getDefaultBranch();
-            String userBranch = username + "/workspace/" + ws.getWorkspaceId();
 
-            String baseCommit = gitRepository.getHeadCommit(baseBranch);
-            if (baseCommit != null) {
-                gitRepository.createBranch(userBranch, baseBranch);
+            if (repositoryFactory != null) {
+                // Per-workspace repository isolation: each workspace gets its own repo
+                DslGitRepository wsRepo = repositoryFactory.getWorkspaceRepository(ws.getWorkspaceId());
+                DslGitRepository sysGitRepo = repositoryFactory.getSystemRepository();
+
+                String sysDsl = sysGitRepo.getDslAtHead(baseBranch);
+                if (sysDsl != null) {
+                    wsRepo.commitDsl("main", sysDsl, username, "Fork from shared/" + baseBranch);
+                }
+
+                ws.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
+                ws.setSourceRepositoryId(sysRepo.getRepositoryId());
+                ws.setTopologyMode(sysRepo.getTopologyMode());
+                ws.setBaseBranch(baseBranch);
+                ws.setBaseCommit(sysGitRepo.getHeadCommit(baseBranch));
+                ws.setCurrentBranch("main");
+                ws.setCurrentCommit(wsRepo.getHeadCommit("main"));
+                ws.setSyncTargetBranch(baseBranch);
+                ws.setProvisionedAt(Instant.now());
+                ws.setProvisioningError(null);
+                workspaceRepository.save(ws);
+
+                log.info("Provisioned workspace for user '{}': repo='ws-{}', base='{}'",
+                        username, ws.getWorkspaceId(), baseBranch);
+            } else {
+                // Legacy branch-based isolation: all workspaces share one repo
+                String userBranch = username + "/workspace/" + ws.getWorkspaceId();
+
+                String baseCommit = gitRepository.getHeadCommit(baseBranch);
+                if (baseCommit != null) {
+                    gitRepository.createBranch(userBranch, baseBranch);
+                }
+
+                ws.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
+                ws.setSourceRepositoryId(sysRepo.getRepositoryId());
+                ws.setTopologyMode(sysRepo.getTopologyMode());
+                ws.setBaseBranch(baseBranch);
+                ws.setBaseCommit(baseCommit);
+                ws.setCurrentBranch(userBranch);
+                ws.setCurrentCommit(baseCommit);
+                ws.setSyncTargetBranch(baseBranch);
+                ws.setProvisionedAt(Instant.now());
+                ws.setProvisioningError(null);
+                workspaceRepository.save(ws);
+
+                log.info("Provisioned workspace for user '{}': branch='{}', base='{}'",
+                        username, userBranch, baseBranch);
             }
-
-            ws.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
-            ws.setSourceRepositoryId(sysRepo.getRepositoryId());
-            ws.setTopologyMode(sysRepo.getTopologyMode());
-            ws.setBaseBranch(baseBranch);
-            ws.setBaseCommit(baseCommit);
-            ws.setCurrentBranch(userBranch);
-            ws.setCurrentCommit(baseCommit);
-            ws.setSyncTargetBranch(baseBranch);
-            ws.setProvisionedAt(Instant.now());
-            ws.setProvisioningError(null);
-            workspaceRepository.save(ws);
-
-            log.info("Provisioned workspace for user '{}': branch='{}', base='{}'",
-                    username, userBranch, baseBranch);
             return ws;
         } catch (Exception e) {
             ws.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);

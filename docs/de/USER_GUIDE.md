@@ -1553,6 +1553,31 @@ Der **Prompt-Vorlagen-Editor** (nur Admin, einklappbar) ermöglicht es Ihnen, di
 
 ![Prompt-Vorlagen-Editor](../images/25-prompt-template-editor.png)
 
+### Einstellungen-Tab (⚙️)
+
+Der Tab **Einstellungen** bietet eine grafische Oberfläche zur Verwaltung aller Laufzeit-Anwendungseinstellungen. Dieser Tab ist nur für Administratoren sichtbar.
+
+> Alle Einstellungen sind **☁️ systemweit** — sie gelten global für alle Benutzer und Arbeitsbereiche. Details zu jeder Einstellung einschließlich Geltungsbereich und Standardwerten finden Sie unter **[Einstellungen](PREFERENCES.md)**.
+
+Die Einstellungsseite ist in drei Abschnitte organisiert:
+
+| Abschnitt | Einstellungen | Geltungsbereich |
+|---|---|---|
+| **🤖 LLM-Konfiguration** | RPM-Limit, Timeout, Ratenbegrenzung, Mindest-Relevanzbewertung | ☁️ Systemweit |
+| **📂 JGit / DSL-Konfiguration** | Standard-Branch, Projektname, Auto-Speichern, Remote-Git-URL/Token, Push-bei-Commit | ☁️ Systemweit |
+| **📈 Größenbeschränkungen** | Max. Geschäftstext, Max. Architekturknoten, Max. Exportknoten | ☁️ Systemweit |
+
+**So ändern Sie eine Einstellung:**
+
+1. Navigieren Sie zum Tab **⚙️ Einstellungen**.
+2. Ändern Sie die gewünschte Einstellung im entsprechenden Abschnitt.
+3. Klicken Sie auf **💾 Speichern** — Änderungen werden sofort wirksam.
+4. Eine Erfolgsmeldung bestätigt das Speichern; die Änderung wird in der Audit-Spur aufgezeichnet.
+
+**Audit-Spur:** Klappen Sie den Abschnitt **📋 Änderungsverlauf der Einstellungen** am unteren Rand auf, um zu sehen, wer was und wann geändert hat. Jede Änderung wird als Git-Commit im separaten Repository `taxonomy-preferences` persistiert.
+
+**Zurücksetzen:** Klicken Sie auf **↩️ Auf Standard zurücksetzen**, um alle Einstellungen auf die Werte aus `application.properties` zurückzusetzen.
+
 ---
 
 ## 15. Referenz der Beziehungstypen

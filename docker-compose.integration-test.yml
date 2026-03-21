@@ -1,0 +1,93 @@
+##
+## Docker Compose Integration Test Setup
+##
+## This file defines the infrastructure for end-to-end integration tests
+## verifying the full Git workflow across two Taxonomy instances sharing
+## a Gitea remote repository.
+##
+## Usage:
+##   docker compose -f docker-compose.integration-test.yml up \
+##     --build --abort-on-container-exit --exit-code-from integration-tests
+##
+## Services:
+##   - gitea:         Gitea Git server (shared remote)
+##   - gitea-init:    One-shot container that creates the initial repository
+##   - taxonomy-a:    Taxonomy instance A (Alice's team)
+##   - taxonomy-b:    Taxonomy instance B (Bob's team)
+##   - integration-tests: Test runner (optional, for CI)
+##
+
+services:
+  # ─── Gitea: Lightweight Git Remote Server ────────────────────
+  gitea:
+    image: gitea/gitea:1.22-rootless
+    environment:
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__server__ROOT_URL: http://gitea:3000
+      GITEA__server__HTTP_PORT: "3000"
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/v1/version"]
+      interval: 3s
+      retries: 30
+      start_period: 10s
+
+  # ─── Gitea Initialization ────────────────────────────────────
+  gitea-init:
+    image: curlimages/curl:latest
+    depends_on:
+      gitea:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        # Create admin user
+        curl -sS -X POST http://gitea:3000/api/v1/admin/users \
+          -H 'Content-Type: application/json' \
+          -u 'gitea_admin:gitea_admin' \
+          -d '{"username":"taxonomy","password":"taxonomy123","email":"tax@test.local","must_change_password":false}' || true
+        # Create shared repository
+        curl -sS -X POST http://gitea:3000/api/v1/user/repos \
+          -H 'Content-Type: application/json' \
+          -u 'taxonomy:taxonomy123' \
+          -d '{"name":"shared-architecture","auto_init":true,"default_branch":"draft"}'
+
+  # ─── Taxonomy Instance A (Alice's Team) ──────────────────────
+  taxonomy-a:
+    build: .
+    environment:
+      TAXONOMY_ADMIN_PASSWORD: test
+      TAXONOMY_TOPOLOGY_MODE: EXTERNAL_CANONICAL
+      TAXONOMY_EXTERNAL_GIT_URL: http://gitea:3000/taxonomy/shared-architecture.git
+      TAXONOMY_EXTERNAL_GIT_USER: taxonomy
+      TAXONOMY_EXTERNAL_GIT_TOKEN: taxonomy123
+    depends_on:
+      gitea-init:
+        condition: service_completed_successfully
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 5s
+      retries: 30
+
+  # ─── Taxonomy Instance B (Bob's Team) ────────────────────────
+  taxonomy-b:
+    build: .
+    environment:
+      TAXONOMY_ADMIN_PASSWORD: test
+      TAXONOMY_TOPOLOGY_MODE: EXTERNAL_CANONICAL
+      TAXONOMY_EXTERNAL_GIT_URL: http://gitea:3000/taxonomy/shared-architecture.git
+      TAXONOMY_EXTERNAL_GIT_USER: taxonomy
+      TAXONOMY_EXTERNAL_GIT_TOKEN: taxonomy123
+    depends_on:
+      gitea-init:
+        condition: service_completed_successfully
+    ports:
+      - "8082:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 5s
+      retries: 30

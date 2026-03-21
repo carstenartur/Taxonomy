@@ -1001,37 +1001,40 @@
             <div id="tab-preferences" class="tab-pane-content d-none">
 
                 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                    <h5 class="mb-0">&#9881;&#65039; Application Preferences</h5>
+                    <h5 class="mb-0" th:text="#{preferences.title}">&#9881;&#65039; Application Preferences</h5>
                     <div class="d-flex gap-2 flex-wrap">
-                        <button id="prefSaveBtn" class="btn btn-primary btn-sm">&#128190; Save</button>
-                        <button id="prefResetBtn" class="btn btn-outline-secondary btn-sm">&#8617;&#65039; Reset to Defaults</button>
+                        <button id="prefSaveBtn" class="btn btn-primary btn-sm" th:text="#{preferences.btn.save}">&#128190; Save</button>
+                        <button id="prefResetBtn" class="btn btn-outline-secondary btn-sm" th:text="#{preferences.btn.reset}">&#8617;&#65039; Reset to Defaults</button>
                     </div>
                 </div>
+                <p class="text-muted small mb-3" th:text="#{preferences.scope.info}">All settings are system-wide &#9729;&#65039; — they apply to all users and workspaces.</p>
                 <div id="prefStatusMsg" class="alert d-none mb-3" role="alert"></div>
 
                 <!-- Section 1: LLM Configuration -->
                 <div class="card mb-3">
-                    <div class="card-header fw-semibold" th:text="#{preferences.section.llm}">&#129302; LLM Configuration</div>
+                    <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                        <span th:text="#{preferences.section.llm}">&#129302; LLM Configuration</span>
+                        <span class="badge bg-info text-dark" th:text="#{preferences.scope.system}">&#9729;&#65039; System</span>
+                    </div>
                     <div class="card-body">
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label for="pref-llm-rpm" class="form-label">LLM Requests per Minute (RPM)
-                                    <span class="text-muted small">(Gemini free tier: 5)</span></label>
+                                <label for="pref-llm-rpm" class="form-label" th:text="#{preferences.llm.rpm}">LLM Requests per Minute (RPM)</label>
                                 <input type="number" class="form-control" id="pref-llm-rpm"
                                        data-pref-key="llm.rpm" min="0" max="1000"/>
                             </div>
                             <div class="col-md-6">
-                                <label for="pref-llm-timeout" class="form-label">LLM Request Timeout (seconds)</label>
+                                <label for="pref-llm-timeout" class="form-label" th:text="#{preferences.llm.timeout}">LLM Request Timeout (seconds)</label>
                                 <input type="number" class="form-control" id="pref-llm-timeout"
                                        data-pref-key="llm.timeout.seconds" min="5" max="600"/>
                             </div>
                             <div class="col-md-6">
-                                <label for="pref-rate-limit" class="form-label">Server Rate Limit (requests/IP/minute)</label>
+                                <label for="pref-rate-limit" class="form-label" th:text="#{preferences.llm.ratelimit}">Server Rate Limit (requests/IP/minute)</label>
                                 <input type="number" class="form-control" id="pref-rate-limit"
                                        data-pref-key="rate-limit.per-minute" min="0" max="1000"/>
                             </div>
                             <div class="col-md-6">
-                                <label for="pref-min-score" class="form-label">Minimum Relevance Score (0–100)</label>
+                                <label for="pref-min-score" class="form-label" th:text="#{preferences.llm.minscore}">Minimum Relevance Score (0–100)</label>
                                 <input type="number" class="form-control" id="pref-min-score"
                                        data-pref-key="analysis.min-relevance-score" min="0" max="100"/>
                             </div>
@@ -1041,21 +1044,24 @@
 
                 <!-- Section 2: JGit / DSL Configuration -->
                 <div class="card mb-3">
-                    <div class="card-header fw-semibold" th:text="#{preferences.section.jgit}">&#128194; JGit / DSL Configuration</div>
+                    <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                        <span th:text="#{preferences.section.jgit}">&#128194; JGit / DSL Configuration</span>
+                        <span class="badge bg-info text-dark" th:text="#{preferences.scope.system}">&#9729;&#65039; System</span>
+                    </div>
                     <div class="card-body">
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label for="pref-dsl-branch" class="form-label">Default Branch</label>
+                                <label for="pref-dsl-branch" class="form-label" th:text="#{preferences.dsl.branch}">Default Branch</label>
                                 <input type="text" class="form-control" id="pref-dsl-branch"
                                        data-pref-key="dsl.default-branch"/>
                             </div>
                             <div class="col-md-6">
-                                <label for="pref-dsl-project" class="form-label">Project Name</label>
+                                <label for="pref-dsl-project" class="form-label" th:text="#{preferences.dsl.project}">Project Name</label>
                                 <input type="text" class="form-control" id="pref-dsl-project"
                                        data-pref-key="dsl.project-name"/>
                             </div>
                             <div class="col-md-6">
-                                <label for="pref-dsl-autosave" class="form-label">Auto-Save Interval (seconds, 0 = disabled)</label>
+                                <label for="pref-dsl-autosave" class="form-label" th:text="#{preferences.dsl.autosave}">Auto-Save Interval (seconds, 0 = disabled)</label>
                                 <input type="number" class="form-control" id="pref-dsl-autosave"
                                        data-pref-key="dsl.auto-save.interval-seconds" min="0" max="86400"/>
                             </div>
@@ -1063,22 +1069,21 @@
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="pref-dsl-push-on-commit"
                                            data-pref-key="dsl.remote.push-on-commit"/>
-                                    <label class="form-check-label" for="pref-dsl-push-on-commit">
+                                    <label class="form-check-label" for="pref-dsl-push-on-commit" th:text="#{preferences.dsl.pushoncommit}">
                                         Push to Remote after each Commit
                                     </label>
                                 </div>
                             </div>
                             <div class="col-12">
-                                <label for="pref-dsl-remote-url" class="form-label">Remote Git URL</label>
+                                <label for="pref-dsl-remote-url" class="form-label" th:text="#{preferences.dsl.remoteurl}">Remote Git URL</label>
                                 <input type="text" class="form-control" id="pref-dsl-remote-url"
-                                       data-pref-key="dsl.remote.url" placeholder="https://github.com/org/repo.git"/>
+                                       data-pref-key="dsl.remote.url" th:placeholder="#{preferences.dsl.remoteurl.placeholder}" placeholder="https://github.com/org/repo.git"/>
                             </div>
                             <div class="col-12">
-                                <label for="pref-dsl-remote-token" class="form-label">Remote Git Token
-                                    <span class="text-muted small">(stored securely, last 4 chars shown)</span></label>
+                                <label for="pref-dsl-remote-token" class="form-label" th:text="#{preferences.dsl.remotetoken}">Remote Git Token (stored securely, last 4 chars shown)</label>
                                 <input type="password" class="form-control" id="pref-dsl-remote-token"
                                        data-pref-key="dsl.remote.token" autocomplete="new-password"
-                                       placeholder="Leave blank to keep existing token"/>
+                                       th:placeholder="#{preferences.dsl.remotetoken.placeholder}" placeholder="Leave blank to keep existing token"/>
                             </div>
                         </div>
                     </div>
@@ -1086,21 +1091,24 @@
 
                 <!-- Section 3: Size Limits -->
                 <div class="card mb-3">
-                    <div class="card-header fw-semibold" th:text="#{preferences.section.limits}">&#128200; Size Limits</div>
+                    <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                        <span th:text="#{preferences.section.limits}">&#128200; Size Limits</span>
+                        <span class="badge bg-info text-dark" th:text="#{preferences.scope.system}">&#9729;&#65039; System</span>
+                    </div>
                     <div class="card-body">
                         <div class="row g-3">
                             <div class="col-md-4">
-                                <label for="pref-max-business-text" class="form-label">Max Business Text Length</label>
+                                <label for="pref-max-business-text" class="form-label" th:text="#{preferences.limits.businesstext}">Max Business Text Length</label>
                                 <input type="number" class="form-control" id="pref-max-business-text"
                                        data-pref-key="limits.max-business-text" min="100" max="100000"/>
                             </div>
                             <div class="col-md-4">
-                                <label for="pref-max-arch-nodes" class="form-label">Max Architecture Nodes</label>
+                                <label for="pref-max-arch-nodes" class="form-label" th:text="#{preferences.limits.archnodes}">Max Architecture Nodes</label>
                                 <input type="number" class="form-control" id="pref-max-arch-nodes"
                                        data-pref-key="limits.max-architecture-nodes" min="1" max="1000"/>
                             </div>
                             <div class="col-md-4">
-                                <label for="pref-max-export-nodes" class="form-label">Max Export Nodes</label>
+                                <label for="pref-max-export-nodes" class="form-label" th:text="#{preferences.limits.exportnodes}">Max Export Nodes</label>
                                 <input type="number" class="form-control" id="pref-max-export-nodes"
                                        data-pref-key="limits.max-export-nodes" min="1" max="10000"/>
                             </div>
@@ -1110,19 +1118,19 @@
 
                 <!-- History section (collapsible) -->
                 <details id="prefHistorySection" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128203; Preferences Change History</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{preferences.history.title}">&#128203; Preferences Change History</summary>
                     <div class="mt-2 table-responsive">
                         <table class="table table-sm table-striped">
                             <thead class="table-dark">
                             <tr>
-                                <th class="small">Commit</th>
-                                <th class="small">Author</th>
-                                <th class="small">Time</th>
-                                <th class="small">Message</th>
+                                <th class="small" th:text="#{preferences.history.commit}">Commit</th>
+                                <th class="small" th:text="#{preferences.history.author}">Author</th>
+                                <th class="small" th:text="#{preferences.history.time}">Time</th>
+                                <th class="small" th:text="#{preferences.history.message}">Message</th>
                             </tr>
                             </thead>
                             <tbody id="prefHistoryBody">
-                            <tr><td colspan="4" class="text-muted small">Open to load history.</td></tr>
+                            <tr><td colspan="4" class="text-muted small" th:text="#{preferences.history.empty}">Open to load history.</td></tr>
                             </tbody>
                         </table>
                     </div>

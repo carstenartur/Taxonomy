@@ -1,6 +1,7 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProjection;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
@@ -39,11 +40,11 @@ public class WorkspaceProjectionService {
 
     public WorkspaceProjectionService(WorkspaceProjectionRepository projectionRepository,
                                       WorkspaceManager workspaceManager,
-                                      DslGitRepository gitRepository,
+                                      DslGitRepositoryFactory repositoryFactory,
                                       UserWorkspaceRepository workspaceRepository) {
         this.projectionRepository = projectionRepository;
         this.workspaceManager = workspaceManager;
-        this.gitRepository = gitRepository;
+        this.gitRepository = repositoryFactory.getSystemRepository();
         this.workspaceRepository = workspaceRepository;
     }
 

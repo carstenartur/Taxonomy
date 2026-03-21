@@ -1568,6 +1568,31 @@ The **Prompt Templates Editor** (admin only, collapsible) allows you to customis
 
 ![Prompt Template Editor](../images/25-prompt-template-editor.png)
 
+### Preferences Tab (⚙️)
+
+The **Preferences** tab provides a graphical interface for managing all runtime application settings. This tab is visible only to administrators.
+
+> All preferences are **☁️ system-wide** — they apply globally to all users and workspaces. For details on each setting, including scope and defaults, see **[Preferences](PREFERENCES.md)**.
+
+The Preferences page is organized into three sections:
+
+| Section | Settings | Scope |
+|---|---|---|
+| **🤖 LLM Configuration** | RPM limit, timeout, rate limit, min relevance score | ☁️ System-wide |
+| **📂 JGit / DSL Configuration** | Default branch, project name, auto-save, remote Git URL/token, push-on-commit | ☁️ System-wide |
+| **📈 Size Limits** | Max business text, max architecture nodes, max export nodes | ☁️ System-wide |
+
+**How to change a preference:**
+
+1. Navigate to the **⚙️ Preferences** tab.
+2. Modify the desired setting in the appropriate section.
+3. Click **💾 Save** — changes take effect immediately.
+4. A success message confirms the save; the change is recorded in the audit trail.
+
+**Audit trail:** Expand the **📋 Preferences Change History** section at the bottom to see who changed what and when. Each change is persisted as a Git commit in the separate `taxonomy-preferences` repository.
+
+**Reset:** Click **↩️ Reset to Defaults** to restore all settings to the values from `application.properties`.
+
 ---
 
 ## 15. Relation Types Reference

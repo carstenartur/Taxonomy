@@ -1,6 +1,7 @@
 package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.merge.MergeStrategy;
@@ -27,8 +28,8 @@ public class ConflictDetectionService {
 
     private final DslGitRepository gitRepository;
 
-    public ConflictDetectionService(DslGitRepository gitRepository) {
-        this.gitRepository = gitRepository;
+    public ConflictDetectionService(DslGitRepositoryFactory repositoryFactory) {
+        this.gitRepository = repositoryFactory.getSystemRepository();
     }
 
     /**

@@ -3,6 +3,7 @@ package com.taxonomy.architecture.service;
 import com.taxonomy.dsl.parser.DslTokenizer;
 import com.taxonomy.dsl.storage.DslCommit;
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ElementHistoryAggregation;
 import com.taxonomy.architecture.model.ArchitectureCommitIndex;
 import com.taxonomy.architecture.repository.ArchitectureCommitIndexRepository;
@@ -48,10 +49,10 @@ public class CommitIndexService {
     @PersistenceContext
     private EntityManager entityManager;
 
-    public CommitIndexService(DslGitRepository gitRepository,
+    public CommitIndexService(DslGitRepositoryFactory repositoryFactory,
                               ArchitectureCommitIndexRepository indexRepository,
                               WorkspaceContextResolver contextResolver) {
-        this.gitRepository = gitRepository;
+        this.gitRepository = repositoryFactory.getSystemRepository();
         this.indexRepository = indexRepository;
         this.contextResolver = contextResolver;
     }

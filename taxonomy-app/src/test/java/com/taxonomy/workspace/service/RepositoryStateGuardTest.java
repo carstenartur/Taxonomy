@@ -1,6 +1,7 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,11 +40,12 @@ class RepositoryStateGuardTest {
 
     @BeforeEach
     void setUp() {
-        gitRepo = new DslGitRepository();
+        var factory = new DslGitRepositoryFactory(null);
+        gitRepo = factory.getSystemRepository();
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         WorkspaceManager workspaceManager = new WorkspaceManager(wsRepo, 50,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
-        stateService = new RepositoryStateService(gitRepo, workspaceManager,
+        stateService = new RepositoryStateService(factory, workspaceManager,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
         guard = new RepositoryStateGuard(stateService, null);
     }

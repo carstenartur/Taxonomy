@@ -18,23 +18,57 @@ The application hosts the shared integration repository internally. All users
 synchronize with this internal repository. This is the default mode and requires
 no external Git setup.
 
+When `DslGitRepositoryFactory` is configured (default), each provisioned workspace
+gets its own logically separate Git repository in the same database, identified by
+a unique `repositoryName` prefix (`ws-{workspaceId}`). The system repository uses
+the well-known name `taxonomy-dsl`.
+
 ```
-┌─────────────────────────────────┐
-│   System Repository (internal)  │
-│   mode: INTERNAL_SHARED         │
-│   branch: "draft"               │
-└──────────┬──────────────────────┘
-           │
-     ┌─────┼──────┐
-     │     │      │
-  alice  bob   carol
+┌─────────────────────────────────────────────────────┐
+│                    HSQLDB (git_packs table)           │
+│                                                       │
+│  ┌───────────────┐  ┌──────────────┐  ┌────────────┐ │
+│  │ System Repo   │  │ Alice Repo   │  │ Bob Repo   │ │
+│  │ "taxonomy-dsl"│  │ "ws-abc-123" │  │ "ws-def-456│ │
+│  │ Branch: draft │  │ Branch: main │  │ Branch: main│ │
+│  └───────────────┘  └──────────────┘  └────────────┘ │
+└──────────────────────────────────────────────────────┘
 ```
 
 ### EXTERNAL_CANONICAL
 
 An external Git repository acts as the canonical central source. The application
-synchronizes with this external repository. This mode is designed for integration
-with existing enterprise Git infrastructure.
+synchronizes with this external repository via `ExternalGitSyncService` using
+JGit's `Transport.open()` for fetch/push operations. This mode is designed for
+integration with existing enterprise Git infrastructure (Gitea, GitHub, GitLab).
+
+```
+┌──────────────────────────────────────────────────────┐
+│                    HSQLDB (git_packs table)            │
+│                                                        │
+│  ┌───────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │ System Repo   │  │ Alice Repo   │  │ Bob Repo   │  │
+│  │ "taxonomy-dsl"│  │ "ws-abc-123" │  │ "ws-def-456│  │
+│  │ Branch: draft │  │ Branch: main │  │ Branch: main│  │
+│  └───────┬───────┘  └──────────────┘  └────────────┘  │
+└──────────┼────────────────────────────────────────────┘
+           │ fetch/push
+           ▼
+┌──────────────────────┐
+│   Gitea / GitHub     │
+│   Remote Repository  │
+└──────────────────────┘
+```
+
+#### External Sync REST API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/workspace/external/fetch` | POST | Fetch all branches from the external remote |
+| `/api/workspace/external/push` | POST | Push shared branch to the external remote |
+| `/api/workspace/external/full-sync` | POST | Fetch + merge into shared branch |
+| `/api/workspace/external/status` | GET | Current sync status and timestamps |
+| `/api/workspace/external/configure` | PUT | Set external URL and topology mode |
 
 ## Workspace Provisioning Lifecycle
 
@@ -149,6 +183,10 @@ SystemRepository (Entity)
   ├── repositoryId: UUID
   ├── topologyMode: INTERNAL_SHARED | EXTERNAL_CANONICAL
   ├── defaultBranch: "draft"
+  ├── externalUrl: URL for EXTERNAL_CANONICAL mode
+  ├── externalAuthToken: optional authentication token for EXTERNAL_CANONICAL
+  ├── lastFetchAt / lastPushAt: sync timestamps
+  ├── lastFetchCommit: SHA of last fetched remote HEAD
   └── primaryRepo: true
 
 UserWorkspace (Entity)
@@ -159,6 +197,18 @@ UserWorkspace (Entity)
   ├── syncTargetBranch: configurable sync target
   └── provisionedAt / provisioningError: audit data
 
+DslGitRepositoryFactory
+  ├── getSystemRepository() → shared system repo ("taxonomy-dsl")
+  ├── getWorkspaceRepository(workspaceId) → per-workspace repo ("ws-{id}")
+  ├── resolveRepository(WorkspaceContext) → context-based resolution
+  └── evict(workspaceId) → cache cleanup on deletion
+
+ExternalGitSyncService
+  ├── fetchFromExternal() → JGit Transport.fetch() from remote
+  ├── pushToExternal(branch) → JGit Transport.push() to remote
+  ├── fullSync(username) → fetch + merge into shared branch
+  └── getStatus() → external sync configuration and timestamps
+
 SystemRepositoryService
   ├── @PostConstruct → ensures primary repo exists
   ├── getPrimaryRepository() → returns SystemRepository
@@ -167,7 +217,7 @@ SystemRepositoryService
 WorkspaceManager
   ├── getOrCreateWorkspace() → in-memory state (unchanged)
   ├── findUserWorkspace() → persistent entity lookup
-  └── provisionWorkspaceRepository() → lazy Git branch creation
+  └── provisionWorkspaceRepository() → creates per-workspace repo (factory) or branch (legacy)
 ```
 ---
 

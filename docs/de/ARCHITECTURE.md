@@ -326,34 +326,43 @@ Siehe [Git-Integration](GIT_INTEGRATION.md) für die vollständige REST-API und 
 
 ## Mehrbenutzter-Workspace-Architektur
 
-Das System unterstützt gleichzeitige Mehrbenutzer-Bearbeitung durch ein Workspace-Isolationsmodell:
+Das System unterstützt gleichzeitige Mehrbenutzer-Bearbeitung durch ein Workspace-Isolationsmodell.
+Wenn eine `DslGitRepositoryFactory` konfiguriert ist (Standard in Produktion), erhält jeder
+Workspace ein eigenes logisch getrenntes Git-Repository innerhalb der gleichen Datenbank.
+Ohne die Factory werden Workspaces über Branches in einem gemeinsamen Repository isoliert.
+
+### Repository-pro-Workspace-Architektur
 
 ```
-                    ┌──────────────────────────┐
-                    │   Gemeinsames Git-Repo    │
-                    │   (DslGitRepository)      │
-                    │   Branch: draft (geteilt) │
-                    └──────────┬───────────────┘
-                               │
-                ┌──────────────┼──────────────┐
-                │              │              │
-         ┌──────▼─────┐ ┌─────▼──────┐ ┌─────▼──────┐
-         │  Alices     │ │  Bobs      │ │  Carols    │
-         │  Workspace  │ │  Workspace │ │  Workspace │
-         │  Branch:    │ │  Branch:   │ │  Branch:   │
-         │  feature-a  │ │  feature-b │ │  draft     │
-         └──────┬──────┘ └─────┬──────┘ └─────┬──────┘
-                │              │              │
-         ┌──────▼─────┐ ┌─────▼──────┐ ┌─────▼──────┐
-         │ Projektion │ │ Projektion │ │ Projektion │
-         │ (Alice)    │ │ (Bob)      │ │ (Carol)    │
-         └────────────┘ └────────────┘ └────────────┘
+┌─────────────────────────────────────────────────────┐
+│                    HSQLDB (git_packs-Tabelle)         │
+│                                                       │
+│  ┌───────────────┐  ┌──────────────┐  ┌────────────┐ │
+│  │ System-Repo   │  │ Alice-Repo   │  │ Bob-Repo   │ │
+│  │ Name:         │  │ Name:        │  │ Name:      │ │
+│  │ "taxonomy-dsl"│  │ "ws-abc-123" │  │ "ws-def-456│ │
+│  │ Branch: draft │  │ Branch: main │  │ Branch: main│ │
+│  └───────┬───────┘  └──────┬───────┘  └──────┬─────┘ │
+│          │                 │                  │       │
+│          │    publish ◄────┘                  │       │
+│          │    sync    ────►                   │       │
+│          │    publish ◄──────────────────────┘       │
+│          │    sync    ──────────────────────►         │
+└──────────┼───────────────────────────────────────────┘
+           │
+           │ fetch/push (EXTERNAL_CANONICAL-Modus)
+           ▼
+┌──────────────────────┐
+│   Gitea / GitHub     │
+│   Remote-Repository  │
+└──────────────────────┘
 ```
 
 ### Komponenten
 
 | Komponente | Verantwortlichkeit |
 |---|---|
+| **DslGitRepositoryFactory** | Erstellt und cached workspace-spezifische `DslGitRepository`-Instanzen |
 | **WorkspaceManager** | In-Memory-Cache von benutzerspezifischen `UserWorkspaceState`-Instanzen (ConcurrentHashMap) |
 | **UserWorkspaceState** | Flüchtiger benutzerspezifischer Status: Kontext, Verlauf, Projektionsverfolgung, Operationsstatus |
 | **UserWorkspace** (Entität) | Persistente Workspace-Metadaten: Branch, Zeitstempel, Shared-Flag |
@@ -361,12 +370,13 @@ Das System unterstützt gleichzeitige Mehrbenutzer-Bearbeitung durch ein Workspa
 | **ContextHistoryRecord** (Entität) | Persistenter Navigationsverlauf mit Herkunftsverfolgung |
 | **SyncState** (Entität) | Verfolgt den Synchronisierungsstatus zwischen Workspace und gemeinsamem Repository |
 | **WorkspaceResolver** | Extrahiert den Benutzernamen aus dem Spring-Security-Kontext |
+| **ExternalGitSyncService** | Fetch/Push-Operationen zum externen Git-Remote (EXTERNAL_CANONICAL-Modus) |
 
 ### Isolationsmodell
 
-1. **Branch-Isolation** — Jeder Benutzer arbeitet auf seinem eigenen Git-Branch. Der gemeinsame `draft`-Branch ist der Integrationspunkt.
+1. **Repository-Isolation** — Bei konfigurierter `DslGitRepositoryFactory` erhält jeder Workspace ein eigenes Git-Repository (gleiche DB, unterschiedlicher Namespace). Ohne die Factory wird Branch-basierte Isolation verwendet.
 2. **Status-Isolation** — Navigationskontext, Projektionsverfolgung und Operationsstatus sind benutzerspezifisch.
-3. **Synchronisierungs-Workflow** — Benutzer pullen explizit vom gemeinsamen Repository (Sync) und pushen explizit zum gemeinsamen Repository (Veröffentlichen).
+3. **Synchronisierungs-Workflow** — Benutzer pullen explizit vom gemeinsamen Repository (Sync) und pushen explizit zum gemeinsamen Repository (Veröffentlichen). Cross-Repository-Sync kopiert DSL-Inhalte zwischen Workspace- und System-Repositories.
 
 ### Datenisolation
 
@@ -393,6 +403,7 @@ Legacy-Daten mit `workspace_id = NULL` werden als geteilt behandelt und bleiben 
 ```
 Browser → WorkspaceResolver (Benutzer extrahieren)
        → WorkspaceManager (Status abrufen/erstellen)
+       → DslGitRepositoryFactory (Repository für Workspace auflösen)
        → Service (workspace-bewusste Methode mit Benutzername-Parameter)
        → DslGitRepository (branch-beschränkte Git-Operationen)
 ```

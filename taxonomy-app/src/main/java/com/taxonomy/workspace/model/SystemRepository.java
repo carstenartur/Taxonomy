@@ -40,6 +40,18 @@ public class SystemRepository {
     @Column(name = "external_url")
     private String externalUrl;
 
+    @Column(name = "external_auth_token")
+    private String externalAuthToken;
+
+    @Column(name = "last_fetch_at")
+    private Instant lastFetchAt;
+
+    @Column(name = "last_push_at")
+    private Instant lastPushAt;
+
+    @Column(name = "last_fetch_commit")
+    private String lastFetchCommit;
+
     @Column(name = "primary_repo", nullable = false)
     private boolean primaryRepo = true;
 
@@ -97,6 +109,38 @@ public class SystemRepository {
 
     public void setExternalUrl(String externalUrl) {
         this.externalUrl = externalUrl;
+    }
+
+    public String getExternalAuthToken() {
+        return externalAuthToken;
+    }
+
+    public void setExternalAuthToken(String externalAuthToken) {
+        this.externalAuthToken = externalAuthToken;
+    }
+
+    public Instant getLastFetchAt() {
+        return lastFetchAt;
+    }
+
+    public void setLastFetchAt(Instant lastFetchAt) {
+        this.lastFetchAt = lastFetchAt;
+    }
+
+    public Instant getLastPushAt() {
+        return lastPushAt;
+    }
+
+    public void setLastPushAt(Instant lastPushAt) {
+        this.lastPushAt = lastPushAt;
+    }
+
+    public String getLastFetchCommit() {
+        return lastFetchCommit;
+    }
+
+    public void setLastFetchCommit(String lastFetchCommit) {
+        this.lastFetchCommit = lastFetchCommit;
     }
 
     public boolean isPrimaryRepo() {

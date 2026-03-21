@@ -4,6 +4,7 @@ import com.taxonomy.dsl.diff.ModelDiff;
 import com.taxonomy.dsl.model.ArchitectureElement;
 import com.taxonomy.dsl.model.ArchitectureRelation;
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ContextComparison;
 import com.taxonomy.dto.ContextComparison.DiffSummary;
 import com.taxonomy.dto.ContextRef;
@@ -29,8 +30,8 @@ public class ContextCompareService {
 
     private final DslGitRepository gitRepository;
 
-    public ContextCompareService(DslGitRepository gitRepository) {
-        this.gitRepository = gitRepository;
+    public ContextCompareService(DslGitRepositoryFactory repositoryFactory) {
+        this.gitRepository = repositoryFactory.getSystemRepository();
     }
 
     /**
