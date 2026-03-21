@@ -206,26 +206,21 @@
 
                 if (result.status === 'SUCCESS') {
                     if (matchedCount === 0) {
-                        B().showStatus('warning',
-                            '⚠️ Analysis returned 0 matches. This may indicate the LLM API key is not configured or the LLM returned empty results. Check the server logs for details.');
+                        B().showStatus('warning', t('analyze.zero.matches'));
                     } else {
-                        B().showStatus('success',
-                            '✅ Analysis complete. ' + matchedCount + ' node(s) matched.');
+                        B().showStatus('success', t('analyze.complete', matchedCount));
                     }
                 } else if (result.status === 'PARTIAL') {
                     B().showStatus('warning',
-                        '⚠️ Partial results — ' + (result.errorMessage || 'Analysis incomplete.') +
-                        ' ' + matchedCount + ' node(s) matched so far.');
+                        t('analyze.partial', (result.errorMessage || t('analyze.incomplete')), matchedCount));
                 } else if (result.status === 'ERROR') {
                     B().showStatus('danger',
                         '❌ ' + t('scoring.analysis.failed', result.errorMessage || 'Unknown error.'));
                 } else {
                     if (matchedCount === 0) {
-                        B().showStatus('warning',
-                            '⚠️ Analysis returned 0 matches. This may indicate the LLM API key is not configured or the LLM returned empty results. Check the server logs for details.');
+                        B().showStatus('warning', t('analyze.zero.matches'));
                     } else {
-                        B().showStatus('success',
-                            '✅ Analysis complete. ' + matchedCount + ' node(s) matched.');
+                        B().showStatus('success', t('analyze.complete', matchedCount));
                     }
                 }
 
@@ -316,7 +311,7 @@
             }
         });
 
-        B().showStatus('info', '🔍 Interactive Mode: expand nodes to evaluate them with AI.');
+        B().showStatus('info', t('analyze.interactive.info'));
     }
 
     // ── Streaming analysis (list / tabs views) ────────────────────────────────
@@ -347,7 +342,7 @@
 
         eventSource.addEventListener('phase', function (e) {
             const data = JSON.parse(e.data);
-            B().showStatus('info', '🔄 ' + data.message);
+            B().showStatus('info', data.message);
         });
 
         eventSource.addEventListener('scores', function (e) {
@@ -375,7 +370,7 @@
             S.currentDiscrepancies = data.discrepancies || [];
             S.lastAnalyzedText = text;
             const matchedCount = Object.values(data.totalScores).filter(v => v > 0).length;
-            let statusMsg = '✅ Analysis complete. ' + matchedCount + ' node(s) matched.';
+            let statusMsg = t('analyze.complete', matchedCount);
             if (S.currentDiscrepancies.length > 0) {
                 statusMsg += ' ⚠️ ' + S.currentDiscrepancies.length + ' scoring discrepanc'
                     + (S.currentDiscrepancies.length === 1 ? 'y' : 'ies') + ' detected.';
@@ -401,7 +396,7 @@
         eventSource.onerror = function () {
             eventSource.close();
             setAnalyzing(false);
-            B().showStatus('danger', 'Connection to server lost.');
+            B().showStatus('danger', t('analyze.connection.lost'));
         };
     }
 
@@ -528,7 +523,7 @@
     // ── Leaf Justification ────────────────────────────────────────────────────
     function requestLeafJustification(nodeCode, btnEl) {
         if (!S.storedBusinessText) {
-            B().showStatus('warning', 'No business text stored. Please run an analysis first.');
+            B().showStatus('warning', t('analyze.no.text'));
             return;
         }
         const originalText = btnEl.textContent;
@@ -653,7 +648,7 @@
         html += '<span class="impact-kpi">🔗 ' + relationships.length + ' relations</span>';
         html += '<span class="impact-kpi">🏗️ ' + sortedSheets.length + ' layers</span>';
         if (hotspotCodes.size > 0) {
-            html += '<span class="impact-kpi">⚠️ ' + hotspotCodes.size + ' change hotspots</span>';
+            html += '<span class="impact-kpi">' + t('analyze.hotspots', hotspotCodes.size) + '</span>';
         }
         html += '</div>';
 
@@ -717,7 +712,7 @@
                     const opacity = 0.6 + (el.relevance * 0.4);
                     let titleParts = el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '');
                     if (hotspotCodes.has(el.nodeCode)) {
-                        titleParts += ' | ⚠️ hotspot: ' + (hotspotReasons[el.nodeCode] || 'change risk');
+                        titleParts += ' | ⚠️ hotspot: ' + (hotspotReasons[el.nodeCode] || t('analyze.hotspot.risk'));
                     }
                     html += '<span class="' + nodeClasses + '" style="opacity:' + opacity.toFixed(2) + '"' +
                         ' title="' + escapeHtml(titleParts) + '">';
@@ -932,7 +927,7 @@
                 if (row) { row.classList.add('table-info'); row.style.opacity = '1'; }
                 var actions = row && row.querySelector('td:last-child');
                 if (actions) actions.innerHTML = '<span class="badge bg-info">' + escapeHtml(t('scoring.badge.already.exists')) + '</span>';
-                B().showStatus('info', 'ℹ️ Proposal already exists for ' + h.sourceCode + ' → ' + h.targetCode);
+                B().showStatus('info', t('analyze.proposal.exists', h.sourceCode, h.targetCode));
                 return null;
             }
             if (!r.ok) throw new Error('HTTP ' + r.status);
