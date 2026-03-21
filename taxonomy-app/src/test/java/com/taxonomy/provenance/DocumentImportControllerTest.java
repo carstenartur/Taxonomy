@@ -96,6 +96,101 @@ class DocumentImportControllerTest {
                 .andExpect(jsonPath("$.sourceArtifactId").isNumber());
     }
 
+    // ── AI extraction endpoint tests ────────────────────────────────────────
+
+    @Test
+    void extractWithAi_emptyFileReturnsBadRequest() throws Exception {
+        MockMultipartFile emptyFile = new MockMultipartFile(
+                "file", "empty.pdf", "application/pdf", new byte[0]);
+
+        mockMvc.perform(multipart("/api/documents/extract-ai").file(emptyFile))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("File is empty"));
+    }
+
+    @Test
+    void extractAi_oversizedFileReturnsBadRequest() throws Exception {
+        MockMultipartFile oversizedFile = new MockMultipartFile(
+                "file", "large.pdf", "application/pdf",
+                new byte[50 * 1024 * 1024 + 1]);
+
+        mockMvc.perform(multipart("/api/documents/extract-ai").file(oversizedFile))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("exceeds maximum size")));
+    }
+
+    // ── Regulation mapping endpoint tests ────────────────────────────────────
+
+    @Test
+    void mapRegulation_emptyFileReturnsBadRequest() throws Exception {
+        MockMultipartFile emptyFile = new MockMultipartFile(
+                "file", "empty.pdf", "application/pdf", new byte[0]);
+
+        mockMvc.perform(multipart("/api/documents/map-regulation").file(emptyFile))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("File is empty"));
+    }
+
+    @Test
+    void mapRegulation_oversizedFileReturnsBadRequest() throws Exception {
+        MockMultipartFile oversizedFile = new MockMultipartFile(
+                "file", "large.pdf", "application/pdf",
+                new byte[50 * 1024 * 1024 + 1]);
+
+        mockMvc.perform(multipart("/api/documents/map-regulation").file(oversizedFile))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("exceeds maximum size")));
+    }
+
+    // ── Confirm candidates endpoint tests ────────────────────────────────────
+
+    @Test
+    void confirmCandidates_noCandidatesReturnsBadRequest() throws Exception {
+        String json = """
+                {
+                  "sourceArtifactId": 1,
+                  "sourceVersionId": 1,
+                  "candidates": []
+                }
+                """;
+
+        mockMvc.perform(post("/api/documents/confirm-candidates")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("No candidates provided"));
+    }
+
+    @Test
+    void confirmCandidates_missingArtifactReturnsBadRequest() throws Exception {
+        String json = """
+                {
+                  "sourceArtifactId": 999999,
+                  "sourceVersionId": 999999,
+                  "candidates": [{"text": "some text", "sectionHeading": "section"}]
+                }
+                """;
+
+        mockMvc.perform(post("/api/documents/confirm-candidates")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Source artifact not found"));
+    }
+
+    // ── Upload oversized file test ───────────────────────────────────────────
+
+    @Test
+    void uploadOversizedFileReturnsBadRequest() throws Exception {
+        MockMultipartFile oversizedFile = new MockMultipartFile(
+                "file", "large.pdf", "application/pdf",
+                new byte[50 * 1024 * 1024 + 1]);
+
+        mockMvc.perform(multipart("/api/documents/upload").file(oversizedFile))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("exceeds maximum size")));
+    }
+
     /**
      * Creates a minimal DOCX file using Apache POI for testing.
      */
