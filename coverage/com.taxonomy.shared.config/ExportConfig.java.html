@@ -4,6 +4,7 @@ import com.taxonomy.export.ArchiMateDiagramService;
 import com.taxonomy.export.ArchiMateXmlExporter;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.MermaidExportService;
+import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import org.springframework.context.annotation.Bean;
@@ -15,36 +16,41 @@ import org.springframework.context.annotation.Configuration;
  * wires its classes into the Spring application context.&lt;/p&gt;
  */
 @Configuration
-<span class="fc" id="L18">public class ExportConfig {</span>
+<span class="fc" id="L19">public class ExportConfig {</span>
 
     @Bean
     public ArchiMateDiagramService archiMateDiagramService() {
-<span class="fc" id="L22">        return new ArchiMateDiagramService();</span>
+<span class="fc" id="L23">        return new ArchiMateDiagramService();</span>
     }
 
     @Bean
     public ArchiMateXmlExporter archiMateXmlExporter() {
-<span class="fc" id="L27">        return new ArchiMateXmlExporter();</span>
+<span class="fc" id="L28">        return new ArchiMateXmlExporter();</span>
     }
 
     @Bean
     public DiagramProjectionService diagramProjectionService() {
-<span class="fc" id="L32">        return new DiagramProjectionService();</span>
+<span class="fc" id="L33">        return new DiagramProjectionService();</span>
     }
 
     @Bean
     public MermaidExportService mermaidExportService() {
-<span class="fc" id="L37">        return new MermaidExportService();</span>
+<span class="fc" id="L38">        return new MermaidExportService();</span>
+    }
+
+    @Bean
+    public StructurizrExportService structurizrExportService() {
+<span class="fc" id="L43">        return new StructurizrExportService();</span>
     }
 
     @Bean
     public VisioDiagramService visioDiagramService() {
-<span class="fc" id="L42">        return new VisioDiagramService();</span>
+<span class="fc" id="L48">        return new VisioDiagramService();</span>
     }
 
     @Bean
     public VisioPackageBuilder visioPackageBuilder() {
-<span class="fc" id="L47">        return new VisioPackageBuilder();</span>
+<span class="fc" id="L53">        return new VisioPackageBuilder();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

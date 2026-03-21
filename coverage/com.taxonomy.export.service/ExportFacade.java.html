@@ -12,6 +12,7 @@ import com.taxonomy.export.ArchiMateDiagramService;
 import com.taxonomy.export.ArchiMateXmlExporter;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.MermaidExportService;
+import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import com.taxonomy.visio.VisioDocument;
@@ -39,6 +40,7 @@ public class ExportFacade {
     private final ArchiMateDiagramService archiMateDiagramService;
     private final ArchiMateXmlExporter archiMateXmlExporter;
     private final MermaidExportService mermaidExportService;
+    private final StructurizrExportService structurizrExportService;
     private final SavedAnalysisService savedAnalysisService;
 
     public ExportFacade(LlmService llmService,
@@ -49,17 +51,19 @@ public class ExportFacade {
                         ArchiMateDiagramService archiMateDiagramService,
                         ArchiMateXmlExporter archiMateXmlExporter,
                         MermaidExportService mermaidExportService,
-<span class="fc" id="L52">                        SavedAnalysisService savedAnalysisService) {</span>
-<span class="fc" id="L53">        this.llmService = llmService;</span>
-<span class="fc" id="L54">        this.architectureViewService = architectureViewService;</span>
-<span class="fc" id="L55">        this.diagramProjectionService = diagramProjectionService;</span>
-<span class="fc" id="L56">        this.visioDiagramService = visioDiagramService;</span>
-<span class="fc" id="L57">        this.visioPackageBuilder = visioPackageBuilder;</span>
-<span class="fc" id="L58">        this.archiMateDiagramService = archiMateDiagramService;</span>
-<span class="fc" id="L59">        this.archiMateXmlExporter = archiMateXmlExporter;</span>
-<span class="fc" id="L60">        this.mermaidExportService = mermaidExportService;</span>
-<span class="fc" id="L61">        this.savedAnalysisService = savedAnalysisService;</span>
-<span class="fc" id="L62">    }</span>
+                        StructurizrExportService structurizrExportService,
+<span class="fc" id="L55">                        SavedAnalysisService savedAnalysisService) {</span>
+<span class="fc" id="L56">        this.llmService = llmService;</span>
+<span class="fc" id="L57">        this.architectureViewService = architectureViewService;</span>
+<span class="fc" id="L58">        this.diagramProjectionService = diagramProjectionService;</span>
+<span class="fc" id="L59">        this.visioDiagramService = visioDiagramService;</span>
+<span class="fc" id="L60">        this.visioPackageBuilder = visioPackageBuilder;</span>
+<span class="fc" id="L61">        this.archiMateDiagramService = archiMateDiagramService;</span>
+<span class="fc" id="L62">        this.archiMateXmlExporter = archiMateXmlExporter;</span>
+<span class="fc" id="L63">        this.mermaidExportService = mermaidExportService;</span>
+<span class="fc" id="L64">        this.structurizrExportService = structurizrExportService;</span>
+<span class="fc" id="L65">        this.savedAnalysisService = savedAnalysisService;</span>
+<span class="fc" id="L66">    }</span>
 
     // ── Diagram export ──────────────────────────────────────────────
 
@@ -71,9 +75,9 @@ public class ExportFacade {
      * @throws IOException if Visio package building fails
      */
     public byte[] exportAsVisio(String businessText) throws IOException {
-<span class="fc" id="L74">        DiagramModel diagram = analyzeAndProject(businessText);</span>
-<span class="fc" id="L75">        VisioDocument visioDoc = visioDiagramService.convert(diagram);</span>
-<span class="fc" id="L76">        return visioPackageBuilder.build(visioDoc);</span>
+<span class="fc" id="L78">        DiagramModel diagram = analyzeAndProject(businessText);</span>
+<span class="fc" id="L79">        VisioDocument visioDoc = visioDiagramService.convert(diagram);</span>
+<span class="fc" id="L80">        return visioPackageBuilder.build(visioDoc);</span>
     }
 
     /**
@@ -83,9 +87,9 @@ public class ExportFacade {
      * @return the ArchiMate XML as a byte array
      */
     public byte[] exportAsArchiMate(String businessText) {
-<span class="fc" id="L86">        DiagramModel diagram = analyzeAndProject(businessText);</span>
-<span class="fc" id="L87">        ArchiMateModel archiMateModel = archiMateDiagramService.convert(diagram);</span>
-<span class="fc" id="L88">        return archiMateXmlExporter.export(archiMateModel);</span>
+<span class="fc" id="L90">        DiagramModel diagram = analyzeAndProject(businessText);</span>
+<span class="fc" id="L91">        ArchiMateModel archiMateModel = archiMateDiagramService.convert(diagram);</span>
+<span class="fc" id="L92">        return archiMateXmlExporter.export(archiMateModel);</span>
     }
 
     /**
@@ -95,8 +99,19 @@ public class ExportFacade {
      * @return the Mermaid flowchart text
      */
     public String exportAsMermaid(String businessText) {
-<span class="nc" id="L98">        DiagramModel diagram = analyzeAndProject(businessText);</span>
-<span class="nc" id="L99">        return mermaidExportService.export(diagram);</span>
+<span class="nc" id="L102">        DiagramModel diagram = analyzeAndProject(businessText);</span>
+<span class="nc" id="L103">        return mermaidExportService.export(diagram);</span>
+    }
+
+    /**
+     * Analyze business text, build an architecture view, and export as Structurizr DSL.
+     *
+     * @param businessText the requirement text to analyze
+     * @return the Structurizr workspace DSL text
+     */
+    public String exportAsStructurizrDsl(String businessText) {
+<span class="nc" id="L113">        DiagramModel diagram = analyzeAndProject(businessText);</span>
+<span class="nc" id="L114">        return structurizrExportService.export(diagram);</span>
     }
 
     // ── Scores import / export ──────────────────────────────────────
@@ -108,40 +123,40 @@ public class ExportFacade {
                                      Map&lt;String, Integer&gt; scores,
                                      Map&lt;String, String&gt; reasons,
                                      String provider) {
-<span class="fc" id="L111">        return savedAnalysisService.buildExport(requirement, scores, reasons, provider);</span>
+<span class="fc" id="L126">        return savedAnalysisService.buildExport(requirement, scores, reasons, provider);</span>
     }
 
     /**
      * Import scores from a JSON string.
      */
     public SavedAnalysis importFromJson(String jsonBody) throws IOException {
-<span class="fc" id="L118">        return savedAnalysisService.importFromJson(jsonBody);</span>
+<span class="fc" id="L133">        return savedAnalysisService.importFromJson(jsonBody);</span>
     }
 
     /**
      * Find unknown taxonomy codes in a saved analysis.
      */
     public List&lt;String&gt; findUnknownCodes(SavedAnalysis saved) {
-<span class="fc" id="L125">        return savedAnalysisService.findUnknownCodes(saved);</span>
+<span class="fc" id="L140">        return savedAnalysisService.findUnknownCodes(saved);</span>
     }
 
     /**
      * Returns the name of the currently active LLM provider.
      */
     public String getActiveProviderName() {
-<span class="nc" id="L132">        return llmService.getActiveProviderName();</span>
+<span class="nc" id="L147">        return llmService.getActiveProviderName();</span>
     }
 
     // ── Internal helpers ────────────────────────────────────────────
 
     private DiagramModel analyzeAndProject(String businessText) {
-<span class="fc" id="L138">        AnalysisResult result = llmService.analyzeWithBudget(businessText);</span>
-<span class="fc" id="L139">        RequirementArchitectureView view = architectureViewService.build(</span>
-<span class="fc" id="L140">                result.getScores(), businessText, 20);</span>
-<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        String title = businessText.length() &gt; 60</span>
-<span class="nc" id="L142">                ? businessText.substring(0, 57) + &quot;...&quot;</span>
-<span class="fc" id="L143">                : businessText;</span>
-<span class="fc" id="L144">        return diagramProjectionService.project(view, title);</span>
+<span class="fc" id="L153">        AnalysisResult result = llmService.analyzeWithBudget(businessText);</span>
+<span class="fc" id="L154">        RequirementArchitectureView view = architectureViewService.build(</span>
+<span class="fc" id="L155">                result.getScores(), businessText, 20);</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">        String title = businessText.length() &gt; 60</span>
+<span class="nc" id="L157">                ? businessText.substring(0, 57) + &quot;...&quot;</span>
+<span class="fc" id="L158">                : businessText;</span>
+<span class="fc" id="L159">        return diagramProjectionService.project(view, title);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

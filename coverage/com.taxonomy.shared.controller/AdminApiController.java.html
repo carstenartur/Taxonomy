@@ -3,6 +3,8 @@
 import com.taxonomy.dto.AiAvailabilityLevel;
 import com.taxonomy.dto.AiStatusResponse;
 import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.shared.service.HealthSummaryService;
+import com.taxonomy.shared.service.LogRingBufferService;
 import com.taxonomy.shared.service.PromptTemplateService;
 import com.taxonomy.shared.service.PromptTemplateService.PromptCategory;
 import com.taxonomy.catalog.service.TaxonomyService;
@@ -31,79 +33,85 @@ public class AdminApiController {
     private final LlmService llmService;
     private final PromptTemplateService promptTemplateService;
     private final TaxonomyService taxonomyService;
+    private final LogRingBufferService logRingBufferService;
+    private final HealthSummaryService healthSummaryService;
 
     @Value(&quot;${admin.token:}&quot;)
     private String adminPassword;
 
     public AdminApiController(LlmService llmService,
                                PromptTemplateService promptTemplateService,
-<span class="fc" id="L40">                               TaxonomyService taxonomyService) {</span>
-<span class="fc" id="L41">        this.llmService = llmService;</span>
-<span class="fc" id="L42">        this.promptTemplateService = promptTemplateService;</span>
-<span class="fc" id="L43">        this.taxonomyService = taxonomyService;</span>
-<span class="fc" id="L44">    }</span>
+                               TaxonomyService taxonomyService,
+                               LogRingBufferService logRingBufferService,
+<span class="fc" id="L46">                               HealthSummaryService healthSummaryService) {</span>
+<span class="fc" id="L47">        this.llmService = llmService;</span>
+<span class="fc" id="L48">        this.promptTemplateService = promptTemplateService;</span>
+<span class="fc" id="L49">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L50">        this.logRingBufferService = logRingBufferService;</span>
+<span class="fc" id="L51">        this.healthSummaryService = healthSummaryService;</span>
+<span class="fc" id="L52">    }</span>
 
     @Operation(summary = &quot;Check AI availability&quot;, description = &quot;Returns whether an LLM provider is available and which one is active&quot;, tags = {&quot;Administration&quot;})
     @GetMapping(&quot;/ai-status&quot;)
     public ResponseEntity&lt;AiStatusResponse&gt; aiStatus() {
-<span class="fc" id="L49">        AiAvailabilityLevel level = llmService.getAvailabilityLevel();</span>
-<span class="pc bpc" id="L50" title="1 of 2 branches missed.">        String provider = level != AiAvailabilityLevel.UNAVAILABLE</span>
-<span class="pc" id="L51">                ? llmService.getActiveProviderName() : null;</span>
-<span class="fc" id="L52">        List&lt;String&gt; availableProviders = llmService.getAvailableProviders();</span>
-<span class="fc" id="L53">        return ResponseEntity.ok(new AiStatusResponse(level, provider, availableProviders));</span>
+<span class="fc" id="L57">        AiAvailabilityLevel level = llmService.getAvailabilityLevel();</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        String provider = level != AiAvailabilityLevel.UNAVAILABLE</span>
+<span class="pc" id="L59">                ? llmService.getActiveProviderName() : null;</span>
+<span class="fc" id="L60">        List&lt;String&gt; availableProviders = llmService.getAvailableProviders();</span>
+<span class="fc" id="L61">        return ResponseEntity.ok(new AiStatusResponse(level, provider, availableProviders));</span>
     }
 
     @Operation(summary = &quot;Startup status&quot;, description = &quot;Returns the initialization state of the taxonomy data. Poll this endpoint after receiving a 503 to know when the app is ready.&quot;, tags = {&quot;Status&quot;})
     @GetMapping(&quot;/status/startup&quot;)
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; startupStatus() {
-<span class="fc" id="L59">        Map&lt;String, Object&gt; status = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L60">        status.put(&quot;initialized&quot;, taxonomyService.isInitialized());</span>
-<span class="fc" id="L61">        status.put(&quot;status&quot;, taxonomyService.getInitStatus());</span>
+<span class="fc" id="L67">        Map&lt;String, Object&gt; status = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L68">        status.put(&quot;initialized&quot;, taxonomyService.isInitialized());</span>
+<span class="fc" id="L69">        status.put(&quot;status&quot;, taxonomyService.getInitStatus());</span>
 
         // Phase details from AppInitializationStateService
-<span class="fc" id="L64">        com.taxonomy.shared.service.AppInitializationStateService stateService = taxonomyService.getStateService();</span>
-<span class="fc" id="L65">        status.put(&quot;phase&quot;, stateService.getState().name());</span>
-<span class="fc" id="L66">        status.put(&quot;phaseMessage&quot;, stateService.getMessage());</span>
-<span class="fc" id="L67">        status.put(&quot;phaseUpdatedAt&quot;, stateService.getUpdatedAt().toString());</span>
+<span class="fc" id="L72">        com.taxonomy.shared.service.AppInitializationStateService stateService = taxonomyService.getStateService();</span>
+<span class="fc" id="L73">        status.put(&quot;phase&quot;, stateService.getState().name());</span>
+<span class="fc" id="L74">        status.put(&quot;phaseMessage&quot;, stateService.getMessage());</span>
+<span class="fc" id="L75">        status.put(&quot;phaseUpdatedAt&quot;, stateService.getUpdatedAt().toString());</span>
 
         // Memory info
-<span class="fc" id="L70">        Runtime rt = Runtime.getRuntime();</span>
-<span class="fc" id="L71">        long heapUsed = rt.totalMemory() - rt.freeMemory();</span>
-<span class="fc" id="L72">        long heapMax = rt.maxMemory();</span>
-<span class="fc" id="L73">        Map&lt;String, Object&gt; memory = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L74">        memory.put(&quot;heapUsedMB&quot;, heapUsed / (1024 * 1024));</span>
-<span class="fc" id="L75">        memory.put(&quot;heapMaxMB&quot;, heapMax / (1024 * 1024));</span>
-<span class="fc" id="L76">        memory.put(&quot;heapUsagePercent&quot;, Math.round((double) heapUsed / heapMax * 100));</span>
-<span class="fc" id="L77">        memory.put(&quot;threadCount&quot;, Thread.activeCount());</span>
-<span class="fc" id="L78">        status.put(&quot;memory&quot;, memory);</span>
+<span class="fc" id="L78">        Runtime rt = Runtime.getRuntime();</span>
+<span class="fc" id="L79">        long heapUsed = rt.totalMemory() - rt.freeMemory();</span>
+<span class="fc" id="L80">        long heapMax = rt.maxMemory();</span>
+<span class="fc" id="L81">        Map&lt;String, Object&gt; memory = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L82">        memory.put(&quot;heapUsedMB&quot;, heapUsed / (1024 * 1024));</span>
+<span class="fc" id="L83">        memory.put(&quot;heapMaxMB&quot;, heapMax / (1024 * 1024));</span>
+<span class="fc" id="L84">        memory.put(&quot;heapUsagePercent&quot;, Math.round((double) heapUsed / heapMax * 100));</span>
+<span class="fc" id="L85">        memory.put(&quot;threadCount&quot;, Thread.activeCount());</span>
+<span class="fc" id="L86">        status.put(&quot;memory&quot;, memory);</span>
 
-<span class="fc" id="L80">        return ResponseEntity.ok(status);</span>
+<span class="fc" id="L88">        return ResponseEntity.ok(status);</span>
     }
 
     @Operation(summary = &quot;Get LLM diagnostics&quot;, description = &quot;Returns diagnostic information about the LLM provider (admin-only)&quot;, tags = {&quot;Administration&quot;})
     @ApiResponse(responseCode = &quot;401&quot;, description = &quot;Not authorized — admin password required&quot;)
     @GetMapping(&quot;/diagnostics&quot;)
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; diagnostics(HttpServletRequest request) {
-<span class="pc bpc" id="L87" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
-<span class="nc" id="L88">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L96">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
         }
-<span class="fc" id="L90">        return ResponseEntity.ok(llmService.getDiagnostics());</span>
+<span class="fc" id="L98">        return ResponseEntity.ok(llmService.getDiagnostics());</span>
     }
 
     @Operation(summary = &quot;Check admin status&quot;, description = &quot;Returns whether the admin password is required&quot;, tags = {&quot;Administration&quot;})
     @GetMapping(&quot;/admin/status&quot;)
     public ResponseEntity&lt;Map&lt;String, Boolean&gt;&gt; adminStatus() {
-<span class="pc bpc" id="L96" title="2 of 4 branches missed.">        boolean required = adminPassword != null &amp;&amp; !adminPassword.isBlank();</span>
-<span class="fc" id="L97">        return ResponseEntity.ok(Map.of(&quot;passwordRequired&quot;, required));</span>
+<span class="pc bpc" id="L104" title="2 of 4 branches missed.">        boolean required = adminPassword != null &amp;&amp; !adminPassword.isBlank();</span>
+<span class="fc" id="L105">        return ResponseEntity.ok(Map.of(&quot;passwordRequired&quot;, required));</span>
     }
 
     @Operation(summary = &quot;Verify admin password&quot;, description = &quot;Validates the admin password&quot;, tags = {&quot;Administration&quot;})
     @PostMapping(&quot;/admin/verify&quot;)
     public ResponseEntity&lt;Map&lt;String, Boolean&gt;&gt; verifyAdmin(@RequestBody Map&lt;String, String&gt; body) {
-<span class="fc" id="L103">        String password = body.get(&quot;password&quot;);</span>
-<span class="pc bpc" id="L104" title="2 of 4 branches missed.">        boolean valid = adminPassword != null &amp;&amp; !adminPassword.isBlank()</span>
-<span class="pc bnc" id="L105" title="All 2 branches missed.">                &amp;&amp; constantTimeEquals(adminPassword, password);</span>
-<span class="fc" id="L106">        return ResponseEntity.ok(Map.of(&quot;valid&quot;, valid));</span>
+<span class="fc" id="L111">        String password = body.get(&quot;password&quot;);</span>
+<span class="pc bpc" id="L112" title="2 of 4 branches missed.">        boolean valid = adminPassword != null &amp;&amp; !adminPassword.isBlank()</span>
+<span class="pc bnc" id="L113" title="All 2 branches missed.">                &amp;&amp; constantTimeEquals(adminPassword, password);</span>
+<span class="fc" id="L114">        return ResponseEntity.ok(Map.of(&quot;valid&quot;, valid));</span>
     }
 
     // ── Prompt template endpoints ──────────────────────────────────────────────
@@ -111,35 +119,35 @@ public class AdminApiController {
     @Operation(summary = &quot;List all prompt templates&quot;, description = &quot;Returns all prompt templates (admin-only)&quot;, tags = {&quot;Administration&quot;})
     @GetMapping(&quot;/prompts&quot;)
     public ResponseEntity&lt;List&lt;Map&lt;String, Object&gt;&gt;&gt; getAllPrompts(HttpServletRequest request) {
-<span class="pc bpc" id="L114" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
-<span class="nc" id="L115">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L123">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
         }
-<span class="fc" id="L117">        List&lt;Map&lt;String, Object&gt;&gt; result = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L118" title="All 2 branches covered.">        for (String code : promptTemplateService.getAllTemplateCodes()) {</span>
-<span class="fc" id="L119">            Map&lt;String, Object&gt; entry = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L120">            entry.put(&quot;code&quot;, code);</span>
-<span class="fc" id="L121">            entry.put(&quot;name&quot;, promptTemplateService.getTaxonomyName(code));</span>
-<span class="fc" id="L122">            entry.put(&quot;template&quot;, promptTemplateService.getTemplate(code));</span>
-<span class="fc" id="L123">            entry.put(&quot;overridden&quot;, promptTemplateService.isOverridden(code));</span>
-<span class="fc" id="L124">            result.add(entry);</span>
-<span class="fc" id="L125">        }</span>
-<span class="fc" id="L126">        return ResponseEntity.ok(result);</span>
+<span class="fc" id="L125">        List&lt;Map&lt;String, Object&gt;&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        for (String code : promptTemplateService.getAllTemplateCodes()) {</span>
+<span class="fc" id="L127">            Map&lt;String, Object&gt; entry = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L128">            entry.put(&quot;code&quot;, code);</span>
+<span class="fc" id="L129">            entry.put(&quot;name&quot;, promptTemplateService.getTaxonomyName(code));</span>
+<span class="fc" id="L130">            entry.put(&quot;template&quot;, promptTemplateService.getTemplate(code));</span>
+<span class="fc" id="L131">            entry.put(&quot;overridden&quot;, promptTemplateService.isOverridden(code));</span>
+<span class="fc" id="L132">            result.add(entry);</span>
+<span class="fc" id="L133">        }</span>
+<span class="fc" id="L134">        return ResponseEntity.ok(result);</span>
     }
 
     @Operation(summary = &quot;Get prompt template&quot;, description = &quot;Returns a specific prompt template by code (admin-only)&quot;, tags = {&quot;Administration&quot;})
     @GetMapping(&quot;/prompts/{code}&quot;)
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getPrompt(@Parameter(description = &quot;Template code&quot;) @PathVariable String code,
             HttpServletRequest request) {
-<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
-<span class="nc" id="L134">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L142">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
         }
-<span class="fc" id="L136">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L137">        result.put(&quot;code&quot;, code);</span>
-<span class="fc" id="L138">        result.put(&quot;name&quot;, promptTemplateService.getTaxonomyName(code));</span>
-<span class="fc" id="L139">        result.put(&quot;template&quot;, promptTemplateService.getTemplate(code));</span>
-<span class="fc" id="L140">        result.put(&quot;defaultTemplate&quot;, promptTemplateService.getDefaultTemplate(code));</span>
-<span class="fc" id="L141">        result.put(&quot;overridden&quot;, promptTemplateService.isOverridden(code));</span>
-<span class="fc" id="L142">        return ResponseEntity.ok(result);</span>
+<span class="fc" id="L144">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L145">        result.put(&quot;code&quot;, code);</span>
+<span class="fc" id="L146">        result.put(&quot;name&quot;, promptTemplateService.getTaxonomyName(code));</span>
+<span class="fc" id="L147">        result.put(&quot;template&quot;, promptTemplateService.getTemplate(code));</span>
+<span class="fc" id="L148">        result.put(&quot;defaultTemplate&quot;, promptTemplateService.getDefaultTemplate(code));</span>
+<span class="fc" id="L149">        result.put(&quot;overridden&quot;, promptTemplateService.isOverridden(code));</span>
+<span class="fc" id="L150">        return ResponseEntity.ok(result);</span>
     }
 
     @Operation(summary = &quot;Update prompt template&quot;, description = &quot;Overrides a prompt template (admin-only)&quot;, tags = {&quot;Administration&quot;})
@@ -148,32 +156,32 @@ public class AdminApiController {
             @PathVariable String code,
             @RequestBody Map&lt;String, String&gt; body,
             HttpServletRequest request) {
-<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
-<span class="nc" id="L152">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L160">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
         }
-<span class="fc" id="L154">        String template = body.get(&quot;template&quot;);</span>
-<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (template == null) {</span>
-<span class="fc" id="L156">            return ResponseEntity.badRequest().build();</span>
+<span class="fc" id="L162">        String template = body.get(&quot;template&quot;);</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        if (template == null) {</span>
+<span class="fc" id="L164">            return ResponseEntity.badRequest().build();</span>
         }
-<span class="fc" id="L158">        promptTemplateService.setTemplate(code, template);</span>
-<span class="fc" id="L159">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L160">        result.put(&quot;code&quot;, code);</span>
-<span class="fc" id="L161">        result.put(&quot;overridden&quot;, true);</span>
-<span class="fc" id="L162">        return ResponseEntity.ok(result);</span>
+<span class="fc" id="L166">        promptTemplateService.setTemplate(code, template);</span>
+<span class="fc" id="L167">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L168">        result.put(&quot;code&quot;, code);</span>
+<span class="fc" id="L169">        result.put(&quot;overridden&quot;, true);</span>
+<span class="fc" id="L170">        return ResponseEntity.ok(result);</span>
     }
 
     @Operation(summary = &quot;Reset prompt template&quot;, description = &quot;Resets a prompt template to its default (admin-only)&quot;, tags = {&quot;Administration&quot;})
     @DeleteMapping(&quot;/prompts/{code}&quot;)
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; resetPrompt(@PathVariable String code,
             HttpServletRequest request) {
-<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
-<span class="nc" id="L170">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L178">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
         }
-<span class="fc" id="L172">        promptTemplateService.resetTemplate(code);</span>
-<span class="fc" id="L173">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L174">        result.put(&quot;code&quot;, code);</span>
-<span class="fc" id="L175">        result.put(&quot;overridden&quot;, false);</span>
-<span class="fc" id="L176">        return ResponseEntity.ok(result);</span>
+<span class="fc" id="L180">        promptTemplateService.resetTemplate(code);</span>
+<span class="fc" id="L181">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L182">        result.put(&quot;code&quot;, code);</span>
+<span class="fc" id="L183">        result.put(&quot;overridden&quot;, false);</span>
+<span class="fc" id="L184">        return ResponseEntity.ok(result);</span>
     }
 
     @Operation(summary = &quot;List prompt templates by category&quot;,
@@ -182,23 +190,54 @@ public class AdminApiController {
     @GetMapping(&quot;/prompts/categories&quot;)
     public ResponseEntity&lt;Map&lt;String, List&lt;Map&lt;String, Object&gt;&gt;&gt;&gt; getPromptsByCategory(
             HttpServletRequest request) {
-<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
-<span class="nc" id="L186">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L194">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
         }
-<span class="fc" id="L188">        Map&lt;String, List&lt;Map&lt;String, Object&gt;&gt;&gt; categorized = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L189" title="All 2 branches covered.">        for (PromptCategory category : PromptCategory.values()) {</span>
-<span class="fc" id="L190">            List&lt;Map&lt;String, Object&gt;&gt; entries = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L191" title="All 2 branches covered.">            for (String code : promptTemplateService.getTemplateCodesByCategory(category)) {</span>
-<span class="fc" id="L192">                Map&lt;String, Object&gt; entry = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L193">                entry.put(&quot;code&quot;, code);</span>
-<span class="fc" id="L194">                entry.put(&quot;name&quot;, promptTemplateService.getTaxonomyName(code));</span>
-<span class="fc" id="L195">                entry.put(&quot;template&quot;, promptTemplateService.getTemplate(code));</span>
-<span class="fc" id="L196">                entry.put(&quot;overridden&quot;, promptTemplateService.isOverridden(code));</span>
-<span class="fc" id="L197">                entries.add(entry);</span>
-<span class="fc" id="L198">            }</span>
-<span class="fc" id="L199">            categorized.put(category.name(), entries);</span>
+<span class="fc" id="L196">        Map&lt;String, List&lt;Map&lt;String, Object&gt;&gt;&gt; categorized = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        for (PromptCategory category : PromptCategory.values()) {</span>
+<span class="fc" id="L198">            List&lt;Map&lt;String, Object&gt;&gt; entries = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">            for (String code : promptTemplateService.getTemplateCodesByCategory(category)) {</span>
+<span class="fc" id="L200">                Map&lt;String, Object&gt; entry = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L201">                entry.put(&quot;code&quot;, code);</span>
+<span class="fc" id="L202">                entry.put(&quot;name&quot;, promptTemplateService.getTaxonomyName(code));</span>
+<span class="fc" id="L203">                entry.put(&quot;template&quot;, promptTemplateService.getTemplate(code));</span>
+<span class="fc" id="L204">                entry.put(&quot;overridden&quot;, promptTemplateService.isOverridden(code));</span>
+<span class="fc" id="L205">                entries.add(entry);</span>
+<span class="fc" id="L206">            }</span>
+<span class="fc" id="L207">            categorized.put(category.name(), entries);</span>
         }
-<span class="fc" id="L201">        return ResponseEntity.ok(categorized);</span>
+<span class="fc" id="L209">        return ResponseEntity.ok(categorized);</span>
+    }
+
+    // ── Admin health dashboard &amp; log viewer ──────────────────────────────────
+
+    @Operation(summary = &quot;Get recent log entries&quot;,
+               description = &quot;Returns recent application log entries from the in-memory ring buffer (admin-only)&quot;,
+               tags = {&quot;Administration&quot;})
+    @GetMapping(&quot;/admin/logs&quot;)
+    public ResponseEntity&lt;List&lt;LogRingBufferService.LogEntry&gt;&gt; getLogs(
+            @Parameter(description = &quot;Filter by log level (e.g. ERROR, WARN, INFO)&quot;)
+            @RequestParam(required = false) String level,
+            @Parameter(description = &quot;Filter by logger name substring&quot;)
+            @RequestParam(required = false) String component,
+            @Parameter(description = &quot;Max number of entries to return (max 500)&quot;)
+            @RequestParam(defaultValue = &quot;100&quot;) int limit,
+            HttpServletRequest request) {
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L227">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+        }
+<span class="nc" id="L229">        return ResponseEntity.ok(logRingBufferService.getEntries(level, component, Math.min(limit, 500)));</span>
+    }
+
+    @Operation(summary = &quot;Get health summary&quot;,
+               description = &quot;Aggregated health status from startup, AI, embedding, and memory subsystems (admin-only)&quot;,
+               tags = {&quot;Administration&quot;})
+    @GetMapping(&quot;/admin/health-summary&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getHealthSummary(HttpServletRequest request) {
+<span class="nc bnc" id="L237" title="All 2 branches missed.">        if (!isAdminAuthorized(request)) {</span>
+<span class="nc" id="L238">            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();</span>
+        }
+<span class="nc" id="L240">        return ResponseEntity.ok(healthSummaryService.getSummary());</span>
     }
 
     // ── Admin authorization helper ────────────────────────────────────────────
@@ -209,22 +248,22 @@ public class AdminApiController {
      * or when the {@code X-Admin-Token} header matches the configured password.
      */
     private boolean isAdminAuthorized(HttpServletRequest request) {
-<span class="pc bpc" id="L212" title="2 of 4 branches missed.">        if (adminPassword == null || adminPassword.isBlank()) {</span>
-<span class="fc" id="L213">            return true;</span>
+<span class="pc bpc" id="L251" title="2 of 4 branches missed.">        if (adminPassword == null || adminPassword.isBlank()) {</span>
+<span class="fc" id="L252">            return true;</span>
         }
-<span class="nc" id="L215">        String token = request.getHeader(&quot;X-Admin-Token&quot;);</span>
-<span class="nc" id="L216">        return constantTimeEquals(adminPassword, token);</span>
+<span class="nc" id="L254">        String token = request.getHeader(&quot;X-Admin-Token&quot;);</span>
+<span class="nc" id="L255">        return constantTimeEquals(adminPassword, token);</span>
     }
 
     /**
      * Compares two strings using a constant-time algorithm to mitigate timing attacks.
      */
     private static boolean constantTimeEquals(String a, String b) {
-<span class="nc bnc" id="L223" title="All 4 branches missed.">        if (a == null || b == null) {</span>
-<span class="nc" id="L224">            return false;</span>
+<span class="nc bnc" id="L262" title="All 4 branches missed.">        if (a == null || b == null) {</span>
+<span class="nc" id="L263">            return false;</span>
         }
-<span class="nc" id="L226">        return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8),</span>
-<span class="nc" id="L227">                b.getBytes(StandardCharsets.UTF_8));</span>
+<span class="nc" id="L265">        return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8),</span>
+<span class="nc" id="L266">                b.getBytes(StandardCharsets.UTF_8));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

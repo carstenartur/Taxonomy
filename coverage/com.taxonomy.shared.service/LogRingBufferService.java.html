@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LogRingBufferService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.service</a> &gt; <span class="el_source">LogRingBufferService.java</span></div><h1>LogRingBufferService.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.service;
+
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.AppenderBase;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.*;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * In-memory ring buffer that captures the last N log entries for the admin log viewer.
+ */
+@Service
+<span class="fc" id="L20">public class LogRingBufferService {</span>
+
+    private static final String APPENDER_NAME = &quot;admin-ring-buffer&quot;;
+    private static final int MAX_ENTRIES = 500;
+<span class="fc" id="L24">    private final Deque&lt;LogEntry&gt; entries = new ConcurrentLinkedDeque&lt;&gt;();</span>
+<span class="fc" id="L25">    private final AtomicInteger size = new AtomicInteger();</span>
+
+    @PostConstruct
+    public void init() {
+<span class="fc" id="L29">        LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();</span>
+<span class="fc" id="L30">        Logger rootLogger = loggerContext.getLogger(Logger.ROOT_LOGGER_NAME);</span>
+
+        // Guard against duplicate appenders on Spring context refresh (e.g. in tests)
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">        if (rootLogger.getAppender(APPENDER_NAME) != null) {</span>
+<span class="nc" id="L34">            return;</span>
+        }
+
+<span class="fc" id="L37">        var appender = new AppenderBase&lt;ILoggingEvent&gt;() {</span>
+            @Override
+            protected void append(ILoggingEvent event) {
+<span class="fc" id="L40">                var entry = new LogEntry(</span>
+<span class="fc" id="L41">                    Instant.ofEpochMilli(event.getTimeStamp()),</span>
+<span class="fc" id="L42">                    event.getLevel().toString(),</span>
+<span class="fc" id="L43">                    event.getLoggerName(),</span>
+<span class="fc" id="L44">                    event.getFormattedMessage()</span>
+                );
+<span class="fc" id="L46">                entries.addLast(entry);</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">                if (size.incrementAndGet() &gt; MAX_ENTRIES) {</span>
+<span class="nc" id="L48">                    entries.pollFirst();</span>
+<span class="nc" id="L49">                    size.decrementAndGet();</span>
+                }
+<span class="fc" id="L51">            }</span>
+        };
+<span class="fc" id="L53">        appender.setContext(loggerContext);</span>
+<span class="fc" id="L54">        appender.setName(APPENDER_NAME);</span>
+<span class="fc" id="L55">        appender.start();</span>
+<span class="fc" id="L56">        rootLogger.addAppender(appender);</span>
+<span class="fc" id="L57">    }</span>
+
+    public List&lt;LogEntry&gt; getEntries(String level, String component, int limit) {
+<span class="nc" id="L60">        var result = new ArrayList&lt;LogEntry&gt;();</span>
+<span class="nc bnc" id="L61" title="All 4 branches missed.">        String componentLower = (component != null &amp;&amp; !component.isEmpty())</span>
+<span class="nc" id="L62">                ? component.toLowerCase(Locale.ROOT) : null;</span>
+        // Iterate newest-first to collect the most recent matching entries
+<span class="nc" id="L64">        var iter = entries.descendingIterator();</span>
+<span class="nc" id="L65">        int count = 0;</span>
+<span class="nc bnc" id="L66" title="All 4 branches missed.">        while (iter.hasNext() &amp;&amp; count &lt; limit) {</span>
+<span class="nc" id="L67">            var entry = iter.next();</span>
+<span class="nc bnc" id="L68" title="All 6 branches missed.">            if (level != null &amp;&amp; !level.isEmpty() &amp;&amp; !entry.level().equalsIgnoreCase(level)) continue;</span>
+<span class="nc bnc" id="L69" title="All 2 branches missed.">            if (componentLower != null</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">                    &amp;&amp; !entry.logger().toLowerCase(Locale.ROOT).contains(componentLower)) continue;</span>
+<span class="nc" id="L71">            result.add(entry);</span>
+<span class="nc" id="L72">            count++;</span>
+<span class="nc" id="L73">        }</span>
+<span class="nc" id="L74">        Collections.reverse(result);</span>
+<span class="nc" id="L75">        return result;</span>
+    }
+
+<span class="fc" id="L78">    public record LogEntry(Instant timestamp, String level, String logger, String message) {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

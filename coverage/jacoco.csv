@@ -56,7 +56,7 @@ Taxonomy Application,com.taxonomy.shared.controller,PreferencesController,67,10,
 Taxonomy Application,com.taxonomy.shared.controller,HelpController,104,895,20,8,24,48,14,11,1,10
 Taxonomy Application,com.taxonomy.shared.controller,I18nApiController,6,61,1,3,2,16,1,4,0,3
 Taxonomy Application,com.taxonomy.shared.controller,HelpController.DocEntry,0,15,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.shared.controller,AdminApiController,60,450,19,21,12,85,17,16,1,12
+Taxonomy Application,com.taxonomy.shared.controller,AdminApiController,91,456,23,21,18,87,21,16,3,12
 Taxonomy Application,com.taxonomy.shared.controller,AboutController,26,129,5,5,9,24,6,4,1,4
 Taxonomy Application,com.taxonomy.security.controller,ChangePasswordController,97,15,14,0,25,6,8,3,1,3
 Taxonomy Application,com.taxonomy.security.controller,UserManagementController,240,300,38,16,49,64,30,15,6,12
@@ -75,7 +75,7 @@ Taxonomy Application,com.taxonomy.provenance.model,SourceFragment,22,46,0,0,6,15
 Taxonomy Application,com.taxonomy.provenance.model,RequirementSourceLink,12,59,0,0,3,19,3,15,3,15
 Taxonomy Application,com.taxonomy,TaxonomyApplication,8,0,0,0,3,0,2,0,2,0
 Taxonomy Application,com.taxonomy,AppConfig,0,57,0,0,0,16,0,5,0,5
-Taxonomy Application,com.taxonomy.export.controller,ExportApiController,40,265,9,25,9,54,9,15,0,7
+Taxonomy Application,com.taxonomy.export.controller,ExportApiController,79,265,13,25,17,54,12,15,1,7
 Taxonomy Application,com.taxonomy.security.config,LoginRateLimitFilter.FailureTracker,101,0,10,0,24,0,10,0,5,0
 Taxonomy Application,com.taxonomy.security.config,LoginRateLimitFilter,101,72,21,9,18,20,15,8,2,6
 Taxonomy Application,com.taxonomy.security.config,SecurityAuditListener,50,0,2,0,13,0,6,0,5,0
@@ -87,7 +87,7 @@ Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController,293,
 Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController.new AnalysisEventCallback() {...},55,106,2,2,12,21,4,5,2,5
 Taxonomy Application,com.taxonomy.architecture.model,ArchitectureCommitIndex,8,79,1,1,2,24,3,22,2,22
 Taxonomy Application,com.taxonomy.architecture.model,ArchitectureDslDocument,8,58,1,1,2,18,3,16,2,16
-Taxonomy Application,com.taxonomy.export.service,ExportFacade,19,101,1,1,4,26,3,7,2,7
+Taxonomy Application,com.taxonomy.export.service,ExportFacade,28,104,1,1,6,27,4,7,3,7
 Taxonomy Application,com.taxonomy.preferences.storage,PreferencesCommit,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.preferences.storage,PreferencesGitRepository,9,272,4,16,1,65,3,15,0,8
 Taxonomy Application,com.taxonomy.workspace.model,UserWorkspace,26,138,0,0,10,59,8,33,8,33
@@ -158,18 +158,22 @@ Taxonomy Application,com.taxonomy.relations.model,RequirementCoverage,0,39,0,0,0
 Taxonomy Application,com.taxonomy.relations.model,RelationEvidence,55,32,1,1,16,10,17,8,16,8
 Taxonomy Application,com.taxonomy.relations.model,RelationProposal,8,89,1,1,2,27,3,24,2,24
 Taxonomy Application,com.taxonomy.shared.model,FloatArrayConverter,0,68,0,8,0,13,0,7,0,3
+Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService.LogEntry,0,15,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService,63,41,19,1,16,12,11,2,1,2
+Taxonomy Application,com.taxonomy.shared.service,HealthSummaryService,188,12,10,0,31,5,6,1,1,1
 Taxonomy Application,com.taxonomy.shared.service,PromptTemplateService,46,342,6,20,13,75,6,26,1,18
 Taxonomy Application,com.taxonomy.shared.service,PromptTemplateService.PromptCategory,0,27,0,0,0,5,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.service,LocalEmbeddingService,448,260,36,30,96,65,36,21,8,16
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.State,0,33,0,0,0,6,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService,0,77,0,4,0,13,0,10,0,8
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.StateSnapshot,0,15,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService.new AppenderBase() {...},10,32,1,1,2,9,1,2,0,2
 Taxonomy Application,com.taxonomy.shared.config,CsvKeywordAnalyzer,0,24,0,0,0,5,0,3,0,3
 Taxonomy Application,com.taxonomy.shared.config,RateLimitFilter.WindowCounter,25,30,3,3,6,6,2,3,0,2
 Taxonomy Application,com.taxonomy.shared.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0,4,0,2,0
 Taxonomy Application,com.taxonomy.shared.config,OpenApiConfig,0,256,0,0,0,36,0,2,0,2
 Taxonomy Application,com.taxonomy.shared.config,HibernateSearchAnalysisConfigurer,0,44,0,0,0,7,0,2,0,2
-Taxonomy Application,com.taxonomy.shared.config,ExportConfig,0,27,0,0,0,7,0,7,0,7
+Taxonomy Application,com.taxonomy.shared.config,ExportConfig,0,31,0,0,0,8,0,8,0,8
 Taxonomy Application,com.taxonomy.shared.config,RateLimitFilter,17,102,6,14,3,27,5,11,0,6
 Taxonomy Application,com.taxonomy.shared.config,WebMvcConfig,0,28,0,0,0,9,0,4,0,4
 Taxonomy Application,com.taxonomy.shared.config,TaxonomyHealthIndicator,1,73,1,1,0,15,1,2,0,2
