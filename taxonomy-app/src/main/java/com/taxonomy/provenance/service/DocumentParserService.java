@@ -174,13 +174,14 @@ public class DocumentParserService {
 
     /**
      * Checks whether a DOCX style ID represents a heading style.
-     * Matches English ("Heading1"), German ("berschrift1"), and
+     * Matches English ("Heading1"), German ("Überschrift1" / "berschrift1"
+     * where the umlaut may be stripped by some XML serialisers), and
      * common variations.
      */
     private static boolean isHeadingStyle(String styleId) {
         String lower = styleId.toLowerCase(Locale.ROOT);
         return lower.startsWith("heading")
-                || lower.startsWith("berschrift")  // Überschrift without Ü
+                || lower.startsWith("berschrift")  // Ü stripped by some XML encodings
                 || lower.startsWith("überschrift");
     }
 
@@ -291,7 +292,11 @@ public class DocumentParserService {
 
     /**
      * Builds a hierarchical section path from the heading stack.
-     * E.g. "§ 3 Datenschutz &gt; Abs. 2 Verarbeitung".
+     * E.g. "§ 3 Datenschutz > Abs. 2 Verarbeitung".
+     *
+     * <p>The stack is sorted by level because {@link ArrayDeque#stream()}
+     * iterates head-to-tail (deepest level first), but we need the
+     * shallowest level first in the output path.
      */
     private static String buildSectionPath(Deque<Map.Entry<Integer, String>> headingStack) {
         return headingStack.stream()
