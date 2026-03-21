@@ -1394,7 +1394,13 @@ Cherry-Pick-Konflikte verwenden dasselbe Modal mit einem Cherry-Pick-spezifische
 
 ![Cherry-Pick-Konfliktlösung](../images/54-cherry-pick-conflict-modal.png)
 
-Nach der Auflösung bestätigt eine Erfolgs-Toast-Benachrichtigung die Operation.
+Die Cherry-Pick-Vorschau zeigt die geplante Operation:
+
+![Cherry-Pick-Vorschau-Dialog](../images/62-cherry-pick-preview-modal.png)
+
+Nach der Auflösung bestätigt eine Erfolgs-Toast-Benachrichtigung die Operation:
+
+![Erfolgreicher Cherry-Pick](../images/59-cherry-pick-success-toast.png)
 
 ### Synchronisation mit dem gemeinsamen Repository
 
@@ -1508,6 +1514,8 @@ Wenn Sie ein rotes Badge sehen, können Sie entweder:
 Wenn die KI nicht verfügbar ist, erscheint eine **Inline-Warnmeldung** unterhalb der Analyse-Schaltfläche, die die erforderlichen Umgebungsvariablen auflistet.
 
 ### Admin-Modus freischalten (🔒-Schaltfläche → Passwort-Modal)
+
+![Admin-Schloss-Schaltfläche in der Navigationsleiste](../images/14-navbar-admin-lock.png)
 
 1. Klicken Sie auf die **🔒**-Schaltfläche in der Navigationsleiste.
 2. Das **Admin-Modus-Modal** öffnet sich mit einem Passwort-Eingabefeld.
