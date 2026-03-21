@@ -39,8 +39,8 @@ This file tracks known documentation gaps and improvement opportunities. Items m
   - [x] Git Integration → GIT_INTEGRATION.md
   - [x] Preferences → PREFERENCES.md
   - [x] AI Providers → AI_PROVIDERS.md
-- [x] **Database setup files consolidated**: PostgreSQL, MSSQL, and Oracle setup guides merged into DATABASE_SETUP.md
-- [x] **ORACLE-SETUP missing from Help tab**: Consolidated into DATABASE_SETUP.md and registered in HelpController
+- [x] **Database setup files consolidated**: PostgreSQL, MSSQL, and Oracle setup guides merged into DATABASE_SETUP.md (standalone files removed)
+- [x] **SSO documentation consolidated**: SSO_INTEGRATION.md merged into KEYCLOAK_SETUP.md (now titled "Keycloak & SSO Setup")
 - [x] **HelpController DOCS list updated**: New documentation files registered (FRAMEWORK_IMPORT, GIT_INTEGRATION, PREFERENCES, AI_PROVIDERS, DATABASE_SETUP)
 - [x] **Architecture documentation extended**: Git state, ViewContext/Action Guards, Framework Mapping Layer added to ARCHITECTURE.md
 - [x] **Concepts extended**: Framework Mapping, Quality Analysis, Gap Analysis added to CONCEPTS.md
@@ -59,7 +59,7 @@ Full i18n support has been implemented:
 3. ✅ **JavaScript**: `taxonomy-i18n.js` module loads translations from `/api/i18n/{locale}` and exposes `TaxonomyI18n.t('key')`.
 4. ✅ **Locale detection**: `WebMvcConfig` with `CookieLocaleResolver` + `LocaleChangeInterceptor` (`?lang=` parameter). UI language selector in navbar with `localStorage` persistence.
 5. ✅ **LLM prompts**: Prompt templates are customisable via the Prompt Template Editor — they can be translated per deployment without code changes.
-6. ✅ **Documentation**: `docs/en/` (36 English files) and `docs/de/` (36 German files). `HelpController` resolves docs by locale with fallback chain: `docs/{lang}/` → `docs/en/`. All 36 docs are accessible via the in-app Help tab. Adding a new language requires creating a `docs/{lang}/` directory with translated `.md` files.
+6. ✅ **Documentation**: `docs/en/` (32 English files) and `docs/de/` (32 German files). `HelpController` resolves docs by locale with fallback chain: `docs/{lang}/` → `docs/en/`. All 32 docs are accessible via the in-app Help tab. Adding a new language requires creating a `docs/{lang}/` directory with translated `.md` files.
 
 ---
 

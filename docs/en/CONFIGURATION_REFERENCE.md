@@ -191,7 +191,7 @@ Set `SPRING_PROFILES_ACTIVE` to select the database; the default is `hsqldb`.
 
 ### MSSQL Profile
 
-Activate with `SPRING_PROFILES_ACTIVE=mssql`. See [MSSQL-SETUP.md](MSSQL-SETUP.md) for details.
+Activate with `SPRING_PROFILES_ACTIVE=mssql`. See [DATABASE_SETUP.md](DATABASE_SETUP.md#microsoft-sql-server-mssql) for details.
 
 | Property | Default | Description |
 |---|---|---|
@@ -205,7 +205,7 @@ Activate with `SPRING_PROFILES_ACTIVE=mssql`. See [MSSQL-SETUP.md](MSSQL-SETUP.m
 
 ### PostgreSQL Profile
 
-Activate with `SPRING_PROFILES_ACTIVE=postgres`. See [POSTGRESQL-SETUP.md](POSTGRESQL-SETUP.md) for details.
+Activate with `SPRING_PROFILES_ACTIVE=postgres`. See [DATABASE_SETUP.md](DATABASE_SETUP.md#postgresql) for details.
 
 | Property | Default | Description |
 |---|---|---|
@@ -219,7 +219,7 @@ Activate with `SPRING_PROFILES_ACTIVE=postgres`. See [POSTGRESQL-SETUP.md](POSTG
 
 ### Oracle Profile
 
-Activate with `SPRING_PROFILES_ACTIVE=oracle`. See [ORACLE-SETUP.md](ORACLE-SETUP.md) for details.
+Activate with `SPRING_PROFILES_ACTIVE=oracle`. See [DATABASE_SETUP.md](DATABASE_SETUP.md#oracle-database) for details.
 
 | Property | Default | Description |
 |---|---|---|

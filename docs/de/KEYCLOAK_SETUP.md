@@ -1,6 +1,6 @@
-# Keycloak-Einrichtung
+# Keycloak- & SSO-Einrichtung
 
-Dieses Dokument beschreibt, wie Sie den Taxonomy Architecture Analyzer mit Keycloak für unternehmenstaugliches Identitätsmanagement integrieren.
+Dieses Dokument beschreibt, wie Sie den Taxonomy Architecture Analyzer mit Keycloak für unternehmenstaugliches Identitätsmanagement integrieren, einschließlich SSO-Federation mit behördlichen Identitätsanbietern über SAML 2.0 und OIDC.
 
 ---
 
@@ -15,6 +15,9 @@ Dieses Dokument beschreibt, wie Sie den Taxonomy Architecture Analyzer mit Keycl
 7. [Benutzer-Federation](#benutzer-federation)
 8. [Testen der Integration](#testen-der-integration)
 9. [Produktionshinweise](#produktionshinweise)
+10. [SSO-Federation](#sso-federation)
+11. [Behördliche SSO-Szenarien](#behördliche-sso-szenarien)
+12. [SSO-Fehlerbehebung](#sso-fehlerbehebung)
 
 ---
 
@@ -226,7 +229,7 @@ Keycloak kann Benutzer aus LDAP oder Active Directory föderieren:
 
 ### SAML Identity Provider (Behördliches SSO)
 
-Siehe [SSO-Integration](SSO_INTEGRATION.md) für SAML-Federation mit behördlichen Identitätsanbietern.
+Siehe den Abschnitt [SSO-Federation](#sso-federation) weiter unten für SAML-/OIDC-Federation mit behördlichen Identitätsanbietern.
 
 ---
 
@@ -313,7 +316,103 @@ Der erwartete Payload enthält:
 
 ## Verwandte Dokumentation
 
-- [SSO-Integration](SSO_INTEGRATION.md) — SAML/OIDC-Federation für behördliches SSO
 - [Sicherheit](SECURITY.md) — aktuelle Sicherheitsarchitektur
 - [Deployment-Checkliste](DEPLOYMENT_CHECKLIST.md) — Deployment-Checkliste für den Behördeneinsatz
 - [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md) — alle Umgebungsvariablen
+
+---
+
+## SSO-Federation
+
+Behördenumgebungen erfordern typischerweise die Integration mit einem zentralen Identitätsanbieter (IdP) für:
+
+- **Zentrale Benutzerverwaltung** — keine separaten Benutzerkonten pro Anwendung
+- **Single Sign-On** — einmalige Authentifizierung für mehrere Anwendungen
+- **Multi-Faktor-Authentifizierung** — zentrale Durchsetzung von MFA-Richtlinien
+- **Audit-Konformität** — zentrale Authentifizierungsprotokolle
+- **De-Provisioning** — Zugang zentral deaktivieren
+
+Der Taxonomy Architecture Analyzer unterstützt SSO durch **Keycloak als Identity Broker**, der über SAML 2.0 oder OIDC mit behördlichen Identitätsanbietern föderiert.
+
+### Unterstützte Protokolle
+
+| Protokoll | Anwendungsfall | Standard |
+|---|---|---|
+| **SAML 2.0** | Behördliche IdPs (ADFS, Shibboleth, BundID) | OASIS SAML 2.0 |
+| **OpenID Connect** | Moderne Cloud-IdPs (Azure AD, Google, Keycloak-zu-Keycloak) | OpenID Connect Core 1.0 |
+| **LDAP** | Direkte Verzeichnisintegration (Active Directory, OpenLDAP) | RFC 4511 |
+
+### SAML-2.0-Federation über Keycloak
+
+1. **In Keycloak:** Fügen Sie den behördlichen IdP als Identity Provider hinzu
+   - **Identity Providers** → **Add provider** → **SAML v2.0**
+   - IdP-**Metadaten-URL** eingeben oder Metadaten-XML hochladen
+
+2. **SAML-Einstellungen konfigurieren:**
+
+   | Einstellung | Wert |
+   |---|---|
+   | **Alias** | `gov-idp` |
+   | **Anzeigename** | Behördliches SSO |
+   | **Von URL importieren** | `https://idp.example.gov/metadata` |
+   | **NameID Policy Format** | `urn:oasis:names:tc:SAML:2.0:nameid-format:persistent` |
+
+### OIDC-Federation über Keycloak
+
+1. **In Keycloak:** OIDC Identity Provider hinzufügen
+   - **Identity Providers** → **Add provider** → **OpenID Connect v1.0**
+
+2. **OIDC-Einstellungen konfigurieren:**
+
+   | Einstellung | Wert |
+   |---|---|
+   | **Alias** | `gov-oidc` |
+   | **Authorization URL** | `https://idp.example.gov/authorize` |
+   | **Token URL** | `https://idp.example.gov/token` |
+   | **Client ID** | Vom behördlichen IdP bereitgestellt |
+   | **Client Secret** | Vom behördlichen IdP bereitgestellt |
+   | **Default Scopes** | `openid profile email` |
+
+---
+
+## Behördliche SSO-Szenarien
+
+### Szenario 1: Bundesbehörde (BundID / Nutzerkonto Bund)
+
+| Aspekt | Konfiguration |
+|---|---|
+| **Protokoll** | SAML 2.0 |
+| **IdP** | BundID / Nutzerkonto Bund |
+| **Authentifizierung** | eID (Personalausweis), Benutzername/Passwort |
+| **MFA** | Vom IdP erzwungen |
+| **Integration** | Keycloak als Broker → SAML-Federation |
+
+### Szenario 2: Landesbehörde (Landesportal)
+
+| Aspekt | Konfiguration |
+|---|---|
+| **Protokoll** | SAML 2.0 oder OIDC (je nach Bundesland) |
+| **IdP** | Landes-Identitätsportal |
+| **Authentifizierung** | Benutzername/Passwort + MFA |
+| **Integration** | Keycloak als Broker |
+
+### Szenario 3: Unternehmen mit Active Directory
+
+| Aspekt | Konfiguration |
+|---|---|
+| **Protokoll** | LDAP + Kerberos (SPNEGO) oder ADFS (SAML) |
+| **IdP** | Active Directory Federation Services (ADFS) |
+| **Authentifizierung** | Windows Integrated Authentication |
+| **Integration** | Keycloak LDAP-Federation oder ADFS-SAML-Broker |
+
+---
+
+## SSO-Fehlerbehebung
+
+| Problem | Ursache | Lösung |
+|---|---|---|
+| Redirect-Schleife nach Login | Falsche Redirect-URI in Keycloak | `Valid Redirect URIs` in Client-Einstellungen prüfen |
+| „Invalid token"-Fehler | Uhrzeitabweichung zwischen Servern | Uhren synchronisieren (NTP) |
+| Rollen nicht zugeordnet | SAML-Attribute nicht weitergeleitet | IdP-Attributfreigabe-Richtlinie prüfen |
+| Benutzer ohne Rollen erstellt | Keine Gruppen-zu-Rollen-Zuordnung | Keycloak-Mapper konfigurieren |
+| SSL/TLS-Fehler | Selbstsignierte Zertifikate | CA-Zertifikat in Java-Truststore importieren |

@@ -310,7 +310,7 @@ For enterprise and government deployments, the application supports integration 
 
 The existing three-role model (USER, ARCHITECT, ADMIN) maps directly to Keycloak realm roles.
 
-See [Keycloak Setup](KEYCLOAK_SETUP.md) and [SSO Integration](SSO_INTEGRATION.md) for configuration details.
+See [Keycloak & SSO Setup](KEYCLOAK_SETUP.md) for configuration details.
 
 ---
 
@@ -448,8 +448,7 @@ When multi-user workspace isolation is enabled (see [Workspace Design](../intern
 - [Configuration Reference](CONFIGURATION_REFERENCE.md) — full list of environment variables including security settings
 - [Deployment Guide](DEPLOYMENT_GUIDE.md) — Docker and Render.com deployment with security considerations
 - [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) — government deployment checklist
-- [Keycloak Setup](KEYCLOAK_SETUP.md) — Keycloak integration guide
-- [SSO Integration](SSO_INTEGRATION.md) — SAML/OIDC federation for government SSO
+- [Keycloak & SSO Setup](KEYCLOAK_SETUP.md) — Keycloak integration and SSO federation guide
 - [Data Protection](DATA_PROTECTION.md) — GDPR/DSGVO documentation
 - [AI Transparency](AI_TRANSPARENCY.md) — AI model transparency and data flows
 - [BSI KI Checklist](BSI_KI_CHECKLIST.md) — BSI criteria checklist for AI models
