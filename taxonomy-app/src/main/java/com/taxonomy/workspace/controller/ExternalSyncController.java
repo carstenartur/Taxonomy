@@ -8,6 +8,7 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
@@ -125,6 +126,7 @@ public class ExternalSyncController {
     }
 
     @PutMapping("/configure")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Configure external repository",
             description = "Set the external URL and topology mode for the system repository.")
     public ResponseEntity<Map<String, Object>> configure(
@@ -139,6 +141,8 @@ public class ExternalSyncController {
             if (topologyMode != null) {
                 sysRepo.setTopologyMode(RepositoryTopologyMode.valueOf(topologyMode));
             }
+
+            systemRepositoryService.save(sysRepo);
 
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("success", true);

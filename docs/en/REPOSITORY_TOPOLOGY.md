@@ -184,7 +184,7 @@ SystemRepository (Entity)
   ├── topologyMode: INTERNAL_SHARED | EXTERNAL_CANONICAL
   ├── defaultBranch: "draft"
   ├── externalUrl: URL for EXTERNAL_CANONICAL mode
-  ├── externalAuthToken: encrypted at rest
+  ├── externalAuthToken: optional authentication token for EXTERNAL_CANONICAL
   ├── lastFetchAt / lastPushAt: sync timestamps
   ├── lastFetchCommit: SHA of last fetched remote HEAD
   └── primaryRepo: true

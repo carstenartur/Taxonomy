@@ -205,7 +205,7 @@ public class SyncIntegrationService {
      *
      * @param username    the authenticated user's username
      * @param workspaceId the workspace identifier
-     * @return a description of what was done
+     * @return the commit ID (SHA) of the workspace commit created by the sync
      * @throws IOException if Git operations fail
      */
     public String syncFromSharedToWorkspace(String username, String workspaceId) throws IOException {
@@ -223,8 +223,15 @@ public class SyncIntegrationService {
 
         String wsDsl = wsRepo.getDslAtHead("main");
         String commitId;
-        if (wsDsl == null || sharedDsl.equals(wsDsl)) {
+        if (wsDsl == null) {
+            // Workspace branch is empty: create initial sync commit from shared
             commitId = wsRepo.commitDsl("main", sharedDsl, username, "Synced from shared");
+        } else if (sharedDsl.equals(wsDsl)) {
+            // No-op: content already identical, return existing HEAD commit ID
+            commitId = wsRepo.getHeadCommit("main");
+            if (commitId == null) {
+                commitId = wsRepo.commitDsl("main", sharedDsl, username, "Synced from shared");
+            }
         } else {
             commitId = wsRepo.commitDsl("main", sharedDsl, username, "Merged shared into workspace");
         }
@@ -272,8 +279,18 @@ public class SyncIntegrationService {
             throw new IOException("Workspace has no content");
         }
 
-        String commitId = sysRepo.commitDsl(getSharedBranch(), wsDsl, username,
-                "Published from workspace " + workspaceId);
+        // Check if shared DSL already matches workspace content to avoid redundant commits
+        String sharedDsl = sysRepo.getDslAtHead(getSharedBranch());
+        String commitId;
+        if (sharedDsl != null && sharedDsl.equals(wsDsl)) {
+            // No-op: content already identical, return existing shared HEAD commit ID
+            commitId = sysRepo.getHeadCommit(getSharedBranch());
+            log.info("User '{}': cross-repo publish from workspace '{}' to shared skipped (no changes)",
+                    username, workspaceId);
+        } else {
+            commitId = sysRepo.commitDsl(getSharedBranch(), wsDsl, username,
+                    "Published from workspace " + workspaceId);
+        }
 
         // Update sync state
         try {

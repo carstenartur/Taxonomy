@@ -6,8 +6,6 @@ import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -21,8 +19,11 @@ import java.util.concurrent.ConcurrentMap;
  *
  * <p>Instances are cached by repository name so that repeated lookups for
  * the same workspace return the same {@link DslGitRepository} object.
+ *
+ * <p>This class is instantiated as a Spring {@code @Bean} in
+ * {@link DslStorageConfig} — do not add {@code @Service} or
+ * {@code @Component} here to avoid duplicate bean registration.
  */
-@Service
 public class DslGitRepositoryFactory {
 
     private static final Logger log = LoggerFactory.getLogger(DslGitRepositoryFactory.class);

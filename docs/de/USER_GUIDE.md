@@ -1569,14 +1569,14 @@ Die Einstellungsseite ist in drei Abschnitte organisiert:
 
 **So ändern Sie eine Einstellung:**
 
-1. Navigieren Sie zum Tab **⚙️ Preferences**.
+1. Navigieren Sie zum Tab **⚙️ Einstellungen**.
 2. Ändern Sie die gewünschte Einstellung im entsprechenden Abschnitt.
-3. Klicken Sie auf **💾 Save** — Änderungen werden sofort wirksam.
+3. Klicken Sie auf **💾 Speichern** — Änderungen werden sofort wirksam.
 4. Eine Erfolgsmeldung bestätigt das Speichern; die Änderung wird in der Audit-Spur aufgezeichnet.
 
-**Audit-Spur:** Klappen Sie den Abschnitt **📋 Preferences Change History** am unteren Rand auf, um zu sehen, wer was und wann geändert hat. Jede Änderung wird als Git-Commit im separaten Repository `taxonomy-preferences` persistiert.
+**Audit-Spur:** Klappen Sie den Abschnitt **📋 Änderungsverlauf der Einstellungen** am unteren Rand auf, um zu sehen, wer was und wann geändert hat. Jede Änderung wird als Git-Commit im separaten Repository `taxonomy-preferences` persistiert.
 
-**Zurücksetzen:** Klicken Sie auf **↩️ Reset to Defaults**, um alle Einstellungen auf die Werte aus `application.properties` zurückzusetzen.
+**Zurücksetzen:** Klicken Sie auf **↩️ Auf Standard zurücksetzen**, um alle Einstellungen auf die Werte aus `application.properties` zurückzusetzen.
 
 ---
 

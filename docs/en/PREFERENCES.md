@@ -50,7 +50,7 @@ The following table clarifies the scope for each setting category:
 
 **Related scoped data:**
 - **Workspace state** (current branch, navigation history, projection) — per-user, managed by the [Workspace Manager](WORKSPACE_VERSIONING.md)
-- **Architecture DSL** — stored in a shared JGit repository (`taxonomy-dsl`); branches provide isolation
+- **Architecture DSL** — stored in Git repositories managed by `DslGitRepositoryFactory`; each workspace has its own repository (repo-per-workspace isolation with cross-repo publish/sync), with a shared `taxonomy-dsl` system repository
 - **Preferences** — stored in a separate JGit repository (`taxonomy-preferences`); system-wide
 - **User accounts and roles** — stored in the database; per-user
 

@@ -84,4 +84,14 @@ public class SystemRepositoryService {
             return "draft";
         }
     }
+
+    /**
+     * Persist updates to a system repository entity.
+     *
+     * @param sysRepo the entity to save
+     * @return the saved entity
+     */
+    public SystemRepository save(SystemRepository sysRepo) {
+        return repository.save(sysRepo);
+    }
 }

@@ -69,6 +69,15 @@ public class ExternalGitSyncService {
             log.info("Fetch complete from {}: {} updates",
                     sysRepo.getExternalUrl(),
                     result.getTrackingRefUpdates().size());
+
+            // Persist sync timestamps
+            sysRepo.setLastFetchAt(Instant.now());
+            if (!result.getTrackingRefUpdates().isEmpty()) {
+                var firstUpdate = result.getTrackingRefUpdates().iterator().next();
+                sysRepo.setLastFetchCommit(firstUpdate.getNewObjectId().name());
+            }
+            systemRepositoryService.save(sysRepo);
+
             return result;
         }
     }
@@ -99,12 +108,23 @@ public class ExternalGitSyncService {
                     java.util.List.of(refUpdate));
 
             log.info("Push complete: branch '{}' → {}", localBranch, sysRepo.getExternalUrl());
+
+            // Persist sync timestamp
+            sysRepo.setLastPushAt(Instant.now());
+            systemRepositoryService.save(sysRepo);
+
             return result;
         }
     }
 
     /**
      * Full sync cycle: fetch from remote, then merge into the shared branch.
+     *
+     * <p>After fetching, this method resolves the remote-tracking ref
+     * ({@code refs/remotes/origin/<branch>}) directly from the underlying
+     * JGit repository to read the remote content, since
+     * {@link DslGitRepository#getDslAtHead(String)} only resolves
+     * {@code refs/heads/} prefixed refs.
      *
      * @param username the user performing the sync
      * @return the merge commit SHA, or null if no merge was needed
@@ -115,28 +135,59 @@ public class ExternalGitSyncService {
 
         DslGitRepository sysRepo = repositoryFactory.getSystemRepository();
         String sharedBranch = systemRepositoryService.getSharedBranch();
+        Repository gitRepo = sysRepo.getGitRepository();
 
-        // Try to merge remote tracking branch into local shared branch
-        String remoteRef = "remotes/origin/" + sharedBranch;
-        String remoteDsl = sysRepo.getDslAtHead(remoteRef);
-        if (remoteDsl == null) {
-            // Try without remotes/ prefix
-            remoteDsl = sysRepo.getDslAtHead("origin/" + sharedBranch);
-        }
-        if (remoteDsl != null) {
-            String localDsl = sysRepo.getDslAtHead(sharedBranch);
-            if (localDsl == null || !remoteDsl.equals(localDsl)) {
-                String commitId = sysRepo.commitDsl(sharedBranch, remoteDsl, username,
-                        "Synced from external remote");
-                log.info("Full sync complete: merged remote into shared branch '{}'", sharedBranch);
-                return commitId;
+        // Resolve the remote-tracking ref directly from JGit (not via getDslAtHead,
+        // which only resolves refs/heads/* refs)
+        String remoteRefName = "refs/remotes/origin/" + sharedBranch;
+        org.eclipse.jgit.lib.Ref remoteRef = gitRepo.findRef(remoteRefName);
+
+        if (remoteRef != null) {
+            // Read the DSL content from the remote-tracking ref's tree
+            String remoteDsl = readDslFromRef(gitRepo, remoteRef);
+            if (remoteDsl != null) {
+                String localDsl = sysRepo.getDslAtHead(sharedBranch);
+                if (localDsl == null || !remoteDsl.equals(localDsl)) {
+                    String commitId = sysRepo.commitDsl(sharedBranch, remoteDsl, username,
+                            "Synced from external remote");
+                    log.info("Full sync complete: merged remote into shared branch '{}'", sharedBranch);
+                    return commitId;
+                }
+                log.info("Full sync: shared branch '{}' already up-to-date", sharedBranch);
+                return sysRepo.getHeadCommit(sharedBranch);
             }
-            log.info("Full sync: shared branch '{}' already up-to-date", sharedBranch);
-            return sysRepo.getHeadCommit(sharedBranch);
         }
 
         log.info("Full sync: no remote content found for branch '{}'", sharedBranch);
         return null;
+    }
+
+    /**
+     * Read the DSL file content from a specific Git ref.
+     *
+     * @param gitRepo the JGit repository
+     * @param ref     the ref to read from
+     * @return the DSL content, or null if the ref has no content
+     */
+    private String readDslFromRef(Repository gitRepo, org.eclipse.jgit.lib.Ref ref) {
+        try {
+            var commitId = ref.getObjectId();
+            if (commitId == null) return null;
+
+            try (var revWalk = new org.eclipse.jgit.revwalk.RevWalk(gitRepo)) {
+                var commit = revWalk.parseCommit(commitId);
+                var tree = commit.getTree();
+                try (var treeWalk = org.eclipse.jgit.treewalk.TreeWalk.forPath(
+                        gitRepo, "architecture.dsl", tree)) {
+                    if (treeWalk == null) return null;
+                    var loader = gitRepo.open(treeWalk.getObjectId(0));
+                    return new String(loader.getBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read DSL from ref {}: {}", ref.getName(), e.getMessage());
+            return null;
+        }
     }
 
     /**
