@@ -169,3 +169,10 @@ WorkspaceManager
   ├── findUserWorkspace() → persistent entity lookup
   └── provisionWorkspaceRepository() → lazy Git branch creation
 ```
+---
+
+## Related Documentation
+
+- [Workspace & Versioning Guide](WORKSPACE_VERSIONING.md) — user-facing guide for the workspace UI (context bar, history, variants, sync)
+- [GIT_INTEGRATION](GIT_INTEGRATION.md) — technical details of the JGit-backed DSL storage, branching, and merge operations
+- [Architecture](ARCHITECTURE.md) — DSL storage architecture and module overview

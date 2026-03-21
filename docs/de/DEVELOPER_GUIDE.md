@@ -46,24 +46,14 @@ mvn -pl taxonomy-app spring-boot:run
 
 ## Modularchitektur
 
-Das Projekt ist ein Multi-Modul-Maven-Build mit vier Modulen:
+Das Projekt ist ein Multi-Modul-Maven-Build mit vier Modulen. Siehe [Architektur](ARCHITECTURE.md#module-architecture) für das vollständige Moduldiagramm und den Abhängigkeitsgraphen.
 
-```
-Taxonomy/
-├── taxonomy-domain/     Pure domain types (DTOs, enums) — no framework dependencies
-├── taxonomy-dsl/        Architecture DSL (parser, model, validator, differ) — no framework dependencies
-├── taxonomy-export/     Export services (ArchiMate, Visio, Mermaid) — no framework dependencies
-└── taxonomy-app/        Spring Boot application (controllers, services, JPA, search, storage)
-```
-
-**Abhängigkeitsgraph:**
-
-```
-taxonomy-app  →  taxonomy-domain
-taxonomy-app  →  taxonomy-dsl
-taxonomy-app  →  taxonomy-export
-taxonomy-export  →  taxonomy-domain
-```
+| Modul | Umfang | Spring? |
+|---|---|---|
+| `taxonomy-domain` | Reine Domänentypen (DTOs, Enums) | Nein |
+| `taxonomy-dsl` | Architektur-DSL (Parser, Modell, Validator, Differ, Provenienz) | Nein |
+| `taxonomy-export` | Exportdienste (ArchiMate, Visio, Mermaid, Diagramm) | Nein |
+| `taxonomy-app` | Spring-Boot-Anwendung (Controller, Services, JPA, Suche, Speicher) | Ja |
 
 - `taxonomy-domain`, `taxonomy-dsl` und `taxonomy-export` haben **keine Spring-Abhängigkeiten** und können unabhängig getestet werden.
 - Das Spring-Boot-JAR wird von `taxonomy-app` erzeugt.

@@ -187,3 +187,11 @@ All workspace and versioning features are keyboard-accessible:
 - Tab navigation works through all action buttons
 - Status changes are announced via ARIA live regions
 - Colour is never the sole indicator — text labels accompany all status badges
+
+---
+
+## Related Documentation
+
+- [GIT_INTEGRATION](GIT_INTEGRATION.md) — technical details of the JGit-backed DSL storage, repository architecture, and conflict resolution
+- [REPOSITORY_TOPOLOGY](REPOSITORY_TOPOLOGY.md) — workspace provisioning model, topology modes, and data isolation
+- [CONCEPTS](CONCEPTS.md) — glossary of workspace, variant, and sync terminology

@@ -187,3 +187,11 @@ Alle Arbeitsbereich- und Versionierungsfunktionen sind per Tastatur bedienbar:
 - Tab-Navigation funktioniert durch alle Aktionsschaltflächen
 - Statusänderungen werden über ARIA-Live-Regionen angekündigt
 - Farbe ist nie der einzige Indikator — Textbeschriftungen begleiten alle Status-Badges
+
+---
+
+## Verwandte Dokumentation
+
+- [GIT_INTEGRATION](GIT_INTEGRATION.md) — technische Details der JGit-gestützten DSL-Speicherung, Repository-Architektur und Konfliktlösung
+- [REPOSITORY_TOPOLOGY](REPOSITORY_TOPOLOGY.md) — Workspace-Provisionierungsmodell, Topologiemodi und Datenisolation
+- [CONCEPTS](CONCEPTS.md) — Glossar der Workspace-, Varianten- und Sync-Terminologie

@@ -46,24 +46,14 @@ Open <http://localhost:8080> to see the application.
 
 ## Module Architecture
 
-The project is a multi-module Maven build with four modules:
+The project is a multi-module Maven build with four modules. See [Architecture](ARCHITECTURE.md#module-architecture) for the full module diagram and dependency graph.
 
-```
-Taxonomy/
-├── taxonomy-domain/     Pure domain types (DTOs, enums) — no framework dependencies
-├── taxonomy-dsl/        Architecture DSL (parser, model, validator, differ) — no framework dependencies
-├── taxonomy-export/     Export services (ArchiMate, Visio, Mermaid) — no framework dependencies
-└── taxonomy-app/        Spring Boot application (controllers, services, JPA, search, storage)
-```
-
-**Dependency graph:**
-
-```
-taxonomy-app  →  taxonomy-domain
-taxonomy-app  →  taxonomy-dsl
-taxonomy-app  →  taxonomy-export
-taxonomy-export  →  taxonomy-domain
-```
+| Module | Scope | Spring? |
+|---|---|---|
+| `taxonomy-domain` | Pure domain types (DTOs, enums) | No |
+| `taxonomy-dsl` | Architecture DSL (parser, model, validator, differ, provenance) | No |
+| `taxonomy-export` | Export services (ArchiMate, Visio, Mermaid, Diagram) | No |
+| `taxonomy-app` | Spring Boot application (controllers, services, JPA, search, storage) | Yes |
 
 - `taxonomy-domain`, `taxonomy-dsl`, and `taxonomy-export` have **no Spring dependencies** and can be tested independently.
 - The Spring Boot JAR is produced by `taxonomy-app`.

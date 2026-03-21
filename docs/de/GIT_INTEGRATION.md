@@ -500,6 +500,8 @@ Siehe [API-Referenz](API_REFERENCE.md) für vollständige Anfrage-/Antwortschema
 
 ## Verwandte Dokumentation
 
+- [Workspace- & Versionierungshandbuch](WORKSPACE_VERSIONING.md) — benutzerorientierter Leitfaden für die Workspace-UI (Kontextleiste, Verlauf, Varianten, Sync)
+- [Repository-Topologie](REPOSITORY_TOPOLOGY.md) — Workspace-Provisionierungsmodell, Topologiemodi und Datenisolation
 - [Benutzerhandbuch](USER_GUIDE.md) — Abschnitt Architecture DSL (§11g)
 - [Architektur](ARCHITECTURE.md) — DSL-Speicherarchitektur
 - [Konzepte](CONCEPTS.md) — DSL, Hypothesen und das kanonische Modell
