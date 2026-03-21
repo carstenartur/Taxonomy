@@ -124,10 +124,10 @@ public class SyncIntegrationService {
 
 <span class="fc" id="L125">        String mergeCommit = gitRepository.merge(getSharedBranch(), userBranch);</span>
 
-<span class="pc bpc" id="L127" title="1 of 2 branches missed.">        if (mergeCommit == null) {</span>
-<span class="nc" id="L128">            log.warn(&quot;User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)&quot;,</span>
-<span class="nc" id="L129">                    username, getSharedBranch(), userBranch);</span>
-<span class="nc" id="L130">            throw new IOException(&quot;Sync failed: merge returned null (branch missing or conflict)&quot;);</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (mergeCommit == null) {</span>
+<span class="fc" id="L128">            log.warn(&quot;User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)&quot;,</span>
+<span class="fc" id="L129">                    username, getSharedBranch(), userBranch);</span>
+<span class="fc" id="L130">            throw new IOException(&quot;Sync failed: merge returned null (branch missing or conflict)&quot;);</span>
         }
 
         // Update sync state
@@ -167,10 +167,10 @@ public class SyncIntegrationService {
 
 <span class="fc" id="L168">        String mergeCommit = gitRepository.merge(userBranch, getSharedBranch());</span>
 
-<span class="pc bpc" id="L170" title="1 of 2 branches missed.">        if (mergeCommit == null) {</span>
-<span class="nc" id="L171">            log.warn(&quot;User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)&quot;,</span>
-<span class="nc" id="L172">                    username, userBranch, getSharedBranch());</span>
-<span class="nc" id="L173">            throw new IOException(&quot;Publish failed: merge returned null (branch missing or conflict)&quot;);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        if (mergeCommit == null) {</span>
+<span class="fc" id="L171">            log.warn(&quot;User '{}': merge from '{}' into '{}' returned null (branch missing or conflict)&quot;,</span>
+<span class="fc" id="L172">                    username, userBranch, getSharedBranch());</span>
+<span class="fc" id="L173">            throw new IOException(&quot;Publish failed: merge returned null (branch missing or conflict)&quot;);</span>
         }
 
         // Update sync state

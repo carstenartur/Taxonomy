@@ -53,11 +53,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; handleGenericException(Exception ex, WebRequest request) {
-<span class="nc" id="L56">        log.error(&quot;Unhandled exception on {}: {}&quot;, request.getDescription(false), ex.getMessage(), ex);</span>
-<span class="nc" id="L57">        Locale locale = LocaleContextHolder.getLocale();</span>
-<span class="nc" id="L58">        String message = messageSource.getMessage(&quot;error.internal&quot;, null,</span>
+<span class="fc" id="L56">        log.error(&quot;Unhandled exception on {}: {}&quot;, request.getDescription(false), ex.getMessage(), ex);</span>
+<span class="fc" id="L57">        Locale locale = LocaleContextHolder.getLocale();</span>
+<span class="fc" id="L58">        String message = messageSource.getMessage(&quot;error.internal&quot;, null,</span>
                 &quot;An internal error occurred. Please try again or check the server logs.&quot;, locale);
-<span class="nc" id="L60">        return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, message, request);</span>
+<span class="fc" id="L60">        return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, message, request);</span>
     }
 
     /**
@@ -86,13 +86,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     private ResponseEntity&lt;Map&lt;String, Object&gt;&gt; buildErrorResponse(HttpStatus status, String message, WebRequest request) {
-<span class="nc" id="L89">        Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L90">        body.put(&quot;timestamp&quot;, Instant.now().toString());</span>
-<span class="nc" id="L91">        body.put(&quot;status&quot;, status.value());</span>
-<span class="nc" id="L92">        body.put(&quot;error&quot;, status.getReasonPhrase());</span>
-<span class="nc" id="L93">        body.put(&quot;message&quot;, message);</span>
-<span class="nc" id="L94">        body.put(&quot;path&quot;, request.getDescription(false).replace(&quot;uri=&quot;, &quot;&quot;));</span>
-<span class="nc" id="L95">        return ResponseEntity.status(status).body(body);</span>
+<span class="fc" id="L89">        Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L90">        body.put(&quot;timestamp&quot;, Instant.now().toString());</span>
+<span class="fc" id="L91">        body.put(&quot;status&quot;, status.value());</span>
+<span class="fc" id="L92">        body.put(&quot;error&quot;, status.getReasonPhrase());</span>
+<span class="fc" id="L93">        body.put(&quot;message&quot;, message);</span>
+<span class="fc" id="L94">        body.put(&quot;path&quot;, request.getDescription(false).replace(&quot;uri=&quot;, &quot;&quot;));</span>
+<span class="fc" id="L95">        return ResponseEntity.status(status).body(body);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

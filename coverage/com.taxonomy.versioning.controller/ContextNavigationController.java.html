@@ -116,12 +116,12 @@ public class ContextNavigationController {
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; createVariant(
             @RequestParam String name) {
         try {
-<span class="nc" id="L119">            String user = workspaceResolver.resolveCurrentUsername();</span>
-<span class="nc" id="L120">            ContextRef variant = navigationService.createVariantFromCurrent(user, name);</span>
-<span class="nc" id="L121">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L122">            result.put(&quot;context&quot;, variant);</span>
-<span class="nc" id="L123">            result.put(&quot;branch&quot;, variant.branch());</span>
-<span class="nc" id="L124">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L119">            String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L120">            ContextRef variant = navigationService.createVariantFromCurrent(user, name);</span>
+<span class="fc" id="L121">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L122">            result.put(&quot;context&quot;, variant);</span>
+<span class="fc" id="L123">            result.put(&quot;branch&quot;, variant.branch());</span>
+<span class="fc" id="L124">            return ResponseEntity.ok(result);</span>
 <span class="nc" id="L125">        } catch (IOException e) {</span>
 <span class="nc" id="L126">            log.error(&quot;Failed to create variant '{}'&quot;, name, e);</span>
 <span class="nc" id="L127">            return ResponseEntity.internalServerError().body(</span>
@@ -151,8 +151,8 @@ public class ContextNavigationController {
                     null, null, null, null, null, false);
 
             ContextComparison comparison;
-<span class="pc bpc" id="L154" title="2 of 4 branches missed.">            if (leftCommit != null || rightCommit != null) {</span>
-<span class="nc" id="L155">                comparison = compareService.compareContexts(left, right);</span>
+<span class="pc bpc" id="L154" title="1 of 4 branches missed.">            if (leftCommit != null || rightCommit != null) {</span>
+<span class="fc" id="L155">                comparison = compareService.compareContexts(left, right);</span>
             } else {
 <span class="fc" id="L157">                comparison = compareService.compareBranches(left, right);</span>
             }
@@ -172,13 +172,13 @@ public class ContextNavigationController {
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; previewTransfer(
             @RequestBody TransferSelection selection) {
         try {
-<span class="nc" id="L175">            List&lt;TransferConflict&gt; conflicts = transferService.previewTransfer(selection);</span>
-<span class="nc" id="L176">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L177">            result.put(&quot;conflicts&quot;, conflicts);</span>
-<span class="nc bnc" id="L178" title="All 2 branches missed.">            result.put(&quot;hasConflicts&quot;, !conflicts.isEmpty());</span>
-<span class="nc" id="L179">            result.put(&quot;selectedElements&quot;, selection.selectedElementIds().size());</span>
-<span class="nc" id="L180">            result.put(&quot;selectedRelations&quot;, selection.selectedRelationIds().size());</span>
-<span class="nc" id="L181">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L175">            List&lt;TransferConflict&gt; conflicts = transferService.previewTransfer(selection);</span>
+<span class="fc" id="L176">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L177">            result.put(&quot;conflicts&quot;, conflicts);</span>
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">            result.put(&quot;hasConflicts&quot;, !conflicts.isEmpty());</span>
+<span class="fc" id="L179">            result.put(&quot;selectedElements&quot;, selection.selectedElementIds().size());</span>
+<span class="fc" id="L180">            result.put(&quot;selectedRelations&quot;, selection.selectedRelationIds().size());</span>
+<span class="fc" id="L181">            return ResponseEntity.ok(result);</span>
 <span class="nc" id="L182">        } catch (IOException e) {</span>
 <span class="nc" id="L183">            log.error(&quot;Transfer preview failed&quot;, e);</span>
 <span class="nc" id="L184">            return ResponseEntity.internalServerError().body(</span>
@@ -193,11 +193,11 @@ public class ContextNavigationController {
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; applyTransfer(
             @RequestBody TransferSelection selection) {
         try {
-<span class="nc" id="L196">            String commitId = transferService.applyTransfer(selection);</span>
-<span class="nc" id="L197">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L198">            result.put(&quot;commitId&quot;, commitId);</span>
-<span class="nc" id="L199">            result.put(&quot;success&quot;, true);</span>
-<span class="nc" id="L200">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L196">            String commitId = transferService.applyTransfer(selection);</span>
+<span class="fc" id="L197">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L198">            result.put(&quot;commitId&quot;, commitId);</span>
+<span class="fc" id="L199">            result.put(&quot;success&quot;, true);</span>
+<span class="fc" id="L200">            return ResponseEntity.ok(result);</span>
 <span class="nc" id="L201">        } catch (IOException e) {</span>
 <span class="nc" id="L202">            log.error(&quot;Transfer failed&quot;, e);</span>
 <span class="nc" id="L203">            return ResponseEntity.internalServerError().body(</span>
@@ -208,18 +208,18 @@ public class ContextNavigationController {
     // ── Internal helpers ────────────────────────────────────────────
 
     private ContextComparison applyFilter(ContextComparison comparison, Set&lt;String&gt; filter) {
-<span class="pc bpc" id="L211" title="3 of 4 branches missed.">        if (filter == null || filter.isEmpty()) {</span>
+<span class="pc bpc" id="L211" title="1 of 4 branches missed.">        if (filter == null || filter.isEmpty()) {</span>
 <span class="fc" id="L212">            return comparison;</span>
         }
-<span class="nc" id="L214">        List&lt;SemanticChange&gt; filtered = comparison.changes().stream()</span>
-<span class="nc" id="L215">                .filter(c -&gt; {</span>
+<span class="fc" id="L214">        List&lt;SemanticChange&gt; filtered = comparison.changes().stream()</span>
+<span class="fc" id="L215">                .filter(c -&gt; {</span>
 <span class="nc bnc" id="L216" title="All 4 branches missed.">                    if (filter.contains(&quot;elements&quot;) &amp;&amp; &quot;ELEMENT&quot;.equals(c.category())) return true;</span>
 <span class="nc bnc" id="L217" title="All 4 branches missed.">                    if (filter.contains(&quot;relations&quot;) &amp;&amp; &quot;RELATION&quot;.equals(c.category())) return true;</span>
 <span class="nc" id="L218">                    return false;</span>
                 })
-<span class="nc" id="L220">                .toList();</span>
-<span class="nc" id="L221">        return new ContextComparison(comparison.left(), comparison.right(),</span>
-<span class="nc" id="L222">                comparison.summary(), filtered, comparison.rawDslDiff());</span>
+<span class="fc" id="L220">                .toList();</span>
+<span class="fc" id="L221">        return new ContextComparison(comparison.left(), comparison.right(),</span>
+<span class="fc" id="L222">                comparison.summary(), filtered, comparison.rawDslDiff());</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

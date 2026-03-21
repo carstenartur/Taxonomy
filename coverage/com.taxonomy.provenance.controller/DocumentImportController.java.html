@@ -75,8 +75,8 @@ public class DocumentImportController {
 <span class="fc bfc" id="L75" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
 <span class="fc" id="L76">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;File is empty&quot;));</span>
         }
-<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
-<span class="nc" id="L79">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
+<span class="fc" id="L79">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
                     &quot;File exceeds maximum size of &quot; + (MAX_UPLOAD_SIZE / (1024 * 1024)) + &quot; MB&quot;));
         }
 
@@ -125,11 +125,11 @@ public class DocumentImportController {
     public ResponseEntity&lt;?&gt; extractWithAi(
             @RequestParam(&quot;file&quot;) MultipartFile file,
             @RequestParam(value = &quot;sourceType&quot;, defaultValue = &quot;REGULATION&quot;) String sourceType) {
-<span class="nc bnc" id="L128" title="All 2 branches missed.">        if (file.isEmpty()) {</span>
-<span class="nc" id="L129">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;File is empty&quot;));</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
+<span class="fc" id="L129">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;File is empty&quot;));</span>
         }
-<span class="nc bnc" id="L131" title="All 2 branches missed.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
-<span class="nc" id="L132">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
+<span class="fc" id="L132">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
                     &quot;File exceeds maximum size of &quot; + (MAX_UPLOAD_SIZE / (1024 * 1024)) + &quot; MB&quot;));
         }
 
@@ -162,11 +162,11 @@ public class DocumentImportController {
                        &quot;taxonomy nodes with confidence scores and link types.&quot;)
     @PostMapping(value = &quot;/documents/map-regulation&quot;, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity&lt;?&gt; mapRegulation(@RequestParam(&quot;file&quot;) MultipartFile file) {
-<span class="nc bnc" id="L165" title="All 2 branches missed.">        if (file.isEmpty()) {</span>
-<span class="nc" id="L166">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;File is empty&quot;));</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
+<span class="fc" id="L166">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;File is empty&quot;));</span>
         }
-<span class="nc bnc" id="L168" title="All 2 branches missed.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
-<span class="nc" id="L169">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
+<span class="fc" id="L169">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
                     &quot;File exceeds maximum size of &quot; + (MAX_UPLOAD_SIZE / (1024 * 1024)) + &quot; MB&quot;));
         }
 
@@ -219,18 +219,18 @@ public class DocumentImportController {
     @PostMapping(&quot;/documents/confirm-candidates&quot;)
     public ResponseEntity&lt;?&gt; confirmCandidates(@RequestBody Map&lt;String, Object&gt; body) {
         try {
-<span class="nc" id="L222">            Long artifactId = ((Number) body.get(&quot;sourceArtifactId&quot;)).longValue();</span>
-<span class="nc" id="L223">            Long versionId = ((Number) body.get(&quot;sourceVersionId&quot;)).longValue();</span>
+<span class="fc" id="L222">            Long artifactId = ((Number) body.get(&quot;sourceArtifactId&quot;)).longValue();</span>
+<span class="fc" id="L223">            Long versionId = ((Number) body.get(&quot;sourceVersionId&quot;)).longValue();</span>
             @SuppressWarnings(&quot;unchecked&quot;)
-<span class="nc" id="L225">            List&lt;Map&lt;String, Object&gt;&gt; candidates = (List&lt;Map&lt;String, Object&gt;&gt;) body.get(&quot;candidates&quot;);</span>
+<span class="fc" id="L225">            List&lt;Map&lt;String, Object&gt;&gt; candidates = (List&lt;Map&lt;String, Object&gt;&gt;) body.get(&quot;candidates&quot;);</span>
 
-<span class="nc bnc" id="L227" title="All 4 branches missed.">            if (candidates == null || candidates.isEmpty()) {</span>
-<span class="nc" id="L228">                return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;No candidates provided&quot;));</span>
+<span class="pc bpc" id="L227" title="1 of 4 branches missed.">            if (candidates == null || candidates.isEmpty()) {</span>
+<span class="fc" id="L228">                return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;No candidates provided&quot;));</span>
             }
 
-<span class="nc" id="L231">            var artifactOpt = provenanceService.findArtifactById(artifactId);</span>
-<span class="nc bnc" id="L232" title="All 2 branches missed.">            if (artifactOpt.isEmpty()) {</span>
-<span class="nc" id="L233">                return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;Source artifact not found&quot;));</span>
+<span class="fc" id="L231">            var artifactOpt = provenanceService.findArtifactById(artifactId);</span>
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">            if (artifactOpt.isEmpty()) {</span>
+<span class="fc" id="L233">                return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;Source artifact not found&quot;));</span>
             }
 <span class="nc" id="L235">            var versionOpt = provenanceService.findVersionById(versionId);</span>
 

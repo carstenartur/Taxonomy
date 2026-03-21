@@ -222,10 +222,10 @@ public class WorkspaceProjectionService {
 <span class="fc" id="L222">            info.put(&quot;persistedIndexCommit&quot;, projection.getIndexCommitId());</span>
 <span class="fc" id="L223">            info.put(&quot;persistedIndexTimestamp&quot;, projection.getIndexTimestamp());</span>
 <span class="fc" id="L224">            info.put(&quot;stale&quot;, projection.isStale());</span>
-<span class="nc" id="L225">        } catch (Exception e) {</span>
-<span class="nc" id="L226">            log.warn(&quot;Could not read persistent projection for user '{}': {}&quot;,</span>
-<span class="nc" id="L227">                    username, e.getMessage());</span>
-<span class="nc" id="L228">            info.put(&quot;persistenceError&quot;, e.getMessage());</span>
+<span class="fc" id="L225">        } catch (Exception e) {</span>
+<span class="fc" id="L226">            log.warn(&quot;Could not read persistent projection for user '{}': {}&quot;,</span>
+<span class="fc" id="L227">                    username, e.getMessage());</span>
+<span class="fc" id="L228">            info.put(&quot;persistenceError&quot;, e.getMessage());</span>
 <span class="fc" id="L229">        }</span>
 
 <span class="fc" id="L231">        return info;</span>

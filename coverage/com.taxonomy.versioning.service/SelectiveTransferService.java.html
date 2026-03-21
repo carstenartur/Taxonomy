@@ -61,10 +61,10 @@ public class SelectiveTransferService {
      * @throws IOException if Git operations fail
      */
     public List&lt;TransferConflict&gt; previewTransfer(TransferSelection selection) throws IOException {
-<span class="nc" id="L64">        CanonicalArchitectureModel sourceModel = loadModel(selection.sourceContextId());</span>
-<span class="nc" id="L65">        CanonicalArchitectureModel targetModel = loadModel(selection.targetContextId());</span>
+<span class="fc" id="L64">        CanonicalArchitectureModel sourceModel = loadModel(selection.sourceContextId());</span>
+<span class="fc" id="L65">        CanonicalArchitectureModel targetModel = loadModel(selection.targetContextId());</span>
 
-<span class="nc" id="L67">        return detectConflicts(sourceModel, targetModel, selection);</span>
+<span class="fc" id="L67">        return detectConflicts(sourceModel, targetModel, selection);</span>
     }
 
     /**
@@ -76,24 +76,24 @@ public class SelectiveTransferService {
      * @throws IOException if Git operations fail
      */
     public String applyTransfer(TransferSelection selection) throws IOException {
-<span class="nc" id="L79">        CanonicalArchitectureModel sourceModel = loadModel(selection.sourceContextId());</span>
-<span class="nc" id="L80">        CanonicalArchitectureModel targetModel = loadModel(selection.targetContextId());</span>
+<span class="fc" id="L79">        CanonicalArchitectureModel sourceModel = loadModel(selection.sourceContextId());</span>
+<span class="fc" id="L80">        CanonicalArchitectureModel targetModel = loadModel(selection.targetContextId());</span>
 
         // Merge selected elements
-<span class="nc" id="L83">        Map&lt;String, ArchitectureElement&gt; targetElements = targetModel.getElements().stream()</span>
-<span class="nc" id="L84">                .collect(Collectors.toMap(ArchitectureElement::getId, Function.identity()));</span>
+<span class="fc" id="L83">        Map&lt;String, ArchitectureElement&gt; targetElements = targetModel.getElements().stream()</span>
+<span class="fc" id="L84">                .collect(Collectors.toMap(ArchitectureElement::getId, Function.identity()));</span>
 
-<span class="nc bnc" id="L86" title="All 2 branches missed.">        for (ArchitectureElement sourceEl : sourceModel.getElements()) {</span>
-<span class="nc bnc" id="L87" title="All 2 branches missed.">            if (selection.selectedElementIds().contains(sourceEl.getId())) {</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        for (ArchitectureElement sourceEl : sourceModel.getElements()) {</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            if (selection.selectedElementIds().contains(sourceEl.getId())) {</span>
 <span class="nc" id="L88">                targetElements.put(sourceEl.getId(), sourceEl);</span>
             }
-<span class="nc" id="L90">        }</span>
+<span class="fc" id="L90">        }</span>
 
         // Merge selected relations
-<span class="nc" id="L93">        Map&lt;String, ArchitectureRelation&gt; targetRelations = targetModel.getRelations().stream()</span>
-<span class="nc" id="L94">                .collect(Collectors.toMap(this::relationKey, Function.identity()));</span>
+<span class="fc" id="L93">        Map&lt;String, ArchitectureRelation&gt; targetRelations = targetModel.getRelations().stream()</span>
+<span class="fc" id="L94">                .collect(Collectors.toMap(this::relationKey, Function.identity()));</span>
 
-<span class="nc bnc" id="L96" title="All 2 branches missed.">        for (ArchitectureRelation sourceRel : sourceModel.getRelations()) {</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        for (ArchitectureRelation sourceRel : sourceModel.getRelations()) {</span>
 <span class="nc" id="L97">            String key = relationKey(sourceRel);</span>
 <span class="nc bnc" id="L98" title="All 2 branches missed.">            if (selection.selectedRelationIds().contains(key)) {</span>
 <span class="nc" id="L99">                targetRelations.put(key, sourceRel);</span>
@@ -101,39 +101,39 @@ public class SelectiveTransferService {
 <span class="nc" id="L101">        }</span>
 
         // Build merged model
-<span class="nc" id="L104">        targetModel.getElements().clear();</span>
-<span class="nc" id="L105">        targetModel.getElements().addAll(targetElements.values());</span>
-<span class="nc" id="L106">        targetModel.getRelations().clear();</span>
-<span class="nc" id="L107">        targetModel.getRelations().addAll(targetRelations.values());</span>
+<span class="fc" id="L104">        targetModel.getElements().clear();</span>
+<span class="fc" id="L105">        targetModel.getElements().addAll(targetElements.values());</span>
+<span class="fc" id="L106">        targetModel.getRelations().clear();</span>
+<span class="fc" id="L107">        targetModel.getRelations().addAll(targetRelations.values());</span>
 
         // Serialize back to DSL and commit
-<span class="nc" id="L110">        var doc = parser.parse(gitRepository.getDslAtCommit(selection.targetContextId()));</span>
-<span class="nc" id="L111">        String mergedDsl = serializer.serialize(doc);</span>
+<span class="fc" id="L110">        var doc = parser.parse(gitRepository.getDslAtCommit(selection.targetContextId()));</span>
+<span class="fc" id="L111">        String mergedDsl = serializer.serialize(doc);</span>
 
-<span class="nc" id="L113">        String targetBranch = contextNavigationService.getCurrentContext(</span>
-<span class="nc" id="L114">                workspaceResolver.resolveCurrentUsername()).branch();</span>
-<span class="nc" id="L115">        String commitId = gitRepository.commitDsl(</span>
+<span class="fc" id="L113">        String targetBranch = contextNavigationService.getCurrentContext(</span>
+<span class="fc" id="L114">                workspaceResolver.resolveCurrentUsername()).branch();</span>
+<span class="fc" id="L115">        String commitId = gitRepository.commitDsl(</span>
                 targetBranch, mergedDsl, &quot;system&quot;,
-<span class="nc" id="L117">                &quot;Selective transfer: &quot; + selection.selectedElementIds().size() + &quot; elements, &quot;</span>
-<span class="nc" id="L118">                        + selection.selectedRelationIds().size() + &quot; relations&quot;);</span>
+<span class="fc" id="L117">                &quot;Selective transfer: &quot; + selection.selectedElementIds().size() + &quot; elements, &quot;</span>
+<span class="fc" id="L118">                        + selection.selectedRelationIds().size() + &quot; relations&quot;);</span>
 
-<span class="nc" id="L120">        log.info(&quot;Selective transfer applied: {} elements, {} relations → commit '{}'&quot;,</span>
-<span class="nc" id="L121">                selection.selectedElementIds().size(),</span>
-<span class="nc" id="L122">                selection.selectedRelationIds().size(),</span>
-<span class="nc" id="L123">                commitId.substring(0, Math.min(7, commitId.length())));</span>
+<span class="fc" id="L120">        log.info(&quot;Selective transfer applied: {} elements, {} relations → commit '{}'&quot;,</span>
+<span class="fc" id="L121">                selection.selectedElementIds().size(),</span>
+<span class="fc" id="L122">                selection.selectedRelationIds().size(),</span>
+<span class="fc" id="L123">                commitId.substring(0, Math.min(7, commitId.length())));</span>
 
-<span class="nc" id="L125">        return commitId;</span>
+<span class="fc" id="L125">        return commitId;</span>
     }
 
     // ── Internal helpers ────────────────────────────────────────────
 
     private CanonicalArchitectureModel loadModel(String commitId) throws IOException {
-<span class="nc" id="L131">        String dsl = gitRepository.getDslAtCommit(commitId);</span>
-<span class="nc bnc" id="L132" title="All 2 branches missed.">        if (dsl == null) {</span>
+<span class="fc" id="L131">        String dsl = gitRepository.getDslAtCommit(commitId);</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">        if (dsl == null) {</span>
 <span class="nc" id="L133">            throw new IOException(&quot;No DSL content at commit: &quot; + commitId);</span>
         }
-<span class="nc" id="L135">        var doc = parser.parse(dsl);</span>
-<span class="nc" id="L136">        return astMapper.map(doc);</span>
+<span class="fc" id="L135">        var doc = parser.parse(dsl);</span>
+<span class="fc" id="L136">        return astMapper.map(doc);</span>
     }
 
     List&lt;TransferConflict&gt; detectConflicts(

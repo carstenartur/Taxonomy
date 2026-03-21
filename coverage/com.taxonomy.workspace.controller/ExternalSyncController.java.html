@@ -49,10 +49,10 @@ public class ExternalSyncController {
 <span class="nc" id="L49">            response.put(&quot;success&quot;, true);</span>
 <span class="nc" id="L50">            response.put(&quot;updates&quot;, result.getTrackingRefUpdates().size());</span>
 <span class="nc" id="L51">            return ResponseEntity.ok(response);</span>
-<span class="nc" id="L52">        } catch (IllegalStateException e) {</span>
-<span class="nc" id="L53">            return ResponseEntity.badRequest().body(Map.of(</span>
+<span class="fc" id="L52">        } catch (IllegalStateException e) {</span>
+<span class="fc" id="L53">            return ResponseEntity.badRequest().body(Map.of(</span>
                     &quot;error&quot;, &quot;Configuration error&quot;,
-<span class="nc" id="L55">                    &quot;message&quot;, e.getMessage()</span>
+<span class="fc" id="L55">                    &quot;message&quot;, e.getMessage()</span>
             ));
 <span class="nc" id="L57">        } catch (Exception e) {</span>
 <span class="nc" id="L58">            return ResponseEntity.internalServerError().body(Map.of(</span>
@@ -68,16 +68,16 @@ public class ExternalSyncController {
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; pushToExternal(
             @RequestParam(required = false) String branch) {
         try {
-<span class="nc bnc" id="L71" title="All 2 branches missed.">            String targetBranch = branch != null ? branch : systemRepositoryService.getSharedBranch();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            String targetBranch = branch != null ? branch : systemRepositoryService.getSharedBranch();</span>
 <span class="nc" id="L72">            var result = externalGitSyncService.pushToExternal(targetBranch);</span>
 <span class="nc" id="L73">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
 <span class="nc" id="L74">            response.put(&quot;success&quot;, true);</span>
 <span class="nc" id="L75">            response.put(&quot;branch&quot;, targetBranch);</span>
 <span class="nc" id="L76">            return ResponseEntity.ok(response);</span>
-<span class="nc" id="L77">        } catch (IllegalStateException e) {</span>
-<span class="nc" id="L78">            return ResponseEntity.badRequest().body(Map.of(</span>
+<span class="fc" id="L77">        } catch (IllegalStateException e) {</span>
+<span class="fc" id="L78">            return ResponseEntity.badRequest().body(Map.of(</span>
                     &quot;error&quot;, &quot;Configuration error&quot;,
-<span class="nc" id="L80">                    &quot;message&quot;, e.getMessage()</span>
+<span class="fc" id="L80">                    &quot;message&quot;, e.getMessage()</span>
             ));
 <span class="nc" id="L82">        } catch (Exception e) {</span>
 <span class="nc" id="L83">            return ResponseEntity.internalServerError().body(Map.of(</span>
@@ -92,16 +92,16 @@ public class ExternalSyncController {
             description = &quot;Fetches from the external remote and merges changes into the shared branch.&quot;)
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; fullSync() {
         try {
-<span class="nc" id="L95">            String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L95">            String username = workspaceResolver.resolveCurrentUsername();</span>
 <span class="nc" id="L96">            String commitId = externalGitSyncService.fullSync(username);</span>
 <span class="nc" id="L97">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
 <span class="nc" id="L98">            response.put(&quot;success&quot;, true);</span>
 <span class="nc" id="L99">            response.put(&quot;commitId&quot;, commitId);</span>
 <span class="nc" id="L100">            return ResponseEntity.ok(response);</span>
-<span class="nc" id="L101">        } catch (IllegalStateException e) {</span>
-<span class="nc" id="L102">            return ResponseEntity.badRequest().body(Map.of(</span>
+<span class="fc" id="L101">        } catch (IllegalStateException e) {</span>
+<span class="fc" id="L102">            return ResponseEntity.badRequest().body(Map.of(</span>
                     &quot;error&quot;, &quot;Configuration error&quot;,
-<span class="nc" id="L104">                    &quot;message&quot;, e.getMessage()</span>
+<span class="fc" id="L104">                    &quot;message&quot;, e.getMessage()</span>
             ));
 <span class="nc" id="L106">        } catch (Exception e) {</span>
 <span class="nc" id="L107">            return ResponseEntity.internalServerError().body(Map.of(</span>
@@ -115,14 +115,14 @@ public class ExternalSyncController {
     @Operation(summary = &quot;Get external sync status&quot;,
             description = &quot;Returns the current external sync configuration and timestamps.&quot;)
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getStatus() {
-<span class="nc" id="L118">        var status = externalGitSyncService.getStatus();</span>
-<span class="nc" id="L119">        Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L120">        response.put(&quot;externalEnabled&quot;, status.externalEnabled());</span>
-<span class="nc" id="L121">        response.put(&quot;externalUrl&quot;, status.externalUrl());</span>
-<span class="nc" id="L122">        response.put(&quot;lastFetchAt&quot;, status.lastFetchAt());</span>
-<span class="nc" id="L123">        response.put(&quot;lastPushAt&quot;, status.lastPushAt());</span>
-<span class="nc" id="L124">        response.put(&quot;lastFetchCommit&quot;, status.lastFetchCommit());</span>
-<span class="nc" id="L125">        return ResponseEntity.ok(response);</span>
+<span class="fc" id="L118">        var status = externalGitSyncService.getStatus();</span>
+<span class="fc" id="L119">        Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L120">        response.put(&quot;externalEnabled&quot;, status.externalEnabled());</span>
+<span class="fc" id="L121">        response.put(&quot;externalUrl&quot;, status.externalUrl());</span>
+<span class="fc" id="L122">        response.put(&quot;lastFetchAt&quot;, status.lastFetchAt());</span>
+<span class="fc" id="L123">        response.put(&quot;lastPushAt&quot;, status.lastPushAt());</span>
+<span class="fc" id="L124">        response.put(&quot;lastFetchCommit&quot;, status.lastFetchCommit());</span>
+<span class="fc" id="L125">        return ResponseEntity.ok(response);</span>
     }
 
     @PutMapping(&quot;/configure&quot;)
@@ -133,26 +133,26 @@ public class ExternalSyncController {
             @RequestParam(required = false) String externalUrl,
             @RequestParam(required = false) String topologyMode) {
         try {
-<span class="nc" id="L136">            SystemRepository sysRepo = systemRepositoryService.getPrimaryRepository();</span>
+<span class="fc" id="L136">            SystemRepository sysRepo = systemRepositoryService.getPrimaryRepository();</span>
 
-<span class="nc bnc" id="L138" title="All 2 branches missed.">            if (externalUrl != null) {</span>
-<span class="nc" id="L139">                sysRepo.setExternalUrl(externalUrl);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            if (externalUrl != null) {</span>
+<span class="fc" id="L139">                sysRepo.setExternalUrl(externalUrl);</span>
             }
-<span class="nc bnc" id="L141" title="All 2 branches missed.">            if (topologyMode != null) {</span>
-<span class="nc" id="L142">                sysRepo.setTopologyMode(RepositoryTopologyMode.valueOf(topologyMode));</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">            if (topologyMode != null) {</span>
+<span class="fc" id="L142">                sysRepo.setTopologyMode(RepositoryTopologyMode.valueOf(topologyMode));</span>
             }
 
-<span class="nc" id="L145">            systemRepositoryService.save(sysRepo);</span>
+<span class="fc" id="L145">            systemRepositoryService.save(sysRepo);</span>
 
-<span class="nc" id="L147">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L148">            response.put(&quot;success&quot;, true);</span>
-<span class="nc" id="L149">            response.put(&quot;topologyMode&quot;, sysRepo.getTopologyMode().name());</span>
-<span class="nc" id="L150">            response.put(&quot;externalUrl&quot;, sysRepo.getExternalUrl());</span>
-<span class="nc" id="L151">            return ResponseEntity.ok(response);</span>
-<span class="nc" id="L152">        } catch (IllegalArgumentException e) {</span>
-<span class="nc" id="L153">            return ResponseEntity.badRequest().body(Map.of(</span>
+<span class="fc" id="L147">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L148">            response.put(&quot;success&quot;, true);</span>
+<span class="fc" id="L149">            response.put(&quot;topologyMode&quot;, sysRepo.getTopologyMode().name());</span>
+<span class="fc" id="L150">            response.put(&quot;externalUrl&quot;, sysRepo.getExternalUrl());</span>
+<span class="fc" id="L151">            return ResponseEntity.ok(response);</span>
+<span class="fc" id="L152">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L153">            return ResponseEntity.badRequest().body(Map.of(</span>
                     &quot;error&quot;, &quot;Invalid parameter&quot;,
-<span class="nc" id="L155">                    &quot;message&quot;, e.getMessage()</span>
+<span class="fc" id="L155">                    &quot;message&quot;, e.getMessage()</span>
             ));
 <span class="nc" id="L157">        } catch (Exception e) {</span>
 <span class="nc" id="L158">            return ResponseEntity.internalServerError().body(Map.of(</span>

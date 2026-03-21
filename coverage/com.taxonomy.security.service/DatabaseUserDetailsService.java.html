@@ -25,19 +25,19 @@ public class DatabaseUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-<span class="nc" id="L28">        AppUser user = userRepository.findByUsername(username)</span>
-<span class="nc" id="L29">                .orElseThrow(() -&gt; new UsernameNotFoundException(&quot;User not found: &quot; + username));</span>
+<span class="fc" id="L28">        AppUser user = userRepository.findByUsername(username)</span>
+<span class="fc" id="L29">                .orElseThrow(() -&gt; new UsernameNotFoundException(&quot;User not found: &quot; + username));</span>
 
-<span class="nc" id="L31">        return User.builder()</span>
-<span class="nc" id="L32">                .username(user.getUsername())</span>
-<span class="nc" id="L33">                .password(user.getPasswordHash())</span>
-<span class="nc bnc" id="L34" title="All 2 branches missed.">                .disabled(!user.isEnabled())</span>
-<span class="nc" id="L35">                .authorities(</span>
-<span class="nc" id="L36">                        user.getRoles().stream()</span>
-<span class="nc" id="L37">                                .map(role -&gt; new SimpleGrantedAuthority(role.getName()))</span>
-<span class="nc" id="L38">                                .collect(Collectors.toSet())</span>
+<span class="fc" id="L31">        return User.builder()</span>
+<span class="fc" id="L32">                .username(user.getUsername())</span>
+<span class="fc" id="L33">                .password(user.getPasswordHash())</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">                .disabled(!user.isEnabled())</span>
+<span class="fc" id="L35">                .authorities(</span>
+<span class="fc" id="L36">                        user.getRoles().stream()</span>
+<span class="fc" id="L37">                                .map(role -&gt; new SimpleGrantedAuthority(role.getName()))</span>
+<span class="fc" id="L38">                                .collect(Collectors.toSet())</span>
                 )
-<span class="nc" id="L40">                .build();</span>
+<span class="fc" id="L40">                .build();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -254,23 +254,23 @@ public class WorkspaceManager {
      * @return the newly created workspace entity
      */
     public UserWorkspace createWorkspace(String username, String displayName, String description) {
-<span class="nc" id="L257">        UserWorkspace ws = new UserWorkspace();</span>
-<span class="nc" id="L258">        ws.setWorkspaceId(UUID.randomUUID().toString());</span>
-<span class="nc" id="L259">        ws.setUsername(username);</span>
-<span class="nc" id="L260">        ws.setDisplayName(displayName);</span>
-<span class="nc" id="L261">        ws.setDescription(description);</span>
-<span class="nc" id="L262">        ws.setCurrentBranch(&quot;draft&quot;);</span>
-<span class="nc" id="L263">        ws.setBaseBranch(&quot;draft&quot;);</span>
-<span class="nc" id="L264">        ws.setShared(false);</span>
-<span class="nc" id="L265">        ws.setArchived(false);</span>
-<span class="nc" id="L266">        ws.setDefault(false);</span>
-<span class="nc" id="L267">        ws.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);</span>
-<span class="nc" id="L268">        ws.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);</span>
-<span class="nc" id="L269">        ws.setCreatedAt(Instant.now());</span>
-<span class="nc" id="L270">        ws.setLastAccessedAt(Instant.now());</span>
-<span class="nc" id="L271">        workspaceRepository.save(ws);</span>
-<span class="nc" id="L272">        log.info(&quot;Created new workspace '{}' for user '{}'&quot;, displayName, username);</span>
-<span class="nc" id="L273">        return ws;</span>
+<span class="fc" id="L257">        UserWorkspace ws = new UserWorkspace();</span>
+<span class="fc" id="L258">        ws.setWorkspaceId(UUID.randomUUID().toString());</span>
+<span class="fc" id="L259">        ws.setUsername(username);</span>
+<span class="fc" id="L260">        ws.setDisplayName(displayName);</span>
+<span class="fc" id="L261">        ws.setDescription(description);</span>
+<span class="fc" id="L262">        ws.setCurrentBranch(&quot;draft&quot;);</span>
+<span class="fc" id="L263">        ws.setBaseBranch(&quot;draft&quot;);</span>
+<span class="fc" id="L264">        ws.setShared(false);</span>
+<span class="fc" id="L265">        ws.setArchived(false);</span>
+<span class="fc" id="L266">        ws.setDefault(false);</span>
+<span class="fc" id="L267">        ws.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);</span>
+<span class="fc" id="L268">        ws.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);</span>
+<span class="fc" id="L269">        ws.setCreatedAt(Instant.now());</span>
+<span class="fc" id="L270">        ws.setLastAccessedAt(Instant.now());</span>
+<span class="fc" id="L271">        workspaceRepository.save(ws);</span>
+<span class="fc" id="L272">        log.info(&quot;Created new workspace '{}' for user '{}'&quot;, displayName, username);</span>
+<span class="fc" id="L273">        return ws;</span>
     }
 
     /**
@@ -281,8 +281,8 @@ public class WorkspaceManager {
      * @return the workspace entity that was switched to
      */
     public UserWorkspace switchWorkspace(String username, String workspaceId) {
-<span class="nc" id="L284">        UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)</span>
-<span class="nc" id="L285">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Workspace not found: &quot; + workspaceId));</span>
+<span class="fc" id="L284">        UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)</span>
+<span class="pc" id="L285">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Workspace not found: &quot; + workspaceId));</span>
 
 <span class="nc bnc" id="L287" title="All 2 branches missed.">        if (!ws.getUsername().equals(username)) {</span>
 <span class="nc" id="L288">            throw new IllegalArgumentException(&quot;Cannot switch to workspace owned by another user&quot;);</span>
@@ -347,8 +347,8 @@ public class WorkspaceManager {
      * @return the archived workspace entity
      */
     public UserWorkspace archiveWorkspace(String workspaceId, String username) {
-<span class="nc" id="L350">        UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)</span>
-<span class="nc" id="L351">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Workspace not found: &quot; + workspaceId));</span>
+<span class="fc" id="L350">        UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)</span>
+<span class="pc" id="L351">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Workspace not found: &quot; + workspaceId));</span>
 
 <span class="nc bnc" id="L353" title="All 2 branches missed.">        if (!ws.getUsername().equals(username)) {</span>
 <span class="nc" id="L354">            throw new IllegalArgumentException(&quot;Cannot archive workspace owned by another user&quot;);</span>
@@ -377,8 +377,8 @@ public class WorkspaceManager {
      * @param username    the requesting user (must be the owner)
      */
     public void deleteWorkspace(String workspaceId, String username) {
-<span class="nc" id="L380">        UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)</span>
-<span class="nc" id="L381">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Workspace not found: &quot; + workspaceId));</span>
+<span class="fc" id="L380">        UserWorkspace ws = workspaceRepository.findByWorkspaceId(workspaceId)</span>
+<span class="pc" id="L381">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Workspace not found: &quot; + workspaceId));</span>
 
 <span class="nc bnc" id="L383" title="All 2 branches missed.">        if (!ws.getUsername().equals(username)) {</span>
 <span class="nc" id="L384">            throw new IllegalArgumentException(&quot;Cannot delete workspace owned by another user&quot;);</span>
@@ -405,7 +405,7 @@ public class WorkspaceManager {
      * @return list of non-archived workspaces ordered by last accessed
      */
     public List&lt;UserWorkspace&gt; listUserWorkspaces(String username) {
-<span class="nc" id="L408">        return workspaceRepository.findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc(username);</span>
+<span class="fc" id="L408">        return workspaceRepository.findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc(username);</span>
     }
 
     /**
@@ -435,7 +435,7 @@ public class WorkspaceManager {
      */
     public UserWorkspace getWorkspaceById(String workspaceId) {
         try {
-<span class="nc" id="L438">            return workspaceRepository.findByWorkspaceId(workspaceId).orElse(null);</span>
+<span class="fc" id="L438">            return workspaceRepository.findByWorkspaceId(workspaceId).orElse(null);</span>
 <span class="nc" id="L439">        } catch (Exception e) {</span>
 <span class="nc" id="L440">            log.debug(&quot;Could not find workspace '{}': {}&quot;, workspaceId, e.getMessage());</span>
 <span class="nc" id="L441">            return null;</span>
@@ -590,9 +590,9 @@ public class WorkspaceManager {
 <span class="nc" id="L590">                            workspaceRepository.save(ws);</span>
 <span class="nc" id="L591">                        });</span>
             }
-<span class="nc" id="L593">        } catch (Exception e) {</span>
+<span class="fc" id="L593">        } catch (Exception e) {</span>
             // Non-fatal: workspace state works in-memory even if persistence fails
-<span class="nc" id="L595">            log.warn(&quot;Could not persist workspace for user '{}': {}&quot;, username, e.getMessage());</span>
+<span class="fc" id="L595">            log.warn(&quot;Could not persist workspace for user '{}': {}&quot;, username, e.getMessage());</span>
 <span class="fc" id="L596">        }</span>
 <span class="fc" id="L597">    }</span>
 
