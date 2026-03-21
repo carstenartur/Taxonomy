@@ -18,23 +18,57 @@ Die Anwendung hostet das gemeinsame Integrations-Repository intern. Alle Benutze
 synchronisieren mit diesem internen Repository. Dies ist der Standardmodus und
 erfordert keine externe Git-Einrichtung.
 
+Wenn `DslGitRepositoryFactory` konfiguriert ist (Standard), erhält jeder bereitgestellte
+Arbeitsbereich ein eigenes logisch getrenntes Git-Repository in der gleichen Datenbank,
+identifiziert durch ein eindeutiges `repositoryName`-Präfix (`ws-{workspaceId}`). Das
+System-Repository verwendet den bekannten Namen `taxonomy-dsl`.
+
 ```
-┌─────────────────────────────────────┐
-│   System-Repository (intern)        │
-│   Modus: INTERNAL_SHARED            │
-│   Branch: "draft"                   │
-└──────────┬──────────────────────────┘
-           │
-     ┌─────┼──────┐
-     │     │      │
-  alice  bob   carol
+┌─────────────────────────────────────────────────────┐
+│                    HSQLDB (git_packs-Tabelle)         │
+│                                                       │
+│  ┌───────────────┐  ┌──────────────┐  ┌────────────┐ │
+│  │ System-Repo   │  │ Alice-Repo   │  │ Bob-Repo   │ │
+│  │ "taxonomy-dsl"│  │ "ws-abc-123" │  │ "ws-def-456│ │
+│  │ Branch: draft │  │ Branch: main │  │ Branch: main│ │
+│  └───────────────┘  └──────────────┘  └────────────┘ │
+└──────────────────────────────────────────────────────┘
 ```
 
 ### EXTERNAL_CANONICAL
 
 Ein externes Git-Repository dient als kanonische zentrale Quelle. Die Anwendung
-synchronisiert sich mit diesem externen Repository. Dieser Modus ist für die
-Integration mit bestehender Enterprise-Git-Infrastruktur vorgesehen.
+synchronisiert sich über `ExternalGitSyncService` mittels JGit's `Transport.open()`
+für Fetch/Push-Operationen mit diesem externen Repository. Dieser Modus ist für die
+Integration mit bestehender Enterprise-Git-Infrastruktur vorgesehen (Gitea, GitHub, GitLab).
+
+```
+┌──────────────────────────────────────────────────────┐
+│                    HSQLDB (git_packs-Tabelle)          │
+│                                                        │
+│  ┌───────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │ System-Repo   │  │ Alice-Repo   │  │ Bob-Repo   │  │
+│  │ "taxonomy-dsl"│  │ "ws-abc-123" │  │ "ws-def-456│  │
+│  │ Branch: draft │  │ Branch: main │  │ Branch: main│  │
+│  └───────┬───────┘  └──────────────┘  └────────────┘  │
+└──────────┼────────────────────────────────────────────┘
+           │ fetch/push
+           ▼
+┌──────────────────────┐
+│   Gitea / GitHub     │
+│   Remote-Repository  │
+└──────────────────────┘
+```
+
+#### Externe Sync REST-API
+
+| Endpunkt | Methode | Beschreibung |
+|----------|---------|-------------|
+| `/api/workspace/external/fetch` | POST | Alle Branches vom externen Remote abrufen |
+| `/api/workspace/external/push` | POST | Shared-Branch zum externen Remote pushen |
+| `/api/workspace/external/full-sync` | POST | Fetch + Merge in den Shared-Branch |
+| `/api/workspace/external/status` | GET | Aktueller Sync-Status und Zeitstempel |
+| `/api/workspace/external/configure` | PUT | Externe URL und Topologiemodus setzen |
 
 ## Lebenszyklus der Arbeitsbereich-Bereitstellung
 
@@ -142,6 +176,50 @@ rohe Git-Konzepte zu vermeiden:
 
 Begriffe wie `fork`, `fetch`, `refs`, `rebase` werden **niemals** in der
 Standard-Benutzeroberfläche angezeigt.
+
+## Architektur
+
+```
+SystemRepository (Entität)
+  ├── repositoryId: UUID
+  ├── topologyMode: INTERNAL_SHARED | EXTERNAL_CANONICAL
+  ├── defaultBranch: "draft"
+  ├── externalUrl: URL für EXTERNAL_CANONICAL-Modus
+  ├── externalAuthToken: verschlüsselt gespeichert
+  ├── lastFetchAt / lastPushAt: Sync-Zeitstempel
+  ├── lastFetchCommit: SHA des zuletzt abgerufenen Remote-HEAD
+  └── primaryRepo: true
+
+UserWorkspace (Entität)
+  ├── provisioningStatus: NOT_PROVISIONED | PROVISIONING | READY | FAILED
+  ├── topologyMode: spiegelt SystemRepository
+  ├── sourceRepositoryId: Verweis auf SystemRepository
+  ├── baseCommit / currentCommit: Git-SHAs
+  ├── syncTargetBranch: konfigurierbares Sync-Ziel
+  └── provisionedAt / provisioningError: Audit-Daten
+
+DslGitRepositoryFactory
+  ├── getSystemRepository() → gemeinsames System-Repo ("taxonomy-dsl")
+  ├── getWorkspaceRepository(workspaceId) → pro-Workspace-Repo ("ws-{id}")
+  ├── resolveRepository(WorkspaceContext) → kontextbasierte Auflösung
+  └── evict(workspaceId) → Cache-Bereinigung bei Löschung
+
+ExternalGitSyncService
+  ├── fetchFromExternal() → JGit Transport.fetch() vom Remote
+  ├── pushToExternal(branch) → JGit Transport.push() zum Remote
+  ├── fullSync(username) → Fetch + Merge in Shared-Branch
+  └── getStatus() → externe Sync-Konfiguration und Zeitstempel
+
+SystemRepositoryService
+  ├── @PostConstruct → stellt sicher, dass primäres Repo existiert
+  ├── getPrimaryRepository() → gibt SystemRepository zurück
+  └── getSharedBranch() → konfigurierbarer Branch-Name
+
+WorkspaceManager
+  ├── getOrCreateWorkspace() → In-Memory-Status (unverändert)
+  ├── findUserWorkspace() → persistente Entität-Suche
+  └── provisionWorkspaceRepository() → erstellt pro-Workspace-Repo (Factory) oder Branch (Legacy)
+```
 
 ---
 
