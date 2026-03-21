@@ -17,8 +17,11 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.BreakIterator;
 import java.util.*;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Parses uploaded PDF and DOCX documents into requirement candidates.
@@ -54,6 +57,16 @@ public class DocumentParserService {
             "^(?:§\\s*\\d+|Art\\.?\\s*\\d+|\\d+\\.\\d*\\s+[A-ZÄÖÜ]|[IVXLCDM]+\\.\\s+|Kapitel\\s+\\d+|" +
             "Chapter\\s+\\d+|Section\\s+\\d+|Abschnitt\\s+\\d+|Artikel\\s+\\d+).*",
             Pattern.CASE_INSENSITIVE);
+
+    /** Pattern to detect [H1], [H2], etc. markers injected during DOCX extraction. */
+    private static final Pattern H_MARKER_PATTERN = Pattern.compile(
+            "^\\[H(\\d+)]\\s*(.+)$");
+
+    /** Pattern to extract a trailing digit from a style ID (e.g. "Heading2" → 2). */
+    private static final Pattern STYLE_LEVEL_PATTERN = Pattern.compile("\\d+");
+
+    /** Represents a detected heading with its hierarchical level. */
+    record HeadingMatch(int level, String text) {}
 
     /**
      * Parses an uploaded document and extracts requirement candidates.
@@ -147,7 +160,12 @@ public class DocumentParserService {
         StringBuilder sb = new StringBuilder();
         for (XWPFParagraph para : doc.getParagraphs()) {
             String text = para.getText();
-            if (text != null && !text.isBlank()) {
+            if (text == null || text.isBlank()) continue;
+            String styleId = para.getStyleID();
+            if (styleId != null && isHeadingStyle(styleId)) {
+                int level = extractHeadingLevel(styleId);
+                sb.append("[H").append(level).append("] ").append(text).append("\n\n");
+            } else {
                 sb.append(text).append("\n\n");
             }
         }
@@ -155,48 +173,158 @@ public class DocumentParserService {
     }
 
     /**
-     * Splits raw text into requirement candidates based on paragraph boundaries
-     * and heading detection.
+     * Checks whether a DOCX style ID represents a heading style.
+     * Matches English ("Heading1"), German ("berschrift1"), and
+     * common variations.
+     */
+    private static boolean isHeadingStyle(String styleId) {
+        String lower = styleId.toLowerCase(Locale.ROOT);
+        return lower.startsWith("heading")
+                || lower.startsWith("berschrift")  // Überschrift without Ü
+                || lower.startsWith("überschrift");
+    }
+
+    /**
+     * Extracts the numeric heading level from a style ID.
+     * "Heading2" → 2, "berschrift3" → 3, fallback → 1.
+     */
+    private static int extractHeadingLevel(String styleId) {
+        Matcher m = STYLE_LEVEL_PATTERN.matcher(styleId);
+        return m.find() ? Integer.parseInt(m.group()) : 1;
+    }
+
+    /**
+     * Splits raw text into requirement candidates based on paragraph boundaries,
+     * heading detection (including [H1]/[H2] markers from DOCX styles), and
+     * hierarchical section-path tracking.
      */
     public List<RequirementCandidate> extractCandidates(String rawText) {
         List<RequirementCandidate> candidates = new ArrayList<>();
         String[] paragraphs = rawText.split("\\n\\s*\\n");
-        String currentHeading = null;
+        Deque<Map.Entry<Integer, String>> headingStack = new ArrayDeque<>();
+        String currentSectionPath = null;
         int index = 0;
 
         for (String para : paragraphs) {
             String trimmed = para.strip();
             if (trimmed.isEmpty()) continue;
 
-            // Detect headings
-            if (isLikelyHeading(trimmed)) {
-                currentHeading = trimmed.length() > 200
-                        ? trimmed.substring(0, 200) : trimmed;
+            // Detect headings (with level from [H] markers or regex heuristics)
+            HeadingMatch heading = detectHeading(trimmed);
+            if (heading != null) {
+                // Pop all headings at the same or deeper level
+                while (!headingStack.isEmpty() && headingStack.peek().getKey() >= heading.level()) {
+                    headingStack.pop();
+                }
+                headingStack.push(Map.entry(heading.level(), heading.text()));
+                currentSectionPath = buildSectionPath(headingStack);
                 continue;
             }
 
             // Skip very short paragraphs (page numbers, headers, footers)
             if (trimmed.length() < MIN_CANDIDATE_LENGTH) continue;
 
-            // Truncate very long paragraphs
-            String candidateText = trimmed.length() > MAX_CANDIDATE_LENGTH
-                    ? trimmed.substring(0, MAX_CANDIDATE_LENGTH) + "…"
-                    : trimmed;
-
-            candidates.add(new RequirementCandidate(index++, currentHeading, candidateText, null));
+            // Split at sentence boundaries instead of truncating
+            if (trimmed.length() > MAX_CANDIDATE_LENGTH) {
+                for (String sub : splitAtSentenceBoundaries(trimmed, MAX_CANDIDATE_LENGTH)) {
+                    candidates.add(new RequirementCandidate(index++, currentSectionPath, sub, null));
+                }
+            } else {
+                candidates.add(new RequirementCandidate(index++, currentSectionPath, trimmed, null));
+            }
         }
 
         return candidates;
     }
 
-    private boolean isLikelyHeading(String text) {
-        // Short text with all caps or matching heading patterns
-        if (text.length() > 200) return false;
-        if (HEADING_PATTERN.matcher(text).matches()) return true;
-        // All-caps short lines are likely headings
-        if (text.length() < 80 && text.equals(text.toUpperCase()) && text.matches(".*[A-ZÄÖÜ].*")) {
-            return true;
+    // ── Heading detection helpers ──────────────────────────────────────────────
+
+    /**
+     * Tries to detect a heading in the given text, returning a {@link HeadingMatch}
+     * with level and clean text, or {@code null} if the text is not a heading.
+     *
+     * <p>Recognition order:
+     * <ol>
+     *   <li>[H1]/[H2] markers injected during DOCX style-based extraction</li>
+     *   <li>Regex-based heading patterns (§, Chapter, Section, …)</li>
+     *   <li>All-caps short lines</li>
+     * </ol>
+     */
+    HeadingMatch detectHeading(String text) {
+        if (text.length() > 200) return null;
+
+        // 1. [H1], [H2], … markers from DOCX extraction
+        Matcher hm = H_MARKER_PATTERN.matcher(text);
+        if (hm.matches()) {
+            int level = Integer.parseInt(hm.group(1));
+            return new HeadingMatch(level, hm.group(2).strip());
         }
-        return false;
+
+        // 2. Regex-based heading patterns with inferred level
+        if (HEADING_PATTERN.matcher(text).matches()) {
+            int level = inferRegexHeadingLevel(text);
+            return new HeadingMatch(level, text);
+        }
+
+        // 3. All-caps short lines
+        if (text.length() < 80 && text.equals(text.toUpperCase()) && text.matches(".*[A-ZÄÖÜ].*")) {
+            return new HeadingMatch(1, text);
+        }
+
+        return null;
+    }
+
+    /**
+     * Infers a hierarchical heading level from a regex-matched heading.
+     * Chapter/Kapitel → 1, Section/Abschnitt → 2, numbered (X.Y) → dot-depth + 1,
+     * everything else → 1.
+     */
+    private static int inferRegexHeadingLevel(String text) {
+        String lower = text.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("chapter") || lower.startsWith("kapitel")) return 1;
+        if (lower.startsWith("section") || lower.startsWith("abschnitt")) return 2;
+        // Numbered sections: "3.2 …" → level 2, "3.2.1 …" → level 3
+        if (text.matches("^\\d+\\.\\d+\\.\\d+.*")) return 3;
+        if (text.matches("^\\d+\\.\\d+.*")) return 2;
+        return 1;
+    }
+
+    /**
+     * Builds a hierarchical section path from the heading stack.
+     * E.g. "§ 3 Datenschutz &gt; Abs. 2 Verarbeitung".
+     */
+    private static String buildSectionPath(Deque<Map.Entry<Integer, String>> headingStack) {
+        return headingStack.stream()
+                .sorted(Comparator.comparingInt(Map.Entry::getKey))
+                .map(Map.Entry::getValue)
+                .collect(Collectors.joining(" > "));
+    }
+
+    // ── Sentence-boundary splitting ────────────────────────────────────────────
+
+    /**
+     * Splits text at sentence boundaries so that each resulting chunk is at most
+     * {@code maxLen} characters long. This avoids the text loss caused by simple
+     * truncation.
+     */
+    List<String> splitAtSentenceBoundaries(String text, int maxLen) {
+        List<String> result = new ArrayList<>();
+        BreakIterator sentIter = BreakIterator.getSentenceInstance(Locale.GERMAN);
+        sentIter.setText(text);
+        StringBuilder current = new StringBuilder();
+        int start = sentIter.first();
+        for (int end = sentIter.next(); end != BreakIterator.DONE; end = sentIter.next()) {
+            String sentence = text.substring(start, end);
+            if (current.length() + sentence.length() > maxLen && !current.isEmpty()) {
+                result.add(current.toString().strip());
+                current = new StringBuilder();
+            }
+            current.append(sentence);
+            start = end;
+        }
+        if (!current.isEmpty()) {
+            result.add(current.toString().strip());
+        }
+        return result;
     }
 }
