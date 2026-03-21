@@ -1,11 +1,15 @@
 package com.taxonomy.versioning.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -21,6 +25,8 @@ class ContextNavigationControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void getCurrentContextReturnsOk() throws Exception {
@@ -86,5 +92,101 @@ class ContextNavigationControllerTest {
                         .param("leftBranch", "draft")
                         .param("rightBranch", "draft"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void createVariant_returnsOk() throws Exception {
+        mockMvc.perform(post("/api/context/variant")
+                        .param("name", "test-variant"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.branch").isNotEmpty())
+                .andExpect(jsonPath("$.context").isNotEmpty());
+    }
+
+    @Test
+    void compareWithFilter_returnsOk() throws Exception {
+        mockMvc.perform(get("/api/context/compare")
+                        .param("leftBranch", "draft")
+                        .param("rightBranch", "draft")
+                        .param("filter", "elements"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.changes").isArray());
+    }
+
+    @Test
+    void compareWithCommitIds_returnsOk() throws Exception {
+        MvcResult ctx = mockMvc.perform(get("/api/context/current"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode json = objectMapper.readTree(ctx.getResponse().getContentAsString());
+        String commitId = json.get("commitId").asText();
+
+        mockMvc.perform(get("/api/context/compare")
+                        .param("leftBranch", "draft")
+                        .param("leftCommit", commitId)
+                        .param("rightBranch", "draft")
+                        .param("rightCommit", commitId))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void openContextWithSearchQuery_returnsOk() throws Exception {
+        mockMvc.perform(post("/api/context/open")
+                        .param("branch", "draft")
+                        .param("readOnly", "true")
+                        .param("searchQuery", "capability"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.branch").value("draft"))
+                .andExpect(jsonPath("$.mode").value("READ_ONLY"));
+    }
+
+    @Test
+    void previewTransfer_returnsOk() throws Exception {
+        MvcResult ctx = mockMvc.perform(get("/api/context/current"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode json = objectMapper.readTree(ctx.getResponse().getContentAsString());
+        String commitId = json.get("commitId").asText();
+
+        String body = """
+                {
+                    "sourceContextId": "%s",
+                    "targetContextId": "%s",
+                    "selectedElementIds": [],
+                    "selectedRelationIds": [],
+                    "mode": "COPY"
+                }
+                """.formatted(commitId, commitId);
+        mockMvc.perform(post("/api/context/copy-back/preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasConflicts").value(false))
+                .andExpect(jsonPath("$.selectedElements").value(0))
+                .andExpect(jsonPath("$.selectedRelations").value(0));
+    }
+
+    @Test
+    void applyTransfer_returnsOk() throws Exception {
+        MvcResult ctx = mockMvc.perform(get("/api/context/current"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode json = objectMapper.readTree(ctx.getResponse().getContentAsString());
+        String commitId = json.get("commitId").asText();
+
+        String body = """
+                {
+                    "sourceContextId": "%s",
+                    "targetContextId": "%s",
+                    "selectedElementIds": [],
+                    "selectedRelationIds": [],
+                    "mode": "COPY"
+                }
+                """.formatted(commitId, commitId);
+        mockMvc.perform(post("/api/context/copy-back/apply")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
     }
 }
