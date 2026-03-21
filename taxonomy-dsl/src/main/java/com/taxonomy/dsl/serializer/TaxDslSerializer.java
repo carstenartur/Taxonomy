@@ -47,7 +47,7 @@ public class TaxDslSerializer {
             Map.entry("evidence", List.of("for-relation", "type", "model", "confidence", "summary")),
             Map.entry("source", List.of("type", "title", "canonicalIdentifier", "canonicalUrl", "originSystem", "language")),
             Map.entry("sourceVersion", List.of("source", "versionLabel", "retrievedAt", "effectiveDate", "mimeType", "contentHash")),
-            Map.entry("sourceFragment", List.of("sourceVersion", "sectionPath", "paragraphRef", "pageFrom", "pageTo", "text", "fragmentHash")),
+            Map.entry("sourceFragment", List.of("sourceVersion", "sectionPath", "paragraphRef", "pageFrom", "pageTo", "text", "fragmentHash", "parentFragment", "chunkLevel")),
             Map.entry("requirementSourceLink", List.of("requirement", "source", "sourceVersion", "sourceFragment", "linkType", "confidence", "note"))
     );
 

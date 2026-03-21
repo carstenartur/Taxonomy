@@ -223,6 +223,12 @@ public class AstToModelMapper {
         }
         sf.setText(block.property("text"));
         sf.setFragmentHash(block.property("fragmentHash"));
+        sf.setParentFragmentId(block.property("parentFragment"));
+        String chunkLevel = block.property("chunkLevel");
+        if (chunkLevel != null) {
+            try { sf.setChunkLevel(Integer.parseInt(chunkLevel)); }
+            catch (NumberFormatException ignored) { /* keep null */ }
+        }
         sf.setExtensions(block.getExtensions());
 
         model.getSourceFragments().add(sf);
