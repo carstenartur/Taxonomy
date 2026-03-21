@@ -5,7 +5,9 @@ Das Einstellungssystem bietet **zur Laufzeit konfigurierbare Optionen** für den
 ## Inhaltsverzeichnis
 
 - [Überblick](#überblick)
+- [Geltungsbereich der Einstellungen](#geltungsbereich-der-einstellungen)
 - [Zugriff auf Einstellungen](#zugriff-auf-einstellungen)
+- [Verwendung der Web-Oberfläche](#verwendung-der-web-oberfläche)
 - [Verfügbare Einstellungen](#verfügbare-einstellungen)
 - [LLM-Konfiguration](#llm-konfiguration)
 - [DSL- und Git-Konfiguration](#dsl--und-git-konfiguration)
@@ -28,9 +30,37 @@ Beim Start lädt das System die Einstellungen vom JGit-HEAD. Wenn keine Commits 
 
 ---
 
+## Geltungsbereich der Einstellungen
+
+Alle Einstellungen sind **systemweit** — sie gelten für die gesamte Anwendungsinstanz und betreffen alle Benutzer und Arbeitsbereiche. Es gibt keine benutzerspezifischen oder arbeitsbereichsspezifischen Einstellungen.
+
+| Geltungsbereich | Symbol | Bedeutung |
+|---|---|---|
+| ☁️ **System** | Gemeinsam für alle Benutzer und Arbeitsbereiche | Alle Einstellungen in dieser Anwendung |
+
+Die folgende Tabelle verdeutlicht den Geltungsbereich für jede Einstellungskategorie:
+
+| Kategorie | Geltungsbereich | Wer kann ändern | Betrifft |
+|---|---|---|---|
+| **LLM-Konfiguration** | ☁️ System | Nur Admin | Alle Analyseanfragen für alle Benutzer |
+| **DSL- und Git-Konfiguration** | ☁️ System | Nur Admin | Das gemeinsame DSL-Repository und alle Branches |
+| **Größenbeschränkungen** | ☁️ System | Nur Admin | Analyse-, Export- und Ansichtsoperationen aller Benutzer |
+
+> **Hinweis:** Benutzerspezifische und arbeitsbereichsspezifische Einstellungen werden derzeit nicht unterstützt. Wenn eine Einstellung für verschiedene Benutzer oder Teams unterschiedlich sein soll, muss sie auf der Ebene der Umgebungsvariablen über separate Bereitstellungsinstanzen konfiguriert werden (siehe [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md)).
+
+**Verwandte bereichsspezifische Daten:**
+- **Arbeitsbereichszustand** (aktueller Branch, Navigationshistorie, Projektion) — pro Benutzer, verwaltet durch den [Workspace Manager](WORKSPACE_VERSIONING.md)
+- **Architecture DSL** — gespeichert in einem gemeinsamen JGit-Repository (`taxonomy-dsl`); Branches bieten Isolation
+- **Einstellungen** — gespeichert in einem separaten JGit-Repository (`taxonomy-preferences`); systemweit
+- **Benutzerkonten und Rollen** — in der Datenbank gespeichert; pro Benutzer
+
+---
+
 ## Zugriff auf Einstellungen
 
-Einstellungen werden über die REST-API verwaltet. Alle Endpunkte erfordern die Rolle **ADMIN**.
+Einstellungen können über die **Web-Oberfläche** oder die **REST-API** verwaltet werden. Beide Methoden erfordern die Rolle **ADMIN**.
+
+### REST-API
 
 ```bash
 # Alle aktuellen Einstellungen abrufen
@@ -45,16 +75,51 @@ curl -u admin:password -X PUT \
 
 ---
 
+## Verwendung der Web-Oberfläche
+
+Der Tab **Einstellungen** in der Navigationsleiste bietet eine grafische Oberfläche zur Verwaltung aller Anwendungseinstellungen. Dieser Tab ist nur für Benutzer mit Admin-Rechten sichtbar.
+
+### Einstellungen öffnen
+
+1. Klicken Sie auf **⚙️ Preferences** in der Hauptnavigationsleiste (nur sichtbar, wenn als Admin angemeldet).
+2. Die Einstellungsseite öffnet sich und zeigt alle Einstellungen in drei Abschnitten.
+
+### Einstellungen bearbeiten
+
+Die Einstellungsseite ist in drei einklappbare Karten organisiert:
+
+1. **🤖 LLM-Konfiguration** — Steuerelemente für LLM-Anfragerate, Timeout, Server-Ratenbegrenzung und Mindest-Relevanzbewertung.
+2. **📂 JGit / DSL-Konfiguration** — Standard-Branch, Projektname, Auto-Speicher-Intervall, Remote-Git-URL, Token und Push-bei-Commit-Schalter.
+3. **📈 Größenbeschränkungen** — Maximale Geschäftstextlänge, Architekturknoten und Exportknoten.
+
+Jede Karte zeigt den aktuellen Wert für jede Einstellung. Um eine Einstellung zu ändern:
+
+1. Ändern Sie den Wert im Eingabefeld.
+2. Klicken Sie auf **💾 Save**, um die Änderungen zu speichern (erzeugt einen Git-Commit im Einstellungs-Repository).
+3. Eine Erfolgsmeldung bestätigt das Speichern.
+
+### Änderungshistorie anzeigen
+
+Am unteren Rand der Einstellungsseite können Sie den Abschnitt **📋 Preferences Change History** aufklappen, um eine Audit-Spur aller Einstellungsänderungen zu sehen, einschließlich Commit-ID, Autor, Zeitstempel und Commit-Nachricht.
+
+### Auf Standardwerte zurücksetzen
+
+Klicken Sie auf **↩️ Reset to Defaults**, um alle Einstellungen auf die Werte aus `application.properties` zurückzusetzen. Dies erzeugt ebenfalls einen Git-Commit, sodass die vorherigen Werte aus der Historie wiederhergestellt werden können.
+
+---
+
 ## Verfügbare Einstellungen
+
+> Alle unten aufgeführten Einstellungen haben den Geltungsbereich **☁️ System** — sie gelten global für alle Benutzer und Arbeitsbereiche.
 
 ### LLM-Konfiguration
 
-| Schlüssel | Typ | Standard | Beschreibung |
-|---|---|---|---|
-| `llm.rpm` | int | `5` | Maximale API-Anfragen pro Minute (ausgehende LLM-Drosselung) |
-| `llm.timeout.seconds` | int | `30` | HTTP-Lese-Timeout für LLM-API-Aufrufe |
-| `rate-limit.per-minute` | int | `10` | Eingehende Ratenbegrenzung für Analyse-Endpunkte |
-| `analysis.min-relevance-score` | int | `70` | Mindestbewertung, damit Knoten in Analyseergebnissen erscheinen |
+| Schlüssel | Typ | Standard | Geltungsbereich | Beschreibung |
+|---|---|---|---|---|
+| `llm.rpm` | int | `5` | ☁️ System | Maximale API-Anfragen pro Minute (ausgehende LLM-Drosselung) |
+| `llm.timeout.seconds` | int | `30` | ☁️ System | HTTP-Lese-Timeout für LLM-API-Aufrufe |
+| `rate-limit.per-minute` | int | `10` | ☁️ System | Eingehende Ratenbegrenzung für Analyse-Endpunkte (pro IP) |
+| `analysis.min-relevance-score` | int | `70` | ☁️ System | Mindestbewertung, damit Knoten in Analyseergebnissen erscheinen |
 
 Die Einstellung `llm.rpm` steuert die gleitende Fensterdrosselung für ausgehende LLM-API-Aufrufe. Das System verwaltet eine FIFO-Warteschlange von Zeitstempeln und lässt den Thread warten, wenn das Ratenlimit überschritten würde. Eine Toleranz von 50 ms wird für Taktabweichungen hinzugefügt.
 
@@ -62,24 +127,24 @@ Die Einstellung `llm.timeout.seconds` aktualisiert dynamisch das Lese-Timeout de
 
 ### DSL- und Git-Konfiguration
 
-| Schlüssel | Typ | Standard | Beschreibung |
-|---|---|---|---|
-| `dsl.default-branch` | string | `"draft"` | Aktiver Branch für die DSL-Materialisierung |
-| `dsl.project-name` | string | `"Taxonomy Architecture"` | Menschenlesbarer Projekt-Anzeigename |
-| `dsl.auto-save.interval-seconds` | int | `0` | Automatische Speicherfrequenz (0 = deaktiviert) |
-| `dsl.remote.url` | string | `""` | Remote-Git-URL für Push-/Pull-Operationen |
-| `dsl.remote.token` | string | `""` | Authentifizierungs-Token für Remote-Git (in API-Antworten maskiert) |
-| `dsl.remote.push-on-commit` | boolean | `false` | Nach lokalen Commits automatisch zum Remote pushen |
+| Schlüssel | Typ | Standard | Geltungsbereich | Beschreibung |
+|---|---|---|---|---|
+| `dsl.default-branch` | string | `"draft"` | ☁️ System | Aktiver Branch für die DSL-Materialisierung |
+| `dsl.project-name` | string | `"Taxonomy Architecture"` | ☁️ System | Menschenlesbarer Projekt-Anzeigename |
+| `dsl.auto-save.interval-seconds` | int | `0` | ☁️ System | Automatische Speicherfrequenz (0 = deaktiviert) |
+| `dsl.remote.url` | string | `""` | ☁️ System | Remote-Git-URL für Push-/Pull-Operationen |
+| `dsl.remote.token` | string | `""` | ☁️ System | Authentifizierungs-Token für Remote-Git (in API-Antworten maskiert) |
+| `dsl.remote.push-on-commit` | boolean | `false` | ☁️ System | Nach lokalen Commits automatisch zum Remote pushen |
 
 > **Sicherheitshinweis:** Der Wert von `dsl.remote.token` wird in allen API-Antworten maskiert. Beim Abrufen über `GET /api/preferences` erscheint er als `"****{letzte4Zeichen}"`. Das vollständige Token wird nur intern für Git-Remote-Operationen verwendet.
 
 ### Größenbeschränkungen
 
-| Schlüssel | Typ | Standard | Beschreibung |
-|---|---|---|---|
-| `limits.max-business-text` | int | `5000` | Maximale Zeichenanzahl in einem geschäftlichen Anforderungstext |
-| `limits.max-architecture-nodes` | int | `50` | Maximale Anzahl angezeigter Knoten in der Architekturansicht |
-| `limits.max-export-nodes` | int | `200` | Maximale Anzahl von Knoten in einem Export-Vorgang |
+| Schlüssel | Typ | Standard | Geltungsbereich | Beschreibung |
+|---|---|---|---|---|
+| `limits.max-business-text` | int | `5000` | ☁️ System | Maximale Zeichenanzahl in einem geschäftlichen Anforderungstext |
+| `limits.max-architecture-nodes` | int | `50` | ☁️ System | Maximale Anzahl angezeigter Knoten in der Architekturansicht |
+| `limits.max-export-nodes` | int | `200` | ☁️ System | Maximale Anzahl von Knoten in einem Export-Vorgang |
 
 ---
 
