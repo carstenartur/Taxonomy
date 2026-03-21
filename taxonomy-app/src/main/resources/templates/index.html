@@ -68,12 +68,6 @@
                 <a class="nav-link" data-page="graph" href="#graph">&#128300; <span th:text="#{nav.graph}">Graph</span></a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-page="relations" href="#relations">&#128279; <span th:text="#{nav.relations}">Relations</span></a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" data-page="export" href="#export">&#128229; <span th:text="#{nav.export}">Export</span></a>
-            </li>
-            <li class="nav-item">
                 <a class="nav-link" data-page="versions" href="#versions">&#128339; <span th:text="#{nav.versions}">Versions</span></a>
             </li>
             <li class="nav-item">
@@ -439,6 +433,21 @@
                  ============================================================ -->
             <div id="tab-architecture" class="tab-pane-content d-none">
 
+                <!-- Architecture sub-tabs -->
+                <ul class="nav nav-pills nav-fill mb-3" id="architectureSubTabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-subtab="arch-overview" href="#">&#127959;&#65039; Overview</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-subtab="arch-relations" href="#">&#128279; <span th:text="#{nav.relations}">Relations</span></a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-subtab="arch-export" href="#">&#128229; <span th:text="#{nav.export}">Export</span></a>
+                    </li>
+                </ul>
+
+                <div id="subtab-arch-overview">
+
                 <!-- Architecture View Panel -->
                 <div id="architectureViewPanel" class="mb-3" style="display:none;">
                     <div class="card shadow-sm">
@@ -475,83 +484,13 @@
                 <!-- ArchiMate Import Status -->
                 <div id="archiMateImportStatus" class="mt-2" style="display:none;"></div>
 
-            </div><!-- /tab-architecture -->
+                </div><!-- /subtab-arch-overview -->
 
-            <!-- ============================================================
-                 TAB: GRAPH
-                 ============================================================ -->
-            <div id="tab-graph" class="tab-pane-content d-none">
-
-                <!-- ViewContext: shows Git provenance for graph data -->
-                <div id="graphViewContext" class="view-context-bar d-none"></div>
-
-                <!-- Graph Explorer Panel -->
-                <div id="graphExplorerPanel" class="mt-0">
-                    <div class="card shadow-sm">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <span class="fw-semibold" th:text="#{graph.explorer.title}">&#128300; Graph Explorer</span>
-                            <span class="badge bg-info text-dark" th:title="#{graph.explorer.navigate.title}" title="Explore upstream dependencies, downstream impacts, and failure analysis">Navigate</span>
-                        </div>
-                        <div class="card-body p-3">
-                            <p class="text-muted small mb-2" th:utext="#{graph.explorer.description}">
-                                Explore architecture dependencies and change impact by selecting a node below or clicking
-                                the <strong>&#128300;</strong> button on any taxonomy node.
-                            </p>
-                            <div class="row g-2 mb-2">
-                                <div class="col-8">
-                                    <label for="graphNodeInput" class="form-label small mb-0" th:text="#{graph.node.label}">Node code:</label>
-                                    <input type="text" id="graphNodeInput" class="form-control form-control-sm"
-                                           th:placeholder="#{graph.node.placeholder}" placeholder="e.g. BP-1040" aria-label="Node code for graph query" list="graphNodeSuggestions"/>
-                                    <datalist id="graphNodeSuggestions"></datalist>
-                                </div>
-                                <div class="col-4">
-                                    <label for="graphMaxHops" class="form-label small mb-0" th:text="#{graph.maxhops.label}">Max hops:</label>
-                                    <select id="graphMaxHops" class="form-select form-select-sm" aria-label="Maximum traversal hops">
-                                        <option value="1">1</option>
-                                        <option value="2" selected>2</option>
-                                        <option value="3">3</option>
-                                        <option value="4">4</option>
-                                        <option value="5">5</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="d-flex gap-2 flex-wrap">
-                                <button id="graphUpstreamBtn" class="btn btn-sm btn-outline-primary" th:title="#{graph.btn.upstream.title}" title="What supports this element?">
-                                    &#11014;&#65039; Upstream
-                                </button>
-                                <button id="graphDownstreamBtn" class="btn btn-sm btn-outline-primary" th:title="#{graph.btn.downstream.title}" title="What depends on this element?">
-                                    &#11015;&#65039; Downstream
-                                </button>
-                                <button id="graphFailureBtn" class="btn btn-sm btn-outline-danger" th:title="#{graph.btn.failure.title}" title="What is affected if this element fails?">
-                                    &#9888;&#65039; Failure Impact
-                                </button>
-                                <button id="graphEnrichedFailureBtn" class="btn btn-sm btn-outline-warning" th:title="#{graph.btn.enriched.title}" title="Failure impact enriched with requirement coverage and risk score">
-                                    &#128200; Enriched Impact
-                                </button>
-                                <button id="requirementImpactBtn" class="btn btn-sm btn-outline-success" th:title="#{graph.btn.reqimpact.title}" title="Analyze which elements are transitively impacted by the current requirement scores">
-                                    &#127919; Req. Impact
-                                </button>
-                            </div>
-                            <div class="form-check mt-2">
-                                <input class="form-check-input" type="checkbox" id="graphApqcFilter" value="">
-                                <label class="form-check-label small" for="graphApqcFilter">
-                                    Show APQC hierarchy only (filter nodes with <code>x-source-framework: apqc</code>)
-                                </label>
-                            </div>
-                            <div id="graphResultsArea" class="mt-2" style="display:none;">
-                                <div id="graphResultsContent"></div>
-                            </div>
-                            <div id="requirementImpactResults" class="mt-2" style="display:none;"></div>
-                        </div>
-                    </div>
-                </div>
-
-            </div><!-- /tab-graph -->
-
-            <!-- ============================================================
-                 TAB: RELATIONS
-                 ============================================================ -->
-            <div id="tab-relations" class="tab-pane-content d-none">
+                <!-- ============================================================
+                     ARCHITECTURE SUB-TAB: RELATIONS
+                     ============================================================ -->
+                <div id="subtab-arch-relations" class="d-none">
+                <div id="tab-relations">
 
                 <!-- Relation Proposals Panel -->
                 <div id="proposalsPanel" class="mb-3">
@@ -601,12 +540,14 @@
                     </div>
                 </details>
 
-            </div><!-- /tab-relations -->
+                </div><!-- /tab-relations -->
+                </div><!-- /subtab-arch-relations -->
 
-            <!-- ============================================================
-                 TAB: EXPORT
-                 ============================================================ -->
-            <div id="tab-export" class="tab-pane-content d-none">
+                <!-- ============================================================
+                     ARCHITECTURE SUB-TAB: EXPORT
+                     ============================================================ -->
+                <div id="subtab-arch-export" class="d-none">
+                <div id="tab-export">
 
                 <!-- ViewContext: shows Git provenance for export data -->
                 <div id="exportViewContext" class="view-context-bar d-none"></div>
@@ -710,7 +651,81 @@
                     </div>
                 </div>
 
-            </div><!-- /tab-export -->
+                </div><!-- /tab-export -->
+                </div><!-- /subtab-arch-export -->
+
+            </div><!-- /tab-architecture -->
+
+            <!-- ============================================================
+                 TAB: GRAPH
+                 ============================================================ -->
+            <div id="tab-graph" class="tab-pane-content d-none">
+
+                <!-- ViewContext: shows Git provenance for graph data -->
+                <div id="graphViewContext" class="view-context-bar d-none"></div>
+
+                <!-- Graph Explorer Panel -->
+                <div id="graphExplorerPanel" class="mt-0">
+                    <div class="card shadow-sm">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span class="fw-semibold" th:text="#{graph.explorer.title}">&#128300; Graph Explorer</span>
+                            <span class="badge bg-info text-dark" th:title="#{graph.explorer.navigate.title}" title="Explore upstream dependencies, downstream impacts, and failure analysis">Navigate</span>
+                        </div>
+                        <div class="card-body p-3">
+                            <p class="text-muted small mb-2" th:utext="#{graph.explorer.description}">
+                                Explore architecture dependencies and change impact by selecting a node below or clicking
+                                the <strong>&#128300;</strong> button on any taxonomy node.
+                            </p>
+                            <div class="row g-2 mb-2">
+                                <div class="col-8">
+                                    <label for="graphNodeInput" class="form-label small mb-0" th:text="#{graph.node.label}">Node code:</label>
+                                    <input type="text" id="graphNodeInput" class="form-control form-control-sm"
+                                           th:placeholder="#{graph.node.placeholder}" placeholder="e.g. BP-1040" aria-label="Node code for graph query" list="graphNodeSuggestions"/>
+                                    <datalist id="graphNodeSuggestions"></datalist>
+                                </div>
+                                <div class="col-4">
+                                    <label for="graphMaxHops" class="form-label small mb-0" th:text="#{graph.maxhops.label}">Max hops:</label>
+                                    <select id="graphMaxHops" class="form-select form-select-sm" aria-label="Maximum traversal hops">
+                                        <option value="1">1</option>
+                                        <option value="2" selected>2</option>
+                                        <option value="3">3</option>
+                                        <option value="4">4</option>
+                                        <option value="5">5</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button id="graphUpstreamBtn" class="btn btn-sm btn-outline-primary" th:title="#{graph.btn.upstream.title}" title="What supports this element?">
+                                    &#11014;&#65039; Upstream
+                                </button>
+                                <button id="graphDownstreamBtn" class="btn btn-sm btn-outline-primary" th:title="#{graph.btn.downstream.title}" title="What depends on this element?">
+                                    &#11015;&#65039; Downstream
+                                </button>
+                                <button id="graphFailureBtn" class="btn btn-sm btn-outline-danger" th:title="#{graph.btn.failure.title}" title="What is affected if this element fails?">
+                                    &#9888;&#65039; Failure Impact
+                                </button>
+                                <button id="graphEnrichedFailureBtn" class="btn btn-sm btn-outline-warning" th:title="#{graph.btn.enriched.title}" title="Failure impact enriched with requirement coverage and risk score">
+                                    &#128200; Enriched Impact
+                                </button>
+                                <button id="requirementImpactBtn" class="btn btn-sm btn-outline-success" th:title="#{graph.btn.reqimpact.title}" title="Analyze which elements are transitively impacted by the current requirement scores">
+                                    &#127919; Req. Impact
+                                </button>
+                            </div>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="graphApqcFilter" value="">
+                                <label class="form-check-label small" for="graphApqcFilter">
+                                    Show APQC hierarchy only (filter nodes with <code>x-source-framework: apqc</code>)
+                                </label>
+                            </div>
+                            <div id="graphResultsArea" class="mt-2" style="display:none;">
+                                <div id="graphResultsContent"></div>
+                            </div>
+                            <div id="requirementImpactResults" class="mt-2" style="display:none;"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /tab-graph -->
 
             <!-- ============================================================
                  TAB: VERSIONS
@@ -1434,10 +1449,55 @@
 <script>
 (function () {
     'use strict';
-    var PAGES = ['analyze', 'architecture', 'graph', 'relations', 'export', 'versions', 'dsl-editor', 'help', 'admin', 'preferences'];
-    var FULL_WIDTH_PAGES = ['relations', 'export', 'versions', 'help', 'admin', 'preferences'];
+    var PAGES = ['analyze', 'architecture', 'graph', 'versions', 'dsl-editor', 'help', 'admin', 'preferences'];
+    var FULL_WIDTH_PAGES = ['versions', 'help', 'admin', 'preferences'];
+    var ARCH_SUB_TABS = ['arch-overview', 'arch-relations', 'arch-export'];
+
+    // Map removed top-level pages to architecture sub-tabs for backward compatibility
+    var subTabMapping = {'relations': 'arch-relations', 'export': 'arch-export'};
+
+    function activateArchSubTab(subTabName) {
+        var subTabs = document.querySelectorAll('#architectureSubTabs .nav-link');
+        subTabs.forEach(function(link) {
+            link.classList.toggle('active', link.getAttribute('data-subtab') === subTabName);
+        });
+        ARCH_SUB_TABS.forEach(function(pane) {
+            var el = document.getElementById('subtab-' + pane);
+            if (el) {
+                el.classList.toggle('d-none', pane !== subTabName);
+            }
+        });
+        // Adjust panel width based on active sub-tab
+        var leftPanel  = document.getElementById('leftPanel');
+        var rightPanel = document.getElementById('rightPanel');
+        if (leftPanel && rightPanel) {
+            if (subTabName === 'arch-overview') {
+                leftPanel.classList.remove('d-none');
+                leftPanel.className  = 'col-lg-5';
+                rightPanel.className = 'col-lg-7';
+            } else {
+                leftPanel.classList.add('d-none');
+                rightPanel.className = 'col-12';
+            }
+        }
+        // Trigger ViewContext fetch when switching to export sub-tab
+        if (subTabName === 'arch-export' && window.TaxonomyViewContext) {
+            window.TaxonomyViewContext.fetchAndRender('exportViewContext');
+        }
+        // Trigger export button visibility when switching to export sub-tab
+        if (subTabName === 'arch-export' && window.TaxonomyBrowse) {
+            window.TaxonomyBrowse.updateExportGroupVisibility();
+        }
+    }
 
     function activatePage(pageName) {
+        // Backward compatibility: map removed pages to architecture sub-tabs
+        if (subTabMapping[pageName]) {
+            activatePage('architecture');
+            activateArchSubTab(subTabMapping[pageName]);
+            return;
+        }
+
         if (PAGES.indexOf(pageName) === -1) { pageName = 'analyze'; }
 
         // Update nav-tab active state
@@ -1466,15 +1526,22 @@
         if (FULL_WIDTH_PAGES.indexOf(pageName) !== -1) {
             leftPanel.classList.add('d-none');
             rightPanel.className = 'col-12';
-        } else {
-            leftPanel.classList.remove('d-none');
-            if (pageName === 'architecture') {
+        } else if (pageName === 'architecture') {
+            // Delegate width handling to the active sub-tab
+            var activeSubTab = document.querySelector('#architectureSubTabs .nav-link.active');
+            var subTab = activeSubTab ? activeSubTab.getAttribute('data-subtab') : 'arch-overview';
+            if (subTab === 'arch-overview') {
+                leftPanel.classList.remove('d-none');
                 leftPanel.className  = 'col-lg-5';
                 rightPanel.className = 'col-lg-7';
             } else {
-                leftPanel.className  = 'col-lg-7';
-                rightPanel.className = 'col-lg-5';
+                leftPanel.classList.add('d-none');
+                rightPanel.className = 'col-12';
             }
+        } else {
+            leftPanel.classList.remove('d-none');
+            leftPanel.className  = 'col-lg-7';
+            rightPanel.className = 'col-lg-5';
         }
 
         // Update URL hash without adding to browser history
@@ -1486,7 +1553,6 @@
         if (window.TaxonomyViewContext) {
             var viewContextMap = {
                 'graph': 'graphViewContext',
-                'export': 'exportViewContext',
                 'dsl-editor': 'dslViewContext'
             };
             var containerId = viewContextMap[pageName];
@@ -1501,6 +1567,13 @@
                 }
                 window.TaxonomyViewContext.fetchAndRender(containerId, branch);
             }
+            // Also fetch export ViewContext when architecture tab activates with export sub-tab
+            if (pageName === 'architecture') {
+                var activeSubTab = document.querySelector('#architectureSubTabs .nav-link.active');
+                if (activeSubTab && activeSubTab.getAttribute('data-subtab') === 'arch-export') {
+                    window.TaxonomyViewContext.fetchAndRender('exportViewContext');
+                }
+            }
         }
 
         // Load version history when Versions tab is activated
@@ -1508,11 +1581,22 @@
             window.TaxonomyVersions.loadTimeline();
         }
 
-        // Ensure export button visibility is up-to-date when switching to the export tab
-        if (pageName === 'export' && window.TaxonomyBrowse) {
-            window.TaxonomyBrowse.updateExportGroupVisibility();
+        // Ensure export button visibility when architecture+export sub-tab is active
+        if (pageName === 'architecture' && window.TaxonomyBrowse) {
+            var activeSubTab = document.querySelector('#architectureSubTabs .nav-link.active');
+            if (activeSubTab && activeSubTab.getAttribute('data-subtab') === 'arch-export') {
+                window.TaxonomyBrowse.updateExportGroupVisibility();
+            }
         }
     }
+
+    // Architecture sub-tab click handlers
+    document.querySelectorAll('#architectureSubTabs .nav-link').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            activateArchSubTab(this.getAttribute('data-subtab'));
+        });
+    });
 
     // Click handlers on nav links
     document.querySelectorAll('#mainNavTabs .nav-link').forEach(function (link) {
@@ -1527,7 +1611,7 @@
         var el = e.target.closest('[data-page]');
         if (el && el.closest('#mainNavTabs') === null) {
             var page = el.getAttribute('data-page');
-            if (PAGES.indexOf(page) !== -1) {
+            if (PAGES.indexOf(page) !== -1 || subTabMapping[page]) {
                 e.preventDefault();
                 activatePage(page);
             }
@@ -1537,12 +1621,16 @@
     // Handle browser back/forward
     window.addEventListener('hashchange', function () {
         var hash = window.location.hash.replace('#', '');
-        if (PAGES.indexOf(hash) !== -1) { activatePage(hash); }
+        if (PAGES.indexOf(hash) !== -1 || subTabMapping[hash]) { activatePage(hash); }
     });
 
     // Initialise from URL hash
     var initialHash = window.location.hash.replace('#', '');
-    activatePage(PAGES.indexOf(initialHash) !== -1 ? initialHash : 'analyze');
+    if (PAGES.indexOf(initialHash) !== -1 || subTabMapping[initialHash]) {
+        activatePage(initialHash);
+    } else {
+        activatePage('analyze');
+    }
 
     // Expose globally so other scripts can navigate
     window.navigateToPage = activatePage;
