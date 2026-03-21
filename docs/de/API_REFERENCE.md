@@ -1,7 +1,11 @@
 # Taxonomy Architecture Analyzer — API-Referenz
 
-Alle Endpunkte erfordern **HTTP-Basic-Authentifizierung** (`-u admin:admin`), sofern nicht als öffentlich gekennzeichnet.
+Alle Endpunkte erfordern **HTTP-Basic-Authentifizierung**, sofern nicht als öffentlich gekennzeichnet.
 CSRF ist für `/api/**` deaktiviert — REST-Clients benötigen keine CSRF-Tokens.
+
+> **⚠️ Sicherheit:** Die folgenden Beispiele verwenden `-u admin:admin` (das Standard-Entwicklungspasswort).
+> Für jede nicht-lokale Bereitstellung setzen Sie `TAXONOMY_ADMIN_PASSWORD`, bevor Sie die Anwendung exponieren.
+> Siehe [Sicherheit](SECURITY.md) für Details.
 
 Interaktive Dokumentation: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) (wenn die Anwendung läuft).
 

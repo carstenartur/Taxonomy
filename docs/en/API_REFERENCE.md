@@ -11,8 +11,12 @@
 > **Swagger/OpenAPI** (`/swagger-ui.html`) is the authoritative, always-up-to-date
 > API documentation. This static reference provides an overview and usage examples.
 
-All endpoints require **HTTP Basic authentication** (`-u admin:admin`) unless listed as public.
+All endpoints require **HTTP Basic authentication** unless listed as public.
 CSRF is disabled for `/api/**` — REST clients do not need CSRF tokens.
+
+> **⚠️ Security:** The examples below use `-u admin:admin` (the default development password).
+> For any non-local deployment, set `TAXONOMY_ADMIN_PASSWORD` before exposing the application.
+> See [Security](SECURITY.md) for details.
 
 Interactive docs: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) (when the app is running).
 
