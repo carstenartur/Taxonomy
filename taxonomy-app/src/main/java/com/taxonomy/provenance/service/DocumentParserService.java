@@ -324,7 +324,14 @@ public class DocumentParserService {
                 result.add(current.toString().strip());
                 current = new StringBuilder();
             }
-            current.append(sentence);
+            // Hard-split individual sentences that exceed maxLen on their own
+            if (sentence.length() > maxLen && current.isEmpty()) {
+                for (int i = 0; i < sentence.length(); i += maxLen) {
+                    result.add(sentence.substring(i, Math.min(i + maxLen, sentence.length())).strip());
+                }
+            } else {
+                current.append(sentence);
+            }
             start = end;
         }
         if (!current.isEmpty()) {

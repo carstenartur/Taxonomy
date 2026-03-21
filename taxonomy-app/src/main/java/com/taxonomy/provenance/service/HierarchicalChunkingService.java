@@ -5,6 +5,7 @@ import com.taxonomy.dto.HierarchicalChunk;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -50,9 +51,11 @@ public class HierarchicalChunkingService {
      * @return merged chunks — fewer entries, each with richer context
      */
     public List<HierarchicalChunk> autoMerge(List<HierarchicalChunk> hits) {
-        Map<String, List<HierarchicalChunk>> byParent = hits.stream()
+        // Use LinkedHashMap to preserve first-encounter order of groups
+        Map<Object, List<HierarchicalChunk>> byParent = hits.stream()
                 .collect(Collectors.groupingBy(
-                        c -> c.getSectionPath() != null ? c.getSectionPath() : "",
+                        c -> c.getSectionPath() != null ? (Object) c.getSectionPath() : c,
+                        LinkedHashMap::new,
                         Collectors.toList()));
 
         List<HierarchicalChunk> result = new ArrayList<>();

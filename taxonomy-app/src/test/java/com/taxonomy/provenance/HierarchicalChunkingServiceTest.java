@@ -127,4 +127,51 @@ class HierarchicalChunkingServiceTest {
         assertThat(merged).hasSize(1);
         assertThat(merged.get(0).getText()).isEqualTo("Only chunk.");
     }
+
+    @Test
+    void autoMergePreservesFirstEncounterOrder() {
+        HierarchicalChunk c1 = new HierarchicalChunk();
+        c1.setText("B first.");
+        c1.setSectionPath("Chapter 2");
+        c1.setLevel(1);
+
+        HierarchicalChunk c2 = new HierarchicalChunk();
+        c2.setText("A first.");
+        c2.setSectionPath("Chapter 1");
+        c2.setLevel(1);
+
+        HierarchicalChunk c3 = new HierarchicalChunk();
+        c3.setText("B second.");
+        c3.setSectionPath("Chapter 2");
+        c3.setLevel(1);
+
+        List<HierarchicalChunk> merged = chunkingService.autoMerge(List.of(c1, c2, c3));
+
+        // Chapter 2 was encountered first, so its merged chunk should come first
+        assertThat(merged).hasSize(2);
+        assertThat(merged.get(0).getSectionPath()).isEqualTo("Chapter 2");
+        assertThat(merged.get(0).getText()).contains("B first.");
+        assertThat(merged.get(0).getText()).contains("B second.");
+        assertThat(merged.get(1).getSectionPath()).isEqualTo("Chapter 1");
+    }
+
+    @Test
+    void autoMergeKeepsNullSectionPathChunksSeparate() {
+        HierarchicalChunk c1 = new HierarchicalChunk();
+        c1.setText("Chunk without section A.");
+        c1.setSectionPath(null);
+        c1.setLevel(0);
+
+        HierarchicalChunk c2 = new HierarchicalChunk();
+        c2.setText("Chunk without section B.");
+        c2.setSectionPath(null);
+        c2.setLevel(0);
+
+        List<HierarchicalChunk> merged = chunkingService.autoMerge(List.of(c1, c2));
+
+        // Both have null sectionPath — they should NOT be merged together
+        assertThat(merged).hasSize(2);
+        assertThat(merged.get(0).getText()).isEqualTo("Chunk without section A.");
+        assertThat(merged.get(1).getText()).isEqualTo("Chunk without section B.");
+    }
 }

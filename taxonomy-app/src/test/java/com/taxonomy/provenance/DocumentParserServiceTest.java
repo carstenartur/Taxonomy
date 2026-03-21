@@ -242,4 +242,19 @@ class DocumentParserServiceTest {
         assertThat(candidates.get(1).getSectionHeading())
                 .isEqualTo("Chapter 3 Deployment");
     }
+
+    @Test
+    void overlongSentenceIsHardSplit() {
+        // A single "sentence" (no period/punctuation) longer than 2000 chars
+        String longSentence = "X".repeat(3000);
+
+        List<RequirementCandidate> candidates = parserService.extractCandidates(longSentence);
+
+        // Must produce at least 2 candidates from the hard split
+        assertThat(candidates).hasSizeGreaterThan(1);
+        // Each chunk must respect the max length
+        for (RequirementCandidate c : candidates) {
+            assertThat(c.getText().length()).isLessThanOrEqualTo(2000);
+        }
+    }
 }

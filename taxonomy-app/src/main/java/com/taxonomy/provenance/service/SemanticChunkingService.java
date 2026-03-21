@@ -20,7 +20,7 @@ import java.util.Locale;
  *   <li>Form overlapping windows of {@code windowSize} sentences.</li>
  *   <li>Embed each window with {@link LocalEmbeddingService}.</li>
  *   <li>Compute cosine distance between consecutive windows.</li>
- *   <li>Peaks above a threshold indicate topic changes → split points.</li>
+ *   <li>Distances above a threshold indicate topic changes → split points.</li>
  *   <li>Build chunks from the split points.</li>
  * </ol>
  *
@@ -98,7 +98,8 @@ public class SemanticChunkingService {
     }
 
     /**
-     * Finds indices where the cosine distance peaks above the threshold.
+     * Finds indices where the cosine distance exceeds the threshold,
+     * indicating likely topic boundaries.
      */
     List<Integer> findSplitPoints(List<Double> distances, double threshold) {
         List<Integer> splits = new ArrayList<>();
