@@ -11,4 +11,11 @@
     <artifactId>taxonomy-domain</artifactId>
     <name>Taxonomy Domain</name>
     <description>Pure domain types: DTOs, enums, and value objects — no framework dependencies</description>
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 </project>
