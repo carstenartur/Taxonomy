@@ -20,6 +20,7 @@ import { linter, lintGutter } from 'https://esm.sh/@codemirror/lint@6';
 import { autocompletion } from 'https://esm.sh/@codemirror/autocomplete@6';
 import { Compartment } from 'https://esm.sh/@codemirror/state@6';
 import { keymap } from 'https://esm.sh/@codemirror/view@6';
+import { MergeView } from 'https://esm.sh/@codemirror/merge@6.6.1';
 
 // ── TaxDSL token sets ──────────────────────────────────────────────────
 const BLOCK_KEYWORDS = new Set([
@@ -342,6 +343,38 @@ function getCurrentTheme() {
     return document.documentElement.getAttribute('data-bs-theme') === 'dark'
         ? oneDark
         : taxDslLightHighlight;
+}
+
+// ── Merge / diff view ──────────────────────────────────────────────────
+
+/**
+ * Creates a side-by-side merge/diff view using @codemirror/merge.
+ * @param {HTMLElement} container - The DOM element to mount the merge view into.
+ * @param {string} originalDoc - The original (left) document text.
+ * @param {string} modifiedDoc - The modified (right) document text.
+ * @returns {MergeView} The merge view instance.
+ */
+export function createMergeView(container, originalDoc, modifiedDoc) {
+    container.innerHTML = '';
+    const mv = new MergeView({
+        a: {
+            doc: originalDoc,
+            extensions: [
+                EditorView.editable.of(false),
+                getCurrentTheme()
+            ]
+        },
+        b: {
+            doc: modifiedDoc,
+            extensions: [
+                EditorView.editable.of(false),
+                getCurrentTheme()
+            ]
+        },
+        parent: container,
+        collapseUnchanged: { margin: 3, minSize: 4 }
+    });
+    return mv;
 }
 
 // ── Editor initialization ──────────────────────────────────────────────

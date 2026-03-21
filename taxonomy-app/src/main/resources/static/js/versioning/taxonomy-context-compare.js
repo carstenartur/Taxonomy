@@ -11,6 +11,8 @@
 window.TaxonomyContextCompare = (function () {
     'use strict';
 
+    var currentRawDslDiff = null;
+
     var t = TaxonomyI18n.t;
     var escapeHtml = TaxonomyUtils.escapeHtml;
 
@@ -138,6 +140,8 @@ window.TaxonomyContextCompare = (function () {
     function renderComparison(containerId, comparison) {
         var container = document.getElementById(containerId);
         if (!container) return;
+
+        currentRawDslDiff = comparison.rawDslDiff || null;
 
         var html = '';
 
@@ -345,11 +349,16 @@ window.TaxonomyContextCompare = (function () {
         // Level 3: Raw DSL Diff (collapsible expert mode)
         if (comparison.rawDslDiff) {
             html += '<div class="card mb-3">';
-            html += '<div class="card-header">';
-            html += '<a data-bs-toggle="collapse" href="#rawDiffCollapse" class="text-decoration-none">';
-            html += '\u25B8 <strong>' + escapeHtml(t('compare.dsl.diff')) + '</strong> ' + escapeHtml(t('compare.dsl.diff.expert')) + '</a></div>';
+            html += '<div class="card-header d-flex align-items-center">';
+            html += '<a data-bs-toggle="collapse" href="#rawDiffCollapse" class="text-decoration-none flex-grow-1">';
+            html += '\u25B8 <strong>' + escapeHtml(t('compare.dsl.diff')) + '</strong> ' + escapeHtml(t('compare.dsl.diff.expert')) + '</a>';
+            html += '<button class="btn btn-sm btn-outline-info ms-2" onclick="TaxonomyContextCompare.toggleSideBySide()">\u2194 Side-by-Side</button>';
+            html += '</div>';
             html += '<div id="rawDiffCollapse" class="collapse">';
-            html += '<div class="card-body"><pre class="mb-0 small" style="white-space:pre-wrap;">' + renderColoredDiff(comparison.rawDslDiff) + '</pre></div>';
+            html += '<div class="card-body">';
+            html += '<div id="dslTextDiffContainer"><pre class="mb-0 small" style="white-space:pre-wrap;">' + renderColoredDiff(comparison.rawDslDiff) + '</pre></div>';
+            html += '<div id="dslMergeViewContainer" style="display:none;"></div>';
+            html += '</div>';
             html += '</div></div>';
         }
 
@@ -380,10 +389,70 @@ window.TaxonomyContextCompare = (function () {
         }).join('\n');
     }
 
+    /**
+     * Reconstruct left and right document texts from a unified diff.
+     *
+     * @param {string} diffText — unified diff output
+     * @returns {{ left: string, right: string }}
+     */
+    function parseDiffSides(diffText) {
+        if (!diffText) return { left: '', right: '' };
+        var leftLines = [];
+        var rightLines = [];
+        diffText.split('\n').forEach(function (line) {
+            if (line.startsWith('@@') || line.startsWith('---') || line.startsWith('+++')) {
+                return; // skip diff headers
+            }
+            if (line.startsWith('-')) {
+                leftLines.push(line.substring(1));
+            } else if (line.startsWith('+')) {
+                rightLines.push(line.substring(1));
+            } else if (line.startsWith(' ')) {
+                // Context line with standard space prefix
+                leftLines.push(line.substring(1));
+                rightLines.push(line.substring(1));
+            } else {
+                // Unprefixed line (e.g. empty line in diff output)
+                leftLines.push(line);
+                rightLines.push(line);
+            }
+        });
+        return { left: leftLines.join('\n'), right: rightLines.join('\n') };
+    }
+
+    /**
+     * Toggle the side-by-side CodeMirror merge view for a raw DSL diff.
+     *
+     * @param {string} diffText — the raw unified diff
+     */
+    function toggleSideBySide(diffText) {
+        var rawDiff = diffText || currentRawDslDiff;
+        var mergeContainer = document.getElementById('dslMergeViewContainer');
+        var textDiff = document.getElementById('dslTextDiffContainer');
+        if (!mergeContainer || !textDiff || !rawDiff) return;
+
+        var isActive = mergeContainer.style.display !== 'none';
+        if (isActive) {
+            mergeContainer.style.display = 'none';
+            mergeContainer.innerHTML = '';
+            textDiff.style.display = '';
+            return;
+        }
+
+        var sides = parseDiffSides(rawDiff);
+        textDiff.style.display = 'none';
+        mergeContainer.style.display = '';
+
+        import('/js/shared/taxonomy-dsl-codemirror.mjs').then(function (mod) {
+            mod.createMergeView(mergeContainer, sides.left, sides.right);
+        });
+    }
+
     return {
         showDialog: showDialog,
         compareWithCommit: compareWithCommit,
         doCompare: doCompare,
-        renderComparison: renderComparison
+        renderComparison: renderComparison,
+        toggleSideBySide: toggleSideBySide
     };
 }());
