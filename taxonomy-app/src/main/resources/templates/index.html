@@ -732,6 +732,19 @@
                  ============================================================ -->
             <div id="tab-versions" class="tab-pane-content d-none">
 
+                <!-- Context Navigation History -->
+                <details id="contextHistoryPanel" class="mb-3">
+                    <summary class="fw-semibold" style="cursor:pointer;">&#128337; Navigation History</summary>
+                    <div class="mt-2">
+                        <div id="contextHistoryTimeline" class="border rounded p-2 bg-light" style="max-height:350px; overflow-y:auto; font-size:0.85em;">
+                            <div class="text-muted">Loading navigation history...</div>
+                        </div>
+                        <div class="mt-1 d-flex gap-2">
+                            <button id="contextHistoryRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                        </div>
+                    </div>
+                </details>
+
                 <!-- Undo / Redo bar -->
                 <div class="card shadow-sm mb-3">
                     <div class="card-body d-flex align-items-center gap-3 py-2">
@@ -843,6 +856,51 @@
                     </div>
                 </div>
 
+                <script>
+                // Context History Timeline
+                (function() {
+                    var panel = document.getElementById('contextHistoryPanel');
+                    var refreshBtn = document.getElementById('contextHistoryRefreshBtn');
+
+                    function loadContextHistory() {
+                        fetch('/api/workspace/history')
+                            .then(function(r) { return r.json(); })
+                            .then(function(records) {
+                                var container = document.getElementById('contextHistoryTimeline');
+                                if (!records || records.length === 0) {
+                                    container.innerHTML = '<div class="text-muted">No navigation history yet.</div>';
+                                    return;
+                                }
+                                var html = '<div class="timeline">';
+                                records.forEach(function(r, idx) {
+                                    var ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '';
+                                    var reasonBadge = r.reason ? '<span class="badge bg-secondary">' + r.reason + '</span>' : '';
+                                    var fromCtx = r.fromContext || '';
+                                    var toCtx = r.toContext || '';
+                                    var isLatest = idx === records.length - 1;
+                                    html += '<div class="d-flex align-items-start mb-2' + (isLatest ? ' fw-bold' : '') + '">';
+                                    html += '<div class="me-2 text-center" style="min-width:24px;">';
+                                    html += isLatest ? '&#128205;' : '&#128900;';
+                                    html += '</div>';
+                                    html += '<div class="flex-grow-1">';
+                                    html += '<div class="small text-muted">' + ts + ' ' + reasonBadge + '</div>';
+                                    if (fromCtx) html += '<div class="small"><span class="text-muted">From:</span> ' + fromCtx + '</div>';
+                                    if (toCtx) html += '<div class="small"><span class="text-muted">To:</span> ' + toCtx + '</div>';
+                                    html += '</div></div>';
+                                });
+                                html += '</div>';
+                                container.innerHTML = html;
+                            })
+                            .catch(function() {
+                                document.getElementById('contextHistoryTimeline').innerHTML = '<div class="text-danger">Failed to load history.</div>';
+                            });
+                    }
+
+                    if (panel) panel.addEventListener('toggle', function() { if (panel.open) loadContextHistory(); });
+                    if (refreshBtn) refreshBtn.addEventListener('click', loadContextHistory);
+                })();
+                </script>
+
             </div><!-- /tab-versions -->
 
             <!-- ============================================================
@@ -951,8 +1009,74 @@
                  ============================================================ -->
             <div id="tab-admin" class="tab-pane-content d-none">
 
+                <!-- Health Overview Dashboard -->
+                <details id="healthDashboard" class="mt-0">
+                    <summary class="fw-semibold" style="cursor:pointer;">&#128154; Health Dashboard</summary>
+                    <div id="healthDashboardContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
+                        <div class="row g-2">
+                            <div class="col-md-3">
+                                <div class="card">
+                                    <div class="card-body p-2 text-center">
+                                        <div class="small text-muted">Overall</div>
+                                        <div id="healthOverallBadge" class="fs-5">⏳</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card">
+                                    <div class="card-body p-2 text-center">
+                                        <div class="small text-muted">AI/LLM</div>
+                                        <div id="healthAiBadge" class="fs-5">⏳</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card">
+                                    <div class="card-body p-2 text-center">
+                                        <div class="small text-muted">Embedding</div>
+                                        <div id="healthEmbeddingBadge" class="fs-5">⏳</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card">
+                                    <div class="card-body p-2 text-center">
+                                        <div class="small text-muted">Memory</div>
+                                        <div id="healthMemoryBadge" class="fs-5">⏳</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-1">
+                        <button id="healthRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                    </div>
+                </details>
+
+                <!-- Log Viewer -->
+                <details id="logViewerPanel" class="mt-2">
+                    <summary class="fw-semibold" style="cursor:pointer;">&#128220; Log Viewer</summary>
+                    <div class="mt-2">
+                        <div class="d-flex gap-2 mb-2 flex-wrap align-items-center">
+                            <select id="logLevelFilter" class="form-select form-select-sm" style="max-width:120px;">
+                                <option value="">All Levels</option>
+                                <option value="ERROR">ERROR</option>
+                                <option value="WARN">WARN</option>
+                                <option value="INFO">INFO</option>
+                                <option value="DEBUG">DEBUG</option>
+                            </select>
+                            <input id="logComponentFilter" type="text" class="form-control form-control-sm" placeholder="Filter by component..." style="max-width:200px;">
+                            <button id="logRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                            <button id="logAutoScrollBtn" class="btn btn-sm btn-outline-info">&#8595; Auto-scroll</button>
+                        </div>
+                        <div id="logViewerContent" class="border rounded bg-dark text-light p-2 font-monospace" style="font-size:0.75em; max-height:400px; overflow-y:auto;">
+                            <div class="text-muted">Open to load logs.</div>
+                        </div>
+                    </div>
+                </details>
+
                 <!-- Quality Dashboard -->
-                <details id="qualityDashboard" class="mt-0">
+                <details id="qualityDashboard" class="mt-2">
                     <summary class="fw-semibold" style="cursor:pointer;">&#128202; Quality Dashboard</summary>
                     <div id="qualityDashboardContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
                         <div class="text-muted">Open to load metrics.</div>
@@ -1007,6 +1131,103 @@
                         <div id="promptStatusMsg" class="mt-2 small"></div>
                     </div>
                 </details>
+
+                <script>
+                // Health Dashboard
+                (function() {
+                    var healthPanel = document.getElementById('healthDashboard');
+                    var healthRefreshBtn = document.getElementById('healthRefreshBtn');
+
+                    function loadHealth() {
+                        fetch('/api/admin/health-summary')
+                            .then(function(r) { return r.json(); })
+                            .then(function(data) {
+                                var overall = document.getElementById('healthOverallBadge');
+                                overall.textContent = data.overall === 'UP' ? '✅ UP' : '⚠️ DEGRADED';
+                                overall.className = 'fs-5 ' + (data.overall === 'UP' ? 'text-success' : 'text-warning');
+
+                                var ai = document.getElementById('healthAiBadge');
+                                ai.textContent = data.ai && data.ai.available ? '✅ Available' : '⚠️ Unavailable';
+                                ai.className = 'fs-5 ' + (data.ai && data.ai.available ? 'text-success' : 'text-warning');
+
+                                var emb = document.getElementById('healthEmbeddingBadge');
+                                emb.textContent = data.embedding && data.embedding.enabled ? '✅ Active' : '⚠️ Inactive';
+                                emb.className = 'fs-5 ' + (data.embedding && data.embedding.enabled ? 'text-success' : 'text-warning');
+
+                                var mem = document.getElementById('healthMemoryBadge');
+                                if (data.memory) {
+                                    var pct = Math.round(data.memory.usedPct || 0);
+                                    mem.textContent = pct + '%';
+                                    mem.className = 'fs-5 ' + (pct < 80 ? 'text-success' : 'text-warning');
+                                }
+                            })
+                            .catch(function() {
+                                document.getElementById('healthOverallBadge').textContent = '❌ Error';
+                            });
+                    }
+
+                    if (healthPanel) healthPanel.addEventListener('toggle', function() { if (healthPanel.open) loadHealth(); });
+                    if (healthRefreshBtn) healthRefreshBtn.addEventListener('click', loadHealth);
+                })();
+
+                // Log Viewer
+                (function() {
+                    var logPanel = document.getElementById('logViewerPanel');
+                    var logRefreshBtn = document.getElementById('logRefreshBtn');
+                    var autoScroll = true;
+
+                    function escHtml(s) {
+                        return s.replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
+                    }
+
+                    function loadLogs() {
+                        var level = document.getElementById('logLevelFilter').value;
+                        var component = document.getElementById('logComponentFilter').value;
+                        var url = '/api/admin/logs?limit=200';
+                        if (level) url += '&level=' + encodeURIComponent(level);
+                        if (component) url += '&component=' + encodeURIComponent(component);
+
+                        fetch(url)
+                            .then(function(r) { return r.json(); })
+                            .then(function(entries) {
+                                var container = document.getElementById('logViewerContent');
+                                if (!entries || entries.length === 0) {
+                                    container.innerHTML = '<div class="text-muted">No log entries found.</div>';
+                                    return;
+                                }
+                                var html = entries.map(function(e) {
+                                    var ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString('en', {hour12:false, fractionalSecondDigits:3}) : '';
+                                    var levelClass = {ERROR:'text-danger',WARN:'text-warning',INFO:'text-info',DEBUG:'text-secondary'}[e.level] || '';
+                                    var shortLogger = e.logger ? e.logger.split('.').pop() : '';
+                                    return '<div><span class="text-muted">' + ts + '</span> <span class="badge ' + levelClass + '" style="min-width:45px;">' + (e.level||'') + '</span> <span class="text-primary">' + shortLogger + '</span> ' + escHtml(e.message || '') + '</div>';
+                                }).join('');
+                                container.innerHTML = html;
+                                if (autoScroll) container.scrollTop = container.scrollHeight;
+                            })
+                            .catch(function() {
+                                document.getElementById('logViewerContent').innerHTML = '<div class="text-danger">Failed to load logs.</div>';
+                            });
+                    }
+
+                    if (logPanel) logPanel.addEventListener('toggle', function() { if (logPanel.open) loadLogs(); });
+                    if (logRefreshBtn) logRefreshBtn.addEventListener('click', loadLogs);
+
+                    var autoScrollBtn = document.getElementById('logAutoScrollBtn');
+                    if (autoScrollBtn) autoScrollBtn.addEventListener('click', function() {
+                        autoScroll = !autoScroll;
+                        this.classList.toggle('btn-outline-info', autoScroll);
+                        this.classList.toggle('btn-info', !autoScroll);
+                    });
+
+                    var levelFilter = document.getElementById('logLevelFilter');
+                    var compFilter = document.getElementById('logComponentFilter');
+                    if (levelFilter) levelFilter.addEventListener('change', loadLogs);
+                    if (compFilter) compFilter.addEventListener('input', (function() {
+                        var timer;
+                        return function() { clearTimeout(timer); timer = setTimeout(loadLogs, 300); };
+                    })());
+                })();
+                </script>
 
             </div><!-- /tab-admin -->
 
