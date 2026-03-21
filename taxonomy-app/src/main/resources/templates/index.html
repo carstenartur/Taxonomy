@@ -14,7 +14,7 @@
 </head>
 <body>
 <!-- Skip-Link (BITV 2.0 / WCAG 2.4.1) -->
-<a href="#mainContent" class="skip-link">Skip to main content</a>
+<a href="#mainContent" class="skip-link" th:text="#{skip.link}">Skip to main content</a>
 
 <!-- ARIA Live Regions for status messages (WCAG 4.1.3) -->
 <div id="a11yStatus" class="visually-hidden"
@@ -132,7 +132,7 @@
                     <div id="taxonomyTree" role="tree" aria-label="Taxonomy Tree">
                         <div class="text-center text-muted py-5">
                             <div class="spinner-border spinner-border-sm" role="status"></div>
-                            Loading taxonomy&hellip;
+                            <span th:text="#{browse.tree.loading}">Loading taxonomy&hellip;</span>
                         </div>
                     </div>
                 </div>
@@ -239,7 +239,7 @@
                                 </select>
                             </div>
                             <div class="col-3">
-                                <button id="searchBtn" class="btn btn-sm btn-primary w-100">&#128269; Search</button>
+                                <button id="searchBtn" class="btn btn-sm btn-primary w-100" th:text="#{browse.search.btn}">&#128269; Search</button>
                             </div>
                         </div>
                         <div id="searchResultsArea" style="display:none; max-height:300px; overflow-y:auto;"></div>
@@ -260,7 +260,7 @@
                         <div class="text-muted p-2" th:text="#{browse.llm.log.empty}">No LLM calls yet. Run an analysis to see LLM communication details.</div>
                     </div>
                     <div class="mt-1">
-                        <button id="clearLlmLog" class="btn btn-sm btn-outline-secondary">&#128465;&#65039; Clear Log</button>
+                        <button id="clearLlmLog" class="btn btn-sm btn-outline-secondary" th:text="#{llm.log.btn.clear}">&#128465;&#65039; Clear Log</button>
                     </div>
                 </details>
 
@@ -436,7 +436,7 @@
                 <!-- Architecture sub-tabs -->
                 <ul class="nav nav-pills nav-fill mb-3" id="architectureSubTabs">
                     <li class="nav-item">
-                        <a class="nav-link active" data-subtab="arch-overview" href="#">&#127959;&#65039; Overview</a>
+                        <a class="nav-link active" data-subtab="arch-overview" href="#"><span th:text="#{arch.overview.label}">&#127959;&#65039; Overview</span></a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" data-subtab="arch-relations" href="#">&#128279; <span th:text="#{nav.relations}">Relations</span></a>
@@ -507,7 +507,7 @@
                                 <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false" th:text="#{quality.rejected}">Rejected</button>
                             </div>
                             <div id="proposalsTableContainer" class="table-responsive">
-                                <div class="text-muted small p-2">Loading proposals&hellip;</div>
+                                <div class="text-muted small p-2" th:text="#{proposals.loading.text}">Loading proposals&hellip;</div>
                             </div>
                         </div>
                     </div>
@@ -532,10 +532,10 @@
                                 <option value="CONTAINS">CONTAINS</option>
                                 <option value="RELATED_TO">RELATED_TO</option>
                             </select>
-                            <button id="createRelationBtn" class="btn btn-sm btn-outline-primary">&#10133; New Relation</button>
+                            <button id="createRelationBtn" class="btn btn-sm btn-outline-primary" th:text="#{browse.relations.btn.new}">&#10133; New Relation</button>
                         </div>
                         <div id="relationsTableContainer" style="max-height:300px; overflow-y:auto;">
-                            <div class="text-muted small p-2">Open to load relations.</div>
+                            <div class="text-muted small p-2" th:text="#{browse.relations.placeholder}">Open to load relations.</div>
                         </div>
                     </div>
                 </details>
@@ -556,22 +556,22 @@
                     <div class="card-header fw-semibold" th:text="#{export.card.title}">&#128229; Export Architecture</div>
                     <div class="card-body">
 
-                        <p class="text-muted small mb-3">
+                        <p class="text-muted small mb-3" th:text="#{export.description}">
                             Export the current analysis results as a diagram or data file.
                             Run an analysis on the <strong>Analyze</strong> tab first to enable diagram exports.
                         </p>
 
                         <div id="exportHint" class="alert alert-info py-2 small mb-3" th:title="#{export.hint.title}" title="Export buttons appear after a successful analysis with scores > 0">
-                            &#128203; Run an analysis to enable diagram exports (SVG, PNG, PDF, DOT, Mermaid, Visio, ArchiMate).
+                            <span th:text="#{export.hint.text}">&#128203; Run an analysis to enable diagram exports (SVG, PNG, PDF, DOT, Mermaid, Visio, ArchiMate).</span>
                         </div>
 
                         <!-- Diagram exports (visible after analysis) -->
                         <div id="exportGroup" style="display:none;">
-                            <h6 class="mb-2">Diagram Formats</h6>
+                            <h6 class="mb-2" th:text="#{export.diagram.heading}">Diagram Formats</h6>
                             <div class="d-flex gap-2 flex-wrap mb-3 align-items-center">
                                 <button id="exportSvg"       class="btn btn-outline-primary" th:title="#{export.btn.svg.title}" title="Download current view as SVG">&#128229; SVG</button>
                                 <button id="exportPng"       class="btn btn-outline-primary" th:title="#{export.btn.png.title}" title="Download current view as PNG">&#128229; PNG</button>
-                                <label class="ms-1 me-2 small text-muted" title="PNG export resolution multiplier">
+                                <label class="ms-1 me-2 small text-muted" th:title="#{export.png.res.label}" title="PNG export resolution multiplier">
                                     <select id="pngResolution" class="form-select form-select-sm d-inline-block" style="width:auto;">
                                         <option value="1">1&#215;</option>
                                         <option value="2" selected>2&#215;</option>
@@ -584,12 +584,12 @@
                                 <button id="exportMermaid"   class="btn btn-outline-info" th:title="#{export.btn.mermaid.title}" title="Export Architecture View as Mermaid flowchart for Markdown documents">&#128229; Mermaid</button>
                                 <button id="exportStructurizr" class="btn btn-outline-info" th:title="#{export.btn.structurizr.title}" title="Export Architecture View as Structurizr DSL for C4 tools">&#128229; Structurizr (.dsl)</button>
                             </div>
-                            <h6 class="mb-2">Tree Formats</h6>
+                            <h6 class="mb-2" th:text="#{export.tree.heading}">Tree Formats</h6>
                             <div class="d-flex gap-2 flex-wrap mb-3">
                                 <button id="exportDot"         class="btn btn-outline-warning" th:title="#{export.btn.dot.title}" title="Export taxonomy hierarchy as Graphviz DOT for yEd, Gephi, or Graphviz">&#128229; DOT (Graphviz)</button>
                                 <button id="exportMermaidTree" class="btn btn-outline-warning" th:title="#{export.btn.mermaid.tree.title}" title="Export taxonomy hierarchy as Mermaid tree for Markdown documents">&#128229; Mermaid Tree</button>
                             </div>
-                            <h6 class="mb-2">Data Formats</h6>
+                            <h6 class="mb-2" th:text="#{export.data.heading}">Data Formats</h6>
                             <div class="d-flex gap-2 flex-wrap mb-3">
                                 <button id="exportCsv"  class="btn btn-outline-success" th:title="#{export.btn.csv.title}" title="Download scores as CSV spreadsheet">&#128229; CSV</button>
                                 <button id="exportJson" class="btn btn-outline-success" th:title="#{export.btn.json.title}" title="Download scores as JSON file">&#128229; JSON</button>
@@ -604,7 +604,7 @@
 
                         <hr class="my-3"/>
 
-                        <h6 class="mb-2">Import &amp; Load</h6>
+                        <h6 class="mb-2" th:text="#{export.import.heading}">Import &amp; Load</h6>
                         <div class="d-flex gap-2 flex-wrap">
                             <button id="importJson" class="btn btn-outline-secondary" th:title="#{export.btn.load.title}" title="Load saved analysis from JSON file">&#128228; Load Scores</button>
                             <input type="file" id="importJsonFile" accept=".json" style="display:none;">
@@ -714,7 +714,7 @@
                             </div>
                             <div class="form-check mt-2">
                                 <input class="form-check-input" type="checkbox" id="graphApqcFilter" value="">
-                                <label class="form-check-label small" for="graphApqcFilter">
+                                <label class="form-check-label small" for="graphApqcFilter" th:text="#{graph.apqc.filter.label}">
                                     Show APQC hierarchy only (filter nodes with <code>x-source-framework: apqc</code>)
                                 </label>
                             </div>
@@ -735,13 +735,13 @@
 
                 <!-- Context Navigation History -->
                 <details id="contextHistoryPanel" class="mb-3">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128337; Navigation History</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{context.history.title}">&#128337; Navigation History</summary>
                     <div class="mt-2">
                         <div id="contextHistoryTimeline" class="border rounded p-2 bg-light" style="max-height:350px; overflow-y:auto; font-size:0.85em;">
-                            <div class="text-muted">Loading navigation history...</div>
+                            <div class="text-muted" th:text="#{context.history.loading}">Loading navigation history...</div>
                         </div>
                         <div class="mt-1 d-flex gap-2">
-                            <button id="contextHistoryRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                            <button id="contextHistoryRefreshBtn" class="btn btn-sm btn-outline-secondary" th:text="#{context.history.btn.refresh}">&#128260; Refresh</button>
                         </div>
                     </div>
                 </details>
@@ -755,7 +755,7 @@
                             <button id="wsRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; <span th:text="#{workspace.manager.refresh}">Refresh</span></button>
                         </div>
                         <div id="workspaceListContainer" class="row g-2">
-                            <div class="text-muted small">Open to load workspaces.</div>
+                            <div class="text-muted small" th:text="#{workspace.manager.placeholder}">Open to load workspaces.</div>
                         </div>
                     </div>
                 </details>
@@ -768,7 +768,7 @@
                         </button>
                         <span id="versionsUndoInfo" class="text-muted small"></span>
                         <div class="ms-auto d-flex align-items-center gap-2">
-                            <label for="versionsBranchSelect" class="form-label mb-0 small text-muted">Branch:</label>
+                            <label for="versionsBranchSelect" class="form-label mb-0 small text-muted" th:text="#{versions.branch.label}">Branch:</label>
                             <select id="versionsBranchSelect" class="form-select form-select-sm" style="width:auto;min-width:120px;"></select>
                         </div>
                     </div>
@@ -1031,13 +1031,13 @@
 
                 <!-- Health Overview Dashboard -->
                 <details id="healthDashboard" class="mt-0">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128154; Health Dashboard</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{admin.health.title}">&#128154; Health Dashboard</summary>
                     <div id="healthDashboardContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
                         <div class="row g-2">
                             <div class="col-md-3">
                                 <div class="card">
                                     <div class="card-body p-2 text-center">
-                                        <div class="small text-muted">Overall</div>
+                                        <div class="small text-muted" th:text="#{health.overall.label}">Overall</div>
                                         <div id="healthOverallBadge" class="fs-5">⏳</div>
                                     </div>
                                 </div>
@@ -1045,7 +1045,7 @@
                             <div class="col-md-3">
                                 <div class="card">
                                     <div class="card-body p-2 text-center">
-                                        <div class="small text-muted">AI/LLM</div>
+                                        <div class="small text-muted" th:text="#{health.ai.label}">AI/LLM</div>
                                         <div id="healthAiBadge" class="fs-5">⏳</div>
                                     </div>
                                 </div>
@@ -1053,7 +1053,7 @@
                             <div class="col-md-3">
                                 <div class="card">
                                     <div class="card-body p-2 text-center">
-                                        <div class="small text-muted">Embedding</div>
+                                        <div class="small text-muted" th:text="#{health.embedding.label}">Embedding</div>
                                         <div id="healthEmbeddingBadge" class="fs-5">⏳</div>
                                     </div>
                                 </div>
@@ -1061,7 +1061,7 @@
                             <div class="col-md-3">
                                 <div class="card">
                                     <div class="card-body p-2 text-center">
-                                        <div class="small text-muted">Memory</div>
+                                        <div class="small text-muted" th:text="#{health.memory.label}">Memory</div>
                                         <div id="healthMemoryBadge" class="fs-5">⏳</div>
                                     </div>
                                 </div>
@@ -1069,7 +1069,7 @@
                         </div>
                     </div>
                     <div class="mt-1">
-                        <button id="healthRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                        <button id="healthRefreshBtn" class="btn btn-sm btn-outline-secondary" th:text="#{admin.health.btn.refresh}">&#128260; Refresh</button>
                     </div>
                 </details>
 
@@ -1090,43 +1090,43 @@
                             <button id="logAutoScrollBtn" class="btn btn-sm btn-outline-info" th:text="#{log.btn.autoscroll}">&#8595; Auto-scroll</button>
                         </div>
                         <div id="logViewerContent" class="border rounded bg-dark text-light p-2 font-monospace" style="font-size:0.75em; max-height:400px; overflow-y:auto;">
-                            <div class="text-muted">Open to load logs.</div>
+                            <div class="text-muted" th:text="#{log.viewer.placeholder}">Open to load logs.</div>
                         </div>
                     </div>
                 </details>
 
                 <!-- Quality Dashboard -->
                 <details id="qualityDashboard" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128202; Quality Dashboard</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{admin.quality.title}">&#128202; Quality Dashboard</summary>
                     <div id="qualityDashboardContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
-                        <div class="text-muted">Open to load metrics.</div>
+                        <div class="text-muted" th:text="#{admin.quality.placeholder}">Open to load metrics.</div>
                     </div>
                     <div class="mt-1">
-                        <button id="qualityRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                        <button id="qualityRefreshBtn" class="btn btn-sm btn-outline-secondary" th:text="#{admin.quality.btn.refresh}">&#128260; Refresh</button>
                     </div>
                 </details>
 
                 <!-- Requirement Coverage -->
                 <details id="coverageDashboard" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128203; Requirement Coverage</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{admin.coverage.title}">&#128203; Requirement Coverage</summary>
                     <div id="coverageDashboardContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
-                        <div class="text-muted">Open to load coverage data.</div>
+                        <div class="text-muted" th:text="#{admin.coverage.placeholder}">Open to load coverage data.</div>
                     </div>
                     <div class="mt-1 d-flex gap-2 flex-wrap">
-                        <button id="coverageRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
-                        <button id="coverageRecordBtn" class="btn btn-sm btn-outline-primary">&#128229; Record Current Analysis</button>
+                        <button id="coverageRefreshBtn" class="btn btn-sm btn-outline-secondary" th:text="#{admin.coverage.btn.refresh}">&#128260; Refresh</button>
+                        <button id="coverageRecordBtn" class="btn btn-sm btn-outline-primary" th:text="#{admin.coverage.btn.record}">&#128229; Record Current Analysis</button>
                     </div>
                 </details>
 
                 <!-- LLM Diagnostics Panel (collapsible) -->
                 <details id="diagnosticsPanel" class="mt-2 diagnostics-panel">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128295; LLM Diagnostics</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{admin.diagnostics.panel.title}">&#128295; LLM Diagnostics</summary>
                     <div id="diagnosticsContent" class="mt-1 border rounded bg-light p-2" style="font-size:0.85em;">
-                        <div class="text-muted">Loading diagnostics&hellip;</div>
+                        <div class="text-muted" th:text="#{admin.diagnostics.loading}">Loading diagnostics&hellip;</div>
                     </div>
                     <div class="mt-1 d-flex gap-2 flex-wrap">
-                        <button id="refreshDiagnostics" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
-                        <button id="testLlmConnection" class="btn btn-sm btn-outline-primary">&#129514; Test Connection</button>
+                        <button id="refreshDiagnostics" class="btn btn-sm btn-outline-secondary" th:text="#{admin.diagnostics.btn.refresh}">&#128260; Refresh</button>
+                        <button id="testLlmConnection" class="btn btn-sm btn-outline-primary" th:text="#{admin.diagnostics.btn.test}">&#129514; Test Connection</button>
                     </div>
                 </details>
 
@@ -1135,7 +1135,7 @@
                     <summary class="fw-semibold" style="cursor:pointer;" th:text="#{prompt.template.title}">&#128221; Prompt Templates</summary>
                     <div class="mt-2">
                         <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-                            <label for="promptSelect" class="form-label mb-0 text-nowrap">Taxonomy:</label>
+                            <label for="promptSelect" class="form-label mb-0 text-nowrap" th:text="#{prompt.taxonomy.label}">Taxonomy:</label>
                             <select id="promptSelect" class="form-select form-select-sm" style="max-width:220px;"></select>
                             <span id="promptOverrideBadge" class="badge bg-warning text-dark d-none" th:text="#{prompt.badge.overridden}">Overridden</span>
                             <span id="promptDefaultBadge" class="badge bg-secondary d-none" th:text="#{prompt.badge.default}">Default</span>
@@ -1602,7 +1602,7 @@
                 </div>
                 <!-- Notices tab -->
                 <div id="about-notices-pane" class="d-none">
-                    <p class="small text-muted">This product contains third-party open-source software. Full text: <a href="/THIRD-PARTY-NOTICES.md" target="_blank">THIRD-PARTY-NOTICES.md</a></p>
+                    <p class="small text-muted"><span th:text="#{about.third.party.notice}">This product contains third-party open-source software. Full text:</span> <a href="/THIRD-PARTY-NOTICES.md" target="_blank">THIRD-PARTY-NOTICES.md</a></p>
                     <pre id="aboutThirdPartyContent" class="small bg-light p-2 rounded" style="max-height:400px;overflow-y:auto;white-space:pre-wrap;"><span class="text-muted">Loading…</span></pre>
                 </div>
             </div>
