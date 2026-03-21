@@ -79,7 +79,7 @@ Pure data types shared across modules:
 | Package | Contents |
 |---|---|
 | `com.taxonomy.dto` | DTOs (Data Transfer Objects) — `TaxonomyNodeDto`, `AnalysisResult`, `ArchitectureRecommendation`, `GapAnalysisView`, `SavedAnalysis`, etc. |
-| `com.taxonomy.model` | 5 domain enums — `RelationType` (12 values), `SeedType`, `HypothesisStatus`, `ProposalStatus`, `SourceType` |
+| `com.taxonomy.model` | 6 domain enums — `RelationType` (12 values), `SeedType`, `HypothesisStatus`, `ProposalStatus`, `SourceType`, `LinkType` |
 
 ### taxonomy-dsl
 
@@ -399,9 +399,9 @@ The product UI supports both German and English users:
 - All **UI labels, buttons, tooltips, and help texts** must exist in both languages
   (managed via Thymeleaf i18n or JS locale bundles)
 - Documentation under `docs/en/` is written in English
-- A future `docs/de/` directory may contain German translations of key documents
+- Translations are maintained in `docs/de/` (German)
 - The README is English-only (international audience)
-- **Validation:** When adding a new UI element, confirm both `messages_en.properties`
+- **Validation:** When adding a new UI element, confirm both `messages.properties`
   and `messages_de.properties` (or equivalent i18n mechanism) contain the translation
 
 ### Terminology Rules
@@ -462,7 +462,7 @@ The product UI supports both German and English. The current i18n mechanism uses
 
 ### Adding a new UI string
 
-1. Add the English string to `messages_en.properties` (or the JS locale bundle)
+1. Add the English string to `messages.properties` (or the JS locale bundle)
 2. Add the German translation to `messages_de.properties`
 3. Use the message key in the Thymeleaf template or JS module — never hard-code text
 4. Verify both languages by switching the browser locale
@@ -479,8 +479,41 @@ The product UI supports both German and English. The current i18n mechanism uses
 |---|---|
 | `README.md` | English |
 | `docs/en/*` | English |
-| `docs/de/*` (future) | German |
+| `docs/de/*` | German |
 | UI labels, buttons, tooltips | Both DE and EN (via i18n) |
 | Error messages shown to users | Both DE and EN |
 | Log messages / developer output | English only |
 | Inline code comments | English only |
+
+---
+
+## Documentation Update Rule
+
+> **Mandatory:** Documentation must be updated whenever any of the following change:
+>
+> - **User-visible behavior** — new or modified GUI flows, buttons, panels, dialogs
+> - **Workspace semantics** — workspace lifecycle, provisioning, multi-user isolation, sync behavior
+> - **Versioning behavior** — branching, merging, cherry-picking, conflict resolution, DSL format changes
+> - **Help content** — embedded help topics, tooltips, onboarding flows
+> - **REST API contracts** — new endpoints, changed request/response schemas, removed endpoints
+> - **Configuration options** — new environment variables, changed defaults, deprecated settings
+
+### What to update
+
+| Change type | Documents to update |
+|---|---|
+| New GUI feature | `USER_GUIDE.md`, `FEATURE_MATRIX.md`, screenshot via `ScreenshotGeneratorIT` |
+| New REST endpoint | `API_REFERENCE.md`, `CURL_EXAMPLES.md` |
+| New DSL block/property | `CONCEPTS.md`, `GIT_INTEGRATION.md`, `DEVELOPER_GUIDE.md` |
+| Workspace model change | `WORKSPACE_VERSIONING.md`, `CONCEPTS.md`, internal `WORKSPACE_DESIGN.md` |
+| New config variable | `CONFIGURATION_REFERENCE.md`, `DEPLOYMENT_GUIDE.md` |
+| New help document | Register in `HelpController.DOC_METADATA`, add `help.toc.*` i18n keys, create `docs/en/` and `docs/de/` files |
+| Any i18n-visible change | Both `messages.properties` and `messages_de.properties` |
+
+### Enforcement
+
+The following CI tests catch common documentation drift:
+
+- `HelpControllerTest.everyEnglishDocFileIsRegistered()` — every `docs/en/*.md` must be in `HelpController`
+- `HelpControllerTest.everyRegisteredDocHasI18nKeys()` — every registered doc must have EN + DE i18n keys
+- `I18nApiControllerTest.englishAndGermanHaveSameKeys()` — EN and DE bundles must have identical key sets

@@ -79,7 +79,7 @@ Reine Datentypen, die modulübergreifend genutzt werden:
 | Paket | Inhalt |
 |---|---|
 | `com.taxonomy.dto` | DTOs (Data Transfer Objects) — `TaxonomyNodeDto`, `AnalysisResult`, `ArchitectureRecommendation`, `GapAnalysisView`, `SavedAnalysis` usw. |
-| `com.taxonomy.model` | 5 Domain-Enums — `RelationType` (12 Werte), `SeedType`, `HypothesisStatus`, `ProposalStatus`, `SourceType` |
+| `com.taxonomy.model` | 6 Domain-Enums — `RelationType` (12 Werte), `SeedType`, `HypothesisStatus`, `ProposalStatus`, `SourceType`, `LinkType` |
 
 ### taxonomy-dsl
 
@@ -357,3 +357,149 @@ class MyControllerTest {
 4. **SimpleDriverDataSource:** Die Anwendung verwendet `SimpleDriverDataSource` anstelle von HikariCP für die In-Process-HSQLDB. Das bedeutet keinen Connection Pool — was beabsichtigt ist, um den Speicherverbrauch zu reduzieren. Wechseln Sie nicht zu HikariCP, ohne die Auswirkungen zu verstehen.
 
 5. **Rate Limiting in Tests:** Der `RateLimitFilter` ist während `@SpringBootTest`-Tests aktiv. Wenn Tests LLM-gestützte Endpunkte schnell hintereinander aufrufen, können sie vom Rate Limiting betroffen sein. Erwägen Sie bei Bedarf die Deaktivierung über `TAXONOMY_RATE_LIMIT_PER_MINUTE=0` in der Testkonfiguration.
+
+---
+
+## Definition of Done — Benutzer-sichtbare Funktionen
+
+> **Produktregel:** Der Taxonomy Architecture Analyzer ist ein **GUI-first**-Produkt.
+> REST-/API-Endpunkte unterstützen Automatisierung, CI-Integration und Admin-Werkzeuge — sie sind
+> **kein** Ersatz für GUI-Workflows, die für Endbenutzer bestimmt sind.
+
+Eine benutzer-sichtbare Funktion gilt nur als **abgeschlossen**, wenn ALLE folgenden Kriterien erfüllt sind:
+
+| Kriterium | Erforderlich für Endbenutzer-Funktionen | Erforderlich für Admin-/Automatisierungsfunktionen |
+|---|:---:|:---:|
+| GUI-Flow existiert in `index.html` + JS-Module | ✅ | — |
+| Benutzerhandbuch (`USER_GUIDE.md`) dokumentiert den Workflow | ✅ | — |
+| Screenshots zeigen den funktionierenden Produktzustand | ✅ | — |
+| Eingebettete Hilfe / Tooltip in der GUI | ✅ (wo zutreffend) | — |
+| REST-Endpunkt existiert | ✅ | ✅ |
+| API_REFERENCE.md aktualisiert | ✅ | ✅ |
+| Integrations-/Unit-Tests vorhanden | ✅ | ✅ |
+| FEATURE_MATRIX.md-Zeile aktualisiert | ✅ | ✅ |
+
+### Was NICHT als abgeschlossene Funktion zählt:
+
+- ❌ Ein REST-Endpunkt existiert, aber kein GUI-Button/-Dialog/-Panel referenziert ihn
+- ❌ Ein curl-Beispiel ist dokumentiert, aber keine UI-Anleitung existiert
+- ❌ Swagger zeigt den Endpunkt, aber das Benutzerhandbuch beschreibt ihn nicht
+- ❌ Ein Screenshot zeigt einen Fehlerzustand anstelle des erwarteten Ergebnisses
+
+### Klassifizierung von Funktionen
+
+| Kategorie | Liefererwartung | Beispiele |
+|---|---|---|
+| **GUI-first (Endbenutzer)** | GUI + Doku + Hilfe + Screenshot + REST | Analyse, Export, Baum-Exploration, Vorschläge, Vergleich, Verlauf |
+| **API-first (Automatisierung)** | REST + API-Doku | Diagnose, Embedding-Status, Admin-Benutzerverwaltung, CI-Trigger |
+| **Nur Admin** | REST oder GUI (Admin-Panel) + API-Doku | Benutzer-CRUD, Workspace-Eviction, Rate-Limit-Konfiguration |
+
+### Zweisprachige UI-Regel (Deutsch / Englisch)
+
+Das Produkt unterstützt sowohl deutsche als auch englische Benutzer:
+- Alle **UI-Labels, Buttons, Tooltips und Hilfetexte** müssen in beiden Sprachen vorhanden sein
+  (verwaltet über Thymeleaf-i18n oder JS-Locale-Bundles)
+- Dokumentation unter `docs/en/` ist auf Englisch
+- Übersetzungen werden in `docs/de/` (Deutsch) gepflegt
+- Die README ist nur auf Englisch (internationales Publikum)
+- **Validierung:** Beim Hinzufügen eines neuen UI-Elements bestätigen, dass sowohl `messages.properties`
+  als auch `messages_de.properties` (oder der entsprechende i18n-Mechanismus) die Übersetzung enthalten
+
+### Terminologieregeln
+
+Benutzer-sichtbarer Text muss domänengerechte Begriffe anstelle von reiner Git-Terminologie verwenden:
+
+| Verwende dies | Nicht dies |
+|----------|----------|
+| „Gemeinsamer Bereich" / „Shared Space" | „Central Repository" |
+| „Mein Arbeitsbereich" / „My Workspace" | „User Repository" |
+| „Variante" / „Variant" | „Branch" (in benutzer-sichtbaren Kontexten) |
+| „Für Team veröffentlichen" / „Publish for Team" | „Push" oder „Merge" |
+| „Vom Team synchronisieren" / „Sync from Team" | „Pull" oder „Fetch" |
+| „Aktuelle Version" / „Current Version" | „HEAD" |
+| „Einzeländerung übernehmen" / „Apply Single Change" | „Cherry-Pick" |
+| „Integrieren" / „Integrate" | „Merge" (in benutzer-sichtbaren Kontexten) |
+
+**Niemals** rohe Git-Begriffe (`fork`, `clone`, `fetch`, `refs`, `rebase`) in der
+Standard-Benutzeroberfläche anzeigen. Diese dürfen in Entwicklerdokumentation und Admin-Werkzeugen erscheinen.
+
+---
+
+## Screenshot-Konventionen
+
+Screenshots werden automatisch von `ScreenshotGeneratorIT` generiert und in `docs/images/` gespeichert.
+
+### Regeln:
+
+1. **Nur funktionierende Zustände:** Screenshots müssen erfolgreiche, repräsentative Produktzustände zeigen.
+   Keine Screenshots mit:
+   - Backend-Fehlerseiten (500, Stack Traces)
+   - Leeren/Ladezuständen ohne Daten
+   - Fehlerhaften Layouts oder JS-Fehlern in der Konsole
+
+2. **Namenskonvention:** `NN-beschreibender-name.png` (z. B. `15-scored-taxonomy-tree.png`)
+
+3. **Neugenerierung:** Nach jeder UI-Änderung betroffene Screenshots neu generieren:
+   ```
+   mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
+   ```
+
+4. **Checkliste für PRs mit UI-Änderungen:**
+   - [ ] Screenshots neu generiert
+   - [ ] Keine Fehlerzustände in Screenshots
+   - [ ] Benutzerhandbuch-Referenzen aktualisiert, wenn sich das Layout geändert hat
+   - [ ] Sowohl DE- als auch EN-Labels werden korrekt dargestellt
+
+---
+
+## Internationalisierung (i18n) — Deutsch / Englisch
+
+Die Produkt-UI unterstützt sowohl Deutsch als auch Englisch. Der aktuelle i18n-Mechanismus verwendet:
+- Thymeleaf `th:text` mit Message-Keys für server-gerendertes HTML
+- JavaScript-Locale-Bundles für clientseitige Texte
+
+### Einen neuen UI-Text hinzufügen
+
+1. Den englischen Text in `messages.properties` hinzufügen (oder ins JS-Locale-Bundle)
+2. Die deutsche Übersetzung in `messages_de.properties` hinzufügen
+3. Den Message-Key im Thymeleaf-Template oder JS-Modul verwenden — niemals Text hart kodieren
+4. Beide Sprachen durch Wechseln der Browser-Locale verifizieren
+
+> **Benutzer-sichtbare Funktionen sind nicht abgeschlossen, wenn sie nur per REST existieren.**
+> Jeder sichtbare Text in Templates muss `th:text="#{...}"` verwenden. Jeder JavaScript-generierte
+> Text muss `TaxonomyI18n.t('key')` verwenden. Hart kodierte Textliterale sind nicht akzeptabel.
+> Die bestehenden Tests `I18nApiControllerTest.englishAndGermanHaveSameKeys()` und
+> `HelpControllerTest.everyRegisteredDocHasI18nKeys()` erzwingen dies auf CI-Ebene.
+
+---
+
+## Dokumentations-Aktualisierungsregel
+
+> **Pflicht:** Die Dokumentation muss aktualisiert werden, wenn sich Folgendes ändert:
+>
+> - **Benutzer-sichtbares Verhalten** — neue oder geänderte GUI-Flows, Buttons, Panels, Dialoge
+> - **Workspace-Semantik** — Workspace-Lebenszyklus, Provisionierung, Multi-User-Isolation, Sync-Verhalten
+> - **Versionierungsverhalten** — Branching, Merging, Cherry-Picking, Konfliktlösung, DSL-Formatänderungen
+> - **Hilfe-Inhalte** — eingebettete Hilfe-Themen, Tooltips, Onboarding-Flows
+> - **REST-API-Verträge** — neue Endpunkte, geänderte Request/Response-Schemas, entfernte Endpunkte
+> - **Konfigurationsoptionen** — neue Umgebungsvariablen, geänderte Standardwerte, veraltete Einstellungen
+
+### Was aktualisiert werden muss
+
+| Änderungstyp | Zu aktualisierende Dokumente |
+|---|---|
+| Neue GUI-Funktion | `USER_GUIDE.md`, `FEATURE_MATRIX.md`, Screenshot via `ScreenshotGeneratorIT` |
+| Neuer REST-Endpunkt | `API_REFERENCE.md`, `CURL_EXAMPLES.md` |
+| Neuer DSL-Block/Property | `CONCEPTS.md`, `GIT_INTEGRATION.md`, `DEVELOPER_GUIDE.md` |
+| Workspace-Modell-Änderung | `WORKSPACE_VERSIONING.md`, `CONCEPTS.md`, internes `WORKSPACE_DESIGN.md` |
+| Neue Konfigurationsvariable | `CONFIGURATION_REFERENCE.md`, `DEPLOYMENT_GUIDE.md` |
+| Neues Hilfe-Dokument | In `HelpController.DOC_METADATA` registrieren, `help.toc.*` i18n-Keys hinzufügen, `docs/en/` und `docs/de/` Dateien erstellen |
+| Jede i18n-sichtbare Änderung | Sowohl `messages.properties` als auch `messages_de.properties` |
+
+### Durchsetzung
+
+Die folgenden CI-Tests erkennen häufige Dokumentationsdrift:
+
+- `HelpControllerTest.everyEnglishDocFileIsRegistered()` — jede `docs/en/*.md` muss in `HelpController` registriert sein
+- `HelpControllerTest.everyRegisteredDocHasI18nKeys()` — jedes registrierte Dokument muss EN + DE i18n-Keys haben
+- `I18nApiControllerTest.englishAndGermanHaveSameKeys()` — EN- und DE-Bundles müssen identische Key-Sets haben

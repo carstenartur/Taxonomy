@@ -54,12 +54,12 @@ This file tracks known documentation gaps and improvement opportunities. Items m
 
 Full i18n support has been implemented:
 
-1. ✅ **Backend**: `I18nConfig` with `MessageSource`, `messages.properties` (English, 375 keys), `messages_de.properties` (German, 375 keys).
+1. ✅ **Backend**: `I18nConfig` with `MessageSource`, `messages.properties` (English, 1130+ keys), `messages_de.properties` (German, 1130+ keys).
 2. ✅ **Templates**: Thymeleaf `#{…}` expressions used throughout `index.html`.
 3. ✅ **JavaScript**: `taxonomy-i18n.js` module loads translations from `/api/i18n/{locale}` and exposes `TaxonomyI18n.t('key')`.
 4. ✅ **Locale detection**: `WebMvcConfig` with `CookieLocaleResolver` + `LocaleChangeInterceptor` (`?lang=` parameter). UI language selector in navbar with `localStorage` persistence.
 5. ✅ **LLM prompts**: Prompt templates are customisable via the Prompt Template Editor — they can be translated per deployment without code changes.
-6. ✅ **Documentation**: `docs/en/` (31 English files) and `docs/de/` (31 German files) with full parity. `HelpController` resolves docs by locale with fallback chain: `docs/{lang}/` → `docs/en/`. All 31 docs are accessible via the in-app Help tab. Adding a new language requires creating a `docs/{lang}/` directory with translated `.md` files.
+6. ✅ **Documentation**: `docs/en/` (36 English files) and `docs/de/` (36 German files). `HelpController` resolves docs by locale with fallback chain: `docs/{lang}/` → `docs/en/`. All 36 docs are accessible via the in-app Help tab. Adding a new language requires creating a `docs/{lang}/` directory with translated `.md` files.
 
 ---
 
@@ -112,7 +112,7 @@ Full i18n support has been implemented:
 - [x] Module architecture (4 modules) — ARCHITECTURE.md §Module Architecture
 - [x] DSL storage architecture (JGit/Hibernate) — ARCHITECTURE.md §DSL Storage Architecture
 - [x] Rate limiting — ARCHITECTURE.md §Rate Limiting
-- [x] All 15 controllers listed in architecture diagram — ARCHITECTURE.md §High-Level Architecture
+- [x] All controllers listed in architecture diagram — ARCHITECTURE.md §High-Level Architecture
 - [x] Git state tracking — ARCHITECTURE.md §Git State as First-Class Concept
 - [x] ViewContext and Action Guards — ARCHITECTURE.md §ViewContext and Action Guards
 - [x] Framework Mapping Layer — ARCHITECTURE.md §Framework Mapping Layer
