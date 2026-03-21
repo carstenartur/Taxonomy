@@ -45,7 +45,7 @@ class HierarchicalChunkingServiceTest {
     }
 
     @Test
-    void nestedSectionsProduce_chunksWithHierarchicalContext() {
+    void nestedSectionsProduceChunksWithHierarchicalContext() {
         DocumentSection root = new DocumentSection(0, "Document Root");
         root.setSectionPath("Document Root");
 
