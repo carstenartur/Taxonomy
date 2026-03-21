@@ -14,6 +14,8 @@ public class SourceFragmentDto {
     private Integer pageTo;
     private String fragmentText;
     private String fragmentHash;
+    private Long parentFragmentId;
+    private Integer chunkLevel;
 
     public SourceFragmentDto() {}
 
@@ -40,4 +42,10 @@ public class SourceFragmentDto {
 
     public String getFragmentHash() { return fragmentHash; }
     public void setFragmentHash(String fragmentHash) { this.fragmentHash = fragmentHash; }
+
+    public Long getParentFragmentId() { return parentFragmentId; }
+    public void setParentFragmentId(Long parentFragmentId) { this.parentFragmentId = parentFragmentId; }
+
+    public Integer getChunkLevel() { return chunkLevel; }
+    public void setChunkLevel(Integer chunkLevel) { this.chunkLevel = chunkLevel; }
 }

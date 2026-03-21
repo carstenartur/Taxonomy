@@ -324,4 +324,33 @@ class AstToModelMapperTest {
         assertThat(rsl.getConfidence()).isEqualTo(0.91);
         assertThat(rsl.getNote()).isEqualTo("Parsed from regulation");
     }
+
+    @Test
+    void mapSourceFragmentWithParentAndChunkLevel() {
+        String dsl = """
+                sourceFragment SFR-002 {
+                  sourceVersion: "SRCV-001";
+                  sectionPath: "Chapter 2 > Section 3";
+                  paragraphRef: "§ 4 Abs. 2";
+                  pageFrom: 10;
+                  pageTo: 12;
+                  text: "The authority must ensure data protection.";
+                  fragmentHash: "sha256:abc789";
+                  parentFragment: "SFR-001";
+                  chunkLevel: 3;
+                }
+                """;
+        DocumentAst doc = parser.parse(dsl);
+        CanonicalArchitectureModel model = mapper.map(doc);
+
+        assertThat(model.getSourceFragments()).hasSize(1);
+        ArchitectureSourceFragment sf = model.getSourceFragments().get(0);
+        assertThat(sf.getId()).isEqualTo("SFR-002");
+        assertThat(sf.getSourceVersionId()).isEqualTo("SRCV-001");
+        assertThat(sf.getSectionPath()).isEqualTo("Chapter 2 > Section 3");
+        assertThat(sf.getParentFragmentId()).isEqualTo("SFR-001");
+        assertThat(sf.getChunkLevel()).isEqualTo(3);
+        assertThat(sf.getPageFrom()).isEqualTo(10);
+        assertThat(sf.getPageTo()).isEqualTo(12);
+    }
 }

@@ -17,6 +17,8 @@ public class ArchitectureSourceFragment {
     private Integer pageTo;
     private String text;
     private String fragmentHash;
+    private String parentFragmentId;
+    private Integer chunkLevel;
     private Map<String, String> extensions = new LinkedHashMap<>();
 
     public ArchitectureSourceFragment() {}
@@ -49,6 +51,12 @@ public class ArchitectureSourceFragment {
 
     public String getFragmentHash() { return fragmentHash; }
     public void setFragmentHash(String fragmentHash) { this.fragmentHash = fragmentHash; }
+
+    public String getParentFragmentId() { return parentFragmentId; }
+    public void setParentFragmentId(String parentFragmentId) { this.parentFragmentId = parentFragmentId; }
+
+    public Integer getChunkLevel() { return chunkLevel; }
+    public void setChunkLevel(Integer chunkLevel) { this.chunkLevel = chunkLevel; }
 
     public Map<String, String> getExtensions() { return extensions; }
     public void setExtensions(Map<String, String> extensions) { this.extensions = extensions; }

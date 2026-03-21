@@ -94,6 +94,34 @@ public class DocumentAnalysisService {
         return parseRegulationMappingResponse(response);
     }
 
+    /**
+     * Extracts requirement candidates from document text using the LLM,
+     * enhanced with parent-section context for better understanding.
+     *
+     * <p>The parent context is prepended to the prompt so the LLM can
+     * understand the chunk in its broader document context.
+     *
+     * @param chunkText     the text of the specific chunk
+     * @param parentContext the surrounding section context
+     * @param sourceType    "REGULATION" or other
+     * @return list of AI-extracted requirement candidates
+     */
+    public List<AiExtractedCandidate> extractWithAiContextual(String chunkText,
+                                                               String parentContext,
+                                                               String sourceType) {
+        if (!llmService.isAvailable()) {
+            log.warn("LLM is not available — AI extraction skipped");
+            return Collections.emptyList();
+        }
+
+        String contextualText = parentContext != null && !parentContext.isBlank()
+                ? "Context (parent section): " + parentContext + "\n\n"
+                  + "Text to analyse:\n" + chunkText
+                : chunkText;
+
+        return extractWithAi(contextualText, sourceType);
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     List<AiExtractedCandidate> parseExtractionResponse(String response) {

@@ -144,17 +144,117 @@ class DocumentParserServiceTest {
     }
 
     @Test
-    void longParagraphsAreTruncated() {
+    void longParagraphsAreSplitNotTruncated() {
+        // Build a paragraph well over 2000 chars with distinct sentences
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 300; i++) {
-            sb.append("Word ");
+        for (int i = 1; i <= 50; i++) {
+            sb.append("Sentence number ").append(i)
+                    .append(" provides important detail about the requirement specification. ");
         }
+        String text = sb.toString(); // ~3800 chars
 
-        String text = sb.toString(); // ~1500 chars
         List<RequirementCandidate> candidates = parserService.extractCandidates(text);
 
-        // Should have 1 candidate, text should be within limits
+        // Must produce more than 1 candidate (split, not truncated)
+        assertThat(candidates).hasSizeGreaterThan(1);
+
+        // No text should be lost — concatenated candidate texts must contain all sentences
+        String allText = candidates.stream()
+                .map(RequirementCandidate::getText)
+                .reduce("", (a, b) -> a + " " + b);
+        for (int i = 1; i <= 50; i++) {
+            assertThat(allText).contains("Sentence number " + i);
+        }
+
+        // Each candidate must be within the max length
+        for (RequirementCandidate c : candidates) {
+            assertThat(c.getText().length()).isLessThanOrEqualTo(2000);
+        }
+    }
+
+    // ── A.1 — DOCX style heading markers ──────────────────────────────────────
+
+    @Test
+    void docxHeadingMarkersAreRecognised() {
+        String text = "[H1] Introduction\n\n" +
+                "This chapter describes the fundamental requirements for the information system " +
+                "architecture in public sector applications.\n\n" +
+                "[H2] Scope\n\n" +
+                "The scope of this document covers all architectural requirements " +
+                "relevant to the public administration domain context.";
+
+        List<RequirementCandidate> candidates = parserService.extractCandidates(text);
+
+        assertThat(candidates).hasSize(2);
+        assertThat(candidates.get(0).getSectionHeading()).isEqualTo("Introduction");
+        // Second candidate should have hierarchical path
+        assertThat(candidates.get(1).getSectionHeading()).isEqualTo("Introduction > Scope");
+    }
+
+    // ── A.3 — Hierarchical sectionPath ────────────────────────────────────────
+
+    @Test
+    void hierarchicalSectionPathIsBuiltFromNestedHeadings() {
+        String text = "Chapter 1 Architecture\n\n" +
+                "Section 2 Security\n\n" +
+                "The system must enforce role-based access control for all administrative " +
+                "operations and maintain audit logs of critical actions.";
+
+        List<RequirementCandidate> candidates = parserService.extractCandidates(text);
+
         assertThat(candidates).hasSize(1);
-        assertThat(candidates.get(0).getText().length()).isLessThanOrEqualTo(2001); // MAX + ellipsis
+        assertThat(candidates.get(0).getSectionHeading())
+                .isEqualTo("Chapter 1 Architecture > Section 2 Security");
+    }
+
+    @Test
+    void sameLevelHeadingReplacesCurrentOnStack() {
+        String text = "§ 1 Allgemeines\n\n" +
+                "Die allgemeinen Bestimmungen gelten für alle Verfahren der Verwaltung und sind verbindlich.\n\n" +
+                "§ 2 Datenschutz\n\n" +
+                "Personenbezogene Daten dürfen nur verarbeitet werden, wenn eine gesetzliche Grundlage vorliegt.";
+
+        List<RequirementCandidate> candidates = parserService.extractCandidates(text);
+
+        assertThat(candidates).hasSize(2);
+        // §1 and §2 are the same level — §2 replaces §1, not nested
+        assertThat(candidates.get(0).getSectionHeading()).isEqualTo("§ 1 Allgemeines");
+        assertThat(candidates.get(1).getSectionHeading()).isEqualTo("§ 2 Datenschutz");
+    }
+
+    @Test
+    void deeperLevelHeadingPopsCorrectly() {
+        String text = "Chapter 1 Overview\n\n" +
+                "Section 2 Details\n\n" +
+                "This section covers the detailed requirements for secure data processing " +
+                "across all application components and integration layers.\n\n" +
+                "Chapter 3 Deployment\n\n" +
+                "The deployment strategy must support continuous delivery for all microservices " +
+                "and maintain zero-downtime during rolling updates.";
+
+        List<RequirementCandidate> candidates = parserService.extractCandidates(text);
+
+        assertThat(candidates).hasSize(2);
+        // "Section 2" is under "Chapter 1"
+        assertThat(candidates.get(0).getSectionHeading())
+                .isEqualTo("Chapter 1 Overview > Section 2 Details");
+        // "Chapter 3" resets the stack (pops both Section 2 and Chapter 1)
+        assertThat(candidates.get(1).getSectionHeading())
+                .isEqualTo("Chapter 3 Deployment");
+    }
+
+    @Test
+    void overlongSentenceIsHardSplit() {
+        // A single "sentence" (no period/punctuation) longer than 2000 chars
+        String longSentence = "X".repeat(3000);
+
+        List<RequirementCandidate> candidates = parserService.extractCandidates(longSentence);
+
+        // Must produce at least 2 candidates from the hard split
+        assertThat(candidates).hasSizeGreaterThan(1);
+        // Each chunk must respect the max length
+        for (RequirementCandidate c : candidates) {
+            assertThat(c.getText().length()).isLessThanOrEqualTo(2000);
+        }
     }
 }

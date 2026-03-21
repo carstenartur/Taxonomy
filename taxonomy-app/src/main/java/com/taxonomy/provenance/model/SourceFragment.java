@@ -36,6 +36,12 @@ public class SourceFragment {
     @Column(name = "fragment_hash", length = 128)
     private String fragmentHash;
 
+    @Column(name = "parent_fragment_id")
+    private Long parentFragmentId;
+
+    @Column(name = "chunk_level")
+    private Integer chunkLevel;
+
     protected SourceFragment() {}
 
     public SourceFragment(SourceVersion sourceVersion, String fragmentText) {
@@ -68,4 +74,10 @@ public class SourceFragment {
 
     public String getFragmentHash() { return fragmentHash; }
     public void setFragmentHash(String fragmentHash) { this.fragmentHash = fragmentHash; }
+
+    public Long getParentFragmentId() { return parentFragmentId; }
+    public void setParentFragmentId(Long parentFragmentId) { this.parentFragmentId = parentFragmentId; }
+
+    public Integer getChunkLevel() { return chunkLevel; }
+    public void setChunkLevel(Integer chunkLevel) { this.chunkLevel = chunkLevel; }
 }

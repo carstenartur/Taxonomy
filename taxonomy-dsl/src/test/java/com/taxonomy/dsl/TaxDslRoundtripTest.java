@@ -355,4 +355,36 @@ class TaxDslRoundtripTest {
         assertThat(reqPos).isLessThan(srcPos);
         assertThat(srcPos).isLessThan(rslPos);
     }
+
+    @Test
+    void roundtripSourceFragmentWithParentAndChunkLevel() {
+        String dsl = """
+                sourceFragment SFR-002 {
+                  sourceVersion: "SRCV-001";
+                  sectionPath: "Chapter 2 > Section 3";
+                  paragraphRef: "§ 4";
+                  pageFrom: 10;
+                  pageTo: 12;
+                  text: "The authority must ensure data protection.";
+                  fragmentHash: "sha256:abc789";
+                  parentFragment: "SFR-001";
+                  chunkLevel: 3;
+                }
+                """;
+
+        DocumentAst doc1 = parser.parse(dsl);
+        String serialized = serializer.serialize(doc1);
+        DocumentAst doc2 = parser.parse(serialized);
+
+        assertThat(doc2.blocksOfKind("sourceFragment")).hasSize(1);
+        var sf = doc2.blocksOfKind("sourceFragment").get(0);
+        assertThat(sf.property("parentFragment")).isEqualTo("SFR-001");
+        assertThat(sf.property("chunkLevel")).isEqualTo("3");
+        assertThat(sf.property("sectionPath")).isEqualTo("Chapter 2 > Section 3");
+        assertThat(sf.property("fragmentHash")).isEqualTo("sha256:abc789");
+
+        // Double serialization is stable
+        String serialized2 = serializer.serialize(doc2);
+        assertThat(serialized2).isEqualTo(serialized);
+    }
 }
