@@ -12,6 +12,8 @@
 (function () {
     'use strict';
 
+    var t = TaxonomyI18n.t;
+
     const uploadBtn    = document.getElementById('docImportUploadBtn');
     const fileInput    = document.getElementById('docImportFile');
     const titleInput   = document.getElementById('docImportTitle');
@@ -92,8 +94,8 @@
         try {
             var resp = await fetchWithCsrf('/api/documents/upload', formData);
             if (!resp.ok) {
-                var err = await resp.json().catch(function() { return { error: 'Upload failed' }; });
-                statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(err.error || 'Upload failed') + '</span>';
+                var err = await resp.json().catch(function() { return { error: t('docimport.upload.failed') }; });
+                statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(err.error || t('docimport.upload.failed')) + '</span>';
                 return;
             }
 
@@ -129,8 +131,8 @@
         try {
             var resp = await fetchWithCsrf('/api/documents/extract-ai', formData);
             if (!resp.ok) {
-                var err = await resp.json().catch(function() { return { error: 'AI extraction failed' }; });
-                statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(err.error || 'AI extraction failed') + '</span>';
+                var err = await resp.json().catch(function() { return { error: t('docimport.ai.failed') }; });
+                statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(err.error || t('docimport.ai.failed')) + '</span>';
                 return;
             }
 
@@ -165,8 +167,8 @@
         try {
             var resp = await fetchWithCsrf('/api/documents/map-regulation', formData);
             if (!resp.ok) {
-                var err = await resp.json().catch(function() { return { error: 'Regulation mapping failed' }; });
-                statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(err.error || 'Regulation mapping failed') + '</span>';
+                var err = await resp.json().catch(function() { return { error: t('docimport.regulation.failed') }; });
+                statusArea.innerHTML = '<span class="text-danger">❌ ' + escapeHtml(err.error || t('docimport.regulation.failed')) + '</span>';
                 return;
             }
 
