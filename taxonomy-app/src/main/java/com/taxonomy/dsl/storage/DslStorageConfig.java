@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Spring configuration for the DSL Git storage layer.
  *
- * <p>Wires a {@link DslGitRepository} backed by the existing HSQLDB
+ * <p>Wires a {@link DslGitRepositoryFactory} backed by the existing HSQLDB
  * {@link SessionFactory} via the {@code sandbox-jgit-storage-hibernate}
  * pattern. All Git objects (blobs, trees, commits) are stored in the
  * {@code git_packs} database table; refs are stored as reftable data
@@ -18,10 +18,11 @@ import org.springframework.context.annotation.Configuration;
  * <p>No filesystem is used — the entire Git repository lives in the
  * database that Spring Boot already manages.
  *
- * <p>The {@link DslGitRepositoryFactory} is the primary entry point for
- * obtaining per-workspace or system repository instances. A singleton
- * {@link DslGitRepository} bean is retained for backward compatibility
- * with existing services that inject it directly.
+ * <p>The {@link DslGitRepositoryFactory} is the single entry point for
+ * obtaining per-workspace or system repository instances. All services
+ * inject the factory and call {@code getSystemRepository()} to obtain
+ * the shared system repository, or {@code getWorkspaceRepository(id)}
+ * for per-workspace isolation.
  */
 @Configuration
 public class DslStorageConfig {
@@ -33,16 +34,4 @@ public class DslStorageConfig {
         log.info("Creating DslGitRepositoryFactory (database-backed via SessionFactory)");
         return new DslGitRepositoryFactory(sessionFactory);
     }
-
-    /**
-     * Legacy bean for backward compatibility — delegates to the factory's
-     * system repository. Existing services that inject {@link DslGitRepository}
-     * directly will continue to receive the shared system repository.
-     */
-    @Bean
-    public DslGitRepository dslGitRepository(DslGitRepositoryFactory factory) {
-        log.info("Creating DslGitRepository (system repository via factory)");
-        return factory.getSystemRepository();
-    }
 }
-

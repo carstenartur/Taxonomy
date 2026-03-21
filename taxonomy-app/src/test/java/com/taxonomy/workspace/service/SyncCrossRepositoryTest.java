@@ -59,10 +59,8 @@ class SyncCrossRepositoryTest {
         SystemRepositoryService sysRepoService = mock(SystemRepositoryService.class);
         when(sysRepoService.getSharedBranch()).thenReturn("draft");
 
-        DslGitRepository sysGitRepo = factory.getSystemRepository();
-
         syncService = new SyncIntegrationService(
-                syncStateRepo, sysGitRepo, wsRepo, sysRepoService, factory);
+                syncStateRepo, wsRepo, sysRepoService, factory);
 
         when(syncStateRepo.findByUsername(anyString())).thenReturn(Optional.empty());
         when(syncStateRepo.save(any(SyncState.class)))

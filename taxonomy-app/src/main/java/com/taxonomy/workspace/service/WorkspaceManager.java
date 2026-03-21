@@ -62,12 +62,11 @@ public class WorkspaceManager {
     public WorkspaceManager(UserWorkspaceRepository workspaceRepository,
                             @Value("${taxonomy.context.max-history:50}") int maxHistory,
                             SystemRepositoryService systemRepositoryService,
-                            DslGitRepository gitRepository,
                             DslGitRepositoryFactory repositoryFactory) {
         this.workspaceRepository = workspaceRepository;
         this.maxHistory = maxHistory;
         this.systemRepositoryService = systemRepositoryService;
-        this.gitRepository = gitRepository;
+        this.gitRepository = repositoryFactory.getSystemRepository();
         this.repositoryFactory = repositoryFactory;
     }
 
@@ -78,7 +77,11 @@ public class WorkspaceManager {
                             int maxHistory,
                             SystemRepositoryService systemRepositoryService,
                             DslGitRepository gitRepository) {
-        this(workspaceRepository, maxHistory, systemRepositoryService, gitRepository, null);
+        this.workspaceRepository = workspaceRepository;
+        this.maxHistory = maxHistory;
+        this.systemRepositoryService = systemRepositoryService;
+        this.gitRepository = gitRepository;
+        this.repositoryFactory = null;
     }
 
     /**

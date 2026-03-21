@@ -38,8 +38,7 @@ class WorkspaceRepositoryIsolationTest {
         sysRepoService = mock(SystemRepositoryService.class);
         factory = new DslGitRepositoryFactory(null); // in-memory mode
 
-        DslGitRepository sysGitRepo = factory.getSystemRepository();
-        manager = new WorkspaceManager(wsRepo, 50, sysRepoService, sysGitRepo, factory);
+        manager = new WorkspaceManager(wsRepo, 50, sysRepoService, factory);
 
         when(wsRepo.save(any(UserWorkspace.class)))
                 .thenAnswer(inv -> inv.getArgument(0));

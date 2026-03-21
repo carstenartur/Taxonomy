@@ -39,12 +39,11 @@ public class SyncIntegrationService {
 
     @Autowired
     public SyncIntegrationService(SyncStateRepository syncStateRepository,
-                                  DslGitRepository gitRepository,
                                   UserWorkspaceRepository workspaceRepository,
                                   SystemRepositoryService systemRepositoryService,
                                   DslGitRepositoryFactory repositoryFactory) {
         this.syncStateRepository = syncStateRepository;
-        this.gitRepository = gitRepository;
+        this.gitRepository = repositoryFactory.getSystemRepository();
         this.workspaceRepository = workspaceRepository;
         this.systemRepositoryService = systemRepositoryService;
         this.repositoryFactory = repositoryFactory;
@@ -57,7 +56,11 @@ public class SyncIntegrationService {
                                   DslGitRepository gitRepository,
                                   UserWorkspaceRepository workspaceRepository,
                                   SystemRepositoryService systemRepositoryService) {
-        this(syncStateRepository, gitRepository, workspaceRepository, systemRepositoryService, null);
+        this.syncStateRepository = syncStateRepository;
+        this.gitRepository = gitRepository;
+        this.workspaceRepository = workspaceRepository;
+        this.systemRepositoryService = systemRepositoryService;
+        this.repositoryFactory = null;
     }
 
     private String getSharedBranch() {
