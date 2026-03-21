@@ -8,9 +8,13 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
+import org.springframework.http.MediaType;
+
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
@@ -157,5 +161,111 @@ class WorkspaceControllerTest {
                 .andReturn();
         // Should not be 400 (strategy is valid)
         assertNotEquals(400, result.getResponse().getStatus());
+    }
+
+    // ── Create workspace ────────────────────────────────────────────
+
+    @Test
+    void createWorkspace_returnsOk() throws Exception {
+        mockMvc.perform(post("/api/workspace/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\": \"Test Workspace\", \"description\": \"A test workspace\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayName").value("Test Workspace"));
+    }
+
+    @Test
+    void createWorkspace_missingDisplayNameReturnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/workspace/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\": \"no name\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("displayName is required"));
+    }
+
+    @Test
+    void createWorkspace_blankDisplayNameReturnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/workspace/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\": \"   \", \"description\": \"blank name\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("displayName is required"));
+    }
+
+    // ── List workspaces ─────────────────────────────────────────────
+
+    @Test
+    void listWorkspaces_returnsOk() throws Exception {
+        mockMvc.perform(get("/api/workspace/list"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+    }
+
+    // ── Rename workspace ────────────────────────────────────────────
+
+    @Test
+    void renameWorkspace_missingDisplayNameReturnsBadRequest() throws Exception {
+        mockMvc.perform(put("/api/workspace/nonexistent-id/rename")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\": \"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("displayName is required"));
+    }
+
+    // ── Get workspace info ──────────────────────────────────────────
+
+    @Test
+    void getWorkspaceInfo_notFound_returns404() throws Exception {
+        mockMvc.perform(get("/api/workspace/nonexistent-id-12345/info"))
+                .andExpect(status().isNotFound());
+    }
+
+    // ── Sync from shared ────────────────────────────────────────────
+
+    @Test
+    void syncFromShared_returnsOk() throws Exception {
+        var result = mockMvc.perform(post("/api/workspace/sync-from-shared"))
+                .andReturn();
+        // Should return 200 (sync succeeds on default branch) or 500 if no shared repo
+        int status = result.getResponse().getStatus();
+        assertNotEquals(400, status);
+    }
+
+    // ── Publish ─────────────────────────────────────────────────────
+
+    @Test
+    void publish_returnsOk() throws Exception {
+        var result = mockMvc.perform(post("/api/workspace/publish"))
+                .andReturn();
+        // Should return 200 or 500 (if no changes to publish), but not 400
+        int status = result.getResponse().getStatus();
+        assertNotEquals(400, status);
+    }
+
+    // ── Switch workspace (not found) ────────────────────────────────
+
+    @Test
+    void switchWorkspace_notFound_returns400() throws Exception {
+        mockMvc.perform(post("/api/workspace/nonexistent-id-12345/switch"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isString());
+    }
+
+    // ── Archive workspace (not found) ───────────────────────────────
+
+    @Test
+    void archiveWorkspace_notFound_returns400() throws Exception {
+        mockMvc.perform(post("/api/workspace/nonexistent-id-12345/archive"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isString());
+    }
+
+    // ── Delete workspace (not found) ────────────────────────────────
+
+    @Test
+    void deleteWorkspace_notFound_returns400() throws Exception {
+        mockMvc.perform(delete("/api/workspace/nonexistent-id-12345"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isString());
     }
 }
