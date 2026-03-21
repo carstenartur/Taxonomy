@@ -186,13 +186,17 @@ window.TaxonomyContextCompare = (function () {
             var added = [];
             var changed = [];
             var removed = [];
+            var requirements = [];
 
             comparison.changes.forEach(function (c) {
-                if (c.changeType === 'ADD') added.push(c);
+                if (c.category === 'REQUIREMENT' || c.category === 'requirement') {
+                    requirements.push(c);
+                } else if (c.changeType === 'ADD') added.push(c);
                 else if (c.changeType === 'REMOVE') removed.push(c);
                 else changed.push(c);
             });
 
+            html += '<div data-compare-section="elements">';
             html += '<div class="compare-changes-grid">';
 
             // Added column
@@ -247,6 +251,95 @@ window.TaxonomyContextCompare = (function () {
             html += '</div></div>';
 
             html += '</div>'; // compare-changes-grid
+            html += '</div>'; // data-compare-section="elements"
+
+            // Relations section
+            if (comparison.relationChanges && comparison.relationChanges.length > 0) {
+                html += '<div data-compare-section="relations">';
+                html += '<div class="compare-changes-grid">';
+                html += '<div class="compare-column">';
+                html += '<div class="col-header col-added">\uD83D\uDFE2 Relations Added</div>';
+                html += '<div class="col-items">';
+                var relAdded = comparison.relationChanges.filter(function(c) { return c.changeType === 'ADD'; });
+                if (relAdded.length === 0) {
+                    html += '<div class="col-empty">No added relations</div>';
+                } else {
+                    relAdded.forEach(function(c) {
+                        html += '<div class="col-item item-added"><span>' + escapeHtml(c.description) + '</span></div>';
+                    });
+                }
+                html += '</div></div>';
+                html += '<div class="compare-column">';
+                html += '<div class="col-header col-changed">\uD83D\uDFE1 Relations Changed</div>';
+                html += '<div class="col-items">';
+                var relChanged = comparison.relationChanges.filter(function(c) { return c.changeType !== 'ADD' && c.changeType !== 'REMOVE'; });
+                if (relChanged.length === 0) {
+                    html += '<div class="col-empty">No changed relations</div>';
+                } else {
+                    relChanged.forEach(function(c) {
+                        html += '<div class="col-item item-changed"><span>' + escapeHtml(c.description) + '</span></div>';
+                    });
+                }
+                html += '</div></div>';
+                html += '<div class="compare-column">';
+                html += '<div class="col-header col-removed">\uD83D\uDD34 Relations Removed</div>';
+                html += '<div class="col-items">';
+                var relRemoved = comparison.relationChanges.filter(function(c) { return c.changeType === 'REMOVE'; });
+                if (relRemoved.length === 0) {
+                    html += '<div class="col-empty">No removed relations</div>';
+                } else {
+                    relRemoved.forEach(function(c) {
+                        html += '<div class="col-item item-removed"><span>' + escapeHtml(c.description) + '</span></div>';
+                    });
+                }
+                html += '</div></div>';
+                html += '</div>'; // compare-changes-grid
+                html += '</div>'; // data-compare-section="relations"
+            }
+
+            // Requirements section
+            if (requirements.length > 0) {
+                html += '<div data-compare-section="requirements">';
+                html += '<div class="compare-changes-grid">';
+                html += '<div class="compare-column">';
+                html += '<div class="col-header col-added">\uD83D\uDFE2 Requirements Added</div>';
+                html += '<div class="col-items">';
+                var reqAdded = requirements.filter(function(c) { return c.changeType === 'ADD'; });
+                if (reqAdded.length === 0) {
+                    html += '<div class="col-empty">No added requirements</div>';
+                } else {
+                    reqAdded.forEach(function(c) {
+                        html += '<div class="col-item item-added"><span>' + escapeHtml(c.description) + '</span></div>';
+                    });
+                }
+                html += '</div></div>';
+                html += '<div class="compare-column">';
+                html += '<div class="col-header col-changed">\uD83D\uDFE1 Requirements Changed</div>';
+                html += '<div class="col-items">';
+                var reqChanged = requirements.filter(function(c) { return c.changeType !== 'ADD' && c.changeType !== 'REMOVE'; });
+                if (reqChanged.length === 0) {
+                    html += '<div class="col-empty">No changed requirements</div>';
+                } else {
+                    reqChanged.forEach(function(c) {
+                        html += '<div class="col-item item-changed"><span>' + escapeHtml(c.description) + '</span></div>';
+                    });
+                }
+                html += '</div></div>';
+                html += '<div class="compare-column">';
+                html += '<div class="col-header col-removed">\uD83D\uDD34 Requirements Removed</div>';
+                html += '<div class="col-items">';
+                var reqRemoved = requirements.filter(function(c) { return c.changeType === 'REMOVE'; });
+                if (reqRemoved.length === 0) {
+                    html += '<div class="col-empty">No removed requirements</div>';
+                } else {
+                    reqRemoved.forEach(function(c) {
+                        html += '<div class="col-item item-removed"><span>' + escapeHtml(c.description) + '</span></div>';
+                    });
+                }
+                html += '</div></div>';
+                html += '</div>'; // compare-changes-grid
+                html += '</div>'; // data-compare-section="requirements"
+            }
         }
 
         // Level 3: Raw DSL Diff (collapsible expert mode)

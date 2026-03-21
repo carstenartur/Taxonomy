@@ -746,6 +746,20 @@
                     </div>
                 </details>
 
+                <!-- Workspace Manager -->
+                <details id="workspaceManagerPanel" class="mb-3">
+                    <summary class="fw-semibold" style="cursor:pointer;">&#128188; <span th:text="#{workspace.manager.title}">Workspace Manager</span></summary>
+                    <div class="mt-2">
+                        <div class="d-flex gap-2 mb-2 flex-wrap">
+                            <button id="wsCreateBtn" class="btn btn-sm btn-outline-primary">&#10133; <span th:text="#{workspace.manager.create}">New Workspace</span></button>
+                            <button id="wsRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; <span th:text="#{workspace.manager.refresh}">Refresh</span></button>
+                        </div>
+                        <div id="workspaceListContainer" class="row g-2">
+                            <div class="text-muted small">Open to load workspaces.</div>
+                        </div>
+                    </div>
+                </details>
+
                 <!-- Undo / Redo bar -->
                 <div class="card shadow-sm mb-3">
                     <div class="card-body d-flex align-items-center gap-3 py-2">
@@ -1950,6 +1964,15 @@
                     </div>
                 </div>
                 <button class="btn btn-primary btn-sm mb-3" onclick="TaxonomyContextCompare.doCompare()" th:text="#{compare.btn}">Compare</button>
+                <!-- Compare filter buttons -->
+                <div id="compareFilters" class="d-none mb-2">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Compare filters">
+                        <button type="button" class="btn btn-outline-secondary active compare-filter-btn" data-filter="all">All</button>
+                        <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="elements">Elements</button>
+                        <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="relations">Relations</button>
+                        <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="requirements">Requirements</button>
+                    </div>
+                </div>
                 <div id="contextCompareResults"></div>
             </div>
         </div>
@@ -2295,6 +2318,116 @@
             link.addEventListener('click', loadPreferences);
         }
     });
+}());
+</script>
+<script>
+(function() {
+    'use strict';
+    var panel = document.getElementById('workspaceManagerPanel');
+    var createBtn = document.getElementById('wsCreateBtn');
+    var refreshBtn = document.getElementById('wsRefreshBtn');
+
+    function escHtml(s) {
+        if (!s) return '';
+        return s.replace(/[&<>"']/g, function(c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+        });
+    }
+
+    function loadWorkspaces() {
+        fetch('/api/workspace/list')
+            .then(function(r) { return r.json(); })
+            .then(function(workspaces) {
+                var container = document.getElementById('workspaceListContainer');
+                if (!workspaces || workspaces.length === 0) {
+                    container.innerHTML = '<div class="col-12 text-muted small">No workspaces found.</div>';
+                    return;
+                }
+                container.innerHTML = workspaces.map(function(ws) {
+                    var defaultBadge = ws.isDefault ? ' <span class="badge bg-primary">Default</span>' : '';
+                    var name = escHtml(ws.displayName || ws.workspaceId);
+                    var desc = ws.description ? '<p class="card-text small text-muted mb-1">' + escHtml(ws.description) + '</p>' : '';
+                    var ts = ws.lastAccessedAt ? new Date(ws.lastAccessedAt).toLocaleString() : '';
+                    var branch = escHtml(ws.currentBranch || 'draft');
+                    var deleteBtn = ws.isDefault ? '' : '<button class="btn btn-sm btn-outline-danger ws-archive-btn" data-ws-id="' + escHtml(ws.workspaceId) + '" title="Archive">&#128451;</button>';
+                    return '<div class="col-md-4"><div class="card h-100"><div class="card-body p-2">' +
+                        '<h6 class="card-title mb-1">' + name + defaultBadge + '</h6>' +
+                        desc +
+                        '<div class="small text-muted mb-2">&#127793; ' + branch + (ts ? ' &middot; ' + ts : '') + '</div>' +
+                        '<div class="d-flex gap-1 flex-wrap">' +
+                        '<button class="btn btn-sm btn-outline-success ws-switch-btn" data-ws-id="' + escHtml(ws.workspaceId) + '">&#9654; Activate</button>' +
+                        deleteBtn +
+                        '</div></div></div></div>';
+                }).join('');
+
+                container.querySelectorAll('.ws-switch-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        fetch('/api/workspace/' + encodeURIComponent(this.getAttribute('data-ws-id')) + '/switch', { method: 'POST' })
+                            .then(function(r) { if (r.ok) loadWorkspaces(); });
+                    });
+                });
+                container.querySelectorAll('.ws-archive-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        if (!confirm('Archive this workspace?')) return;
+                        fetch('/api/workspace/' + encodeURIComponent(this.getAttribute('data-ws-id')) + '/archive', { method: 'POST' })
+                            .then(function(r) { if (r.ok) loadWorkspaces(); });
+                    });
+                });
+            })
+            .catch(function() {
+                document.getElementById('workspaceListContainer').innerHTML = '<div class="col-12 text-danger small">Failed to load workspaces.</div>';
+            });
+    }
+
+    function createWorkspace() {
+        var name = prompt('Workspace name:');
+        if (!name || !name.trim()) return;
+        fetch('/api/workspace/create', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ displayName: name.trim() })
+        }).then(function(r) { if (r.ok) loadWorkspaces(); });
+    }
+
+    if (panel) panel.addEventListener('toggle', function() { if (panel.open) loadWorkspaces(); });
+    if (createBtn) createBtn.addEventListener('click', createWorkspace);
+    if (refreshBtn) refreshBtn.addEventListener('click', loadWorkspaces);
+}());
+</script>
+<script>
+(function() {
+    'use strict';
+    // Compare filter buttons
+    document.querySelectorAll('.compare-filter-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.compare-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            var filter = this.getAttribute('data-filter');
+            var results = document.getElementById('contextCompareResults');
+            if (!results) return;
+            var sections = results.querySelectorAll('[data-compare-section]');
+            sections.forEach(function(s) {
+                if (filter === 'all' || s.getAttribute('data-compare-section') === filter) {
+                    s.classList.remove('d-none');
+                } else {
+                    s.classList.add('d-none');
+                }
+            });
+        });
+    });
+
+    // Show filters when compare results appear
+    var observer = new MutationObserver(function() {
+        var results = document.getElementById('contextCompareResults');
+        var filters = document.getElementById('compareFilters');
+        if (results && filters) {
+            filters.classList.toggle('d-none', results.innerHTML.trim() === '');
+        }
+    });
+    var resultsEl = document.getElementById('contextCompareResults');
+    if (resultsEl) {
+        observer.observe(resultsEl, { childList: true, subtree: true });
+    }
 }());
 </script>
 </body>
