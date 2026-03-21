@@ -1,6 +1,7 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.WorkspaceProjection;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.repository.WorkspaceProjectionRepository;
@@ -41,13 +42,14 @@ class WorkspaceProjectionServiceTest {
 
     @BeforeEach
     void setUp() {
-        gitRepo = new DslGitRepository();
+        var factory = new DslGitRepositoryFactory(null);
+        gitRepo = factory.getSystemRepository();
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         when(wsRepo.findByUsernameAndSharedFalse(anyString())).thenReturn(Optional.empty());
         workspaceManager = new WorkspaceManager(wsRepo, 50,
                 mock(SystemRepositoryService.class), gitRepo);
         projectionRepo = mock(WorkspaceProjectionRepository.class);
-        projectionService = new WorkspaceProjectionService(projectionRepo, workspaceManager, gitRepo, wsRepo);
+        projectionService = new WorkspaceProjectionService(projectionRepo, workspaceManager, factory, wsRepo);
     }
 
     // ── Projection creation ─────────────────────────────────────────

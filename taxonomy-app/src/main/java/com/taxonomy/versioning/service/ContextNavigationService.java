@@ -1,6 +1,7 @@
 package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ContextHistoryEntry;
 import com.taxonomy.dto.ContextMode;
 import com.taxonomy.dto.ContextRef;
@@ -39,11 +40,11 @@ public class ContextNavigationService {
     private final WorkspaceManager workspaceManager;
     private final int maxHistory;
 
-    public ContextNavigationService(DslGitRepository gitRepository,
+    public ContextNavigationService(DslGitRepositoryFactory repositoryFactory,
                                     RepositoryStateService stateService,
                                     WorkspaceManager workspaceManager,
                                     @Value("${taxonomy.context.max-history:50}") int maxHistory) {
-        this.gitRepository = gitRepository;
+        this.gitRepository = repositoryFactory.getSystemRepository();
         this.stateService = stateService;
         this.workspaceManager = workspaceManager;
         this.maxHistory = maxHistory;

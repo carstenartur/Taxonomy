@@ -2,6 +2,7 @@ package com.taxonomy.versioning.service;
 
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.model.*;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
@@ -55,13 +56,13 @@ public class HypothesisService {
                              RelationEvidenceRepository evidenceRepository,
                              TaxonomyRelationService relationService,
                              TaxonomyNodeRepository nodeRepository,
-                             DslGitRepository gitRepository,
+                             DslGitRepositoryFactory repositoryFactory,
                              WorkspaceContextResolver contextResolver) {
         this.hypothesisRepository = hypothesisRepository;
         this.evidenceRepository = evidenceRepository;
         this.relationService = relationService;
         this.nodeRepository = nodeRepository;
-        this.gitRepository = gitRepository;
+        this.gitRepository = repositoryFactory.getSystemRepository();
         this.contextResolver = contextResolver;
     }
 

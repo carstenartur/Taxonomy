@@ -2,6 +2,7 @@ package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.storage.DslCommit;
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ProjectionState;
 import com.taxonomy.dto.RepositoryState;
 import com.taxonomy.dto.ViewContext;
@@ -44,10 +45,10 @@ public class RepositoryStateService {
     private final WorkspaceManager workspaceManager;
     private final SystemRepositoryService systemRepositoryService;
 
-    public RepositoryStateService(DslGitRepository gitRepository,
+    public RepositoryStateService(DslGitRepositoryFactory repositoryFactory,
                                   WorkspaceManager workspaceManager,
                                   SystemRepositoryService systemRepositoryService) {
-        this.gitRepository = gitRepository;
+        this.gitRepository = repositoryFactory.getSystemRepository();
         this.workspaceManager = workspaceManager;
         this.systemRepositoryService = systemRepositoryService;
     }

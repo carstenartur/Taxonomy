@@ -6,6 +6,7 @@ import com.taxonomy.dsl.model.ArchitectureRelation;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.TransferConflict;
 import com.taxonomy.dto.TransferSelection;
 import org.junit.jupiter.api.BeforeEach;
@@ -68,16 +69,17 @@ class SelectiveTransferServiceTest {
 
     @BeforeEach
     void setUp() {
-        gitRepo = new DslGitRepository();
+        var factory = new DslGitRepositoryFactory(null);
+        gitRepo = factory.getSystemRepository();
         var wsRepo = mock(com.taxonomy.workspace.repository.UserWorkspaceRepository.class);
         var workspaceManager = new WorkspaceManager(wsRepo, 50,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
-        var stateService = new RepositoryStateService(gitRepo, workspaceManager,
+        var stateService = new RepositoryStateService(factory, workspaceManager,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
-        navService = new ContextNavigationService(gitRepo, stateService, workspaceManager, 50);
+        navService = new ContextNavigationService(factory, stateService, workspaceManager, 50);
         var workspaceResolver = mock(WorkspaceResolver.class);
         org.mockito.Mockito.when(workspaceResolver.resolveCurrentUsername()).thenReturn("testuser");
-        transferService = new SelectiveTransferService(gitRepo, navService, workspaceResolver);
+        transferService = new SelectiveTransferService(factory, navService, workspaceResolver);
     }
 
     @Test

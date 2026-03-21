@@ -7,6 +7,7 @@ import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.TransferConflict;
 import com.taxonomy.dto.TransferSelection;
 import org.slf4j.Logger;
@@ -41,10 +42,10 @@ public class SelectiveTransferService {
     private final AstToModelMapper astMapper = new AstToModelMapper();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
 
-    public SelectiveTransferService(DslGitRepository gitRepository,
+    public SelectiveTransferService(DslGitRepositoryFactory repositoryFactory,
                                     ContextNavigationService contextNavigationService,
                                     WorkspaceResolver workspaceResolver) {
-        this.gitRepository = gitRepository;
+        this.gitRepository = repositoryFactory.getSystemRepository();
         this.contextNavigationService = contextNavigationService;
         this.workspaceResolver = workspaceResolver;
     }

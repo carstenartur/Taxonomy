@@ -1,6 +1,7 @@
 package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -48,8 +49,9 @@ class ConflictDetectionServiceTest {
 
     @BeforeEach
     void setUp() {
-        gitRepo = new DslGitRepository();
-        conflictService = new ConflictDetectionService(gitRepo);
+        var factory = new DslGitRepositoryFactory(null);
+        gitRepo = factory.getSystemRepository();
+        conflictService = new ConflictDetectionService(factory);
     }
 
     // ── Merge preview ───────────────────────────────────────────────

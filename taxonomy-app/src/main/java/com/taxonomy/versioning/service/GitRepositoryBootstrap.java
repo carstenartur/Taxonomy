@@ -2,6 +2,7 @@ package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.shared.service.AppInitializationStateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,10 +57,10 @@ public class GitRepositoryBootstrap {
     private final TaxDslExportService exportService;
     private final AppInitializationStateService stateService;
 
-    public GitRepositoryBootstrap(DslGitRepository gitRepository,
+    public GitRepositoryBootstrap(DslGitRepositoryFactory repositoryFactory,
                                   TaxDslExportService exportService,
                                   AppInitializationStateService stateService) {
-        this.gitRepository = gitRepository;
+        this.gitRepository = repositoryFactory.getSystemRepository();
         this.exportService = exportService;
         this.stateService = stateService;
     }

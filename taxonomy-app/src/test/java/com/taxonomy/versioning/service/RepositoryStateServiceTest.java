@@ -1,6 +1,7 @@
 package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ProjectionState;
 import com.taxonomy.dto.RepositoryState;
 import com.taxonomy.dto.ViewContext;
@@ -40,11 +41,12 @@ class RepositoryStateServiceTest {
 
     @BeforeEach
     void setUp() {
-        gitRepo = new DslGitRepository();
+        var factory = new DslGitRepositoryFactory(null);
+        gitRepo = factory.getSystemRepository();
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         workspaceManager = new WorkspaceManager(wsRepo, 50,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
-        stateService = new RepositoryStateService(gitRepo, workspaceManager,
+        stateService = new RepositoryStateService(factory, workspaceManager,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
     }
 

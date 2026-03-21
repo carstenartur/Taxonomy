@@ -11,6 +11,7 @@ import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.storage.DslBranch;
 import com.taxonomy.dsl.storage.DslCommit;
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ElementHistoryAggregation;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.dto.VersionedSearchResult;
@@ -49,7 +50,7 @@ public class DslOperationsFacade {
     public DslOperationsFacade(TaxDslExportService exportService,
                                DslMaterializeService materializeService,
                                ArchitectureDslDocumentRepository documentRepository,
-                               DslGitRepository gitRepository,
+                               DslGitRepositoryFactory repositoryFactory,
                                CommitIndexService commitIndexService,
                                ConflictDetectionService conflictDetectionService,
                                RepositoryStateGuard stateGuard,
@@ -58,7 +59,7 @@ public class DslOperationsFacade {
         this.exportService = exportService;
         this.materializeService = materializeService;
         this.documentRepository = documentRepository;
-        this.gitRepository = gitRepository;
+        this.gitRepository = repositoryFactory.getSystemRepository();
         this.commitIndexService = commitIndexService;
         this.conflictDetectionService = conflictDetectionService;
         this.stateGuard = stateGuard;
