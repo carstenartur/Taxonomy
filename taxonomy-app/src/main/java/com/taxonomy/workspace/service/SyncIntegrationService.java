@@ -1,12 +1,14 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.SyncState;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.SyncStateRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -33,15 +35,29 @@ public class SyncIntegrationService {
     private final DslGitRepository gitRepository;
     private final UserWorkspaceRepository workspaceRepository;
     private final SystemRepositoryService systemRepositoryService;
+    private final DslGitRepositoryFactory repositoryFactory;
 
+    @Autowired
     public SyncIntegrationService(SyncStateRepository syncStateRepository,
                                   DslGitRepository gitRepository,
                                   UserWorkspaceRepository workspaceRepository,
-                                  SystemRepositoryService systemRepositoryService) {
+                                  SystemRepositoryService systemRepositoryService,
+                                  DslGitRepositoryFactory repositoryFactory) {
         this.syncStateRepository = syncStateRepository;
         this.gitRepository = gitRepository;
         this.workspaceRepository = workspaceRepository;
         this.systemRepositoryService = systemRepositoryService;
+        this.repositoryFactory = repositoryFactory;
+    }
+
+    /**
+     * Legacy constructor for backward compatibility (used in tests).
+     */
+    public SyncIntegrationService(SyncStateRepository syncStateRepository,
+                                  DslGitRepository gitRepository,
+                                  UserWorkspaceRepository workspaceRepository,
+                                  SystemRepositoryService systemRepositoryService) {
+        this(syncStateRepository, gitRepository, workspaceRepository, systemRepositoryService, null);
     }
 
     private String getSharedBranch() {
@@ -171,6 +187,108 @@ public class SyncIntegrationService {
         log.info("User '{}': publish to shared complete, merge commit='{}'",
                 username, abbreviateSha(mergeCommit));
         return mergeCommit;
+    }
+
+    // ── Cross-repository sync (per-workspace isolation) ─────────────
+
+    /**
+     * Sync from the shared system repository into a workspace repository.
+     *
+     * <p>When a {@link DslGitRepositoryFactory} is configured, this method
+     * reads the DSL from the system repository's shared branch and copies it
+     * into the workspace repository's "main" branch. If both sides have
+     * content and they differ, the workspace content is overwritten with the
+     * shared content (fast-forward semantics).
+     *
+     * @param username    the authenticated user's username
+     * @param workspaceId the workspace identifier
+     * @return a description of what was done
+     * @throws IOException if Git operations fail
+     */
+    public String syncFromSharedToWorkspace(String username, String workspaceId) throws IOException {
+        if (repositoryFactory == null) {
+            throw new IllegalStateException("Repository factory not configured for cross-repo sync");
+        }
+
+        DslGitRepository sysRepo = repositoryFactory.getSystemRepository();
+        DslGitRepository wsRepo = repositoryFactory.getWorkspaceRepository(workspaceId);
+
+        String sharedDsl = sysRepo.getDslAtHead(getSharedBranch());
+        if (sharedDsl == null) {
+            throw new IOException("Shared branch has no content");
+        }
+
+        String wsDsl = wsRepo.getDslAtHead("main");
+        String commitId;
+        if (wsDsl == null || sharedDsl.equals(wsDsl)) {
+            commitId = wsRepo.commitDsl("main", sharedDsl, username, "Synced from shared");
+        } else {
+            commitId = wsRepo.commitDsl("main", sharedDsl, username, "Merged shared into workspace");
+        }
+
+        // Update sync state
+        try {
+            SyncState state = getSyncState(username);
+            state.setLastSyncedCommitId(commitId);
+            state.setLastSyncTimestamp(Instant.now());
+            state.setSyncStatus("UP_TO_DATE");
+            state.setUpdatedAt(Instant.now());
+            syncStateRepository.save(state);
+        } catch (Exception e) {
+            log.warn("Could not update sync state after cross-repo sync for user '{}': {}",
+                    username, e.getMessage());
+        }
+
+        log.info("User '{}': cross-repo sync from shared to workspace '{}' complete",
+                username, workspaceId);
+        return commitId;
+    }
+
+    /**
+     * Publish from a workspace repository to the shared system repository.
+     *
+     * <p>When a {@link DslGitRepositoryFactory} is configured, this method
+     * reads the DSL from the workspace repository's "main" branch and commits
+     * it to the system repository's shared branch.
+     *
+     * @param username    the authenticated user's username
+     * @param workspaceId the workspace identifier
+     * @return the commit SHA on the shared branch
+     * @throws IOException if Git operations fail
+     */
+    public String publishFromWorkspaceToShared(String username, String workspaceId) throws IOException {
+        if (repositoryFactory == null) {
+            throw new IllegalStateException("Repository factory not configured for cross-repo publish");
+        }
+
+        DslGitRepository sysRepo = repositoryFactory.getSystemRepository();
+        DslGitRepository wsRepo = repositoryFactory.getWorkspaceRepository(workspaceId);
+
+        String wsDsl = wsRepo.getDslAtHead("main");
+        if (wsDsl == null) {
+            throw new IOException("Workspace has no content");
+        }
+
+        String commitId = sysRepo.commitDsl(getSharedBranch(), wsDsl, username,
+                "Published from workspace " + workspaceId);
+
+        // Update sync state
+        try {
+            SyncState state = getSyncState(username);
+            state.setLastPublishedCommitId(commitId);
+            state.setLastPublishTimestamp(Instant.now());
+            state.setSyncStatus("UP_TO_DATE");
+            state.setUnpublishedCommitCount(0);
+            state.setUpdatedAt(Instant.now());
+            syncStateRepository.save(state);
+        } catch (Exception e) {
+            log.warn("Could not update sync state after cross-repo publish for user '{}': {}",
+                    username, e.getMessage());
+        }
+
+        log.info("User '{}': cross-repo publish from workspace '{}' to shared complete",
+                username, workspaceId);
+        return commitId;
     }
 
     /**

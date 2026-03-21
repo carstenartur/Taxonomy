@@ -84,6 +84,22 @@ public class DslGitRepository {
     }
 
     /**
+     * Create a DslGitRepository with a custom repository name.
+     *
+     * <p>Different names create logically separate Git repositories in the same
+     * database. This is used by {@link DslGitRepositoryFactory} to create
+     * per-workspace repositories that share the same underlying database but
+     * have independent Git object namespaces.
+     *
+     * @param sessionFactory the Hibernate SessionFactory
+     * @param repositoryName logical name to partition data in the database
+     */
+    public DslGitRepository(SessionFactory sessionFactory, String repositoryName) {
+        this.gitRepo = new HibernateRepository(sessionFactory, repositoryName);
+        log.info("Initialised DslGitRepository (HibernateRepository '{}' → database)", repositoryName);
+    }
+
+    /**
      * Create a DslGitRepository backed by an in-memory DFS repository.
      *
      * <p>This is suitable for testing only. Data is lost on JVM restart.
