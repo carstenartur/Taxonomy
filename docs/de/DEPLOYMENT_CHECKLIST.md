@@ -135,7 +135,7 @@ docker run -d \
 | Digitale Souveränität | [docs/DIGITAL_SOVEREIGNTY.md](DIGITAL_SOVEREIGNTY.md) |
 | Verwaltungsintegration | [docs/VERWALTUNGSINTEGRATION.md](VERWALTUNGSINTEGRATION.md) |
 | Betriebshandbuch | [docs/OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md) |
-| SSO-Integration | [docs/SSO_INTEGRATION.md](SSO_INTEGRATION.md) |
+| SSO-Integration | [docs/KEYCLOAK_SETUP.md](KEYCLOAK_SETUP.md) |
 | Drittanbieter-Hinweise | [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) |
 | SBOM | `target/taxonomy-sbom.json` (wird beim Build generiert) |
 

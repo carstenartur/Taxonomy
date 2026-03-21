@@ -34,6 +34,14 @@ The **Workspace Context Bar** is displayed below the navigation bar whenever a c
 | **Unsaved changes** | A pulsing red badge when changes have not been committed |
 | **Sync status** | Inline badge showing pending publishes or available updates |
 
+When viewing a variant or historical version, the context bar includes an origin indicator showing where you navigated from:
+
+![Context Bar with origin indicator](../images/51-context-bar-with-origin.png)
+
+In read-only mode, the badge changes to indicate that the workspace is not editable:
+
+![Read-only mode badge](../images/50-read-only-mode-badge.png)
+
 ### Actions in the Context Bar
 
 - **↩ Back** — Return to the previous context
@@ -47,6 +55,8 @@ The **Workspace Context Bar** is displayed below the navigation bar whenever a c
 ## 2. Version History
 
 Navigate to **Versions → Verlauf** (History) to see the complete timeline of all architecture changes.
+
+![Version History Timeline](../images/66-versions-timeline.png)
 
 Each timeline entry shows:
 - The commit message
@@ -95,11 +105,33 @@ Click **🌿 New Variant** in either the context bar or the variants panel. Ente
 
 When integrating a variant, the system shows a preview of the changes that will be applied, including counts of added, changed, and removed elements. You must confirm the merge in a modal dialog before it is executed.
 
+![Merge preview modal](../images/60-merge-preview-modal.png)
+
+For fast-forward merges (where no conflicting changes exist), the preview is simpler:
+
+![Fast-forward merge preview](../images/61-merge-preview-fast-forward.png)
+
+After a successful merge, a confirmation toast is displayed:
+
+![Merge success toast](../images/58-merge-success-toast.png)
+
+If a merge conflict occurs, the conflict resolution modal is shown (see also [User Guide §12](USER_GUIDE.md#12-versions-tab)):
+
+![Merge conflict resolved](../images/53-merge-conflict-resolved.png)
+
+### Deleting a Variant
+
+Clicking **🗑 Delete** on a variant card shows a confirmation dialog before the variant is removed:
+
+![Variant delete confirmation](../images/57-variant-delete-confirm.png)
+
 ---
 
 ## 4. Comparing Versions
 
 Navigate to **Versions → Verlauf** and click **🔍 Compare**, or use the context bar's compare button to open the comparison dialog.
+
+![Compare modal — branch selection](../images/48-compare-modal-branches.png)
 
 The comparison view has three levels:
 
@@ -122,6 +154,8 @@ A collapsible section showing the raw DSL text diff with colour-coded lines:
 - Red lines for removals
 - Blue lines for diff headers
 
+![DSL diff view](../images/68-diff-view.png)
+
 ---
 
 ## 5. Restore & Revert
@@ -132,6 +166,8 @@ Restoring a version creates a new commit with the content from the selected vers
 Before confirming, the system shows a **preview** of the changes that will be applied:
 - Number of elements added, removed, and changed
 - A confirmation dialog with detailed information
+
+![Version restore confirmation](../images/67-version-restore-confirm.png)
 
 ### Revert
 Reverting undoes the changes from a specific commit. Unlike restore, it only undoes the changes from that one commit, not all subsequent changes.
@@ -173,6 +209,22 @@ The sync status is shown in multiple places:
 | **Unpublished changes** | You have local changes not yet shared with the team |
 | **Diverged** | Both you and the team have made changes |
 
+The Sync tab shows the current synchronisation state with visual indicators:
+
+![Sync tab — up to date](../images/63-sync-tab-up-to-date.png)
+
+![Sync tab — ahead (unpublished changes)](../images/64-sync-tab-ahead.png)
+
+![Sync tab — behind (updates available)](../images/65-sync-tab-behind.png)
+
+When both you and the team have made changes, the status shows "Diverged":
+
+![Sync diverged state](../images/55-sync-diverged-state.png)
+
+If a sync conflict occurs, a resolution modal is shown:
+
+![Sync resolve modal](../images/56-sync-resolve-modal.png)
+
 ### Sync Actions
 
 - **📥 Sync from Team** — Pull the latest changes from the shared repository
@@ -187,3 +239,11 @@ All workspace and versioning features are keyboard-accessible:
 - Tab navigation works through all action buttons
 - Status changes are announced via ARIA live regions
 - Colour is never the sole indicator — text labels accompany all status badges
+
+---
+
+## Related Documentation
+
+- [GIT_INTEGRATION](GIT_INTEGRATION.md) — technical details of the JGit-backed DSL storage, repository architecture, and conflict resolution
+- [REPOSITORY_TOPOLOGY](REPOSITORY_TOPOLOGY.md) — workspace provisioning model, topology modes, and data isolation
+- [CONCEPTS](CONCEPTS.md) — glossary of workspace, variant, and sync terminology

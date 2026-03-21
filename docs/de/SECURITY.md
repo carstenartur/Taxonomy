@@ -310,7 +310,7 @@ Für Unternehmens- und Behördenbereitstellungen unterstützt die Anwendung die 
 
 Das bestehende Drei-Rollen-Modell (USER, ARCHITECT, ADMIN) lässt sich direkt auf Keycloak-Realm-Rollen abbilden.
 
-Siehe [Keycloak-Einrichtung](KEYCLOAK_SETUP.md) und [SSO-Integration](SSO_INTEGRATION.md) für Konfigurationsdetails.
+Siehe [Keycloak- & SSO-Einrichtung](KEYCLOAK_SETUP.md) für Konfigurationsdetails.
 
 ---
 
@@ -448,8 +448,7 @@ Wenn die Multi-Benutzer-Arbeitsbereichisolierung aktiviert ist (siehe [Arbeitsbe
 - [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md) — vollständige Liste der Umgebungsvariablen einschließlich Sicherheitseinstellungen
 - [Bereitstellungsleitfaden](DEPLOYMENT_GUIDE.md) — Docker- und Render.com-Bereitstellung mit Sicherheitsaspekten
 - [Bereitstellungscheckliste](DEPLOYMENT_CHECKLIST.md) — Checkliste für die Bereitstellung in Behörden
-- [Keycloak-Einrichtung](KEYCLOAK_SETUP.md) — Keycloak-Integrationsleitfaden
-- [SSO-Integration](SSO_INTEGRATION.md) — SAML-/OIDC-Föderation für behördliches SSO
+- [Keycloak- & SSO-Einrichtung](KEYCLOAK_SETUP.md) — Keycloak-Integration und SSO-Federation
 - [Datenschutz](DATA_PROTECTION.md) — GDPR-/DSGVO-Dokumentation
 - [KI-Transparenz](AI_TRANSPARENCY.md) — KI-Modelltransparenz und Datenflüsse
 - [BSI-KI-Checkliste](BSI_KI_CHECKLIST.md) — BSI-Kriteriencheckliste für KI-Modelle

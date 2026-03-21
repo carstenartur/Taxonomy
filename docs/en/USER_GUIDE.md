@@ -1409,7 +1409,13 @@ Cherry-pick conflicts use the same modal with a cherry-pick-specific title:
 
 ![Cherry-pick conflict resolution](../images/54-cherry-pick-conflict-modal.png)
 
-After resolution, a success toast notification confirms the operation.
+The cherry-pick preview shows the operation that will be performed:
+
+![Cherry-pick preview modal](../images/62-cherry-pick-preview-modal.png)
+
+After resolution, a success toast notification confirms the operation:
+
+![Cherry-pick success toast](../images/59-cherry-pick-success-toast.png)
 
 ### Sync with Shared Repository
 
@@ -1523,6 +1529,8 @@ If you see a red badge, either:
 When AI is unavailable, an **inline warning message** appears below the Analyze button listing the required environment variables.
 
 ### Unlocking Admin Mode (🔒 button → Password Modal)
+
+![Admin lock button in navbar](../images/14-navbar-admin-lock.png)
 
 1. Click the **🔒** button in the navigation bar.
 2. The **Admin Mode Modal** opens with a password input field.

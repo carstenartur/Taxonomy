@@ -7,7 +7,7 @@
 
 ## 1. Current UI State
 
-The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.html`) with 27 JavaScript modules. The main layout consists of:
+The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.html`) with 33 JavaScript files across five directories. The main layout consists of:
 
 - **Navbar** — Application title, AI/embedding status badges, workspace user badge, admin lock
 - **Git Status Bar** — Branch, HEAD SHA, projection/index freshness, variant/version counts, sync status
@@ -79,6 +79,12 @@ The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.ht
 | 26 | `taxonomy-merge-resolution.js` | Merge conflict resolution UI | ✅ |
 | 27 | `taxonomy-operation-result.js` | Toast notification system for Git operations | ✅ |
 | 28 | `taxonomy-browse.js` | Main browse panel, report export logic | Via username |
+| 29 | `taxonomy-i18n.js` | Internationalization — loads locale from `/api/i18n/{locale}` | N/A |
+| 30 | `taxonomy-scoring.js` | Score rendering, layer configuration | Via username |
+| 31 | `taxonomy-state.js` | Application state management | ✅ |
+| 32 | `taxonomy-document-import.js` | Document import (PDF/DOCX) and provenance | Via username |
+| 33 | `taxonomy-utils.js` | Shared utility functions | N/A |
+| 34 | `taxonomy-workspace-provisioning.js` | Workspace provisioning flow | ✅ |
 
 ---
 

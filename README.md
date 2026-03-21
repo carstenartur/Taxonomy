@@ -166,11 +166,11 @@ Taxonomy/
 | **[Deployment](docs/en/DEPLOYMENT_GUIDE.md)** | Docker, Render.com, health checks |
 | **[Deployment Checklist](docs/en/DEPLOYMENT_CHECKLIST.md)** | Pre-deployment verification checklist |
 | **[Security](docs/en/SECURITY.md)** | Authentication, roles, permissions, deployment hardening |
+| **[Database Setup](docs/en/DATABASE_SETUP.md)** | PostgreSQL, MSSQL, Oracle configuration |
+| **[Keycloak & SSO](docs/en/KEYCLOAK_SETUP.md)** | SSO/OIDC/SAML integration with Keycloak |
 | **[Architecture](docs/en/ARCHITECTURE.md)** | System design, modules, DSL storage, pipelines |
 | **[Developer Guide](docs/en/DEVELOPER_GUIDE.md)** | Module architecture, testing, extending the system |
 | **[Feature Matrix](docs/en/FEATURE_MATRIX.md)** | Feature completeness tracking (GUI, REST, docs, i18n) |
-| **[Keycloak Setup](docs/en/KEYCLOAK_SETUP.md)** | SSO/OIDC integration with Keycloak |
-| **[SSO Integration](docs/en/SSO_INTEGRATION.md)** | Single Sign-On configuration and setup |
 | **[AI Transparency](docs/en/AI_TRANSPARENCY.md)** | AI/LLM usage transparency documentation |
 | **[Data Protection](docs/en/DATA_PROTECTION.md)** | GDPR and data protection compliance |
 | **[Operations Guide](docs/en/OPERATIONS_GUIDE.md)** | Operational procedures and monitoring |
@@ -198,7 +198,7 @@ The Taxonomy Architecture Analyzer includes comprehensive documentation for depl
 - 🇪🇺 **EU data residency** — Mistral (France/EU) as cloud LLM alternative
 - 📋 **SBOM** — CycloneDX Software Bill of Materials generated at build time
 - 🏛️ **Open Source** — MIT license, full source code, no vendor lock-in
-- 🔐 **SSO/OIDC** — Keycloak integration for government identity providers
+- 🔐 **SSO/OIDC** — Keycloak integration for government identity providers (see [Keycloak & SSO Setup](docs/en/KEYCLOAK_SETUP.md))
 
 ## Contributing
 

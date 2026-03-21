@@ -142,3 +142,11 @@ rohe Git-Konzepte zu vermeiden:
 
 Begriffe wie `fork`, `fetch`, `refs`, `rebase` werden **niemals** in der
 Standard-Benutzeroberfläche angezeigt.
+
+---
+
+## Verwandte Dokumentation
+
+- [Workspace- & Versionierungshandbuch](WORKSPACE_VERSIONING.md) — benutzerorientierter Leitfaden für die Workspace-UI
+- [GIT_INTEGRATION](GIT_INTEGRATION.md) — technische Details der JGit-gestützten DSL-Speicherung, Branching und Merge
+- [Architektur](ARCHITECTURE.md) — DSL-Speicherarchitektur und Modulübersicht

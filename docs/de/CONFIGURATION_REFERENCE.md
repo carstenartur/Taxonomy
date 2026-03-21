@@ -189,7 +189,7 @@ Setzen Sie `SPRING_PROFILES_ACTIVE`, um die Datenbank auszuwählen; der Standard
 
 ### MSSQL-Profil
 
-Aktivieren mit `SPRING_PROFILES_ACTIVE=mssql`. Siehe [MSSQL-SETUP.md](MSSQL-SETUP.md) für Details.
+Aktivieren mit `SPRING_PROFILES_ACTIVE=mssql`. Siehe [DATABASE_SETUP.md](DATABASE_SETUP.md#microsoft-sql-server-mssql) für Details.
 
 | Eigenschaft | Standard | Beschreibung |
 |---|---|---|
@@ -203,7 +203,7 @@ Aktivieren mit `SPRING_PROFILES_ACTIVE=mssql`. Siehe [MSSQL-SETUP.md](MSSQL-SETU
 
 ### PostgreSQL-Profil
 
-Aktivieren mit `SPRING_PROFILES_ACTIVE=postgres`. Siehe [POSTGRESQL-SETUP.md](POSTGRESQL-SETUP.md) für Details.
+Aktivieren mit `SPRING_PROFILES_ACTIVE=postgres`. Siehe [DATABASE_SETUP.md](DATABASE_SETUP.md#postgresql) für Details.
 
 | Eigenschaft | Standard | Beschreibung |
 |---|---|---|
@@ -217,7 +217,7 @@ Aktivieren mit `SPRING_PROFILES_ACTIVE=postgres`. Siehe [POSTGRESQL-SETUP.md](PO
 
 ### Oracle-Profil
 
-Aktivieren mit `SPRING_PROFILES_ACTIVE=oracle`. Siehe [ORACLE-SETUP.md](ORACLE-SETUP.md) für Details.
+Aktivieren mit `SPRING_PROFILES_ACTIVE=oracle`. Siehe [DATABASE_SETUP.md](DATABASE_SETUP.md#oracle-database) für Details.
 
 | Eigenschaft | Standard | Beschreibung |
 |---|---|---|

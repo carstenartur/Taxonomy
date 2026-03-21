@@ -500,6 +500,8 @@ See [API Reference](API_REFERENCE.md) for full request/response schemas.
 
 ## Related Documentation
 
+- [Workspace & Versioning Guide](WORKSPACE_VERSIONING.md) — user-facing guide for the workspace UI (context bar, history, variants, sync)
+- [Repository Topology](REPOSITORY_TOPOLOGY.md) — workspace provisioning model, topology modes, and data isolation
 - [User Guide](USER_GUIDE.md) — Architecture DSL section (§11g)
 - [Architecture](ARCHITECTURE.md) — DSL storage architecture
 - [Concepts](CONCEPTS.md) — DSL, hypotheses, and the canonical model
