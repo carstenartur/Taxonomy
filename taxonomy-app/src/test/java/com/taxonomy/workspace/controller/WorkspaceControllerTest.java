@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.MediaType;
 
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -226,9 +227,9 @@ class WorkspaceControllerTest {
     void syncFromShared_returnsOk() throws Exception {
         var result = mockMvc.perform(post("/api/workspace/sync-from-shared"))
                 .andReturn();
-        // Should return 200 (sync succeeds on default branch) or 500 if no shared repo
         int status = result.getResponse().getStatus();
-        assertNotEquals(400, status);
+        assertTrue(status == 200 || status == 500,
+                "Expected 200 (sync success) or 500 (no shared repo), got " + status);
     }
 
     // ── Publish ─────────────────────────────────────────────────────
@@ -237,9 +238,9 @@ class WorkspaceControllerTest {
     void publish_returnsOk() throws Exception {
         var result = mockMvc.perform(post("/api/workspace/publish"))
                 .andReturn();
-        // Should return 200 or 500 (if no changes to publish), but not 400
         int status = result.getResponse().getStatus();
-        assertNotEquals(400, status);
+        assertTrue(status == 200 || status == 500,
+                "Expected 200 (publish success) or 500 (no changes), got " + status);
     }
 
     // ── Switch workspace (not found) ────────────────────────────────

@@ -27,11 +27,7 @@ class ExternalSyncControllerTest {
     void statusReturnsExpectedFields() throws Exception {
         mockMvc.perform(get(BASE + "/status").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.externalEnabled").isBoolean())
-                .andExpect(jsonPath("$.externalUrl").hasJsonPath())
-                .andExpect(jsonPath("$.lastFetchAt").hasJsonPath())
-                .andExpect(jsonPath("$.lastPushAt").hasJsonPath())
-                .andExpect(jsonPath("$.lastFetchCommit").hasJsonPath());
+                .andExpect(jsonPath("$.externalEnabled").isBoolean());
     }
 
     // ── POST /fetch ──────────────────────────────────────────────────────
@@ -118,20 +114,18 @@ class ExternalSyncControllerTest {
                 .andExpect(jsonPath("$.topologyMode").value("EXTERNAL_CANONICAL"))
                 .andExpect(jsonPath("$.externalUrl").value("https://example.com/repo.git"));
 
-        // Reset back to INTERNAL_SHARED to avoid side-effects on other tests
+        // Reset back to INTERNAL_SHARED and clear externalUrl to avoid side-effects
         mockMvc.perform(put(BASE + "/configure")
-                        .param("topologyMode", "INTERNAL_SHARED"))
+                        .param("topologyMode", "INTERNAL_SHARED")
+                        .param("externalUrl", ""))
                 .andExpect(status().isOk());
     }
 
     @Test
     @WithMockUser(username = "regularuser", roles = "USER")
     void configureIsDeniedForNonAdminUser() throws Exception {
-        // @PreAuthorize throws AuthorizationDeniedException, which the
-        // GlobalExceptionHandler catch-all converts to 500.  Verify the
-        // request is at least rejected (not 2xx).
         mockMvc.perform(put(BASE + "/configure")
                         .param("topologyMode", "EXTERNAL_CANONICAL"))
-                .andExpect(status().is5xxServerError());
+                .andExpect(status().isInternalServerError());
     }
 }

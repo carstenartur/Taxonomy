@@ -30,6 +30,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WithMockUser
 class DocumentImportControllerTest {
 
+    /** Shared oversized payload (50 MB + 1 byte) to avoid repeated large allocations. */
+    private static final byte[] OVERSIZED_PAYLOAD = new byte[50 * 1024 * 1024 + 1];
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -111,8 +114,7 @@ class DocumentImportControllerTest {
     @Test
     void extractAi_oversizedFileReturnsBadRequest() throws Exception {
         MockMultipartFile oversizedFile = new MockMultipartFile(
-                "file", "large.pdf", "application/pdf",
-                new byte[50 * 1024 * 1024 + 1]);
+                "file", "large.pdf", "application/pdf", OVERSIZED_PAYLOAD);
 
         mockMvc.perform(multipart("/api/documents/extract-ai").file(oversizedFile))
                 .andExpect(status().isBadRequest())
@@ -134,8 +136,7 @@ class DocumentImportControllerTest {
     @Test
     void mapRegulation_oversizedFileReturnsBadRequest() throws Exception {
         MockMultipartFile oversizedFile = new MockMultipartFile(
-                "file", "large.pdf", "application/pdf",
-                new byte[50 * 1024 * 1024 + 1]);
+                "file", "large.pdf", "application/pdf", OVERSIZED_PAYLOAD);
 
         mockMvc.perform(multipart("/api/documents/map-regulation").file(oversizedFile))
                 .andExpect(status().isBadRequest())
@@ -183,8 +184,7 @@ class DocumentImportControllerTest {
     @Test
     void uploadOversizedFileReturnsBadRequest() throws Exception {
         MockMultipartFile oversizedFile = new MockMultipartFile(
-                "file", "large.pdf", "application/pdf",
-                new byte[50 * 1024 * 1024 + 1]);
+                "file", "large.pdf", "application/pdf", OVERSIZED_PAYLOAD);
 
         mockMvc.perform(multipart("/api/documents/upload").file(oversizedFile))
                 .andExpect(status().isBadRequest())
