@@ -50,7 +50,7 @@ Die folgende Tabelle verdeutlicht den Geltungsbereich für jede Einstellungskate
 
 **Verwandte bereichsspezifische Daten:**
 - **Arbeitsbereichszustand** (aktueller Branch, Navigationshistorie, Projektion) — pro Benutzer, verwaltet durch den [Workspace Manager](WORKSPACE_VERSIONING.md)
-- **Architecture DSL** — gespeichert in einem gemeinsamen JGit-Repository (`taxonomy-dsl`); Branches bieten Isolation
+- **Architecture DSL** — gespeichert in Git-Repositories, verwaltet durch `DslGitRepositoryFactory`; jeder Arbeitsbereich hat ein eigenes Repository (Repository-pro-Arbeitsbereich-Isolation mit arbeitsbereichsübergreifendem Publish/Sync), mit einem gemeinsamen `taxonomy-dsl`-System-Repository
 - **Einstellungen** — gespeichert in einem separaten JGit-Repository (`taxonomy-preferences`); systemweit
 - **Benutzerkonten und Rollen** — in der Datenbank gespeichert; pro Benutzer
 
