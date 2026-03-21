@@ -40,79 +40,123 @@ public class SystemRepository {
     @Column(name = &quot;external_url&quot;)
     private String externalUrl;
 
-<span class="fc" id="L43">    @Column(name = &quot;primary_repo&quot;, nullable = false)</span>
+    @Column(name = &quot;external_auth_token&quot;)
+    private String externalAuthToken;
+
+    @Column(name = &quot;last_fetch_at&quot;)
+    private Instant lastFetchAt;
+
+    @Column(name = &quot;last_push_at&quot;)
+    private Instant lastPushAt;
+
+    @Column(name = &quot;last_fetch_commit&quot;)
+    private String lastFetchCommit;
+
+<span class="fc" id="L55">    @Column(name = &quot;primary_repo&quot;, nullable = false)</span>
     private boolean primaryRepo = true;
 
     @Column(name = &quot;created_at&quot;, nullable = false)
     private Instant createdAt;
 
-<span class="fc" id="L49">    public SystemRepository() {</span>
-<span class="fc" id="L50">    }</span>
+<span class="fc" id="L61">    public SystemRepository() {</span>
+<span class="fc" id="L62">    }</span>
 
     // ── Getters / Setters ───────────────────────────────────────────
 
     public Long getId() {
-<span class="nc" id="L55">        return id;</span>
+<span class="nc" id="L67">        return id;</span>
     }
 
     public void setId(Long id) {
-<span class="nc" id="L59">        this.id = id;</span>
-<span class="nc" id="L60">    }</span>
+<span class="nc" id="L71">        this.id = id;</span>
+<span class="nc" id="L72">    }</span>
 
     public String getRepositoryId() {
-<span class="fc" id="L63">        return repositoryId;</span>
+<span class="fc" id="L75">        return repositoryId;</span>
     }
 
     public void setRepositoryId(String repositoryId) {
-<span class="fc" id="L67">        this.repositoryId = repositoryId;</span>
-<span class="fc" id="L68">    }</span>
+<span class="fc" id="L79">        this.repositoryId = repositoryId;</span>
+<span class="fc" id="L80">    }</span>
 
     public String getDisplayName() {
-<span class="fc" id="L71">        return displayName;</span>
+<span class="fc" id="L83">        return displayName;</span>
     }
 
     public void setDisplayName(String displayName) {
-<span class="fc" id="L75">        this.displayName = displayName;</span>
-<span class="fc" id="L76">    }</span>
+<span class="fc" id="L87">        this.displayName = displayName;</span>
+<span class="fc" id="L88">    }</span>
 
     public RepositoryTopologyMode getTopologyMode() {
-<span class="fc" id="L79">        return topologyMode;</span>
+<span class="fc" id="L91">        return topologyMode;</span>
     }
 
     public void setTopologyMode(RepositoryTopologyMode topologyMode) {
-<span class="fc" id="L83">        this.topologyMode = topologyMode;</span>
-<span class="fc" id="L84">    }</span>
+<span class="fc" id="L95">        this.topologyMode = topologyMode;</span>
+<span class="fc" id="L96">    }</span>
 
     public String getDefaultBranch() {
-<span class="fc" id="L87">        return defaultBranch;</span>
+<span class="fc" id="L99">        return defaultBranch;</span>
     }
 
     public void setDefaultBranch(String defaultBranch) {
-<span class="fc" id="L91">        this.defaultBranch = defaultBranch;</span>
-<span class="fc" id="L92">    }</span>
+<span class="fc" id="L103">        this.defaultBranch = defaultBranch;</span>
+<span class="fc" id="L104">    }</span>
 
     public String getExternalUrl() {
-<span class="nc" id="L95">        return externalUrl;</span>
+<span class="fc" id="L107">        return externalUrl;</span>
     }
 
     public void setExternalUrl(String externalUrl) {
-<span class="nc" id="L99">        this.externalUrl = externalUrl;</span>
-<span class="nc" id="L100">    }</span>
+<span class="fc" id="L111">        this.externalUrl = externalUrl;</span>
+<span class="fc" id="L112">    }</span>
+
+    public String getExternalAuthToken() {
+<span class="nc" id="L115">        return externalAuthToken;</span>
+    }
+
+    public void setExternalAuthToken(String externalAuthToken) {
+<span class="nc" id="L119">        this.externalAuthToken = externalAuthToken;</span>
+<span class="nc" id="L120">    }</span>
+
+    public Instant getLastFetchAt() {
+<span class="fc" id="L123">        return lastFetchAt;</span>
+    }
+
+    public void setLastFetchAt(Instant lastFetchAt) {
+<span class="nc" id="L127">        this.lastFetchAt = lastFetchAt;</span>
+<span class="nc" id="L128">    }</span>
+
+    public Instant getLastPushAt() {
+<span class="fc" id="L131">        return lastPushAt;</span>
+    }
+
+    public void setLastPushAt(Instant lastPushAt) {
+<span class="nc" id="L135">        this.lastPushAt = lastPushAt;</span>
+<span class="nc" id="L136">    }</span>
+
+    public String getLastFetchCommit() {
+<span class="fc" id="L139">        return lastFetchCommit;</span>
+    }
+
+    public void setLastFetchCommit(String lastFetchCommit) {
+<span class="nc" id="L143">        this.lastFetchCommit = lastFetchCommit;</span>
+<span class="nc" id="L144">    }</span>
 
     public boolean isPrimaryRepo() {
-<span class="fc" id="L103">        return primaryRepo;</span>
+<span class="fc" id="L147">        return primaryRepo;</span>
     }
 
     public void setPrimaryRepo(boolean primaryRepo) {
-<span class="fc" id="L107">        this.primaryRepo = primaryRepo;</span>
-<span class="fc" id="L108">    }</span>
+<span class="fc" id="L151">        this.primaryRepo = primaryRepo;</span>
+<span class="fc" id="L152">    }</span>
 
     public Instant getCreatedAt() {
-<span class="fc" id="L111">        return createdAt;</span>
+<span class="fc" id="L155">        return createdAt;</span>
     }
 
     public void setCreatedAt(Instant createdAt) {
-<span class="fc" id="L115">        this.createdAt = createdAt;</span>
-<span class="fc" id="L116">    }</span>
+<span class="fc" id="L159">        this.createdAt = createdAt;</span>
+<span class="fc" id="L160">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

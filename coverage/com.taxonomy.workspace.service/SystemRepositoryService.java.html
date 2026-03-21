@@ -84,5 +84,15 @@ public class SystemRepositoryService {
 <span class="fc" id="L84">            return &quot;draft&quot;;</span>
         }
     }
+
+    /**
+     * Persist updates to a system repository entity.
+     *
+     * @param sysRepo the entity to save
+     * @return the saved entity
+     */
+    public SystemRepository save(SystemRepository sysRepo) {
+<span class="nc" id="L95">        return repository.save(sysRepo);</span>
+    }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

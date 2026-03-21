@@ -2,6 +2,7 @@
 
 import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.shared.service.AppInitializationStateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,7 +42,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @ConditionalOnProperty(name = &quot;taxonomy.git.bootstrap&quot;, havingValue = &quot;true&quot;, matchIfMissing = true)
 public class GitRepositoryBootstrap {
 
-<span class="fc" id="L44">    private static final Logger log = LoggerFactory.getLogger(GitRepositoryBootstrap.class);</span>
+<span class="fc" id="L45">    private static final Logger log = LoggerFactory.getLogger(GitRepositoryBootstrap.class);</span>
 
     /**
      * JVM-wide guard: ensures bootstrap runs at most once per JVM lifetime.
@@ -50,19 +51,19 @@ public class GitRepositoryBootstrap {
      * prevents a second context from committing into a repository whose
      * underlying tables were wiped by {@code ddl-auto=create}.
      */
-<span class="fc" id="L53">    private static final AtomicBoolean BOOTSTRAPPED = new AtomicBoolean(false);</span>
+<span class="fc" id="L54">    private static final AtomicBoolean BOOTSTRAPPED = new AtomicBoolean(false);</span>
 
     private final DslGitRepository gitRepository;
     private final TaxDslExportService exportService;
     private final AppInitializationStateService stateService;
 
-    public GitRepositoryBootstrap(DslGitRepository gitRepository,
+    public GitRepositoryBootstrap(DslGitRepositoryFactory repositoryFactory,
                                   TaxDslExportService exportService,
-<span class="fc" id="L61">                                  AppInitializationStateService stateService) {</span>
-<span class="fc" id="L62">        this.gitRepository = gitRepository;</span>
-<span class="fc" id="L63">        this.exportService = exportService;</span>
-<span class="fc" id="L64">        this.stateService = stateService;</span>
-<span class="fc" id="L65">    }</span>
+<span class="fc" id="L62">                                  AppInitializationStateService stateService) {</span>
+<span class="fc" id="L63">        this.gitRepository = repositoryFactory.getSystemRepository();</span>
+<span class="fc" id="L64">        this.exportService = exportService;</span>
+<span class="fc" id="L65">        this.stateService = stateService;</span>
+<span class="fc" id="L66">    }</span>
 
     /**
      * Creates an initial commit on the {@code draft} branch if it does not already exist.
@@ -74,32 +75,32 @@ public class GitRepositoryBootstrap {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void initializeDraftBranch() {
-<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (!BOOTSTRAPPED.compareAndSet(false, true)) {</span>
-<span class="fc" id="L78">            log.debug(&quot;Draft branch already bootstrapped in this JVM — skipping.&quot;);</span>
-<span class="fc" id="L79">            return;</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (!BOOTSTRAPPED.compareAndSet(false, true)) {</span>
+<span class="fc" id="L79">            log.debug(&quot;Draft branch already bootstrapped in this JVM — skipping.&quot;);</span>
+<span class="fc" id="L80">            return;</span>
         }
 
-<span class="pc bpc" id="L82" title="1 of 2 branches missed.">        if (!stateService.isReady()) {</span>
-<span class="nc" id="L83">            log.debug(&quot;Taxonomy not yet loaded (async mode) — skipping draft branch bootstrap.&quot;);</span>
-<span class="nc" id="L84">            BOOTSTRAPPED.set(false); // allow retry after taxonomy loads</span>
-<span class="nc" id="L85">            return;</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">        if (!stateService.isReady()) {</span>
+<span class="nc" id="L84">            log.debug(&quot;Taxonomy not yet loaded (async mode) — skipping draft branch bootstrap.&quot;);</span>
+<span class="nc" id="L85">            BOOTSTRAPPED.set(false); // allow retry after taxonomy loads</span>
+<span class="nc" id="L86">            return;</span>
         }
 
         try {
-<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            if (gitRepository.getHeadCommit(&quot;draft&quot;) != null) {</span>
-<span class="nc" id="L90">                log.debug(&quot;Draft branch already exists — skipping bootstrap.&quot;);</span>
-<span class="nc" id="L91">                return;</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">            if (gitRepository.getHeadCommit(&quot;draft&quot;) != null) {</span>
+<span class="nc" id="L91">                log.debug(&quot;Draft branch already exists — skipping bootstrap.&quot;);</span>
+<span class="nc" id="L92">                return;</span>
             }
 
-<span class="fc" id="L94">            String dsl = exportService.exportAll(&quot;default&quot;);</span>
-<span class="fc" id="L95">            String commitId = gitRepository.commitDsl(&quot;draft&quot;, dsl, &quot;system&quot;,</span>
+<span class="fc" id="L95">            String dsl = exportService.exportAll(&quot;default&quot;);</span>
+<span class="fc" id="L96">            String commitId = gitRepository.commitDsl(&quot;draft&quot;, dsl, &quot;system&quot;,</span>
                     &quot;Initial taxonomy materialization&quot;);
 
-<span class="fc" id="L98">            log.info(&quot;Bootstrapped 'draft' branch with initial taxonomy DSL &quot; +</span>
-<span class="fc" id="L99">                    &quot;(commit={}, {} chars)&quot;, commitId.substring(0, 7), dsl.length());</span>
-<span class="nc" id="L100">        } catch (IOException e) {</span>
-<span class="nc" id="L101">            log.warn(&quot;Failed to bootstrap 'draft' branch: {}&quot;, e.getMessage());</span>
-<span class="fc" id="L102">        }</span>
-<span class="fc" id="L103">    }</span>
+<span class="fc" id="L99">            log.info(&quot;Bootstrapped 'draft' branch with initial taxonomy DSL &quot; +</span>
+<span class="fc" id="L100">                    &quot;(commit={}, {} chars)&quot;, commitId.substring(0, 7), dsl.length());</span>
+<span class="nc" id="L101">        } catch (IOException e) {</span>
+<span class="nc" id="L102">            log.warn(&quot;Failed to bootstrap 'draft' branch: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L103">        }</span>
+<span class="fc" id="L104">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

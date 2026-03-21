@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExternalGitSyncService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">ExternalGitSyncService.java</span></div><h1>ExternalGitSyncService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.model.RepositoryTopologyMode;
+import com.taxonomy.workspace.model.SystemRepository;
+import org.eclipse.jgit.lib.NullProgressMonitor;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.transport.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.List;
+
+/**
+ * Handles synchronization between the internal system repository and an
+ * external Git remote (e.g. Gitea, GitHub, GitLab).
+ *
+ * &lt;p&gt;This service is only active when the system repository is configured
+ * in {@link RepositoryTopologyMode#EXTERNAL_CANONICAL} mode. It uses JGit's
+ * {@link Transport} API to perform fetch and push operations directly on the
+ * underlying DFS repository.
+ *
+ * &lt;p&gt;Typical workflow:
+ * &lt;ol&gt;
+ *   &lt;li&gt;{@link #fetchFromExternal()} — fetch all branches from the remote&lt;/li&gt;
+ *   &lt;li&gt;{@link #pushToExternal(String)} — push a local branch to the remote&lt;/li&gt;
+ *   &lt;li&gt;{@link #fullSync(String)} — fetch + merge remote into shared branch&lt;/li&gt;
+ * &lt;/ol&gt;
+ */
+@Service
+public class ExternalGitSyncService {
+
+<span class="fc" id="L38">    private static final Logger log = LoggerFactory.getLogger(ExternalGitSyncService.class);</span>
+
+    private final DslGitRepositoryFactory repositoryFactory;
+    private final SystemRepositoryService systemRepositoryService;
+
+    @Autowired
+    public ExternalGitSyncService(DslGitRepositoryFactory repositoryFactory,
+<span class="fc" id="L45">                                  SystemRepositoryService systemRepositoryService) {</span>
+<span class="fc" id="L46">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L47">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L48">    }</span>
+
+    /**
+     * Fetch all branches from the external remote into the system repository.
+     *
+     * @return the JGit FetchResult
+     * @throws Exception if the fetch operation fails
+     */
+    public FetchResult fetchFromExternal() throws Exception {
+<span class="fc" id="L57">        SystemRepository sysRepo = systemRepositoryService.getPrimaryRepository();</span>
+<span class="nc" id="L58">        validateExternalMode(sysRepo);</span>
+
+<span class="nc" id="L60">        Repository gitRepo = repositoryFactory.getSystemRepository().getGitRepository();</span>
+<span class="nc" id="L61">        URIish uri = new URIish(sysRepo.getExternalUrl());</span>
+
+<span class="nc" id="L63">        log.info(&quot;Fetching from external remote: {}&quot;, sysRepo.getExternalUrl());</span>
+<span class="nc" id="L64">        try (Transport transport = Transport.open(gitRepo, uri)) {</span>
+<span class="nc" id="L65">            configureCredentials(transport, sysRepo);</span>
+<span class="nc" id="L66">            FetchResult result = transport.fetch(NullProgressMonitor.INSTANCE,</span>
+<span class="nc" id="L67">                    List.of(new RefSpec(&quot;+refs/heads/*:refs/remotes/origin/*&quot;)));</span>
+
+<span class="nc" id="L69">            log.info(&quot;Fetch complete from {}: {} updates&quot;,</span>
+<span class="nc" id="L70">                    sysRepo.getExternalUrl(),</span>
+<span class="nc" id="L71">                    result.getTrackingRefUpdates().size());</span>
+
+            // Persist sync timestamps
+<span class="nc" id="L74">            sysRepo.setLastFetchAt(Instant.now());</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">            if (!result.getTrackingRefUpdates().isEmpty()) {</span>
+<span class="nc" id="L76">                var firstUpdate = result.getTrackingRefUpdates().iterator().next();</span>
+<span class="nc" id="L77">                sysRepo.setLastFetchCommit(firstUpdate.getNewObjectId().name());</span>
+            }
+<span class="nc" id="L79">            systemRepositoryService.save(sysRepo);</span>
+
+<span class="nc" id="L81">            return result;</span>
+        }
+    }
+
+    /**
+     * Push a local branch to the external remote.
+     *
+     * @param localBranch the local branch name to push
+     * @return the JGit PushResult
+     * @throws Exception if the push operation fails
+     */
+    public PushResult pushToExternal(String localBranch) throws Exception {
+<span class="fc" id="L93">        SystemRepository sysRepo = systemRepositoryService.getPrimaryRepository();</span>
+<span class="nc" id="L94">        validateExternalMode(sysRepo);</span>
+
+<span class="nc" id="L96">        Repository gitRepo = repositoryFactory.getSystemRepository().getGitRepository();</span>
+<span class="nc" id="L97">        URIish uri = new URIish(sysRepo.getExternalUrl());</span>
+
+<span class="nc" id="L99">        log.info(&quot;Pushing branch '{}' to external remote: {}&quot;, localBranch, sysRepo.getExternalUrl());</span>
+<span class="nc" id="L100">        try (Transport transport = Transport.open(gitRepo, uri)) {</span>
+<span class="nc" id="L101">            configureCredentials(transport, sysRepo);</span>
+<span class="nc" id="L102">            RemoteRefUpdate refUpdate = new RemoteRefUpdate(</span>
+                    gitRepo,
+                    &quot;refs/heads/&quot; + localBranch,
+                    &quot;refs/heads/&quot; + localBranch,
+                    false, null, null);
+<span class="nc" id="L107">            PushResult result = transport.push(NullProgressMonitor.INSTANCE,</span>
+<span class="nc" id="L108">                    java.util.List.of(refUpdate));</span>
+
+<span class="nc" id="L110">            log.info(&quot;Push complete: branch '{}' → {}&quot;, localBranch, sysRepo.getExternalUrl());</span>
+
+            // Persist sync timestamp
+<span class="nc" id="L113">            sysRepo.setLastPushAt(Instant.now());</span>
+<span class="nc" id="L114">            systemRepositoryService.save(sysRepo);</span>
+
+<span class="nc" id="L116">            return result;</span>
+        }
+    }
+
+    /**
+     * Full sync cycle: fetch from remote, then merge into the shared branch.
+     *
+     * &lt;p&gt;After fetching, this method resolves the remote-tracking ref
+     * ({@code refs/remotes/origin/&lt;branch&gt;}) directly from the underlying
+     * JGit repository to read the remote content, since
+     * {@link DslGitRepository#getDslAtHead(String)} only resolves
+     * {@code refs/heads/} prefixed refs.
+     *
+     * @param username the user performing the sync
+     * @return the merge commit SHA, or null if no merge was needed
+     * @throws Exception if any operation fails
+     */
+    public String fullSync(String username) throws Exception {
+<span class="nc" id="L134">        fetchFromExternal();</span>
+
+<span class="nc" id="L136">        DslGitRepository sysRepo = repositoryFactory.getSystemRepository();</span>
+<span class="nc" id="L137">        String sharedBranch = systemRepositoryService.getSharedBranch();</span>
+<span class="nc" id="L138">        Repository gitRepo = sysRepo.getGitRepository();</span>
+
+        // Resolve the remote-tracking ref directly from JGit (not via getDslAtHead,
+        // which only resolves refs/heads/* refs)
+<span class="nc" id="L142">        String remoteRefName = &quot;refs/remotes/origin/&quot; + sharedBranch;</span>
+<span class="nc" id="L143">        org.eclipse.jgit.lib.Ref remoteRef = gitRepo.findRef(remoteRefName);</span>
+
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (remoteRef != null) {</span>
+            // Read the DSL content from the remote-tracking ref's tree
+<span class="nc" id="L147">            String remoteDsl = readDslFromRef(gitRepo, remoteRef);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">            if (remoteDsl != null) {</span>
+<span class="nc" id="L149">                String localDsl = sysRepo.getDslAtHead(sharedBranch);</span>
+<span class="nc bnc" id="L150" title="All 4 branches missed.">                if (localDsl == null || !remoteDsl.equals(localDsl)) {</span>
+<span class="nc" id="L151">                    String commitId = sysRepo.commitDsl(sharedBranch, remoteDsl, username,</span>
+                            &quot;Synced from external remote&quot;);
+<span class="nc" id="L153">                    log.info(&quot;Full sync complete: merged remote into shared branch '{}'&quot;, sharedBranch);</span>
+<span class="nc" id="L154">                    return commitId;</span>
+                }
+<span class="nc" id="L156">                log.info(&quot;Full sync: shared branch '{}' already up-to-date&quot;, sharedBranch);</span>
+<span class="nc" id="L157">                return sysRepo.getHeadCommit(sharedBranch);</span>
+            }
+        }
+
+<span class="nc" id="L161">        log.info(&quot;Full sync: no remote content found for branch '{}'&quot;, sharedBranch);</span>
+<span class="nc" id="L162">        return null;</span>
+    }
+
+    /**
+     * Read the DSL file content from a specific Git ref.
+     *
+     * @param gitRepo the JGit repository
+     * @param ref     the ref to read from
+     * @return the DSL content, or null if the ref has no content
+     */
+    private String readDslFromRef(Repository gitRepo, org.eclipse.jgit.lib.Ref ref) {
+        try {
+<span class="nc" id="L174">            var commitId = ref.getObjectId();</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">            if (commitId == null) return null;</span>
+
+<span class="nc" id="L177">            try (var revWalk = new org.eclipse.jgit.revwalk.RevWalk(gitRepo)) {</span>
+<span class="nc" id="L178">                var commit = revWalk.parseCommit(commitId);</span>
+<span class="nc" id="L179">                var tree = commit.getTree();</span>
+<span class="nc" id="L180">                try (var treeWalk = org.eclipse.jgit.treewalk.TreeWalk.forPath(</span>
+                        gitRepo, &quot;architecture.dsl&quot;, tree)) {
+<span class="nc bnc" id="L182" title="All 2 branches missed.">                    if (treeWalk == null) return null;</span>
+<span class="nc" id="L183">                    var loader = gitRepo.open(treeWalk.getObjectId(0));</span>
+<span class="nc" id="L184">                    return new String(loader.getBytes(), java.nio.charset.StandardCharsets.UTF_8);</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">                }</span>
+<span class="nc" id="L186">            }</span>
+<span class="nc" id="L187">        } catch (Exception e) {</span>
+<span class="nc" id="L188">            log.warn(&quot;Could not read DSL from ref {}: {}&quot;, ref.getName(), e.getMessage());</span>
+<span class="nc" id="L189">            return null;</span>
+        }
+    }
+
+    /**
+     * Get the current external sync status.
+     *
+     * @return a status summary
+     */
+    public ExternalSyncStatus getStatus() {
+        try {
+<span class="fc" id="L200">            SystemRepository sysRepo = systemRepositoryService.getPrimaryRepository();</span>
+<span class="fc" id="L201">            return new ExternalSyncStatus(</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">                    sysRepo.getTopologyMode() == RepositoryTopologyMode.EXTERNAL_CANONICAL,</span>
+<span class="fc" id="L203">                    sysRepo.getExternalUrl(),</span>
+<span class="fc" id="L204">                    sysRepo.getLastFetchAt(),</span>
+<span class="fc" id="L205">                    sysRepo.getLastPushAt(),</span>
+<span class="fc" id="L206">                    sysRepo.getLastFetchCommit()</span>
+            );
+<span class="fc" id="L208">        } catch (Exception e) {</span>
+<span class="fc" id="L209">            return new ExternalSyncStatus(false, null, null, null, null);</span>
+        }
+    }
+
+    private void validateExternalMode(SystemRepository sysRepo) {
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (sysRepo.getTopologyMode() != RepositoryTopologyMode.EXTERNAL_CANONICAL) {</span>
+<span class="fc" id="L215">            throw new IllegalStateException(</span>
+                    &quot;External sync operations require EXTERNAL_CANONICAL topology mode, &quot; +
+<span class="fc" id="L217">                            &quot;but current mode is &quot; + sysRepo.getTopologyMode());</span>
+        }
+<span class="pc bpc" id="L219" title="3 of 4 branches missed.">        if (sysRepo.getExternalUrl() == null || sysRepo.getExternalUrl().isBlank()) {</span>
+<span class="fc" id="L220">            throw new IllegalStateException(&quot;External URL is not configured&quot;);</span>
+        }
+<span class="nc" id="L222">    }</span>
+
+    private void configureCredentials(Transport transport, SystemRepository sysRepo) {
+<span class="nc" id="L225">        String token = sysRepo.getExternalAuthToken();</span>
+<span class="nc bnc" id="L226" title="All 4 branches missed.">        if (token != null &amp;&amp; !token.isBlank()) {</span>
+<span class="nc" id="L227">            transport.setCredentialsProvider(</span>
+                    new UsernamePasswordCredentialsProvider(token, &quot;&quot;));
+        }
+<span class="nc" id="L230">    }</span>
+
+    /**
+     * Summary of the external sync configuration and state.
+     */
+<span class="fc" id="L235">    public record ExternalSyncStatus(</span>
+            boolean externalEnabled,
+            String externalUrl,
+            Instant lastFetchAt,
+            Instant lastPushAt,
+            String lastFetchCommit
+    ) {}
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
