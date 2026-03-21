@@ -3,6 +3,8 @@ package com.taxonomy.shared.controller;
 import com.taxonomy.dto.AiAvailabilityLevel;
 import com.taxonomy.dto.AiStatusResponse;
 import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.shared.service.HealthSummaryService;
+import com.taxonomy.shared.service.LogRingBufferService;
 import com.taxonomy.shared.service.PromptTemplateService;
 import com.taxonomy.shared.service.PromptTemplateService.PromptCategory;
 import com.taxonomy.catalog.service.TaxonomyService;
@@ -31,16 +33,22 @@ public class AdminApiController {
     private final LlmService llmService;
     private final PromptTemplateService promptTemplateService;
     private final TaxonomyService taxonomyService;
+    private final LogRingBufferService logRingBufferService;
+    private final HealthSummaryService healthSummaryService;
 
     @Value("${admin.token:}")
     private String adminPassword;
 
     public AdminApiController(LlmService llmService,
                                PromptTemplateService promptTemplateService,
-                               TaxonomyService taxonomyService) {
+                               TaxonomyService taxonomyService,
+                               LogRingBufferService logRingBufferService,
+                               HealthSummaryService healthSummaryService) {
         this.llmService = llmService;
         this.promptTemplateService = promptTemplateService;
         this.taxonomyService = taxonomyService;
+        this.logRingBufferService = logRingBufferService;
+        this.healthSummaryService = healthSummaryService;
     }
 
     @Operation(summary = "Check AI availability", description = "Returns whether an LLM provider is available and which one is active", tags = {"Administration"})
@@ -199,6 +207,37 @@ public class AdminApiController {
             categorized.put(category.name(), entries);
         }
         return ResponseEntity.ok(categorized);
+    }
+
+    // ── Admin health dashboard & log viewer ──────────────────────────────────
+
+    @Operation(summary = "Get recent log entries",
+               description = "Returns recent application log entries from the in-memory ring buffer (admin-only)",
+               tags = {"Administration"})
+    @GetMapping("/admin/logs")
+    public ResponseEntity<List<LogRingBufferService.LogEntry>> getLogs(
+            @Parameter(description = "Filter by log level (e.g. ERROR, WARN, INFO)")
+            @RequestParam(required = false) String level,
+            @Parameter(description = "Filter by logger name substring")
+            @RequestParam(required = false) String component,
+            @Parameter(description = "Max number of entries to return (max 500)")
+            @RequestParam(defaultValue = "100") int limit,
+            HttpServletRequest request) {
+        if (!isAdminAuthorized(request)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return ResponseEntity.ok(logRingBufferService.getEntries(level, component, Math.min(limit, 500)));
+    }
+
+    @Operation(summary = "Get health summary",
+               description = "Aggregated health status from startup, AI, embedding, and memory subsystems (admin-only)",
+               tags = {"Administration"})
+    @GetMapping("/admin/health-summary")
+    public ResponseEntity<Map<String, Object>> getHealthSummary(HttpServletRequest request) {
+        if (!isAdminAuthorized(request)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return ResponseEntity.ok(healthSummaryService.getSummary());
     }
 
     // ── Admin authorization helper ────────────────────────────────────────────

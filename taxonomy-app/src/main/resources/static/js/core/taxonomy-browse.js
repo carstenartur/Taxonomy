@@ -105,7 +105,7 @@
 
         // Export buttons
         ['exportSvg', 'exportPng', 'exportPdf', 'exportCsv', 'exportJson', 'exportVisio', 'exportArchiMate', 'exportMermaid',
-         'exportDot', 'exportMermaidTree',
+         'exportStructurizr', 'exportDot', 'exportMermaidTree',
          'exportReportMd', 'exportReportHtml', 'exportReportDocx'].forEach(function (id) {
             const btn = document.getElementById(id);
             if (btn) {
@@ -869,6 +869,13 @@
             if (window.TaxonomyExport) {
                 var bt = document.getElementById('businessText');
                 window.TaxonomyExport.exportMermaid(bt ? bt.value : '');
+            }
+            return;
+        }
+        if (btnId === 'exportStructurizr') {
+            if (window.TaxonomyExport) {
+                var bt = document.getElementById('businessText');
+                window.TaxonomyExport.exportStructurizrDsl(bt ? bt.value : '');
             }
             return;
         }

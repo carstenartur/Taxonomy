@@ -68,12 +68,6 @@
                 <a class="nav-link" data-page="graph" href="#graph">&#128300; <span th:text="#{nav.graph}">Graph</span></a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" data-page="relations" href="#relations">&#128279; <span th:text="#{nav.relations}">Relations</span></a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" data-page="export" href="#export">&#128229; <span th:text="#{nav.export}">Export</span></a>
-            </li>
-            <li class="nav-item">
                 <a class="nav-link" data-page="versions" href="#versions">&#128339; <span th:text="#{nav.versions}">Versions</span></a>
             </li>
             <li class="nav-item">
@@ -439,6 +433,21 @@
                  ============================================================ -->
             <div id="tab-architecture" class="tab-pane-content d-none">
 
+                <!-- Architecture sub-tabs -->
+                <ul class="nav nav-pills nav-fill mb-3" id="architectureSubTabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-subtab="arch-overview" href="#">&#127959;&#65039; Overview</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-subtab="arch-relations" href="#">&#128279; <span th:text="#{nav.relations}">Relations</span></a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-subtab="arch-export" href="#">&#128229; <span th:text="#{nav.export}">Export</span></a>
+                    </li>
+                </ul>
+
+                <div id="subtab-arch-overview">
+
                 <!-- Architecture View Panel -->
                 <div id="architectureViewPanel" class="mb-3" style="display:none;">
                     <div class="card shadow-sm">
@@ -474,6 +483,177 @@
 
                 <!-- ArchiMate Import Status -->
                 <div id="archiMateImportStatus" class="mt-2" style="display:none;"></div>
+
+                </div><!-- /subtab-arch-overview -->
+
+                <!-- ============================================================
+                     ARCHITECTURE SUB-TAB: RELATIONS
+                     ============================================================ -->
+                <div id="subtab-arch-relations" class="d-none">
+                <div id="tab-relations">
+
+                <!-- Relation Proposals Panel -->
+                <div id="proposalsPanel" class="mb-3">
+                    <div class="card shadow-sm">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span class="fw-semibold" th:text="#{browse.proposals.panel.title}">&#128269; Relation Proposals</span>
+                            <span id="proposalPendingBadge" class="badge bg-warning text-dark proposal-pending-badge">0 pending</span>
+                        </div>
+                        <div class="card-body p-2">
+                            <div class="btn-group btn-group-sm mb-2 proposal-filter-group" role="group" aria-label="Proposal status filter">
+                                <button id="filterPending"  class="btn btn-warning"          data-filter="PENDING"  aria-pressed="true">Pending</button>
+                                <button id="filterAll"      class="btn btn-outline-secondary" data-filter="ALL"      aria-pressed="false">All</button>
+                                <button id="filterAccepted" class="btn btn-outline-success"  data-filter="ACCEPTED" aria-pressed="false">Accepted</button>
+                                <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false">Rejected</button>
+                            </div>
+                            <div id="proposalsTableContainer" class="table-responsive">
+                                <div class="text-muted small p-2">Loading proposals&hellip;</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Relations Browser -->
+                <details id="relationsBrowser" class="mt-2">
+                    <summary class="fw-semibold" style="cursor:pointer;">&#128279; Relations Browser</summary>
+                    <div class="mt-2">
+                        <div class="d-flex gap-2 align-items-center mb-2">
+                            <select id="relationsTypeFilter" class="form-select form-select-sm" style="max-width:180px;" aria-label="Filter by relation type">
+                                <option value="">All types</option>
+                                <option value="REALIZES">REALIZES</option>
+                                <option value="SUPPORTS">SUPPORTS</option>
+                                <option value="CONSUMES">CONSUMES</option>
+                                <option value="USES">USES</option>
+                                <option value="FULFILLS">FULFILLS</option>
+                                <option value="ASSIGNED_TO">ASSIGNED_TO</option>
+                                <option value="DEPENDS_ON">DEPENDS_ON</option>
+                                <option value="PRODUCES">PRODUCES</option>
+                                <option value="COMMUNICATES_WITH">COMMUNICATES_WITH</option>
+                                <option value="CONTAINS">CONTAINS</option>
+                                <option value="RELATED_TO">RELATED_TO</option>
+                            </select>
+                            <button id="createRelationBtn" class="btn btn-sm btn-outline-primary">&#10133; New Relation</button>
+                        </div>
+                        <div id="relationsTableContainer" style="max-height:300px; overflow-y:auto;">
+                            <div class="text-muted small p-2">Open to load relations.</div>
+                        </div>
+                    </div>
+                </details>
+
+                </div><!-- /tab-relations -->
+                </div><!-- /subtab-arch-relations -->
+
+                <!-- ============================================================
+                     ARCHITECTURE SUB-TAB: EXPORT
+                     ============================================================ -->
+                <div id="subtab-arch-export" class="d-none">
+                <div id="tab-export">
+
+                <!-- ViewContext: shows Git provenance for export data -->
+                <div id="exportViewContext" class="view-context-bar d-none"></div>
+
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header fw-semibold" th:text="#{export.card.title}">&#128229; Export Architecture</div>
+                    <div class="card-body">
+
+                        <p class="text-muted small mb-3">
+                            Export the current analysis results as a diagram or data file.
+                            Run an analysis on the <strong>Analyze</strong> tab first to enable diagram exports.
+                        </p>
+
+                        <div id="exportHint" class="alert alert-info py-2 small mb-3" th:title="#{export.hint.title}" title="Export buttons appear after a successful analysis with scores > 0">
+                            &#128203; Run an analysis to enable diagram exports (SVG, PNG, PDF, DOT, Mermaid, Visio, ArchiMate).
+                        </div>
+
+                        <!-- Diagram exports (visible after analysis) -->
+                        <div id="exportGroup" style="display:none;">
+                            <h6 class="mb-2">Diagram Formats</h6>
+                            <div class="d-flex gap-2 flex-wrap mb-3 align-items-center">
+                                <button id="exportSvg"       class="btn btn-outline-primary" th:title="#{export.btn.svg.title}" title="Download current view as SVG">&#128229; SVG</button>
+                                <button id="exportPng"       class="btn btn-outline-primary" th:title="#{export.btn.png.title}" title="Download current view as PNG">&#128229; PNG</button>
+                                <label class="ms-1 me-2 small text-muted" title="PNG export resolution multiplier">
+                                    <select id="pngResolution" class="form-select form-select-sm d-inline-block" style="width:auto;">
+                                        <option value="1">1&#215;</option>
+                                        <option value="2" selected>2&#215;</option>
+                                        <option value="4">4&#215;</option>
+                                    </select>
+                                </label>
+                                <button id="exportPdf"       class="btn btn-outline-secondary" th:title="#{export.btn.pdf.title}" title="Export as vector PDF (or Print)">&#128229; PDF (Vector)</button>
+                                <button id="exportVisio"     class="btn btn-outline-info" th:title="#{export.btn.visio.title}" title="Export Architecture View as Visio (.vsdx) diagram">&#128229; Visio (.vsdx)</button>
+                                <button id="exportArchiMate" class="btn btn-outline-info" th:title="#{export.btn.archimate.title}" title="Export Architecture View as ArchiMate XML (.xml) for Archi or similar tools">&#128229; ArchiMate (.xml)</button>
+                                <button id="exportMermaid"   class="btn btn-outline-info" th:title="#{export.btn.mermaid.title}" title="Export Architecture View as Mermaid flowchart for Markdown documents">&#128229; Mermaid</button>
+                                <button id="exportStructurizr" class="btn btn-outline-info" th:title="#{export.btn.structurizr.title}" title="Export Architecture View as Structurizr DSL for C4 tools">&#128229; Structurizr (.dsl)</button>
+                            </div>
+                            <h6 class="mb-2">Tree Formats</h6>
+                            <div class="d-flex gap-2 flex-wrap mb-3">
+                                <button id="exportDot"         class="btn btn-outline-warning" th:title="#{export.btn.dot.title}" title="Export taxonomy hierarchy as Graphviz DOT for yEd, Gephi, or Graphviz">&#128229; DOT (Graphviz)</button>
+                                <button id="exportMermaidTree" class="btn btn-outline-warning" th:title="#{export.btn.mermaid.tree.title}" title="Export taxonomy hierarchy as Mermaid tree for Markdown documents">&#128229; Mermaid Tree</button>
+                            </div>
+                            <h6 class="mb-2">Data Formats</h6>
+                            <div class="d-flex gap-2 flex-wrap mb-3">
+                                <button id="exportCsv"  class="btn btn-outline-success" th:title="#{export.btn.csv.title}" title="Download scores as CSV spreadsheet">&#128229; CSV</button>
+                                <button id="exportJson" class="btn btn-outline-success" th:title="#{export.btn.json.title}" title="Download scores as JSON file">&#128229; JSON</button>
+                            </div>
+                            <h6 class="mb-2">&#128196; Full Report</h6>
+                            <div class="d-flex gap-2 flex-wrap mb-3">
+                                <button id="exportReportMd"   class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.md.title}" title="Export a comprehensive architecture report as Markdown">&#128196; Report (.md)</button>
+                                <button id="exportReportHtml" class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.html.title}" title="Export a comprehensive architecture report as HTML">&#128196; Report (.html)</button>
+                                <button id="exportReportDocx" class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.docx.title}" title="Export a comprehensive architecture report as Word document">&#128196; Report (.docx)</button>
+                            </div>
+                        </div>
+
+                        <hr class="my-3"/>
+
+                        <h6 class="mb-2">Import &amp; Load</h6>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button id="importJson" class="btn btn-outline-secondary" th:title="#{export.btn.load.title}" title="Load saved analysis from JSON file">&#128228; Load Scores</button>
+                            <input type="file" id="importJsonFile" accept=".json" style="display:none;">
+                            <button id="archiMateImportBtn" class="btn btn-outline-success" th:title="#{export.btn.archimate.import.title}" title="Import an ArchiMate XML model to map elements and relations to taxonomy" aria-label="Import ArchiMate XML">&#128228; Import ArchiMate</button>
+                            <input type="file" id="archiMateImportFile" accept=".xml" style="display:none;">
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Framework Import Card -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header fw-semibold" th:text="#{framework.import.card.title}">&#128228; Framework Import</div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">
+                            Import architecture models from external frameworks (UAF, APQC, C4/Structurizr).
+                            Elements and relations will be mapped to the taxonomy and materialized into the database.
+                        </p>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-5">
+                                <label for="importProfileSelect" class="form-label small" th:text="#{framework.import.profile}">Profile</label>
+                                <select id="importProfileSelect" class="form-select form-select-sm">
+                                    <option value="" th:text="#{framework.import.profile.select}">-- Select Profile --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="importFrameworkFile" class="form-label small" th:text="#{framework.import.file}">File</label>
+                                <input type="file" id="importFrameworkFile" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="importBranch" class="form-label small" th:text="#{framework.import.branch}">Branch</label>
+                                <input type="text" id="importBranch" class="form-control form-control-sm" value="main" th:placeholder="#{framework.import.branch.placeholder}" placeholder="main">
+                            </div>
+                        </div>
+
+                        <div id="importProfileInfo" class="mb-2"></div>
+
+                        <div class="d-flex gap-2 mb-3">
+                            <button id="importPreviewBtn" class="btn btn-outline-info btn-sm" th:title="#{framework.import.btn.preview.title}" title="Preview import without writing to database">&#128270; Preview</button>
+                            <button id="importExecuteBtn" class="btn btn-outline-success btn-sm" data-guard="import" th:title="#{framework.import.btn.execute.title}" title="Execute full import into database">&#128228; Import</button>
+                        </div>
+
+                        <div id="importResultArea"></div>
+                    </div>
+                </div>
+
+                </div><!-- /tab-export -->
+                </div><!-- /subtab-arch-export -->
 
             </div><!-- /tab-architecture -->
 
@@ -549,173 +729,36 @@
             </div><!-- /tab-graph -->
 
             <!-- ============================================================
-                 TAB: RELATIONS
+                 TAB: VERSIONS
                  ============================================================ -->
-            <div id="tab-relations" class="tab-pane-content d-none">
+            <div id="tab-versions" class="tab-pane-content d-none">
 
-                <!-- Relation Proposals Panel -->
-                <div id="proposalsPanel" class="mb-3">
-                    <div class="card shadow-sm">
-                        <div class="card-header d-flex justify-content-between align-items-center">
-                            <span class="fw-semibold" th:text="#{browse.proposals.panel.title}">&#128269; Relation Proposals</span>
-                            <span id="proposalPendingBadge" class="badge bg-warning text-dark proposal-pending-badge">0 pending</span>
-                        </div>
-                        <div class="card-body p-2">
-                            <div class="btn-group btn-group-sm mb-2 proposal-filter-group" role="group" aria-label="Proposal status filter">
-                                <button id="filterPending"  class="btn btn-warning"          data-filter="PENDING"  aria-pressed="true">Pending</button>
-                                <button id="filterAll"      class="btn btn-outline-secondary" data-filter="ALL"      aria-pressed="false">All</button>
-                                <button id="filterAccepted" class="btn btn-outline-success"  data-filter="ACCEPTED" aria-pressed="false">Accepted</button>
-                                <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false">Rejected</button>
-                            </div>
-                            <div id="proposalsTableContainer" class="table-responsive">
-                                <div class="text-muted small p-2">Loading proposals&hellip;</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Relations Browser -->
-                <details id="relationsBrowser" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128279; Relations Browser</summary>
+                <!-- Context Navigation History -->
+                <details id="contextHistoryPanel" class="mb-3">
+                    <summary class="fw-semibold" style="cursor:pointer;">&#128337; Navigation History</summary>
                     <div class="mt-2">
-                        <div class="d-flex gap-2 align-items-center mb-2">
-                            <select id="relationsTypeFilter" class="form-select form-select-sm" style="max-width:180px;" aria-label="Filter by relation type">
-                                <option value="">All types</option>
-                                <option value="REALIZES">REALIZES</option>
-                                <option value="SUPPORTS">SUPPORTS</option>
-                                <option value="CONSUMES">CONSUMES</option>
-                                <option value="USES">USES</option>
-                                <option value="FULFILLS">FULFILLS</option>
-                                <option value="ASSIGNED_TO">ASSIGNED_TO</option>
-                                <option value="DEPENDS_ON">DEPENDS_ON</option>
-                                <option value="PRODUCES">PRODUCES</option>
-                                <option value="COMMUNICATES_WITH">COMMUNICATES_WITH</option>
-                                <option value="CONTAINS">CONTAINS</option>
-                                <option value="RELATED_TO">RELATED_TO</option>
-                            </select>
-                            <button id="createRelationBtn" class="btn btn-sm btn-outline-primary">&#10133; New Relation</button>
+                        <div id="contextHistoryTimeline" class="border rounded p-2 bg-light" style="max-height:350px; overflow-y:auto; font-size:0.85em;">
+                            <div class="text-muted">Loading navigation history...</div>
                         </div>
-                        <div id="relationsTableContainer" style="max-height:300px; overflow-y:auto;">
-                            <div class="text-muted small p-2">Open to load relations.</div>
+                        <div class="mt-1 d-flex gap-2">
+                            <button id="contextHistoryRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
                         </div>
                     </div>
                 </details>
 
-            </div><!-- /tab-relations -->
-
-            <!-- ============================================================
-                 TAB: EXPORT
-                 ============================================================ -->
-            <div id="tab-export" class="tab-pane-content d-none">
-
-                <!-- ViewContext: shows Git provenance for export data -->
-                <div id="exportViewContext" class="view-context-bar d-none"></div>
-
-                <div class="card shadow-sm mb-3">
-                    <div class="card-header fw-semibold" th:text="#{export.card.title}">&#128229; Export Architecture</div>
-                    <div class="card-body">
-
-                        <p class="text-muted small mb-3">
-                            Export the current analysis results as a diagram or data file.
-                            Run an analysis on the <strong>Analyze</strong> tab first to enable diagram exports.
-                        </p>
-
-                        <div id="exportHint" class="alert alert-info py-2 small mb-3" th:title="#{export.hint.title}" title="Export buttons appear after a successful analysis with scores > 0">
-                            &#128203; Run an analysis to enable diagram exports (SVG, PNG, PDF, DOT, Mermaid, Visio, ArchiMate).
+                <!-- Workspace Manager -->
+                <details id="workspaceManagerPanel" class="mb-3">
+                    <summary class="fw-semibold" style="cursor:pointer;">&#128188; <span th:text="#{workspace.manager.title}">Workspace Manager</span></summary>
+                    <div class="mt-2">
+                        <div class="d-flex gap-2 mb-2 flex-wrap">
+                            <button id="wsCreateBtn" class="btn btn-sm btn-outline-primary">&#10133; <span th:text="#{workspace.manager.create}">New Workspace</span></button>
+                            <button id="wsRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; <span th:text="#{workspace.manager.refresh}">Refresh</span></button>
                         </div>
-
-                        <!-- Diagram exports (visible after analysis) -->
-                        <div id="exportGroup" style="display:none;">
-                            <h6 class="mb-2">Diagram Formats</h6>
-                            <div class="d-flex gap-2 flex-wrap mb-3 align-items-center">
-                                <button id="exportSvg"       class="btn btn-outline-primary" th:title="#{export.btn.svg.title}" title="Download current view as SVG">&#128229; SVG</button>
-                                <button id="exportPng"       class="btn btn-outline-primary" th:title="#{export.btn.png.title}" title="Download current view as PNG">&#128229; PNG</button>
-                                <label class="ms-1 me-2 small text-muted" title="PNG export resolution multiplier">
-                                    <select id="pngResolution" class="form-select form-select-sm d-inline-block" style="width:auto;">
-                                        <option value="1">1&#215;</option>
-                                        <option value="2" selected>2&#215;</option>
-                                        <option value="4">4&#215;</option>
-                                    </select>
-                                </label>
-                                <button id="exportPdf"       class="btn btn-outline-secondary" th:title="#{export.btn.pdf.title}" title="Export as vector PDF (or Print)">&#128229; PDF (Vector)</button>
-                                <button id="exportVisio"     class="btn btn-outline-info" th:title="#{export.btn.visio.title}" title="Export Architecture View as Visio (.vsdx) diagram">&#128229; Visio (.vsdx)</button>
-                                <button id="exportArchiMate" class="btn btn-outline-info" th:title="#{export.btn.archimate.title}" title="Export Architecture View as ArchiMate XML (.xml) for Archi or similar tools">&#128229; ArchiMate (.xml)</button>
-                                <button id="exportMermaid"   class="btn btn-outline-info" th:title="#{export.btn.mermaid.title}" title="Export Architecture View as Mermaid flowchart for Markdown documents">&#128229; Mermaid</button>
-                            </div>
-                            <h6 class="mb-2">Tree Formats</h6>
-                            <div class="d-flex gap-2 flex-wrap mb-3">
-                                <button id="exportDot"         class="btn btn-outline-warning" th:title="#{export.btn.dot.title}" title="Export taxonomy hierarchy as Graphviz DOT for yEd, Gephi, or Graphviz">&#128229; DOT (Graphviz)</button>
-                                <button id="exportMermaidTree" class="btn btn-outline-warning" th:title="#{export.btn.mermaid.tree.title}" title="Export taxonomy hierarchy as Mermaid tree for Markdown documents">&#128229; Mermaid Tree</button>
-                            </div>
-                            <h6 class="mb-2">Data Formats</h6>
-                            <div class="d-flex gap-2 flex-wrap mb-3">
-                                <button id="exportCsv"  class="btn btn-outline-success" th:title="#{export.btn.csv.title}" title="Download scores as CSV spreadsheet">&#128229; CSV</button>
-                                <button id="exportJson" class="btn btn-outline-success" th:title="#{export.btn.json.title}" title="Download scores as JSON file">&#128229; JSON</button>
-                            </div>
-                            <h6 class="mb-2">&#128196; Full Report</h6>
-                            <div class="d-flex gap-2 flex-wrap mb-3">
-                                <button id="exportReportMd"   class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.md.title}" title="Export a comprehensive architecture report as Markdown">&#128196; Report (.md)</button>
-                                <button id="exportReportHtml" class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.html.title}" title="Export a comprehensive architecture report as HTML">&#128196; Report (.html)</button>
-                                <button id="exportReportDocx" class="btn btn-outline-dark" data-guard="export" th:title="#{export.btn.report.docx.title}" title="Export a comprehensive architecture report as Word document">&#128196; Report (.docx)</button>
-                            </div>
+                        <div id="workspaceListContainer" class="row g-2">
+                            <div class="text-muted small">Open to load workspaces.</div>
                         </div>
-
-                        <hr class="my-3"/>
-
-                        <h6 class="mb-2">Import &amp; Load</h6>
-                        <div class="d-flex gap-2 flex-wrap">
-                            <button id="importJson" class="btn btn-outline-secondary" th:title="#{export.btn.load.title}" title="Load saved analysis from JSON file">&#128228; Load Scores</button>
-                            <input type="file" id="importJsonFile" accept=".json" style="display:none;">
-                            <button id="archiMateImportBtn" class="btn btn-outline-success" th:title="#{export.btn.archimate.import.title}" title="Import an ArchiMate XML model to map elements and relations to taxonomy" aria-label="Import ArchiMate XML">&#128228; Import ArchiMate</button>
-                            <input type="file" id="archiMateImportFile" accept=".xml" style="display:none;">
-                        </div>
-
                     </div>
-                </div>
-
-                <!-- Framework Import Card -->
-                <div class="card shadow-sm mb-3">
-                    <div class="card-header fw-semibold" th:text="#{framework.import.card.title}">&#128228; Framework Import</div>
-                    <div class="card-body">
-                        <p class="text-muted small mb-3">
-                            Import architecture models from external frameworks (UAF, APQC, C4/Structurizr).
-                            Elements and relations will be mapped to the taxonomy and materialized into the database.
-                        </p>
-
-                        <div class="row g-2 mb-3">
-                            <div class="col-md-5">
-                                <label for="importProfileSelect" class="form-label small" th:text="#{framework.import.profile}">Profile</label>
-                                <select id="importProfileSelect" class="form-select form-select-sm">
-                                    <option value="" th:text="#{framework.import.profile.select}">-- Select Profile --</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="importFrameworkFile" class="form-label small" th:text="#{framework.import.file}">File</label>
-                                <input type="file" id="importFrameworkFile" class="form-control form-control-sm">
-                            </div>
-                            <div class="col-md-3">
-                                <label for="importBranch" class="form-label small" th:text="#{framework.import.branch}">Branch</label>
-                                <input type="text" id="importBranch" class="form-control form-control-sm" value="main" th:placeholder="#{framework.import.branch.placeholder}" placeholder="main">
-                            </div>
-                        </div>
-
-                        <div id="importProfileInfo" class="mb-2"></div>
-
-                        <div class="d-flex gap-2 mb-3">
-                            <button id="importPreviewBtn" class="btn btn-outline-info btn-sm" th:title="#{framework.import.btn.preview.title}" title="Preview import without writing to database">&#128270; Preview</button>
-                            <button id="importExecuteBtn" class="btn btn-outline-success btn-sm" data-guard="import" th:title="#{framework.import.btn.execute.title}" title="Execute full import into database">&#128228; Import</button>
-                        </div>
-
-                        <div id="importResultArea"></div>
-                    </div>
-                </div>
-
-            </div><!-- /tab-export -->
-
-            <!-- ============================================================
-                 TAB: VERSIONS
-                 ============================================================ -->
-            <div id="tab-versions" class="tab-pane-content d-none">
+                </details>
 
                 <!-- Undo / Redo bar -->
                 <div class="card shadow-sm mb-3">
@@ -828,6 +871,56 @@
                     </div>
                 </div>
 
+                <script>
+                // Context History Timeline
+                (function() {
+                    var panel = document.getElementById('contextHistoryPanel');
+                    var refreshBtn = document.getElementById('contextHistoryRefreshBtn');
+
+                    function escHtml(s) {
+                        if (!s) return '';
+                        return s.replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
+                    }
+
+                    function loadContextHistory() {
+                        fetch('/api/workspace/history')
+                            .then(function(r) { return r.json(); })
+                            .then(function(records) {
+                                var container = document.getElementById('contextHistoryTimeline');
+                                if (!records || records.length === 0) {
+                                    container.innerHTML = '<div class="text-muted">No navigation history yet.</div>';
+                                    return;
+                                }
+                                var html = '<div class="timeline">';
+                                records.forEach(function(r, idx) {
+                                    var ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '';
+                                    var reasonBadge = r.reason ? '<span class="badge bg-secondary">' + escHtml(r.reason) + '</span>' : '';
+                                    var fromCtx = escHtml(r.fromContext || '');
+                                    var toCtx = escHtml(r.toContext || '');
+                                    var isLatest = idx === records.length - 1;
+                                    html += '<div class="d-flex align-items-start mb-2' + (isLatest ? ' fw-bold' : '') + '">';
+                                    html += '<div class="me-2 text-center" style="min-width:24px;">';
+                                    html += isLatest ? '&#128205;' : '&#128900;';
+                                    html += '</div>';
+                                    html += '<div class="flex-grow-1">';
+                                    html += '<div class="small text-muted">' + escHtml(ts) + ' ' + reasonBadge + '</div>';
+                                    if (fromCtx) html += '<div class="small"><span class="text-muted">From:</span> ' + fromCtx + '</div>';
+                                    if (toCtx) html += '<div class="small"><span class="text-muted">To:</span> ' + toCtx + '</div>';
+                                    html += '</div></div>';
+                                });
+                                html += '</div>';
+                                container.innerHTML = html;
+                            })
+                            .catch(function() {
+                                document.getElementById('contextHistoryTimeline').innerHTML = '<div class="text-danger">Failed to load history.</div>';
+                            });
+                    }
+
+                    if (panel) panel.addEventListener('toggle', function() { if (panel.open) loadContextHistory(); });
+                    if (refreshBtn) refreshBtn.addEventListener('click', loadContextHistory);
+                })();
+                </script>
+
             </div><!-- /tab-versions -->
 
             <!-- ============================================================
@@ -936,8 +1029,74 @@
                  ============================================================ -->
             <div id="tab-admin" class="tab-pane-content d-none">
 
+                <!-- Health Overview Dashboard -->
+                <details id="healthDashboard" class="mt-0">
+                    <summary class="fw-semibold" style="cursor:pointer;">&#128154; Health Dashboard</summary>
+                    <div id="healthDashboardContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
+                        <div class="row g-2">
+                            <div class="col-md-3">
+                                <div class="card">
+                                    <div class="card-body p-2 text-center">
+                                        <div class="small text-muted">Overall</div>
+                                        <div id="healthOverallBadge" class="fs-5">⏳</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card">
+                                    <div class="card-body p-2 text-center">
+                                        <div class="small text-muted">AI/LLM</div>
+                                        <div id="healthAiBadge" class="fs-5">⏳</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card">
+                                    <div class="card-body p-2 text-center">
+                                        <div class="small text-muted">Embedding</div>
+                                        <div id="healthEmbeddingBadge" class="fs-5">⏳</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card">
+                                    <div class="card-body p-2 text-center">
+                                        <div class="small text-muted">Memory</div>
+                                        <div id="healthMemoryBadge" class="fs-5">⏳</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-1">
+                        <button id="healthRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                    </div>
+                </details>
+
+                <!-- Log Viewer -->
+                <details id="logViewerPanel" class="mt-2">
+                    <summary class="fw-semibold" style="cursor:pointer;">&#128220; Log Viewer</summary>
+                    <div class="mt-2">
+                        <div class="d-flex gap-2 mb-2 flex-wrap align-items-center">
+                            <select id="logLevelFilter" class="form-select form-select-sm" style="max-width:120px;">
+                                <option value="">All Levels</option>
+                                <option value="ERROR">ERROR</option>
+                                <option value="WARN">WARN</option>
+                                <option value="INFO">INFO</option>
+                                <option value="DEBUG">DEBUG</option>
+                            </select>
+                            <input id="logComponentFilter" type="text" class="form-control form-control-sm" placeholder="Filter by component..." style="max-width:200px;">
+                            <button id="logRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                            <button id="logAutoScrollBtn" class="btn btn-sm btn-outline-info">&#8595; Auto-scroll</button>
+                        </div>
+                        <div id="logViewerContent" class="border rounded bg-dark text-light p-2 font-monospace" style="font-size:0.75em; max-height:400px; overflow-y:auto;">
+                            <div class="text-muted">Open to load logs.</div>
+                        </div>
+                    </div>
+                </details>
+
                 <!-- Quality Dashboard -->
-                <details id="qualityDashboard" class="mt-0">
+                <details id="qualityDashboard" class="mt-2">
                     <summary class="fw-semibold" style="cursor:pointer;">&#128202; Quality Dashboard</summary>
                     <div id="qualityDashboardContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
                         <div class="text-muted">Open to load metrics.</div>
@@ -992,6 +1151,113 @@
                         <div id="promptStatusMsg" class="mt-2 small"></div>
                     </div>
                 </details>
+
+                <script>
+                // Shared helper for admin API calls
+                function getAdminHeaders() {
+                    var headers = {};
+                    try {
+                        var adminToken = localStorage.getItem('admin.token');
+                        if (adminToken) headers['X-Admin-Token'] = adminToken;
+                    } catch (e) { /* storage disabled */ }
+                    return headers;
+                }
+
+                // Health Dashboard
+                (function() {
+                    var healthPanel = document.getElementById('healthDashboard');
+                    var healthRefreshBtn = document.getElementById('healthRefreshBtn');
+
+                    function loadHealth() {
+                        fetch('/api/admin/health-summary', { headers: getAdminHeaders() })
+                            .then(function(r) { return r.json(); })
+                            .then(function(data) {
+                                var overall = document.getElementById('healthOverallBadge');
+                                overall.textContent = data.overall === 'UP' ? '✅ UP' : '⚠️ DEGRADED';
+                                overall.className = 'fs-5 ' + (data.overall === 'UP' ? 'text-success' : 'text-warning');
+
+                                var ai = document.getElementById('healthAiBadge');
+                                ai.textContent = data.ai && data.ai.available ? '✅ Available' : '⚠️ Unavailable';
+                                ai.className = 'fs-5 ' + (data.ai && data.ai.available ? 'text-success' : 'text-warning');
+
+                                var emb = document.getElementById('healthEmbeddingBadge');
+                                emb.textContent = data.embedding && data.embedding.enabled ? '✅ Active' : '⚠️ Inactive';
+                                emb.className = 'fs-5 ' + (data.embedding && data.embedding.enabled ? 'text-success' : 'text-warning');
+
+                                var mem = document.getElementById('healthMemoryBadge');
+                                if (data.memory) {
+                                    var pct = Math.round(data.memory.heapUsagePercent != null ? data.memory.heapUsagePercent : 0);
+                                    mem.textContent = pct + '%';
+                                    mem.className = 'fs-5 ' + (pct < 80 ? 'text-success' : 'text-warning');
+                                }
+                            })
+                            .catch(function() {
+                                document.getElementById('healthOverallBadge').textContent = '❌ Error';
+                            });
+                    }
+
+                    if (healthPanel) healthPanel.addEventListener('toggle', function() { if (healthPanel.open) loadHealth(); });
+                    if (healthRefreshBtn) healthRefreshBtn.addEventListener('click', loadHealth);
+                })();
+
+                // Log Viewer
+                (function() {
+                    var logPanel = document.getElementById('logViewerPanel');
+                    var logRefreshBtn = document.getElementById('logRefreshBtn');
+                    var autoScroll = true;
+
+                    function escHtml(s) {
+                        return s.replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
+                    }
+
+                    function loadLogs() {
+                        var level = document.getElementById('logLevelFilter').value;
+                        var component = document.getElementById('logComponentFilter').value;
+                        var url = '/api/admin/logs?limit=200';
+                        if (level) url += '&level=' + encodeURIComponent(level);
+                        if (component) url += '&component=' + encodeURIComponent(component);
+
+                        fetch(url, { headers: getAdminHeaders() })
+                            .then(function(r) { return r.json(); })
+                            .then(function(entries) {
+                                var container = document.getElementById('logViewerContent');
+                                if (!entries || entries.length === 0) {
+                                    container.innerHTML = '<div class="text-muted">No log entries found.</div>';
+                                    return;
+                                }
+                                var html = entries.map(function(e) {
+                                    var ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString('en', {hour12:false, fractionalSecondDigits:3}) : '';
+                                    var levelClass = {ERROR:'text-danger',WARN:'text-warning',INFO:'text-info',DEBUG:'text-secondary'}[e.level] || '';
+                                    var shortLogger = e.logger ? e.logger.split('.').pop() : '';
+                                    return '<div><span class="text-muted">' + ts + '</span> <span class="badge ' + levelClass + '" style="min-width:45px;">' + (e.level||'') + '</span> <span class="text-primary">' + shortLogger + '</span> ' + escHtml(e.message || '') + '</div>';
+                                }).join('');
+                                container.innerHTML = html;
+                                if (autoScroll) container.scrollTop = container.scrollHeight;
+                            })
+                            .catch(function() {
+                                document.getElementById('logViewerContent').innerHTML = '<div class="text-danger">Failed to load logs.</div>';
+                            });
+                    }
+
+                    if (logPanel) logPanel.addEventListener('toggle', function() { if (logPanel.open) loadLogs(); });
+                    if (logRefreshBtn) logRefreshBtn.addEventListener('click', loadLogs);
+
+                    var autoScrollBtn = document.getElementById('logAutoScrollBtn');
+                    if (autoScrollBtn) autoScrollBtn.addEventListener('click', function() {
+                        autoScroll = !autoScroll;
+                        this.classList.toggle('btn-outline-info', autoScroll);
+                        this.classList.toggle('btn-info', !autoScroll);
+                    });
+
+                    var levelFilter = document.getElementById('logLevelFilter');
+                    var compFilter = document.getElementById('logComponentFilter');
+                    if (levelFilter) levelFilter.addEventListener('change', loadLogs);
+                    if (compFilter) compFilter.addEventListener('input', (function() {
+                        var timer;
+                        return function() { clearTimeout(timer); timer = setTimeout(loadLogs, 300); };
+                    })());
+                })();
+                </script>
 
             </div><!-- /tab-admin -->
 
@@ -1434,10 +1700,55 @@
 <script>
 (function () {
     'use strict';
-    var PAGES = ['analyze', 'architecture', 'graph', 'relations', 'export', 'versions', 'dsl-editor', 'help', 'admin', 'preferences'];
-    var FULL_WIDTH_PAGES = ['relations', 'export', 'versions', 'help', 'admin', 'preferences'];
+    var PAGES = ['analyze', 'architecture', 'graph', 'versions', 'dsl-editor', 'help', 'admin', 'preferences'];
+    var FULL_WIDTH_PAGES = ['versions', 'help', 'admin', 'preferences'];
+    var ARCH_SUB_TABS = ['arch-overview', 'arch-relations', 'arch-export'];
+
+    // Map removed top-level pages to architecture sub-tabs for backward compatibility
+    var subTabMapping = {'relations': 'arch-relations', 'export': 'arch-export'};
+
+    function activateArchSubTab(subTabName) {
+        var subTabs = document.querySelectorAll('#architectureSubTabs .nav-link');
+        subTabs.forEach(function(link) {
+            link.classList.toggle('active', link.getAttribute('data-subtab') === subTabName);
+        });
+        ARCH_SUB_TABS.forEach(function(pane) {
+            var el = document.getElementById('subtab-' + pane);
+            if (el) {
+                el.classList.toggle('d-none', pane !== subTabName);
+            }
+        });
+        // Adjust panel width based on active sub-tab
+        var leftPanel  = document.getElementById('leftPanel');
+        var rightPanel = document.getElementById('rightPanel');
+        if (leftPanel && rightPanel) {
+            if (subTabName === 'arch-overview') {
+                leftPanel.classList.remove('d-none');
+                leftPanel.className  = 'col-lg-5';
+                rightPanel.className = 'col-lg-7';
+            } else {
+                leftPanel.classList.add('d-none');
+                rightPanel.className = 'col-12';
+            }
+        }
+        // Trigger ViewContext fetch when switching to export sub-tab
+        if (subTabName === 'arch-export' && window.TaxonomyViewContext) {
+            window.TaxonomyViewContext.fetchAndRender('exportViewContext');
+        }
+        // Trigger export button visibility when switching to export sub-tab
+        if (subTabName === 'arch-export' && window.TaxonomyBrowse) {
+            window.TaxonomyBrowse.updateExportGroupVisibility();
+        }
+    }
 
     function activatePage(pageName) {
+        // Backward compatibility: map removed pages to architecture sub-tabs
+        if (subTabMapping[pageName]) {
+            activatePage('architecture');
+            activateArchSubTab(subTabMapping[pageName]);
+            return;
+        }
+
         if (PAGES.indexOf(pageName) === -1) { pageName = 'analyze'; }
 
         // Update nav-tab active state
@@ -1466,15 +1777,22 @@
         if (FULL_WIDTH_PAGES.indexOf(pageName) !== -1) {
             leftPanel.classList.add('d-none');
             rightPanel.className = 'col-12';
-        } else {
-            leftPanel.classList.remove('d-none');
-            if (pageName === 'architecture') {
+        } else if (pageName === 'architecture') {
+            // Delegate width handling to the active sub-tab
+            var activeSubTab = document.querySelector('#architectureSubTabs .nav-link.active');
+            var subTab = activeSubTab ? activeSubTab.getAttribute('data-subtab') : 'arch-overview';
+            if (subTab === 'arch-overview') {
+                leftPanel.classList.remove('d-none');
                 leftPanel.className  = 'col-lg-5';
                 rightPanel.className = 'col-lg-7';
             } else {
-                leftPanel.className  = 'col-lg-7';
-                rightPanel.className = 'col-lg-5';
+                leftPanel.classList.add('d-none');
+                rightPanel.className = 'col-12';
             }
+        } else {
+            leftPanel.classList.remove('d-none');
+            leftPanel.className  = 'col-lg-7';
+            rightPanel.className = 'col-lg-5';
         }
 
         // Update URL hash without adding to browser history
@@ -1486,7 +1804,6 @@
         if (window.TaxonomyViewContext) {
             var viewContextMap = {
                 'graph': 'graphViewContext',
-                'export': 'exportViewContext',
                 'dsl-editor': 'dslViewContext'
             };
             var containerId = viewContextMap[pageName];
@@ -1501,6 +1818,13 @@
                 }
                 window.TaxonomyViewContext.fetchAndRender(containerId, branch);
             }
+            // Also fetch export ViewContext when architecture tab activates with export sub-tab
+            if (pageName === 'architecture') {
+                var activeSubTab = document.querySelector('#architectureSubTabs .nav-link.active');
+                if (activeSubTab && activeSubTab.getAttribute('data-subtab') === 'arch-export') {
+                    window.TaxonomyViewContext.fetchAndRender('exportViewContext');
+                }
+            }
         }
 
         // Load version history when Versions tab is activated
@@ -1508,11 +1832,22 @@
             window.TaxonomyVersions.loadTimeline();
         }
 
-        // Ensure export button visibility is up-to-date when switching to the export tab
-        if (pageName === 'export' && window.TaxonomyBrowse) {
-            window.TaxonomyBrowse.updateExportGroupVisibility();
+        // Ensure export button visibility when architecture+export sub-tab is active
+        if (pageName === 'architecture' && window.TaxonomyBrowse) {
+            var activeSubTab = document.querySelector('#architectureSubTabs .nav-link.active');
+            if (activeSubTab && activeSubTab.getAttribute('data-subtab') === 'arch-export') {
+                window.TaxonomyBrowse.updateExportGroupVisibility();
+            }
         }
     }
+
+    // Architecture sub-tab click handlers
+    document.querySelectorAll('#architectureSubTabs .nav-link').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            activateArchSubTab(this.getAttribute('data-subtab'));
+        });
+    });
 
     // Click handlers on nav links
     document.querySelectorAll('#mainNavTabs .nav-link').forEach(function (link) {
@@ -1527,7 +1862,7 @@
         var el = e.target.closest('[data-page]');
         if (el && el.closest('#mainNavTabs') === null) {
             var page = el.getAttribute('data-page');
-            if (PAGES.indexOf(page) !== -1) {
+            if (PAGES.indexOf(page) !== -1 || subTabMapping[page]) {
                 e.preventDefault();
                 activatePage(page);
             }
@@ -1537,12 +1872,16 @@
     // Handle browser back/forward
     window.addEventListener('hashchange', function () {
         var hash = window.location.hash.replace('#', '');
-        if (PAGES.indexOf(hash) !== -1) { activatePage(hash); }
+        if (PAGES.indexOf(hash) !== -1 || subTabMapping[hash]) { activatePage(hash); }
     });
 
     // Initialise from URL hash
     var initialHash = window.location.hash.replace('#', '');
-    activatePage(PAGES.indexOf(initialHash) !== -1 ? initialHash : 'analyze');
+    if (PAGES.indexOf(initialHash) !== -1 || subTabMapping[initialHash]) {
+        activatePage(initialHash);
+    } else {
+        activatePage('analyze');
+    }
 
     // Expose globally so other scripts can navigate
     window.navigateToPage = activatePage;
@@ -1640,6 +1979,15 @@
                     </div>
                 </div>
                 <button class="btn btn-primary btn-sm mb-3" onclick="TaxonomyContextCompare.doCompare()" th:text="#{compare.btn}">Compare</button>
+                <!-- Compare filter buttons -->
+                <div id="compareFilters" class="d-none mb-2">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Compare filters">
+                        <button type="button" class="btn btn-outline-secondary active compare-filter-btn" data-filter="all" th:text="#{compare.filter.all}">All</button>
+                        <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="elements" th:text="#{compare.filter.elements}">Elements</button>
+                        <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="relations" th:text="#{compare.filter.relations}">Relations</button>
+                        <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="requirements" th:text="#{compare.filter.requirements}">Requirements</button>
+                    </div>
+                </div>
                 <div id="contextCompareResults"></div>
             </div>
         </div>
@@ -1985,6 +2333,116 @@
             link.addEventListener('click', loadPreferences);
         }
     });
+}());
+</script>
+<script>
+(function() {
+    'use strict';
+    var panel = document.getElementById('workspaceManagerPanel');
+    var createBtn = document.getElementById('wsCreateBtn');
+    var refreshBtn = document.getElementById('wsRefreshBtn');
+
+    function escHtml(s) {
+        if (!s) return '';
+        return s.replace(/[&<>"']/g, function(c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+        });
+    }
+
+    function loadWorkspaces() {
+        fetch('/api/workspace/list')
+            .then(function(r) { return r.json(); })
+            .then(function(workspaces) {
+                var container = document.getElementById('workspaceListContainer');
+                if (!workspaces || workspaces.length === 0) {
+                    container.innerHTML = '<div class="col-12 text-muted small">No workspaces found.</div>';
+                    return;
+                }
+                container.innerHTML = workspaces.map(function(ws) {
+                    var defaultBadge = ws.isDefault ? ' <span class="badge bg-primary">Default</span>' : '';
+                    var name = escHtml(ws.displayName || ws.workspaceId);
+                    var desc = ws.description ? '<p class="card-text small text-muted mb-1">' + escHtml(ws.description) + '</p>' : '';
+                    var ts = ws.lastAccessedAt ? new Date(ws.lastAccessedAt).toLocaleString() : '';
+                    var branch = escHtml(ws.currentBranch || 'draft');
+                    var deleteBtn = ws.isDefault ? '' : '<button class="btn btn-sm btn-outline-danger ws-archive-btn" data-ws-id="' + escHtml(ws.workspaceId) + '" title="Archive">&#128451;</button>';
+                    return '<div class="col-md-4"><div class="card h-100"><div class="card-body p-2">' +
+                        '<h6 class="card-title mb-1">' + name + defaultBadge + '</h6>' +
+                        desc +
+                        '<div class="small text-muted mb-2">&#127793; ' + branch + (ts ? ' &middot; ' + ts : '') + '</div>' +
+                        '<div class="d-flex gap-1 flex-wrap">' +
+                        '<button class="btn btn-sm btn-outline-success ws-switch-btn" data-ws-id="' + escHtml(ws.workspaceId) + '">&#9654; Activate</button>' +
+                        deleteBtn +
+                        '</div></div></div></div>';
+                }).join('');
+
+                container.querySelectorAll('.ws-switch-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        fetch('/api/workspace/' + encodeURIComponent(this.getAttribute('data-ws-id')) + '/switch', { method: 'POST' })
+                            .then(function(r) { if (r.ok) loadWorkspaces(); });
+                    });
+                });
+                container.querySelectorAll('.ws-archive-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        if (!confirm('Archive this workspace?')) return;
+                        fetch('/api/workspace/' + encodeURIComponent(this.getAttribute('data-ws-id')) + '/archive', { method: 'POST' })
+                            .then(function(r) { if (r.ok) loadWorkspaces(); });
+                    });
+                });
+            })
+            .catch(function() {
+                document.getElementById('workspaceListContainer').innerHTML = '<div class="col-12 text-danger small">Failed to load workspaces.</div>';
+            });
+    }
+
+    function createWorkspace() {
+        var name = prompt('Workspace name:');
+        if (!name || !name.trim()) return;
+        fetch('/api/workspace/create', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ displayName: name.trim() })
+        }).then(function(r) { if (r.ok) loadWorkspaces(); });
+    }
+
+    if (panel) panel.addEventListener('toggle', function() { if (panel.open) loadWorkspaces(); });
+    if (createBtn) createBtn.addEventListener('click', createWorkspace);
+    if (refreshBtn) refreshBtn.addEventListener('click', loadWorkspaces);
+}());
+</script>
+<script>
+(function() {
+    'use strict';
+    // Compare filter buttons
+    document.querySelectorAll('.compare-filter-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.compare-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            var filter = this.getAttribute('data-filter');
+            var results = document.getElementById('contextCompareResults');
+            if (!results) return;
+            var sections = results.querySelectorAll('[data-compare-section]');
+            sections.forEach(function(s) {
+                if (filter === 'all' || s.getAttribute('data-compare-section') === filter) {
+                    s.classList.remove('d-none');
+                } else {
+                    s.classList.add('d-none');
+                }
+            });
+        });
+    });
+
+    // Show filters when compare results appear
+    var observer = new MutationObserver(function() {
+        var results = document.getElementById('contextCompareResults');
+        var filters = document.getElementById('compareFilters');
+        if (results && filters) {
+            filters.classList.toggle('d-none', results.innerHTML.trim() === '');
+        }
+    });
+    var resultsEl = document.getElementById('contextCompareResults');
+    if (resultsEl) {
+        observer.observe(resultsEl, { childList: true, subtree: true });
+    }
 }());
 </script>
 </body>

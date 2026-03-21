@@ -11,6 +11,8 @@
 window.TaxonomyContextCompare = (function () {
     'use strict';
 
+    var currentRawDslDiff = null;
+
     var t = TaxonomyI18n.t;
     var escapeHtml = TaxonomyUtils.escapeHtml;
 
@@ -139,6 +141,8 @@ window.TaxonomyContextCompare = (function () {
         var container = document.getElementById(containerId);
         if (!container) return;
 
+        currentRawDslDiff = comparison.rawDslDiff || null;
+
         var html = '';
 
         // Level 1: Summary Card
@@ -186,13 +190,17 @@ window.TaxonomyContextCompare = (function () {
             var added = [];
             var changed = [];
             var removed = [];
+            var requirements = [];
 
             comparison.changes.forEach(function (c) {
-                if (c.changeType === 'ADD') added.push(c);
+                if (c.category === 'REQUIREMENT' || c.category === 'requirement') {
+                    requirements.push(c);
+                } else if (c.changeType === 'ADD') added.push(c);
                 else if (c.changeType === 'REMOVE') removed.push(c);
                 else changed.push(c);
             });
 
+            html += '<div data-compare-section="elements">';
             html += '<div class="compare-changes-grid">';
 
             // Added column
@@ -247,16 +255,110 @@ window.TaxonomyContextCompare = (function () {
             html += '</div></div>';
 
             html += '</div>'; // compare-changes-grid
+            html += '</div>'; // data-compare-section="elements"
+
+            // Relations section
+            if (comparison.relationChanges && comparison.relationChanges.length > 0) {
+                html += '<div data-compare-section="relations">';
+                html += '<div class="compare-changes-grid">';
+                html += '<div class="compare-column">';
+                var relAdded = comparison.relationChanges.filter(function(c) { return c.changeType === 'ADD'; });
+                html += '<div class="col-header col-added">\uD83D\uDFE2 ' + escapeHtml(t('compare.relations.column.added', relAdded.length)) + '</div>';
+                html += '<div class="col-items">';
+                if (relAdded.length === 0) {
+                    html += '<div class="col-empty">' + escapeHtml(t('compare.relations.column.empty.added')) + '</div>';
+                } else {
+                    relAdded.forEach(function(c) {
+                        html += '<div class="col-item item-added"><span>' + escapeHtml(c.description) + '</span></div>';
+                    });
+                }
+                html += '</div></div>';
+                html += '<div class="compare-column">';
+                var relChanged = comparison.relationChanges.filter(function(c) { return c.changeType !== 'ADD' && c.changeType !== 'REMOVE'; });
+                html += '<div class="col-header col-changed">\uD83D\uDFE1 ' + escapeHtml(t('compare.relations.column.changed', relChanged.length)) + '</div>';
+                html += '<div class="col-items">';
+                if (relChanged.length === 0) {
+                    html += '<div class="col-empty">' + escapeHtml(t('compare.relations.column.empty.changed')) + '</div>';
+                } else {
+                    relChanged.forEach(function(c) {
+                        html += '<div class="col-item item-changed"><span>' + escapeHtml(c.description) + '</span></div>';
+                    });
+                }
+                html += '</div></div>';
+                html += '<div class="compare-column">';
+                var relRemoved = comparison.relationChanges.filter(function(c) { return c.changeType === 'REMOVE'; });
+                html += '<div class="col-header col-removed">\uD83D\uDD34 ' + escapeHtml(t('compare.relations.column.removed', relRemoved.length)) + '</div>';
+                html += '<div class="col-items">';
+                if (relRemoved.length === 0) {
+                    html += '<div class="col-empty">' + escapeHtml(t('compare.relations.column.empty.removed')) + '</div>';
+                } else {
+                    relRemoved.forEach(function(c) {
+                        html += '<div class="col-item item-removed"><span>' + escapeHtml(c.description) + '</span></div>';
+                    });
+                }
+                html += '</div></div>';
+                html += '</div>'; // compare-changes-grid
+                html += '</div>'; // data-compare-section="relations"
+            }
+
+            // Requirements section
+            if (requirements.length > 0) {
+                html += '<div data-compare-section="requirements">';
+                html += '<div class="compare-changes-grid">';
+                html += '<div class="compare-column">';
+                var reqAdded = requirements.filter(function(c) { return c.changeType === 'ADD'; });
+                html += '<div class="col-header col-added">\uD83D\uDFE2 ' + escapeHtml(t('compare.requirements.column.added', reqAdded.length)) + '</div>';
+                html += '<div class="col-items">';
+                if (reqAdded.length === 0) {
+                    html += '<div class="col-empty">' + escapeHtml(t('compare.requirements.column.empty.added')) + '</div>';
+                } else {
+                    reqAdded.forEach(function(c) {
+                        html += '<div class="col-item item-added"><span>' + escapeHtml(c.description) + '</span></div>';
+                    });
+                }
+                html += '</div></div>';
+                html += '<div class="compare-column">';
+                var reqChanged = requirements.filter(function(c) { return c.changeType !== 'ADD' && c.changeType !== 'REMOVE'; });
+                html += '<div class="col-header col-changed">\uD83D\uDFE1 ' + escapeHtml(t('compare.requirements.column.changed', reqChanged.length)) + '</div>';
+                html += '<div class="col-items">';
+                if (reqChanged.length === 0) {
+                    html += '<div class="col-empty">' + escapeHtml(t('compare.requirements.column.empty.changed')) + '</div>';
+                } else {
+                    reqChanged.forEach(function(c) {
+                        html += '<div class="col-item item-changed"><span>' + escapeHtml(c.description) + '</span></div>';
+                    });
+                }
+                html += '</div></div>';
+                html += '<div class="compare-column">';
+                var reqRemoved = requirements.filter(function(c) { return c.changeType === 'REMOVE'; });
+                html += '<div class="col-header col-removed">\uD83D\uDD34 ' + escapeHtml(t('compare.requirements.column.removed', reqRemoved.length)) + '</div>';
+                html += '<div class="col-items">';
+                if (reqRemoved.length === 0) {
+                    html += '<div class="col-empty">' + escapeHtml(t('compare.requirements.column.empty.removed')) + '</div>';
+                } else {
+                    reqRemoved.forEach(function(c) {
+                        html += '<div class="col-item item-removed"><span>' + escapeHtml(c.description) + '</span></div>';
+                    });
+                }
+                html += '</div></div>';
+                html += '</div>'; // compare-changes-grid
+                html += '</div>'; // data-compare-section="requirements"
+            }
         }
 
         // Level 3: Raw DSL Diff (collapsible expert mode)
         if (comparison.rawDslDiff) {
             html += '<div class="card mb-3">';
-            html += '<div class="card-header">';
-            html += '<a data-bs-toggle="collapse" href="#rawDiffCollapse" class="text-decoration-none">';
-            html += '\u25B8 <strong>' + escapeHtml(t('compare.dsl.diff')) + '</strong> ' + escapeHtml(t('compare.dsl.diff.expert')) + '</a></div>';
+            html += '<div class="card-header d-flex align-items-center">';
+            html += '<a data-bs-toggle="collapse" href="#rawDiffCollapse" class="text-decoration-none flex-grow-1">';
+            html += '\u25B8 <strong>' + escapeHtml(t('compare.dsl.diff')) + '</strong> ' + escapeHtml(t('compare.dsl.diff.expert')) + '</a>';
+            html += '<button class="btn btn-sm btn-outline-info ms-2" onclick="TaxonomyContextCompare.toggleSideBySide()">\u2194 Side-by-Side</button>';
+            html += '</div>';
             html += '<div id="rawDiffCollapse" class="collapse">';
-            html += '<div class="card-body"><pre class="mb-0 small" style="white-space:pre-wrap;">' + renderColoredDiff(comparison.rawDslDiff) + '</pre></div>';
+            html += '<div class="card-body">';
+            html += '<div id="dslTextDiffContainer"><pre class="mb-0 small" style="white-space:pre-wrap;">' + renderColoredDiff(comparison.rawDslDiff) + '</pre></div>';
+            html += '<div id="dslMergeViewContainer" style="display:none;"></div>';
+            html += '</div>';
             html += '</div></div>';
         }
 
@@ -287,10 +389,70 @@ window.TaxonomyContextCompare = (function () {
         }).join('\n');
     }
 
+    /**
+     * Reconstruct left and right document texts from a unified diff.
+     *
+     * @param {string} diffText — unified diff output
+     * @returns {{ left: string, right: string }}
+     */
+    function parseDiffSides(diffText) {
+        if (!diffText) return { left: '', right: '' };
+        var leftLines = [];
+        var rightLines = [];
+        diffText.split('\n').forEach(function (line) {
+            if (line.startsWith('@@') || line.startsWith('---') || line.startsWith('+++')) {
+                return; // skip diff headers
+            }
+            if (line.startsWith('-')) {
+                leftLines.push(line.substring(1));
+            } else if (line.startsWith('+')) {
+                rightLines.push(line.substring(1));
+            } else if (line.startsWith(' ')) {
+                // Context line with standard space prefix
+                leftLines.push(line.substring(1));
+                rightLines.push(line.substring(1));
+            } else {
+                // Unprefixed line (e.g. empty line in diff output)
+                leftLines.push(line);
+                rightLines.push(line);
+            }
+        });
+        return { left: leftLines.join('\n'), right: rightLines.join('\n') };
+    }
+
+    /**
+     * Toggle the side-by-side CodeMirror merge view for a raw DSL diff.
+     *
+     * @param {string} diffText — the raw unified diff
+     */
+    function toggleSideBySide(diffText) {
+        var rawDiff = diffText || currentRawDslDiff;
+        var mergeContainer = document.getElementById('dslMergeViewContainer');
+        var textDiff = document.getElementById('dslTextDiffContainer');
+        if (!mergeContainer || !textDiff || !rawDiff) return;
+
+        var isActive = mergeContainer.style.display !== 'none';
+        if (isActive) {
+            mergeContainer.style.display = 'none';
+            mergeContainer.innerHTML = '';
+            textDiff.style.display = '';
+            return;
+        }
+
+        var sides = parseDiffSides(rawDiff);
+        textDiff.style.display = 'none';
+        mergeContainer.style.display = '';
+
+        import('/js/shared/taxonomy-dsl-codemirror.mjs').then(function (mod) {
+            mod.createMergeView(mergeContainer, sides.left, sides.right);
+        });
+    }
+
     return {
         showDialog: showDialog,
         compareWithCommit: compareWithCommit,
         doCompare: doCompare,
-        renderComparison: renderComparison
+        renderComparison: renderComparison,
+        toggleSideBySide: toggleSideBySide
     };
 }());
