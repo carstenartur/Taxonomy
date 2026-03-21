@@ -36,37 +36,49 @@ public class SourceFragment {
     @Column(name = &quot;fragment_hash&quot;, length = 128)
     private String fragmentHash;
 
-<span class="fc" id="L39">    protected SourceFragment() {}</span>
+    @Column(name = &quot;parent_fragment_id&quot;)
+    private Long parentFragmentId;
 
-<span class="fc" id="L41">    public SourceFragment(SourceVersion sourceVersion, String fragmentText) {</span>
-<span class="fc" id="L42">        this.sourceVersion = sourceVersion;</span>
-<span class="fc" id="L43">        this.fragmentText = fragmentText;</span>
-<span class="fc" id="L44">    }</span>
+    @Column(name = &quot;chunk_level&quot;)
+    private Integer chunkLevel;
+
+<span class="fc" id="L45">    protected SourceFragment() {}</span>
+
+<span class="fc" id="L47">    public SourceFragment(SourceVersion sourceVersion, String fragmentText) {</span>
+<span class="fc" id="L48">        this.sourceVersion = sourceVersion;</span>
+<span class="fc" id="L49">        this.fragmentText = fragmentText;</span>
+<span class="fc" id="L50">    }</span>
 
     // ── Accessors ──────────────────────────────────────────────────────────────
 
-<span class="fc" id="L48">    public Long getId() { return id; }</span>
-<span class="fc" id="L49">    public void setId(Long id) { this.id = id; }</span>
+<span class="fc" id="L54">    public Long getId() { return id; }</span>
+<span class="fc" id="L55">    public void setId(Long id) { this.id = id; }</span>
 
-<span class="fc" id="L51">    public SourceVersion getSourceVersion() { return sourceVersion; }</span>
-<span class="nc" id="L52">    public void setSourceVersion(SourceVersion sourceVersion) { this.sourceVersion = sourceVersion; }</span>
+<span class="fc" id="L57">    public SourceVersion getSourceVersion() { return sourceVersion; }</span>
+<span class="nc" id="L58">    public void setSourceVersion(SourceVersion sourceVersion) { this.sourceVersion = sourceVersion; }</span>
 
-<span class="fc" id="L54">    public String getSectionPath() { return sectionPath; }</span>
-<span class="fc" id="L55">    public void setSectionPath(String sectionPath) { this.sectionPath = sectionPath; }</span>
+<span class="fc" id="L60">    public String getSectionPath() { return sectionPath; }</span>
+<span class="fc" id="L61">    public void setSectionPath(String sectionPath) { this.sectionPath = sectionPath; }</span>
 
-<span class="nc" id="L57">    public String getParagraphRef() { return paragraphRef; }</span>
-<span class="nc" id="L58">    public void setParagraphRef(String paragraphRef) { this.paragraphRef = paragraphRef; }</span>
+<span class="nc" id="L63">    public String getParagraphRef() { return paragraphRef; }</span>
+<span class="nc" id="L64">    public void setParagraphRef(String paragraphRef) { this.paragraphRef = paragraphRef; }</span>
 
-<span class="fc" id="L60">    public Integer getPageFrom() { return pageFrom; }</span>
-<span class="fc" id="L61">    public void setPageFrom(Integer pageFrom) { this.pageFrom = pageFrom; }</span>
+<span class="fc" id="L66">    public Integer getPageFrom() { return pageFrom; }</span>
+<span class="fc" id="L67">    public void setPageFrom(Integer pageFrom) { this.pageFrom = pageFrom; }</span>
 
-<span class="fc" id="L63">    public Integer getPageTo() { return pageTo; }</span>
-<span class="fc" id="L64">    public void setPageTo(Integer pageTo) { this.pageTo = pageTo; }</span>
+<span class="fc" id="L69">    public Integer getPageTo() { return pageTo; }</span>
+<span class="fc" id="L70">    public void setPageTo(Integer pageTo) { this.pageTo = pageTo; }</span>
 
-<span class="fc" id="L66">    public String getFragmentText() { return fragmentText; }</span>
-<span class="nc" id="L67">    public void setFragmentText(String fragmentText) { this.fragmentText = fragmentText; }</span>
+<span class="fc" id="L72">    public String getFragmentText() { return fragmentText; }</span>
+<span class="nc" id="L73">    public void setFragmentText(String fragmentText) { this.fragmentText = fragmentText; }</span>
 
-<span class="nc" id="L69">    public String getFragmentHash() { return fragmentHash; }</span>
-<span class="nc" id="L70">    public void setFragmentHash(String fragmentHash) { this.fragmentHash = fragmentHash; }</span>
+<span class="nc" id="L75">    public String getFragmentHash() { return fragmentHash; }</span>
+<span class="nc" id="L76">    public void setFragmentHash(String fragmentHash) { this.fragmentHash = fragmentHash; }</span>
+
+<span class="nc" id="L78">    public Long getParentFragmentId() { return parentFragmentId; }</span>
+<span class="nc" id="L79">    public void setParentFragmentId(Long parentFragmentId) { this.parentFragmentId = parentFragmentId; }</span>
+
+<span class="nc" id="L81">    public Integer getChunkLevel() { return chunkLevel; }</span>
+<span class="nc" id="L82">    public void setChunkLevel(Integer chunkLevel) { this.chunkLevel = chunkLevel; }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

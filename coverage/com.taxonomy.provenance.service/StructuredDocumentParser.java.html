@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StructuredDocumentParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.service</a> &gt; <span class="el_source">StructuredDocumentParser.java</span></div><h1>StructuredDocumentParser.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.service;
+
+import com.taxonomy.dto.DocumentSection;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+
+/**
+ * Builds a hierarchical {@link DocumentSection} tree from raw text.
+ *
+ * &lt;p&gt;Re-uses the heading detection logic of {@link DocumentParserService} to
+ * identify section boundaries, then organises the paragraphs under a
+ * parent–child tree structure. The tree is suitable for hierarchical chunking
+ * and context-aware LLM prompts.
+ */
+@Service
+public class StructuredDocumentParser {
+
+    private static final int MIN_PARAGRAPH_LENGTH = 40;
+
+    private final DocumentParserService parserService;
+
+<span class="fc" id="L24">    public StructuredDocumentParser(DocumentParserService parserService) {</span>
+<span class="fc" id="L25">        this.parserService = parserService;</span>
+<span class="fc" id="L26">    }</span>
+
+    /**
+     * Parses raw text into a hierarchical document tree.
+     *
+     * @param rawText the raw text (with double-newline paragraph separators)
+     * @return the root {@link DocumentSection} (level 0) containing the full tree
+     */
+    public DocumentSection parse(String rawText) {
+<span class="fc" id="L35">        DocumentSection root = new DocumentSection(0, &quot;Document Root&quot;);</span>
+<span class="fc" id="L36">        root.setSectionPath(&quot;Document Root&quot;);</span>
+
+<span class="fc bfc" id="L38" title="All 4 branches covered.">        if (rawText == null || rawText.isBlank()) {</span>
+<span class="fc" id="L39">            return root;</span>
+        }
+
+<span class="fc" id="L42">        Deque&lt;DocumentSection&gt; stack = new ArrayDeque&lt;&gt;();</span>
+<span class="fc" id="L43">        stack.push(root);</span>
+
+<span class="fc" id="L45">        String[] paragraphs = rawText.split(&quot;\\n\\s*\\n&quot;);</span>
+
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        for (String para : paragraphs) {</span>
+<span class="fc" id="L48">            String trimmed = para.strip();</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">            if (trimmed.isEmpty()) continue;</span>
+
+<span class="fc" id="L51">            DocumentParserService.HeadingMatch heading = parserService.detectHeading(trimmed);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            if (heading != null) {</span>
+<span class="fc" id="L53">                DocumentSection section = new DocumentSection(heading.level(), heading.text());</span>
+
+                // Pop until we find a parent with a strictly smaller level
+<span class="fc bfc" id="L56" title="All 4 branches covered.">                while (stack.size() &gt; 1 &amp;&amp; stack.peek().getLevel() &gt;= heading.level()) {</span>
+<span class="fc" id="L57">                    stack.pop();</span>
+                }
+
+<span class="fc" id="L60">                DocumentSection parent = stack.peek();</span>
+<span class="fc" id="L61">                section.setSectionPath(buildSectionPath(parent, heading.text()));</span>
+<span class="fc" id="L62">                parent.getChildren().add(section);</span>
+<span class="fc" id="L63">                stack.push(section);</span>
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">            } else if (trimmed.length() &gt;= MIN_PARAGRAPH_LENGTH) {</span>
+<span class="fc" id="L65">                stack.peek().getParagraphs().add(trimmed);</span>
+            }
+        }
+
+<span class="fc" id="L69">        return root;</span>
+    }
+
+    private static String buildSectionPath(DocumentSection parent, String heading) {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (parent.getLevel() == 0) {</span>
+<span class="fc" id="L74">            return heading;</span>
+        }
+<span class="fc" id="L76">        return parent.getSectionPath() + &quot; &gt; &quot; + heading;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

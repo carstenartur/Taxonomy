@@ -94,60 +94,88 @@ public class DocumentAnalysisService {
 <span class="fc" id="L94">        return parseRegulationMappingResponse(response);</span>
     }
 
+    /**
+     * Extracts requirement candidates from document text using the LLM,
+     * enhanced with parent-section context for better understanding.
+     *
+     * &lt;p&gt;The parent context is prepended to the prompt so the LLM can
+     * understand the chunk in its broader document context.
+     *
+     * @param chunkText     the text of the specific chunk
+     * @param parentContext the surrounding section context
+     * @param sourceType    &quot;REGULATION&quot; or other
+     * @return list of AI-extracted requirement candidates
+     */
+    public List&lt;AiExtractedCandidate&gt; extractWithAiContextual(String chunkText,
+                                                               String parentContext,
+                                                               String sourceType) {
+<span class="nc bnc" id="L112" title="All 2 branches missed.">        if (!llmService.isAvailable()) {</span>
+<span class="nc" id="L113">            log.warn(&quot;LLM is not available — AI extraction skipped&quot;);</span>
+<span class="nc" id="L114">            return Collections.emptyList();</span>
+        }
+
+<span class="nc bnc" id="L117" title="All 4 branches missed.">        String contextualText = parentContext != null &amp;&amp; !parentContext.isBlank()</span>
+                ? &quot;Context (parent section): &quot; + parentContext + &quot;\n\n&quot;
+<span class="nc" id="L119">                  + &quot;Text to analyse:\n&quot; + chunkText</span>
+<span class="nc" id="L120">                : chunkText;</span>
+
+<span class="nc" id="L122">        return extractWithAi(contextualText, sourceType);</span>
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     List&lt;AiExtractedCandidate&gt; parseExtractionResponse(String response) {
-<span class="pc bpc" id="L100" title="1 of 4 branches missed.">        if (response == null || response.isBlank()) {</span>
-<span class="fc" id="L101">            log.warn(&quot;Empty LLM response for AI extraction&quot;);</span>
-<span class="fc" id="L102">            return Collections.emptyList();</span>
+<span class="pc bpc" id="L128" title="1 of 4 branches missed.">        if (response == null || response.isBlank()) {</span>
+<span class="fc" id="L129">            log.warn(&quot;Empty LLM response for AI extraction&quot;);</span>
+<span class="fc" id="L130">            return Collections.emptyList();</span>
         }
         try {
-<span class="fc" id="L105">            String json = extractJsonArray(response);</span>
-<span class="fc" id="L106">            return objectMapper.readValue(json, new TypeReference&lt;List&lt;AiExtractedCandidate&gt;&gt;() {});</span>
-<span class="fc" id="L107">        } catch (Exception e) {</span>
-<span class="fc" id="L108">            log.warn(&quot;Failed to parse AI extraction response: {}&quot;, e.getMessage());</span>
-<span class="fc" id="L109">            return Collections.emptyList();</span>
+<span class="fc" id="L133">            String json = extractJsonArray(response);</span>
+<span class="fc" id="L134">            return objectMapper.readValue(json, new TypeReference&lt;List&lt;AiExtractedCandidate&gt;&gt;() {});</span>
+<span class="fc" id="L135">        } catch (Exception e) {</span>
+<span class="fc" id="L136">            log.warn(&quot;Failed to parse AI extraction response: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L137">            return Collections.emptyList();</span>
         }
     }
 
     List&lt;RegulationArchitectureMatch&gt; parseRegulationMappingResponse(String response) {
-<span class="pc bpc" id="L114" title="2 of 4 branches missed.">        if (response == null || response.isBlank()) {</span>
-<span class="nc" id="L115">            log.warn(&quot;Empty LLM response for regulation mapping&quot;);</span>
-<span class="nc" id="L116">            return Collections.emptyList();</span>
+<span class="pc bpc" id="L142" title="2 of 4 branches missed.">        if (response == null || response.isBlank()) {</span>
+<span class="nc" id="L143">            log.warn(&quot;Empty LLM response for regulation mapping&quot;);</span>
+<span class="nc" id="L144">            return Collections.emptyList();</span>
         }
         try {
-<span class="fc" id="L119">            String json = extractJsonArray(response);</span>
-<span class="fc" id="L120">            return objectMapper.readValue(json, new TypeReference&lt;List&lt;RegulationArchitectureMatch&gt;&gt;() {});</span>
-<span class="nc" id="L121">        } catch (Exception e) {</span>
-<span class="nc" id="L122">            log.warn(&quot;Failed to parse regulation mapping response: {}&quot;, e.getMessage());</span>
-<span class="nc" id="L123">            return Collections.emptyList();</span>
+<span class="fc" id="L147">            String json = extractJsonArray(response);</span>
+<span class="fc" id="L148">            return objectMapper.readValue(json, new TypeReference&lt;List&lt;RegulationArchitectureMatch&gt;&gt;() {});</span>
+<span class="nc" id="L149">        } catch (Exception e) {</span>
+<span class="nc" id="L150">            log.warn(&quot;Failed to parse regulation mapping response: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L151">            return Collections.emptyList();</span>
         }
     }
 
     String truncateIfNeeded(String text) {
-<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (text == null) return &quot;&quot;;</span>
-<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (text.length() &lt;= MAX_DOCUMENT_LENGTH) return text;</span>
-<span class="fc" id="L130">        log.info(&quot;Document text truncated from {} to {} characters&quot;, text.length(), MAX_DOCUMENT_LENGTH);</span>
-<span class="fc" id="L131">        return text.substring(0, MAX_DOCUMENT_LENGTH) + &quot;\n\n[... truncated ...]&quot;;</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">        if (text == null) return &quot;&quot;;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (text.length() &lt;= MAX_DOCUMENT_LENGTH) return text;</span>
+<span class="fc" id="L158">        log.info(&quot;Document text truncated from {} to {} characters&quot;, text.length(), MAX_DOCUMENT_LENGTH);</span>
+<span class="fc" id="L159">        return text.substring(0, MAX_DOCUMENT_LENGTH) + &quot;\n\n[... truncated ...]&quot;;</span>
     }
 
     private String buildFullNodeList() {
-<span class="fc" id="L135">        List&lt;TaxonomyNode&gt; roots = taxonomyService.getRootNodes();</span>
-<span class="fc" id="L136">        StringBuilder sb = new StringBuilder();</span>
-<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        for (TaxonomyNode root : roots) {</span>
-<span class="nc" id="L138">            appendNodeTree(sb, root, 0);</span>
-<span class="nc" id="L139">        }</span>
-<span class="fc" id="L140">        return sb.toString();</span>
+<span class="fc" id="L163">        List&lt;TaxonomyNode&gt; roots = taxonomyService.getRootNodes();</span>
+<span class="fc" id="L164">        StringBuilder sb = new StringBuilder();</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">        for (TaxonomyNode root : roots) {</span>
+<span class="nc" id="L166">            appendNodeTree(sb, root, 0);</span>
+<span class="nc" id="L167">        }</span>
+<span class="fc" id="L168">        return sb.toString();</span>
     }
 
     private void appendNodeTree(StringBuilder sb, TaxonomyNode node, int depth) {
-<span class="nc" id="L144">        sb.append(&quot;  &quot;.repeat(depth))</span>
-<span class="nc" id="L145">          .append(node.getCode()).append(&quot;: &quot;).append(node.getName()).append(&quot;\n&quot;);</span>
-<span class="nc" id="L146">        List&lt;TaxonomyNode&gt; children = taxonomyService.getChildrenOf(node.getCode());</span>
-<span class="nc bnc" id="L147" title="All 2 branches missed.">        for (TaxonomyNode child : children) {</span>
-<span class="nc" id="L148">            appendNodeTree(sb, child, depth + 1);</span>
-<span class="nc" id="L149">        }</span>
-<span class="nc" id="L150">    }</span>
+<span class="nc" id="L172">        sb.append(&quot;  &quot;.repeat(depth))</span>
+<span class="nc" id="L173">          .append(node.getCode()).append(&quot;: &quot;).append(node.getName()).append(&quot;\n&quot;);</span>
+<span class="nc" id="L174">        List&lt;TaxonomyNode&gt; children = taxonomyService.getChildrenOf(node.getCode());</span>
+<span class="nc bnc" id="L175" title="All 2 branches missed.">        for (TaxonomyNode child : children) {</span>
+<span class="nc" id="L176">            appendNodeTree(sb, child, depth + 1);</span>
+<span class="nc" id="L177">        }</span>
+<span class="nc" id="L178">    }</span>
 
     /**
      * Extracts a JSON array from a text response that may contain markdown code fences
@@ -155,24 +183,24 @@ public class DocumentAnalysisService {
      */
     private String extractJsonArray(String text) {
         // Strip markdown code fences
-<span class="fc" id="L158">        String stripped = text.strip();</span>
-<span class="fc bfc" id="L159" title="All 2 branches covered.">        if (stripped.startsWith(&quot;```&quot;)) {</span>
-<span class="fc" id="L160">            int firstNewline = stripped.indexOf('\n');</span>
-<span class="pc bpc" id="L161" title="1 of 2 branches missed.">            if (firstNewline &gt; 0) {</span>
-<span class="fc" id="L162">                stripped = stripped.substring(firstNewline + 1);</span>
+<span class="fc" id="L186">        String stripped = text.strip();</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        if (stripped.startsWith(&quot;```&quot;)) {</span>
+<span class="fc" id="L188">            int firstNewline = stripped.indexOf('\n');</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">            if (firstNewline &gt; 0) {</span>
+<span class="fc" id="L190">                stripped = stripped.substring(firstNewline + 1);</span>
             }
-<span class="pc bpc" id="L164" title="1 of 2 branches missed.">            if (stripped.endsWith(&quot;```&quot;)) {</span>
-<span class="fc" id="L165">                stripped = stripped.substring(0, stripped.length() - 3);</span>
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">            if (stripped.endsWith(&quot;```&quot;)) {</span>
+<span class="fc" id="L193">                stripped = stripped.substring(0, stripped.length() - 3);</span>
             }
-<span class="fc" id="L167">            stripped = stripped.strip();</span>
+<span class="fc" id="L195">            stripped = stripped.strip();</span>
         }
         // Find outermost JSON array
-<span class="fc" id="L170">        int start = stripped.indexOf('[');</span>
-<span class="fc" id="L171">        int end = stripped.lastIndexOf(']');</span>
-<span class="pc bpc" id="L172" title="1 of 4 branches missed.">        if (start &gt;= 0 &amp;&amp; end &gt; start) {</span>
-<span class="fc" id="L173">            return stripped.substring(start, end + 1);</span>
+<span class="fc" id="L198">        int start = stripped.indexOf('[');</span>
+<span class="fc" id="L199">        int end = stripped.lastIndexOf(']');</span>
+<span class="pc bpc" id="L200" title="1 of 4 branches missed.">        if (start &gt;= 0 &amp;&amp; end &gt; start) {</span>
+<span class="fc" id="L201">            return stripped.substring(start, end + 1);</span>
         }
-<span class="fc" id="L175">        return stripped;</span>
+<span class="fc" id="L203">        return stripped;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

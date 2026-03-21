@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ChunkingStrategySelector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.service</a> &gt; <span class="el_source">ChunkingStrategySelector.java</span></div><h1>ChunkingStrategySelector.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.service;
+
+import com.taxonomy.dto.ChunkingStrategy;
+import com.taxonomy.shared.service.LocalEmbeddingService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+/**
+ * Selects the best {@link ChunkingStrategy} for a given raw text based on its
+ * structural characteristics and the availability of the embedding service.
+ *
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@link ChunkingStrategy#STRUCTURAL} — chosen when the text has ≥3
+ *       recognisable headings (sections, paragraphs, articles).&lt;/li&gt;
+ *   &lt;li&gt;{@link ChunkingStrategy#SEMANTIC} — chosen as a fallback when headings
+ *       are scarce but the local embedding service is available.&lt;/li&gt;
+ *   &lt;li&gt;{@link ChunkingStrategy#PARAGRAPH_BASED} — last-resort fallback when
+ *       neither structural nor semantic chunking is feasible.&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@Service
+public class ChunkingStrategySelector {
+
+<span class="fc" id="L25">    private static final Logger log = LoggerFactory.getLogger(ChunkingStrategySelector.class);</span>
+
+    /** Minimum number of detected headings for structural chunking. */
+    private static final int STRUCTURAL_HEADING_THRESHOLD = 3;
+
+    private final DocumentParserService parserService;
+    private final LocalEmbeddingService embeddingService;
+
+    public ChunkingStrategySelector(DocumentParserService parserService,
+<span class="fc" id="L34">                                     LocalEmbeddingService embeddingService) {</span>
+<span class="fc" id="L35">        this.parserService = parserService;</span>
+<span class="fc" id="L36">        this.embeddingService = embeddingService;</span>
+<span class="fc" id="L37">    }</span>
+
+    /**
+     * Selects the optimal chunking strategy for the given raw text.
+     *
+     * @param rawText the raw text extracted from a document
+     * @return the recommended chunking strategy
+     */
+    public ChunkingStrategy selectStrategy(String rawText) {
+<span class="fc bfc" id="L46" title="All 4 branches covered.">        if (rawText == null || rawText.isBlank()) {</span>
+<span class="fc" id="L47">            return ChunkingStrategy.PARAGRAPH_BASED;</span>
+        }
+
+<span class="fc" id="L50">        int headingCount = countHeadings(rawText);</span>
+
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (headingCount &gt;= STRUCTURAL_HEADING_THRESHOLD) {</span>
+<span class="fc" id="L53">            log.debug(&quot;Selected STRUCTURAL strategy ({} headings detected)&quot;, headingCount);</span>
+<span class="fc" id="L54">            return ChunkingStrategy.STRUCTURAL;</span>
+        }
+
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        if (embeddingService.isAvailable()) {</span>
+<span class="fc" id="L58">            log.debug(&quot;Selected SEMANTIC strategy ({} headings, embedding available)&quot;, headingCount);</span>
+<span class="fc" id="L59">            return ChunkingStrategy.SEMANTIC;</span>
+        }
+
+<span class="fc" id="L62">        log.debug(&quot;Selected PARAGRAPH_BASED strategy ({} headings, embedding unavailable)&quot;, headingCount);</span>
+<span class="fc" id="L63">        return ChunkingStrategy.PARAGRAPH_BASED;</span>
+    }
+
+    /**
+     * Counts the number of headings in the raw text by scanning for heading
+     * patterns using the parser's detection logic.
+     */
+    int countHeadings(String rawText) {
+<span class="fc" id="L71">        int count = 0;</span>
+<span class="fc" id="L72">        String[] paragraphs = rawText.split(&quot;\\n\\s*\\n&quot;);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (String para : paragraphs) {</span>
+<span class="fc" id="L74">            String trimmed = para.strip();</span>
+<span class="pc bpc" id="L75" title="1 of 4 branches missed.">            if (!trimmed.isEmpty() &amp;&amp; parserService.detectHeading(trimmed) != null) {</span>
+<span class="fc" id="L76">                count++;</span>
+            }
+        }
+<span class="fc" id="L79">        return count;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

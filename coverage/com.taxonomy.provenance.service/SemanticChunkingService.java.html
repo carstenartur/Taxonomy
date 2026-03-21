@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SemanticChunkingService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.service</a> &gt; <span class="el_source">SemanticChunkingService.java</span></div><h1>SemanticChunkingService.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.service;
+
+import com.taxonomy.shared.service.LocalEmbeddingService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.text.BreakIterator;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * Embedding-based semantic chunking as a fallback for documents with few or no
+ * recognisable headings.
+ *
+ * &lt;p&gt;Algorithm:
+ * &lt;ol&gt;
+ *   &lt;li&gt;Split text into individual sentences.&lt;/li&gt;
+ *   &lt;li&gt;Form overlapping windows of {@code windowSize} sentences.&lt;/li&gt;
+ *   &lt;li&gt;Embed each window with {@link LocalEmbeddingService}.&lt;/li&gt;
+ *   &lt;li&gt;Compute cosine distance between consecutive windows.&lt;/li&gt;
+ *   &lt;li&gt;Distances above a threshold indicate topic changes → split points.&lt;/li&gt;
+ *   &lt;li&gt;Build chunks from the split points.&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;p&gt;Requires the local embedding service to be available (ONNX model loaded).
+ */
+@Service
+public class SemanticChunkingService {
+
+<span class="fc" id="L32">    private static final Logger log = LoggerFactory.getLogger(SemanticChunkingService.class);</span>
+
+    private static final int DEFAULT_WINDOW_SIZE = 5;
+    private static final double DEFAULT_THRESHOLD = 0.3;
+
+    private final LocalEmbeddingService embeddingService;
+
+<span class="fc" id="L39">    public SemanticChunkingService(LocalEmbeddingService embeddingService) {</span>
+<span class="fc" id="L40">        this.embeddingService = embeddingService;</span>
+<span class="fc" id="L41">    }</span>
+
+    /**
+     * Splits raw text into semantically coherent chunks.
+     *
+     * @param rawText    the raw text to chunk
+     * @param windowSize number of sentences per sliding window (default 5)
+     * @return list of chunk strings, or a single-element list containing the
+     *         full text if embedding is unavailable or too few sentences exist
+     */
+    public List&lt;String&gt; chunk(String rawText, int windowSize) {
+<span class="fc bfc" id="L52" title="All 4 branches covered.">        if (rawText == null || rawText.isBlank()) {</span>
+<span class="fc" id="L53">            return List.of();</span>
+        }
+
+<span class="fc" id="L56">        List&lt;String&gt; sentences = splitIntoSentences(rawText);</span>
+
+<span class="pc bpc" id="L58" title="1 of 4 branches missed.">        if (sentences.size() &lt; windowSize + 1 || !embeddingService.isAvailable()) {</span>
+<span class="fc" id="L59">            log.debug(&quot;Semantic chunking skipped (sentences={}, embedding={})&quot;,</span>
+<span class="fc" id="L60">                    sentences.size(), embeddingService.isAvailable());</span>
+<span class="fc" id="L61">            return List.of(rawText.strip());</span>
+        }
+
+        try {
+<span class="fc" id="L65">            return doSemanticChunking(sentences, windowSize);</span>
+<span class="fc" id="L66">        } catch (Exception e) {</span>
+<span class="fc" id="L67">            log.warn(&quot;Semantic chunking failed, returning full text as single chunk&quot;, e);</span>
+<span class="fc" id="L68">            return List.of(rawText.strip());</span>
+        }
+    }
+
+    /**
+     * Convenience overload using the default window size.
+     */
+    public List&lt;String&gt; chunk(String rawText) {
+<span class="fc" id="L76">        return chunk(rawText, DEFAULT_WINDOW_SIZE);</span>
+    }
+
+    private List&lt;String&gt; doSemanticChunking(List&lt;String&gt; sentences, int windowSize) throws Exception {
+        // Build sliding-window embeddings
+<span class="fc" id="L81">        List&lt;float[]&gt; embeddings = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        for (int i = 0; i &lt;= sentences.size() - windowSize; i++) {</span>
+<span class="fc" id="L83">            String window = String.join(&quot; &quot;, sentences.subList(i, i + windowSize));</span>
+<span class="fc" id="L84">            embeddings.add(embeddingService.embed(window));</span>
+        }
+
+        // Compute cosine distances between consecutive windows
+<span class="fc" id="L88">        List&lt;Double&gt; distances = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        for (int i = 0; i &lt; embeddings.size() - 1; i++) {</span>
+<span class="fc" id="L90">            distances.add(1.0 - cosineSimilarity(embeddings.get(i), embeddings.get(i + 1)));</span>
+        }
+
+        // Find split points where distance exceeds threshold
+<span class="fc" id="L94">        List&lt;Integer&gt; splitPoints = findSplitPoints(distances, DEFAULT_THRESHOLD);</span>
+
+        // Build chunks from split points
+<span class="fc" id="L97">        return buildChunksFromSplitPoints(sentences, splitPoints, windowSize);</span>
+    }
+
+    /**
+     * Finds indices where the cosine distance exceeds the threshold,
+     * indicating likely topic boundaries.
+     */
+    List&lt;Integer&gt; findSplitPoints(List&lt;Double&gt; distances, double threshold) {
+<span class="fc" id="L105">        List&lt;Integer&gt; splits = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        for (int i = 0; i &lt; distances.size(); i++) {</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            if (distances.get(i) &gt; threshold) {</span>
+<span class="fc" id="L108">                splits.add(i);</span>
+            }
+        }
+<span class="fc" id="L111">        return splits;</span>
+    }
+
+    /**
+     * Reassembles sentence groups into chunks using the identified split points.
+     */
+    private List&lt;String&gt; buildChunksFromSplitPoints(List&lt;String&gt; sentences,
+                                                     List&lt;Integer&gt; splitPoints,
+                                                     int windowSize) {
+<span class="fc" id="L120">        List&lt;String&gt; chunks = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L121">        int offset = windowSize / 2;  // centre of the window</span>
+<span class="fc" id="L122">        int start = 0;</span>
+
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        for (int splitIdx : splitPoints) {</span>
+<span class="fc" id="L125">            int splitSentence = splitIdx + offset;</span>
+<span class="pc bpc" id="L126" title="2 of 4 branches missed.">            if (splitSentence &gt; start &amp;&amp; splitSentence &lt; sentences.size()) {</span>
+<span class="fc" id="L127">                chunks.add(joinSentences(sentences, start, splitSentence));</span>
+<span class="fc" id="L128">                start = splitSentence;</span>
+            }
+<span class="fc" id="L130">        }</span>
+        // Remaining sentences
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">        if (start &lt; sentences.size()) {</span>
+<span class="fc" id="L133">            chunks.add(joinSentences(sentences, start, sentences.size()));</span>
+        }
+
+<span class="fc" id="L136">        return chunks;</span>
+    }
+
+    private static String joinSentences(List&lt;String&gt; sentences, int from, int to) {
+<span class="fc" id="L140">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        for (int i = from; i &lt; to; i++) {</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            if (!sb.isEmpty()) sb.append(' ');</span>
+<span class="fc" id="L143">            sb.append(sentences.get(i).strip());</span>
+        }
+<span class="fc" id="L145">        return sb.toString();</span>
+    }
+
+    /**
+     * Splits text into sentences using a German-locale {@link BreakIterator}.
+     */
+    List&lt;String&gt; splitIntoSentences(String text) {
+<span class="fc" id="L152">        List&lt;String&gt; sentences = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L153">        BreakIterator iter = BreakIterator.getSentenceInstance(Locale.GERMAN);</span>
+<span class="fc" id="L154">        iter.setText(text);</span>
+<span class="fc" id="L155">        int start = iter.first();</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        for (int end = iter.next(); end != BreakIterator.DONE; end = iter.next()) {</span>
+<span class="fc" id="L157">            String sentence = text.substring(start, end).strip();</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">            if (!sentence.isEmpty()) {</span>
+<span class="fc" id="L159">                sentences.add(sentence);</span>
+            }
+<span class="fc" id="L161">            start = end;</span>
+        }
+<span class="fc" id="L163">        return sentences;</span>
+    }
+
+    /**
+     * Computes the cosine similarity between two vectors.
+     */
+    static double cosineSimilarity(float[] a, float[] b) {
+<span class="fc" id="L170">        double dotProduct = 0.0;</span>
+<span class="fc" id="L171">        double normA = 0.0;</span>
+<span class="fc" id="L172">        double normB = 0.0;</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        for (int i = 0; i &lt; a.length; i++) {</span>
+<span class="fc" id="L174">            dotProduct += a[i] * b[i];</span>
+<span class="fc" id="L175">            normA += (double) a[i] * a[i];</span>
+<span class="fc" id="L176">            normB += (double) b[i] * b[i];</span>
+        }
+<span class="fc" id="L178">        double denominator = Math.sqrt(normA) * Math.sqrt(normB);</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">        return denominator == 0 ? 0 : dotProduct / denominator;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
