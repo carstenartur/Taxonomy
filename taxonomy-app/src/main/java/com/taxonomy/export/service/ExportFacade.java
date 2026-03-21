@@ -12,6 +12,7 @@ import com.taxonomy.export.ArchiMateDiagramService;
 import com.taxonomy.export.ArchiMateXmlExporter;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.MermaidExportService;
+import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import com.taxonomy.visio.VisioDocument;
@@ -39,6 +40,7 @@ public class ExportFacade {
     private final ArchiMateDiagramService archiMateDiagramService;
     private final ArchiMateXmlExporter archiMateXmlExporter;
     private final MermaidExportService mermaidExportService;
+    private final StructurizrExportService structurizrExportService;
     private final SavedAnalysisService savedAnalysisService;
 
     public ExportFacade(LlmService llmService,
@@ -49,6 +51,7 @@ public class ExportFacade {
                         ArchiMateDiagramService archiMateDiagramService,
                         ArchiMateXmlExporter archiMateXmlExporter,
                         MermaidExportService mermaidExportService,
+                        StructurizrExportService structurizrExportService,
                         SavedAnalysisService savedAnalysisService) {
         this.llmService = llmService;
         this.architectureViewService = architectureViewService;
@@ -58,6 +61,7 @@ public class ExportFacade {
         this.archiMateDiagramService = archiMateDiagramService;
         this.archiMateXmlExporter = archiMateXmlExporter;
         this.mermaidExportService = mermaidExportService;
+        this.structurizrExportService = structurizrExportService;
         this.savedAnalysisService = savedAnalysisService;
     }
 
@@ -97,6 +101,17 @@ public class ExportFacade {
     public String exportAsMermaid(String businessText) {
         DiagramModel diagram = analyzeAndProject(businessText);
         return mermaidExportService.export(diagram);
+    }
+
+    /**
+     * Analyze business text, build an architecture view, and export as Structurizr DSL.
+     *
+     * @param businessText the requirement text to analyze
+     * @return the Structurizr workspace DSL text
+     */
+    public String exportAsStructurizrDsl(String businessText) {
+        DiagramModel diagram = analyzeAndProject(businessText);
+        return structurizrExportService.export(diagram);
     }
 
     // ── Scores import / export ──────────────────────────────────────

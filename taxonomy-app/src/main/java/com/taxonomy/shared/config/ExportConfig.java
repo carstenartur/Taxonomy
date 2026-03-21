@@ -4,6 +4,7 @@ import com.taxonomy.export.ArchiMateDiagramService;
 import com.taxonomy.export.ArchiMateXmlExporter;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.MermaidExportService;
+import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import org.springframework.context.annotation.Bean;
@@ -35,6 +36,11 @@ public class ExportConfig {
     @Bean
     public MermaidExportService mermaidExportService() {
         return new MermaidExportService();
+    }
+
+    @Bean
+    public StructurizrExportService structurizrExportService() {
+        return new StructurizrExportService();
     }
 
     @Bean

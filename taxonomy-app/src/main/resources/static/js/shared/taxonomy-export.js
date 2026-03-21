@@ -290,6 +290,35 @@
     }
 
     /**
+     * Export the architecture view as a Structurizr DSL file via the backend.
+     * Calls POST /api/diagram/structurizr with the business text and triggers a download.
+     * @param {string} businessText - The business requirement text used for analysis.
+     */
+    function exportStructurizrDsl(businessText) {
+        if (!businessText || !businessText.trim()) {
+            alert(t('export.structurizr.no.text'));
+            return;
+        }
+        fetch('/api/diagram/structurizr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ businessText: businessText })
+        })
+        .then(function (resp) {
+            if (!resp.ok) {
+                throw new Error(t('export.failed.http', resp.status));
+            }
+            return resp.blob();
+        })
+        .then(function (blob) {
+            downloadBlob(blob, 'workspace.dsl');
+        })
+        .catch(function (err) {
+            alert(t('export.structurizr.failed', err.message));
+        });
+    }
+
+    /**
      * Export the taxonomy tree as a DOT (Graphviz) file.
      * @param {Object} scores       - Map of node code → match percentage.
      * @param {Array}  taxonomyData - Array of root taxonomy nodes.
@@ -390,6 +419,7 @@
         exportVisio: exportVisio,
         exportArchiMate: exportArchiMate,
         exportMermaid: exportMermaid,
+        exportStructurizrDsl: exportStructurizrDsl,
         exportJson: exportJson,
         exportDot: exportDot,
         exportMermaidTree: exportMermaidTree

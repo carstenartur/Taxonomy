@@ -92,6 +92,28 @@ public class ExportApiController {
                 .body(mermaid);
     }
 
+    // ── Structurizr DSL Export ────────────────────────────────────────────────
+
+    @Operation(summary = "Export Structurizr DSL", description = "Generates a Structurizr workspace DSL from a business requirement for C4 tools", tags = {"Export"})
+    @ApiResponse(responseCode = "200", description = "Structurizr DSL returned as text")
+    @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
+    @PostMapping("/diagram/structurizr")
+    public ResponseEntity<byte[]> exportStructurizrDsl(@RequestBody Map<String, Object> body) {
+        String businessText = (String) body.get("businessText");
+        if (businessText == null || businessText.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        String dsl = exportFacade.exportAsStructurizrDsl(businessText);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"workspace.dsl\"");
+        headers.set(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8");
+
+        return ResponseEntity.ok().headers(headers).body(dsl.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     // ── Scores import / export endpoints ────────────────────────────────────────
 
     @Operation(summary = "Export analysis scores as JSON",
