@@ -46,7 +46,12 @@ public class StructurizrExportService {
         int counter = 1;
 
         for (DiagramNode node : model.nodes()) {
-            String id = sanitizeId(node.label(), counter++);
+            // Use node.id() to guarantee uniqueness; fall back to label for readability
+            String id = sanitizeId(node.id(), counter++);
+            // Ensure uniqueness even after sanitization
+            while (idMap.containsValue(id)) {
+                id = sanitizeId(node.id(), counter++);
+            }
             idMap.put(node.id(), id);
             String c4Type = mapToC4Type(node.type());
             sb.append("        ").append(id).append(" = ").append(c4Type)
@@ -62,8 +67,12 @@ public class StructurizrExportService {
         }
 
         for (DiagramEdge edge : model.edges()) {
-            String src = idMap.getOrDefault(edge.sourceId(), sanitizeId(edge.sourceId(), counter++));
-            String tgt = idMap.getOrDefault(edge.targetId(), sanitizeId(edge.targetId(), counter++));
+            // Skip edges referencing nodes not declared in the model
+            if (!idMap.containsKey(edge.sourceId()) || !idMap.containsKey(edge.targetId())) {
+                continue;
+            }
+            String src = idMap.get(edge.sourceId());
+            String tgt = idMap.get(edge.targetId());
             String desc = edge.relationType() != null ? edge.relationType() : "";
             sb.append("        ").append(src).append(" -> ").append(tgt)
                     .append(" \"").append(escapeQuotes(desc)).append("\"")

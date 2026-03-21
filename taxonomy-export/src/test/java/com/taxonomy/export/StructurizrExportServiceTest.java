@@ -82,4 +82,39 @@ class StructurizrExportServiceTest {
         assertThat(service.sanitizeId("Auth/OAuth2.0", 6)).isEqualTo("authOAuth20");
         assertThat(service.sanitizeId("---", 7)).isEqualTo("element7");
     }
+
+    @Test
+    void duplicateLabelsGetUniqueIds() {
+        var nodes = List.of(
+                new DiagramNode("n1", "API Gateway", "Services", 0.9, true, 1),
+                new DiagramNode("n2", "API Gateway", "Services", 0.8, false, 2)
+        );
+        var model = new DiagramModel("Dups", nodes, List.of(), new DiagramLayout("LR", false));
+
+        String dsl = service.export(model);
+
+        // Both nodes should appear — IDs are based on node.id() not label
+        long containerCount = dsl.lines()
+                .filter(l -> l.contains("container \"API Gateway\""))
+                .count();
+        assertThat(containerCount).isEqualTo(2);
+    }
+
+    @Test
+    void edgesWithInvalidSourceOrTargetAreSkipped() {
+        var nodes = List.of(
+                new DiagramNode("n1", "Portal", "User Applications", 0.9, true, 1)
+        );
+        var edges = List.of(
+                new DiagramEdge("e1", "n1", "nonexistent", "calls", 0.5)
+        );
+        var model = new DiagramModel("Invalid", nodes, edges, new DiagramLayout("LR", false));
+
+        String dsl = service.export(model);
+
+        // The edge should be skipped since target doesn't exist
+        assertThat(dsl).doesNotContain("->");
+        // The valid node should still be present
+        assertThat(dsl).contains("softwareSystem \"Portal\"");
+    }
 }

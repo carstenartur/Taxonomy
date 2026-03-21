@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * In-memory ring buffer that captures the last N log entries for the admin log viewer.
@@ -18,12 +19,21 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 @Service
 public class LogRingBufferService {
 
+    private static final String APPENDER_NAME = "admin-ring-buffer";
     private static final int MAX_ENTRIES = 500;
     private final Deque<LogEntry> entries = new ConcurrentLinkedDeque<>();
+    private final AtomicInteger size = new AtomicInteger();
 
     @PostConstruct
     public void init() {
         LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+        Logger rootLogger = loggerContext.getLogger(Logger.ROOT_LOGGER_NAME);
+
+        // Guard against duplicate appenders on Spring context refresh (e.g. in tests)
+        if (rootLogger.getAppender(APPENDER_NAME) != null) {
+            return;
+        }
+
         var appender = new AppenderBase<ILoggingEvent>() {
             @Override
             protected void append(ILoggingEvent event) {
@@ -34,15 +44,15 @@ public class LogRingBufferService {
                     event.getFormattedMessage()
                 );
                 entries.addLast(entry);
-                while (entries.size() > MAX_ENTRIES) {
+                if (size.incrementAndGet() > MAX_ENTRIES) {
                     entries.pollFirst();
+                    size.decrementAndGet();
                 }
             }
         };
         appender.setContext(loggerContext);
-        appender.setName("admin-ring-buffer");
+        appender.setName(APPENDER_NAME);
         appender.start();
-        Logger rootLogger = loggerContext.getLogger(Logger.ROOT_LOGGER_NAME);
         rootLogger.addAppender(appender);
     }
 

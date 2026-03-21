@@ -877,6 +877,11 @@
                     var panel = document.getElementById('contextHistoryPanel');
                     var refreshBtn = document.getElementById('contextHistoryRefreshBtn');
 
+                    function escHtml(s) {
+                        if (!s) return '';
+                        return s.replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
+                    }
+
                     function loadContextHistory() {
                         fetch('/api/workspace/history')
                             .then(function(r) { return r.json(); })
@@ -889,16 +894,16 @@
                                 var html = '<div class="timeline">';
                                 records.forEach(function(r, idx) {
                                     var ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '';
-                                    var reasonBadge = r.reason ? '<span class="badge bg-secondary">' + r.reason + '</span>' : '';
-                                    var fromCtx = r.fromContext || '';
-                                    var toCtx = r.toContext || '';
+                                    var reasonBadge = r.reason ? '<span class="badge bg-secondary">' + escHtml(r.reason) + '</span>' : '';
+                                    var fromCtx = escHtml(r.fromContext || '');
+                                    var toCtx = escHtml(r.toContext || '');
                                     var isLatest = idx === records.length - 1;
                                     html += '<div class="d-flex align-items-start mb-2' + (isLatest ? ' fw-bold' : '') + '">';
                                     html += '<div class="me-2 text-center" style="min-width:24px;">';
                                     html += isLatest ? '&#128205;' : '&#128900;';
                                     html += '</div>';
                                     html += '<div class="flex-grow-1">';
-                                    html += '<div class="small text-muted">' + ts + ' ' + reasonBadge + '</div>';
+                                    html += '<div class="small text-muted">' + escHtml(ts) + ' ' + reasonBadge + '</div>';
                                     if (fromCtx) html += '<div class="small"><span class="text-muted">From:</span> ' + fromCtx + '</div>';
                                     if (toCtx) html += '<div class="small"><span class="text-muted">To:</span> ' + toCtx + '</div>';
                                     html += '</div></div>';
@@ -1148,13 +1153,23 @@
                 </details>
 
                 <script>
+                // Shared helper for admin API calls
+                function getAdminHeaders() {
+                    var headers = {};
+                    try {
+                        var adminToken = localStorage.getItem('admin.token');
+                        if (adminToken) headers['X-Admin-Token'] = adminToken;
+                    } catch (e) { /* storage disabled */ }
+                    return headers;
+                }
+
                 // Health Dashboard
                 (function() {
                     var healthPanel = document.getElementById('healthDashboard');
                     var healthRefreshBtn = document.getElementById('healthRefreshBtn');
 
                     function loadHealth() {
-                        fetch('/api/admin/health-summary')
+                        fetch('/api/admin/health-summary', { headers: getAdminHeaders() })
                             .then(function(r) { return r.json(); })
                             .then(function(data) {
                                 var overall = document.getElementById('healthOverallBadge');
@@ -1171,7 +1186,7 @@
 
                                 var mem = document.getElementById('healthMemoryBadge');
                                 if (data.memory) {
-                                    var pct = Math.round(data.memory.usedPct || 0);
+                                    var pct = Math.round(data.memory.heapUsagePercent != null ? data.memory.heapUsagePercent : 0);
                                     mem.textContent = pct + '%';
                                     mem.className = 'fs-5 ' + (pct < 80 ? 'text-success' : 'text-warning');
                                 }
@@ -1202,7 +1217,7 @@
                         if (level) url += '&level=' + encodeURIComponent(level);
                         if (component) url += '&component=' + encodeURIComponent(component);
 
-                        fetch(url)
+                        fetch(url, { headers: getAdminHeaders() })
                             .then(function(r) { return r.json(); })
                             .then(function(entries) {
                                 var container = document.getElementById('logViewerContent');
@@ -1967,10 +1982,10 @@
                 <!-- Compare filter buttons -->
                 <div id="compareFilters" class="d-none mb-2">
                     <div class="btn-group btn-group-sm" role="group" aria-label="Compare filters">
-                        <button type="button" class="btn btn-outline-secondary active compare-filter-btn" data-filter="all">All</button>
-                        <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="elements">Elements</button>
-                        <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="relations">Relations</button>
-                        <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="requirements">Requirements</button>
+                        <button type="button" class="btn btn-outline-secondary active compare-filter-btn" data-filter="all" th:text="#{compare.filter.all}">All</button>
+                        <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="elements" th:text="#{compare.filter.elements}">Elements</button>
+                        <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="relations" th:text="#{compare.filter.relations}">Relations</button>
+                        <button type="button" class="btn btn-outline-secondary compare-filter-btn" data-filter="requirements" th:text="#{compare.filter.requirements}">Requirements</button>
                     </div>
                 </div>
                 <div id="contextCompareResults"></div>

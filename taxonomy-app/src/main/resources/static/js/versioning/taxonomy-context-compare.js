@@ -262,11 +262,11 @@ window.TaxonomyContextCompare = (function () {
                 html += '<div data-compare-section="relations">';
                 html += '<div class="compare-changes-grid">';
                 html += '<div class="compare-column">';
-                html += '<div class="col-header col-added">\uD83D\uDFE2 Relations Added</div>';
-                html += '<div class="col-items">';
                 var relAdded = comparison.relationChanges.filter(function(c) { return c.changeType === 'ADD'; });
+                html += '<div class="col-header col-added">\uD83D\uDFE2 ' + escapeHtml(t('compare.relations.column.added', relAdded.length)) + '</div>';
+                html += '<div class="col-items">';
                 if (relAdded.length === 0) {
-                    html += '<div class="col-empty">No added relations</div>';
+                    html += '<div class="col-empty">' + escapeHtml(t('compare.relations.column.empty.added')) + '</div>';
                 } else {
                     relAdded.forEach(function(c) {
                         html += '<div class="col-item item-added"><span>' + escapeHtml(c.description) + '</span></div>';
@@ -274,11 +274,11 @@ window.TaxonomyContextCompare = (function () {
                 }
                 html += '</div></div>';
                 html += '<div class="compare-column">';
-                html += '<div class="col-header col-changed">\uD83D\uDFE1 Relations Changed</div>';
-                html += '<div class="col-items">';
                 var relChanged = comparison.relationChanges.filter(function(c) { return c.changeType !== 'ADD' && c.changeType !== 'REMOVE'; });
+                html += '<div class="col-header col-changed">\uD83D\uDFE1 ' + escapeHtml(t('compare.relations.column.changed', relChanged.length)) + '</div>';
+                html += '<div class="col-items">';
                 if (relChanged.length === 0) {
-                    html += '<div class="col-empty">No changed relations</div>';
+                    html += '<div class="col-empty">' + escapeHtml(t('compare.relations.column.empty.changed')) + '</div>';
                 } else {
                     relChanged.forEach(function(c) {
                         html += '<div class="col-item item-changed"><span>' + escapeHtml(c.description) + '</span></div>';
@@ -286,11 +286,11 @@ window.TaxonomyContextCompare = (function () {
                 }
                 html += '</div></div>';
                 html += '<div class="compare-column">';
-                html += '<div class="col-header col-removed">\uD83D\uDD34 Relations Removed</div>';
-                html += '<div class="col-items">';
                 var relRemoved = comparison.relationChanges.filter(function(c) { return c.changeType === 'REMOVE'; });
+                html += '<div class="col-header col-removed">\uD83D\uDD34 ' + escapeHtml(t('compare.relations.column.removed', relRemoved.length)) + '</div>';
+                html += '<div class="col-items">';
                 if (relRemoved.length === 0) {
-                    html += '<div class="col-empty">No removed relations</div>';
+                    html += '<div class="col-empty">' + escapeHtml(t('compare.relations.column.empty.removed')) + '</div>';
                 } else {
                     relRemoved.forEach(function(c) {
                         html += '<div class="col-item item-removed"><span>' + escapeHtml(c.description) + '</span></div>';
@@ -306,11 +306,11 @@ window.TaxonomyContextCompare = (function () {
                 html += '<div data-compare-section="requirements">';
                 html += '<div class="compare-changes-grid">';
                 html += '<div class="compare-column">';
-                html += '<div class="col-header col-added">\uD83D\uDFE2 Requirements Added</div>';
-                html += '<div class="col-items">';
                 var reqAdded = requirements.filter(function(c) { return c.changeType === 'ADD'; });
+                html += '<div class="col-header col-added">\uD83D\uDFE2 ' + escapeHtml(t('compare.requirements.column.added', reqAdded.length)) + '</div>';
+                html += '<div class="col-items">';
                 if (reqAdded.length === 0) {
-                    html += '<div class="col-empty">No added requirements</div>';
+                    html += '<div class="col-empty">' + escapeHtml(t('compare.requirements.column.empty.added')) + '</div>';
                 } else {
                     reqAdded.forEach(function(c) {
                         html += '<div class="col-item item-added"><span>' + escapeHtml(c.description) + '</span></div>';
@@ -318,11 +318,11 @@ window.TaxonomyContextCompare = (function () {
                 }
                 html += '</div></div>';
                 html += '<div class="compare-column">';
-                html += '<div class="col-header col-changed">\uD83D\uDFE1 Requirements Changed</div>';
-                html += '<div class="col-items">';
                 var reqChanged = requirements.filter(function(c) { return c.changeType !== 'ADD' && c.changeType !== 'REMOVE'; });
+                html += '<div class="col-header col-changed">\uD83D\uDFE1 ' + escapeHtml(t('compare.requirements.column.changed', reqChanged.length)) + '</div>';
+                html += '<div class="col-items">';
                 if (reqChanged.length === 0) {
-                    html += '<div class="col-empty">No changed requirements</div>';
+                    html += '<div class="col-empty">' + escapeHtml(t('compare.requirements.column.empty.changed')) + '</div>';
                 } else {
                     reqChanged.forEach(function(c) {
                         html += '<div class="col-item item-changed"><span>' + escapeHtml(c.description) + '</span></div>';
@@ -330,11 +330,11 @@ window.TaxonomyContextCompare = (function () {
                 }
                 html += '</div></div>';
                 html += '<div class="compare-column">';
-                html += '<div class="col-header col-removed">\uD83D\uDD34 Requirements Removed</div>';
-                html += '<div class="col-items">';
                 var reqRemoved = requirements.filter(function(c) { return c.changeType === 'REMOVE'; });
+                html += '<div class="col-header col-removed">\uD83D\uDD34 ' + escapeHtml(t('compare.requirements.column.removed', reqRemoved.length)) + '</div>';
+                html += '<div class="col-items">';
                 if (reqRemoved.length === 0) {
-                    html += '<div class="col-empty">No removed requirements</div>';
+                    html += '<div class="col-empty">' + escapeHtml(t('compare.requirements.column.empty.removed')) + '</div>';
                 } else {
                     reqRemoved.forEach(function(c) {
                         html += '<div class="col-item item-removed"><span>' + escapeHtml(c.description) + '</span></div>';
