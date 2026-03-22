@@ -1,11 +1,10 @@
 # Keycloak & SSO Setup
 
-> **⚠️ Implementation Status: Integration Guide (Not Yet Implemented)**
+> **✅ Implementation Status: Available**
 >
-> This document is a **planning and integration guide** for a future Keycloak/SSO migration (Phase 2).
-> The current application uses **form login** (for the GUI) and **HTTP Basic** (for the REST API)
-> with a built-in user database. No OAuth2/OIDC client dependencies are included in the current codebase.
-> Use this guide when you are ready to integrate Keycloak into your deployment.
+> Keycloak/OIDC integration is implemented and can be activated via the `keycloak` Spring profile.
+> The default mode (without Keycloak) continues to use **form login** (for the GUI) and **HTTP Basic** (for the REST API).
+> Activate the `keycloak` profile to switch to OIDC-based authentication with Keycloak.
 
 This document describes how to integrate the Taxonomy Architecture Analyzer with Keycloak for enterprise-grade identity management, including SSO federation with government identity providers via SAML 2.0 and OIDC.
 

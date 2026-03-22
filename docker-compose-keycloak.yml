@@ -5,8 +5,13 @@
 #   docker compose -f docker-compose-keycloak.yml up -d
 #
 # Access:
-#   - Taxonomy Analyzer: http://localhost:8080
+#   - Taxonomy Analyzer: http://localhost:8080 (redirects to Keycloak login)
 #   - Keycloak Admin:    http://localhost:8180 (admin / admin)
+#
+# Default users (created by realm import):
+#   - admin / admin       → ROLE_USER, ROLE_ARCHITECT, ROLE_ADMIN
+#   - architect / architect → ROLE_USER, ROLE_ARCHITECT
+#   - user / user         → ROLE_USER
 #
 # Note: This is a development setup. For production, see docs/KEYCLOAK_SETUP.md.
 
@@ -43,7 +48,9 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
-    command: start-dev
+    command: start-dev --import-realm
+    volumes:
+      - ./keycloak/taxonomy-realm.json:/opt/keycloak/data/import/taxonomy-realm.json:ro
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
@@ -57,23 +64,36 @@ services:
     depends_on:
       keycloak-db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8180/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
 
   taxonomy:
     build: .
     ports:
       - "8080:8080"
     environment:
-      SPRING_PROFILES_ACTIVE: postgres
+      # ── Profile activation ──
+      SPRING_PROFILES_ACTIVE: postgres,keycloak
+      # ── Database ──
       TAXONOMY_DATASOURCE_URL: "jdbc:postgresql://db:5432/taxonomy"
       SPRING_DATASOURCE_USERNAME: taxonomy
       SPRING_DATASOURCE_PASSWORD: taxonomy
       TAXONOMY_DDL_AUTO: create
       TAXONOMY_AUDIT_LOGGING: "true"
+      # ── Keycloak configuration ──
+      KEYCLOAK_ISSUER_URI: http://keycloak:8180/realms/taxonomy
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8180/realms/taxonomy/protocol/openid-connect/certs
+      KEYCLOAK_CLIENT_ID: taxonomy-app
+      KEYCLOAK_CLIENT_SECRET: taxonomy-dev-secret
     depends_on:
       db:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   postgres-data:
