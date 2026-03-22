@@ -6,6 +6,7 @@ import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
 import io.swagger.v3.oas.models.servers.Server;
 import io.swagger.v3.oas.models.tags.Tag;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -19,6 +20,9 @@ import java.util.List;
 @Configuration
 public class OpenApiConfig {
 
+    @Value("${app.display-version:unknown}")
+    private String appVersion;
+
     @Bean
     public OpenAPI taxonomyOpenAPI() {
         return new OpenAPI()
@@ -29,7 +33,7 @@ public class OpenApiConfig {
                                 requirements to structured C3 Taxonomy elements using LLM-powered scoring.
                                 Manage taxonomy relations, run graph-based architecture queries, \
                                 and export results as Visio, ArchiMate, or Mermaid diagrams.""")
-                        .version("1.1.1-SNAPSHOT")
+                        .version(appVersion)
                         .contact(new Contact()
                                 .name("Taxonomy Architecture Analyzer")
                                 .url("https://github.com/carstenartur/Taxonomy"))

@@ -25,7 +25,7 @@
 <nav class="navbar navbar-dark bg-dark mb-0" aria-label="Main navigation">
     <div class="container-fluid">
         <span class="navbar-brand fw-bold">
-            &#127756; <span th:text="#{app.title}">Taxonomy Architecture Analyzer</span> &mdash; <span id="navbarVersion">v1.1.1</span>
+            &#127756; <span th:text="#{app.title}">Taxonomy Architecture Analyzer</span> &mdash; <span id="navbarVersion" th:text="'v' + ${appVersion}">v0.0.0</span>
         </span>
         <span id="aiStatusBadge" class="badge ms-auto me-2 fs-6 d-none" th:title="#{navbar.ai.status.title}" title="Shows the current AI/LLM provider status: green = available, yellow = unknown (status check failed), red = no API key configured"></span>
         <span id="embeddingStatusBadge" class="badge bg-secondary ms-2 d-none" th:title="#{navbar.embedding.status.title}" title="Embedding model status for semantic search"></span>
