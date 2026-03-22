@@ -32,6 +32,11 @@ public class KeycloakLogoutHandler implements LogoutSuccessHandler {
     @Value("${spring.security.oauth2.client.provider.keycloak.issuer-uri:http://localhost:8180/realms/taxonomy}")
     private String issuerUri;
 
+    /** Visible for testing — sets the issuer URI. */
+    void setIssuerUri(String issuerUri) {
+        this.issuerUri = issuerUri;
+    }
+
     @Override
     public void onLogoutSuccess(HttpServletRequest request,
                                 HttpServletResponse response,

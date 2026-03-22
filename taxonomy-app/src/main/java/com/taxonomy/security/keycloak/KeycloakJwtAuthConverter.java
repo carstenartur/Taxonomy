@@ -42,6 +42,11 @@ public class KeycloakJwtAuthConverter implements Converter<Jwt, AbstractAuthenti
     @Value("${taxonomy.keycloak.role-claim-path:realm_access.roles}")
     private String roleClaimPath;
 
+    /** Visible for testing — sets the role claim path. */
+    void setRoleClaimPath(String roleClaimPath) {
+        this.roleClaimPath = roleClaimPath;
+    }
+
     @Override
     public AbstractAuthenticationToken convert(Jwt jwt) {
         Collection<GrantedAuthority> authorities = extractAuthorities(jwt);

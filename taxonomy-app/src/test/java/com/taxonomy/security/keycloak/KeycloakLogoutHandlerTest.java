@@ -78,12 +78,6 @@ class KeycloakLogoutHandlerTest {
     }
 
     private void setIssuerUri(KeycloakLogoutHandler handler, String uri) {
-        try {
-            var field = KeycloakLogoutHandler.class.getDeclaredField("issuerUri");
-            field.setAccessible(true);
-            field.set(handler, uri);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        handler.setIssuerUri(uri);
     }
 }

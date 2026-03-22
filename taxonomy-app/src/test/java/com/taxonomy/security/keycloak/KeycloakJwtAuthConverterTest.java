@@ -25,14 +25,7 @@ class KeycloakJwtAuthConverterTest {
     @BeforeEach
     void setUp() {
         converter = new KeycloakJwtAuthConverter();
-        // Set the default claim path via reflection since @Value is not processed in unit tests
-        try {
-            var field = KeycloakJwtAuthConverter.class.getDeclaredField("roleClaimPath");
-            field.setAccessible(true);
-            field.set(converter, "realm_access.roles");
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        converter.setRoleClaimPath("realm_access.roles");
     }
 
     @Test
