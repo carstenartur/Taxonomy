@@ -1,5 +1,9 @@
 # Taxonomy Architecture Analyzer — Documentation Status
 
+> **📦 Archived** — All items in this tracker have been completed as of March 2026.
+> This file is kept for historical reference. For current documentation,
+> see the [README Documentation index](../../README.md#documentation).
+
 This file tracks known documentation gaps and improvement opportunities. Items marked with ✅ have been addressed.
 
 ---

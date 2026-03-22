@@ -161,24 +161,36 @@ Taxonomy/
 | **[User Guide](docs/en/USER_GUIDE.md)** | End-user guide with screenshots and workflow walkthroughs |
 | **[Examples](docs/en/EXAMPLES.md)** | Worked examples for analysis, impact, proposals, export |
 | **[Concepts & Glossary](docs/en/CONCEPTS.md)** | Key terms and domain model |
+| **[Document Import](docs/en/DOCUMENT_IMPORT.md)** | PDF/DOCX import, candidate extraction, source provenance |
+| **[Framework Import](docs/en/FRAMEWORK_IMPORT.md)** | Import APQC, ArchiMate, C4, UAF frameworks |
+| **[Workspace Versioning](docs/en/WORKSPACE_VERSIONING.md)** | Context bar, variants, sync, merge, cherry-pick |
+| **[AI Providers](docs/en/AI_PROVIDERS.md)** | Supported LLM providers and configuration |
+| **[Preferences](docs/en/PREFERENCES.md)** | Runtime preferences (LLM, DSL/Git, size limits) |
 | **[API Reference](docs/en/API_REFERENCE.md)** | REST API quick-reference with request/response examples |
+| **[Curl Examples](docs/en/CURL_EXAMPLES.md)** | End-to-end automation examples |
 | **[Configuration](docs/en/CONFIGURATION_REFERENCE.md)** | Environment variables and settings |
 | **[Deployment](docs/en/DEPLOYMENT_GUIDE.md)** | Docker, Render.com, health checks |
 | **[Deployment Checklist](docs/en/DEPLOYMENT_CHECKLIST.md)** | Pre-deployment verification checklist |
 | **[Security](docs/en/SECURITY.md)** | Authentication, roles, permissions, deployment hardening |
 | **[Database Setup](docs/en/DATABASE_SETUP.md)** | PostgreSQL, MSSQL, Oracle configuration |
 | **[Keycloak & SSO](docs/en/KEYCLOAK_SETUP.md)** | SSO/OIDC/SAML integration with Keycloak |
+| **[Keycloak Migration](docs/en/KEYCLOAK_MIGRATION.md)** | Migrating from form-login to Keycloak/OIDC |
+| **[Operations Guide](docs/en/OPERATIONS_GUIDE.md)** | Operational procedures and monitoring |
 | **[Architecture](docs/en/ARCHITECTURE.md)** | System design, modules, DSL storage, pipelines |
 | **[Developer Guide](docs/en/DEVELOPER_GUIDE.md)** | Module architecture, testing, extending the system |
+| **[Git Integration](docs/en/GIT_INTEGRATION.md)** | JGit DFS repository, branching, REST endpoints |
+| **[Repository Topology](docs/en/REPOSITORY_TOPOLOGY.md)** | Workspace provisioning, topology modes, sync |
+| **[Relation Seeds](docs/en/RELATION_SEEDS.md)** | Seed data format, provenance, CSV schema |
 | **[Feature Matrix](docs/en/FEATURE_MATRIX.md)** | Feature completeness tracking (GUI, REST, docs, i18n) |
+| **[UI Gap Analysis](docs/en/UI_GAP_ANALYSIS.md)** | JavaScript module inventory and workspace UI status |
 | **[AI Transparency](docs/en/AI_TRANSPARENCY.md)** | AI/LLM usage transparency documentation |
 | **[Data Protection](docs/en/DATA_PROTECTION.md)** | GDPR and data protection compliance |
-| **[Operations Guide](docs/en/OPERATIONS_GUIDE.md)** | Operational procedures and monitoring |
 | **[Knowledge Conservation](docs/en/USE_CASE_WISSENSKONSERVIERUNG.md)** | Use case: architecture knowledge preservation |
 
 ## Government Readiness (Behördentauglichkeit)
 
-The Taxonomy Architecture Analyzer includes comprehensive documentation for deployment in German government and public administration environments:
+The Taxonomy Architecture Analyzer includes comprehensive documentation for deployment in German government and public administration environments.
+See also: [Security](docs/en/SECURITY.md), [Data Protection](docs/en/DATA_PROTECTION.md), [AI Transparency](docs/en/AI_TRANSPARENCY.md), [Deployment Checklist](docs/en/DEPLOYMENT_CHECKLIST.md), and [Knowledge Conservation](docs/en/USE_CASE_WISSENSKONSERVIERUNG.md) in the Documentation table above.
 
 | Document | Description |
 |---|---|
@@ -187,11 +199,6 @@ The Taxonomy Architecture Analyzer includes comprehensive documentation for depl
 | **[Accessibility / BITV 2.0](docs/en/ACCESSIBILITY.md)** | BITV 2.0 / WCAG 2.1 accessibility concept and action plan |
 | **[Digital Sovereignty](docs/en/DIGITAL_SOVEREIGNTY.md)** | Digital sovereignty, openCode compatibility, DVC architecture |
 | **[Administration Integration](docs/en/VERWALTUNGSINTEGRATION.md)** | FIM / 115 / XÖV integration roadmap |
-| **[AI Transparency](docs/en/AI_TRANSPARENCY.md)** | EU AI Act compliance, data flows, explainability |
-| **[Data Protection](docs/en/DATA_PROTECTION.md)** | GDPR/DSGVO compliance, BfDI guidelines |
-| **[Security](docs/en/SECURITY.md)** | Authentication, roles, hardening, workspace access rights |
-| **[Deployment Checklist](docs/en/DEPLOYMENT_CHECKLIST.md)** | Government/enterprise deployment verification checklist |
-| **[Knowledge Conservation](docs/en/USE_CASE_WISSENSKONSERVIERUNG.md)** | Use case: architecture knowledge preservation for government |
 
 **Key capabilities for government use:**
 - 🔒 **Air-gapped operation** — `LLM_PROVIDER=LOCAL_ONNX` for fully offline deployment
