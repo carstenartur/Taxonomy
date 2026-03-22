@@ -37,6 +37,8 @@ A feature is only complete when all required columns show ✅.
 | Leaf justification | ✅ | ✅ | ✅ §6 | ✅ #18 | ✅ | ✅ | ✅ Complete |
 | Document import (PDF/DOCX) | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Complete |
 | Source provenance tracking | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Complete |
+| AI-assisted requirement extraction | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Complete |
+| Regulation-to-architecture mapping | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Complete |
 
 ## Admin/Automation Features (API-first — no GUI required)
 

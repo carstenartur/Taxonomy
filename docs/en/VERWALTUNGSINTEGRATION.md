@@ -1,6 +1,6 @@
-# Administration Integration — Roadmap
+# Administration Integration — Status & Roadmap
 
-This document describes the planned integration of the Taxonomy Architecture Analyzer with administrative knowledge bases and interfaces of the German federal administration. This is a strategic roadmap document.
+This document describes the integration of the Taxonomy Architecture Analyzer with administrative knowledge bases and interfaces of the German federal administration. It combines the current implementation status with the strategic roadmap for remaining work.
 
 ---
 
@@ -17,12 +17,12 @@ This document describes the planned integration of the Taxonomy Architecture Ana
 
 ## Overview of Integration Points
 
-| Integration Point | Description | Phase | Priority |
+| Integration Point | Description | Status | Notes |
 |---|---|---|---|
-| **FIM Service Catalog Import** | Import administrative services as requirements for architecture analysis | Phase 1 | 🟡 Medium |
-| **Administrative Regulation Parser** | PDF/DOCX → requirements extraction from administrative documents | Phase 1 | 🟡 Medium |
-| **115 Knowledge Base Connection** | Administrative domain information as context for RAG-based analysis | Phase 2 | 🟢 Low |
-| **XÖV Schema Mapping** | Map XÖV messages to taxonomy nodes | Phase 2 | 🟢 Low |
+| **Administrative Regulation Parser** | PDF/DOCX → requirements extraction from administrative documents | ✅ Implemented | `DocumentParserService` with Apache PDFBox + Apache POI; see [Document Import](DOCUMENT_IMPORT.md) |
+| **FIM Service Catalog Import** | Import administrative services as requirements for architecture analysis | ⚠️ Infrastructure ready | `SourceType.FIM_ENTRY` exists; FIM import profile not yet built |
+| **115 Knowledge Base Connection** | Administrative domain information as context for RAG-based analysis | ⚠️ RAG pipeline ready | `LocalEmbeddingService` + `HybridSearchService` operational; 115 connector not yet built |
+| **XÖV Schema Mapping** | Map XÖV messages to taxonomy nodes | 🟢 Planned | Not yet implemented |
 
 ---
 
@@ -31,6 +31,16 @@ This document describes the planned integration of the Taxonomy Architecture Ana
 ### Goal
 
 The [Federal Information Management (FIM)](https://fimportal.de/) service catalog contains standardized descriptions of administrative services. By importing these service descriptions as business requirements, architecture analyses for administrative processes can be triggered automatically.
+
+### Implementation Status: ⚠️ Infrastructure Ready
+
+The data model supports FIM entries via `SourceType.FIM_ENTRY`, and the document import pipeline can be extended for FIM data. The FIM-specific import profile and format adapter are not yet implemented.
+
+| What is ready | What remains |
+|---|---|
+| `SourceType.FIM_ENTRY` in source provenance model | FIM XML/JSON format parser |
+| Document import infrastructure (`DocumentImportController`) | FIM field mapping configuration |
+| Source provenance tracking | FIM Portal API integration |
 
 ### Concept
 
@@ -55,6 +65,26 @@ The [Federal Information Management (FIM)](https://fimportal.de/) service catalo
 
 Administrative regulations, service instructions, and domain-specific requirements documents are often available as PDF or DOCX. A parser should automatically extract requirements from these documents to serve as input for the architecture analysis.
 
+### Implementation Status: ✅ Implemented
+
+The regulation parser has been fully implemented using **Apache PDFBox** (PDF) and **Apache POI** (DOCX):
+
+| Component | Implementation |
+|---|---|
+| **DocumentParserService** | Orchestrates document parsing and text extraction |
+| **StructuredDocumentParser** | Extracts structured sections and headings |
+| **DocumentAnalysisService** | AI-assisted requirement extraction from parsed text |
+| **DocumentImportController** | REST endpoints for upload, extraction, and mapping |
+| **taxonomy-document-import.js** | Frontend UI for document import workflow |
+
+Three import modes are available:
+
+1. **Extract Candidates** — Rule-based extraction of requirement candidates from document structure
+2. **AI-Assisted Extraction** — LLM-based summarization and requirements extraction
+3. **Direct Architecture Mapping** — Regulation-to-architecture mapping via AI analysis
+
+> **Details:** See [Document Import](DOCUMENT_IMPORT.md) for the complete feature documentation.
+
 ### Concept
 
 | Aspect | Detail |
@@ -63,10 +93,11 @@ Administrative regulations, service instructions, and domain-specific requiremen
 | **Processing** | Text extraction → section structuring → requirements identification |
 | **AI Support** | Optional: LLM-based summarization and requirements extraction |
 | **Output** | Structured business requirements for the taxonomy analysis |
+| **Technology** | Apache PDFBox (PDF), Apache POI (DOCX) |
 
 ### Synergies
 
-This feature complements the roadmap for knowledge preservation from documents described in [USE_CASE_WISSENSKONSERVIERUNG.md](USE_CASE_WISSENSKONSERVIERUNG.md).
+This feature complements the knowledge preservation from documents described in [USE_CASE_WISSENSKONSERVIERUNG.md](USE_CASE_WISSENSKONSERVIERUNG.md).
 
 ---
 
@@ -75,6 +106,16 @@ This feature complements the roadmap for knowledge preservation from documents d
 ### Goal
 
 The [115 knowledge base](https://www.115.de/) contains administrative domain information about government services and processes. By connecting it as a context source, the AI analysis can be enriched with administration-specific background knowledge (Retrieval Augmented Generation / RAG).
+
+### Implementation Status: ⚠️ RAG Pipeline Ready
+
+The RAG infrastructure is fully operational. Only the 115-specific data connector is missing:
+
+| What is ready | What remains |
+|---|---|
+| `LocalEmbeddingService` (BAAI/bge-small-en-v1.5 ONNX) | 115 knowledge base export/API connector |
+| `HybridSearchService` (Reciprocal Rank Fusion) | 115-specific data format adapter |
+| Full-text + semantic + hybrid search modes | Data synchronization schedule |
 
 ### Concept
 
@@ -106,20 +147,22 @@ The [115 knowledge base](https://www.115.de/) contains administrative domain inf
 
 ## Phase Planning
 
-### Phase 1: Concept and Prototype (3–6 Months)
+### Phase 1: Completed ✅
+
+| Step | Description | Status |
+|---|---|---|
+| Parser Implementation | PDF/DOCX text extraction with Apache PDFBox + Apache POI | ✅ Done |
+| Import API | REST endpoints for document upload, extraction, and mapping | ✅ Done |
+| Document Import UI | Frontend for document import workflow | ✅ Done |
+| Source Provenance | Tracking of requirement origins with SourceType enum | ✅ Done |
+| FIM Data Model | `SourceType.FIM_ENTRY` in provenance model | ✅ Done |
+
+### Phase 2: Remaining Work
 
 | Step | Description | Effort |
 |---|---|---|
-| FIM Catalog Analysis | Clarify format and availability of the FIM export | 1 Week |
-| Parser Prototype | Evaluate PDF/DOCX text extraction with Apache Tika | 2 Weeks |
-| Import API | REST endpoint for requirements import from structured sources | 2 Weeks |
-| Pilot Test | Test run with 10–20 FIM services | 1 Week |
-
-### Phase 2: Extended Integration (6–12 Months)
-
-| Step | Description | Effort |
-|---|---|---|
-| 115 Connection | Evaluate the 115 knowledge base as a RAG context source | 2 Weeks |
+| FIM Import Profile | FIM XML/JSON format parser and field mapping | 2 Weeks |
+| 115 Connector | Connector for the 115 knowledge base as RAG context source | 2 Weeks |
 | XÖV Mapping | Prototypical mapping of XÖV schemas to taxonomy | 3 Weeks |
 | Feedback | Pilot operation with partner agency; feedback integration | 4 Weeks |
 
@@ -127,6 +170,7 @@ The [115 knowledge base](https://www.115.de/) contains administrative domain inf
 
 ## Related Documentation
 
+- [Document Import](DOCUMENT_IMPORT.md) — Document import feature documentation (PDF/DOCX upload, provenance)
 - [Use Case: Knowledge Preservation](USE_CASE_WISSENSKONSERVIERUNG.md) — Government use case for knowledge preservation
 - [AI Transparency](AI_TRANSPARENCY.md) — AI transparency and data flows
 - [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — Digital sovereignty and openCode

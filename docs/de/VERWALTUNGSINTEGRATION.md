@@ -1,6 +1,6 @@
-# Verwaltungsintegration — Roadmap
+# Verwaltungsintegration — Status & Roadmap
 
-Dieses Dokument beschreibt die geplante Integration des Taxonomy Architecture Analyzer mit verwaltungsfachlichen Wissensbeständen und Schnittstellen der deutschen Bundesverwaltung. Es handelt sich um ein strategisches Roadmap-Dokument.
+Dieses Dokument beschreibt die Integration des Taxonomy Architecture Analyzer mit verwaltungsfachlichen Wissensbeständen und Schnittstellen der deutschen Bundesverwaltung. Es verbindet den aktuellen Implementierungsstand mit der strategischen Roadmap für verbleibende Arbeiten.
 
 ---
 
@@ -17,12 +17,12 @@ Dieses Dokument beschreibt die geplante Integration des Taxonomy Architecture An
 
 ## Übersicht der Integrationspunkte
 
-| Integrationspunkt | Beschreibung | Phase | Priorität |
+| Integrationspunkt | Beschreibung | Status | Hinweise |
 |---|---|---|---|
-| **FIM-Leistungskatalog-Import** | Verwaltungsleistungen als Anforderungen für Architektur-Analyse importieren | Phase 1 | 🟡 Mittel |
-| **Verwaltungsvorschriften-Parser** | PDF/DOCX → Anforderungsextraktion aus Verwaltungsdokumenten | Phase 1 | 🟡 Mittel |
-| **115-Wissensbasis-Anbindung** | Verwaltungsfachliche Informationen als Kontext für RAG-basierte Analyse | Phase 2 | 🟢 Niedrig |
-| **XÖV-Schema-Mapping** | XÖV-Nachrichten auf Taxonomie-Knoten abbilden | Phase 2 | 🟢 Niedrig |
+| **Verwaltungsvorschriften-Parser** | PDF/DOCX → Anforderungsextraktion aus Verwaltungsdokumenten | ✅ Implementiert | `DocumentParserService` mit Apache PDFBox + Apache POI; siehe [Dokumentimport](DOCUMENT_IMPORT.md) |
+| **FIM-Leistungskatalog-Import** | Verwaltungsleistungen als Anforderungen für Architektur-Analyse importieren | ⚠️ Infrastruktur bereit | `SourceType.FIM_ENTRY` vorhanden; FIM-Import-Profil noch nicht gebaut |
+| **115-Wissensbasis-Anbindung** | Verwaltungsfachliche Informationen als Kontext für RAG-basierte Analyse | ⚠️ RAG-Pipeline bereit | `LocalEmbeddingService` + `HybridSearchService` betriebsbereit; 115-Connector fehlt noch |
+| **XÖV-Schema-Mapping** | XÖV-Nachrichten auf Taxonomie-Knoten abbilden | 🟢 Geplant | Noch nicht implementiert |
 
 ---
 
@@ -31,6 +31,16 @@ Dieses Dokument beschreibt die geplante Integration des Taxonomy Architecture An
 ### Ziel
 
 Der [Föderale Informationsmanagement (FIM)](https://fimportal.de/)-Leistungskatalog enthält standardisierte Beschreibungen von Verwaltungsleistungen. Durch den Import dieser Leistungsbeschreibungen als Business-Anforderungen können Architektur-Analysen für verwaltungsfachliche Prozesse automatisiert angestoßen werden.
+
+### Implementierungsstatus: ⚠️ Infrastruktur bereit
+
+Das Datenmodell unterstützt FIM-Einträge über `SourceType.FIM_ENTRY`, und die Dokumentimport-Pipeline kann für FIM-Daten erweitert werden. Das FIM-spezifische Import-Profil und der Format-Adapter sind noch nicht implementiert.
+
+| Was bereit ist | Was noch fehlt |
+|---|---|
+| `SourceType.FIM_ENTRY` im Quell-Provenienz-Modell | FIM-XML/JSON-Format-Parser |
+| Dokumentimport-Infrastruktur (`DocumentImportController`) | FIM-Feld-Mapping-Konfiguration |
+| Quell-Provenienz-Tracking | FIM-Portal-API-Integration |
 
 ### Konzept
 
@@ -55,6 +65,26 @@ Der [Föderale Informationsmanagement (FIM)](https://fimportal.de/)-Leistungskat
 
 Verwaltungsvorschriften, Dienstanweisungen und fachliche Anforderungsdokumente liegen häufig als PDF oder DOCX vor. Ein Parser soll aus diesen Dokumenten automatisch Anforderungen extrahieren, die als Input für die Architektur-Analyse dienen.
 
+### Implementierungsstatus: ✅ Implementiert
+
+Der Verwaltungsvorschriften-Parser wurde mit **Apache PDFBox** (PDF) und **Apache POI** (DOCX) vollständig implementiert:
+
+| Komponente | Implementierung |
+|---|---|
+| **DocumentParserService** | Orchestriert Dokumenten-Parsing und Textextraktion |
+| **StructuredDocumentParser** | Extrahiert strukturierte Abschnitte und Überschriften |
+| **DocumentAnalysisService** | KI-gestützte Anforderungsextraktion aus geparsten Texten |
+| **DocumentImportController** | REST-Endpunkte für Upload, Extraktion und Mapping |
+| **taxonomy-document-import.js** | Frontend-UI für den Dokumentimport-Workflow |
+
+Drei Import-Modi stehen zur Verfügung:
+
+1. **Kandidaten extrahieren** — Regelbasierte Extraktion von Anforderungskandidaten aus der Dokumentstruktur
+2. **KI-gestützte Extraktion** — LLM-basierte Zusammenfassung und Anforderungsextraktion
+3. **Direkte Architektur-Zuordnung** — Vorschriften-zu-Architektur-Mapping per KI-Analyse
+
+> **Details:** Siehe [Dokumentimport](DOCUMENT_IMPORT.md) für die vollständige Feature-Dokumentation.
+
 ### Konzept
 
 | Aspekt | Detail |
@@ -63,10 +93,11 @@ Verwaltungsvorschriften, Dienstanweisungen und fachliche Anforderungsdokumente l
 | **Verarbeitung** | Textextraktion → Abschnittsstrukturierung → Anforderungsidentifikation |
 | **KI-Unterstützung** | Optional: LLM-basierte Zusammenfassung und Anforderungsextraktion |
 | **Ausgabe** | Strukturierte Business Requirements für die Taxonomy-Analyse |
+| **Technologie** | Apache PDFBox (PDF), Apache POI (DOCX) |
 
 ### Synergien
 
-Dieses Feature ergänzt die in [USE_CASE_WISSENSKONSERVIERUNG.md](USE_CASE_WISSENSKONSERVIERUNG.md) beschriebene Roadmap für die Wissenskonservierung aus Dokumenten.
+Dieses Feature ergänzt die in [USE_CASE_WISSENSKONSERVIERUNG.md](USE_CASE_WISSENSKONSERVIERUNG.md) beschriebene Wissenskonservierung aus Dokumenten.
 
 ---
 
@@ -75,6 +106,16 @@ Dieses Feature ergänzt die in [USE_CASE_WISSENSKONSERVIERUNG.md](USE_CASE_WISSE
 ### Ziel
 
 Die [115-Wissensbasis](https://www.115.de/) enthält verwaltungsfachliche Informationen zu Behördenleistungen und -prozessen. Durch die Anbindung als Kontextquelle kann die KI-Analyse mit verwaltungsspezifischem Hintergrundwissen angereichert werden (Retrieval Augmented Generation / RAG).
+
+### Implementierungsstatus: ⚠️ RAG-Pipeline bereit
+
+Die RAG-Infrastruktur ist vollständig betriebsbereit. Nur der 115-spezifische Daten-Connector fehlt noch:
+
+| Was bereit ist | Was noch fehlt |
+|---|---|
+| `LocalEmbeddingService` (BAAI/bge-small-en-v1.5 ONNX) | 115-Wissensbasis-Export/API-Connector |
+| `HybridSearchService` (Reciprocal Rank Fusion) | 115-spezifischer Datenformat-Adapter |
+| Volltext- + semantische + hybride Suchmodi | Datensynchronisierungszeitplan |
 
 ### Konzept
 
@@ -106,20 +147,22 @@ Die [115-Wissensbasis](https://www.115.de/) enthält verwaltungsfachliche Inform
 
 ## Phasenplanung
 
-### Phase 1: Konzept und Prototyp (3–6 Monate)
+### Phase 1: Abgeschlossen ✅
+
+| Schritt | Beschreibung | Status |
+|---|---|---|
+| Parser-Implementierung | PDF/DOCX-Textextraktion mit Apache PDFBox + Apache POI | ✅ Erledigt |
+| Import-API | REST-Endpunkte für Dokumenten-Upload, Extraktion und Mapping | ✅ Erledigt |
+| Dokumentimport-UI | Frontend für den Dokumentimport-Workflow | ✅ Erledigt |
+| Quell-Provenienz | Nachverfolgung von Anforderungsursprüngen mit SourceType-Enum | ✅ Erledigt |
+| FIM-Datenmodell | `SourceType.FIM_ENTRY` im Provenienz-Modell | ✅ Erledigt |
+
+### Phase 2: Verbleibende Arbeiten
 
 | Schritt | Beschreibung | Aufwand |
 |---|---|---|
-| FIM-Katalog-Analyse | Format und Verfügbarkeit des FIM-Exports klären | 1 Woche |
-| Parser-Prototyp | PDF/DOCX-Textextraktion mit Apache Tika evaluieren | 2 Wochen |
-| Import-API | REST-Endpunkt für Anforderungsimport aus strukturierten Quellen | 2 Wochen |
-| Pilot-Test | Testlauf mit 10–20 FIM-Leistungen | 1 Woche |
-
-### Phase 2: Erweiterte Integration (6–12 Monate)
-
-| Schritt | Beschreibung | Aufwand |
-|---|---|---|
-| 115-Anbindung | Evaluierung der 115-Wissensbasis als RAG-Kontextquelle | 2 Wochen |
+| FIM-Import-Profil | FIM-XML/JSON-Format-Parser und Feld-Mapping | 2 Wochen |
+| 115-Connector | Connector für die 115-Wissensbasis als RAG-Kontextquelle | 2 Wochen |
 | XÖV-Mapping | Prototypisches Mapping von XÖV-Schemata auf Taxonomie | 3 Wochen |
 | Feedback | Pilotbetrieb mit Partnerbehörde; Feedback-Integration | 4 Wochen |
 
@@ -127,6 +170,7 @@ Die [115-Wissensbasis](https://www.115.de/) enthält verwaltungsfachliche Inform
 
 ## Verwandte Dokumentation
 
+- [Dokumentimport](DOCUMENT_IMPORT.md) — Dokumentimport-Feature-Dokumentation (PDF/DOCX-Upload, Provenienz)
 - [Use Case: Wissenskonservierung](USE_CASE_WISSENSKONSERVIERUNG.md) — Behörden-Use-Case für Wissenskonservierung
 - [AI Transparency](AI_TRANSPARENCY.md) — KI-Transparenz und Datenflüsse
 - [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — Digitale Souveränität und openCode

@@ -119,14 +119,14 @@ The Taxonomy Architecture Analyzer acts as a **living architecture memory** that
 | **Graph Exploration** | Upstream/downstream dependencies | Graph Tab |
 | **Multi-Format Export** | ArchiMate XML, Visio, Mermaid, JSON, DOCX | Export Buttons |
 | **Audit Logging** | Who did what and when | Application Logs |
+| **Timeline View** | Chronological view of all architecture decisions | Versions Tab → History |
+| **Document Import** | Import PDF/DOCX and automatically extract requirements | Document Import Panel; see [DOCUMENT_IMPORT.md](DOCUMENT_IMPORT.md) |
 
 ### Planned (Roadmap)
 
 | Feature | Description | Phase |
 |---|---|---|
-| **Timeline View** | Chronological view of all architecture decisions | Phase 3 |
 | **ADR Export** | Generate Architecture Decision Records from commit history | Phase 3 |
-| **Document Import** | Import PDF/DOCX and automatically extract requirements | Phase 5 |
 | **Meeting Transcription** | Transcribe audio recordings of architecture reviews | Phase 6 |
 
 ---
