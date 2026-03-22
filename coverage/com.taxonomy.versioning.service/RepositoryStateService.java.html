@@ -16,6 +16,7 @@ import java.util.List;
 import com.taxonomy.dto.WorkspaceInfo;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.UserWorkspaceState;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceManager;
 
 /**
@@ -39,64 +40,96 @@ import com.taxonomy.workspace.service.WorkspaceManager;
 @Service
 public class RepositoryStateService {
 
-<span class="fc" id="L42">    private static final Logger log = LoggerFactory.getLogger(RepositoryStateService.class);</span>
+<span class="fc" id="L43">    private static final Logger log = LoggerFactory.getLogger(RepositoryStateService.class);</span>
 
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
     private final WorkspaceManager workspaceManager;
     private final SystemRepositoryService systemRepositoryService;
 
     public RepositoryStateService(DslGitRepositoryFactory repositoryFactory,
                                   WorkspaceManager workspaceManager,
-<span class="fc" id="L50">                                  SystemRepositoryService systemRepositoryService) {</span>
-<span class="fc" id="L51">        this.gitRepository = repositoryFactory.getSystemRepository();</span>
-<span class="fc" id="L52">        this.workspaceManager = workspaceManager;</span>
-<span class="fc" id="L53">        this.systemRepositoryService = systemRepositoryService;</span>
-<span class="fc" id="L54">    }</span>
+<span class="fc" id="L51">                                  SystemRepositoryService systemRepositoryService) {</span>
+<span class="fc" id="L52">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L53">        this.workspaceManager = workspaceManager;</span>
+<span class="fc" id="L54">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L55">    }</span>
+
+    /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * &lt;p&gt;Callers pass an explicit {@link WorkspaceContext} rather than relying
+     * on {@code resolveCurrentContext()} — this keeps the service free from
+     * implicit request-scoped state and makes it testable without a
+     * SecurityContext.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+<span class="fc" id="L70">        return repositoryFactory.resolveRepository(ctx);</span>
+    }
 
     // ── Workspace-aware methods ─────────────────────────────────────
 
     /**
      * Build the full repository state snapshot for a user and branch.
      *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #getState(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
      * @param username the user whose workspace state to include
      * @param branch   the branch to query (e.g. &quot;draft&quot;)
      * @return the full repository state
      */
     public RepositoryState getState(String username, String branch) {
-<span class="fc" id="L66">        UserWorkspaceState ws = resolveState(username);</span>
+<span class="fc" id="L86">        return getState(username, branch, WorkspaceContext.SHARED);</span>
+    }
+
+    /**
+     * Build the full repository state snapshot for a user, branch, and workspace context.
+     *
+     * @param username the user whose workspace state to include
+     * @param branch   the branch to query (e.g. &quot;draft&quot;)
+     * @param ctx      the workspace context for repository resolution
+     * @return the full repository state
+     */
+    public RepositoryState getState(String username, String branch, WorkspaceContext ctx) {
+<span class="fc" id="L98">        UserWorkspaceState ws = resolveState(username);</span>
+<span class="fc" id="L99">        DslGitRepository repo = resolveRepository(ctx);</span>
         try {
-<span class="fc" id="L68">            DslCommit headInfo = gitRepository.getHeadCommitInfo(branch);</span>
-<span class="fc" id="L69">            List&lt;String&gt; branches = gitRepository.getBranchNames();</span>
-<span class="fc" id="L70">            int commitCount = gitRepository.getCommitCount(branch);</span>
-<span class="fc bfc" id="L71" title="All 2 branches covered.">            String headCommit = headInfo != null ? headInfo.commitId() : null;</span>
+<span class="fc" id="L101">            DslCommit headInfo = repo.getHeadCommitInfo(branch);</span>
+<span class="fc" id="L102">            List&lt;String&gt; branches = repo.getBranchNames();</span>
+<span class="fc" id="L103">            int commitCount = repo.getCommitCount(branch);</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">            String headCommit = headInfo != null ? headInfo.commitId() : null;</span>
 
-<span class="fc" id="L73">            boolean projStale = isProjectionStaleForCommit(ws, headCommit);</span>
-<span class="fc" id="L74">            boolean idxStale = isIndexStale(ws, headCommit);</span>
+<span class="fc" id="L106">            boolean projStale = isProjectionStaleForCommit(ws, headCommit);</span>
+<span class="fc" id="L107">            boolean idxStale = isIndexStale(ws, headCommit);</span>
 
-<span class="fc" id="L76">            return new RepositoryState(</span>
+<span class="fc" id="L109">            return new RepositoryState(</span>
                     branch,
                     headCommit,
-<span class="fc bfc" id="L79" title="All 2 branches covered.">                    headInfo != null ? headInfo.timestamp() : null,</span>
-<span class="fc bfc" id="L80" title="All 2 branches covered.">                    headInfo != null ? headInfo.author() : null,</span>
-<span class="fc bfc" id="L81" title="All 2 branches covered.">                    headInfo != null ? headInfo.message() : null,</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                    headInfo != null ? headInfo.timestamp() : null,</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                    headInfo != null ? headInfo.author() : null,</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                    headInfo != null ? headInfo.message() : null,</span>
                     branches,
-<span class="fc" id="L83">                    ws.isOperationInProgress(),</span>
-<span class="fc" id="L84">                    ws.getOperationKind(),</span>
-<span class="fc" id="L85">                    ws.getLastProjectionCommit(),</span>
-<span class="fc" id="L86">                    ws.getLastProjectionBranch(),</span>
-<span class="fc" id="L87">                    ws.getLastProjectionTimestamp(),</span>
+<span class="fc" id="L116">                    ws.isOperationInProgress(),</span>
+<span class="fc" id="L117">                    ws.getOperationKind(),</span>
+<span class="fc" id="L118">                    ws.getLastProjectionCommit(),</span>
+<span class="fc" id="L119">                    ws.getLastProjectionBranch(),</span>
+<span class="fc" id="L120">                    ws.getLastProjectionTimestamp(),</span>
                     projStale,
-<span class="fc" id="L89">                    ws.getLastIndexCommit(),</span>
+<span class="fc" id="L122">                    ws.getLastIndexCommit(),</span>
                     idxStale,
                     commitCount,
-<span class="fc" id="L92">                    gitRepository.isDatabaseBacked()</span>
+<span class="fc" id="L125">                    repo.isDatabaseBacked()</span>
             );
-<span class="nc" id="L94">        } catch (IOException e) {</span>
-<span class="nc" id="L95">            log.error(&quot;Failed to build repository state for user '{}', branch '{}'&quot;, username, branch, e);</span>
-<span class="nc" id="L96">            return new RepositoryState(</span>
-<span class="nc" id="L97">                    branch, null, null, null, null, List.of(),</span>
+<span class="nc" id="L127">        } catch (IOException e) {</span>
+<span class="nc" id="L128">            log.error(&quot;Failed to build repository state for user '{}', branch '{}'&quot;, username, branch, e);</span>
+<span class="nc" id="L129">            return new RepositoryState(</span>
+<span class="nc" id="L130">                    branch, null, null, null, null, List.of(),</span>
                     false, null, null, null, null, false, null, false, 0,
-<span class="nc" id="L99">                    gitRepository.isDatabaseBacked()</span>
+<span class="nc" id="L132">                    repo.isDatabaseBacked()</span>
             );
         }
     }
@@ -104,27 +137,43 @@ public class RepositoryStateService {
     /**
      * Build a {@link ViewContext} for inclusion in API responses.
      *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #getViewContext(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
      * @param username the user whose workspace state to include
      * @param branch   the branch the data is based on
      * @return the view context metadata
      */
     public ViewContext getViewContext(String username, String branch) {
-<span class="fc" id="L112">        UserWorkspaceState ws = resolveState(username);</span>
-        try {
-<span class="fc" id="L114">            DslCommit headInfo = gitRepository.getHeadCommitInfo(branch);</span>
-<span class="fc bfc" id="L115" title="All 2 branches covered.">            String headCommit = headInfo != null ? headInfo.commitId() : null;</span>
+<span class="fc" id="L148">        return getViewContext(username, branch, WorkspaceContext.SHARED);</span>
+    }
 
-<span class="fc" id="L117">            return new ViewContext(</span>
+    /**
+     * Build a {@link ViewContext} for inclusion in API responses.
+     *
+     * @param username the user whose workspace state to include
+     * @param branch   the branch the data is based on
+     * @param ctx      the workspace context for repository resolution
+     * @return the view context metadata
+     */
+    public ViewContext getViewContext(String username, String branch, WorkspaceContext ctx) {
+<span class="fc" id="L160">        UserWorkspaceState ws = resolveState(username);</span>
+<span class="fc" id="L161">        DslGitRepository repo = resolveRepository(ctx);</span>
+        try {
+<span class="fc" id="L163">            DslCommit headInfo = repo.getHeadCommitInfo(branch);</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">            String headCommit = headInfo != null ? headInfo.commitId() : null;</span>
+
+<span class="fc" id="L166">            return new ViewContext(</span>
                     headCommit,
                     branch,
-<span class="fc bfc" id="L120" title="All 2 branches covered.">                    headInfo != null ? headInfo.timestamp() : null,</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">                    headInfo != null ? headInfo.timestamp() : null,</span>
                     true,
-<span class="fc" id="L122">                    isProjectionStaleForCommit(ws, headCommit),</span>
-<span class="fc" id="L123">                    isIndexStale(ws, headCommit)</span>
+<span class="fc" id="L171">                    isProjectionStaleForCommit(ws, headCommit),</span>
+<span class="fc" id="L172">                    isIndexStale(ws, headCommit)</span>
             );
-<span class="nc" id="L125">        } catch (IOException e) {</span>
-<span class="nc" id="L126">            log.error(&quot;Failed to build view context for user '{}', branch '{}'&quot;, username, branch, e);</span>
-<span class="nc" id="L127">            return new ViewContext(null, branch, null, true, false, false);</span>
+<span class="nc" id="L174">        } catch (IOException e) {</span>
+<span class="nc" id="L175">            log.error(&quot;Failed to build view context for user '{}', branch '{}'&quot;, username, branch, e);</span>
+<span class="nc" id="L176">            return new ViewContext(null, branch, null, true, false, false);</span>
         }
     }
 
@@ -136,11 +185,11 @@ public class RepositoryStateService {
      * @param branch   the branch that was materialized
      */
     public void recordProjection(String username, String commitId, String branch) {
-<span class="fc" id="L139">        UserWorkspaceState ws = resolveState(username);</span>
-<span class="fc" id="L140">        ws.recordProjection(commitId, branch);</span>
-<span class="fc" id="L141">        log.info(&quot;User '{}': recorded projection: branch='{}', commit='{}'&quot;,</span>
-<span class="fc" id="L142">                username, branch, abbreviateSha(commitId));</span>
-<span class="fc" id="L143">    }</span>
+<span class="fc" id="L188">        UserWorkspaceState ws = resolveState(username);</span>
+<span class="fc" id="L189">        ws.recordProjection(commitId, branch);</span>
+<span class="fc" id="L190">        log.info(&quot;User '{}': recorded projection: branch='{}', commit='{}'&quot;,</span>
+<span class="fc" id="L191">                username, branch, abbreviateSha(commitId));</span>
+<span class="fc" id="L192">    }</span>
 
     /**
      * Record that a search index rebuild completed for a user's workspace.
@@ -149,29 +198,58 @@ public class RepositoryStateService {
      * @param commitId the commit SHA the index was built from
      */
     public void recordIndexBuild(String username, String commitId) {
-<span class="fc" id="L152">        UserWorkspaceState ws = resolveState(username);</span>
-<span class="fc" id="L153">        ws.recordIndexBuild(commitId);</span>
-<span class="fc" id="L154">        log.info(&quot;User '{}': recorded index build: commit='{}'&quot;,</span>
-<span class="fc" id="L155">                username, abbreviateSha(commitId));</span>
-<span class="fc" id="L156">    }</span>
+<span class="fc" id="L201">        UserWorkspaceState ws = resolveState(username);</span>
+<span class="fc" id="L202">        ws.recordIndexBuild(commitId);</span>
+<span class="fc" id="L203">        log.info(&quot;User '{}': recorded index build: commit='{}'&quot;,</span>
+<span class="fc" id="L204">                username, abbreviateSha(commitId));</span>
+<span class="fc" id="L205">    }</span>
 
     /**
      * Check if the DB projection is stale for a user's workspace.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #isProjectionStale(String, String, WorkspaceContext)} for workspace-aware resolution.
      *
      * @param username the user to check
      * @param branch   the branch to check
      * @return true if projection is stale
      */
     public boolean isProjectionStale(String username, String branch) {
-<span class="fc" id="L166">        UserWorkspaceState ws = resolveState(username);</span>
+<span class="fc" id="L218">        return isProjectionStale(username, branch, WorkspaceContext.SHARED);</span>
+    }
+
+    /**
+     * Check if the DB projection is stale for a user's workspace.
+     *
+     * @param username the user to check
+     * @param branch   the branch to check
+     * @param ctx      the workspace context for repository resolution
+     * @return true if projection is stale
+     */
+    public boolean isProjectionStale(String username, String branch, WorkspaceContext ctx) {
+<span class="fc" id="L230">        UserWorkspaceState ws = resolveState(username);</span>
         try {
-<span class="fc" id="L168">            String headCommit = gitRepository.getHeadCommit(branch);</span>
-<span class="fc" id="L169">            return isProjectionStaleForCommit(ws, headCommit);</span>
-<span class="nc" id="L170">        } catch (IOException e) {</span>
-<span class="nc" id="L171">            log.error(&quot;Failed to check projection staleness for user '{}', branch '{}'&quot;,</span>
+<span class="fc" id="L232">            String headCommit = resolveRepository(ctx).getHeadCommit(branch);</span>
+<span class="fc" id="L233">            return isProjectionStaleForCommit(ws, headCommit);</span>
+<span class="nc" id="L234">        } catch (IOException e) {</span>
+<span class="nc" id="L235">            log.error(&quot;Failed to check projection staleness for user '{}', branch '{}'&quot;,</span>
                     username, branch, e);
-<span class="nc" id="L173">            return false;</span>
+<span class="nc" id="L237">            return false;</span>
         }
+    }
+
+    /**
+     * Get the full projection state for a user's workspace.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #getProjectionState(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
+     * @param username the user to check
+     * @param branch   the branch to check against
+     * @return the projection state
+     */
+    public ProjectionState getProjectionState(String username, String branch) {
+<span class="fc" id="L252">        return getProjectionState(username, branch, WorkspaceContext.SHARED);</span>
     }
 
     /**
@@ -179,28 +257,29 @@ public class RepositoryStateService {
      *
      * @param username the user to check
      * @param branch   the branch to check against
+     * @param ctx      the workspace context for repository resolution
      * @return the projection state
      */
-    public ProjectionState getProjectionState(String username, String branch) {
-<span class="fc" id="L185">        UserWorkspaceState ws = resolveState(username);</span>
+    public ProjectionState getProjectionState(String username, String branch, WorkspaceContext ctx) {
+<span class="fc" id="L264">        UserWorkspaceState ws = resolveState(username);</span>
         try {
-<span class="fc" id="L187">            String headCommit = gitRepository.getHeadCommit(branch);</span>
-<span class="fc" id="L188">            return new ProjectionState(</span>
-<span class="fc" id="L189">                    ws.getLastProjectionCommit(),</span>
-<span class="fc" id="L190">                    ws.getLastProjectionBranch(),</span>
-<span class="fc" id="L191">                    ws.getLastProjectionTimestamp(),</span>
-<span class="fc" id="L192">                    ws.getLastIndexCommit(),</span>
-<span class="fc" id="L193">                    ws.getLastIndexTimestamp(),</span>
-<span class="fc" id="L194">                    isProjectionStaleForCommit(ws, headCommit),</span>
-<span class="fc" id="L195">                    isIndexStale(ws, headCommit)</span>
+<span class="fc" id="L266">            String headCommit = resolveRepository(ctx).getHeadCommit(branch);</span>
+<span class="fc" id="L267">            return new ProjectionState(</span>
+<span class="fc" id="L268">                    ws.getLastProjectionCommit(),</span>
+<span class="fc" id="L269">                    ws.getLastProjectionBranch(),</span>
+<span class="fc" id="L270">                    ws.getLastProjectionTimestamp(),</span>
+<span class="fc" id="L271">                    ws.getLastIndexCommit(),</span>
+<span class="fc" id="L272">                    ws.getLastIndexTimestamp(),</span>
+<span class="fc" id="L273">                    isProjectionStaleForCommit(ws, headCommit),</span>
+<span class="fc" id="L274">                    isIndexStale(ws, headCommit)</span>
             );
-<span class="nc" id="L197">        } catch (IOException e) {</span>
-<span class="nc" id="L198">            log.error(&quot;Failed to get projection state for user '{}', branch '{}'&quot;,</span>
+<span class="nc" id="L276">        } catch (IOException e) {</span>
+<span class="nc" id="L277">            log.error(&quot;Failed to get projection state for user '{}', branch '{}'&quot;,</span>
                     username, branch, e);
-<span class="nc" id="L200">            return new ProjectionState(</span>
-<span class="nc" id="L201">                    ws.getLastProjectionCommit(), ws.getLastProjectionBranch(),</span>
-<span class="nc" id="L202">                    ws.getLastProjectionTimestamp(),</span>
-<span class="nc" id="L203">                    ws.getLastIndexCommit(), ws.getLastIndexTimestamp(), false, false</span>
+<span class="nc" id="L279">            return new ProjectionState(</span>
+<span class="nc" id="L280">                    ws.getLastProjectionCommit(), ws.getLastProjectionBranch(),</span>
+<span class="nc" id="L281">                    ws.getLastProjectionTimestamp(),</span>
+<span class="nc" id="L282">                    ws.getLastIndexCommit(), ws.getLastIndexTimestamp(), false, false</span>
             );
         }
     }
@@ -212,9 +291,9 @@ public class RepositoryStateService {
      * @param kind     the operation kind (&quot;merge&quot;, &quot;cherry-pick&quot;, &quot;revert&quot;)
      */
     public void beginOperation(String username, String kind) {
-<span class="fc" id="L215">        resolveState(username).beginOperation(kind);</span>
-<span class="fc" id="L216">        log.info(&quot;User '{}': operation started: {}&quot;, username, kind);</span>
-<span class="fc" id="L217">    }</span>
+<span class="fc" id="L294">        resolveState(username).beginOperation(kind);</span>
+<span class="fc" id="L295">        log.info(&quot;User '{}': operation started: {}&quot;, username, kind);</span>
+<span class="fc" id="L296">    }</span>
 
     /**
      * Mark the end of a multi-step operation for a user's workspace.
@@ -222,10 +301,10 @@ public class RepositoryStateService {
      * @param username the user whose operation ended
      */
     public void endOperation(String username) {
-<span class="fc" id="L225">        UserWorkspaceState ws = resolveState(username);</span>
-<span class="fc" id="L226">        log.info(&quot;User '{}': operation ended: {}&quot;, username, ws.getOperationKind());</span>
-<span class="fc" id="L227">        ws.endOperation();</span>
-<span class="fc" id="L228">    }</span>
+<span class="fc" id="L304">        UserWorkspaceState ws = resolveState(username);</span>
+<span class="fc" id="L305">        log.info(&quot;User '{}': operation ended: {}&quot;, username, ws.getOperationKind());</span>
+<span class="fc" id="L306">        ws.endOperation();</span>
+<span class="fc" id="L307">    }</span>
 
     // ── Internal helpers ────────────────────────────────────────────
 
@@ -238,36 +317,36 @@ public class RepositoryStateService {
      * @return the user's active branch, or the shared branch as default
      */
     public String resolveWorkspaceBranch(String username) {
-<span class="fc" id="L241">        WorkspaceInfo info = workspaceManager.getWorkspaceInfo(username);</span>
-<span class="pc bpc" id="L242" title="2 of 4 branches missed.">        if (info != null &amp;&amp; info.currentBranch() != null) {</span>
-<span class="fc" id="L243">            return info.currentBranch();</span>
+<span class="fc" id="L320">        WorkspaceInfo info = workspaceManager.getWorkspaceInfo(username);</span>
+<span class="pc bpc" id="L321" title="2 of 4 branches missed.">        if (info != null &amp;&amp; info.currentBranch() != null) {</span>
+<span class="fc" id="L322">            return info.currentBranch();</span>
         }
-<span class="nc" id="L245">        return systemRepositoryService.getSharedBranch();</span>
+<span class="nc" id="L324">        return systemRepositoryService.getSharedBranch();</span>
     }
 
     private UserWorkspaceState resolveState(String username) {
-<span class="fc" id="L249">        return workspaceManager.getOrCreateWorkspace(username);</span>
+<span class="fc" id="L328">        return workspaceManager.getOrCreateWorkspace(username);</span>
     }
 
     private boolean isProjectionStaleForCommit(UserWorkspaceState ws, String headCommit) {
-<span class="fc" id="L253">        String projCommit = ws.getLastProjectionCommit();</span>
-<span class="fc bfc" id="L254" title="All 4 branches covered.">        if (headCommit == null || projCommit == null) {</span>
-<span class="fc" id="L255">            return false;</span>
+<span class="fc" id="L332">        String projCommit = ws.getLastProjectionCommit();</span>
+<span class="fc bfc" id="L333" title="All 4 branches covered.">        if (headCommit == null || projCommit == null) {</span>
+<span class="fc" id="L334">            return false;</span>
         }
-<span class="fc bfc" id="L257" title="All 2 branches covered.">        return !headCommit.equals(projCommit);</span>
+<span class="fc bfc" id="L336" title="All 2 branches covered.">        return !headCommit.equals(projCommit);</span>
     }
 
     private boolean isIndexStale(UserWorkspaceState ws, String headCommit) {
-<span class="fc" id="L261">        String idxCommit = ws.getLastIndexCommit();</span>
-<span class="fc bfc" id="L262" title="All 4 branches covered.">        if (headCommit == null || idxCommit == null) {</span>
-<span class="fc" id="L263">            return false;</span>
+<span class="fc" id="L340">        String idxCommit = ws.getLastIndexCommit();</span>
+<span class="fc bfc" id="L341" title="All 4 branches covered.">        if (headCommit == null || idxCommit == null) {</span>
+<span class="fc" id="L342">            return false;</span>
         }
-<span class="fc bfc" id="L265" title="All 2 branches covered.">        return !headCommit.equals(idxCommit);</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        return !headCommit.equals(idxCommit);</span>
     }
 
     private String abbreviateSha(String commitId) {
-<span class="pc bpc" id="L269" title="1 of 2 branches missed.">        if (commitId == null) return &quot;null&quot;;</span>
-<span class="fc" id="L270">        return commitId.substring(0, Math.min(7, commitId.length()));</span>
+<span class="pc bpc" id="L348" title="1 of 2 branches missed.">        if (commitId == null) return &quot;null&quot;;</span>
+<span class="fc" id="L349">        return commitId.substring(0, Math.min(7, commitId.length()));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

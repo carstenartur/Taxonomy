@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import com.taxonomy.workspace.service.UserWorkspaceState;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceManager;
 
 /**
@@ -33,9 +34,9 @@ import com.taxonomy.workspace.service.WorkspaceManager;
 @Service
 public class ContextNavigationService {
 
-<span class="fc" id="L36">    private static final Logger log = LoggerFactory.getLogger(ContextNavigationService.class);</span>
+<span class="fc" id="L37">    private static final Logger log = LoggerFactory.getLogger(ContextNavigationService.class);</span>
 
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
     private final RepositoryStateService stateService;
     private final WorkspaceManager workspaceManager;
     private final int maxHistory;
@@ -43,12 +44,23 @@ public class ContextNavigationService {
     public ContextNavigationService(DslGitRepositoryFactory repositoryFactory,
                                     RepositoryStateService stateService,
                                     WorkspaceManager workspaceManager,
-<span class="fc" id="L46">                                    @Value(&quot;${taxonomy.context.max-history:50}&quot;) int maxHistory) {</span>
-<span class="fc" id="L47">        this.gitRepository = repositoryFactory.getSystemRepository();</span>
-<span class="fc" id="L48">        this.stateService = stateService;</span>
-<span class="fc" id="L49">        this.workspaceManager = workspaceManager;</span>
-<span class="fc" id="L50">        this.maxHistory = maxHistory;</span>
-<span class="fc" id="L51">    }</span>
+<span class="fc" id="L47">                                    @Value(&quot;${taxonomy.context.max-history:50}&quot;) int maxHistory) {</span>
+<span class="fc" id="L48">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L49">        this.stateService = stateService;</span>
+<span class="fc" id="L50">        this.workspaceManager = workspaceManager;</span>
+<span class="fc" id="L51">        this.maxHistory = maxHistory;</span>
+<span class="fc" id="L52">    }</span>
+
+    /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+<span class="fc" id="L62">        return repositoryFactory.resolveRepository(ctx);</span>
+    }
 
     // ── Workspace-aware methods ─────────────────────────────────────
 
@@ -59,11 +71,15 @@ public class ContextNavigationService {
      * @return the current context, never null
      */
     public ContextRef getCurrentContext(String username) {
-<span class="fc" id="L62">        return resolveState(username).getCurrentContext();</span>
+<span class="fc" id="L74">        return resolveState(username).getCurrentContext();</span>
     }
 
     /**
      * Open a read-only context for a specific branch and commit.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #openReadOnly(String, String, String, WorkspaceContext, String, String)}
+     * for workspace-aware resolution.
      *
      * @param username    the user performing the navigation
      * @param branch      the branch to view
@@ -74,30 +90,61 @@ public class ContextNavigationService {
      */
     public ContextRef openReadOnly(String username, String branch, String commitId,
                                    String searchQuery, String elementId) {
-<span class="fc" id="L77">        UserWorkspaceState state = resolveState(username);</span>
-<span class="fc" id="L78">        String resolvedCommit = resolveCommit(branch, commitId);</span>
+<span class="fc" id="L93">        return openReadOnly(username, branch, commitId, WorkspaceContext.SHARED, searchQuery, elementId);</span>
+    }
 
-<span class="fc" id="L80">        ContextRef previous = state.getCurrentContext();</span>
-<span class="fc" id="L81">        ContextRef newCtx = new ContextRef(</span>
-<span class="fc" id="L82">                UUID.randomUUID().toString(),</span>
+    /**
+     * Open a read-only context for a specific branch and commit.
+     *
+     * @param username    the user performing the navigation
+     * @param branch      the branch to view
+     * @param commitId    the commit SHA (null for HEAD)
+     * @param ctx         the workspace context for repository resolution
+     * @param searchQuery the search query that led here (may be null)
+     * @param elementId   the matched element ID (may be null)
+     * @return the new read-only context
+     */
+    public ContextRef openReadOnly(String username, String branch, String commitId,
+                                   WorkspaceContext ctx, String searchQuery, String elementId) {
+<span class="fc" id="L109">        UserWorkspaceState state = resolveState(username);</span>
+<span class="fc" id="L110">        String resolvedCommit = resolveCommit(branch, commitId, ctx);</span>
+
+<span class="fc" id="L112">        ContextRef previous = state.getCurrentContext();</span>
+<span class="fc" id="L113">        ContextRef newCtx = new ContextRef(</span>
+<span class="fc" id="L114">                UUID.randomUUID().toString(),</span>
                 branch,
                 resolvedCommit,
-<span class="fc" id="L85">                Instant.now(),</span>
+<span class="fc" id="L117">                Instant.now(),</span>
                 ContextMode.READ_ONLY,
-<span class="fc" id="L87">                previous.contextId(),</span>
-<span class="fc" id="L88">                previous.branch(),</span>
-<span class="fc" id="L89">                previous.commitId(),</span>
+<span class="fc" id="L119">                previous.contextId(),</span>
+<span class="fc" id="L120">                previous.branch(),</span>
+<span class="fc" id="L121">                previous.commitId(),</span>
                 searchQuery,
                 elementId,
                 false
         );
 
-<span class="fc" id="L95">        recordNavigation(state, previous.contextId(), newCtx.contextId(),</span>
-<span class="fc bfc" id="L96" title="All 2 branches covered.">                searchQuery != null ? NavigationReason.SEARCH_OPEN : NavigationReason.MANUAL_SWITCH);</span>
-<span class="fc" id="L97">        state.setCurrentContext(newCtx);</span>
-<span class="fc" id="L98">        log.info(&quot;User '{}' opened read-only context: branch='{}', commit='{}'&quot;,</span>
-<span class="fc" id="L99">                username, branch, abbreviateSha(resolvedCommit));</span>
-<span class="fc" id="L100">        return newCtx;</span>
+<span class="fc" id="L127">        recordNavigation(state, previous.contextId(), newCtx.contextId(),</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                searchQuery != null ? NavigationReason.SEARCH_OPEN : NavigationReason.MANUAL_SWITCH);</span>
+<span class="fc" id="L129">        state.setCurrentContext(newCtx);</span>
+<span class="fc" id="L130">        log.info(&quot;User '{}' opened read-only context: branch='{}', commit='{}'&quot;,</span>
+<span class="fc" id="L131">                username, branch, abbreviateSha(resolvedCommit));</span>
+<span class="fc" id="L132">        return newCtx;</span>
+    }
+
+    /**
+     * Switch the working context to a different branch/commit.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #switchContext(String, String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
+     * @param username the user performing the switch
+     * @param branch   the branch to switch to
+     * @param commitId the commit SHA (null for HEAD)
+     * @return the new context
+     */
+    public ContextRef switchContext(String username, String branch, String commitId) {
+<span class="fc" id="L147">        return switchContext(username, branch, commitId, WorkspaceContext.SHARED);</span>
     }
 
     /**
@@ -106,32 +153,34 @@ public class ContextNavigationService {
      * @param username the user performing the switch
      * @param branch   the branch to switch to
      * @param commitId the commit SHA (null for HEAD)
+     * @param ctx      the workspace context for repository resolution
      * @return the new context
      */
-    public ContextRef switchContext(String username, String branch, String commitId) {
-<span class="fc" id="L112">        UserWorkspaceState state = resolveState(username);</span>
-<span class="fc" id="L113">        String resolvedCommit = resolveCommit(branch, commitId);</span>
+    public ContextRef switchContext(String username, String branch, String commitId,
+                                   WorkspaceContext ctx) {
+<span class="fc" id="L161">        UserWorkspaceState state = resolveState(username);</span>
+<span class="fc" id="L162">        String resolvedCommit = resolveCommit(branch, commitId, ctx);</span>
 
-<span class="fc" id="L115">        ContextRef previous = state.getCurrentContext();</span>
-<span class="fc" id="L116">        ContextRef newCtx = new ContextRef(</span>
-<span class="fc" id="L117">                UUID.randomUUID().toString(),</span>
+<span class="fc" id="L164">        ContextRef previous = state.getCurrentContext();</span>
+<span class="fc" id="L165">        ContextRef newCtx = new ContextRef(</span>
+<span class="fc" id="L166">                UUID.randomUUID().toString(),</span>
                 branch,
                 resolvedCommit,
-<span class="fc" id="L120">                Instant.now(),</span>
+<span class="fc" id="L169">                Instant.now(),</span>
                 ContextMode.EDITABLE,
-<span class="fc" id="L122">                previous.contextId(),</span>
-<span class="fc" id="L123">                previous.branch(),</span>
-<span class="fc" id="L124">                previous.commitId(),</span>
+<span class="fc" id="L171">                previous.contextId(),</span>
+<span class="fc" id="L172">                previous.branch(),</span>
+<span class="fc" id="L173">                previous.commitId(),</span>
                 null,
                 null,
                 false
         );
 
-<span class="fc" id="L130">        recordNavigation(state, previous.contextId(), newCtx.contextId(), NavigationReason.MANUAL_SWITCH);</span>
-<span class="fc" id="L131">        state.setCurrentContext(newCtx);</span>
-<span class="fc" id="L132">        log.info(&quot;User '{}' switched context: branch='{}', commit='{}'&quot;,</span>
-<span class="fc" id="L133">                username, branch, abbreviateSha(resolvedCommit));</span>
-<span class="fc" id="L134">        return newCtx;</span>
+<span class="fc" id="L179">        recordNavigation(state, previous.contextId(), newCtx.contextId(), NavigationReason.MANUAL_SWITCH);</span>
+<span class="fc" id="L180">        state.setCurrentContext(newCtx);</span>
+<span class="fc" id="L181">        log.info(&quot;User '{}' switched context: branch='{}', commit='{}'&quot;,</span>
+<span class="fc" id="L182">                username, branch, abbreviateSha(resolvedCommit));</span>
+<span class="fc" id="L183">        return newCtx;</span>
     }
 
     /**
@@ -141,18 +190,18 @@ public class ContextNavigationService {
      * @return the origin context, or the current context if no origin exists
      */
     public ContextRef returnToOrigin(String username) {
-<span class="fc" id="L144">        UserWorkspaceState state = resolveState(username);</span>
-<span class="fc" id="L145">        ContextRef current = state.getCurrentContext();</span>
-<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (current.originContextId() == null) {</span>
-<span class="fc" id="L147">            log.debug(&quot;User '{}': no origin context to return to&quot;, username);</span>
-<span class="fc" id="L148">            return current;</span>
+<span class="fc" id="L193">        UserWorkspaceState state = resolveState(username);</span>
+<span class="fc" id="L194">        ContextRef current = state.getCurrentContext();</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (current.originContextId() == null) {</span>
+<span class="fc" id="L196">            log.debug(&quot;User '{}': no origin context to return to&quot;, username);</span>
+<span class="fc" id="L197">            return current;</span>
         }
 
-<span class="fc" id="L151">        ContextRef origin = new ContextRef(</span>
-<span class="fc" id="L152">                UUID.randomUUID().toString(),</span>
-<span class="pc bpc" id="L153" title="1 of 2 branches missed.">                current.originBranch() != null ? current.originBranch() : &quot;draft&quot;,</span>
-<span class="fc" id="L154">                current.originCommitId(),</span>
-<span class="fc" id="L155">                Instant.now(),</span>
+<span class="fc" id="L200">        ContextRef origin = new ContextRef(</span>
+<span class="fc" id="L201">                UUID.randomUUID().toString(),</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">                current.originBranch() != null ? current.originBranch() : &quot;draft&quot;,</span>
+<span class="fc" id="L203">                current.originCommitId(),</span>
+<span class="fc" id="L204">                Instant.now(),</span>
                 ContextMode.EDITABLE,
                 null,
                 null,
@@ -162,10 +211,10 @@ public class ContextNavigationService {
                 false
         );
 
-<span class="fc" id="L165">        recordNavigation(state, current.contextId(), origin.contextId(), NavigationReason.RETURN);</span>
-<span class="fc" id="L166">        state.setCurrentContext(origin);</span>
-<span class="fc" id="L167">        log.info(&quot;User '{}' returned to origin: branch='{}'&quot;, username, origin.branch());</span>
-<span class="fc" id="L168">        return origin;</span>
+<span class="fc" id="L214">        recordNavigation(state, current.contextId(), origin.contextId(), NavigationReason.RETURN);</span>
+<span class="fc" id="L215">        state.setCurrentContext(origin);</span>
+<span class="fc" id="L216">        log.info(&quot;User '{}' returned to origin: branch='{}'&quot;, username, origin.branch());</span>
+<span class="fc" id="L217">        return origin;</span>
     }
 
     /**
@@ -175,27 +224,27 @@ public class ContextNavigationService {
      * @return the previous context, or the current context if history is empty
      */
     public ContextRef back(String username) {
-<span class="fc" id="L178">        UserWorkspaceState state = resolveState(username);</span>
-<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (state.isHistoryEmpty()) {</span>
-<span class="fc" id="L180">            log.debug(&quot;User '{}': navigation history is empty — cannot go back&quot;, username);</span>
-<span class="fc" id="L181">            return state.getCurrentContext();</span>
+<span class="fc" id="L227">        UserWorkspaceState state = resolveState(username);</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">        if (state.isHistoryEmpty()) {</span>
+<span class="fc" id="L229">            log.debug(&quot;User '{}': navigation history is empty — cannot go back&quot;, username);</span>
+<span class="fc" id="L230">            return state.getCurrentContext();</span>
         }
 
-<span class="fc" id="L184">        ContextHistoryEntry lastEntry = state.peekLastHistory();</span>
-<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        if (lastEntry == null) {</span>
-<span class="nc" id="L186">            return state.getCurrentContext();</span>
+<span class="fc" id="L233">        ContextHistoryEntry lastEntry = state.peekLastHistory();</span>
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">        if (lastEntry == null) {</span>
+<span class="nc" id="L235">            return state.getCurrentContext();</span>
         }
 
-<span class="fc" id="L189">        ContextRef current = state.getCurrentContext();</span>
-<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        String targetBranch = current.originBranch() != null</span>
-<span class="pc" id="L191">                ? current.originBranch() : &quot;draft&quot;;</span>
-<span class="fc" id="L192">        String targetCommit = current.originCommitId();</span>
+<span class="fc" id="L238">        ContextRef current = state.getCurrentContext();</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">        String targetBranch = current.originBranch() != null</span>
+<span class="pc" id="L240">                ? current.originBranch() : &quot;draft&quot;;</span>
+<span class="fc" id="L241">        String targetCommit = current.originCommitId();</span>
 
-<span class="fc" id="L194">        ContextRef backCtx = new ContextRef(</span>
-<span class="fc" id="L195">                UUID.randomUUID().toString(),</span>
+<span class="fc" id="L243">        ContextRef backCtx = new ContextRef(</span>
+<span class="fc" id="L244">                UUID.randomUUID().toString(),</span>
                 targetBranch,
                 targetCommit,
-<span class="fc" id="L198">                Instant.now(),</span>
+<span class="fc" id="L247">                Instant.now(),</span>
                 ContextMode.EDITABLE,
                 null,
                 null,
@@ -205,10 +254,10 @@ public class ContextNavigationService {
                 false
         );
 
-<span class="fc" id="L208">        state.pollLastHistory();</span>
-<span class="fc" id="L209">        state.setCurrentContext(backCtx);</span>
-<span class="fc" id="L210">        log.info(&quot;User '{}' navigated back to: branch='{}'&quot;, username, targetBranch);</span>
-<span class="fc" id="L211">        return backCtx;</span>
+<span class="fc" id="L257">        state.pollLastHistory();</span>
+<span class="fc" id="L258">        state.setCurrentContext(backCtx);</span>
+<span class="fc" id="L259">        log.info(&quot;User '{}' navigated back to: branch='{}'&quot;, username, targetBranch);</span>
+<span class="fc" id="L260">        return backCtx;</span>
     }
 
     /**
@@ -218,7 +267,7 @@ public class ContextNavigationService {
      * @return list of navigation entries (newest last)
      */
     public List&lt;ContextHistoryEntry&gt; getHistory(String username) {
-<span class="fc" id="L221">        return resolveState(username).getHistory();</span>
+<span class="fc" id="L270">        return resolveState(username).getHistory();</span>
     }
 
     /**
@@ -230,30 +279,44 @@ public class ContextNavigationService {
      * @throws IOException if the branch creation fails
      */
     public ContextRef createVariantFromCurrent(String username, String variantName) throws IOException {
-<span class="fc" id="L233">        UserWorkspaceState state = resolveState(username);</span>
-<span class="fc" id="L234">        ContextRef current = state.getCurrentContext();</span>
-<span class="fc" id="L235">        String sourceBranch = current.branch();</span>
+<span class="fc" id="L282">        return createVariantFromCurrent(username, variantName, WorkspaceContext.SHARED);</span>
+    }
 
-<span class="fc" id="L237">        String newCommitId = gitRepository.createBranch(variantName, sourceBranch);</span>
+    /**
+     * Create a new branch variant from a user's current context.
+     *
+     * @param username    the user creating the variant
+     * @param variantName the name for the new branch
+     * @param ctx         the workspace context for repository resolution
+     * @return the new context on the variant branch
+     * @throws IOException if the branch creation fails
+     */
+    public ContextRef createVariantFromCurrent(String username, String variantName,
+                                               WorkspaceContext ctx) throws IOException {
+<span class="fc" id="L296">        UserWorkspaceState state = resolveState(username);</span>
+<span class="fc" id="L297">        ContextRef current = state.getCurrentContext();</span>
+<span class="fc" id="L298">        String sourceBranch = current.branch();</span>
 
-<span class="fc" id="L239">        ContextRef variantCtx = new ContextRef(</span>
-<span class="fc" id="L240">                UUID.randomUUID().toString(),</span>
+<span class="fc" id="L300">        String newCommitId = resolveRepository(ctx).createBranch(variantName, sourceBranch);</span>
+
+<span class="fc" id="L302">        ContextRef variantCtx = new ContextRef(</span>
+<span class="fc" id="L303">                UUID.randomUUID().toString(),</span>
                 variantName,
                 newCommitId,
-<span class="fc" id="L243">                Instant.now(),</span>
+<span class="fc" id="L306">                Instant.now(),</span>
                 ContextMode.EDITABLE,
-<span class="fc" id="L245">                current.contextId(),</span>
-<span class="fc" id="L246">                current.branch(),</span>
-<span class="fc" id="L247">                current.commitId(),</span>
+<span class="fc" id="L308">                current.contextId(),</span>
+<span class="fc" id="L309">                current.branch(),</span>
+<span class="fc" id="L310">                current.commitId(),</span>
                 null,
                 null,
                 false
         );
 
-<span class="fc" id="L253">        recordNavigation(state, current.contextId(), variantCtx.contextId(), NavigationReason.VARIANT_CREATED);</span>
-<span class="fc" id="L254">        state.setCurrentContext(variantCtx);</span>
-<span class="fc" id="L255">        log.info(&quot;User '{}' created variant '{}' from branch '{}'&quot;, username, variantName, sourceBranch);</span>
-<span class="fc" id="L256">        return variantCtx;</span>
+<span class="fc" id="L316">        recordNavigation(state, current.contextId(), variantCtx.contextId(), NavigationReason.VARIANT_CREATED);</span>
+<span class="fc" id="L317">        state.setCurrentContext(variantCtx);</span>
+<span class="fc" id="L318">        log.info(&quot;User '{}' created variant '{}' from branch '{}'&quot;, username, variantName, sourceBranch);</span>
+<span class="fc" id="L319">        return variantCtx;</span>
     }
 
     /**
@@ -263,37 +326,37 @@ public class ContextNavigationService {
      * @return true if edits should be blocked
      */
     public boolean isReadOnly(String username) {
-<span class="fc" id="L266">        ContextRef ctx = resolveState(username).getCurrentContext();</span>
-<span class="fc bfc" id="L267" title="All 2 branches covered.">        return ctx.mode() == ContextMode.READ_ONLY</span>
-<span class="pc bpc" id="L268" title="1 of 2 branches missed.">            || ctx.mode() == ContextMode.TEMPORARY;</span>
+<span class="fc" id="L329">        ContextRef ctx = resolveState(username).getCurrentContext();</span>
+<span class="fc bfc" id="L330" title="All 2 branches covered.">        return ctx.mode() == ContextMode.READ_ONLY</span>
+<span class="pc bpc" id="L331" title="1 of 2 branches missed.">            || ctx.mode() == ContextMode.TEMPORARY;</span>
     }
 
     // ── Internal helpers ────────────────────────────────────────────
 
     private UserWorkspaceState resolveState(String username) {
-<span class="fc" id="L274">        return workspaceManager.getOrCreateWorkspace(username);</span>
+<span class="fc" id="L337">        return workspaceManager.getOrCreateWorkspace(username);</span>
     }
 
-    private String resolveCommit(String branch, String commitId) {
-<span class="fc bfc" id="L278" title="All 2 branches covered.">        if (commitId != null) {</span>
-<span class="fc" id="L279">            return commitId;</span>
+    private String resolveCommit(String branch, String commitId, WorkspaceContext ctx) {
+<span class="fc bfc" id="L341" title="All 2 branches covered.">        if (commitId != null) {</span>
+<span class="fc" id="L342">            return commitId;</span>
         }
         try {
-<span class="fc" id="L282">            return gitRepository.getHeadCommit(branch);</span>
-<span class="nc" id="L283">        } catch (IOException e) {</span>
-<span class="nc" id="L284">            log.warn(&quot;Could not resolve HEAD for branch '{}': {}&quot;, branch, e.getMessage());</span>
-<span class="nc" id="L285">            return null;</span>
+<span class="fc" id="L345">            return resolveRepository(ctx).getHeadCommit(branch);</span>
+<span class="nc" id="L346">        } catch (IOException e) {</span>
+<span class="nc" id="L347">            log.warn(&quot;Could not resolve HEAD for branch '{}': {}&quot;, branch, e.getMessage());</span>
+<span class="nc" id="L348">            return null;</span>
         }
     }
 
     private void recordNavigation(UserWorkspaceState state, String fromId,
                                   String toId, NavigationReason reason) {
-<span class="fc" id="L291">        state.addHistoryEntry(new ContextHistoryEntry(fromId, toId, reason, Instant.now()));</span>
-<span class="fc" id="L292">    }</span>
+<span class="fc" id="L354">        state.addHistoryEntry(new ContextHistoryEntry(fromId, toId, reason, Instant.now()));</span>
+<span class="fc" id="L355">    }</span>
 
     private String abbreviateSha(String sha) {
-<span class="pc bpc" id="L295" title="1 of 2 branches missed.">        if (sha == null) return &quot;null&quot;;</span>
-<span class="fc" id="L296">        return sha.substring(0, Math.min(7, sha.length()));</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">        if (sha == null) return &quot;null&quot;;</span>
+<span class="fc" id="L359">        return sha.substring(0, Math.min(7, sha.length()));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

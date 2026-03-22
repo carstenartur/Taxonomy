@@ -41,7 +41,7 @@ public class CommitIndexService {
 
 <span class="fc" id="L42">    private static final Logger log = LoggerFactory.getLogger(CommitIndexService.class);</span>
 
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
     private final ArchitectureCommitIndexRepository indexRepository;
     private final WorkspaceContextResolver contextResolver;
 <span class="fc" id="L47">    private final DslTokenizer tokenizer = new DslTokenizer();</span>
@@ -52,63 +52,98 @@ public class CommitIndexService {
     public CommitIndexService(DslGitRepositoryFactory repositoryFactory,
                               ArchitectureCommitIndexRepository indexRepository,
 <span class="fc" id="L54">                              WorkspaceContextResolver contextResolver) {</span>
-<span class="fc" id="L55">        this.gitRepository = repositoryFactory.getSystemRepository();</span>
+<span class="fc" id="L55">        this.repositoryFactory = repositoryFactory;</span>
 <span class="fc" id="L56">        this.indexRepository = indexRepository;</span>
 <span class="fc" id="L57">        this.contextResolver = contextResolver;</span>
 <span class="fc" id="L58">    }</span>
 
     /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+<span class="fc" id="L68">        return repositoryFactory.resolveRepository(ctx);</span>
+    }
+
+    /**
      * Index all unindexed commits on the given branch.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #indexBranch(String, WorkspaceContext)} for workspace-aware resolution.
      *
      * @param branch the Git branch to index
      * @return number of newly indexed commits
      */
     @Transactional
     public int indexBranch(String branch) {
+<span class="nc" id="L82">        return indexBranch(branch, WorkspaceContext.SHARED);</span>
+    }
+
+    /**
+     * Index all unindexed commits on the given branch.
+     *
+     * &lt;p&gt;&lt;b&gt;Known limitation:&lt;/b&gt; {@link ArchitectureCommitIndex} is keyed only by
+     * {@code commit_id} and filtered by {@code branch}. In factory mode with
+     * per-workspace repositories, different workspaces may share branch names
+     * (e.g. {@code draft}), causing potential cross-workspace leakage in search
+     * results. A future enhancement should add a repository/workspace
+     * discriminator column to {@code ArchitectureCommitIndex} and include it in
+     * uniqueness constraints and search filters.
+     *
+     * @param branch the Git branch to index
+     * @param ctx    the workspace context for repository resolution
+     * @return number of newly indexed commits
+     */
+    @Transactional
+    public int indexBranch(String branch, WorkspaceContext ctx) {
         try {
-<span class="fc" id="L69">            List&lt;DslCommit&gt; commits = gitRepository.getDslHistory(branch);</span>
-<span class="fc" id="L70">            int indexed = 0;</span>
+<span class="fc" id="L103">            DslGitRepository repo = resolveRepository(ctx);</span>
+<span class="fc" id="L104">            List&lt;DslCommit&gt; commits = repo.getDslHistory(branch);</span>
+<span class="fc" id="L105">            int indexed = 0;</span>
 
-<span class="fc bfc" id="L72" title="All 2 branches covered.">            for (DslCommit commit : commits) {</span>
-<span class="pc bpc" id="L73" title="1 of 2 branches missed.">                if (indexRepository.existsByCommitId(commit.commitId())) {</span>
-<span class="nc" id="L74">                    continue; // already indexed</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">            for (DslCommit commit : commits) {</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">                if (indexRepository.existsByCommitId(commit.commitId())) {</span>
+<span class="nc" id="L109">                    continue; // already indexed</span>
                 }
 
-<span class="fc" id="L77">                String dslText = gitRepository.getDslAtCommit(commit.commitId());</span>
-<span class="pc bpc" id="L78" title="1 of 2 branches missed.">                if (dslText == null) {</span>
-<span class="nc" id="L79">                    continue;</span>
+<span class="fc" id="L112">                String dslText = repo.getDslAtCommit(commit.commitId());</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">                if (dslText == null) {</span>
+<span class="nc" id="L114">                    continue;</span>
                 }
 
-<span class="fc" id="L82">                ArchitectureCommitIndex entry = new ArchitectureCommitIndex();</span>
-<span class="fc" id="L83">                entry.setCommitId(commit.commitId());</span>
-<span class="fc" id="L84">                entry.setAuthor(commit.author());</span>
-<span class="fc" id="L85">                entry.setCommitTimestamp(commit.timestamp());</span>
-<span class="fc" id="L86">                entry.setMessage(commit.message());</span>
-<span class="fc" id="L87">                entry.setBranch(branch);</span>
-<span class="fc" id="L88">                entry.setChangedFiles(&quot;architecture.taxdsl&quot;);</span>
+<span class="fc" id="L117">                ArchitectureCommitIndex entry = new ArchitectureCommitIndex();</span>
+<span class="fc" id="L118">                entry.setCommitId(commit.commitId());</span>
+<span class="fc" id="L119">                entry.setAuthor(commit.author());</span>
+<span class="fc" id="L120">                entry.setCommitTimestamp(commit.timestamp());</span>
+<span class="fc" id="L121">                entry.setMessage(commit.message());</span>
+<span class="fc" id="L122">                entry.setBranch(branch);</span>
+<span class="fc" id="L123">                entry.setChangedFiles(&quot;architecture.taxdsl&quot;);</span>
 
                 // Tokenize DSL content
-<span class="fc" id="L91">                String tokenized = tokenizer.tokenize(dslText);</span>
-<span class="fc" id="L92">                entry.setTokenizedChangeText(tokenized);</span>
+<span class="fc" id="L126">                String tokenized = tokenizer.tokenize(dslText);</span>
+<span class="fc" id="L127">                entry.setTokenizedChangeText(tokenized);</span>
 
                 // Extract affected IDs
-<span class="fc" id="L95">                Set&lt;String&gt; elementIds = tokenizer.extractElementIds(dslText);</span>
-<span class="fc" id="L96">                entry.setAffectedElementIds(String.join(&quot;,&quot;, elementIds));</span>
+<span class="fc" id="L130">                Set&lt;String&gt; elementIds = tokenizer.extractElementIds(dslText);</span>
+<span class="fc" id="L131">                entry.setAffectedElementIds(String.join(&quot;,&quot;, elementIds));</span>
 
-<span class="fc" id="L98">                Set&lt;String&gt; relationKeys = tokenizer.extractRelationKeys(dslText);</span>
-<span class="fc" id="L99">                entry.setAffectedRelationIds(String.join(&quot;;&quot;, relationKeys));</span>
+<span class="fc" id="L133">                Set&lt;String&gt; relationKeys = tokenizer.extractRelationKeys(dslText);</span>
+<span class="fc" id="L134">                entry.setAffectedRelationIds(String.join(&quot;;&quot;, relationKeys));</span>
 
-<span class="fc" id="L101">                indexRepository.save(entry);</span>
-<span class="fc" id="L102">                indexed++;</span>
-<span class="fc" id="L103">            }</span>
+<span class="fc" id="L136">                indexRepository.save(entry);</span>
+<span class="fc" id="L137">                indexed++;</span>
+<span class="fc" id="L138">            }</span>
 
-<span class="pc bpc" id="L105" title="1 of 2 branches missed.">            if (indexed &gt; 0) {</span>
-<span class="fc" id="L106">                log.info(&quot;Indexed {} new commit(s) on branch '{}'&quot;, indexed, branch);</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">            if (indexed &gt; 0) {</span>
+<span class="fc" id="L141">                log.info(&quot;Indexed {} new commit(s) on branch '{}'&quot;, indexed, branch);</span>
             }
-<span class="fc" id="L108">            return indexed;</span>
-<span class="nc" id="L109">        } catch (IOException e) {</span>
-<span class="nc" id="L110">            log.error(&quot;Failed to index branch '{}'&quot;, branch, e);</span>
-<span class="nc" id="L111">            return 0;</span>
+<span class="fc" id="L143">            return indexed;</span>
+<span class="nc" id="L144">        } catch (IOException e) {</span>
+<span class="nc" id="L145">            log.error(&quot;Failed to index branch '{}'&quot;, branch, e);</span>
+<span class="nc" id="L146">            return 0;</span>
         }
     }
 
@@ -118,14 +153,14 @@ public class CommitIndexService {
      */
     private String resolveBranchFilter() {
         try {
-<span class="fc" id="L121">            WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
-<span class="pc bpc" id="L122" title="1 of 2 branches missed.">            if (!WorkspaceContext.SHARED.equals(ctx)) {</span>
-<span class="nc" id="L123">                return ctx.currentBranch();</span>
+<span class="fc" id="L156">            WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">            if (!WorkspaceContext.SHARED.equals(ctx)) {</span>
+<span class="nc" id="L158">                return ctx.currentBranch();</span>
             }
-<span class="nc" id="L125">        } catch (Exception e) {</span>
-<span class="nc" id="L126">            log.debug(&quot;Could not resolve workspace branch filter: {}&quot;, e.getMessage());</span>
-<span class="fc" id="L127">        }</span>
-<span class="fc" id="L128">        return null;</span>
+<span class="nc" id="L160">        } catch (Exception e) {</span>
+<span class="nc" id="L161">            log.debug(&quot;Could not resolve workspace branch filter: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L162">        }</span>
+<span class="fc" id="L163">        return null;</span>
     }
 
     /**
@@ -139,7 +174,7 @@ public class CommitIndexService {
      */
     @Transactional(readOnly = true)
     public List&lt;ArchitectureCommitIndex&gt; search(String query) {
-<span class="fc" id="L142">        return search(query, 50);</span>
+<span class="fc" id="L177">        return search(query, 50);</span>
     }
 
     /**
@@ -151,31 +186,31 @@ public class CommitIndexService {
      */
     @Transactional(readOnly = true)
     public List&lt;ArchitectureCommitIndex&gt; search(String query, int maxResults) {
-<span class="fc bfc" id="L154" title="All 4 branches covered.">        if (query == null || query.isBlank()) {</span>
-<span class="fc" id="L155">            return Collections.emptyList();</span>
+<span class="fc bfc" id="L189" title="All 4 branches covered.">        if (query == null || query.isBlank()) {</span>
+<span class="fc" id="L190">            return Collections.emptyList();</span>
         }
-<span class="fc" id="L157">        String activeBranch = resolveBranchFilter();</span>
+<span class="fc" id="L192">        String activeBranch = resolveBranchFilter();</span>
         try {
-<span class="fc" id="L159">            SearchSession session = Search.session(entityManager);</span>
-<span class="fc" id="L160">            String lower = query.toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L194">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L195">            String lower = query.toLowerCase(Locale.ROOT);</span>
 
-<span class="fc" id="L162">            return session.search(ArchitectureCommitIndex.class)</span>
-<span class="fc" id="L163">                    .where(f -&gt; {</span>
-<span class="fc" id="L164">                        var bool = f.bool();</span>
-<span class="pc bpc" id="L165" title="1 of 2 branches missed.">                        if (activeBranch != null) {</span>
-<span class="nc" id="L166">                            bool.must(f.match().field(&quot;branch&quot;).matching(activeBranch));</span>
+<span class="fc" id="L197">            return session.search(ArchitectureCommitIndex.class)</span>
+<span class="fc" id="L198">                    .where(f -&gt; {</span>
+<span class="fc" id="L199">                        var bool = f.bool();</span>
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">                        if (activeBranch != null) {</span>
+<span class="nc" id="L201">                            bool.must(f.match().field(&quot;branch&quot;).matching(activeBranch));</span>
                         }
-<span class="fc" id="L168">                        bool.should(f.match().field(&quot;tokenizedChangeText&quot;).matching(lower).boost(1.0f))</span>
-<span class="fc" id="L169">                            .should(f.match().field(&quot;message&quot;).matching(query).boost(0.5f))</span>
-<span class="fc" id="L170">                            .should(f.match().field(&quot;affectedElementIds&quot;).matching(lower).boost(3.0f))</span>
-<span class="fc" id="L171">                            .should(f.match().field(&quot;affectedRelationIds&quot;).matching(lower).boost(2.0f));</span>
-<span class="fc" id="L172">                        return bool;</span>
+<span class="fc" id="L203">                        bool.should(f.match().field(&quot;tokenizedChangeText&quot;).matching(lower).boost(1.0f))</span>
+<span class="fc" id="L204">                            .should(f.match().field(&quot;message&quot;).matching(query).boost(0.5f))</span>
+<span class="fc" id="L205">                            .should(f.match().field(&quot;affectedElementIds&quot;).matching(lower).boost(3.0f))</span>
+<span class="fc" id="L206">                            .should(f.match().field(&quot;affectedRelationIds&quot;).matching(lower).boost(2.0f));</span>
+<span class="fc" id="L207">                        return bool;</span>
                     })
-<span class="fc" id="L174">                    .sort(f -&gt; f.score())</span>
-<span class="fc" id="L175">                    .fetchHits(maxResults);</span>
-<span class="nc" id="L176">        } catch (Exception e) {</span>
-<span class="nc" id="L177">            log.error(&quot;Hibernate Search commit search failed for '{}': {}&quot;, query, e.getMessage());</span>
-<span class="nc" id="L178">            return Collections.emptyList();</span>
+<span class="fc" id="L209">                    .sort(f -&gt; f.score())</span>
+<span class="fc" id="L210">                    .fetchHits(maxResults);</span>
+<span class="nc" id="L211">        } catch (Exception e) {</span>
+<span class="nc" id="L212">            log.error(&quot;Hibernate Search commit search failed for '{}': {}&quot;, query, e.getMessage());</span>
+<span class="nc" id="L213">            return Collections.emptyList();</span>
         }
     }
 
@@ -187,29 +222,29 @@ public class CommitIndexService {
      */
     @Transactional(readOnly = true)
     public List&lt;ArchitectureCommitIndex&gt; findByElement(String elementId) {
-<span class="fc bfc" id="L190" title="All 4 branches covered.">        if (elementId == null || elementId.isBlank()) {</span>
-<span class="fc" id="L191">            return Collections.emptyList();</span>
+<span class="fc bfc" id="L225" title="All 4 branches covered.">        if (elementId == null || elementId.isBlank()) {</span>
+<span class="fc" id="L226">            return Collections.emptyList();</span>
         }
-<span class="fc" id="L193">        String activeBranch = resolveBranchFilter();</span>
+<span class="fc" id="L228">        String activeBranch = resolveBranchFilter();</span>
         try {
-<span class="fc" id="L195">            SearchSession session = Search.session(entityManager);</span>
-<span class="fc" id="L196">            return session.search(ArchitectureCommitIndex.class)</span>
-<span class="fc" id="L197">                    .where(f -&gt; {</span>
-<span class="fc" id="L198">                        var bool = f.bool();</span>
-<span class="pc bpc" id="L199" title="1 of 2 branches missed.">                        if (activeBranch != null) {</span>
-<span class="nc" id="L200">                            bool.must(f.match().field(&quot;branch&quot;).matching(activeBranch));</span>
+<span class="fc" id="L230">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L231">            return session.search(ArchitectureCommitIndex.class)</span>
+<span class="fc" id="L232">                    .where(f -&gt; {</span>
+<span class="fc" id="L233">                        var bool = f.bool();</span>
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">                        if (activeBranch != null) {</span>
+<span class="nc" id="L235">                            bool.must(f.match().field(&quot;branch&quot;).matching(activeBranch));</span>
                         }
-<span class="fc" id="L202">                        bool.should(f.match().field(&quot;affectedElementIds&quot;)</span>
-<span class="fc" id="L203">                                    .matching(elementId.toLowerCase(Locale.ROOT)).boost(3.0f))</span>
-<span class="fc" id="L204">                            .should(f.match().field(&quot;tokenizedChangeText&quot;)</span>
-<span class="fc" id="L205">                                    .matching(elementId.toLowerCase(Locale.ROOT)).boost(1.0f));</span>
-<span class="fc" id="L206">                        return bool;</span>
+<span class="fc" id="L237">                        bool.should(f.match().field(&quot;affectedElementIds&quot;)</span>
+<span class="fc" id="L238">                                    .matching(elementId.toLowerCase(Locale.ROOT)).boost(3.0f))</span>
+<span class="fc" id="L239">                            .should(f.match().field(&quot;tokenizedChangeText&quot;)</span>
+<span class="fc" id="L240">                                    .matching(elementId.toLowerCase(Locale.ROOT)).boost(1.0f));</span>
+<span class="fc" id="L241">                        return bool;</span>
                     })
-<span class="fc" id="L208">                    .sort(f -&gt; f.score())</span>
-<span class="fc" id="L209">                    .fetchHits(50);</span>
-<span class="nc" id="L210">        } catch (Exception e) {</span>
-<span class="nc" id="L211">            log.error(&quot;Hibernate Search element search failed for '{}': {}&quot;, elementId, e.getMessage());</span>
-<span class="nc" id="L212">            return Collections.emptyList();</span>
+<span class="fc" id="L243">                    .sort(f -&gt; f.score())</span>
+<span class="fc" id="L244">                    .fetchHits(50);</span>
+<span class="nc" id="L245">        } catch (Exception e) {</span>
+<span class="nc" id="L246">            log.error(&quot;Hibernate Search element search failed for '{}': {}&quot;, elementId, e.getMessage());</span>
+<span class="nc" id="L247">            return Collections.emptyList();</span>
         }
     }
 
@@ -221,29 +256,29 @@ public class CommitIndexService {
      */
     @Transactional(readOnly = true)
     public List&lt;ArchitectureCommitIndex&gt; findByRelation(String relationKey) {
-<span class="fc bfc" id="L224" title="All 4 branches covered.">        if (relationKey == null || relationKey.isBlank()) {</span>
-<span class="fc" id="L225">            return Collections.emptyList();</span>
+<span class="fc bfc" id="L259" title="All 4 branches covered.">        if (relationKey == null || relationKey.isBlank()) {</span>
+<span class="fc" id="L260">            return Collections.emptyList();</span>
         }
-<span class="fc" id="L227">        String activeBranch = resolveBranchFilter();</span>
+<span class="fc" id="L262">        String activeBranch = resolveBranchFilter();</span>
         try {
-<span class="fc" id="L229">            SearchSession session = Search.session(entityManager);</span>
-<span class="fc" id="L230">            return session.search(ArchitectureCommitIndex.class)</span>
-<span class="fc" id="L231">                    .where(f -&gt; {</span>
-<span class="fc" id="L232">                        var bool = f.bool();</span>
-<span class="pc bpc" id="L233" title="1 of 2 branches missed.">                        if (activeBranch != null) {</span>
-<span class="nc" id="L234">                            bool.must(f.match().field(&quot;branch&quot;).matching(activeBranch));</span>
+<span class="fc" id="L264">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L265">            return session.search(ArchitectureCommitIndex.class)</span>
+<span class="fc" id="L266">                    .where(f -&gt; {</span>
+<span class="fc" id="L267">                        var bool = f.bool();</span>
+<span class="pc bpc" id="L268" title="1 of 2 branches missed.">                        if (activeBranch != null) {</span>
+<span class="nc" id="L269">                            bool.must(f.match().field(&quot;branch&quot;).matching(activeBranch));</span>
                         }
-<span class="fc" id="L236">                        bool.should(f.match().field(&quot;affectedRelationIds&quot;)</span>
-<span class="fc" id="L237">                                    .matching(relationKey.toLowerCase(Locale.ROOT)).boost(3.0f))</span>
-<span class="fc" id="L238">                            .should(f.match().field(&quot;tokenizedChangeText&quot;)</span>
-<span class="fc" id="L239">                                    .matching(relationKey.toLowerCase(Locale.ROOT)).boost(1.0f));</span>
-<span class="fc" id="L240">                        return bool;</span>
+<span class="fc" id="L271">                        bool.should(f.match().field(&quot;affectedRelationIds&quot;)</span>
+<span class="fc" id="L272">                                    .matching(relationKey.toLowerCase(Locale.ROOT)).boost(3.0f))</span>
+<span class="fc" id="L273">                            .should(f.match().field(&quot;tokenizedChangeText&quot;)</span>
+<span class="fc" id="L274">                                    .matching(relationKey.toLowerCase(Locale.ROOT)).boost(1.0f));</span>
+<span class="fc" id="L275">                        return bool;</span>
                     })
-<span class="fc" id="L242">                    .sort(f -&gt; f.score())</span>
-<span class="fc" id="L243">                    .fetchHits(50);</span>
-<span class="nc" id="L244">        } catch (Exception e) {</span>
-<span class="nc" id="L245">            log.error(&quot;Hibernate Search relation search failed for '{}': {}&quot;, relationKey, e.getMessage());</span>
-<span class="nc" id="L246">            return Collections.emptyList();</span>
+<span class="fc" id="L277">                    .sort(f -&gt; f.score())</span>
+<span class="fc" id="L278">                    .fetchHits(50);</span>
+<span class="nc" id="L279">        } catch (Exception e) {</span>
+<span class="nc" id="L280">            log.error(&quot;Hibernate Search relation search failed for '{}': {}&quot;, relationKey, e.getMessage());</span>
+<span class="nc" id="L281">            return Collections.emptyList();</span>
         }
     }
 
@@ -259,33 +294,33 @@ public class CommitIndexService {
      */
     @Transactional(readOnly = true)
     public ElementHistoryAggregation aggregateElementHistory(String elementId) {
-<span class="nc" id="L262">        List&lt;ArchitectureCommitIndex&gt; commits = findByElement(elementId);</span>
-<span class="nc bnc" id="L263" title="All 2 branches missed.">        if (commits.isEmpty()) {</span>
-<span class="nc" id="L264">            return null;</span>
+<span class="nc" id="L297">        List&lt;ArchitectureCommitIndex&gt; commits = findByElement(elementId);</span>
+<span class="nc bnc" id="L298" title="All 2 branches missed.">        if (commits.isEmpty()) {</span>
+<span class="nc" id="L299">            return null;</span>
         }
 
-<span class="nc" id="L267">        long totalCommits = indexRepository.count();</span>
+<span class="nc" id="L302">        long totalCommits = indexRepository.count();</span>
 
-<span class="nc" id="L269">        Instant firstSeen = commits.stream()</span>
-<span class="nc" id="L270">                .map(ArchitectureCommitIndex::getCommitTimestamp)</span>
-<span class="nc" id="L271">                .min(Comparator.naturalOrder())</span>
-<span class="nc" id="L272">                .orElse(null);</span>
-<span class="nc" id="L273">        Instant lastSeen = commits.stream()</span>
-<span class="nc" id="L274">                .map(ArchitectureCommitIndex::getCommitTimestamp)</span>
-<span class="nc" id="L275">                .max(Comparator.naturalOrder())</span>
-<span class="nc" id="L276">                .orElse(null);</span>
+<span class="nc" id="L304">        Instant firstSeen = commits.stream()</span>
+<span class="nc" id="L305">                .map(ArchitectureCommitIndex::getCommitTimestamp)</span>
+<span class="nc" id="L306">                .min(Comparator.naturalOrder())</span>
+<span class="nc" id="L307">                .orElse(null);</span>
+<span class="nc" id="L308">        Instant lastSeen = commits.stream()</span>
+<span class="nc" id="L309">                .map(ArchitectureCommitIndex::getCommitTimestamp)</span>
+<span class="nc" id="L310">                .max(Comparator.naturalOrder())</span>
+<span class="nc" id="L311">                .orElse(null);</span>
 
-<span class="nc" id="L278">        List&lt;String&gt; recentMessages = commits.stream()</span>
-<span class="nc" id="L279">                .sorted(Comparator.comparing(ArchitectureCommitIndex::getCommitTimestamp).reversed())</span>
-<span class="nc" id="L280">                .limit(5)</span>
-<span class="nc" id="L281">                .map(ArchitectureCommitIndex::getMessage)</span>
-<span class="nc" id="L282">                .toList();</span>
+<span class="nc" id="L313">        List&lt;String&gt; recentMessages = commits.stream()</span>
+<span class="nc" id="L314">                .sorted(Comparator.comparing(ArchitectureCommitIndex::getCommitTimestamp).reversed())</span>
+<span class="nc" id="L315">                .limit(5)</span>
+<span class="nc" id="L316">                .map(ArchitectureCommitIndex::getMessage)</span>
+<span class="nc" id="L317">                .toList();</span>
 
-<span class="nc" id="L284">        double volatility = ElementHistoryAggregation.computeVolatility(commits.size(), (int) totalCommits);</span>
+<span class="nc" id="L319">        double volatility = ElementHistoryAggregation.computeVolatility(commits.size(), (int) totalCommits);</span>
 
-<span class="nc" id="L286">        return new ElementHistoryAggregation(</span>
+<span class="nc" id="L321">        return new ElementHistoryAggregation(</span>
                 elementId, firstSeen, lastSeen,
-<span class="nc" id="L288">                commits.size(), volatility, recentMessages);</span>
+<span class="nc" id="L323">                commits.size(), volatility, recentMessages);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

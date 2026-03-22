@@ -112,21 +112,21 @@ Taxonomy Application,com.taxonomy.versioning.service,VersioningFacade,105,0,0,0,
 Taxonomy Application,com.taxonomy.versioning.service,GitRepositoryBootstrap,17,65,2,4,7,18,2,4,0,3
 Taxonomy Application,com.taxonomy.versioning.service,VersioningFacade.FullContextState,12,0,0,0,1,0,1,0,1,0
 Taxonomy Application,com.taxonomy.versioning.service,HypothesisService,37,621,12,32,7,127,12,26,0,16
-Taxonomy Application,com.taxonomy.versioning.service,SelectiveTransferService,69,360,20,20,9,80,16,16,2,10
-Taxonomy Application,com.taxonomy.versioning.service,ContextCompareService,104,279,5,17,21,58,5,13,0,7
-Taxonomy Application,com.taxonomy.versioning.service,DslOperationsFacade,67,199,3,7,12,42,13,31,10,29
-Taxonomy Application,com.taxonomy.versioning.service,RepositoryStateService,128,306,3,27,18,75,3,27,0,15
+Taxonomy Application,com.taxonomy.versioning.service,SelectiveTransferService,78,401,21,21,12,90,18,18,3,12
+Taxonomy Application,com.taxonomy.versioning.service,ContextCompareService,104,298,5,17,21,63,5,16,0,10
+Taxonomy Application,com.taxonomy.versioning.service,DslOperationsFacade,76,214,3,7,14,44,13,33,10,31
+Taxonomy Application,com.taxonomy.versioning.service,RepositoryStateService,127,339,3,27,18,82,3,32,0,20
 Taxonomy Application,com.taxonomy.versioning.service,ConflictDetectionService.MergePreview,0,27,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.versioning.service,ContextHistoryService,54,100,1,1,20,28,1,6,0,6
-Taxonomy Application,com.taxonomy.versioning.service,ContextNavigationService,16,394,5,15,4,94,5,19,0,14
-Taxonomy Application,com.taxonomy.versioning.service,ConflictDetectionService,196,274,14,18,29,59,9,13,0,6
+Taxonomy Application,com.taxonomy.versioning.service,ContextNavigationService,16,424,5,15,4,98,5,23,0,18
+Taxonomy Application,com.taxonomy.versioning.service,ConflictDetectionService,200,306,14,18,31,64,9,18,0,11
 Taxonomy Application,com.taxonomy.workspace.service,RepositoryStateGuard,0,86,0,14,0,20,0,9,0,2
 Taxonomy Application,com.taxonomy.workspace.service,WorkspaceContextResolver,2,106,3,17,1,26,3,12,0,5
 Taxonomy Application,com.taxonomy.workspace.service,ExternalGitSyncService,285,74,23,5,67,21,15,8,3,6
 Taxonomy Application,com.taxonomy.workspace.service,WorkspaceContext,0,20,0,0,0,2,0,2,0,2
-Taxonomy Application,com.taxonomy.workspace.service,WorkspaceProjectionService,45,331,5,9,16,83,5,13,0,11
+Taxonomy Application,com.taxonomy.workspace.service,WorkspaceProjectionService,45,342,5,9,16,85,5,15,0,13
 Taxonomy Application,com.taxonomy.workspace.service,SystemRepositoryService,6,78,0,2,2,23,0,8,0,7
-Taxonomy Application,com.taxonomy.workspace.service,WorkspaceResolver,6,22,3,3,2,7,4,2,1,2
+Taxonomy Application,com.taxonomy.workspace.service,WorkspaceResolver,2,26,3,3,1,8,3,3,0,3
 Taxonomy Application,com.taxonomy.workspace.service,UserWorkspaceState,5,122,1,3,1,37,1,21,0,20
 Taxonomy Application,com.taxonomy.workspace.service,ExternalGitSyncService.ExternalSyncStatus,0,18,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.workspace.service,WorkspaceManager,439,749,49,39,89,193,41,39,10,26
@@ -149,7 +149,7 @@ Taxonomy Application,com.taxonomy.architecture.service,RequirementArchitectureVi
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService.PatternStep,0,20,0,0,0,2,0,2,0,2
 Taxonomy Application,com.taxonomy.architecture.service,ExplanationTraceService,65,391,23,27,8,72,21,13,1,8
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureGraphQueryServiceImpl,62,963,23,84,13,197,19,55,0,20
-Taxonomy Application,com.taxonomy.architecture.service,CommitIndexService,135,355,9,21,40,83,9,21,1,14
+Taxonomy Application,com.taxonomy.architecture.service,CommitIndexService,140,361,9,21,41,85,10,22,2,15
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService.PatternTemplate,0,9,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.provenance.service,ChunkingStrategySelector,0,88,1,13,0,23,1,10,0,4
 Taxonomy Application,com.taxonomy.provenance.service,StructuredDocumentParser,1,127,2,16,0,28,2,10,0,3
@@ -181,7 +181,7 @@ Taxonomy Application,com.taxonomy.shared.service,LocalEmbeddingService,448,260,3
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.State,0,33,0,0,0,6,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService,0,77,0,4,0,13,0,10,0,8
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.StateSnapshot,0,15,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService.new AppenderBase() {...},10,32,1,1,2,9,1,2,0,2
+Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService.new AppenderBase() {...},0,42,0,2,0,11,0,3,0,2
 Taxonomy Application,com.taxonomy.shared.config,CsvKeywordAnalyzer,0,24,0,0,0,5,0,3,0,3
 Taxonomy Application,com.taxonomy.shared.config,RateLimitFilter.WindowCounter,25,30,3,3,6,6,2,3,0,2
 Taxonomy Application,com.taxonomy.shared.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0,4,0,2,0
@@ -209,7 +209,7 @@ Taxonomy Application,com.taxonomy.analysis.service,AnalysisFacade,0,25,0,0,0,7,0
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser,10,556,4,50,3,105,4,36,0,13
 Taxonomy Application,com.taxonomy.analysis.service,AnalysisRelationGenerator,15,341,7,29,3,65,8,16,2,4
 Taxonomy Application,com.taxonomy.analysis.service,LlmProviderConfig,149,218,71,47,35,46,71,12,4,11
-Taxonomy Application,com.taxonomy.versioning.controller,ContextNavigationController,74,257,11,9,18,52,8,15,1,12
+Taxonomy Application,com.taxonomy.versioning.controller,ContextNavigationController,77,274,11,9,20,54,8,16,1,13
 Taxonomy Application,com.taxonomy.versioning.controller,DslApiController,739,1394,38,34,176,286,40,44,17,31
 Taxonomy Application,com.taxonomy.versioning.controller,GitStateController,0,63,0,0,0,15,0,5,0,5
 Taxonomy Application,com.taxonomy.catalog.controller,ArchiMateImportController,20,25,0,2,5,8,0,4,0,3

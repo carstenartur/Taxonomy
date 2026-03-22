@@ -35,7 +35,7 @@ public class WorkspaceProjectionService {
 
     private final WorkspaceProjectionRepository projectionRepository;
     private final WorkspaceManager workspaceManager;
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
     private final UserWorkspaceRepository workspaceRepository;
 
     public WorkspaceProjectionService(WorkspaceProjectionRepository projectionRepository,
@@ -44,9 +44,20 @@ public class WorkspaceProjectionService {
 <span class="fc" id="L44">                                      UserWorkspaceRepository workspaceRepository) {</span>
 <span class="fc" id="L45">        this.projectionRepository = projectionRepository;</span>
 <span class="fc" id="L46">        this.workspaceManager = workspaceManager;</span>
-<span class="fc" id="L47">        this.gitRepository = repositoryFactory.getSystemRepository();</span>
+<span class="fc" id="L47">        this.repositoryFactory = repositoryFactory;</span>
 <span class="fc" id="L48">        this.workspaceRepository = workspaceRepository;</span>
 <span class="fc" id="L49">    }</span>
+
+    /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+<span class="fc" id="L59">        return repositoryFactory.resolveRepository(ctx);</span>
+    }
 
     /**
      * Get or create the persistent projection record for a user.
@@ -59,29 +70,29 @@ public class WorkspaceProjectionService {
      * @return the projection entity (never null)
      */
     public WorkspaceProjection getOrCreateProjection(String username) {
-<span class="fc" id="L62">        return projectionRepository.findByUsername(username)</span>
-<span class="fc" id="L63">                .orElseGet(() -&gt; createProjection(username));</span>
+<span class="fc" id="L73">        return projectionRepository.findByUsername(username)</span>
+<span class="fc" id="L74">                .orElseGet(() -&gt; createProjection(username));</span>
     }
 
     private WorkspaceProjection createProjection(String username) {
-<span class="fc" id="L67">        log.info(&quot;Creating projection record for user '{}'&quot;, username);</span>
-<span class="fc" id="L68">        WorkspaceProjection projection = new WorkspaceProjection();</span>
-<span class="fc" id="L69">        projection.setUsername(username);</span>
+<span class="fc" id="L78">        log.info(&quot;Creating projection record for user '{}'&quot;, username);</span>
+<span class="fc" id="L79">        WorkspaceProjection projection = new WorkspaceProjection();</span>
+<span class="fc" id="L80">        projection.setUsername(username);</span>
         // Link to existing UserWorkspace if available; otherwise generate a new ID
-<span class="fc" id="L71">        String wsId = workspaceRepository.findByUsernameAndSharedFalse(username)</span>
-<span class="fc" id="L72">                .map(UserWorkspace::getWorkspaceId)</span>
-<span class="fc" id="L73">                .orElseGet(() -&gt; UUID.randomUUID().toString());</span>
-<span class="fc" id="L74">        projection.setWorkspaceId(wsId);</span>
-<span class="fc" id="L75">        projection.setStale(false);</span>
-<span class="fc" id="L76">        projection.setCreatedAt(Instant.now());</span>
+<span class="fc" id="L82">        String wsId = workspaceRepository.findByUsernameAndSharedFalse(username)</span>
+<span class="fc" id="L83">                .map(UserWorkspace::getWorkspaceId)</span>
+<span class="fc" id="L84">                .orElseGet(() -&gt; UUID.randomUUID().toString());</span>
+<span class="fc" id="L85">        projection.setWorkspaceId(wsId);</span>
+<span class="fc" id="L86">        projection.setStale(false);</span>
+<span class="fc" id="L87">        projection.setCreatedAt(Instant.now());</span>
         try {
-<span class="fc" id="L78">            return projectionRepository.save(projection);</span>
-<span class="nc" id="L79">        } catch (Exception e) {</span>
+<span class="fc" id="L89">            return projectionRepository.save(projection);</span>
+<span class="nc" id="L90">        } catch (Exception e) {</span>
             // Non-fatal: in-memory state still works; subsequent calls will
             // retry persistence via the orElseGet path.
-<span class="nc" id="L82">            log.warn(&quot;Could not persist projection for user '{}': {}&quot;,</span>
-<span class="nc" id="L83">                    username, e.getMessage());</span>
-<span class="nc" id="L84">            return projection;</span>
+<span class="nc" id="L93">            log.warn(&quot;Could not persist projection for user '{}': {}&quot;,</span>
+<span class="nc" id="L94">                    username, e.getMessage());</span>
+<span class="nc" id="L95">            return projection;</span>
         }
     }
 
@@ -97,23 +108,23 @@ public class WorkspaceProjectionService {
      */
     public void recordProjection(String username, String commitId, String branch) {
         try {
-<span class="fc" id="L100">            WorkspaceProjection projection = getOrCreateProjection(username);</span>
-<span class="fc" id="L101">            projection.setProjectionCommitId(commitId);</span>
-<span class="fc" id="L102">            projection.setProjectionBranch(branch);</span>
-<span class="fc" id="L103">            projection.setProjectionTimestamp(Instant.now());</span>
-<span class="fc" id="L104">            projection.setStale(false);</span>
-<span class="fc" id="L105">            projection.setUpdatedAt(Instant.now());</span>
-<span class="fc" id="L106">            projectionRepository.save(projection);</span>
-<span class="fc" id="L107">            log.info(&quot;User '{}': recorded projection: branch='{}', commit='{}'&quot;,</span>
-<span class="fc" id="L108">                    username, branch, abbreviateSha(commitId));</span>
-<span class="nc" id="L109">        } catch (Exception e) {</span>
-<span class="nc" id="L110">            log.warn(&quot;Could not record projection for user '{}': {}&quot;, username, e.getMessage());</span>
-<span class="fc" id="L111">        }</span>
+<span class="fc" id="L111">            WorkspaceProjection projection = getOrCreateProjection(username);</span>
+<span class="fc" id="L112">            projection.setProjectionCommitId(commitId);</span>
+<span class="fc" id="L113">            projection.setProjectionBranch(branch);</span>
+<span class="fc" id="L114">            projection.setProjectionTimestamp(Instant.now());</span>
+<span class="fc" id="L115">            projection.setStale(false);</span>
+<span class="fc" id="L116">            projection.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L117">            projectionRepository.save(projection);</span>
+<span class="fc" id="L118">            log.info(&quot;User '{}': recorded projection: branch='{}', commit='{}'&quot;,</span>
+<span class="fc" id="L119">                    username, branch, abbreviateSha(commitId));</span>
+<span class="nc" id="L120">        } catch (Exception e) {</span>
+<span class="nc" id="L121">            log.warn(&quot;Could not record projection for user '{}': {}&quot;, username, e.getMessage());</span>
+<span class="fc" id="L122">        }</span>
 
         // Also update in-memory state
-<span class="fc" id="L114">        UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);</span>
-<span class="fc" id="L115">        ws.recordProjection(commitId, branch);</span>
-<span class="fc" id="L116">    }</span>
+<span class="fc" id="L125">        UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);</span>
+<span class="fc" id="L126">        ws.recordProjection(commitId, branch);</span>
+<span class="fc" id="L127">    }</span>
 
     /**
      * Record that a search index rebuild completed for a user.
@@ -126,21 +137,35 @@ public class WorkspaceProjectionService {
      */
     public void recordIndexBuild(String username, String commitId) {
         try {
-<span class="fc" id="L129">            WorkspaceProjection projection = getOrCreateProjection(username);</span>
-<span class="fc" id="L130">            projection.setIndexCommitId(commitId);</span>
-<span class="fc" id="L131">            projection.setIndexTimestamp(Instant.now());</span>
-<span class="fc" id="L132">            projection.setUpdatedAt(Instant.now());</span>
-<span class="fc" id="L133">            projectionRepository.save(projection);</span>
-<span class="fc" id="L134">            log.info(&quot;User '{}': recorded index build: commit='{}'&quot;,</span>
-<span class="fc" id="L135">                    username, abbreviateSha(commitId));</span>
-<span class="nc" id="L136">        } catch (Exception e) {</span>
-<span class="nc" id="L137">            log.warn(&quot;Could not record index build for user '{}': {}&quot;, username, e.getMessage());</span>
-<span class="fc" id="L138">        }</span>
+<span class="fc" id="L140">            WorkspaceProjection projection = getOrCreateProjection(username);</span>
+<span class="fc" id="L141">            projection.setIndexCommitId(commitId);</span>
+<span class="fc" id="L142">            projection.setIndexTimestamp(Instant.now());</span>
+<span class="fc" id="L143">            projection.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L144">            projectionRepository.save(projection);</span>
+<span class="fc" id="L145">            log.info(&quot;User '{}': recorded index build: commit='{}'&quot;,</span>
+<span class="fc" id="L146">                    username, abbreviateSha(commitId));</span>
+<span class="nc" id="L147">        } catch (Exception e) {</span>
+<span class="nc" id="L148">            log.warn(&quot;Could not record index build for user '{}': {}&quot;, username, e.getMessage());</span>
+<span class="fc" id="L149">        }</span>
 
         // Also update in-memory state
-<span class="fc" id="L141">        UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);</span>
-<span class="fc" id="L142">        ws.recordIndexBuild(commitId);</span>
-<span class="fc" id="L143">    }</span>
+<span class="fc" id="L152">        UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);</span>
+<span class="fc" id="L153">        ws.recordIndexBuild(commitId);</span>
+<span class="fc" id="L154">    }</span>
+
+    /**
+     * Check if the projection is stale relative to the HEAD of the given branch.
+     *
+     * &lt;p&gt;Uses the system repository (SHARED context). Use
+     * {@link #isProjectionStale(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
+     * @param username the user to check
+     * @param branch   the branch to check against
+     * @return true if the projection needs to be rebuilt
+     */
+    public boolean isProjectionStale(String username, String branch) {
+<span class="fc" id="L167">        return isProjectionStale(username, branch, WorkspaceContext.SHARED);</span>
+    }
 
     /**
      * Check if the projection is stale relative to the HEAD of the given branch.
@@ -151,46 +176,47 @@ public class WorkspaceProjectionService {
      *
      * @param username the user to check
      * @param branch   the branch to check against
+     * @param ctx      the workspace context for repository resolution
      * @return true if the projection needs to be rebuilt
      */
-    public boolean isProjectionStale(String username, String branch) {
-<span class="fc" id="L157">        UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);</span>
-<span class="fc" id="L158">        String projCommit = ws.getLastProjectionCommit();</span>
+    public boolean isProjectionStale(String username, String branch, WorkspaceContext ctx) {
+<span class="fc" id="L183">        UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);</span>
+<span class="fc" id="L184">        String projCommit = ws.getLastProjectionCommit();</span>
 
         // Also check persistent record for a more recent commit
-<span class="fc" id="L161">        WorkspaceProjection projection = null;</span>
+<span class="fc" id="L187">        WorkspaceProjection projection = null;</span>
         try {
-<span class="fc" id="L163">            projection = getOrCreateProjection(username);</span>
-<span class="fc" id="L164">            String persistedCommit = projection.getProjectionCommitId();</span>
-<span class="pc bpc" id="L165" title="1 of 2 branches missed.">            if (persistedCommit != null) {</span>
-<span class="fc" id="L166">                projCommit = persistedCommit;</span>
+<span class="fc" id="L189">            projection = getOrCreateProjection(username);</span>
+<span class="fc" id="L190">            String persistedCommit = projection.getProjectionCommitId();</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">            if (persistedCommit != null) {</span>
+<span class="fc" id="L192">                projCommit = persistedCommit;</span>
             }
-<span class="nc" id="L168">        } catch (Exception e) {</span>
-<span class="nc" id="L169">            log.warn(&quot;Could not check persistent projection for user '{}': {}&quot;,</span>
-<span class="nc" id="L170">                    username, e.getMessage());</span>
-<span class="fc" id="L171">        }</span>
+<span class="nc" id="L194">        } catch (Exception e) {</span>
+<span class="nc" id="L195">            log.warn(&quot;Could not check persistent projection for user '{}': {}&quot;,</span>
+<span class="nc" id="L196">                    username, e.getMessage());</span>
+<span class="fc" id="L197">        }</span>
 
-<span class="pc bpc" id="L173" title="1 of 2 branches missed.">        if (projCommit == null) {</span>
-<span class="nc" id="L174">            return false;</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">        if (projCommit == null) {</span>
+<span class="nc" id="L200">            return false;</span>
         }
 
         // Compare against actual branch HEAD
         try {
-<span class="fc" id="L179">            String headCommit = gitRepository.getHeadCommit(branch);</span>
-<span class="pc bpc" id="L180" title="1 of 2 branches missed.">            if (headCommit == null) {</span>
-<span class="nc" id="L181">                return false;</span>
+<span class="fc" id="L205">            String headCommit = resolveRepository(ctx).getHeadCommit(branch);</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">            if (headCommit == null) {</span>
+<span class="nc" id="L207">                return false;</span>
             }
-<span class="fc bfc" id="L183" title="All 2 branches covered.">            boolean stale = !headCommit.equals(projCommit);</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            boolean stale = !headCommit.equals(projCommit);</span>
             // Persist the computed stale flag back to the entity
-<span class="pc bpc" id="L185" title="1 of 4 branches missed.">            if (projection != null &amp;&amp; projection.isStale() != stale) {</span>
-<span class="fc" id="L186">                projection.setStale(stale);</span>
-<span class="fc" id="L187">                projection.setUpdatedAt(Instant.now());</span>
-<span class="fc" id="L188">                projectionRepository.save(projection);</span>
+<span class="pc bpc" id="L211" title="1 of 4 branches missed.">            if (projection != null &amp;&amp; projection.isStale() != stale) {</span>
+<span class="fc" id="L212">                projection.setStale(stale);</span>
+<span class="fc" id="L213">                projection.setUpdatedAt(Instant.now());</span>
+<span class="fc" id="L214">                projectionRepository.save(projection);</span>
             }
-<span class="fc" id="L190">            return stale;</span>
-<span class="nc" id="L191">        } catch (IOException e) {</span>
-<span class="nc" id="L192">            log.warn(&quot;Could not resolve HEAD for branch '{}': {}&quot;, branch, e.getMessage());</span>
-<span class="nc" id="L193">            return false;</span>
+<span class="fc" id="L216">            return stale;</span>
+<span class="nc" id="L217">        } catch (IOException e) {</span>
+<span class="nc" id="L218">            log.warn(&quot;Could not resolve HEAD for branch '{}': {}&quot;, branch, e.getMessage());</span>
+<span class="nc" id="L219">            return false;</span>
         }
     }
 
@@ -204,38 +230,38 @@ public class WorkspaceProjectionService {
      * @return a map containing projection metadata
      */
     public Map&lt;String, Object&gt; getProjectionInfo(String username) {
-<span class="fc" id="L207">        Map&lt;String, Object&gt; info = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L208">        info.put(&quot;username&quot;, username);</span>
+<span class="fc" id="L233">        Map&lt;String, Object&gt; info = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L234">        info.put(&quot;username&quot;, username);</span>
 
-<span class="fc" id="L210">        UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);</span>
-<span class="fc" id="L211">        info.put(&quot;lastProjectionCommit&quot;, ws.getLastProjectionCommit());</span>
-<span class="fc" id="L212">        info.put(&quot;lastProjectionBranch&quot;, ws.getLastProjectionBranch());</span>
-<span class="fc" id="L213">        info.put(&quot;lastProjectionTimestamp&quot;, ws.getLastProjectionTimestamp());</span>
-<span class="fc" id="L214">        info.put(&quot;lastIndexCommit&quot;, ws.getLastIndexCommit());</span>
-<span class="fc" id="L215">        info.put(&quot;lastIndexTimestamp&quot;, ws.getLastIndexTimestamp());</span>
+<span class="fc" id="L236">        UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);</span>
+<span class="fc" id="L237">        info.put(&quot;lastProjectionCommit&quot;, ws.getLastProjectionCommit());</span>
+<span class="fc" id="L238">        info.put(&quot;lastProjectionBranch&quot;, ws.getLastProjectionBranch());</span>
+<span class="fc" id="L239">        info.put(&quot;lastProjectionTimestamp&quot;, ws.getLastProjectionTimestamp());</span>
+<span class="fc" id="L240">        info.put(&quot;lastIndexCommit&quot;, ws.getLastIndexCommit());</span>
+<span class="fc" id="L241">        info.put(&quot;lastIndexTimestamp&quot;, ws.getLastIndexTimestamp());</span>
 
         try {
-<span class="fc" id="L218">            WorkspaceProjection projection = getOrCreateProjection(username);</span>
-<span class="fc" id="L219">            info.put(&quot;persistedProjectionCommit&quot;, projection.getProjectionCommitId());</span>
-<span class="fc" id="L220">            info.put(&quot;persistedProjectionBranch&quot;, projection.getProjectionBranch());</span>
-<span class="fc" id="L221">            info.put(&quot;persistedProjectionTimestamp&quot;, projection.getProjectionTimestamp());</span>
-<span class="fc" id="L222">            info.put(&quot;persistedIndexCommit&quot;, projection.getIndexCommitId());</span>
-<span class="fc" id="L223">            info.put(&quot;persistedIndexTimestamp&quot;, projection.getIndexTimestamp());</span>
-<span class="fc" id="L224">            info.put(&quot;stale&quot;, projection.isStale());</span>
-<span class="fc" id="L225">        } catch (Exception e) {</span>
-<span class="fc" id="L226">            log.warn(&quot;Could not read persistent projection for user '{}': {}&quot;,</span>
-<span class="fc" id="L227">                    username, e.getMessage());</span>
-<span class="fc" id="L228">            info.put(&quot;persistenceError&quot;, e.getMessage());</span>
-<span class="fc" id="L229">        }</span>
+<span class="fc" id="L244">            WorkspaceProjection projection = getOrCreateProjection(username);</span>
+<span class="fc" id="L245">            info.put(&quot;persistedProjectionCommit&quot;, projection.getProjectionCommitId());</span>
+<span class="fc" id="L246">            info.put(&quot;persistedProjectionBranch&quot;, projection.getProjectionBranch());</span>
+<span class="fc" id="L247">            info.put(&quot;persistedProjectionTimestamp&quot;, projection.getProjectionTimestamp());</span>
+<span class="fc" id="L248">            info.put(&quot;persistedIndexCommit&quot;, projection.getIndexCommitId());</span>
+<span class="fc" id="L249">            info.put(&quot;persistedIndexTimestamp&quot;, projection.getIndexTimestamp());</span>
+<span class="fc" id="L250">            info.put(&quot;stale&quot;, projection.isStale());</span>
+<span class="fc" id="L251">        } catch (Exception e) {</span>
+<span class="fc" id="L252">            log.warn(&quot;Could not read persistent projection for user '{}': {}&quot;,</span>
+<span class="fc" id="L253">                    username, e.getMessage());</span>
+<span class="fc" id="L254">            info.put(&quot;persistenceError&quot;, e.getMessage());</span>
+<span class="fc" id="L255">        }</span>
 
-<span class="fc" id="L231">        return info;</span>
+<span class="fc" id="L257">        return info;</span>
     }
 
     // ── Internal helpers ────────────────────────────────────────────
 
     private String abbreviateSha(String commitId) {
-<span class="pc bpc" id="L237" title="1 of 2 branches missed.">        if (commitId == null) return &quot;null&quot;;</span>
-<span class="fc" id="L238">        return commitId.substring(0, Math.min(7, commitId.length()));</span>
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">        if (commitId == null) return &quot;null&quot;;</span>
+<span class="fc" id="L264">        return commitId.substring(0, Math.min(7, commitId.length()));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
