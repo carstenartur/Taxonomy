@@ -502,14 +502,16 @@ class ScreenshotGeneratorIT {
         driver.get("http://app:8080/");
         new WebDriverWait(driver, Duration.ofSeconds(15))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
-        // The #taxonomyTree div is always in the HTML (with a loading spinner).
-        // Wait for actual taxonomy nodes to appear — they are rendered by the JS
-        // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
-        // The container startup waited for /api/status/startup to return "ready",
-        // so taxonomy data is already available — 15s is sufficient for the JS fetch + render.
-        new WebDriverWait(driver, Duration.ofSeconds(15))
-                .until(ExpectedConditions.presenceOfElementLocated(
-                        By.cssSelector("#taxonomyTree .tax-node")));
+        // Wait for the data-view-rendered attribute which is set by renderView() after
+        // the taxonomy data has been fetched and the view has been fully rendered.
+        // This is more reliable than waiting for CSS selectors like .tax-node which
+        // may not yet exist during view transitions.
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .until(d -> {
+                    String rendered = d.findElement(By.id("taxonomyTree"))
+                            .getAttribute("data-view-rendered");
+                    return rendered != null && !rendered.isEmpty();
+                });
         // Dismiss the onboarding overlay if it is present (it blocks clicks on all UI elements)
         List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
         if (!dismissBtns.isEmpty()) {
@@ -750,13 +752,15 @@ class ScreenshotGeneratorIT {
     private void resetPageState() {
         driver.get("http://app:8080/");
         wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
-        // The #taxonomyTree div is always in the HTML (with a loading spinner).
-        // Wait for actual taxonomy nodes to appear — they are rendered by the JS
-        // loadTaxonomy() fetch from /api/taxonomy, which runs asynchronously.
-        // The container startup already waited for /api/status/startup to return "ready",
-        // so taxonomy data is available — 15s is enough for the JS fetch + render.
-        wait(15).until(ExpectedConditions.presenceOfElementLocated(
-                By.cssSelector("#taxonomyTree .tax-node")));
+        // Wait for the data-view-rendered attribute which is set by renderView() after
+        // the taxonomy data has been fetched and the view has been fully rendered.
+        // This is more reliable than waiting for CSS selectors like .tax-node which
+        // may not yet exist during view transitions.
+        wait(30).until(d -> {
+            String rendered = d.findElement(By.id("taxonomyTree"))
+                    .getAttribute("data-view-rendered");
+            return rendered != null && !rendered.isEmpty();
+        });
         // Dismiss the onboarding overlay if it reappears after page reload
         List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
         if (!dismissBtns.isEmpty()) {
@@ -1199,12 +1203,11 @@ class ScreenshotGeneratorIT {
 
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", justifyBtns.get(0));
         js("arguments[0].click();", justifyBtns.get(0));
-        // Wait for the /api/justify-leaf mock call to populate the modal body text, which
-        // is more reliable than a fixed sleep and confirms the API round-trip has completed.
-        wait(15).until(d -> {
-            List<WebElement> body = d.findElements(By.id("leafJustificationModalBody"));
-            return !body.isEmpty() && !body.get(0).getText().isEmpty();
-        });
+        // Wait for the /api/justify-leaf mock call to populate the modal body text.
+        // The data-modal-loaded attribute is set by the JS after the content is populated,
+        // which is more reliable than getText() which returns empty on hidden modals.
+        wait(15).until(ExpectedConditions.attributeToBe(
+                By.id("leafJustificationModalBody"), "data-modal-loaded", "true"));
         // Force show via DOM in case Bootstrap CDN is unavailable or animation did not fire
         showModalViaDOM("leafJustificationModal");
         saveScreenshot("18-leaf-justification-modal.png");
@@ -2044,12 +2047,9 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(44)
     void captureContextBar() throws IOException {
-        // The context bar polls /api/context/current. Wait for it to render.
-        wait(15).until(d -> {
-            WebElement bar = d.findElement(By.id("contextBar"));
-            String html = bar.getAttribute("innerHTML");
-            return html != null && !html.isEmpty() && html.contains("workspace-bar");
-        });
+        // The context bar polls /api/context/current. Wait for the render signal attribute.
+        wait(30).until(ExpectedConditions.attributeToBe(
+                By.id("contextBar"), "data-context-rendered", "true"));
         saveElementScreenshot(driver.findElement(By.id("contextBar")),
                 "44-context-bar.png");
     }

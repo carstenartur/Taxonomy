@@ -110,9 +110,16 @@ abstract class AbstractSeleniumContainerIT {
         driver.get("http://app:8080/");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
+        // Wait for the data-view-rendered attribute which is set by renderView() after
+        // the taxonomy data has been fetched and the view has been fully rendered.
+        // This is more reliable than waiting for CSS selectors like .tax-node which
+        // may not yet exist during view transitions.
         new WebDriverWait(driver, Duration.ofSeconds(60))
-                .until(ExpectedConditions.presenceOfElementLocated(
-                        By.cssSelector("#taxonomyTree .tax-node")));
+                .until(d -> {
+                    String rendered = d.findElement(By.id("taxonomyTree"))
+                            .getAttribute("data-view-rendered");
+                    return rendered != null && !rendered.isEmpty();
+                });
         List<WebElement> dismissBtns = driver.findElements(By.id("onboardingDismiss"));
         if (!dismissBtns.isEmpty()) {
             dismissBtns.get(0).click();
