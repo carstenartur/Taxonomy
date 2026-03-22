@@ -21,7 +21,7 @@ The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.ht
 
 | Element | Location | Module | Status |
 |---|---|---|---|
-| Workspace User Badge | Navbar | `taxonomy.js` | ✅ Shows `user@branch`, yellow when dirty |
+| Workspace User Badge | Navbar | `taxonomy-workspace-sync.js` | ✅ Shows `user@branch`, yellow when dirty |
 | Context Navigation Bar | Below Git Status | `taxonomy-context-bar.js` | ✅ Mode, branch, commit, origin, navigation |
 | Read-Only Mode Badge | Git Status Bar | `taxonomy-git-status.js` | ✅ READ-ONLY badge when applicable |
 | Action Guards | All guarded buttons | `taxonomy-action-guards.js` | ✅ Disables buttons in read-only/operation-in-progress |
@@ -51,7 +51,7 @@ The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.ht
 
 | # | Module | Purpose | Workspace-Aware |
 |---|---|---|---|
-| 1 | `taxonomy.js` | Main entry, tab routing, status polling | ✅ |
+| 1 | `taxonomy-browse.js` | Tree rendering, navigation, report export | ✅ |
 | 2 | `taxonomy-git-status.js` | Git status bar polling/rendering | ✅ |
 | 3 | `taxonomy-workspace-sync.js` | Sync status, dirty state, local changes, sync state panel | ✅ |
 | 4 | `taxonomy-context-bar.js` | Context navigation bar | ✅ |
@@ -78,13 +78,12 @@ The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.ht
 | 25 | `taxonomy-about.js` | About dialog | N/A |
 | 26 | `taxonomy-merge-resolution.js` | Merge conflict resolution UI | ✅ |
 | 27 | `taxonomy-operation-result.js` | Toast notification system for Git operations | ✅ |
-| 28 | `taxonomy-browse.js` | Main browse panel, report export logic | Via username |
-| 29 | `taxonomy-i18n.js` | Internationalization — loads locale from `/api/i18n/{locale}` | N/A |
-| 30 | `taxonomy-scoring.js` | Score rendering, layer configuration | Via username |
-| 31 | `taxonomy-state.js` | Application state management | ✅ |
-| 32 | `taxonomy-document-import.js` | Document import (PDF/DOCX) and provenance | Via username |
-| 33 | `taxonomy-utils.js` | Shared utility functions | N/A |
-| 34 | `taxonomy-workspace-provisioning.js` | Workspace provisioning flow | ✅ |
+| 28 | `taxonomy-i18n.js` | Internationalization — loads locale from `/api/i18n/{locale}` | N/A |
+| 29 | `taxonomy-scoring.js` | Score rendering, layer configuration | Via username |
+| 30 | `taxonomy-state.js` | Application state management | ✅ |
+| 31 | `taxonomy-document-import.js` | Document import (PDF/DOCX) and provenance | Via username |
+| 32 | `taxonomy-utils.js` | Shared utility functions | N/A |
+| 33 | `taxonomy-workspace-provisioning.js` | Workspace provisioning flow | ✅ |
 
 ---
 

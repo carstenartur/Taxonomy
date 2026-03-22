@@ -192,7 +192,7 @@ private JwtAuthenticationConverter keycloakJwtConverter() {
 }
 ```
 
-> **Hinweis:** Dies ist eine Referenzimplementierung für die geplante Keycloak-Migration (Phase 2). Die aktuelle Codebasis verwendet Form-Login + HTTP Basic.
+> **Hinweis:** Die Keycloak-/OIDC-Integration ist vollständig implementiert. Aktivieren Sie das Spring-Profil `keycloak`, um vom standardmäßigen Form-Login-Modus auf OIDC-basierte Authentifizierung mit Keycloak umzuschalten.
 
 ---
 
