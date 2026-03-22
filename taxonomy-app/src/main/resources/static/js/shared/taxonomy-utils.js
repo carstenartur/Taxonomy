@@ -39,5 +39,23 @@ window.TaxonomyUtils = (function () {
         return doc.body.textContent || '';
     }
 
+    // ── Bootstrap lifecycle attributes ────────────────────────────────────
+    // Capture-phase listeners set data-* attributes on every Bootstrap modal
+    // and toast when its show/hide transition completes.  This provides a
+    // reliable, timing-independent signal that Selenium tests can wait for
+    // instead of using Thread.sleep().
+    document.addEventListener('shown.bs.modal', function (e) {
+        e.target.setAttribute('data-modal-visible', 'true');
+    }, true);
+    document.addEventListener('hidden.bs.modal', function (e) {
+        e.target.setAttribute('data-modal-visible', 'false');
+    }, true);
+    document.addEventListener('shown.bs.toast', function (e) {
+        e.target.setAttribute('data-toast-visible', 'true');
+    }, true);
+    document.addEventListener('hidden.bs.toast', function (e) {
+        e.target.setAttribute('data-toast-visible', 'false');
+    }, true);
+
     return { escapeHtml: escapeHtml, stripHtml: stripHtml };
 })();

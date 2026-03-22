@@ -318,6 +318,7 @@
         var nodeSeq = 0;
 
         function update(source) {
+            container.removeAttribute('data-transitions-complete');
             treeLayout(root);
             var nodes = root.descendants();
             var links = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
@@ -381,7 +382,10 @@
             // Horizontal layout: translate(y, x) — y is horizontal position, x is vertical
             nodeUpdate.transition().duration(300)
                 .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })
-                .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; });
+                .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; })
+                .end()
+                .then(function () { container.setAttribute('data-transitions-complete', 'true'); })
+                .catch(function () { container.setAttribute('data-transitions-complete', 'true'); });
 
             nodeUpdate.select('circle')
                 .attr('fill', function (d) {
@@ -640,6 +644,7 @@
         }
 
         function dmUpdate(source) {
+            container.removeAttribute('data-transitions-complete');
             treeLayout(root);
             var nodes = root.descendants();
             var links = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
@@ -698,7 +703,10 @@
 
             nodeUpdate.transition().duration(300)
                 .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })
-                .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; });
+                .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; })
+                .end()
+                .then(function () { container.setAttribute('data-transitions-complete', 'true'); })
+                .catch(function () { container.setAttribute('data-transitions-complete', 'true'); });
 
             nodeUpdate.select('circle')
                 .attr('fill', dmNodeFill)

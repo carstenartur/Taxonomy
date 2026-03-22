@@ -1202,8 +1202,11 @@
             const codeEl = document.getElementById('proposeNodeCode');
             if (codeEl) { codeEl.textContent = node.code + ' — ' + node.name; }
             const modal = document.getElementById('proposeRelationsModal');
-            if (modal && window.bootstrap) {
-                new window.bootstrap.Modal(modal).show();
+            if (modal) {
+                modal.setAttribute('data-content-ready', 'true');
+                if (window.bootstrap) {
+                    new window.bootstrap.Modal(modal).show();
+                }
             }
         });
         actions.appendChild(proposeBtn);

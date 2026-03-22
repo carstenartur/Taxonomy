@@ -52,7 +52,8 @@ LLM-dependent tests are skipped gracefully with `Assumptions.assumeTrue(System.g
    - If the screenshot requires a live LLM, add `Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null, "Skipping: GEMINI_API_KEY not set");` as the first line.
    - Use `saveScreenshot("NN-my-feature.png")` for a full-viewport screenshot or `saveElementScreenshot(element, "NN-my-feature.png")` for an element-scoped screenshot.
    - Use `wait(N).until(ExpectedConditions....)` instead of `Thread.sleep()` for synchronisation.
-   - To close a Bootstrap modal without timing issues, call `closeModalViaDOM("myModalId")`.
+   - To show a Bootstrap modal, call `showModalAndWait("myModalId")`.
+   - To close a Bootstrap modal without timing issues, call `closeModalAndWait("myModalId")`.
 
 2. **Add the image reference** to `docs/USER_GUIDE.md` at the appropriate location:
    ```markdown
