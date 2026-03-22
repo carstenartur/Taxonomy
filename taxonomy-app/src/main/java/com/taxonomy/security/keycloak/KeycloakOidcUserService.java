@@ -12,7 +12,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -23,7 +22,7 @@ import java.util.Set;
  * After a successful OIDC login, this service:
  * <ol>
  *   <li>Loads the standard OidcUser from the UserInfo endpoint</li>
- *   <li>Extracts realm roles from the ID token or access token</li>
+ *   <li>Extracts realm roles from the OIDC user's claims (Keycloak {@code realm_access})</li>
  *   <li>Returns an OidcUser with the correct ROLE_* authorities</li>
  * </ol>
  */

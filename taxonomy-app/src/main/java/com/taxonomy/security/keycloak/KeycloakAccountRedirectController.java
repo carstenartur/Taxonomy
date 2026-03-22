@@ -17,8 +17,11 @@ public class KeycloakAccountRedirectController {
     @Value("${taxonomy.keycloak.admin-console-url:http://localhost:8180}")
     private String keycloakUrl;
 
+    @Value("${taxonomy.keycloak.realm:taxonomy}")
+    private String keycloakRealm;
+
     @GetMapping("/change-password")
     public String redirectToKeycloak() {
-        return "redirect:" + keycloakUrl + "/realms/taxonomy/account/#/security/signingin";
+        return "redirect:" + keycloakUrl + "/realms/" + keycloakRealm + "/account/#/security/signin";
     }
 }

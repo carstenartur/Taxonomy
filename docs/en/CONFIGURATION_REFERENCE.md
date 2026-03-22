@@ -304,6 +304,7 @@ Keycloak authentication is activated via the `keycloak` Spring profile (`SPRING_
 | `KEYCLOAK_CLIENT_SECRET` | `spring.security.oauth2.client.registration.keycloak.client-secret` | *(empty)* | OAuth2 client secret. **Must be set for production.** |
 | `KEYCLOAK_JWK_SET_URI` | `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` | `http://localhost:8180/realms/taxonomy/protocol/openid-connect/certs` | JWKS endpoint for JWT signature validation. |
 | `KEYCLOAK_ADMIN_URL` | `taxonomy.keycloak.admin-console-url` | `http://localhost:8180` | Base URL of the Keycloak Admin Console (used for password change redirects). |
+| `KEYCLOAK_REALM` | `taxonomy.keycloak.realm` | `taxonomy` | Keycloak realm name. Used for Account Console redirect URLs. |
 
 **Properties automatically set in `keycloak` profile:**
 

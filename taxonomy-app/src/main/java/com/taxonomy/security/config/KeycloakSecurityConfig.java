@@ -1,5 +1,6 @@
 package com.taxonomy.security.config;
 
+import com.taxonomy.security.keycloak.KeycloakAuthenticationEntryPoint;
 import com.taxonomy.security.keycloak.KeycloakJwtAuthConverter;
 import com.taxonomy.security.keycloak.KeycloakOidcUserService;
 import com.taxonomy.security.keycloak.KeycloakLogoutHandler;
@@ -27,15 +28,18 @@ public class KeycloakSecurityConfig {
     private final KeycloakJwtAuthConverter jwtAuthConverter;
     private final KeycloakOidcUserService oidcUserService;
     private final KeycloakLogoutHandler logoutHandler;
+    private final KeycloakAuthenticationEntryPoint authenticationEntryPoint;
 
     public KeycloakSecurityConfig(AuthorizationRulesConfigurer authRules,
                                   KeycloakJwtAuthConverter jwtAuthConverter,
                                   KeycloakOidcUserService oidcUserService,
-                                  KeycloakLogoutHandler logoutHandler) {
+                                  KeycloakLogoutHandler logoutHandler,
+                                  KeycloakAuthenticationEntryPoint authenticationEntryPoint) {
         this.authRules = authRules;
         this.jwtAuthConverter = jwtAuthConverter;
         this.oidcUserService = oidcUserService;
         this.logoutHandler = logoutHandler;
+        this.authenticationEntryPoint = authenticationEntryPoint;
     }
 
     @Bean
@@ -63,6 +67,7 @@ public class KeycloakSecurityConfig {
             )
             // REST API: JWT Bearer Token
             .oauth2ResourceServer(oauth2 -> oauth2
+                .authenticationEntryPoint(authenticationEntryPoint)
                 .jwt(jwt -> jwt
                     .jwtAuthenticationConverter(jwtAuthConverter)
                 )

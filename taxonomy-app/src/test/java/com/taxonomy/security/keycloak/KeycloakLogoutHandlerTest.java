@@ -1,14 +1,13 @@
 package com.taxonomy.security.keycloak;
 
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.oidc.OidcIdToken;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
-import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
 
@@ -23,9 +22,14 @@ class KeycloakLogoutHandlerTest {
     @Test
     void redirectsToKeycloakLogoutEndpoint() throws Exception {
         KeycloakLogoutHandler handler = new KeycloakLogoutHandler();
-        setIssuerUri(handler, "http://localhost:8180/realms/taxonomy");
+        handler.setIssuerUri("http://localhost:8180/realms/taxonomy");
 
-        HttpServletRequest request = mockRequest();
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/logout");
+        request.setScheme("http");
+        request.setServerName("localhost");
+        request.setServerPort(8080);
+        request.setContextPath("");
+
         HttpServletResponse response = mock(HttpServletResponse.class);
 
         OidcUser oidcUser = mock(OidcUser.class);
@@ -53,31 +57,21 @@ class KeycloakLogoutHandlerTest {
     @Test
     void invalidatesSessionOnLogout() throws Exception {
         KeycloakLogoutHandler handler = new KeycloakLogoutHandler();
-        setIssuerUri(handler, "http://localhost:8180/realms/taxonomy");
+        handler.setIssuerUri("http://localhost:8180/realms/taxonomy");
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/logout");
+        request.setScheme("http");
+        request.setServerName("localhost");
+        request.setServerPort(8080);
+        request.setContextPath("");
 
         HttpSession session = mock(HttpSession.class);
-        HttpServletRequest request = mockRequest();
-        when(request.getSession(false)).thenReturn(session);
-        when(request.getSession()).thenReturn(session);
+        request.setSession(session);
 
         HttpServletResponse response = mock(HttpServletResponse.class);
 
         handler.onLogoutSuccess(request, response, null);
 
         verify(session).invalidate();
-    }
-
-    private HttpServletRequest mockRequest() {
-        HttpServletRequest request = mock(HttpServletRequest.class);
-        when(request.getScheme()).thenReturn("http");
-        when(request.getServerName()).thenReturn("localhost");
-        when(request.getServerPort()).thenReturn(8080);
-        when(request.getContextPath()).thenReturn("");
-        when(request.getSession(false)).thenReturn(null);
-        return request;
-    }
-
-    private void setIssuerUri(KeycloakLogoutHandler handler, String uri) {
-        handler.setIssuerUri(uri);
     }
 }
