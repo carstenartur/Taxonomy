@@ -36,6 +36,7 @@ Interactive docs: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) (w
 - [Reports](#reports)
 - [Gap Analysis & Recommendations](#gap-analysis--recommendations)
 - [Architecture DSL](#architecture-dsl)
+- [Document Import & Provenance](#document-import--provenance)
 - [Administration](#administration)
 - [Error Responses](#error-responses)
 
@@ -430,6 +431,85 @@ curl -u admin:admin -X POST "http://localhost:8080/api/dsl/branches?name=review&
 # Merge
 curl -u admin:admin -X POST "http://localhost:8080/api/dsl/merge?fromBranch=review&intoBranch=accepted"
 ```
+
+---
+
+## Document Import & Provenance
+
+Upload PDF/DOCX documents and extract requirements with source provenance tracking.
+For the full feature description, see [Document Import](DOCUMENT_IMPORT.md).
+
+### Upload and parse a document
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/documents/upload \
+  -F "file=@regulation.pdf"
+```
+
+**Response (200):**
+
+```json
+{
+  "title": "regulation.pdf",
+  "format": "PDF",
+  "pageCount": 12,
+  "sections": [
+    { "heading": "§1 Scope", "content": "This regulation applies to..." },
+    { "heading": "§2 Requirements", "content": "The system shall..." }
+  ],
+  "candidates": [
+    { "text": "The system shall provide secure authentication", "section": "§2 Requirements" }
+  ]
+}
+```
+
+Maximum upload size: 50 MB. Supported formats: PDF, DOCX.
+
+### AI-assisted requirement extraction
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/documents/extract-ai \
+  -H "Content-Type: application/json" \
+  -d '{"documentText": "The system shall provide...", "title": "regulation.pdf"}'
+```
+
+Uses the configured LLM to identify and structure requirements from document text.
+
+### Direct regulation-to-architecture mapping
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/documents/map-regulation \
+  -H "Content-Type: application/json" \
+  -d '{"documentText": "The system shall provide...", "title": "VV Digitale Anträge"}'
+```
+
+Maps regulation content directly to taxonomy nodes via AI analysis.
+
+### Confirm extracted candidates
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/documents/confirm-candidates \
+  -H "Content-Type: application/json" \
+  -d '{"sourceTitle": "regulation.pdf", "sourceType": "REGULATION", "candidates": [{"text": "Secure authentication", "section": "§2"}]}'
+```
+
+Links selected requirement candidates to the source provenance model.
+
+### List source artifacts
+
+```bash
+curl -u admin:admin "http://localhost:8080/api/provenance/sources"
+```
+
+Returns all registered source artifacts (uploaded documents, regulations, etc.).
+
+### Get provenance links for a requirement
+
+```bash
+curl -u admin:admin "http://localhost:8080/api/provenance/links/REQ-001"
+```
+
+Returns all provenance links connecting a requirement to its source artifacts.
 
 ---
 

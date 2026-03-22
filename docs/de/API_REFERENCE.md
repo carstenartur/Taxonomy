@@ -25,6 +25,7 @@ Interaktive Dokumentation: [`/swagger-ui.html`](http://localhost:8080/swagger-ui
 - [Berichte](#berichte)
 - [Lückenanalyse & Empfehlungen](#lückenanalyse--empfehlungen)
 - [Architektur-DSL](#architektur-dsl)
+- [Dokumentimport & Provenienz](#dokumentimport--provenienz)
 - [Administration](#administration)
 - [Fehlerantworten](#fehlerantworten)
 
@@ -387,6 +388,85 @@ curl -u admin:admin -X POST "http://localhost:8080/api/dsl/branches?name=review&
 # Zusammenführen
 curl -u admin:admin -X POST "http://localhost:8080/api/dsl/merge?fromBranch=review&intoBranch=accepted"
 ```
+
+---
+
+## Dokumentimport & Provenienz
+
+PDF/DOCX-Dokumente hochladen und Anforderungen mit Quell-Provenienz-Tracking extrahieren.
+Für die vollständige Feature-Beschreibung siehe [Dokumentimport](DOCUMENT_IMPORT.md).
+
+### Dokument hochladen und parsen
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/documents/upload \
+  -F "file=@vorschrift.pdf"
+```
+
+**Antwort (200):**
+
+```json
+{
+  "title": "vorschrift.pdf",
+  "format": "PDF",
+  "pageCount": 12,
+  "sections": [
+    { "heading": "§1 Geltungsbereich", "content": "Diese Vorschrift gilt für..." },
+    { "heading": "§2 Anforderungen", "content": "Das System soll..." }
+  ],
+  "candidates": [
+    { "text": "Das System soll sichere Authentifizierung bereitstellen", "section": "§2 Anforderungen" }
+  ]
+}
+```
+
+Maximale Upload-Größe: 50 MB. Unterstützte Formate: PDF, DOCX.
+
+### KI-gestützte Anforderungsextraktion
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/documents/extract-ai \
+  -H "Content-Type: application/json" \
+  -d '{"documentText": "Das System soll...", "title": "vorschrift.pdf"}'
+```
+
+Nutzt das konfigurierte LLM, um Anforderungen aus dem Dokumenttext zu identifizieren und zu strukturieren.
+
+### Direkte Vorschriften-zu-Architektur-Zuordnung
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/documents/map-regulation \
+  -H "Content-Type: application/json" \
+  -d '{"documentText": "Das System soll...", "title": "VV Digitale Anträge"}'
+```
+
+Ordnet Vorschrifteninhalte direkt per KI-Analyse den Taxonomie-Knoten zu.
+
+### Extrahierte Kandidaten bestätigen
+
+```bash
+curl -u admin:admin -X POST http://localhost:8080/api/documents/confirm-candidates \
+  -H "Content-Type: application/json" \
+  -d '{"sourceTitle": "vorschrift.pdf", "sourceType": "REGULATION", "candidates": [{"text": "Sichere Authentifizierung", "section": "§2"}]}'
+```
+
+Verknüpft ausgewählte Anforderungskandidaten mit dem Quell-Provenienz-Modell.
+
+### Quellartefakte auflisten
+
+```bash
+curl -u admin:admin "http://localhost:8080/api/provenance/sources"
+```
+
+Gibt alle registrierten Quellartefakte zurück (hochgeladene Dokumente, Vorschriften usw.).
+
+### Provenienz-Links für eine Anforderung abrufen
+
+```bash
+curl -u admin:admin "http://localhost:8080/api/provenance/links/REQ-001"
+```
+
+Gibt alle Provenienz-Links zurück, die eine Anforderung mit ihren Quellartefakten verbinden.
 
 ---
 

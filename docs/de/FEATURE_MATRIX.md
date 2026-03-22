@@ -37,6 +37,8 @@ Eine Funktion gilt nur als abgeschlossen, wenn alle erforderlichen Spalten ✅ z
 | Blattknoten-Begründung | ✅ | ✅ | ✅ §6 | ✅ #18 | ✅ | ✅ | ✅ Vollständig |
 | Dokumentimport (PDF/DOCX) | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Vollständig |
 | Quell-Provenienz-Tracking | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Vollständig |
+| KI-gestützte Anforderungsextraktion | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Vollständig |
+| Vorschriften-Architektur-Zuordnung | ✅ | ✅ | ✅ DOCUMENT_IMPORT | — | ✅ | ✅ | ✅ Vollständig |
 
 ## Admin-/Automatisierungsfunktionen (API-first — keine GUI erforderlich)
 

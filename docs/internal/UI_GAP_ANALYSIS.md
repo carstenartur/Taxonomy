@@ -43,7 +43,6 @@ The UI is a single-page Bootstrap 5 application rendered by Thymeleaf (`index.ht
 |---|---|---|
 | Compare Diff View Enhancement | Medium | Current compare shows summary + semantic changes. Could add inline diff highlighting. |
 | Workspace Switcher | Low | Currently no way to switch between multiple workspaces from the UI (admin can view all). |
-| History Timeline Visualization | Low | Navigation history is available via API but not visualized as a timeline in the UI. |
 
 ---
 
