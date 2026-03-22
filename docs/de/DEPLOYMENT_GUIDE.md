@@ -12,6 +12,9 @@ Dieses Handbuch behandelt die Bereitstellung des Taxonomy Architecture Analyzer 
 2. [Render.com-Bereitstellung](#2-rendercom-bereitstellung)
 3. [Health Check](#3-health-check)
 4. [Fehlerbehebung](#4-fehlerbehebung)
+5. [Datenbank-Backends](#5-datenbank-backends)
+6. [HTTPS/TLS-Terminierung](#6-httpstls-terminierung)
+7. [VPS-Bereitstellung](#7-hetzner--vps-bereitstellung-docker--caddy)
 
 > Siehe auch: [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md) für alle Umgebungsvariablen, [Architekturbeschreibung](ARCHITECTURE.md) für Details zum Systemdesign.
 
@@ -36,6 +39,10 @@ docker build -t taxonomy-analyzer .
 ```
 
 ### Ausführung mit Docker
+
+> ⚠️ **Die folgenden Befehle exponieren unverschlüsseltes HTTP auf Port 8080 — nur für lokale Tests verwenden.**
+> Für internetfähige Bereitstellungen verwenden Sie [`docker-compose.prod.yml`](../../docker-compose.prod.yml),
+> das automatisches HTTPS über Caddy bereitstellt (siehe [Abschnitt 7](#7-hetzner--vps-bereitstellung-docker--caddy)).
 
 **Minimal (nur Browser, ohne KI):**
 ```bash
@@ -265,3 +272,183 @@ Um von HSQLDB auf eine Produktionsdatenbank zu migrieren:
 Die Taxonomiedaten werden beim Start immer aus der mitgelieferten Excel-Arbeitsmappe geladen, sodass keine Datenmigration für die Taxonomie selbst erforderlich ist. Im Git-Repository gespeicherte Architektur-DSL-Daten müssen neu erstellt werden.
 
 Siehe [Datenbank-Einrichtung](DATABASE_SETUP.md) für detaillierte Anleitungen zu jeder Datenbank, einschließlich Fehlerbehebung und Integrationstests.
+
+---
+
+## 6. HTTPS/TLS-Terminierung
+
+Die Anwendung lauscht standardmäßig auf **HTTP-Port 8080**. Für jede Bereitstellung außerhalb von `localhost` sollte immer TLS vor der Anwendung terminiert werden. Der HSTS-Header (`Strict-Transport-Security`) wird bereits von der Anwendung bei jeder Antwort gesendet.
+
+### Option A — Reverse Proxy (empfohlen)
+
+Ein Reverse Proxy übernimmt Zertifikatsverwaltung, TLS-Terminierung und optional Ratenbegrenzung. Die Anwendung lauscht weiterhin auf Plain-HTTP hinter dem Proxy.
+
+#### nginx
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name taxonomy.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/taxonomy.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/taxonomy.example.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+
+# HTTP → HTTPS Weiterleitung
+server {
+    listen 80;
+    server_name taxonomy.example.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+#### Caddy (automatisches Let's Encrypt)
+
+```
+taxonomy.example.com {
+    reverse_proxy localhost:8080
+}
+```
+
+Caddy stellt TLS-Zertifikate automatisch bereit und erneuert sie. Keine weitere Konfiguration erforderlich.
+
+#### Docker Compose (nginx + App)
+
+```yaml
+services:
+  taxonomy:
+    image: ghcr.io/carstenartur/taxonomy:latest
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - TAXONOMY_ADMIN_PASSWORD=${TAXONOMY_ADMIN_PASSWORD}
+    expose:
+      - "8080"          # nur intern — nicht auf dem Host veröffentlicht
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - taxonomy
+```
+
+In der `nginx.conf` oben ersetzen Sie `proxy_pass http://localhost:8080` durch `proxy_pass http://taxonomy:8080` (den Docker-Servicenamen).
+
+### Option B — Spring Boot Native SSL
+
+Für Einzelcontainer-Setups (kein Reverse Proxy verfügbar) kann Spring Boot TLS direkt über SSL-Bundles terminieren.
+
+**Über Umgebungsvariablen:**
+
+```bash
+docker run -p 8443:8443 \
+  -e SERVER_PORT=8443 \
+  -e SERVER_SSL_BUNDLE=taxonomy-tls \
+  -e SPRING_SSL_BUNDLE_PEM_TAXONOMY_TLS_KEYSTORE_CERTIFICATE=/certs/cert.pem \
+  -e SPRING_SSL_BUNDLE_PEM_TAXONOMY_TLS_KEYSTORE_PRIVATE_KEY=/certs/key.pem \
+  -v /etc/letsencrypt/live/taxonomy.example.com/fullchain.pem:/certs/cert.pem:ro \
+  -v /etc/letsencrypt/live/taxonomy.example.com/privkey.pem:/certs/key.pem:ro \
+  ghcr.io/carstenartur/taxonomy:latest
+```
+
+> **Hinweis:** Bei Verwendung von nativem SSL muss der Docker-Health-Check auf HTTPS umgestellt werden:
+> `--health-cmd="wget --no-check-certificate -q -O /dev/null https://localhost:8443/ || exit 1"`
+
+### Render.com
+
+Render.com stellt automatisches HTTPS für alle Web-Services bereit — keine zusätzliche Konfiguration erforderlich. Das TLS-Zertifikat wird automatisch von der Plattform bereitgestellt und erneuert.
+
+### Cloud-Load-Balancer (AWS ALB, GCP, Azure)
+
+Cloud-Load-Balancer terminieren TLS, bevor der Datenverkehr den Container erreicht. Belassen Sie die Anwendung auf Port 8080 (HTTP) und konfigurieren Sie die Zielgruppe des Load Balancers so, dass sie an den Container-Port weiterleitet.
+
+---
+
+## 7. VPS-Bereitstellung (Docker + Caddy)
+
+Dieser Abschnitt beschreibt eine vollständige Bereitstellung auf einem Hetzner Cloud Server (oder einem beliebigen Linux-VPS mit Docker). Caddy übernimmt automatisches HTTPS — keine manuelle Zertifikatsverwaltung erforderlich.
+
+### Voraussetzungen
+
+| Anforderung | Hinweise |
+|---|---|
+| **Linux-VPS** | (2 vCPU, 4 GB RAM) oder vergleichbar |
+| **Docker + Docker Compose** | `apt install docker.io docker-compose-plugin` auf Ubuntu/Debian |
+| **Domain-Name** | A/AAAA-DNS-Eintrag, der auf die Server-IP zeigt |
+| **Ports 80 + 443 offen** | Erforderlich für Let's-Encrypt-Zertifikatsvalidierung und HTTPS |
+
+> **Ports:** Caddy lauscht auf **443** (HTTPS) und **80** (HTTP→HTTPS-Weiterleitung + ACME-Challenge). Port 8080 der Anwendung wird **niemals** ins Internet exponiert — er ist nur innerhalb des Docker-Netzwerks erreichbar.
+
+### Schnellstart
+
+```bash
+# 1. Repository klonen
+git clone https://github.com/carstenartur/Taxonomy.git
+cd Taxonomy
+
+# 2. Umgebungsdatei erstellen
+cp .env.example .env
+nano .env                      # Domain, Admin-Passwort und optional API-Key eintragen
+
+# 3. Alles starten (baut das App-Image, startet Caddy + App)
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 4. Logs prüfen
+docker compose -f docker-compose.prod.yml logs -f
+```
+
+Öffnen Sie `https://ihre-domain.example.com` — Caddy stellt beim ersten Zugriff automatisch ein Let's-Encrypt-TLS-Zertifikat bereit. Melden Sie sich mit `admin` und dem in `.env` gesetzten Passwort an.
+
+### Architektur
+
+```
+┌─── Internet ───────────────────────────────────────────────┐
+│                                                            │
+│  :443 (HTTPS) ──► Caddy ──► taxonomy:8080 (HTTP, intern)   │
+│  :80  (Weiterleitung)                                      │
+│                                                            │
+│  Port 8080 wird NICHT auf dem Host veröffentlicht.         │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Dateien
+
+| Datei | Zweck |
+|---|---|
+| [`docker-compose.prod.yml`](../../docker-compose.prod.yml) | Produktions-Compose-Datei: Caddy + Taxonomy-App |
+| [`Caddyfile`](../../Caddyfile) | Caddy-Reverse-Proxy-Konfiguration |
+| [`.env.example`](../../.env.example) | Vorlage für Umgebungsvariablen |
+
+### Firewall (Cloud Firewall)
+
+Erstellen Sie in der Cloud Console eine Firewall mit diesen Eingangsregeln:
+
+| Port | Protokoll | Quelle | Zweck |
+|---|---|---|---|
+| **22** | TCP | Ihre IP oder `0.0.0.0/0` | SSH |
+| **80** | TCP | `0.0.0.0/0` | ACME-Challenge + HTTP→HTTPS-Weiterleitung |
+| **443** | TCP | `0.0.0.0/0` | HTTPS |
+
+**Port 8080 darf nicht geöffnet werden.** Er muss intern bleiben.
+
+### Aktualisierung
+
+```bash
+cd Taxonomy
+git pull
+docker compose -f docker-compose.prod.yml up -d --build
+```

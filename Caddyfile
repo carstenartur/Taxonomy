@@ -1,0 +1,21 @@
+# Caddyfile — Automatic HTTPS reverse proxy for the Taxonomy Architecture Analyzer
+#
+# Caddy provisions and renews TLS certificates from Let's Encrypt automatically.
+# No manual certificate management required.
+#
+# The {$DOMAIN} placeholder is replaced by the DOMAIN environment variable
+# from docker-compose.prod.yml / .env file.
+
+{$DOMAIN} {
+	reverse_proxy taxonomy:8080
+
+	# Security headers (supplement the app's own headers)
+	header {
+		X-Content-Type-Options    "nosniff"
+		X-Frame-Options           "DENY"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+	}
+
+	# Gzip compression for text resources
+	encode gzip
+}

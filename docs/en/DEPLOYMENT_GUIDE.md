@@ -12,6 +12,9 @@ This guide covers deploying the Taxonomy Architecture Analyzer using Docker and 
 2. [Render.com Deployment](#2-rendercom-deployment)
 3. [Health Check](#3-health-check)
 4. [Troubleshooting](#4-troubleshooting)
+5. [Database Backends](#5-database-backends)
+6. [HTTPS/TLS Termination](#6-httpstls-termination)
+7. [VPS Deployment](#7--vps-deployment-docker--caddy)
 
 > See also: [Configuration Reference](CONFIGURATION_REFERENCE.md) for all environment variables, [Architecture Description](ARCHITECTURE.md) for system design details.
 
@@ -36,6 +39,10 @@ docker build -t taxonomy-analyzer .
 ```
 
 ### Running with Docker
+
+> ⚠️ **The commands below expose unencrypted HTTP on port 8080 — use only for local testing.**
+> For any internet-facing deployment, use [`docker-compose.prod.yml`](../../docker-compose.prod.yml)
+> which provides automatic HTTPS via Caddy (see [Section 7](#7--vps-deployment-docker--caddy)).
 
 **Minimal (browser-only, no AI):**
 ```bash
@@ -267,3 +274,214 @@ To migrate from HSQLDB to a production database:
 The taxonomy data is always loaded from the bundled Excel workbook at startup, so no data migration is needed for the taxonomy itself. Architecture DSL data stored in the Git repository will need to be re-created.
 
 See [Database Setup](DATABASE_SETUP.md) for detailed instructions for each database, including troubleshooting and integration tests.
+
+---
+
+## 6. HTTPS/TLS Termination
+
+The application listens on **HTTP port 8080** by default. For any deployment beyond `localhost`, always terminate TLS in front of the application. The HSTS header (`Strict-Transport-Security`) is already sent by the application on every response.
+
+### Option A — Reverse Proxy (Recommended)
+
+A reverse proxy handles certificate management, TLS termination, and optionally rate limiting. The application continues to listen on plain HTTP behind the proxy.
+
+#### nginx
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name taxonomy.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/taxonomy.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/taxonomy.example.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+
+# Redirect HTTP → HTTPS
+server {
+    listen 80;
+    server_name taxonomy.example.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+#### Caddy (automatic Let's Encrypt)
+
+```
+taxonomy.example.com {
+    reverse_proxy localhost:8080
+}
+```
+
+Caddy provisions and renews TLS certificates automatically. No further configuration is needed.
+
+#### Docker Compose (nginx + app)
+
+```yaml
+services:
+  taxonomy:
+    image: ghcr.io/carstenartur/taxonomy:latest
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - TAXONOMY_ADMIN_PASSWORD=${TAXONOMY_ADMIN_PASSWORD}
+    expose:
+      - "8080"          # internal only — not published to host
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - taxonomy
+```
+
+In the `nginx.conf` above, replace `proxy_pass http://localhost:8080` with `proxy_pass http://taxonomy:8080` (the Docker service name).
+
+### Option B — Spring Boot Native SSL
+
+For single-container setups (no reverse proxy available), Spring Boot can terminate TLS directly using SSL bundles.
+
+**Using environment variables:**
+
+```bash
+docker run -p 8443:8443 \
+  -e SERVER_PORT=8443 \
+  -e SERVER_SSL_BUNDLE=taxonomy-tls \
+  -e SPRING_SSL_BUNDLE_PEM_TAXONOMY_TLS_KEYSTORE_CERTIFICATE=/certs/cert.pem \
+  -e SPRING_SSL_BUNDLE_PEM_TAXONOMY_TLS_KEYSTORE_PRIVATE_KEY=/certs/key.pem \
+  -v /etc/letsencrypt/live/taxonomy.example.com/fullchain.pem:/certs/cert.pem:ro \
+  -v /etc/letsencrypt/live/taxonomy.example.com/privkey.pem:/certs/key.pem:ro \
+  ghcr.io/carstenartur/taxonomy:latest
+```
+
+**Using `application-production.properties`** (see commented-out properties in that file):
+
+```properties
+server.port=8443
+server.ssl.bundle=taxonomy-tls
+spring.ssl.bundle.pem.taxonomy-tls.keystore.certificate=/certs/cert.pem
+spring.ssl.bundle.pem.taxonomy-tls.keystore.private-key=/certs/key.pem
+```
+
+> **Note:** When using native SSL, update the Docker health check to use HTTPS:
+> `--health-cmd="wget --no-check-certificate -q -O /dev/null https://localhost:8443/ || exit 1"`
+
+### Render.com
+
+Render.com provides automatic HTTPS for all web services — no additional configuration is needed. The TLS certificate is provisioned and renewed automatically by the platform.
+
+### Cloud Load Balancers (AWS ALB, GCP, Azure)
+
+Cloud load balancers terminate TLS before the traffic reaches the container. Keep the application on port 8080 (HTTP) and configure the load balancer's target group to forward to the container port.
+
+---
+
+## 7. VPS Deployment (Docker + Caddy)
+
+This section provides a complete, copy-paste deployment for a Cloud server (or any Linux VPS with Docker). Caddy handles automatic HTTPS — no manual certificate management required.
+
+### Prerequisites
+
+| Requirement | Notes |
+|---|---|
+| **Linux VPS** | (2 vCPU, 4 GB RAM) or similar |
+| **Docker + Docker Compose** | `apt install docker.io docker-compose-plugin` on Ubuntu/Debian |
+| **Domain name** | A/AAAA DNS record pointing to your server's IP |
+| **Ports 80 + 443 open** | Required for Let's Encrypt certificate validation and HTTPS |
+
+> **Ports:** Caddy listens on **443** (HTTPS) and **80** (HTTP → HTTPS redirect + ACME challenge). The application's port 8080 is **never exposed** to the internet — it is only reachable inside the Docker network.
+
+### Quick Start
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/carstenartur/Taxonomy.git
+cd Taxonomy
+
+# 2. Create the environment file
+cp .env.example .env
+nano .env                      # set your domain, admin password, and optionally an API key
+
+# 3. Start everything (builds the app image, starts Caddy + app)
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 4. Check logs
+docker compose -f docker-compose.prod.yml logs -f
+```
+
+Open `https://your-domain.example.com` — Caddy provisions a Let's Encrypt TLS certificate automatically on first request. Log in with `admin` and the password you set in `.env`.
+
+### What Gets Deployed
+
+```
+┌─── Internet ───────────────────────────────────────────────┐
+│                                                            │
+│  :443 (HTTPS) ──► Caddy ──► taxonomy:8080 (HTTP, internal) │
+│  :80  (redirect)                                           │
+│                                                            │
+│  Port 8080 is NOT published to the host.                   │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Files
+
+| File | Purpose |
+|---|---|
+| [`docker-compose.prod.yml`](../../docker-compose.prod.yml) | Production Compose file: Caddy + taxonomy app |
+| [`Caddyfile`](../../Caddyfile) | Caddy reverse proxy configuration |
+| [`.env.example`](../../.env.example) | Template for environment variables |
+
+### Firewall (Cloud Firewall)
+
+In the Cloud Console, create a firewall with these inbound rules:
+
+| Port | Protocol | Source | Purpose |
+|---|---|---|---|
+| **22** | TCP | Your IP or `0.0.0.0/0` | SSH |
+| **80** | TCP | `0.0.0.0/0` | ACME challenge + HTTP→HTTPS redirect |
+| **443** | TCP | `0.0.0.0/0` | HTTPS |
+
+**Do not open port 8080.** It must remain internal.
+
+### Persistent Data
+
+```bash
+docker compose -f docker-compose.prod.yml down     # stop (data preserved)
+docker compose -f docker-compose.prod.yml up -d     # restart (data intact)
+```
+
+The Compose file defines named volumes (`taxonomy-data`, `caddy-data`, `caddy-config`) that persist across container restarts and image rebuilds. To reset all data, run `docker compose -f docker-compose.prod.yml down -v`.
+
+### Updating
+
+```bash
+cd Taxonomy
+git pull
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+### Using a Pre-built Image
+
+To skip the local build and use the published image from GitHub Container Registry:
+
+```bash
+# In docker-compose.prod.yml, replace:
+#   build: .
+# with:
+#   image: ghcr.io/carstenartur/taxonomy:latest
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
