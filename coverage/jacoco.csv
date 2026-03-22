@@ -185,7 +185,7 @@ Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService.new Append
 Taxonomy Application,com.taxonomy.shared.config,CsvKeywordAnalyzer,0,24,0,0,0,5,0,3,0,3
 Taxonomy Application,com.taxonomy.shared.config,RateLimitFilter.WindowCounter,25,30,3,3,6,6,2,3,0,2
 Taxonomy Application,com.taxonomy.shared.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0,4,0,2,0
-Taxonomy Application,com.taxonomy.shared.config,OpenApiConfig,0,256,0,0,0,36,0,2,0,2
+Taxonomy Application,com.taxonomy.shared.config,OpenApiConfig,0,257,0,0,0,36,0,2,0,2
 Taxonomy Application,com.taxonomy.shared.config,HibernateSearchAnalysisConfigurer,0,44,0,0,0,7,0,2,0,2
 Taxonomy Application,com.taxonomy.shared.config,ExportConfig,0,31,0,0,0,8,0,8,0,8
 Taxonomy Application,com.taxonomy.shared.config,RateLimitFilter,17,102,6,14,3,27,5,11,0,6
@@ -195,6 +195,7 @@ Taxonomy Application,com.taxonomy.shared.config,SpringContextHolder,13,4,1,1,6,1
 Taxonomy Application,com.taxonomy.shared.config,DslAnalyzer,0,18,0,0,0,4,0,2,0,2
 Taxonomy Application,com.taxonomy.shared.config,I18nConfig,0,23,0,0,0,6,0,2,0,2
 Taxonomy Application,com.taxonomy.shared.config,GlobalExceptionHandler,35,153,2,2,4,26,3,5,1,5
+Taxonomy Application,com.taxonomy.shared.config,VersionModelAdvice,0,6,0,0,0,2,0,2,0,2
 Taxonomy Application,com.taxonomy.analysis.service,AnalysisRelationGenerator.ScoredNode,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,SavedAnalysisService,2,189,1,23,0,44,1,18,0,7
 Taxonomy Application,com.taxonomy.analysis.service,LlmRateLimitException,9,0,0,0,4,0,2,0,2,0
