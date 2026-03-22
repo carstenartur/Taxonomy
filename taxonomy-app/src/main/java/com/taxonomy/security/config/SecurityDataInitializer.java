@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
@@ -20,8 +21,12 @@ import java.util.Set;
  * If the roles or admin user already exist (e.g. persistent database) this is a no-op.
  * The default admin password can be overridden via the {@code TAXONOMY_ADMIN_PASSWORD}
  * environment variable (or the equivalent Spring property {@code taxonomy.admin-password}).
+ * <p>
+ * Only active in form-login mode (without Keycloak). In the Keycloak profile,
+ * users and roles are managed by the identity provider.
  */
 @Component
+@Profile("!keycloak")
 public class SecurityDataInitializer implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityDataInitializer.class);

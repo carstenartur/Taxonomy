@@ -7,14 +7,19 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.util.stream.Collectors;
 
 /**
  * Loads user details from the database for Spring Security authentication.
+ * <p>
+ * Only active in form-login mode (without Keycloak). In the Keycloak profile,
+ * authentication is handled by the OIDC provider — no local UserDetailsService is needed.
  */
 @Service
+@Profile("!keycloak")
 public class DatabaseUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;

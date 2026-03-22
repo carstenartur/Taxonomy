@@ -1,0 +1,69 @@
+{
+  "realm": "taxonomy",
+  "enabled": true,
+  "roles": {
+    "realm": [
+      { "name": "ROLE_USER", "description": "Read-only user" },
+      { "name": "ROLE_ARCHITECT", "description": "Can create/edit architecture" },
+      { "name": "ROLE_ADMIN", "description": "Full admin access" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "taxonomy-app",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "taxonomy-dev-secret",
+      "redirectUris": ["http://localhost:8080/*"],
+      "webOrigins": ["http://localhost:8080"],
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "defaultClientScopes": ["openid", "profile", "email", "roles"]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@taxonomy.local",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "admin", "temporary": false }],
+      "realmRoles": ["ROLE_USER", "ROLE_ARCHITECT", "ROLE_ADMIN"]
+    },
+    {
+      "username": "architect",
+      "email": "architect@taxonomy.local",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "architect", "temporary": false }],
+      "realmRoles": ["ROLE_USER", "ROLE_ARCHITECT"]
+    },
+    {
+      "username": "user",
+      "email": "user@taxonomy.local",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "user", "temporary": false }],
+      "realmRoles": ["ROLE_USER"]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "roles",
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

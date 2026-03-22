@@ -4,6 +4,7 @@ import com.taxonomy.security.model.AppUser;
 import com.taxonomy.security.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Controller;
@@ -19,8 +20,13 @@ import java.util.Optional;
  * <p>
  * When {@code taxonomy.security.require-password-change=true} and the user still
  * has the default password, Spring Security redirects all GUI requests here.
+ * <p>
+ * Only active when local user management is enabled (without Keycloak).
+ * In the Keycloak profile, password changes are handled by the identity provider.
  */
 @Controller
+@ConditionalOnProperty(name = "taxonomy.security.change-password-enabled",
+        havingValue = "true", matchIfMissing = true)
 public class ChangePasswordController {
 
     private static final Logger log = LoggerFactory.getLogger(ChangePasswordController.class);

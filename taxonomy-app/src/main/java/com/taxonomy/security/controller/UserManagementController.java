@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,11 +24,16 @@ import java.util.stream.Collectors;
  * <p>
  * All endpoints require {@code ROLE_ADMIN}. The last remaining admin user
  * cannot be disabled or have the ADMIN role removed — this prevents lockout.
+ * <p>
+ * Only active when local user management is enabled (without Keycloak).
+ * In the Keycloak profile, user management is done in the Keycloak Admin Console.
  */
 @RestController
 @RequestMapping("/api/admin/users")
 @PreAuthorize("hasRole('ADMIN')")
 @Tag(name = "User Management", description = "Admin-only user CRUD operations")
+@ConditionalOnProperty(name = "taxonomy.security.local-users-enabled",
+        havingValue = "true", matchIfMissing = true)
 public class UserManagementController {
 
     private static final Logger log = LoggerFactory.getLogger(UserManagementController.class);
