@@ -51,7 +51,7 @@ class FactoryModeRepositoryRoutingTest {
 
     @BeforeEach
     void setUp() {
-        factory = new DslGitRepositoryFactory(null); // in-memory mode
+        factory = new DslGitRepositoryFactory(null); // temp dir mode
         systemRepo = factory.getSystemRepository();
         workspaceRepo = factory.getWorkspaceRepository("alice-ws");
         wsCtx = new WorkspaceContext("alice", "alice-ws", "main");

@@ -36,7 +36,7 @@ class ContextNavigationControllerTest {
               namespace: "test";
             }
 
-            element CP-TEST type Capability {
+            element CP-9999 type Capability {
               title: "Test Element";
             }
             """;
