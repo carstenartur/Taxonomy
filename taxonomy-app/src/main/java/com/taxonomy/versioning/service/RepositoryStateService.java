@@ -16,6 +16,8 @@ import java.util.List;
 import com.taxonomy.dto.WorkspaceInfo;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.UserWorkspaceState;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceManager;
 
 /**
@@ -41,16 +43,28 @@ public class RepositoryStateService {
 
     private static final Logger log = LoggerFactory.getLogger(RepositoryStateService.class);
 
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
     private final WorkspaceManager workspaceManager;
     private final SystemRepositoryService systemRepositoryService;
+    private final WorkspaceContextResolver contextResolver;
 
     public RepositoryStateService(DslGitRepositoryFactory repositoryFactory,
                                   WorkspaceManager workspaceManager,
-                                  SystemRepositoryService systemRepositoryService) {
-        this.gitRepository = repositoryFactory.getSystemRepository();
+                                  SystemRepositoryService systemRepositoryService,
+                                  WorkspaceContextResolver contextResolver) {
+        this.repositoryFactory = repositoryFactory;
         this.workspaceManager = workspaceManager;
         this.systemRepositoryService = systemRepositoryService;
+        this.contextResolver = contextResolver;
+    }
+
+    private DslGitRepository resolveRepository() {
+        try {
+            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+            return repositoryFactory.resolveRepository(ctx);
+        } catch (Exception e) {
+            return repositoryFactory.getSystemRepository();
+        }
     }
 
     // ── Workspace-aware methods ─────────────────────────────────────
@@ -65,9 +79,9 @@ public class RepositoryStateService {
     public RepositoryState getState(String username, String branch) {
         UserWorkspaceState ws = resolveState(username);
         try {
-            DslCommit headInfo = gitRepository.getHeadCommitInfo(branch);
-            List<String> branches = gitRepository.getBranchNames();
-            int commitCount = gitRepository.getCommitCount(branch);
+            DslCommit headInfo = resolveRepository().getHeadCommitInfo(branch);
+            List<String> branches = resolveRepository().getBranchNames();
+            int commitCount = resolveRepository().getCommitCount(branch);
             String headCommit = headInfo != null ? headInfo.commitId() : null;
 
             boolean projStale = isProjectionStaleForCommit(ws, headCommit);
@@ -89,14 +103,14 @@ public class RepositoryStateService {
                     ws.getLastIndexCommit(),
                     idxStale,
                     commitCount,
-                    gitRepository.isDatabaseBacked()
+                    resolveRepository().isDatabaseBacked()
             );
         } catch (IOException e) {
             log.error("Failed to build repository state for user '{}', branch '{}'", username, branch, e);
             return new RepositoryState(
                     branch, null, null, null, null, List.of(),
                     false, null, null, null, null, false, null, false, 0,
-                    gitRepository.isDatabaseBacked()
+                    resolveRepository().isDatabaseBacked()
             );
         }
     }
@@ -111,7 +125,7 @@ public class RepositoryStateService {
     public ViewContext getViewContext(String username, String branch) {
         UserWorkspaceState ws = resolveState(username);
         try {
-            DslCommit headInfo = gitRepository.getHeadCommitInfo(branch);
+            DslCommit headInfo = resolveRepository().getHeadCommitInfo(branch);
             String headCommit = headInfo != null ? headInfo.commitId() : null;
 
             return new ViewContext(
@@ -165,7 +179,7 @@ public class RepositoryStateService {
     public boolean isProjectionStale(String username, String branch) {
         UserWorkspaceState ws = resolveState(username);
         try {
-            String headCommit = gitRepository.getHeadCommit(branch);
+            String headCommit = resolveRepository().getHeadCommit(branch);
             return isProjectionStaleForCommit(ws, headCommit);
         } catch (IOException e) {
             log.error("Failed to check projection staleness for user '{}', branch '{}'",
@@ -184,7 +198,7 @@ public class RepositoryStateService {
     public ProjectionState getProjectionState(String username, String branch) {
         UserWorkspaceState ws = resolveState(username);
         try {
-            String headCommit = gitRepository.getHeadCommit(branch);
+            String headCommit = resolveRepository().getHeadCommit(branch);
             return new ProjectionState(
                     ws.getLastProjectionCommit(),
                     ws.getLastProjectionBranch(),

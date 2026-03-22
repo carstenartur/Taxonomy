@@ -6,6 +6,8 @@ import com.taxonomy.dto.ProjectionState;
 import com.taxonomy.dto.RepositoryState;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -13,6 +15,7 @@ import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import com.taxonomy.workspace.service.WorkspaceManager;
 
 /**
@@ -46,8 +49,10 @@ class RepositoryStateServiceTest {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         workspaceManager = new WorkspaceManager(wsRepo, 50,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
+        WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
+        when(contextResolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
         stateService = new RepositoryStateService(factory, workspaceManager,
-                mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
+                mock(com.taxonomy.workspace.service.SystemRepositoryService.class), contextResolver);
     }
 
     // ── getState ────────────────────────────────────────────────────

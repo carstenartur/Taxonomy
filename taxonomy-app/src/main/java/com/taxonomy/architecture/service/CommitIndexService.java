@@ -41,7 +41,7 @@ public class CommitIndexService {
 
     private static final Logger log = LoggerFactory.getLogger(CommitIndexService.class);
 
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
     private final ArchitectureCommitIndexRepository indexRepository;
     private final WorkspaceContextResolver contextResolver;
     private final DslTokenizer tokenizer = new DslTokenizer();
@@ -52,9 +52,18 @@ public class CommitIndexService {
     public CommitIndexService(DslGitRepositoryFactory repositoryFactory,
                               ArchitectureCommitIndexRepository indexRepository,
                               WorkspaceContextResolver contextResolver) {
-        this.gitRepository = repositoryFactory.getSystemRepository();
+        this.repositoryFactory = repositoryFactory;
         this.indexRepository = indexRepository;
         this.contextResolver = contextResolver;
+    }
+
+    private DslGitRepository resolveRepository() {
+        try {
+            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+            return repositoryFactory.resolveRepository(ctx);
+        } catch (Exception e) {
+            return repositoryFactory.getSystemRepository();
+        }
     }
 
     /**
@@ -66,7 +75,8 @@ public class CommitIndexService {
     @Transactional
     public int indexBranch(String branch) {
         try {
-            List<DslCommit> commits = gitRepository.getDslHistory(branch);
+            DslGitRepository repo = resolveRepository();
+            List<DslCommit> commits = repo.getDslHistory(branch);
             int indexed = 0;
 
             for (DslCommit commit : commits) {
@@ -74,7 +84,7 @@ public class CommitIndexService {
                     continue; // already indexed
                 }
 
-                String dslText = gitRepository.getDslAtCommit(commit.commitId());
+                String dslText = repo.getDslAtCommit(commit.commitId());
                 if (dslText == null) {
                     continue;
                 }

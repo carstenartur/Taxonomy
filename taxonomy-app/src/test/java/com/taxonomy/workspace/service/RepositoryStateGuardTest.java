@@ -10,6 +10,7 @@ import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import com.taxonomy.versioning.service.RepositoryStateService;
 
 /**
@@ -45,8 +46,10 @@ class RepositoryStateGuardTest {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         WorkspaceManager workspaceManager = new WorkspaceManager(wsRepo, 50,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
+        WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
+        when(contextResolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
         stateService = new RepositoryStateService(factory, workspaceManager,
-                mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
+                mock(com.taxonomy.workspace.service.SystemRepositoryService.class), contextResolver);
         guard = new RepositoryStateGuard(stateService, null);
     }
 

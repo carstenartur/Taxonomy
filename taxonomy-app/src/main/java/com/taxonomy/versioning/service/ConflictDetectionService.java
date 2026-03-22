@@ -2,6 +2,8 @@ package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.merge.MergeStrategy;
@@ -26,10 +28,22 @@ public class ConflictDetectionService {
 
     private static final Logger log = LoggerFactory.getLogger(ConflictDetectionService.class);
 
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
+    private final WorkspaceContextResolver contextResolver;
 
-    public ConflictDetectionService(DslGitRepositoryFactory repositoryFactory) {
-        this.gitRepository = repositoryFactory.getSystemRepository();
+    public ConflictDetectionService(DslGitRepositoryFactory repositoryFactory,
+                                    WorkspaceContextResolver contextResolver) {
+        this.repositoryFactory = repositoryFactory;
+        this.contextResolver = contextResolver;
+    }
+
+    private DslGitRepository resolveRepository() {
+        try {
+            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+            return repositoryFactory.resolveRepository(ctx);
+        } catch (Exception e) {
+            return repositoryFactory.getSystemRepository();
+        }
     }
 
     /**
@@ -81,7 +95,7 @@ public class ConflictDetectionService {
      */
     public MergePreview previewMerge(String fromBranch, String intoBranch) {
         try {
-            var repo = gitRepository.getGitRepository();
+            var repo = resolveRepository().getGitRepository();
             String fromRefName = Constants.R_HEADS + fromBranch;
             String intoRefName = Constants.R_HEADS + intoBranch;
 
@@ -179,8 +193,8 @@ public class ConflictDetectionService {
                 return null;
             }
 
-            String oursContent = gitRepository.getDslAtHead(intoBranch);
-            String theirsContent = gitRepository.getDslAtHead(fromBranch);
+            String oursContent = resolveRepository().getDslAtHead(intoBranch);
+            String theirsContent = resolveRepository().getDslAtHead(fromBranch);
 
             return new ConflictDetails(
                     "merge",
@@ -216,8 +230,8 @@ public class ConflictDetectionService {
                 return null;
             }
 
-            String oursContent = gitRepository.getDslAtHead(targetBranch);
-            String theirsContent = gitRepository.getDslAtCommit(commitId);
+            String oursContent = resolveRepository().getDslAtHead(targetBranch);
+            String theirsContent = resolveRepository().getDslAtCommit(commitId);
 
             return new ConflictDetails(
                     "cherry-pick",
@@ -242,7 +256,7 @@ public class ConflictDetectionService {
      */
     public CherryPickPreview previewCherryPick(String commitId, String targetBranch) {
         try {
-            var repo = gitRepository.getGitRepository();
+            var repo = resolveRepository().getGitRepository();
             String targetRefName = Constants.R_HEADS + targetBranch;
             Ref targetRef = repo.getRefDatabase().exactRef(targetRefName);
 

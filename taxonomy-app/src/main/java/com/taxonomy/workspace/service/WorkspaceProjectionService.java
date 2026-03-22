@@ -35,17 +35,29 @@ public class WorkspaceProjectionService {
 
     private final WorkspaceProjectionRepository projectionRepository;
     private final WorkspaceManager workspaceManager;
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
     private final UserWorkspaceRepository workspaceRepository;
+    private final WorkspaceContextResolver contextResolver;
 
     public WorkspaceProjectionService(WorkspaceProjectionRepository projectionRepository,
                                       WorkspaceManager workspaceManager,
                                       DslGitRepositoryFactory repositoryFactory,
-                                      UserWorkspaceRepository workspaceRepository) {
+                                      UserWorkspaceRepository workspaceRepository,
+                                      WorkspaceContextResolver contextResolver) {
         this.projectionRepository = projectionRepository;
         this.workspaceManager = workspaceManager;
-        this.gitRepository = repositoryFactory.getSystemRepository();
+        this.repositoryFactory = repositoryFactory;
         this.workspaceRepository = workspaceRepository;
+        this.contextResolver = contextResolver;
+    }
+
+    private DslGitRepository resolveRepository() {
+        try {
+            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+            return repositoryFactory.resolveRepository(ctx);
+        } catch (Exception e) {
+            return repositoryFactory.getSystemRepository();
+        }
     }
 
     /**
@@ -176,7 +188,7 @@ public class WorkspaceProjectionService {
 
         // Compare against actual branch HEAD
         try {
-            String headCommit = gitRepository.getHeadCommit(branch);
+            String headCommit = resolveRepository().getHeadCommit(branch);
             if (headCommit == null) {
                 return false;
             }

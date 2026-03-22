@@ -16,6 +16,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import com.taxonomy.workspace.service.UserWorkspaceState;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceManager;
 
 /**
@@ -35,19 +37,31 @@ public class ContextNavigationService {
 
     private static final Logger log = LoggerFactory.getLogger(ContextNavigationService.class);
 
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
     private final RepositoryStateService stateService;
     private final WorkspaceManager workspaceManager;
+    private final WorkspaceContextResolver contextResolver;
     private final int maxHistory;
 
     public ContextNavigationService(DslGitRepositoryFactory repositoryFactory,
                                     RepositoryStateService stateService,
                                     WorkspaceManager workspaceManager,
+                                    WorkspaceContextResolver contextResolver,
                                     @Value("${taxonomy.context.max-history:50}") int maxHistory) {
-        this.gitRepository = repositoryFactory.getSystemRepository();
+        this.repositoryFactory = repositoryFactory;
         this.stateService = stateService;
         this.workspaceManager = workspaceManager;
+        this.contextResolver = contextResolver;
         this.maxHistory = maxHistory;
+    }
+
+    private DslGitRepository resolveRepository() {
+        try {
+            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
+            return repositoryFactory.resolveRepository(ctx);
+        } catch (Exception e) {
+            return repositoryFactory.getSystemRepository();
+        }
     }
 
     // ── Workspace-aware methods ─────────────────────────────────────
@@ -234,7 +248,7 @@ public class ContextNavigationService {
         ContextRef current = state.getCurrentContext();
         String sourceBranch = current.branch();
 
-        String newCommitId = gitRepository.createBranch(variantName, sourceBranch);
+        String newCommitId = resolveRepository().createBranch(variantName, sourceBranch);
 
         ContextRef variantCtx = new ContextRef(
                 UUID.randomUUID().toString(),
@@ -279,7 +293,7 @@ public class ContextNavigationService {
             return commitId;
         }
         try {
-            return gitRepository.getHeadCommit(branch);
+            return resolveRepository().getHeadCommit(branch);
         } catch (IOException e) {
             log.warn("Could not resolve HEAD for branch '{}': {}", branch, e.getMessage());
             return null;
