@@ -385,7 +385,10 @@
                 .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; })
                 .end()
                 .then(function () { container.setAttribute('data-transitions-complete', 'true'); })
-                .catch(function () { container.setAttribute('data-transitions-complete', 'true'); });
+                .catch(function () {
+                    // Interrupted transitions (e.g. rapid clicks) — still mark complete
+                    container.setAttribute('data-transitions-complete', 'true');
+                });
 
             nodeUpdate.select('circle')
                 .attr('fill', function (d) {
@@ -706,7 +709,10 @@
                 .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; })
                 .end()
                 .then(function () { container.setAttribute('data-transitions-complete', 'true'); })
-                .catch(function () { container.setAttribute('data-transitions-complete', 'true'); });
+                .catch(function () {
+                    // Interrupted transitions (e.g. rapid clicks) — still mark complete
+                    container.setAttribute('data-transitions-complete', 'true');
+                });
 
             nodeUpdate.select('circle')
                 .attr('fill', dmNodeFill)
