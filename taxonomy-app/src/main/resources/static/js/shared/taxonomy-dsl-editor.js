@@ -298,11 +298,11 @@
     }
 
     function createBranch() {
-        var name = prompt('New branch name:');
+        var name = prompt(t('dsl.branch.prompt'));
         if (!name || !name.trim()) return;
         name = name.trim();
         var fromBranch = branchSelect ? branchSelect.value : 'draft';
-        showStatus('Creating branch "' + name + '" from "' + fromBranch + '"…', 'info');
+        showStatus(t('dsl.branch.creating', name, fromBranch), 'info');
         fetch('/api/dsl/branches?name=' + encodeURIComponent(name) + '&fromBranch=' + encodeURIComponent(fromBranch), {
             method: 'POST'
         })
@@ -316,7 +316,7 @@
                 loadBranches();
                 if (branchSelect) branchSelect.value = name;
             })
-            .catch(function (e) { showStatus('Branch error: ' + e.message, 'error'); });
+            .catch(function (e) { showStatus(t('dsl.branch.error', e.message), 'error'); });
     }
 
     // ── History ─────────────────────────────────────────────────────
@@ -388,7 +388,7 @@
         showStatus(t('dsl.commit.loading', commitId.substring(0, 8)), 'info');
         fetch('/api/dsl/git/commit/' + encodeURIComponent(commitId))
             .then(function (r) {
-                if (!r.ok) throw new Error('Commit not found');
+                if (!r.ok) throw new Error(t('dsl.commit.not.found'));
                 return r.json();
             })
             .then(function (data) {
@@ -399,13 +399,13 @@
                     showStatus(t('dsl.commit.no.content', commitId.substring(0, 8)), 'error');
                 }
             })
-            .catch(function (e) { showStatus('Load error: ' + e.message, 'error'); });
+            .catch(function (e) { showStatus(t('dsl.load.error', e.message), 'error'); });
     }
 
     // ── Diff ────────────────────────────────────────────────────────
     function loadDiff(beforeId, afterId) {
         if (!diffOutput) return;
-        showStatus('Computing diff…', 'info');
+        showStatus(t('dsl.diff.computing'), 'info');
         fetch('/api/dsl/diff/' + encodeURIComponent(beforeId) + '/' + encodeURIComponent(afterId))
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -414,13 +414,13 @@
             })
             .catch(function (e) {
                 diffOutput.innerHTML = '<span class="text-danger">' + t('dsl.diff.failed', e.message) + '</span>';
-                showStatus('Diff error: ' + e.message, 'error');
+                showStatus(t('dsl.diff.error', e.message), 'error');
             });
     }
 
     function loadTextDiff(beforeId, afterId) {
         if (!diffOutput) return;
-        showStatus('Computing text diff…', 'info');
+        showStatus(t('dsl.diff.text.computing'), 'info');
         fetch('/api/dsl/diff/text/' + encodeURIComponent(beforeId) + '/' + encodeURIComponent(afterId))
             .then(function (r) {
                 if (!r.ok) throw new Error('Text diff failed');
@@ -440,7 +440,7 @@
             })
             .catch(function (e) {
                 diffOutput.innerHTML = '<span class="text-danger">' + t('dsl.textdiff.failed', e.message) + '</span>';
-                showStatus('Text diff error: ' + e.message, 'error');
+                showStatus(t('dsl.diff.text.error', e.message), 'error');
             });
     }
 
@@ -463,11 +463,11 @@
         }
 
         if (data.addedElements > 0) html += '<span class="text-success"><span aria-hidden="true">✅</span> ' + t('dsl.incr.elements.added', data.addedElements) + '</span><br>';
-        if (data.removedElements > 0) html += '<span class="text-danger"><span aria-hidden="true">❌</span> − ' + data.removedElements + ' element(s) removed</span><br>';
-        if (data.changedElements > 0) html += '<span class="text-warning"><span aria-hidden="true">⚠️</span> ~ ' + data.changedElements + ' element(s) changed</span><br>';
+        if (data.removedElements > 0) html += '<span class="text-danger"><span aria-hidden="true">❌</span> − ' + data.removedElements + ' ' + t('dsl.diff.elements.removed') + '</span><br>';
+        if (data.changedElements > 0) html += '<span class="text-warning"><span aria-hidden="true">⚠️</span> ~ ' + data.changedElements + ' ' + t('dsl.diff.elements.changed') + '</span><br>';
         if (data.addedRelations > 0) html += '<span class="text-success"><span aria-hidden="true">✅</span> ' + t('dsl.incr.relations.added', data.addedRelations) + '</span><br>';
-        if (data.removedRelations > 0) html += '<span class="text-danger"><span aria-hidden="true">❌</span> − ' + data.removedRelations + ' relation(s) removed</span><br>';
-        if (data.changedRelations > 0) html += '<span class="text-warning"><span aria-hidden="true">⚠️</span> ~ ' + data.changedRelations + ' relation(s) changed</span><br>';
+        if (data.removedRelations > 0) html += '<span class="text-danger"><span aria-hidden="true">❌</span> − ' + data.removedRelations + ' ' + t('dsl.diff.relations.removed') + '</span><br>';
+        if (data.changedRelations > 0) html += '<span class="text-warning"><span aria-hidden="true">⚠️</span> ~ ' + data.changedRelations + ' ' + t('dsl.diff.relations.changed') + '</span><br>';
 
         // Show details if present
         if (data.details) {
@@ -515,7 +515,7 @@
 
     // ── Cherry-pick ───────────────────────────────────────────────
     function cherryPickCommit(commitId) {
-        var targetBranch = prompt('Cherry-pick commit ' + commitId.substring(0, 8) + ' onto which branch?', 'review');
+        var targetBranch = prompt(t('dsl.cherrypick.prompt', commitId.substring(0, 8)), 'review');
         if (!targetBranch || !targetBranch.trim()) return;
         targetBranch = targetBranch.trim();
 
@@ -530,7 +530,7 @@
     }
 
     function executeCherryPick(commitId, targetBranch) {
-        showStatus('Cherry-picking ' + commitId.substring(0, 8) + ' onto "' + targetBranch + '"…', 'info');
+        showStatus(t('dsl.cherrypick.progress', commitId.substring(0, 8), targetBranch), 'info');
         fetch('/api/dsl/cherry-pick?commitId=' + encodeURIComponent(commitId) + '&targetBranch=' + encodeURIComponent(targetBranch), {
             method: 'POST'
         })
@@ -545,18 +545,18 @@
                 }
                 showStatus(t('dsl.cherrypick.success', data.targetBranch, data.commitId.substring(0, 8)), 'success');
                 if (window.TaxonomyOperationResult) {
-                    window.TaxonomyOperationResult.showSuccess('Cherry-Pick Successful',
-                        'Applied onto "' + data.targetBranch + '" → ' + data.commitId.substring(0, 8));
+                    window.TaxonomyOperationResult.showSuccess(t('dsl.cherrypick.success.title'),
+                        t('dsl.cherrypick.success.message', data.targetBranch, data.commitId.substring(0, 8)));
                 }
                 loadBranches();
             })
-            .catch(function (e) { showStatus('Cherry-pick error: ' + e.message, 'error'); });
+            .catch(function (e) { showStatus(t('dsl.cherrypick.error', e.message), 'error'); });
     }
 
     // ── Merge ───────────────────────────────────────────────────────
     function mergeBranch() {
         var fromBranch = branchSelect ? branchSelect.value : 'draft';
-        var intoBranch = prompt('Merge branch "' + fromBranch + '" into which branch?', 'accepted');
+        var intoBranch = prompt(t('dsl.merge.prompt', fromBranch), 'accepted');
         if (!intoBranch || !intoBranch.trim()) return;
         intoBranch = intoBranch.trim();
 
@@ -571,7 +571,7 @@
     }
 
     function executeMerge(fromBranch, intoBranch) {
-        showStatus('Merging "' + fromBranch + '" into "' + intoBranch + '"…', 'info');
+        showStatus(t('dsl.merge.progress', fromBranch, intoBranch), 'info');
         fetch('/api/dsl/merge?fromBranch=' + encodeURIComponent(fromBranch) + '&intoBranch=' + encodeURIComponent(intoBranch), {
             method: 'POST'
         })
@@ -586,12 +586,12 @@
                 }
                 showStatus(t('dsl.merge.success', data.fromBranch, data.intoBranch, data.commitId.substring(0, 8)), 'success');
                 if (window.TaxonomyOperationResult) {
-                    window.TaxonomyOperationResult.showSuccess('Merge Successful',
-                        'Merged "' + data.fromBranch + '" into "' + data.intoBranch + '" → ' + data.commitId.substring(0, 8));
+                    window.TaxonomyOperationResult.showSuccess(t('dsl.merge.success.title'),
+                        t('dsl.merge.success.message', data.fromBranch, data.intoBranch, data.commitId.substring(0, 8)));
                 }
                 loadBranches();
             })
-            .catch(function (e) { showStatus('Merge error: ' + e.message, 'error'); });
+            .catch(function (e) { showStatus(t('dsl.merge.error', e.message), 'error'); });
     }
 
     // ── Util ────────────────────────────────────────────────────────

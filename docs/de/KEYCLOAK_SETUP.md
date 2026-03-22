@@ -1,5 +1,12 @@
 # Keycloak- & SSO-Einrichtung
 
+> **⚠️ Implementierungsstatus: Integrationsanleitung (noch nicht implementiert)**
+>
+> Dieses Dokument ist eine **Planungs- und Integrationsanleitung** für eine zukünftige Keycloak/SSO-Migration (Phase 2).
+> Die aktuelle Anwendung verwendet **Form-Login** (für die GUI) und **HTTP Basic** (für die REST-API)
+> mit einer integrierten Benutzerdatenbank. Keine OAuth2/OIDC-Client-Abhängigkeiten sind im aktuellen Code enthalten.
+> Verwenden Sie diese Anleitung, wenn Sie bereit sind, Keycloak in Ihre Bereitstellung zu integrieren.
+
 Dieses Dokument beschreibt, wie Sie den Taxonomy Architecture Analyzer mit Keycloak für unternehmenstaugliches Identitätsmanagement integrieren, einschließlich SSO-Federation mit behördlichen Identitätsanbietern über SAML 2.0 und OIDC.
 
 ---

@@ -14,7 +14,7 @@
 </head>
 <body>
 <!-- Skip-Link (BITV 2.0 / WCAG 2.4.1) -->
-<a href="#mainContent" class="skip-link">Skip to main content</a>
+<a href="#mainContent" class="skip-link" th:text="#{skip.link}">Skip to main content</a>
 
 <!-- ARIA Live Regions for status messages (WCAG 4.1.3) -->
 <div id="a11yStatus" class="visually-hidden"
@@ -132,7 +132,7 @@
                     <div id="taxonomyTree" role="tree" aria-label="Taxonomy Tree">
                         <div class="text-center text-muted py-5">
                             <div class="spinner-border spinner-border-sm" role="status"></div>
-                            Loading taxonomy&hellip;
+                            <span th:text="#{browse.tree.loading}">Loading taxonomy&hellip;</span>
                         </div>
                     </div>
                 </div>
@@ -214,7 +214,7 @@
 
                 <!-- Search Panel -->
                 <details id="searchPanel" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128269; Search Taxonomy</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{browse.search.title}">&#128269; Search Taxonomy</summary>
                     <div class="mt-2">
                         <div class="row g-2 mb-2">
                             <div class="col">
@@ -239,7 +239,7 @@
                                 </select>
                             </div>
                             <div class="col-3">
-                                <button id="searchBtn" class="btn btn-sm btn-primary w-100">&#128269; Search</button>
+                                <button id="searchBtn" class="btn btn-sm btn-primary w-100" th:text="#{browse.search.btn}">&#128269; Search</button>
                             </div>
                         </div>
                         <div id="searchResultsArea" style="display:none; max-height:300px; overflow-y:auto;"></div>
@@ -248,19 +248,19 @@
 
                 <!-- Analysis log panel (collapsible) -->
                 <details id="analysisLog" class="mt-2" style="display:none;">
-                    <summary class="text-muted small" style="cursor:pointer;">&#128203; Analysis Log</summary>
+                    <summary class="text-muted small" style="cursor:pointer;" th:text="#{browse.analysis.log.title}">&#128203; Analysis Log</summary>
                     <div id="analysisLogContent" class="mt-1 p-2 border rounded small bg-light" style="font-size:0.85em;"></div>
                 </details>
 
                 <!-- LLM Communication Log (collapsible debug panel — visible to all users) -->
                 <details id="llmCommLog" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128225; LLM Communication Log</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{browse.llm.log.title}">&#128225; LLM Communication Log</summary>
                     <div id="llmCommLogContent" class="mt-1 border rounded bg-light"
                          style="max-height:400px; overflow-y:auto; font-size:0.82em;">
-                        <div class="text-muted p-2">No LLM calls yet. Run an analysis to see LLM communication details.</div>
+                        <div class="text-muted p-2" th:text="#{browse.llm.log.empty}">No LLM calls yet. Run an analysis to see LLM communication details.</div>
                     </div>
                     <div class="mt-1">
-                        <button id="clearLlmLog" class="btn btn-sm btn-outline-secondary">&#128465;&#65039; Clear Log</button>
+                        <button id="clearLlmLog" class="btn btn-sm btn-outline-secondary" th:text="#{llm.log.btn.clear}">&#128465;&#65039; Clear Log</button>
                     </div>
                 </details>
 
@@ -279,31 +279,31 @@
 
                 <!-- Gap Analysis Panel -->
                 <details id="gapAnalysisPanel" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128269; Gap Analysis</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{analyze.gap.panel.title}">&#128269; Gap Analysis</summary>
                     <div id="gapAnalysisContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
-                        <div class="text-muted">Run gap analysis to identify missing relations and incomplete patterns.</div>
+                        <div class="text-muted" th:text="#{analyze.gap.panel.description}">Run gap analysis to identify missing relations and incomplete patterns.</div>
                     </div>
                     <div class="mt-1">
-                        <button id="gapAnalyzeBtn" class="btn btn-sm btn-outline-primary">&#128269; Analyze Gaps</button>
+                        <button id="gapAnalyzeBtn" class="btn btn-sm btn-outline-primary" th:text="#{analyze.gap.btn}">&#128269; Analyze Gaps</button>
                     </div>
                 </details>
 
                 <!-- Pattern Detection Panel -->
                 <details id="patternDetectionPanel" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#129513; Pattern Detection</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{analyze.patterns.panel.title}">&#129513; Pattern Detection</summary>
                     <div id="patternDetectionContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
-                        <div class="text-muted">Detect architecture patterns (Full Stack, App Chain, Role Chain) across scored nodes.</div>
+                        <div class="text-muted" th:text="#{analyze.patterns.panel.description}">Detect architecture patterns (Full Stack, App Chain, Role Chain) across scored nodes.</div>
                     </div>
                     <div class="mt-1">
-                        <button id="patternDetectBtn" class="btn btn-sm btn-outline-primary">&#129513; Detect Patterns</button>
+                        <button id="patternDetectBtn" class="btn btn-sm btn-outline-primary" th:text="#{analyze.patterns.btn}">&#129513; Detect Patterns</button>
                     </div>
                 </details>
 
                 <!-- Architecture Recommendation Panel -->
                 <details id="recommendationPanel" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128161; Architecture Recommendation</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{analyze.recommendation.panel.title}">&#128161; Architecture Recommendation</summary>
                     <div id="recommendationContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
-                        <div class="text-muted">Generate architecture recommendations combining matches, gap analysis, and semantic search.</div>
+                        <div class="text-muted" th:text="#{analyze.recommendation.panel.description}">Generate architecture recommendations combining matches, gap analysis, and semantic search.</div>
                     </div>
                     <div class="mt-1">
                         <button id="recommendBtn" class="btn btn-sm btn-outline-primary" th:text="#{analyze.btn.recommend}">&#128161; Generate Recommendation</button>
@@ -436,7 +436,7 @@
                 <!-- Architecture sub-tabs -->
                 <ul class="nav nav-pills nav-fill mb-3" id="architectureSubTabs">
                     <li class="nav-item">
-                        <a class="nav-link active" data-subtab="arch-overview" href="#">&#127959;&#65039; Overview</a>
+                        <a class="nav-link active" data-subtab="arch-overview" href="#"><span th:text="#{arch.overview.label}">&#127959;&#65039; Overview</span></a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" data-subtab="arch-relations" href="#">&#128279; <span th:text="#{nav.relations}">Relations</span></a>
@@ -501,13 +501,13 @@
                         </div>
                         <div class="card-body p-2">
                             <div class="btn-group btn-group-sm mb-2 proposal-filter-group" role="group" aria-label="Proposal status filter">
-                                <button id="filterPending"  class="btn btn-warning"          data-filter="PENDING"  aria-pressed="true">Pending</button>
-                                <button id="filterAll"      class="btn btn-outline-secondary" data-filter="ALL"      aria-pressed="false">All</button>
-                                <button id="filterAccepted" class="btn btn-outline-success"  data-filter="ACCEPTED" aria-pressed="false">Accepted</button>
-                                <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false">Rejected</button>
+                                <button id="filterPending"  class="btn btn-warning"          data-filter="PENDING"  aria-pressed="true" th:text="#{quality.pending}">Pending</button>
+                                <button id="filterAll"      class="btn btn-outline-secondary" data-filter="ALL"      aria-pressed="false" th:text="#{compare.filter.all}">All</button>
+                                <button id="filterAccepted" class="btn btn-outline-success"  data-filter="ACCEPTED" aria-pressed="false" th:text="#{quality.accepted}">Accepted</button>
+                                <button id="filterRejected" class="btn btn-outline-danger"   data-filter="REJECTED" aria-pressed="false" th:text="#{quality.rejected}">Rejected</button>
                             </div>
                             <div id="proposalsTableContainer" class="table-responsive">
-                                <div class="text-muted small p-2">Loading proposals&hellip;</div>
+                                <div class="text-muted small p-2" th:text="#{proposals.loading.text}">Loading proposals&hellip;</div>
                             </div>
                         </div>
                     </div>
@@ -515,11 +515,11 @@
 
                 <!-- Relations Browser -->
                 <details id="relationsBrowser" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128279; Relations Browser</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{browse.relations.title}">&#128279; Relations Browser</summary>
                     <div class="mt-2">
                         <div class="d-flex gap-2 align-items-center mb-2">
                             <select id="relationsTypeFilter" class="form-select form-select-sm" style="max-width:180px;" aria-label="Filter by relation type">
-                                <option value="">All types</option>
+                                <option value="" th:text="#{relations.filter.all.types}">All types</option>
                                 <option value="REALIZES">REALIZES</option>
                                 <option value="SUPPORTS">SUPPORTS</option>
                                 <option value="CONSUMES">CONSUMES</option>
@@ -532,10 +532,10 @@
                                 <option value="CONTAINS">CONTAINS</option>
                                 <option value="RELATED_TO">RELATED_TO</option>
                             </select>
-                            <button id="createRelationBtn" class="btn btn-sm btn-outline-primary">&#10133; New Relation</button>
+                            <button id="createRelationBtn" class="btn btn-sm btn-outline-primary" th:text="#{browse.relations.btn.new}">&#10133; New Relation</button>
                         </div>
                         <div id="relationsTableContainer" style="max-height:300px; overflow-y:auto;">
-                            <div class="text-muted small p-2">Open to load relations.</div>
+                            <div class="text-muted small p-2" th:text="#{browse.relations.placeholder}">Open to load relations.</div>
                         </div>
                     </div>
                 </details>
@@ -556,22 +556,22 @@
                     <div class="card-header fw-semibold" th:text="#{export.card.title}">&#128229; Export Architecture</div>
                     <div class="card-body">
 
-                        <p class="text-muted small mb-3">
+                        <p class="text-muted small mb-3" th:text="#{export.description}">
                             Export the current analysis results as a diagram or data file.
                             Run an analysis on the <strong>Analyze</strong> tab first to enable diagram exports.
                         </p>
 
                         <div id="exportHint" class="alert alert-info py-2 small mb-3" th:title="#{export.hint.title}" title="Export buttons appear after a successful analysis with scores > 0">
-                            &#128203; Run an analysis to enable diagram exports (SVG, PNG, PDF, DOT, Mermaid, Visio, ArchiMate).
+                            <span th:text="#{export.hint.text}">&#128203; Run an analysis to enable diagram exports (SVG, PNG, PDF, DOT, Mermaid, Visio, ArchiMate).</span>
                         </div>
 
                         <!-- Diagram exports (visible after analysis) -->
                         <div id="exportGroup" style="display:none;">
-                            <h6 class="mb-2">Diagram Formats</h6>
+                            <h6 class="mb-2" th:text="#{export.diagram.heading}">Diagram Formats</h6>
                             <div class="d-flex gap-2 flex-wrap mb-3 align-items-center">
                                 <button id="exportSvg"       class="btn btn-outline-primary" th:title="#{export.btn.svg.title}" title="Download current view as SVG">&#128229; SVG</button>
                                 <button id="exportPng"       class="btn btn-outline-primary" th:title="#{export.btn.png.title}" title="Download current view as PNG">&#128229; PNG</button>
-                                <label class="ms-1 me-2 small text-muted" title="PNG export resolution multiplier">
+                                <label class="ms-1 me-2 small text-muted" th:title="#{export.png.res.label}" title="PNG export resolution multiplier">
                                     <select id="pngResolution" class="form-select form-select-sm d-inline-block" style="width:auto;">
                                         <option value="1">1&#215;</option>
                                         <option value="2" selected>2&#215;</option>
@@ -584,12 +584,12 @@
                                 <button id="exportMermaid"   class="btn btn-outline-info" th:title="#{export.btn.mermaid.title}" title="Export Architecture View as Mermaid flowchart for Markdown documents">&#128229; Mermaid</button>
                                 <button id="exportStructurizr" class="btn btn-outline-info" th:title="#{export.btn.structurizr.title}" title="Export Architecture View as Structurizr DSL for C4 tools">&#128229; Structurizr (.dsl)</button>
                             </div>
-                            <h6 class="mb-2">Tree Formats</h6>
+                            <h6 class="mb-2" th:text="#{export.tree.heading}">Tree Formats</h6>
                             <div class="d-flex gap-2 flex-wrap mb-3">
                                 <button id="exportDot"         class="btn btn-outline-warning" th:title="#{export.btn.dot.title}" title="Export taxonomy hierarchy as Graphviz DOT for yEd, Gephi, or Graphviz">&#128229; DOT (Graphviz)</button>
                                 <button id="exportMermaidTree" class="btn btn-outline-warning" th:title="#{export.btn.mermaid.tree.title}" title="Export taxonomy hierarchy as Mermaid tree for Markdown documents">&#128229; Mermaid Tree</button>
                             </div>
-                            <h6 class="mb-2">Data Formats</h6>
+                            <h6 class="mb-2" th:text="#{export.data.heading}">Data Formats</h6>
                             <div class="d-flex gap-2 flex-wrap mb-3">
                                 <button id="exportCsv"  class="btn btn-outline-success" th:title="#{export.btn.csv.title}" title="Download scores as CSV spreadsheet">&#128229; CSV</button>
                                 <button id="exportJson" class="btn btn-outline-success" th:title="#{export.btn.json.title}" title="Download scores as JSON file">&#128229; JSON</button>
@@ -604,7 +604,7 @@
 
                         <hr class="my-3"/>
 
-                        <h6 class="mb-2">Import &amp; Load</h6>
+                        <h6 class="mb-2" th:text="#{export.import.heading}">Import &amp; Load</h6>
                         <div class="d-flex gap-2 flex-wrap">
                             <button id="importJson" class="btn btn-outline-secondary" th:title="#{export.btn.load.title}" title="Load saved analysis from JSON file">&#128228; Load Scores</button>
                             <input type="file" id="importJsonFile" accept=".json" style="display:none;">
@@ -714,7 +714,7 @@
                             </div>
                             <div class="form-check mt-2">
                                 <input class="form-check-input" type="checkbox" id="graphApqcFilter" value="">
-                                <label class="form-check-label small" for="graphApqcFilter">
+                                <label class="form-check-label small" for="graphApqcFilter" th:text="#{graph.apqc.filter.label}">
                                     Show APQC hierarchy only (filter nodes with <code>x-source-framework: apqc</code>)
                                 </label>
                             </div>
@@ -735,13 +735,13 @@
 
                 <!-- Context Navigation History -->
                 <details id="contextHistoryPanel" class="mb-3">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128337; Navigation History</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{context.history.title}">&#128337; Navigation History</summary>
                     <div class="mt-2">
                         <div id="contextHistoryTimeline" class="border rounded p-2 bg-light" style="max-height:350px; overflow-y:auto; font-size:0.85em;">
-                            <div class="text-muted">Loading navigation history...</div>
+                            <div class="text-muted" th:text="#{context.history.loading}">Loading navigation history...</div>
                         </div>
                         <div class="mt-1 d-flex gap-2">
-                            <button id="contextHistoryRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                            <button id="contextHistoryRefreshBtn" class="btn btn-sm btn-outline-secondary" th:text="#{context.history.btn.refresh}">&#128260; Refresh</button>
                         </div>
                     </div>
                 </details>
@@ -755,7 +755,7 @@
                             <button id="wsRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; <span th:text="#{workspace.manager.refresh}">Refresh</span></button>
                         </div>
                         <div id="workspaceListContainer" class="row g-2">
-                            <div class="text-muted small">Open to load workspaces.</div>
+                            <div class="text-muted small" th:text="#{workspace.manager.placeholder}">Open to load workspaces.</div>
                         </div>
                     </div>
                 </details>
@@ -768,7 +768,7 @@
                         </button>
                         <span id="versionsUndoInfo" class="text-muted small"></span>
                         <div class="ms-auto d-flex align-items-center gap-2">
-                            <label for="versionsBranchSelect" class="form-label mb-0 small text-muted">Branch:</label>
+                            <label for="versionsBranchSelect" class="form-label mb-0 small text-muted" th:text="#{versions.branch.label}">Branch:</label>
                             <select id="versionsBranchSelect" class="form-select form-select-sm" style="width:auto;min-width:120px;"></select>
                         </div>
                     </div>
@@ -1005,14 +1005,14 @@
                                     <table class="table table-sm table-hover mb-0">
                                         <thead class="table-light">
                                         <tr>
-                                            <th class="small">Commit</th>
-                                            <th class="small">Branch</th>
-                                            <th class="small">Time</th>
-                                            <th class="small">Actions</th>
+                                            <th class="small" th:text="#{dsl.history.col.commit}">Commit</th>
+                                            <th class="small" th:text="#{dsl.history.col.branch}">Branch</th>
+                                            <th class="small" th:text="#{dsl.history.col.time}">Time</th>
+                                            <th class="small" th:text="#{dsl.history.col.actions}">Actions</th>
                                         </tr>
                                         </thead>
                                         <tbody id="dslHistoryBody">
-                                        <tr><td colspan="4" class="text-muted small">No commits yet</td></tr>
+                                        <tr><td colspan="4" class="text-muted small" th:text="#{dsl.history.empty}">No commits yet</td></tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -1031,13 +1031,13 @@
 
                 <!-- Health Overview Dashboard -->
                 <details id="healthDashboard" class="mt-0">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128154; Health Dashboard</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{admin.health.title}">&#128154; Health Dashboard</summary>
                     <div id="healthDashboardContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
                         <div class="row g-2">
                             <div class="col-md-3">
                                 <div class="card">
                                     <div class="card-body p-2 text-center">
-                                        <div class="small text-muted">Overall</div>
+                                        <div class="small text-muted" th:text="#{health.overall.label}">Overall</div>
                                         <div id="healthOverallBadge" class="fs-5">⏳</div>
                                     </div>
                                 </div>
@@ -1045,7 +1045,7 @@
                             <div class="col-md-3">
                                 <div class="card">
                                     <div class="card-body p-2 text-center">
-                                        <div class="small text-muted">AI/LLM</div>
+                                        <div class="small text-muted" th:text="#{health.ai.label}">AI/LLM</div>
                                         <div id="healthAiBadge" class="fs-5">⏳</div>
                                     </div>
                                 </div>
@@ -1053,7 +1053,7 @@
                             <div class="col-md-3">
                                 <div class="card">
                                     <div class="card-body p-2 text-center">
-                                        <div class="small text-muted">Embedding</div>
+                                        <div class="small text-muted" th:text="#{health.embedding.label}">Embedding</div>
                                         <div id="healthEmbeddingBadge" class="fs-5">⏳</div>
                                     </div>
                                 </div>
@@ -1061,7 +1061,7 @@
                             <div class="col-md-3">
                                 <div class="card">
                                     <div class="card-body p-2 text-center">
-                                        <div class="small text-muted">Memory</div>
+                                        <div class="small text-muted" th:text="#{health.memory.label}">Memory</div>
                                         <div id="healthMemoryBadge" class="fs-5">⏳</div>
                                     </div>
                                 </div>
@@ -1069,84 +1069,84 @@
                         </div>
                     </div>
                     <div class="mt-1">
-                        <button id="healthRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                        <button id="healthRefreshBtn" class="btn btn-sm btn-outline-secondary" th:text="#{admin.health.btn.refresh}">&#128260; Refresh</button>
                     </div>
                 </details>
 
                 <!-- Log Viewer -->
                 <details id="logViewerPanel" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128220; Log Viewer</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{log.viewer.title}">&#128220; Log Viewer</summary>
                     <div class="mt-2">
                         <div class="d-flex gap-2 mb-2 flex-wrap align-items-center">
                             <select id="logLevelFilter" class="form-select form-select-sm" style="max-width:120px;">
-                                <option value="">All Levels</option>
+                                <option value="" th:text="#{log.level.filter.all}">All Levels</option>
                                 <option value="ERROR">ERROR</option>
                                 <option value="WARN">WARN</option>
                                 <option value="INFO">INFO</option>
                                 <option value="DEBUG">DEBUG</option>
                             </select>
-                            <input id="logComponentFilter" type="text" class="form-control form-control-sm" placeholder="Filter by component..." style="max-width:200px;">
-                            <button id="logRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
-                            <button id="logAutoScrollBtn" class="btn btn-sm btn-outline-info">&#8595; Auto-scroll</button>
+                            <input id="logComponentFilter" type="text" class="form-control form-control-sm" th:placeholder="#{log.filter.component.placeholder}" placeholder="Filter by component..." style="max-width:200px;">
+                            <button id="logRefreshBtn" class="btn btn-sm btn-outline-secondary" th:text="#{log.btn.refresh}">&#128260; Refresh</button>
+                            <button id="logAutoScrollBtn" class="btn btn-sm btn-outline-info" th:text="#{log.btn.autoscroll}">&#8595; Auto-scroll</button>
                         </div>
                         <div id="logViewerContent" class="border rounded bg-dark text-light p-2 font-monospace" style="font-size:0.75em; max-height:400px; overflow-y:auto;">
-                            <div class="text-muted">Open to load logs.</div>
+                            <div class="text-muted" th:text="#{log.viewer.placeholder}">Open to load logs.</div>
                         </div>
                     </div>
                 </details>
 
                 <!-- Quality Dashboard -->
                 <details id="qualityDashboard" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128202; Quality Dashboard</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{admin.quality.title}">&#128202; Quality Dashboard</summary>
                     <div id="qualityDashboardContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
-                        <div class="text-muted">Open to load metrics.</div>
+                        <div class="text-muted" th:text="#{admin.quality.placeholder}">Open to load metrics.</div>
                     </div>
                     <div class="mt-1">
-                        <button id="qualityRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
+                        <button id="qualityRefreshBtn" class="btn btn-sm btn-outline-secondary" th:text="#{admin.quality.btn.refresh}">&#128260; Refresh</button>
                     </div>
                 </details>
 
                 <!-- Requirement Coverage -->
                 <details id="coverageDashboard" class="mt-2">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128203; Requirement Coverage</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{admin.coverage.title}">&#128203; Requirement Coverage</summary>
                     <div id="coverageDashboardContent" class="mt-2 p-2 border rounded bg-light" style="font-size:0.85em;">
-                        <div class="text-muted">Open to load coverage data.</div>
+                        <div class="text-muted" th:text="#{admin.coverage.placeholder}">Open to load coverage data.</div>
                     </div>
                     <div class="mt-1 d-flex gap-2 flex-wrap">
-                        <button id="coverageRefreshBtn" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
-                        <button id="coverageRecordBtn" class="btn btn-sm btn-outline-primary">&#128229; Record Current Analysis</button>
+                        <button id="coverageRefreshBtn" class="btn btn-sm btn-outline-secondary" th:text="#{admin.coverage.btn.refresh}">&#128260; Refresh</button>
+                        <button id="coverageRecordBtn" class="btn btn-sm btn-outline-primary" th:text="#{admin.coverage.btn.record}">&#128229; Record Current Analysis</button>
                     </div>
                 </details>
 
                 <!-- LLM Diagnostics Panel (collapsible) -->
                 <details id="diagnosticsPanel" class="mt-2 diagnostics-panel">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128295; LLM Diagnostics</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{admin.diagnostics.panel.title}">&#128295; LLM Diagnostics</summary>
                     <div id="diagnosticsContent" class="mt-1 border rounded bg-light p-2" style="font-size:0.85em;">
-                        <div class="text-muted">Loading diagnostics&hellip;</div>
+                        <div class="text-muted" th:text="#{admin.diagnostics.loading}">Loading diagnostics&hellip;</div>
                     </div>
                     <div class="mt-1 d-flex gap-2 flex-wrap">
-                        <button id="refreshDiagnostics" class="btn btn-sm btn-outline-secondary">&#128260; Refresh</button>
-                        <button id="testLlmConnection" class="btn btn-sm btn-outline-primary">&#129514; Test Connection</button>
+                        <button id="refreshDiagnostics" class="btn btn-sm btn-outline-secondary" th:text="#{admin.diagnostics.btn.refresh}">&#128260; Refresh</button>
+                        <button id="testLlmConnection" class="btn btn-sm btn-outline-primary" th:text="#{admin.diagnostics.btn.test}">&#129514; Test Connection</button>
                     </div>
                 </details>
 
                 <!-- Prompt Templates editor (collapsible) -->
                 <details id="promptEditor" class="mt-3">
-                    <summary class="fw-semibold" style="cursor:pointer;">&#128221; Prompt Templates</summary>
+                    <summary class="fw-semibold" style="cursor:pointer;" th:text="#{prompt.template.title}">&#128221; Prompt Templates</summary>
                     <div class="mt-2">
                         <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-                            <label for="promptSelect" class="form-label mb-0 text-nowrap">Taxonomy:</label>
+                            <label for="promptSelect" class="form-label mb-0 text-nowrap" th:text="#{prompt.taxonomy.label}">Taxonomy:</label>
                             <select id="promptSelect" class="form-select form-select-sm" style="max-width:220px;"></select>
-                            <span id="promptOverrideBadge" class="badge bg-warning text-dark d-none">Overridden</span>
-                            <span id="promptDefaultBadge" class="badge bg-secondary d-none">Default</span>
+                            <span id="promptOverrideBadge" class="badge bg-warning text-dark d-none" th:text="#{prompt.badge.overridden}">Overridden</span>
+                            <span id="promptDefaultBadge" class="badge bg-secondary d-none" th:text="#{prompt.badge.default}">Default</span>
                         </div>
-                        <div class="mb-1 text-muted small">
-                            Placeholders: <code>{{BUSINESS_TEXT}}</code>, <code>{{NODE_LIST}}</code>, <code>{{TAXONOMY_NAME}}</code>
+                        <div class="mb-1 text-muted small" th:text="#{prompt.placeholders}">
+                            Placeholders: {{BUSINESS_TEXT}}, {{NODE_LIST}}, {{TAXONOMY_NAME}}
                         </div>
                         <textarea id="promptTextarea" class="form-control font-monospace mb-2" rows="10" style="font-size:0.82em;"></textarea>
                         <div class="d-flex gap-2 flex-wrap">
-                            <button id="promptSaveBtn" class="btn btn-sm btn-primary">&#128190; Save</button>
-                            <button id="promptResetBtn" class="btn btn-sm btn-outline-secondary">&#8617;&#65039; Reset to Default</button>
+                            <button id="promptSaveBtn" class="btn btn-sm btn-primary" th:text="#{prompt.btn.save}">&#128190; Save</button>
+                            <button id="promptResetBtn" class="btn btn-sm btn-outline-secondary" th:text="#{prompt.btn.reset}">&#8617;&#65039; Reset to Default</button>
                         </div>
                         <div id="promptStatusMsg" class="mt-2 small"></div>
                     </div>
@@ -1502,12 +1502,12 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="proposeRelationsModalLabel">🔗 Propose Relations</h5>
+                <h5 class="modal-title" id="proposeRelationsModalLabel" th:text="#{propose.modal.title}">🔗 Propose Relations</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p class="mb-2">Generate relation proposals for node <strong id="proposeNodeCode"></strong>:</p>
-                <label for="proposeRelationType" class="form-label">Relation Type</label>
+                <label for="proposeRelationType" class="form-label" th:text="#{propose.modal.type.label}">Relation Type</label>
                 <select id="proposeRelationType" class="form-select" aria-label="Select relation type">
                     <option value="REALIZES">REALIZES</option>
                     <option value="SUPPORTS">SUPPORTS</option>
@@ -1523,29 +1523,26 @@
                 </select>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" th:text="#{dialog.cancel}">Cancel</button>
                 <button type="button" id="proposeRelationsSubmit" class="btn btn-primary">
                     <span id="proposeSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status" aria-hidden="true"></span>
-                    Generate Proposals
+                    <span th:text="#{propose.btn.generate}">Generate Proposals</span>
                 </button>
             </div>
-        </div>
-    </div>
-</div>
 
 <!-- Leaf Justification Modal -->
 <div class="modal fade" id="leafJustificationModal" tabindex="-1" aria-labelledby="leafJustificationModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="leafJustificationModalTitle">📋 Leaf Justification</h5>
+                <h5 class="modal-title" id="leafJustificationModalTitle" th:text="#{leaf.justification.title}">📋 Leaf Justification</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <p id="leafJustificationModalBody" class="leaf-justification-text"></p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" th:text="#{dialog.close}">Close</button>
             </div>
         </div>
     </div>
@@ -1556,14 +1553,14 @@
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="graphDetailModalLabel">&#128300; Graph Query Results</h5>
+                <h5 class="modal-title" id="graphDetailModalLabel" th:text="#{graph.detail.title}">&#128300; Graph Query Results</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="graphDetailModalBody">
                 <p class="text-muted">Loading&hellip;</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" th:text="#{dialog.close}">Close</button>
             </div>
         </div>
     </div>
@@ -1605,15 +1602,15 @@
                 </div>
                 <!-- Notices tab -->
                 <div id="about-notices-pane" class="d-none">
-                    <p class="small text-muted">This product contains third-party open-source software. Full text: <a href="/THIRD-PARTY-NOTICES.md" target="_blank">THIRD-PARTY-NOTICES.md</a></p>
+                    <p class="small text-muted"><span th:text="#{about.third.party.notice}">This product contains third-party open-source software. Full text:</span> <a href="/THIRD-PARTY-NOTICES.md" target="_blank">THIRD-PARTY-NOTICES.md</a></p>
                     <pre id="aboutThirdPartyContent" class="small bg-light p-2 rounded" style="max-height:400px;overflow-y:auto;white-space:pre-wrap;"><span class="text-muted">Loading…</span></pre>
                 </div>
             </div>
             <div class="modal-footer">
-                <a href="/NOTICE" target="_blank" class="btn btn-sm btn-outline-secondary">NOTICE</a>
-                <a href="/LICENSE" target="_blank" class="btn btn-sm btn-outline-secondary">LICENSE</a>
-                <a href="/THIRD-PARTY-NOTICES.md" target="_blank" class="btn btn-sm btn-outline-secondary">Third-Party Notices</a>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <a href="/NOTICE" target="_blank" class="btn btn-sm btn-outline-secondary" th:text="#{about.notice.link}">NOTICE</a>
+                <a href="/LICENSE" target="_blank" class="btn btn-sm btn-outline-secondary" th:text="#{about.license}">LICENSE</a>
+                <a href="/THIRD-PARTY-NOTICES.md" target="_blank" class="btn btn-sm btn-outline-secondary" th:text="#{about.third.party.link}">Third-Party Notices</a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" th:text="#{about.btn.close}">Close</button>
             </div>
         </div>
     </div>
@@ -1624,7 +1621,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="adminModalLabel">&#128274; Admin Mode</h5>
+                <h5 class="modal-title" id="adminModalLabel" th:text="#{admin.modal.title}">&#128274; Admin Mode</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
@@ -1638,9 +1635,9 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="adminUnlockBtn">&#128275; Unlock</button>
-                <button type="button" class="btn btn-warning d-none" id="adminLockConfirmBtn">&#128274; Lock</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" th:text="#{admin.btn.cancel}">Cancel</button>
+                <button type="button" class="btn btn-primary" id="adminUnlockBtn" th:text="#{admin.btn.unlock}">&#128275; Unlock</button>
+                <button type="button" class="btn btn-warning d-none" id="adminLockConfirmBtn" th:text="#{admin.btn.lock}">&#128274; Lock</button>
             </div>
         </div>
     </div>
@@ -1651,7 +1648,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="createRelationModalLabel">&#10133; Create Relation</h5>
+                <h5 class="modal-title" id="createRelationModalLabel" th:text="#{relation.create.title}">&#10133; Create Relation</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
@@ -1686,10 +1683,10 @@
                 <div id="createRelationError" class="text-danger small d-none"></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" th:text="#{relation.btn.cancel}">Cancel</button>
                 <button type="button" id="createRelationSubmit" class="btn btn-primary">
                     <span id="createRelationSpinner" class="spinner-border spinner-border-sm d-none me-1" role="status" aria-hidden="true"></span>
-                    Create
+                    <span th:text="#{relation.btn.create}">Create</span>
                 </button>
             </div>
         </div>
@@ -2034,24 +2031,24 @@
             <div class="modal-body">
                 <div class="row mb-3">
                     <div class="col-md-6">
-                        <label for="transferSourceCommit" class="form-label">Source Commit</label>
+                        <label for="transferSourceCommit" class="form-label" th:text="#{transfer.source.commit}">Source Commit</label>
                         <input type="text" class="form-control form-control-sm" id="transferSourceCommit"/>
                     </div>
                     <div class="col-md-6">
-                        <label for="transferTargetCommit" class="form-label">Target Commit</label>
+                        <label for="transferTargetCommit" class="form-label" th:text="#{transfer.target.commit}">Target Commit</label>
                         <input type="text" class="form-control form-control-sm" id="transferTargetCommit"/>
                     </div>
                 </div>
                 <div class="mb-3">
-                    <label for="transferElementIds" class="form-label">Element IDs (comma-separated)</label>
+                    <label for="transferElementIds" class="form-label" th:text="#{transfer.element.ids}">Element IDs (comma-separated)</label>
                     <input type="text" class="form-control form-control-sm" id="transferElementIds" th:placeholder="#{transfer.element.placeholder}" placeholder="CP-1023, CR-1047"/>
                 </div>
                 <div class="mb-3">
-                    <label for="transferRelationIds" class="form-label">Relation Keys (comma-separated)</label>
+                    <label for="transferRelationIds" class="form-label" th:text="#{transfer.relation.ids}">Relation Keys (comma-separated)</label>
                     <input type="text" class="form-control form-control-sm" id="transferRelationIds" th:placeholder="#{transfer.relation.placeholder}" placeholder="CP-1023 REALIZES CR-1047"/>
                 </div>
-                <button class="btn btn-outline-primary btn-sm me-2" onclick="TaxonomyContextTransfer.previewTransfer()">Preview</button>
-                <button class="btn btn-primary btn-sm" onclick="TaxonomyContextTransfer.applyTransfer()">Apply Transfer</button>
+                <button class="btn btn-outline-primary btn-sm me-2" onclick="TaxonomyContextTransfer.previewTransfer()" th:text="#{transfer.btn.preview}">Preview</button>
+                <button class="btn btn-primary btn-sm" onclick="TaxonomyContextTransfer.applyTransfer()" th:text="#{transfer.btn.apply}">Apply Transfer</button>
                 <div id="transferPreviewResults" class="mt-3"></div>
             </div>
         </div>
@@ -2063,7 +2060,7 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="mergePreviewModalLabel">&#128256; Merge Preview</h5>
+                <h5 class="modal-title" id="mergePreviewModalLabel" th:text="#{merge.preview.title}">&#128256; Merge Preview</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
@@ -2072,7 +2069,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" th:text="#{merge.preview.btn.cancel}">Cancel</button>
                 <button type="button" class="btn btn-primary" id="mergePreviewProceedBtn"><span th:text="#{merge.preview.btn.proceed}">Proceed with Merge</span></button>
             </div>
         </div>
@@ -2084,7 +2081,7 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="cherryPickPreviewModalLabel">&#127826; Cherry-Pick Preview</h5>
+                <h5 class="modal-title" id="cherryPickPreviewModalLabel" th:text="#{cherrypick.preview.title}">&#127826; Cherry-Pick Preview</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
@@ -2093,8 +2090,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="cherryPickPreviewProceedBtn">Proceed with Cherry-Pick</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" th:text="#{cherrypick.preview.btn.cancel}">Cancel</button>
+                <button type="button" class="btn btn-primary" id="cherryPickPreviewProceedBtn" th:text="#{cherrypick.preview.btn.proceed}">Proceed with Cherry-Pick</button>
             </div>
         </div>
     </div>
@@ -2105,35 +2102,35 @@
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title" id="mergeConflictModalLabel">&#9888;&#65039; Merge Conflict — Manual Resolution Required</h5>
+                <h5 class="modal-title" id="mergeConflictModalLabel" th:text="#{merge.conflict.title}">&#9888;&#65039; Merge Conflict — Manual Resolution Required</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p class="small text-muted mb-3">
+                <p class="small text-muted mb-3" th:text="#{merge.conflict.description}">
                     The merge cannot be completed automatically. Review the content from both sides
                     and edit the resolved version below.
                 </p>
                 <div class="row">
                     <div class="col-md-6">
-                        <h6 id="conflictOursLabel">Ours (target)</h6>
+                        <h6 id="conflictOursLabel" th:text="#{conflict.ours.label}">Ours (target)</h6>
                         <pre id="conflictOursContent" class="border rounded p-2 bg-light" style="max-height:300px; overflow:auto; font-size:0.75rem;"></pre>
                     </div>
                     <div class="col-md-6">
-                        <h6 id="conflictTheirsLabel">Theirs (source)</h6>
+                        <h6 id="conflictTheirsLabel" th:text="#{conflict.theirs.label}">Theirs (source)</h6>
                         <pre id="conflictTheirsContent" class="border rounded p-2 bg-light" style="max-height:300px; overflow:auto; font-size:0.75rem;"></pre>
                     </div>
                 </div>
                 <div class="mt-3">
-                    <h6>Resolved Content</h6>
+                    <h6 th:text="#{conflict.resolved.label}">Resolved Content</h6>
                     <textarea id="conflictResolvedContent" class="form-control font-monospace" rows="10"
                               style="font-size:0.75rem;" th:placeholder="#{conflict.resolved.placeholder}" placeholder="Edit the resolved content here…"></textarea>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-outline-info" id="conflictUseOursBtn">Use Ours</button>
-                <button type="button" class="btn btn-outline-info" id="conflictUseTheirsBtn">Use Theirs</button>
-                <button type="button" class="btn btn-primary" id="conflictResolveBtn">&#10004; Resolve &amp; Commit</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" th:text="#{conflict.btn.cancel}">Cancel</button>
+                <button type="button" class="btn btn-outline-info" id="conflictUseOursBtn" th:text="#{conflict.btn.use.ours}">Use Ours</button>
+                <button type="button" class="btn btn-outline-info" id="conflictUseTheirsBtn" th:text="#{conflict.btn.use.theirs}">Use Theirs</button>
+                <button type="button" class="btn btn-primary" id="conflictResolveBtn" th:text="#{conflict.btn.resolve}">&#10004; Resolve &amp; Commit</button>
             </div>
         </div>
     </div>
@@ -2144,29 +2141,29 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="syncDivergedModalLabel">&#128260; Resolve Diverged State</h5>
+                <h5 class="modal-title" id="syncDivergedModalLabel" th:text="#{sync.diverged.modal.title}">&#128260; Resolve Diverged State</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p>Your workspace and the shared repository have diverged — both sides have changes
+                <p th:text="#{sync.diverged.description}">Your workspace and the shared repository have diverged — both sides have changes
                     that the other doesn't. Choose a resolution strategy:</p>
                 <div class="list-group">
                     <button type="button" class="list-group-item list-group-item-action" data-diverged-strategy="MERGE">
-                        <strong>&#128256; Merge</strong><br>
-                        <small class="text-muted">Attempt to merge shared changes into your branch. May fail if conflicts exist.</small>
+                        <strong th:text="#{sync.diverged.merge.label}">&#128256; Merge</strong><br>
+                        <small class="text-muted" th:text="#{sync.diverged.merge.description}">Attempt to merge shared changes into your branch. May fail if conflicts exist.</small>
                     </button>
                     <button type="button" class="list-group-item list-group-item-action" data-diverged-strategy="KEEP_MINE">
-                        <strong>&#128228; Keep Mine</strong><br>
-                        <small class="text-muted">Publish your version to the shared repository, overwriting shared changes.</small>
+                        <strong th:text="#{sync.diverged.keep.mine.label}">&#128228; Keep Mine</strong><br>
+                        <small class="text-muted" th:text="#{sync.diverged.keep.mine.description}">Publish your version to the shared repository, overwriting shared changes.</small>
                     </button>
                     <button type="button" class="list-group-item list-group-item-action" data-diverged-strategy="TAKE_SHARED">
-                        <strong>&#128229; Take Shared</strong><br>
-                        <small class="text-muted">Replace your local branch with the shared version, discarding your changes.</small>
+                        <strong th:text="#{sync.diverged.take.shared.label}">&#128229; Take Shared</strong><br>
+                        <small class="text-muted" th:text="#{sync.diverged.take.shared.description}">Replace your local branch with the shared version, discarding your changes.</small>
                     </button>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" th:text="#{dialog.cancel}">Cancel</button>
             </div>
         </div>
     </div>
@@ -2176,7 +2173,7 @@
 <div id="operationToastContainer" class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:1090;">
     <div id="operationToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000">
         <div class="toast-header">
-            <strong class="me-auto" id="operationToastTitle">Operation Result</strong>
+            <strong class="me-auto" id="operationToastTitle" th:text="#{toast.operation.title}">Operation Result</strong>
             <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
         </div>
         <div class="toast-body" id="operationToastBody">

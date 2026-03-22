@@ -299,9 +299,11 @@ Der `ChangePasswordController` verarbeitet den Ablauf und leitet bei Erfolg auf 
 
 ---
 
-## Keycloak-/OIDC-Integration (geplant)
+## Keycloak-/OIDC-Integration (geplant — noch nicht implementiert)
 
-Für Unternehmens- und Behördenbereitstellungen unterstützt die Anwendung die Integration mit **Keycloak** als externem Identitätsanbieter über OpenID Connect (OIDC):
+Für Unternehmens- und Behördenbereitstellungen ist die Anwendung **für eine zukünftige Integration** mit **Keycloak** als externem Identitätsanbieter über OpenID Connect (OIDC) **konzipiert**. Diese Integration ist noch nicht im aktuellen Code enthalten — die Anwendung verwendet derzeit Form-Login und HTTP-Basic-Authentifizierung mit einer integrierten Benutzerdatenbank.
+
+Geplante Funktionen:
 
 - **Keycloak als Identity Broker** — Föderation mit SAML-/OIDC-Identitätsanbietern von Behörden
 - **JWT-basierte API-Authentifizierung** — ersetzt HTTP Basic für REST-Clients
