@@ -111,6 +111,7 @@ window.TaxonomyVersions = (function () {
             var branchSelect = el('versionsBranchSelect');
             if (branchSelect) loadBranches(branchSelect);
 
+            container.setAttribute('data-state', 'loading');
             container.innerHTML = '<div class="text-muted small">' + escapeHtml(t('versions.history.loading')) + '</div>';
         }
 
@@ -122,6 +123,7 @@ window.TaxonomyVersions = (function () {
             .then(function (data) {
                 var commits = data.commits || [];
                 if (commits.length === 0) {
+                    container.setAttribute('data-state', 'empty');
                     container.innerHTML = '<div class="text-muted small p-2">' + escapeHtml(t('versions.history.none')) + '</div>';
                     updateUndoInfo(null);
                     return;
@@ -135,6 +137,7 @@ window.TaxonomyVersions = (function () {
                 });
                 html += '</div>';
                 container.innerHTML = html;
+                container.setAttribute('data-state', 'loaded');
 
                 container.querySelectorAll('[data-action]').forEach(function (btn) {
                     btn.addEventListener('click', handleTimelineAction);
@@ -145,6 +148,7 @@ window.TaxonomyVersions = (function () {
                     var delay = Math.pow(2, retryCount) * 1000;
                     setTimeout(function () { loadTimeline(retryCount + 1); }, delay);
                 } else {
+                    container.setAttribute('data-state', 'error');
                     container.innerHTML = '<div class="text-danger small p-2">' + escapeHtml(t('versions.history.load.failed', err.message)) + '</div>';
                 }
             });

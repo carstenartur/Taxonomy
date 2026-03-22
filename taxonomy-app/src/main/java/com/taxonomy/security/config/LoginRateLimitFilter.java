@@ -124,11 +124,6 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
         return trackers;
     }
 
-    /** Visible for testing — records a failure for the given IP. */
-    public void recordTestFailure(String clientIp) {
-        recordFailure(clientIp);
-    }
-
     /**
      * Tracks failed login attempts for a single IP address.
      */

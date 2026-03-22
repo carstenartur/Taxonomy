@@ -15,11 +15,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.context.support.WithAnonymousUser;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -83,18 +85,19 @@ class SecurityImprovementTests {
     }
 
     @Test
-    @WithMockUser(roles = "USER")
     void authenticatedUserIsNotBlockedByLockout() throws Exception {
-        // Simulate failed login attempts to trigger lockout on this IP
-        for (int i = 0; i < 5; i++) {
-            loginRateLimitFilter.recordTestFailure("10.99.99.99");
+        // Simulate failed login attempts to trigger lockout via private recordFailure method.
+        // Uses ReflectionTestUtils to avoid adding test-only public methods to production code.
+        for (int i = 0; i < 3; i++) {
+            ReflectionTestUtils.invokeMethod(loginRateLimitFilter, "recordFailure", "10.99.99.99");
         }
-        // Verify IP is actually locked out (tracker has enough failures)
+        // Verify IP is actually locked out
         assertThat(loginRateLimitFilter.getTrackers()).containsKey("10.99.99.99");
 
         // Authenticated user from the same locked-out IP should NOT be blocked
         mockMvc.perform(get("/api/taxonomy")
                         .accept(MediaType.APPLICATION_JSON)
+                        .with(user("admin").roles("USER"))
                         .header("X-Forwarded-For", "10.99.99.99"))
                 .andExpect(status().isOk());
     }

@@ -1947,14 +1947,12 @@ class ScreenshotGeneratorIT {
         // Ensure Git history with branches exists for realistic version timeline
         buildGitHistory();
         navigateToTab("versions");
-        // Wait for the version history timeline to load — error = test failure (no fallback)
+        // Wait for successful load via language-independent data-state attribute
         wait(15).until(d -> {
-            String html = (String) ((JavascriptExecutor) d).executeScript(
+            String state = (String) ((JavascriptExecutor) d).executeScript(
                     "var el = document.getElementById('versionsTimeline');" +
-                    "return el ? el.innerHTML : '';");
-            return html != null
-                && !html.contains("Loading version history")
-                && !html.contains("text-danger");
+                    "return el ? el.getAttribute('data-state') : '';");
+            return "loaded".equals(state) || "empty".equals(state);
         });
         // Ensure the History sub-tab is active
         js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
@@ -2493,14 +2491,12 @@ class ScreenshotGeneratorIT {
            "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
            "  else { p.classList.add('d-none'); }" +
            "});");
-        // Wait for the timeline to be populated — error = test failure
+        // Wait for the timeline to be populated via language-independent data-state attribute
         wait(10).until(d -> {
-            String html = (String) ((JavascriptExecutor) d).executeScript(
+            String state = (String) ((JavascriptExecutor) d).executeScript(
                     "var el = document.getElementById('versionsTimeline');" +
-                    "return el ? el.innerHTML : '';");
-            return html != null
-                && !html.contains("Loading version history")
-                && !html.contains("text-danger");
+                    "return el ? el.getAttribute('data-state') : '';");
+            return "loaded".equals(state) || "empty".equals(state);
         });
         saveScreenshot("66-versions-timeline.png");
     }

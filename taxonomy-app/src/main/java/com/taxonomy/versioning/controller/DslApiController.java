@@ -302,7 +302,7 @@ public class DslApiController {
         } catch (Exception e) {
             log.error("Failed to read history for branch '{}'", branch, e);
             Map<String, Object> errorResult = new LinkedHashMap<>();
-            errorResult.put("error", "Failed to load version history");
+            errorResult.put("errorCode", "HISTORY_LOAD_FAILED");
             errorResult.put("message", e.getMessage());
             errorResult.put("commits", List.of());
             errorResult.put("currentBranch", branch);
