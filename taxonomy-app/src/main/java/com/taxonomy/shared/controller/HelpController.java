@@ -74,6 +74,7 @@ public class HelpController {
         new String[]{"DEPLOYMENT_CHECKLIST",      "✅", "help.toc.DEPLOYMENT_CHECKLIST",           "help.audience.devops"},
         new String[]{"OPERATIONS_GUIDE",          "📋", "help.toc.OPERATIONS_GUIDE",              "help.audience.devops"},
         new String[]{"KEYCLOAK_SETUP",            "🔑", "help.toc.KEYCLOAK_SETUP",                "help.audience.devops"},
+        new String[]{"KEYCLOAK_MIGRATION",        "🔄", "help.toc.KEYCLOAK_MIGRATION",            "help.audience.devops"},
         new String[]{"AI_TRANSPARENCY",           "🔍", "help.toc.AI_TRANSPARENCY",               "help.audience.everyone"},
         new String[]{"AI_LITERACY_CONCEPT",       "🎓", "help.toc.AI_LITERACY_CONCEPT",           "help.audience.everyone"},
         new String[]{"DATA_PROTECTION",           "🛡️", "help.toc.DATA_PROTECTION",               "help.audience.admins"},

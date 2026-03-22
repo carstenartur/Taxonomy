@@ -291,6 +291,29 @@ Bei Sperrung gibt der Server HTTP `423 Locked` mit einem JSON-Body zurück, der 
 
 ---
 
+## Keycloak-/OIDC-Konfiguration
+
+Die Keycloak-Authentifizierung wird über das `keycloak`-Spring-Profil aktiviert (`SPRING_PROFILES_ACTIVE=keycloak`). Wenn aktiv, werden Form-Login und HTTP Basic durch OAuth2-Login (Browser) und JWT-Bearer-Tokens (REST-API) ersetzt.
+
+| Variable | Eigenschaft | Standard | Beschreibung |
+|---|---|---|---|
+| `KEYCLOAK_ISSUER_URI` | `spring.security.oauth2.client.provider.keycloak.issuer-uri` | `http://localhost:8180/realms/taxonomy` | Keycloak-Realm-Issuer-URI. Wird für OIDC-Discovery und JWT-Validierung verwendet. |
+| `KEYCLOAK_CLIENT_ID` | `spring.security.oauth2.client.registration.keycloak.client-id` | `taxonomy-app` | OAuth2-Client-ID, die in Keycloak registriert ist. |
+| `KEYCLOAK_CLIENT_SECRET` | `spring.security.oauth2.client.registration.keycloak.client-secret` | *(leer)* | OAuth2-Client-Secret. **Muss für Produktion gesetzt werden.** |
+| `KEYCLOAK_JWK_SET_URI` | `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` | `http://localhost:8180/realms/taxonomy/protocol/openid-connect/certs` | JWKS-Endpunkt für JWT-Signaturvalidierung. |
+| `KEYCLOAK_ADMIN_URL` | `taxonomy.keycloak.admin-console-url` | `http://localhost:8180` | Basis-URL der Keycloak Admin Console (wird für Passwortänderungs-Weiterleitungen verwendet). |
+
+**Eigenschaften, die automatisch im `keycloak`-Profil gesetzt werden:**
+
+| Eigenschaft | Wert | Auswirkung |
+|---|---|---|
+| `taxonomy.security.local-users-enabled` | `false` | Deaktiviert `UserManagementController` (Benutzer-CRUD über REST-API) |
+| `taxonomy.security.change-password-enabled` | `false` | Deaktiviert lokalen `ChangePasswordController` (Weiterleitung zu Keycloak) |
+
+Siehe [Keycloak- & SSO-Einrichtung](KEYCLOAK_SETUP.md) für vollständige Einrichtungsanweisungen und [Keycloak-Migrationsanleitung](KEYCLOAK_MIGRATION.md) für die Migration von Form-Login.
+
+---
+
 ## OpenAPI / Swagger UI
 
 Die Anwendung stellt interaktive API-Dokumentation über [springdoc-openapi](https://springdoc.org/) bereit.

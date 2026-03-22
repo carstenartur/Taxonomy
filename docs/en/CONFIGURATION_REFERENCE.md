@@ -293,6 +293,29 @@ When locked out, the server returns HTTP `423 Locked` with a JSON body containin
 
 ---
 
+## Keycloak / OIDC Configuration
+
+Keycloak authentication is activated via the `keycloak` Spring profile (`SPRING_PROFILES_ACTIVE=keycloak`). When active, form login and HTTP Basic are replaced by OAuth2 Login (browser) and JWT Bearer tokens (REST API).
+
+| Variable | Property | Default | Description |
+|---|---|---|---|
+| `KEYCLOAK_ISSUER_URI` | `spring.security.oauth2.client.provider.keycloak.issuer-uri` | `http://localhost:8180/realms/taxonomy` | Keycloak realm issuer URI. Used for OIDC discovery and JWT validation. |
+| `KEYCLOAK_CLIENT_ID` | `spring.security.oauth2.client.registration.keycloak.client-id` | `taxonomy-app` | OAuth2 client ID registered in Keycloak. |
+| `KEYCLOAK_CLIENT_SECRET` | `spring.security.oauth2.client.registration.keycloak.client-secret` | *(empty)* | OAuth2 client secret. **Must be set for production.** |
+| `KEYCLOAK_JWK_SET_URI` | `spring.security.oauth2.resourceserver.jwt.jwk-set-uri` | `http://localhost:8180/realms/taxonomy/protocol/openid-connect/certs` | JWKS endpoint for JWT signature validation. |
+| `KEYCLOAK_ADMIN_URL` | `taxonomy.keycloak.admin-console-url` | `http://localhost:8180` | Base URL of the Keycloak Admin Console (used for password change redirects). |
+
+**Properties automatically set in `keycloak` profile:**
+
+| Property | Value | Effect |
+|---|---|---|
+| `taxonomy.security.local-users-enabled` | `false` | Disables `UserManagementController` (user CRUD via REST API) |
+| `taxonomy.security.change-password-enabled` | `false` | Disables local `ChangePasswordController` (redirects to Keycloak) |
+
+See [Keycloak & SSO Setup](KEYCLOAK_SETUP.md) for full setup instructions and [Keycloak Migration Guide](KEYCLOAK_MIGRATION.md) for migrating from form login.
+
+---
+
 ## OpenAPI / Swagger UI
 
 The application exposes interactive API documentation via [springdoc-openapi](https://springdoc.org/).

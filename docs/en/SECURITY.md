@@ -299,20 +299,37 @@ The `ChangePasswordController` handles the flow and redirects back to the main p
 
 ---
 
-## Keycloak / OIDC Integration (Planned — Not Yet Implemented)
+## Keycloak / OIDC Integration (Available)
 
-For enterprise and government deployments, the application is **designed to support** future integration with **Keycloak** as an external identity provider via OpenID Connect (OIDC). This integration is not yet included in the current codebase — the application currently uses form login and HTTP Basic authentication with a built-in user database.
+The application supports **dual-mode authentication**: form login (default) or **Keycloak/OIDC** (via the `keycloak` Spring profile). When the `keycloak` profile is active, authentication is fully delegated to Keycloak:
 
-Planned capabilities:
+- **Browser (GUI)**: OAuth2 Login → Keycloak login page → OIDC session
+- **REST API**: Bearer JWT token in `Authorization` header (no HTTP Basic)
+- **User management**: Handled by Keycloak Admin Console (local user database is not used)
+- **Password changes**: Redirected to Keycloak Account Console
+- **SSO/SLO support**: Single Sign-On and Single Logout via RP-Initiated Logout
 
-- **Keycloak as Identity Broker** — federates with government SAML/OIDC identity providers
-- **JWT-based API authentication** — replaces HTTP Basic for REST clients
-- **Centralized user management** — no separate user database required
-- **SSO/SLO support** — Single Sign-On and Single Logout across applications
+The three-role model (USER, ARCHITECT, ADMIN) maps directly to Keycloak realm roles (`ROLE_USER`, `ROLE_ARCHITECT`, `ROLE_ADMIN`).
 
-The existing three-role model (USER, ARCHITECT, ADMIN) maps directly to Keycloak realm roles.
+### Quick Start
 
-See [Keycloak & SSO Setup](KEYCLOAK_SETUP.md) for configuration details.
+```bash
+# Start Keycloak + PostgreSQL + Taxonomy with OIDC
+docker compose -f docker-compose-keycloak.yml up -d
+# Access: http://localhost:8080 → redirects to Keycloak login
+# Default users: admin/admin, architect/architect, user/user
+```
+
+### Activating Keycloak mode (without Docker Compose)
+
+```bash
+export SPRING_PROFILES_ACTIVE=keycloak
+export KEYCLOAK_ISSUER_URI=http://your-keycloak:8180/realms/taxonomy
+export KEYCLOAK_CLIENT_ID=taxonomy-app
+export KEYCLOAK_CLIENT_SECRET=your-client-secret
+```
+
+See [Keycloak & SSO Setup](KEYCLOAK_SETUP.md) for full configuration details and [Keycloak Migration Guide](KEYCLOAK_MIGRATION.md) for migrating from form login.
 
 ---
 
