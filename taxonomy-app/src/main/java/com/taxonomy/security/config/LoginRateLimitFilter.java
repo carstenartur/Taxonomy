@@ -56,10 +56,14 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
                 && "/login".equals(request.getRequestURI());
         boolean isApiPath = request.getRequestURI().startsWith("/api/");
 
+        // Authenticated users must not be blocked by brute-force protection —
+        // they have already proven their identity via session or HTTP Basic.
+        boolean isAuthenticated = request.getUserPrincipal() != null;
+
         // Check if IP is currently locked out
         FailureTracker tracker = trackers.get(clientIp);
         if (tracker != null && tracker.isLockedOut(maxAttempts, lockoutSeconds)) {
-            if (isLoginPost || isApiPath) {
+            if (isLoginPost || (isApiPath && !isAuthenticated)) {
                 log.warn("LOGIN_LOCKED ip={} attempts={}", clientIp, tracker.getCount());
                 response.setStatus(423); // 423 Locked
                 response.setContentType("application/json");
@@ -118,6 +122,11 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
     /** Visible for testing — returns the tracker map. */
     public Map<String, FailureTracker> getTrackers() {
         return trackers;
+    }
+
+    /** Visible for testing — records a failure for the given IP. */
+    public void recordTestFailure(String clientIp) {
+        recordFailure(clientIp);
     }
 
     /**

@@ -100,14 +100,19 @@ window.TaxonomyVersions = (function () {
 
     // ── Timeline ────────────────────────────────────────────────────
 
-    function loadTimeline() {
+    function loadTimeline(retryCount) {
+        retryCount = retryCount || 0;
+        var MAX_RETRIES = 2;
+
         var container = el('versionsTimeline');
         if (!container) return;
 
-        var branchSelect = el('versionsBranchSelect');
-        if (branchSelect) loadBranches(branchSelect);
+        if (retryCount === 0) {
+            var branchSelect = el('versionsBranchSelect');
+            if (branchSelect) loadBranches(branchSelect);
 
-        container.innerHTML = '<div class="text-muted small">' + escapeHtml(t('versions.history.loading')) + '</div>';
+            container.innerHTML = '<div class="text-muted small">' + escapeHtml(t('versions.history.loading')) + '</div>';
+        }
 
         fetch('/api/dsl/history?branch=' + encodeURIComponent(currentBranch))
             .then(function (r) {
@@ -136,7 +141,12 @@ window.TaxonomyVersions = (function () {
                 });
             })
             .catch(function (err) {
-                container.innerHTML = '<div class="text-danger small p-2">' + escapeHtml(t('versions.history.load.failed', err.message)) + '</div>';
+                if (retryCount < MAX_RETRIES) {
+                    var delay = Math.pow(2, retryCount) * 1000;
+                    setTimeout(function () { loadTimeline(retryCount + 1); }, delay);
+                } else {
+                    container.innerHTML = '<div class="text-danger small p-2">' + escapeHtml(t('versions.history.load.failed', err.message)) + '</div>';
+                }
             });
     }
 

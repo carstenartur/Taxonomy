@@ -27,6 +27,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -300,7 +301,13 @@ public class DslApiController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("Failed to read history for branch '{}'", branch, e);
-            return ResponseEntity.internalServerError().build();
+            Map<String, Object> errorResult = new LinkedHashMap<>();
+            errorResult.put("error", "Failed to load version history");
+            errorResult.put("message", e.getMessage());
+            errorResult.put("commits", List.of());
+            errorResult.put("currentBranch", branch);
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(errorResult);
         }
     }
 

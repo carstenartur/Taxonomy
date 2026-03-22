@@ -82,6 +82,23 @@ class SecurityImprovementTests {
         assertThat(loginRateLimitFilter.getTrackers()).isEmpty();
     }
 
+    @Test
+    @WithMockUser(roles = "USER")
+    void authenticatedUserIsNotBlockedByLockout() throws Exception {
+        // Simulate failed login attempts to trigger lockout on this IP
+        for (int i = 0; i < 5; i++) {
+            loginRateLimitFilter.recordTestFailure("10.99.99.99");
+        }
+        // Verify IP is actually locked out (tracker has enough failures)
+        assertThat(loginRateLimitFilter.getTrackers()).containsKey("10.99.99.99");
+
+        // Authenticated user from the same locked-out IP should NOT be blocked
+        mockMvc.perform(get("/api/taxonomy")
+                        .accept(MediaType.APPLICATION_JSON)
+                        .header("X-Forwarded-For", "10.99.99.99"))
+                .andExpect(status().isOk());
+    }
+
     // ── Security Headers ───────────────────────────────────────────────────
 
     @Test

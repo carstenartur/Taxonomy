@@ -271,32 +271,6 @@ class ScreenshotGeneratorIT {
             "</div>";
 
     /**
-     * Fallback timeline HTML injected when the version history fails to load (HTTP 423).
-     * Matches the structure produced by {@code renderTimelineEntry()} in taxonomy-versions.js.
-     */
-    private static final String FALLBACK_TIMELINE_HTML =
-            "<div class=\"timeline\">" +
-            "<div class=\"timeline-entry mb-3 ps-4 position-relative\">" +
-            "<span class=\"timeline-dot-current position-absolute\" style=\"left:0;top:6px;width:10px;height:10px;border-radius:50%;display:inline-block;\"></span>" +
-            "<div class=\"d-flex justify-content-between align-items-start\"><div>" +
-            "<strong class=\"small\">Baseline after review round 2</strong>" +
-            "<div class=\"text-muted\" style=\"font-size:0.75rem;\">2025-03-15 14:30 &mdash; admin <code class=\"ms-1\">a1b2c3d</code></div>" +
-            "</div></div></div>" +
-            "<div class=\"timeline-entry mb-3 ps-4 position-relative\">" +
-            "<span class=\"timeline-dot position-absolute\" style=\"left:0;top:6px;width:10px;height:10px;border-radius:50%;display:inline-block;\"></span>" +
-            "<div class=\"d-flex justify-content-between align-items-start\"><div>" +
-            "<strong class=\"small\">Added CP-1023 REALIZES CR-1047 relation</strong>" +
-            "<div class=\"text-muted\" style=\"font-size:0.75rem;\">2025-03-14 09:15 &mdash; admin <code class=\"ms-1\">e4f5a6b</code></div>" +
-            "</div></div></div>" +
-            "<div class=\"timeline-entry mb-3 ps-4 position-relative\">" +
-            "<span class=\"timeline-dot position-absolute\" style=\"left:0;top:6px;width:10px;height:10px;border-radius:50%;display:inline-block;\"></span>" +
-            "<div class=\"d-flex justify-content-between align-items-start\"><div>" +
-            "<strong class=\"small\">Initial taxonomy materialization</strong>" +
-            "<div class=\"text-muted\" style=\"font-size:0.75rem;\">2025-03-13 16:00 &mdash; system <code class=\"ms-1\">c7d8e9f</code></div>" +
-            "</div></div></div>" +
-            "</div>";
-
-    /**
      * Fallback architecture view HTML injected when the mock-LLM analysis produces too few
      * elements for a representative screenshot.  Matches the structure produced by
      * {@code renderArchitectureView()} in taxonomy-scoring.js, featuring 4 layers, 7 nodes,
@@ -1973,22 +1947,15 @@ class ScreenshotGeneratorIT {
         // Ensure Git history with branches exists for realistic version timeline
         buildGitHistory();
         navigateToTab("versions");
-        // Wait for the version history timeline to load (contains timeline entries or "No versions")
+        // Wait for the version history timeline to load — error = test failure (no fallback)
         wait(15).until(d -> {
             String html = (String) ((JavascriptExecutor) d).executeScript(
                     "var el = document.getElementById('versionsTimeline');" +
                     "return el ? el.innerHTML : '';");
-            return html != null && !html.contains("Loading version history");
+            return html != null
+                && !html.contains("Loading version history")
+                && !html.contains("text-danger");
         });
-        // If the timeline shows an error (e.g., HTTP 423 from locked repository),
-        // inject fallback timeline entries for a realistic documentation screenshot
-        Boolean hasError = (Boolean) ((JavascriptExecutor) driver).executeScript(
-                "var el = document.getElementById('versionsTimeline');" +
-                "return el && el.innerHTML.indexOf('text-danger') >= 0;");
-        if (Boolean.TRUE.equals(hasError)) {
-            js("var el = document.getElementById('versionsTimeline');" +
-               "if (el) el.innerHTML = arguments[0];", FALLBACK_TIMELINE_HTML);
-        }
         // Ensure the History sub-tab is active
         js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
            "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
@@ -2526,12 +2493,14 @@ class ScreenshotGeneratorIT {
            "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
            "  else { p.classList.add('d-none'); }" +
            "});");
-        // Wait for the timeline to be populated
+        // Wait for the timeline to be populated — error = test failure
         wait(10).until(d -> {
             String html = (String) ((JavascriptExecutor) d).executeScript(
                     "var el = document.getElementById('versionsTimeline');" +
                     "return el ? el.innerHTML : '';");
-            return html != null && !html.contains("Loading version history");
+            return html != null
+                && !html.contains("Loading version history")
+                && !html.contains("text-danger");
         });
         saveScreenshot("66-versions-timeline.png");
     }
