@@ -57,25 +57,42 @@ public class CommitIndexService {
         this.contextResolver = contextResolver;
     }
 
-    private DslGitRepository resolveRepository() {
-        try {
-            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
-            return repositoryFactory.resolveRepository(ctx);
-        } catch (Exception e) {
-            return repositoryFactory.getSystemRepository();
-        }
+    /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+        return repositoryFactory.resolveRepository(ctx);
     }
 
     /**
      * Index all unindexed commits on the given branch.
+     *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #indexBranch(String, WorkspaceContext)} for workspace-aware resolution.
      *
      * @param branch the Git branch to index
      * @return number of newly indexed commits
      */
     @Transactional
     public int indexBranch(String branch) {
+        return indexBranch(branch, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Index all unindexed commits on the given branch.
+     *
+     * @param branch the Git branch to index
+     * @param ctx    the workspace context for repository resolution
+     * @return number of newly indexed commits
+     */
+    @Transactional
+    public int indexBranch(String branch, WorkspaceContext ctx) {
         try {
-            DslGitRepository repo = resolveRepository();
+            DslGitRepository repo = resolveRepository(ctx);
             List<DslCommit> commits = repo.getDslHistory(branch);
             int indexed = 0;
 

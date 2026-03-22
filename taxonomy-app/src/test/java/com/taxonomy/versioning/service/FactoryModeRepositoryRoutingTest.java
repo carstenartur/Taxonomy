@@ -6,7 +6,6 @@ import com.taxonomy.dto.RepositoryState;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,13 +22,13 @@ import static org.mockito.Mockito.when;
  *
  * <p>Each test creates both a system and a workspace repository via
  * the factory, commits data to the workspace repository, and verifies
- * that the service resolves the correct repository at runtime when
- * a workspace context is active.
+ * that the service resolves the correct repository when given an
+ * explicit {@link WorkspaceContext} parameter.
  *
- * <p>These tests prove that the fix for the factory-mode routing bug
- * works: services no longer hardcode {@code getSystemRepository()} in
- * their constructors but resolve the repository dynamically via
- * {@link DslGitRepositoryFactory#resolveRepository(WorkspaceContext)}.
+ * <p>Services accept {@code WorkspaceContext} as an explicit parameter
+ * rather than relying on {@code resolveCurrentContext()}, which is
+ * reserved for the Facade/UI layer. This makes services testable
+ * without a SecurityContext.
  */
 class FactoryModeRepositoryRoutingTest {
 
@@ -48,23 +47,14 @@ class FactoryModeRepositoryRoutingTest {
     private DslGitRepositoryFactory factory;
     private DslGitRepository systemRepo;
     private DslGitRepository workspaceRepo;
-    private WorkspaceContextResolver sharedResolver;
-    private WorkspaceContextResolver workspaceResolver;
+    private WorkspaceContext wsCtx;
 
     @BeforeEach
     void setUp() {
         factory = new DslGitRepositoryFactory(null); // in-memory mode
         systemRepo = factory.getSystemRepository();
         workspaceRepo = factory.getWorkspaceRepository("alice-ws");
-
-        // Resolver that returns SHARED context → system repo
-        sharedResolver = mock(WorkspaceContextResolver.class);
-        when(sharedResolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
-
-        // Resolver that returns workspace context → workspace repo
-        WorkspaceContext wsCtx = new WorkspaceContext("alice", "alice-ws", "main");
-        workspaceResolver = mock(WorkspaceContextResolver.class);
-        when(workspaceResolver.resolveCurrentContext()).thenReturn(wsCtx);
+        wsCtx = new WorkspaceContext("alice", "alice-ws", "main");
     }
 
     // ── RepositoryStateService ──────────────────────────────────────
@@ -74,9 +64,9 @@ class FactoryModeRepositoryRoutingTest {
         // Commit only to workspace repo
         String commitId = workspaceRepo.commitDsl("main", SAMPLE_DSL, "alice", "workspace commit");
 
-        // Service with workspace resolver should see the commit
-        RepositoryStateService wsStateService = createStateService(workspaceResolver);
-        RepositoryState state = wsStateService.getState("alice", "main");
+        // Service with explicit workspace context should see the commit
+        RepositoryStateService wsStateService = createStateService(workspaceRepo);
+        RepositoryState state = wsStateService.getState("alice", "main", wsCtx);
 
         assertEquals(commitId, state.headCommit(),
                 "Service with workspace context should see workspace commit");
@@ -88,9 +78,9 @@ class FactoryModeRepositoryRoutingTest {
         // Commit only to workspace repo
         workspaceRepo.commitDsl("main", SAMPLE_DSL, "alice", "workspace commit");
 
-        // Service with shared resolver should NOT see the workspace commit
-        RepositoryStateService sharedStateService = createStateService(sharedResolver);
-        RepositoryState state = sharedStateService.getState("alice", "main");
+        // Service with SHARED context should NOT see the workspace commit
+        RepositoryStateService sharedStateService = createStateService(systemRepo);
+        RepositoryState state = sharedStateService.getState("alice", "main", WorkspaceContext.SHARED);
 
         assertNull(state.headCommit(),
                 "Service with shared context should not see workspace commit");
@@ -102,16 +92,16 @@ class FactoryModeRepositoryRoutingTest {
         // Commit to workspace repo and record projection
         String first = workspaceRepo.commitDsl("main", SAMPLE_DSL, "alice", "first");
 
-        RepositoryStateService wsStateService = createStateService(workspaceResolver);
+        RepositoryStateService wsStateService = createStateService(workspaceRepo);
         wsStateService.recordProjection("alice", first, "main");
 
-        assertFalse(wsStateService.isProjectionStale("alice", "main"),
+        assertFalse(wsStateService.isProjectionStale("alice", "main", wsCtx),
                 "Projection at HEAD should not be stale");
 
         // New commit to workspace repo should make projection stale
         workspaceRepo.commitDsl("main", SAMPLE_DSL, "alice", "second");
 
-        assertTrue(wsStateService.isProjectionStale("alice", "main"),
+        assertTrue(wsStateService.isProjectionStale("alice", "main", wsCtx),
                 "Projection should be stale after new workspace commit");
     }
 
@@ -122,8 +112,8 @@ class FactoryModeRepositoryRoutingTest {
         // Commit only to workspace repo
         String commitId = workspaceRepo.commitDsl("main", SAMPLE_DSL, "alice", "workspace commit");
 
-        ContextNavigationService navService = createNavService(workspaceResolver);
-        var ctx = navService.switchContext("alice", "main", null);
+        ContextNavigationService navService = createNavService(workspaceRepo);
+        var ctx = navService.switchContext("alice", "main", null, wsCtx);
 
         assertEquals(commitId, ctx.commitId(),
                 "Navigation service should resolve HEAD from workspace repo");
@@ -134,8 +124,8 @@ class FactoryModeRepositoryRoutingTest {
         // Commit to workspace repo on "draft" (the default context branch)
         workspaceRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
 
-        ContextNavigationService navService = createNavService(workspaceResolver);
-        var variant = navService.createVariantFromCurrent("alice", "my-variant");
+        ContextNavigationService navService = createNavService(workspaceRepo);
+        var variant = navService.createVariantFromCurrent("alice", "my-variant", wsCtx);
 
         assertEquals("my-variant", variant.branch());
         assertTrue(workspaceRepo.getBranchNames().contains("my-variant"),
@@ -152,9 +142,9 @@ class FactoryModeRepositoryRoutingTest {
         workspaceRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
         workspaceRepo.createBranch("review", "draft");
 
-        // Service with workspace resolver should see both branches
-        ConflictDetectionService wsConflictService = new ConflictDetectionService(factory, workspaceResolver);
-        var preview = wsConflictService.previewMerge("draft", "review");
+        // Service with workspace context should see both branches
+        ConflictDetectionService wsConflictService = new ConflictDetectionService(factory);
+        var preview = wsConflictService.previewMerge("draft", "review", wsCtx);
 
         assertTrue(preview.canMerge(),
                 "Service with workspace context should find both branches");
@@ -168,14 +158,40 @@ class FactoryModeRepositoryRoutingTest {
         workspaceRepo.commitDsl("draft", SAMPLE_DSL, "alice", "initial");
         workspaceRepo.createBranch("review", "draft");
 
-        // Service with shared resolver should NOT see workspace branches
-        ConflictDetectionService sharedConflictService = new ConflictDetectionService(factory, sharedResolver);
-        var preview = sharedConflictService.previewMerge("draft", "review");
+        // Service with shared context should NOT see workspace branches
+        ConflictDetectionService sharedConflictService = new ConflictDetectionService(factory);
+        var preview = sharedConflictService.previewMerge("draft", "review", WorkspaceContext.SHARED);
 
         assertFalse(preview.canMerge(),
                 "Service with shared context should not find workspace branches");
         assertTrue(preview.warnings().stream().anyMatch(w -> w.contains("not found")),
                 "Should report branch not found");
+    }
+
+    // ── SHARED/system-repo sanity ───────────────────────────────────
+
+    @Test
+    void sharedContextStillUsesSystemRepository() throws IOException {
+        // Commit to SYSTEM repo
+        String systemCommitId = systemRepo.commitDsl("draft", SAMPLE_DSL, "system", "system commit");
+
+        // Commit to WORKSPACE repo (should be invisible in SHARED context)
+        workspaceRepo.commitDsl("draft", SAMPLE_DSL, "alice", "workspace commit");
+
+        // SHARED context should see system commits, NOT workspace commits
+        RepositoryStateService stateService = createStateService(systemRepo);
+        RepositoryState state = stateService.getState("system", "draft", WorkspaceContext.SHARED);
+
+        assertEquals(systemCommitId, state.headCommit(),
+                "SHARED context should see system repo commits");
+        assertEquals(1, state.totalCommits(),
+                "SHARED context should see exactly 1 commit from system repo");
+
+        // Conflict detection in SHARED context should see system branches
+        ConflictDetectionService conflictService = new ConflictDetectionService(factory);
+        var preview = conflictService.previewMerge("draft", "draft", WorkspaceContext.SHARED);
+        assertTrue(preview.canMerge(),
+                "SHARED context should find system repo branches");
     }
 
     // ── Cross-workspace isolation ───────────────────────────────────
@@ -195,39 +211,33 @@ class FactoryModeRepositoryRoutingTest {
 
         // Service routing for workspace A
         WorkspaceContext ctxA = new WorkspaceContext("alice", "ws-A", "main");
-        WorkspaceContextResolver resolverA = mock(WorkspaceContextResolver.class);
-        when(resolverA.resolveCurrentContext()).thenReturn(ctxA);
-        RepositoryStateService stateA = createStateService(resolverA);
-        assertEquals(commitA, stateA.getState("alice", "main").headCommit(),
+        RepositoryStateService stateA = createStateService(wsA);
+        assertEquals(commitA, stateA.getState("alice", "main", ctxA).headCommit(),
                 "Service for workspace A should see A's commit");
 
         // Service routing for workspace B
         WorkspaceContext ctxB = new WorkspaceContext("bob", "ws-B", "main");
-        WorkspaceContextResolver resolverB = mock(WorkspaceContextResolver.class);
-        when(resolverB.resolveCurrentContext()).thenReturn(ctxB);
-        RepositoryStateService stateB = createStateService(resolverB);
-        assertEquals(commitB, stateB.getState("bob", "main").headCommit(),
+        RepositoryStateService stateB = createStateService(wsB);
+        assertEquals(commitB, stateB.getState("bob", "main", ctxB).headCommit(),
                 "Service for workspace B should see B's commit");
     }
 
     // ── Helper methods ──────────────────────────────────────────────
 
-    private RepositoryStateService createStateService(WorkspaceContextResolver resolver) {
+    private RepositoryStateService createStateService(DslGitRepository repo) {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
-        DslGitRepository repo = factory.resolveRepository(resolver.resolveCurrentContext());
         WorkspaceManager wm = new WorkspaceManager(wsRepo, 50,
                 mock(SystemRepositoryService.class), repo);
         return new RepositoryStateService(factory, wm,
-                mock(SystemRepositoryService.class), resolver);
+                mock(SystemRepositoryService.class));
     }
 
-    private ContextNavigationService createNavService(WorkspaceContextResolver resolver) {
+    private ContextNavigationService createNavService(DslGitRepository repo) {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
-        DslGitRepository repo = factory.resolveRepository(resolver.resolveCurrentContext());
         WorkspaceManager wm = new WorkspaceManager(wsRepo, 50,
                 mock(SystemRepositoryService.class), repo);
         RepositoryStateService stateService = new RepositoryStateService(factory, wm,
-                mock(SystemRepositoryService.class), resolver);
-        return new ContextNavigationService(factory, stateService, wm, resolver, 50);
+                mock(SystemRepositoryService.class));
+        return new ContextNavigationService(factory, stateService, wm, 50);
     }
 }

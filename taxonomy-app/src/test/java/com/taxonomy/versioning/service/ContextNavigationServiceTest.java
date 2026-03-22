@@ -7,8 +7,6 @@ import com.taxonomy.dto.ContextMode;
 import com.taxonomy.dto.ContextRef;
 import com.taxonomy.dto.NavigationReason;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
-import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -17,7 +15,6 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import com.taxonomy.workspace.service.WorkspaceManager;
 
 /**
@@ -52,11 +49,9 @@ class ContextNavigationServiceTest {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         workspaceManager = new WorkspaceManager(wsRepo, 50,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
-        WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
-        when(contextResolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
         stateService = new RepositoryStateService(factory, workspaceManager,
-                mock(com.taxonomy.workspace.service.SystemRepositoryService.class), contextResolver);
-        navService = new ContextNavigationService(factory, stateService, workspaceManager, contextResolver, 50);
+                mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
+        navService = new ContextNavigationService(factory, stateService, workspaceManager, 50);
     }
 
     // ── getCurrentContext ────────────────────────────────────────────

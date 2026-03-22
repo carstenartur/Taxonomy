@@ -37,27 +37,26 @@ public class WorkspaceProjectionService {
     private final WorkspaceManager workspaceManager;
     private final DslGitRepositoryFactory repositoryFactory;
     private final UserWorkspaceRepository workspaceRepository;
-    private final WorkspaceContextResolver contextResolver;
 
     public WorkspaceProjectionService(WorkspaceProjectionRepository projectionRepository,
                                       WorkspaceManager workspaceManager,
                                       DslGitRepositoryFactory repositoryFactory,
-                                      UserWorkspaceRepository workspaceRepository,
-                                      WorkspaceContextResolver contextResolver) {
+                                      UserWorkspaceRepository workspaceRepository) {
         this.projectionRepository = projectionRepository;
         this.workspaceManager = workspaceManager;
         this.repositoryFactory = repositoryFactory;
         this.workspaceRepository = workspaceRepository;
-        this.contextResolver = contextResolver;
     }
 
-    private DslGitRepository resolveRepository() {
-        try {
-            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
-            return repositoryFactory.resolveRepository(ctx);
-        } catch (Exception e) {
-            return repositoryFactory.getSystemRepository();
-        }
+    /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+        return repositoryFactory.resolveRepository(ctx);
     }
 
     /**
@@ -157,15 +156,30 @@ public class WorkspaceProjectionService {
     /**
      * Check if the projection is stale relative to the HEAD of the given branch.
      *
-     * <p>A projection is stale when its recorded commit differs from the
-     * current HEAD of the branch, meaning the user is viewing outdated data.
-     * Both in-memory and persisted projection state are checked.
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #isProjectionStale(String, String, WorkspaceContext)} for workspace-aware resolution.
      *
      * @param username the user to check
      * @param branch   the branch to check against
      * @return true if the projection needs to be rebuilt
      */
     public boolean isProjectionStale(String username, String branch) {
+        return isProjectionStale(username, branch, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Check if the projection is stale relative to the HEAD of the given branch.
+     *
+     * <p>A projection is stale when its recorded commit differs from the
+     * current HEAD of the branch, meaning the user is viewing outdated data.
+     * Both in-memory and persisted projection state are checked.
+     *
+     * @param username the user to check
+     * @param branch   the branch to check against
+     * @param ctx      the workspace context for repository resolution
+     * @return true if the projection needs to be rebuilt
+     */
+    public boolean isProjectionStale(String username, String branch, WorkspaceContext ctx) {
         UserWorkspaceState ws = workspaceManager.getOrCreateWorkspace(username);
         String projCommit = ws.getLastProjectionCommit();
 
@@ -188,7 +202,7 @@ public class WorkspaceProjectionService {
 
         // Compare against actual branch HEAD
         try {
-            String headCommit = resolveRepository().getHeadCommit(branch);
+            String headCommit = resolveRepository(ctx).getHeadCommit(branch);
             if (headCommit == null) {
                 return false;
             }

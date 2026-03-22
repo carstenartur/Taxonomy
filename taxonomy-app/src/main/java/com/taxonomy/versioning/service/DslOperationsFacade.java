@@ -69,11 +69,18 @@ public class DslOperationsFacade {
     }
 
     private DslGitRepository resolveRepository() {
+        return repositoryFactory.resolveRepository(resolveContext());
+    }
+
+    /**
+     * Resolve the current workspace context from the authenticated user.
+     * Falls back to {@link WorkspaceContext#SHARED} if resolution fails.
+     */
+    private WorkspaceContext resolveContext() {
         try {
-            WorkspaceContext ctx = workspaceResolver.resolveCurrentContext();
-            return repositoryFactory.resolveRepository(ctx);
+            return workspaceResolver.resolveCurrentContext();
         } catch (Exception e) {
-            return repositoryFactory.getSystemRepository();
+            return WorkspaceContext.SHARED;
         }
     }
 
@@ -249,28 +256,28 @@ public class DslOperationsFacade {
      * Preview a merge (dry run).
      */
     public ConflictDetectionService.MergePreview previewMerge(String from, String into) {
-        return conflictDetectionService.previewMerge(from, into);
+        return conflictDetectionService.previewMerge(from, into, resolveContext());
     }
 
     /**
      * Preview a cherry-pick (dry run).
      */
     public ConflictDetectionService.CherryPickPreview previewCherryPick(String commitId, String targetBranch) {
-        return conflictDetectionService.previewCherryPick(commitId, targetBranch);
+        return conflictDetectionService.previewCherryPick(commitId, targetBranch, resolveContext());
     }
 
     /**
      * Get merge conflict details.
      */
     public ConflictDetectionService.ConflictDetails getMergeConflictDetails(String from, String into) {
-        return conflictDetectionService.getMergeConflictDetails(from, into);
+        return conflictDetectionService.getMergeConflictDetails(from, into, resolveContext());
     }
 
     /**
      * Get cherry-pick conflict details.
      */
     public ConflictDetectionService.ConflictDetails getCherryPickConflictDetails(String commitId, String targetBranch) {
-        return conflictDetectionService.getCherryPickConflictDetails(commitId, targetBranch);
+        return conflictDetectionService.getCherryPickConflictDetails(commitId, targetBranch, resolveContext());
     }
 
     // ── View context & state guard ──────────────────────────────────
@@ -280,7 +287,7 @@ public class DslOperationsFacade {
      */
     public ViewContext getViewContext(String branch) {
         return repositoryStateService.getViewContext(
-                workspaceResolver.resolveCurrentUsername(), branch);
+                workspaceResolver.resolveCurrentUsername(), branch, resolveContext());
     }
 
     /**
@@ -324,7 +331,7 @@ public class DslOperationsFacade {
      * Index commits on a branch for history search.
      */
     public int indexBranch(String branch) {
-        return commitIndexService.indexBranch(branch);
+        return commitIndexService.indexBranch(branch, resolveContext());
     }
 
     /**

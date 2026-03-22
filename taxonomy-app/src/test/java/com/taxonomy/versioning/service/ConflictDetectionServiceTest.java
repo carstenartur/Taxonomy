@@ -2,8 +2,6 @@ package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -11,7 +9,6 @@ import java.io.IOException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link ConflictDetectionService}.
@@ -55,9 +52,7 @@ class ConflictDetectionServiceTest {
     void setUp() {
         var factory = new DslGitRepositoryFactory(null);
         gitRepo = factory.getSystemRepository();
-        WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
-        when(contextResolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
-        conflictService = new ConflictDetectionService(factory, contextResolver);
+        conflictService = new ConflictDetectionService(factory);
     }
 
     // ── Merge preview ───────────────────────────────────────────────

@@ -17,7 +17,6 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import com.taxonomy.versioning.service.ContextNavigationService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 
@@ -54,11 +53,9 @@ class MultiUserWorkspaceIsolationTest {
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         workspaceManager = new WorkspaceManager(wsRepo, 50,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
-        WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
-        when(contextResolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
         stateService = new RepositoryStateService(factory, workspaceManager,
-                mock(com.taxonomy.workspace.service.SystemRepositoryService.class), contextResolver);
-        navService = new ContextNavigationService(factory, stateService, workspaceManager, contextResolver, 50);
+                mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
+        navService = new ContextNavigationService(factory, stateService, workspaceManager, 50);
         guard = new RepositoryStateGuard(stateService, navService);
     }
 

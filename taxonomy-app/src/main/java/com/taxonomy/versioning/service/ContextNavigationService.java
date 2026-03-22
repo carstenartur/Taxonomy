@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.UUID;
 import com.taxonomy.workspace.service.UserWorkspaceState;
 import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceManager;
 
 /**
@@ -40,28 +39,27 @@ public class ContextNavigationService {
     private final DslGitRepositoryFactory repositoryFactory;
     private final RepositoryStateService stateService;
     private final WorkspaceManager workspaceManager;
-    private final WorkspaceContextResolver contextResolver;
     private final int maxHistory;
 
     public ContextNavigationService(DslGitRepositoryFactory repositoryFactory,
                                     RepositoryStateService stateService,
                                     WorkspaceManager workspaceManager,
-                                    WorkspaceContextResolver contextResolver,
                                     @Value("${taxonomy.context.max-history:50}") int maxHistory) {
         this.repositoryFactory = repositoryFactory;
         this.stateService = stateService;
         this.workspaceManager = workspaceManager;
-        this.contextResolver = contextResolver;
         this.maxHistory = maxHistory;
     }
 
-    private DslGitRepository resolveRepository() {
-        try {
-            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
-            return repositoryFactory.resolveRepository(ctx);
-        } catch (Exception e) {
-            return repositoryFactory.getSystemRepository();
-        }
+    /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+        return repositoryFactory.resolveRepository(ctx);
     }
 
     // ── Workspace-aware methods ─────────────────────────────────────
@@ -89,7 +87,7 @@ public class ContextNavigationService {
     public ContextRef openReadOnly(String username, String branch, String commitId,
                                    String searchQuery, String elementId) {
         UserWorkspaceState state = resolveState(username);
-        String resolvedCommit = resolveCommit(branch, commitId);
+        String resolvedCommit = resolveCommit(branch, commitId, WorkspaceContext.SHARED);
 
         ContextRef previous = state.getCurrentContext();
         ContextRef newCtx = new ContextRef(
@@ -117,14 +115,31 @@ public class ContextNavigationService {
     /**
      * Switch the working context to a different branch/commit.
      *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #switchContext(String, String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
      * @param username the user performing the switch
      * @param branch   the branch to switch to
      * @param commitId the commit SHA (null for HEAD)
      * @return the new context
      */
     public ContextRef switchContext(String username, String branch, String commitId) {
+        return switchContext(username, branch, commitId, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Switch the working context to a different branch/commit.
+     *
+     * @param username the user performing the switch
+     * @param branch   the branch to switch to
+     * @param commitId the commit SHA (null for HEAD)
+     * @param ctx      the workspace context for repository resolution
+     * @return the new context
+     */
+    public ContextRef switchContext(String username, String branch, String commitId,
+                                   WorkspaceContext ctx) {
         UserWorkspaceState state = resolveState(username);
-        String resolvedCommit = resolveCommit(branch, commitId);
+        String resolvedCommit = resolveCommit(branch, commitId, ctx);
 
         ContextRef previous = state.getCurrentContext();
         ContextRef newCtx = new ContextRef(
@@ -244,11 +259,25 @@ public class ContextNavigationService {
      * @throws IOException if the branch creation fails
      */
     public ContextRef createVariantFromCurrent(String username, String variantName) throws IOException {
+        return createVariantFromCurrent(username, variantName, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Create a new branch variant from a user's current context.
+     *
+     * @param username    the user creating the variant
+     * @param variantName the name for the new branch
+     * @param ctx         the workspace context for repository resolution
+     * @return the new context on the variant branch
+     * @throws IOException if the branch creation fails
+     */
+    public ContextRef createVariantFromCurrent(String username, String variantName,
+                                               WorkspaceContext ctx) throws IOException {
         UserWorkspaceState state = resolveState(username);
         ContextRef current = state.getCurrentContext();
         String sourceBranch = current.branch();
 
-        String newCommitId = resolveRepository().createBranch(variantName, sourceBranch);
+        String newCommitId = resolveRepository(ctx).createBranch(variantName, sourceBranch);
 
         ContextRef variantCtx = new ContextRef(
                 UUID.randomUUID().toString(),
@@ -288,12 +317,12 @@ public class ContextNavigationService {
         return workspaceManager.getOrCreateWorkspace(username);
     }
 
-    private String resolveCommit(String branch, String commitId) {
+    private String resolveCommit(String branch, String commitId, WorkspaceContext ctx) {
         if (commitId != null) {
             return commitId;
         }
         try {
-            return resolveRepository().getHeadCommit(branch);
+            return resolveRepository(ctx).getHeadCommit(branch);
         } catch (IOException e) {
             log.warn("Could not resolve HEAD for branch '{}': {}", branch, e.getMessage());
             return null;

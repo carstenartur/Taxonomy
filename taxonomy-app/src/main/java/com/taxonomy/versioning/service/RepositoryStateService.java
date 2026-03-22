@@ -17,7 +17,6 @@ import com.taxonomy.dto.WorkspaceInfo;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.UserWorkspaceState;
 import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceManager;
 
 /**
@@ -46,25 +45,29 @@ public class RepositoryStateService {
     private final DslGitRepositoryFactory repositoryFactory;
     private final WorkspaceManager workspaceManager;
     private final SystemRepositoryService systemRepositoryService;
-    private final WorkspaceContextResolver contextResolver;
 
     public RepositoryStateService(DslGitRepositoryFactory repositoryFactory,
                                   WorkspaceManager workspaceManager,
-                                  SystemRepositoryService systemRepositoryService,
-                                  WorkspaceContextResolver contextResolver) {
+                                  SystemRepositoryService systemRepositoryService) {
         this.repositoryFactory = repositoryFactory;
         this.workspaceManager = workspaceManager;
         this.systemRepositoryService = systemRepositoryService;
-        this.contextResolver = contextResolver;
     }
 
-    private DslGitRepository resolveRepository() {
-        try {
-            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
-            return repositoryFactory.resolveRepository(ctx);
-        } catch (Exception e) {
-            return repositoryFactory.getSystemRepository();
-        }
+    /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * <p>Callers pass an explicit {@link WorkspaceContext} rather than relying
+     * on {@code resolveCurrentContext()} — this keeps the service free from
+     * implicit request-scoped state and makes it testable without a
+     * SecurityContext.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+        return repositoryFactory.resolveRepository(ctx);
     }
 
     // ── Workspace-aware methods ─────────────────────────────────────
@@ -72,16 +75,32 @@ public class RepositoryStateService {
     /**
      * Build the full repository state snapshot for a user and branch.
      *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #getState(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
      * @param username the user whose workspace state to include
      * @param branch   the branch to query (e.g. "draft")
      * @return the full repository state
      */
     public RepositoryState getState(String username, String branch) {
+        return getState(username, branch, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Build the full repository state snapshot for a user, branch, and workspace context.
+     *
+     * @param username the user whose workspace state to include
+     * @param branch   the branch to query (e.g. "draft")
+     * @param ctx      the workspace context for repository resolution
+     * @return the full repository state
+     */
+    public RepositoryState getState(String username, String branch, WorkspaceContext ctx) {
         UserWorkspaceState ws = resolveState(username);
+        DslGitRepository repo = resolveRepository(ctx);
         try {
-            DslCommit headInfo = resolveRepository().getHeadCommitInfo(branch);
-            List<String> branches = resolveRepository().getBranchNames();
-            int commitCount = resolveRepository().getCommitCount(branch);
+            DslCommit headInfo = repo.getHeadCommitInfo(branch);
+            List<String> branches = repo.getBranchNames();
+            int commitCount = repo.getCommitCount(branch);
             String headCommit = headInfo != null ? headInfo.commitId() : null;
 
             boolean projStale = isProjectionStaleForCommit(ws, headCommit);
@@ -103,14 +122,14 @@ public class RepositoryStateService {
                     ws.getLastIndexCommit(),
                     idxStale,
                     commitCount,
-                    resolveRepository().isDatabaseBacked()
+                    repo.isDatabaseBacked()
             );
         } catch (IOException e) {
             log.error("Failed to build repository state for user '{}', branch '{}'", username, branch, e);
             return new RepositoryState(
                     branch, null, null, null, null, List.of(),
                     false, null, null, null, null, false, null, false, 0,
-                    resolveRepository().isDatabaseBacked()
+                    repo.isDatabaseBacked()
             );
         }
     }
@@ -118,14 +137,30 @@ public class RepositoryStateService {
     /**
      * Build a {@link ViewContext} for inclusion in API responses.
      *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #getViewContext(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
      * @param username the user whose workspace state to include
      * @param branch   the branch the data is based on
      * @return the view context metadata
      */
     public ViewContext getViewContext(String username, String branch) {
+        return getViewContext(username, branch, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Build a {@link ViewContext} for inclusion in API responses.
+     *
+     * @param username the user whose workspace state to include
+     * @param branch   the branch the data is based on
+     * @param ctx      the workspace context for repository resolution
+     * @return the view context metadata
+     */
+    public ViewContext getViewContext(String username, String branch, WorkspaceContext ctx) {
         UserWorkspaceState ws = resolveState(username);
+        DslGitRepository repo = resolveRepository(ctx);
         try {
-            DslCommit headInfo = resolveRepository().getHeadCommitInfo(branch);
+            DslCommit headInfo = repo.getHeadCommitInfo(branch);
             String headCommit = headInfo != null ? headInfo.commitId() : null;
 
             return new ViewContext(
@@ -172,14 +207,29 @@ public class RepositoryStateService {
     /**
      * Check if the DB projection is stale for a user's workspace.
      *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #isProjectionStale(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
      * @param username the user to check
      * @param branch   the branch to check
      * @return true if projection is stale
      */
     public boolean isProjectionStale(String username, String branch) {
+        return isProjectionStale(username, branch, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Check if the DB projection is stale for a user's workspace.
+     *
+     * @param username the user to check
+     * @param branch   the branch to check
+     * @param ctx      the workspace context for repository resolution
+     * @return true if projection is stale
+     */
+    public boolean isProjectionStale(String username, String branch, WorkspaceContext ctx) {
         UserWorkspaceState ws = resolveState(username);
         try {
-            String headCommit = resolveRepository().getHeadCommit(branch);
+            String headCommit = resolveRepository(ctx).getHeadCommit(branch);
             return isProjectionStaleForCommit(ws, headCommit);
         } catch (IOException e) {
             log.error("Failed to check projection staleness for user '{}', branch '{}'",
@@ -191,14 +241,29 @@ public class RepositoryStateService {
     /**
      * Get the full projection state for a user's workspace.
      *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #getProjectionState(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
      * @param username the user to check
      * @param branch   the branch to check against
      * @return the projection state
      */
     public ProjectionState getProjectionState(String username, String branch) {
+        return getProjectionState(username, branch, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Get the full projection state for a user's workspace.
+     *
+     * @param username the user to check
+     * @param branch   the branch to check against
+     * @param ctx      the workspace context for repository resolution
+     * @return the projection state
+     */
+    public ProjectionState getProjectionState(String username, String branch, WorkspaceContext ctx) {
         UserWorkspaceState ws = resolveState(username);
         try {
-            String headCommit = resolveRepository().getHeadCommit(branch);
+            String headCommit = resolveRepository(ctx).getHeadCommit(branch);
             return new ProjectionState(
                     ws.getLastProjectionCommit(),
                     ws.getLastProjectionBranch(),

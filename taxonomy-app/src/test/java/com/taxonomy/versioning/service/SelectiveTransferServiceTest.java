@@ -9,8 +9,6 @@ import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.TransferConflict;
 import com.taxonomy.dto.TransferSelection;
-import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -19,7 +17,6 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -77,11 +74,9 @@ class SelectiveTransferServiceTest {
         var wsRepo = mock(com.taxonomy.workspace.repository.UserWorkspaceRepository.class);
         var workspaceManager = new WorkspaceManager(wsRepo, 50,
                 mock(com.taxonomy.workspace.service.SystemRepositoryService.class), gitRepo);
-        WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
-        when(contextResolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
         var stateService = new RepositoryStateService(factory, workspaceManager,
-                mock(com.taxonomy.workspace.service.SystemRepositoryService.class), contextResolver);
-        navService = new ContextNavigationService(factory, stateService, workspaceManager, contextResolver, 50);
+                mock(com.taxonomy.workspace.service.SystemRepositoryService.class));
+        navService = new ContextNavigationService(factory, stateService, workspaceManager, 50);
         var workspaceResolver = mock(WorkspaceResolver.class);
         org.mockito.Mockito.when(workspaceResolver.resolveCurrentUsername()).thenReturn("testuser");
         transferService = new SelectiveTransferService(factory, navService, workspaceResolver);

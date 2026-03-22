@@ -49,9 +49,7 @@ class WorkspaceProjectionServiceTest {
         workspaceManager = new WorkspaceManager(wsRepo, 50,
                 mock(SystemRepositoryService.class), gitRepo);
         projectionRepo = mock(WorkspaceProjectionRepository.class);
-        WorkspaceContextResolver contextResolver = mock(WorkspaceContextResolver.class);
-        when(contextResolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
-        projectionService = new WorkspaceProjectionService(projectionRepo, workspaceManager, factory, wsRepo, contextResolver);
+        projectionService = new WorkspaceProjectionService(projectionRepo, workspaceManager, factory, wsRepo);
     }
 
     // ── Projection creation ─────────────────────────────────────────
