@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -28,13 +29,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * &lt;/ul&gt;
  * &lt;p&gt;
  * Enabled by default. Disable with {@code TAXONOMY_LOGIN_RATE_LIMIT=false}.
+ * Only active in form-login mode (without Keycloak). In the Keycloak profile,
+ * brute-force protection is handled by the identity provider.
  */
 @Component
+@Profile(&quot;!keycloak&quot;)
 @ConditionalOnProperty(name = &quot;taxonomy.security.login-rate-limit.enabled&quot;,
         havingValue = &quot;true&quot;, matchIfMissing = true)
-<span class="fc" id="L35">public class LoginRateLimitFilter extends OncePerRequestFilter {</span>
+<span class="fc" id="L39">public class LoginRateLimitFilter extends OncePerRequestFilter {</span>
 
-<span class="fc" id="L37">    private static final Logger log = LoggerFactory.getLogger(LoginRateLimitFilter.class);</span>
+<span class="fc" id="L41">    private static final Logger log = LoggerFactory.getLogger(LoginRateLimitFilter.class);</span>
 
     @Value(&quot;${taxonomy.security.login-rate-limit.max-attempts:5}&quot;)
     private int maxAttempts;
@@ -42,126 +46,126 @@ import java.util.concurrent.ConcurrentHashMap;
     @Value(&quot;${taxonomy.security.login-rate-limit.lockout-seconds:300}&quot;)
     private int lockoutSeconds;
 
-<span class="fc" id="L45">    private final Map&lt;String, FailureTracker&gt; trackers = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="fc" id="L49">    private final Map&lt;String, FailureTracker&gt; trackers = new ConcurrentHashMap&lt;&gt;();</span>
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-<span class="fc" id="L50">        String clientIp = getClientIp(request);</span>
-<span class="fc bfc" id="L51" title="All 2 branches covered.">        boolean isLoginPost = &quot;POST&quot;.equalsIgnoreCase(request.getMethod())</span>
-<span class="pc bpc" id="L52" title="1 of 2 branches missed.">                &amp;&amp; &quot;/login&quot;.equals(request.getRequestURI());</span>
-<span class="fc" id="L53">        boolean isApiPath = request.getRequestURI().startsWith(&quot;/api/&quot;);</span>
+<span class="fc" id="L54">        String clientIp = getClientIp(request);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        boolean isLoginPost = &quot;POST&quot;.equalsIgnoreCase(request.getMethod())</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">                &amp;&amp; &quot;/login&quot;.equals(request.getRequestURI());</span>
+<span class="fc" id="L57">        boolean isApiPath = request.getRequestURI().startsWith(&quot;/api/&quot;);</span>
 
         // Check if IP is currently locked out
-<span class="fc" id="L56">        FailureTracker tracker = trackers.get(clientIp);</span>
-<span class="pc bpc" id="L57" title="3 of 4 branches missed.">        if (tracker != null &amp;&amp; tracker.isLockedOut(maxAttempts, lockoutSeconds)) {</span>
-<span class="nc bnc" id="L58" title="All 4 branches missed.">            if (isLoginPost || isApiPath) {</span>
-<span class="nc" id="L59">                log.warn(&quot;LOGIN_LOCKED ip={} attempts={}&quot;, clientIp, tracker.getCount());</span>
-<span class="nc" id="L60">                response.setStatus(423); // 423 Locked</span>
-<span class="nc" id="L61">                response.setContentType(&quot;application/json&quot;);</span>
-<span class="nc" id="L62">                long remainingSeconds = tracker.getRemainingLockoutSeconds(lockoutSeconds);</span>
-<span class="nc" id="L63">                response.getWriter().write(</span>
+<span class="fc" id="L60">        FailureTracker tracker = trackers.get(clientIp);</span>
+<span class="pc bpc" id="L61" title="3 of 4 branches missed.">        if (tracker != null &amp;&amp; tracker.isLockedOut(maxAttempts, lockoutSeconds)) {</span>
+<span class="nc bnc" id="L62" title="All 4 branches missed.">            if (isLoginPost || isApiPath) {</span>
+<span class="nc" id="L63">                log.warn(&quot;LOGIN_LOCKED ip={} attempts={}&quot;, clientIp, tracker.getCount());</span>
+<span class="nc" id="L64">                response.setStatus(423); // 423 Locked</span>
+<span class="nc" id="L65">                response.setContentType(&quot;application/json&quot;);</span>
+<span class="nc" id="L66">                long remainingSeconds = tracker.getRemainingLockoutSeconds(lockoutSeconds);</span>
+<span class="nc" id="L67">                response.getWriter().write(</span>
                         &quot;{\&quot;error\&quot;:\&quot;Too many failed login attempts. Try again in &quot;
                         + remainingSeconds + &quot; seconds.\&quot;,&quot;
                         + &quot;\&quot;status\&quot;:423,&quot;
                         + &quot;\&quot;retryAfterSeconds\&quot;:&quot; + remainingSeconds + &quot;}&quot;);
-<span class="nc" id="L68">                return;</span>
+<span class="nc" id="L72">                return;</span>
             }
         }
 
         // Proceed with the filter chain
-<span class="fc" id="L73">        filterChain.doFilter(request, response);</span>
+<span class="fc" id="L77">        filterChain.doFilter(request, response);</span>
 
         // After the request: track failures
-<span class="fc" id="L76">        int status = response.getStatus();</span>
+<span class="fc" id="L80">        int status = response.getStatus();</span>
 
-<span class="pc bpc" id="L78" title="3 of 4 branches missed.">        if (isLoginPost &amp;&amp; status == 302) {</span>
+<span class="pc bpc" id="L82" title="3 of 4 branches missed.">        if (isLoginPost &amp;&amp; status == 302) {</span>
             // Form login: 302 redirect to /login?error means failure
-<span class="nc" id="L80">            String redirectLocation = response.getHeader(&quot;Location&quot;);</span>
-<span class="nc bnc" id="L81" title="All 4 branches missed.">            if (redirectLocation != null &amp;&amp; redirectLocation.contains(&quot;error&quot;)) {</span>
-<span class="nc" id="L82">                recordFailure(clientIp);</span>
+<span class="nc" id="L84">            String redirectLocation = response.getHeader(&quot;Location&quot;);</span>
+<span class="nc bnc" id="L85" title="All 4 branches missed.">            if (redirectLocation != null &amp;&amp; redirectLocation.contains(&quot;error&quot;)) {</span>
+<span class="nc" id="L86">                recordFailure(clientIp);</span>
             } else {
                 // Successful login — clear the tracker
-<span class="nc" id="L85">                trackers.remove(clientIp);</span>
+<span class="nc" id="L89">                trackers.remove(clientIp);</span>
             }
-<span class="pc bpc" id="L87" title="1 of 4 branches missed.">        } else if (isApiPath &amp;&amp; status == 401) {</span>
+<span class="pc bpc" id="L91" title="1 of 4 branches missed.">        } else if (isApiPath &amp;&amp; status == 401) {</span>
             // HTTP Basic: 401 Unauthorized means bad credentials
-<span class="nc" id="L89">            recordFailure(clientIp);</span>
+<span class="nc" id="L93">            recordFailure(clientIp);</span>
         }
-<span class="fc" id="L91">    }</span>
+<span class="fc" id="L95">    }</span>
 
     private void recordFailure(String clientIp) {
-<span class="nc" id="L94">        FailureTracker tracker = trackers.computeIfAbsent(clientIp, k -&gt; new FailureTracker());</span>
-<span class="nc" id="L95">        int count = tracker.recordFailure(lockoutSeconds);</span>
-<span class="nc bnc" id="L96" title="All 2 branches missed.">        if (count &gt;= maxAttempts) {</span>
-<span class="nc" id="L97">            log.warn(&quot;LOGIN_RATE_LIMIT_TRIGGERED ip={} attempts={}&quot;, clientIp, count);</span>
+<span class="nc" id="L98">        FailureTracker tracker = trackers.computeIfAbsent(clientIp, k -&gt; new FailureTracker());</span>
+<span class="nc" id="L99">        int count = tracker.recordFailure(lockoutSeconds);</span>
+<span class="nc bnc" id="L100" title="All 2 branches missed.">        if (count &gt;= maxAttempts) {</span>
+<span class="nc" id="L101">            log.warn(&quot;LOGIN_RATE_LIMIT_TRIGGERED ip={} attempts={}&quot;, clientIp, count);</span>
         }
-<span class="nc" id="L99">    }</span>
+<span class="nc" id="L103">    }</span>
 
     private String getClientIp(HttpServletRequest request) {
-<span class="fc" id="L102">        String xff = request.getHeader(&quot;X-Forwarded-For&quot;);</span>
-<span class="pc bpc" id="L103" title="3 of 4 branches missed.">        if (xff != null &amp;&amp; !xff.isBlank()) {</span>
-<span class="nc" id="L104">            return xff.split(&quot;,&quot;)[0].trim();</span>
+<span class="fc" id="L106">        String xff = request.getHeader(&quot;X-Forwarded-For&quot;);</span>
+<span class="pc bpc" id="L107" title="3 of 4 branches missed.">        if (xff != null &amp;&amp; !xff.isBlank()) {</span>
+<span class="nc" id="L108">            return xff.split(&quot;,&quot;)[0].trim();</span>
         }
-<span class="fc" id="L106">        return request.getRemoteAddr();</span>
+<span class="fc" id="L110">        return request.getRemoteAddr();</span>
     }
 
     /** Visible for testing — clears all failure trackers. */
     public void clearTrackers() {
-<span class="fc" id="L111">        trackers.clear();</span>
-<span class="fc" id="L112">    }</span>
+<span class="fc" id="L115">        trackers.clear();</span>
+<span class="fc" id="L116">    }</span>
 
     /** Visible for testing — returns the tracker map. */
     public Map&lt;String, FailureTracker&gt; getTrackers() {
-<span class="fc" id="L116">        return trackers;</span>
+<span class="fc" id="L120">        return trackers;</span>
     }
 
     /**
      * Tracks failed login attempts for a single IP address.
      */
-<span class="nc" id="L122">    static class FailureTracker {</span>
-<span class="nc" id="L123">        private int count = 0;</span>
-<span class="nc" id="L124">        private long firstFailureTime = 0;</span>
+<span class="nc" id="L126">    static class FailureTracker {</span>
+<span class="nc" id="L127">        private int count = 0;</span>
+<span class="nc" id="L128">        private long firstFailureTime = 0;</span>
 
         synchronized int recordFailure(int lockoutSeconds) {
-<span class="nc" id="L127">            long now = System.currentTimeMillis();</span>
-<span class="nc" id="L128">            long windowMs = lockoutSeconds * 1000L;</span>
+<span class="nc" id="L131">            long now = System.currentTimeMillis();</span>
+<span class="nc" id="L132">            long windowMs = lockoutSeconds * 1000L;</span>
 
             // If the window has expired, reset the counter
-<span class="nc bnc" id="L131" title="All 4 branches missed.">            if (firstFailureTime &gt; 0 &amp;&amp; (now - firstFailureTime) &gt; windowMs) {</span>
-<span class="nc" id="L132">                count = 0;</span>
-<span class="nc" id="L133">                firstFailureTime = now;</span>
-            }
-
-<span class="nc bnc" id="L136" title="All 2 branches missed.">            if (firstFailureTime == 0) {</span>
+<span class="nc bnc" id="L135" title="All 4 branches missed.">            if (firstFailureTime &gt; 0 &amp;&amp; (now - firstFailureTime) &gt; windowMs) {</span>
+<span class="nc" id="L136">                count = 0;</span>
 <span class="nc" id="L137">                firstFailureTime = now;</span>
             }
-<span class="nc" id="L139">            return ++count;</span>
+
+<span class="nc bnc" id="L140" title="All 2 branches missed.">            if (firstFailureTime == 0) {</span>
+<span class="nc" id="L141">                firstFailureTime = now;</span>
+            }
+<span class="nc" id="L143">            return ++count;</span>
         }
 
         synchronized boolean isLockedOut(int maxAttempts, int lockoutSeconds) {
-<span class="nc bnc" id="L143" title="All 2 branches missed.">            if (count &lt; maxAttempts) {</span>
-<span class="nc" id="L144">                return false;</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">            if (count &lt; maxAttempts) {</span>
+<span class="nc" id="L148">                return false;</span>
             }
-<span class="nc" id="L146">            long elapsed = System.currentTimeMillis() - firstFailureTime;</span>
-<span class="nc" id="L147">            long windowMs = lockoutSeconds * 1000L;</span>
-<span class="nc bnc" id="L148" title="All 2 branches missed.">            if (elapsed &gt; windowMs) {</span>
+<span class="nc" id="L150">            long elapsed = System.currentTimeMillis() - firstFailureTime;</span>
+<span class="nc" id="L151">            long windowMs = lockoutSeconds * 1000L;</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">            if (elapsed &gt; windowMs) {</span>
                 // Lockout expired — reset
-<span class="nc" id="L150">                count = 0;</span>
-<span class="nc" id="L151">                firstFailureTime = 0;</span>
-<span class="nc" id="L152">                return false;</span>
+<span class="nc" id="L154">                count = 0;</span>
+<span class="nc" id="L155">                firstFailureTime = 0;</span>
+<span class="nc" id="L156">                return false;</span>
             }
-<span class="nc" id="L154">            return true;</span>
+<span class="nc" id="L158">            return true;</span>
         }
 
         synchronized long getRemainingLockoutSeconds(int lockoutSeconds) {
-<span class="nc" id="L158">            long elapsed = System.currentTimeMillis() - firstFailureTime;</span>
-<span class="nc" id="L159">            long remaining = (lockoutSeconds * 1000L - elapsed) / 1000;</span>
-<span class="nc" id="L160">            return Math.max(0, remaining);</span>
+<span class="nc" id="L162">            long elapsed = System.currentTimeMillis() - firstFailureTime;</span>
+<span class="nc" id="L163">            long remaining = (lockoutSeconds * 1000L - elapsed) / 1000;</span>
+<span class="nc" id="L164">            return Math.max(0, remaining);</span>
         }
 
         synchronized int getCount() {
-<span class="nc" id="L164">            return count;</span>
+<span class="nc" id="L168">            return count;</span>
         }
     }
 }

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SwaggerKeycloakConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.keycloak</a> &gt; <span class="el_source">SwaggerKeycloakConfig.java</span></div><h1>SwaggerKeycloakConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.keycloak;
+
+import io.swagger.v3.oas.models.Components;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.security.OAuthFlow;
+import io.swagger.v3.oas.models.security.OAuthFlows;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+
+/**
+ * Adds an OAuth2 security scheme to the OpenAPI spec when the Keycloak profile
+ * is active. Swagger UI will show an &quot;Authorize&quot; button that starts the
+ * authorization-code flow against Keycloak.
+ */
+@Configuration
+@Profile(&quot;keycloak&quot;)
+<span class="nc" id="L21">public class SwaggerKeycloakConfig {</span>
+
+    @Bean
+    public OpenAPI keycloakOpenAPI(
+            @Value(&quot;${spring.security.oauth2.resourceserver.jwt.issuer-uri:http://localhost:8180/realms/taxonomy}&quot;) String issuerUri) {
+<span class="nc" id="L26">        return new OpenAPI()</span>
+<span class="nc" id="L27">                .addSecurityItem(new SecurityRequirement().addList(&quot;keycloak&quot;))</span>
+<span class="nc" id="L28">                .components(new Components()</span>
+<span class="nc" id="L29">                        .addSecuritySchemes(&quot;keycloak&quot;, new SecurityScheme()</span>
+<span class="nc" id="L30">                                .type(SecurityScheme.Type.OAUTH2)</span>
+<span class="nc" id="L31">                                .flows(new OAuthFlows()</span>
+<span class="nc" id="L32">                                        .authorizationCode(new OAuthFlow()</span>
+<span class="nc" id="L33">                                                .authorizationUrl(issuerUri + &quot;/protocol/openid-connect/auth&quot;)</span>
+<span class="nc" id="L34">                                                .tokenUrl(issuerUri + &quot;/protocol/openid-connect/token&quot;)</span>
+                                        )
+                                )
+                        )
+                );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
