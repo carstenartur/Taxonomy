@@ -16,6 +16,7 @@ import com.taxonomy.dto.ElementHistoryAggregation;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.dto.VersionedSearchResult;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +41,7 @@ public class DslOperationsFacade {
     private final TaxDslExportService exportService;
     private final DslMaterializeService materializeService;
     private final ArchitectureDslDocumentRepository documentRepository;
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
     private final CommitIndexService commitIndexService;
     private final ConflictDetectionService conflictDetectionService;
     private final RepositoryStateGuard stateGuard;
@@ -59,12 +60,28 @@ public class DslOperationsFacade {
         this.exportService = exportService;
         this.materializeService = materializeService;
         this.documentRepository = documentRepository;
-        this.gitRepository = repositoryFactory.getSystemRepository();
+        this.repositoryFactory = repositoryFactory;
         this.commitIndexService = commitIndexService;
         this.conflictDetectionService = conflictDetectionService;
         this.stateGuard = stateGuard;
         this.repositoryStateService = repositoryStateService;
         this.workspaceResolver = workspaceResolver;
+    }
+
+    private DslGitRepository resolveRepository() {
+        return repositoryFactory.resolveRepository(resolveContext());
+    }
+
+    /**
+     * Resolve the current workspace context from the authenticated user.
+     * Falls back to {@link WorkspaceContext#SHARED} if resolution fails.
+     */
+    private WorkspaceContext resolveContext() {
+        try {
+            return workspaceResolver.resolveCurrentContext();
+        } catch (Exception e) {
+            return WorkspaceContext.SHARED;
+        }
     }
 
     // ── Export ───────────────────────────────────────────────────────
@@ -113,21 +130,21 @@ public class DslOperationsFacade {
      * Commit DSL text to a branch.
      */
     public String commitDsl(String branch, String dslText, String author, String message) throws IOException {
-        return gitRepository.commitDsl(branch, dslText, author, message);
+        return resolveRepository().commitDsl(branch, dslText, author, message);
     }
 
     /**
      * Whether the Git repository is database-backed.
      */
     public boolean isDatabaseBacked() {
-        return gitRepository.isDatabaseBacked();
+        return resolveRepository().isDatabaseBacked();
     }
 
     /**
      * Get DSL commit history for a branch.
      */
     public List<DslCommit> getDslHistory(String branch) throws IOException {
-        return gitRepository.getDslHistory(branch);
+        return resolveRepository().getDslHistory(branch);
     }
 
     /**
@@ -143,7 +160,7 @@ public class DslOperationsFacade {
      */
     public ModelDiff diffBetween(String beforeId, String afterId) throws Exception {
         if (looksLikeGitSha(beforeId) && looksLikeGitSha(afterId)) {
-            return gitRepository.diffBetween(beforeId, afterId);
+            return resolveRepository().diffBetween(beforeId, afterId);
         } else {
             return materializeService.diffDocuments(Long.valueOf(beforeId), Long.valueOf(afterId));
         }
@@ -153,84 +170,84 @@ public class DslOperationsFacade {
      * Compute a JGit text diff between two commits.
      */
     public String textDiff(String beforeId, String afterId) throws Exception {
-        return gitRepository.textDiff(beforeId, afterId);
+        return resolveRepository().textDiff(beforeId, afterId);
     }
 
     /**
      * List all branches in the Git repository.
      */
     public List<DslBranch> listBranches() throws IOException {
-        return gitRepository.listBranches();
+        return resolveRepository().listBranches();
     }
 
     /**
      * Create a new branch by forking from an existing branch.
      */
     public String createBranch(String name, String fromBranch) throws IOException {
-        return gitRepository.createBranch(name, fromBranch);
+        return resolveRepository().createBranch(name, fromBranch);
     }
 
     /**
      * Cherry-pick a commit onto a target branch.
      */
     public String cherryPick(String commitId, String targetBranch) throws IOException {
-        return gitRepository.cherryPick(commitId, targetBranch);
+        return resolveRepository().cherryPick(commitId, targetBranch);
     }
 
     /**
      * Merge one branch into another.
      */
     public String merge(String fromBranch, String intoBranch) throws IOException {
-        return gitRepository.merge(fromBranch, intoBranch);
+        return resolveRepository().merge(fromBranch, intoBranch);
     }
 
     /**
      * Revert a specific commit on a branch.
      */
     public String revert(String commitId, String branch) throws IOException {
-        return gitRepository.revert(commitId, branch);
+        return resolveRepository().revert(commitId, branch);
     }
 
     /**
      * Undo the last commit on a branch.
      */
     public String undoLast(String branch) throws IOException {
-        return gitRepository.undoLast(branch);
+        return resolveRepository().undoLast(branch);
     }
 
     /**
      * Restore DSL content from a specific commit.
      */
     public String restore(String commitId, String branch) throws Exception {
-        return gitRepository.restore(commitId, branch);
+        return resolveRepository().restore(commitId, branch);
     }
 
     /**
      * Delete a branch.
      */
     public boolean deleteBranch(String name) throws IOException {
-        return gitRepository.deleteBranch(name);
+        return resolveRepository().deleteBranch(name);
     }
 
     /**
      * Read DSL text from the HEAD of a branch.
      */
     public String getDslAtHead(String branch) throws IOException {
-        return gitRepository.getDslAtHead(branch);
+        return resolveRepository().getDslAtHead(branch);
     }
 
     /**
      * Read DSL text from a specific commit.
      */
     public String getDslAtCommit(String commitId) throws Exception {
-        return gitRepository.getDslAtCommit(commitId);
+        return resolveRepository().getDslAtCommit(commitId);
     }
 
     /**
      * Get the HEAD commit SHA for a branch.
      */
     public String getHeadCommit(String branch) throws IOException {
-        return gitRepository.getHeadCommit(branch);
+        return resolveRepository().getHeadCommit(branch);
     }
 
     // ── Conflict detection ──────────────────────────────────────────
@@ -239,28 +256,28 @@ public class DslOperationsFacade {
      * Preview a merge (dry run).
      */
     public ConflictDetectionService.MergePreview previewMerge(String from, String into) {
-        return conflictDetectionService.previewMerge(from, into);
+        return conflictDetectionService.previewMerge(from, into, resolveContext());
     }
 
     /**
      * Preview a cherry-pick (dry run).
      */
     public ConflictDetectionService.CherryPickPreview previewCherryPick(String commitId, String targetBranch) {
-        return conflictDetectionService.previewCherryPick(commitId, targetBranch);
+        return conflictDetectionService.previewCherryPick(commitId, targetBranch, resolveContext());
     }
 
     /**
      * Get merge conflict details.
      */
     public ConflictDetectionService.ConflictDetails getMergeConflictDetails(String from, String into) {
-        return conflictDetectionService.getMergeConflictDetails(from, into);
+        return conflictDetectionService.getMergeConflictDetails(from, into, resolveContext());
     }
 
     /**
      * Get cherry-pick conflict details.
      */
     public ConflictDetectionService.ConflictDetails getCherryPickConflictDetails(String commitId, String targetBranch) {
-        return conflictDetectionService.getCherryPickConflictDetails(commitId, targetBranch);
+        return conflictDetectionService.getCherryPickConflictDetails(commitId, targetBranch, resolveContext());
     }
 
     // ── View context & state guard ──────────────────────────────────
@@ -270,7 +287,7 @@ public class DslOperationsFacade {
      */
     public ViewContext getViewContext(String branch) {
         return repositoryStateService.getViewContext(
-                workspaceResolver.resolveCurrentUsername(), branch);
+                workspaceResolver.resolveCurrentUsername(), branch, resolveContext());
     }
 
     /**
@@ -314,7 +331,7 @@ public class DslOperationsFacade {
      * Index commits on a branch for history search.
      */
     public int indexBranch(String branch) {
-        return commitIndexService.indexBranch(branch);
+        return commitIndexService.indexBranch(branch, resolveContext());
     }
 
     /**

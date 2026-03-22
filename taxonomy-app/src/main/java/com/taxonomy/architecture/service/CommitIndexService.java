@@ -41,7 +41,7 @@ public class CommitIndexService {
 
     private static final Logger log = LoggerFactory.getLogger(CommitIndexService.class);
 
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
     private final ArchitectureCommitIndexRepository indexRepository;
     private final WorkspaceContextResolver contextResolver;
     private final DslTokenizer tokenizer = new DslTokenizer();
@@ -52,21 +52,56 @@ public class CommitIndexService {
     public CommitIndexService(DslGitRepositoryFactory repositoryFactory,
                               ArchitectureCommitIndexRepository indexRepository,
                               WorkspaceContextResolver contextResolver) {
-        this.gitRepository = repositoryFactory.getSystemRepository();
+        this.repositoryFactory = repositoryFactory;
         this.indexRepository = indexRepository;
         this.contextResolver = contextResolver;
     }
 
     /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+        return repositoryFactory.resolveRepository(ctx);
+    }
+
+    /**
      * Index all unindexed commits on the given branch.
+     *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #indexBranch(String, WorkspaceContext)} for workspace-aware resolution.
      *
      * @param branch the Git branch to index
      * @return number of newly indexed commits
      */
     @Transactional
     public int indexBranch(String branch) {
+        return indexBranch(branch, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Index all unindexed commits on the given branch.
+     *
+     * <p><b>Known limitation:</b> {@link ArchitectureCommitIndex} is keyed only by
+     * {@code commit_id} and filtered by {@code branch}. In factory mode with
+     * per-workspace repositories, different workspaces may share branch names
+     * (e.g. {@code draft}), causing potential cross-workspace leakage in search
+     * results. A future enhancement should add a repository/workspace
+     * discriminator column to {@code ArchitectureCommitIndex} and include it in
+     * uniqueness constraints and search filters.
+     *
+     * @param branch the Git branch to index
+     * @param ctx    the workspace context for repository resolution
+     * @return number of newly indexed commits
+     */
+    @Transactional
+    public int indexBranch(String branch, WorkspaceContext ctx) {
         try {
-            List<DslCommit> commits = gitRepository.getDslHistory(branch);
+            DslGitRepository repo = resolveRepository(ctx);
+            List<DslCommit> commits = repo.getDslHistory(branch);
             int indexed = 0;
 
             for (DslCommit commit : commits) {
@@ -74,7 +109,7 @@ public class CommitIndexService {
                     continue; // already indexed
                 }
 
-                String dslText = gitRepository.getDslAtCommit(commit.commitId());
+                String dslText = repo.getDslAtCommit(commit.commitId());
                 if (dslText == null) {
                     continue;
                 }

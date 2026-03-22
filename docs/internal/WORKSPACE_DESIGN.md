@@ -7,13 +7,13 @@
 
 ## 1. Overview
 
-The multi-user workspace model provides isolated editing environments for concurrent users. Each user gets an independent workspace with its own branch, navigation context, projection state, and sync tracking. The underlying Git repository (`DslGitRepository`) is shared; isolation is achieved through branches and per-user state management.
+The multi-user workspace model provides isolated editing environments for concurrent users. Each user gets an independent workspace with its own branch, navigation context, projection state, and sync tracking. In the default configuration (factory mode), each workspace gets a logically separate Git repository via `DslGitRepositoryFactory.getWorkspaceRepository(workspaceId)`. Branch-level isolation within a shared repository is only used in legacy/test mode. See [REPOSITORY_TOPOLOGY.md](../en/REPOSITORY_TOPOLOGY.md) for details.
 
 ---
 
 ## 2. Design Principles
 
-1. **Branch-level isolation** — Each user works on their own Git branch. No two users accidentally overwrite each other's work.
+1. **Repository-level isolation** — Each user works in their own logical Git repository (default). Branch-level isolation is supported as a legacy fallback.
 2. **Lazy initialization** — Workspaces are created on first access, not pre-provisioned.
 3. **Graceful degradation** — If persistence fails, the workspace still functions in-memory.
 4. **Shared integration point** — The `draft` branch serves as the shared/canonical repository state.
@@ -258,7 +258,7 @@ Workspace isolation applies to **mutable, user-generated data**, not to the read
 | **TaxonomyRelation** (DSL-materialized) | ✅ Yes | Created per workspace via DSL materialization. `workspace_id` column. |
 | **RelationHypothesis** (analysis) | ✅ Yes | Generated per workspace during analysis. `workspace_id` column. |
 | **RelationProposal** (user) | ✅ Yes | User-generated proposals, scoped to workspace. `workspace_id` column. |
-| **ArchitectureCommitIndex** | ⚠️ Branch-filtered | Branch field already exists as `@KeywordField`. Filtered by `currentBranch`. |
+| **ArchitectureCommitIndex** | ✅ Repository-scoped | Commits are read from the correct workspace repository via explicit `WorkspaceContext` parameter. Branch filtering provides additional scoping within a repository. |
 | **ArchitectureDslDocument** | ⚠️ Branch-filtered | Has `branch` and `commitId`. Workspace derived from branch. |
 
 ### Entity Extensions
@@ -342,7 +342,42 @@ relation is created in the correct workspace even when reviewed by a different u
 
 ---
 
-## 11. Future Considerations
+## 11. Repository-Aware Services
+
+### Topology Modes
+
+| Mode | Description | Default? |
+|---|---|---|
+| **Factory mode** (per-workspace repos) | Each workspace gets its own Git repository via `DslGitRepositoryFactory.getWorkspaceRepository(workspaceId)`. Production default. | ✅ Yes |
+| **Shared-repo + branch isolation** | All workspaces share one Git repository, isolated by branch names. Legacy/test mode. | ❌ No |
+
+### How `resolveRepository(WorkspaceContext)` Works
+
+The `DslGitRepositoryFactory.resolveRepository(WorkspaceContext ctx)` method routes to the correct repository:
+
+1. If `ctx.workspaceId()` is null (SHARED context) → returns `getSystemRepository()` (the shared `"taxonomy-dsl"` repo)
+2. If `ctx.workspaceId()` is set → returns `getWorkspaceRepository(ctx.workspaceId())` (e.g. `"ws-alice-ws"`)
+
+### Repo-Aware Services
+
+Backend services accept an **explicit `WorkspaceContext` parameter** on methods that need repository access. They do NOT call `resolveCurrentContext()` internally — that is reserved for the Facade/UI layer.
+
+| Service | Repo-Aware Methods | Context Source |
+|---|---|---|
+| `CommitIndexService` | `indexBranch(branch, ctx)` | Explicit parameter |
+| `RepositoryStateService` | `getState(user, branch, ctx)`, `isProjectionStale(user, branch, ctx)`, `getViewContext(user, branch, ctx)`, `getProjectionState(user, branch, ctx)` | Explicit parameter |
+| `ContextNavigationService` | `switchContext(user, branch, commitId, ctx)`, `createVariantFromCurrent(user, name, ctx)` | Explicit parameter |
+| `ConflictDetectionService` | `previewMerge(from, into, ctx)`, `previewCherryPick(commitId, branch, ctx)`, `getMergeConflictDetails(from, into, ctx)`, `getCherryPickConflictDetails(commitId, branch, ctx)` | Explicit parameter |
+| `WorkspaceProjectionService` | `isProjectionStale(user, branch, ctx)` | Explicit parameter |
+| `ContextCompareService` | `compareContexts(left, right, ctx)`, `compareBranches(left, right, ctx)` | Explicit parameter |
+| `SelectiveTransferService` | `previewTransfer(selection, ctx)`, `applyTransfer(selection)` | Explicit parameter / `resolveCurrentContext()` for apply |
+| **`DslOperationsFacade`** | All Git methods (`commitDsl`, `getDslHistory`, `merge`, `listBranches`, etc.) | `resolveCurrentContext()` — the **only** place that reads from SecurityContext |
+
+All repo-aware methods also provide backward-compatible overloads without the `ctx` parameter that default to `WorkspaceContext.SHARED` (system repository).
+
+---
+
+## 12. Future Considerations
 
 - **Keycloak OIDC** — Replace form-login with JWT-based auth; workspace ownership from token claims
 - **Per-user projection tables** — Currently logical isolation; future: physical table-per-user or discriminator column

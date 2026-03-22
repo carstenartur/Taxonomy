@@ -9,6 +9,7 @@ import com.taxonomy.dto.ContextComparison;
 import com.taxonomy.dto.ContextComparison.DiffSummary;
 import com.taxonomy.dto.ContextRef;
 import com.taxonomy.dto.SemanticChange;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -28,14 +29,28 @@ public class ContextCompareService {
 
     private static final Logger log = LoggerFactory.getLogger(ContextCompareService.class);
 
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
 
     public ContextCompareService(DslGitRepositoryFactory repositoryFactory) {
-        this.gitRepository = repositoryFactory.getSystemRepository();
+        this.repositoryFactory = repositoryFactory;
+    }
+
+    /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+        return repositoryFactory.resolveRepository(ctx);
     }
 
     /**
      * Compare two contexts identified by their commit IDs.
+     *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #compareContexts(ContextRef, ContextRef, WorkspaceContext)} for workspace-aware resolution.
      *
      * @param left  the left (source/older) context
      * @param right the right (target/newer) context
@@ -43,8 +58,23 @@ public class ContextCompareService {
      * @throws IOException if Git operations fail
      */
     public ContextComparison compareContexts(ContextRef left, ContextRef right) throws IOException {
-        String leftCommit = resolveCommit(left);
-        String rightCommit = resolveCommit(right);
+        return compareContexts(left, right, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Compare two contexts identified by their commit IDs.
+     *
+     * @param left  the left (source/older) context
+     * @param right the right (target/newer) context
+     * @param ctx   the workspace context for repository resolution
+     * @return the comparison result
+     * @throws IOException if Git operations fail
+     */
+    public ContextComparison compareContexts(ContextRef left, ContextRef right,
+                                             WorkspaceContext ctx) throws IOException {
+        DslGitRepository repo = resolveRepository(ctx);
+        String leftCommit = resolveCommit(repo, left);
+        String rightCommit = resolveCommit(repo, right);
 
         if (leftCommit == null || rightCommit == null) {
             return new ContextComparison(left, right,
@@ -52,13 +82,13 @@ public class ContextCompareService {
                     List.of(), null);
         }
 
-        ModelDiff diff = gitRepository.diffBetween(leftCommit, rightCommit);
+        ModelDiff diff = repo.diffBetween(leftCommit, rightCommit);
         DiffSummary summary = buildDiffSummary(diff);
         List<SemanticChange> changes = buildSemanticChanges(diff);
 
         String rawDiff = null;
         try {
-            rawDiff = gitRepository.textDiff(leftCommit, rightCommit);
+            rawDiff = repo.textDiff(leftCommit, rightCommit);
         } catch (IOException e) {
             log.warn("Could not generate raw text diff: {}", e.getMessage());
         }
@@ -69,22 +99,40 @@ public class ContextCompareService {
     /**
      * Compare two branches at their HEAD commits.
      *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #compareBranches(ContextRef, ContextRef, WorkspaceContext)} for workspace-aware resolution.
+     *
      * @param left  the left context
      * @param right the right context
      * @return the comparison result
      * @throws IOException if Git operations fail
      */
     public ContextComparison compareBranches(ContextRef left, ContextRef right) throws IOException {
-        ModelDiff diff = gitRepository.diffBranches(left.branch(), right.branch());
+        return compareBranches(left, right, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Compare two branches at their HEAD commits.
+     *
+     * @param left  the left context
+     * @param right the right context
+     * @param ctx   the workspace context for repository resolution
+     * @return the comparison result
+     * @throws IOException if Git operations fail
+     */
+    public ContextComparison compareBranches(ContextRef left, ContextRef right,
+                                             WorkspaceContext ctx) throws IOException {
+        DslGitRepository repo = resolveRepository(ctx);
+        ModelDiff diff = repo.diffBranches(left.branch(), right.branch());
         DiffSummary summary = buildDiffSummary(diff);
         List<SemanticChange> changes = buildSemanticChanges(diff);
 
         String rawDiff = null;
         try {
-            String leftCommit = gitRepository.getHeadCommit(left.branch());
-            String rightCommit = gitRepository.getHeadCommit(right.branch());
+            String leftCommit = repo.getHeadCommit(left.branch());
+            String rightCommit = repo.getHeadCommit(right.branch());
             if (leftCommit != null && rightCommit != null) {
-                rawDiff = gitRepository.textDiff(leftCommit, rightCommit);
+                rawDiff = repo.textDiff(leftCommit, rightCommit);
             }
         } catch (Exception e) {
             log.debug("Could not generate raw diff for branch compare: {}", e.getMessage());
@@ -160,12 +208,12 @@ public class ContextCompareService {
         return changes;
     }
 
-    private String resolveCommit(ContextRef ctx) {
+    private String resolveCommit(DslGitRepository repo, ContextRef ctx) {
         if (ctx.commitId() != null) {
             return ctx.commitId();
         }
         try {
-            return gitRepository.getHeadCommit(ctx.branch());
+            return repo.getHeadCommit(ctx.branch());
         } catch (IOException e) {
             log.warn("Could not resolve HEAD for branch '{}': {}", ctx.branch(), e.getMessage());
             return null;

@@ -2,6 +2,7 @@ package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.merge.MergeStrategy;
@@ -26,10 +27,21 @@ public class ConflictDetectionService {
 
     private static final Logger log = LoggerFactory.getLogger(ConflictDetectionService.class);
 
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
 
     public ConflictDetectionService(DslGitRepositoryFactory repositoryFactory) {
-        this.gitRepository = repositoryFactory.getSystemRepository();
+        this.repositoryFactory = repositoryFactory;
+    }
+
+    /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+        return repositoryFactory.resolveRepository(ctx);
     }
 
     /**
@@ -75,13 +87,28 @@ public class ConflictDetectionService {
     /**
      * Preview a merge to check for conflicts.
      *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #previewMerge(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
      * @param fromBranch the source branch
      * @param intoBranch the target branch
      * @return the merge preview result
      */
     public MergePreview previewMerge(String fromBranch, String intoBranch) {
+        return previewMerge(fromBranch, intoBranch, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Preview a merge to check for conflicts.
+     *
+     * @param fromBranch the source branch
+     * @param intoBranch the target branch
+     * @param ctx        the workspace context for repository resolution
+     * @return the merge preview result
+     */
+    public MergePreview previewMerge(String fromBranch, String intoBranch, WorkspaceContext ctx) {
         try {
-            var repo = gitRepository.getGitRepository();
+            var repo = resolveRepository(ctx).getGitRepository();
             String fromRefName = Constants.R_HEADS + fromBranch;
             String intoRefName = Constants.R_HEADS + intoBranch;
 
@@ -158,16 +185,31 @@ public class ConflictDetectionService {
     /**
      * Get conflict details for a merge that would conflict.
      *
-     * <p>Returns the DSL content from both sides so the UI can display
-     * a side-by-side comparison for manual resolution.
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #getMergeConflictDetails(String, String, WorkspaceContext)} for workspace-aware resolution.
      *
      * @param fromBranch the source branch
      * @param intoBranch the target branch
      * @return conflict details, or null if no conflict detected
      */
     public ConflictDetails getMergeConflictDetails(String fromBranch, String intoBranch) {
+        return getMergeConflictDetails(fromBranch, intoBranch, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Get conflict details for a merge that would conflict.
+     *
+     * <p>Returns the DSL content from both sides so the UI can display
+     * a side-by-side comparison for manual resolution.
+     *
+     * @param fromBranch the source branch
+     * @param intoBranch the target branch
+     * @param ctx        the workspace context for repository resolution
+     * @return conflict details, or null if no conflict detected
+     */
+    public ConflictDetails getMergeConflictDetails(String fromBranch, String intoBranch, WorkspaceContext ctx) {
         try {
-            MergePreview preview = previewMerge(fromBranch, intoBranch);
+            MergePreview preview = previewMerge(fromBranch, intoBranch, ctx);
             if (preview.canMerge()) {
                 return null; // No conflict
             }
@@ -179,8 +221,9 @@ public class ConflictDetectionService {
                 return null;
             }
 
-            String oursContent = gitRepository.getDslAtHead(intoBranch);
-            String theirsContent = gitRepository.getDslAtHead(fromBranch);
+            DslGitRepository repo = resolveRepository(ctx);
+            String oursContent = repo.getDslAtHead(intoBranch);
+            String theirsContent = repo.getDslAtHead(fromBranch);
 
             return new ConflictDetails(
                     "merge",
@@ -199,13 +242,28 @@ public class ConflictDetectionService {
     /**
      * Get conflict details for a cherry-pick that would conflict.
      *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #getCherryPickConflictDetails(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
      * @param commitId     the commit to cherry-pick
      * @param targetBranch the target branch
      * @return conflict details, or null if no conflict detected
      */
     public ConflictDetails getCherryPickConflictDetails(String commitId, String targetBranch) {
+        return getCherryPickConflictDetails(commitId, targetBranch, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Get conflict details for a cherry-pick that would conflict.
+     *
+     * @param commitId     the commit to cherry-pick
+     * @param targetBranch the target branch
+     * @param ctx          the workspace context for repository resolution
+     * @return conflict details, or null if no conflict detected
+     */
+    public ConflictDetails getCherryPickConflictDetails(String commitId, String targetBranch, WorkspaceContext ctx) {
         try {
-            CherryPickPreview preview = previewCherryPick(commitId, targetBranch);
+            CherryPickPreview preview = previewCherryPick(commitId, targetBranch, ctx);
             if (preview.canCherryPick()) {
                 return null; // No conflict
             }
@@ -216,8 +274,9 @@ public class ConflictDetectionService {
                 return null;
             }
 
-            String oursContent = gitRepository.getDslAtHead(targetBranch);
-            String theirsContent = gitRepository.getDslAtCommit(commitId);
+            DslGitRepository repo = resolveRepository(ctx);
+            String oursContent = repo.getDslAtHead(targetBranch);
+            String theirsContent = repo.getDslAtCommit(commitId);
 
             return new ConflictDetails(
                     "cherry-pick",
@@ -236,13 +295,28 @@ public class ConflictDetectionService {
     /**
      * Preview a cherry-pick to check for conflicts.
      *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #previewCherryPick(String, String, WorkspaceContext)} for workspace-aware resolution.
+     *
      * @param commitId     the commit to cherry-pick
      * @param targetBranch the target branch
      * @return the cherry-pick preview result
      */
     public CherryPickPreview previewCherryPick(String commitId, String targetBranch) {
+        return previewCherryPick(commitId, targetBranch, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Preview a cherry-pick to check for conflicts.
+     *
+     * @param commitId     the commit to cherry-pick
+     * @param targetBranch the target branch
+     * @param ctx          the workspace context for repository resolution
+     * @return the cherry-pick preview result
+     */
+    public CherryPickPreview previewCherryPick(String commitId, String targetBranch, WorkspaceContext ctx) {
         try {
-            var repo = gitRepository.getGitRepository();
+            var repo = resolveRepository(ctx).getGitRepository();
             String targetRefName = Constants.R_HEADS + targetBranch;
             Ref targetRef = repo.getRefDatabase().exactRef(targetRefName);
 

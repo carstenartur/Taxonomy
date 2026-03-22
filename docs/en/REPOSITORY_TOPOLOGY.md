@@ -203,6 +203,21 @@ DslGitRepositoryFactory
   ├── resolveRepository(WorkspaceContext) → context-based resolution
   └── evict(workspaceId) → cache cleanup on deletion
 
+Service Repository Routing:
+  All services resolve the correct repository via explicit
+  WorkspaceContext parameters passed from callers. Only the
+  DslOperationsFacade (the request/UI layer) calls
+  resolveCurrentContext() from SecurityContextHolder.
+  Backend services accept WorkspaceContext as a method parameter:
+  - SHARED context → system repository ("taxonomy-dsl")
+  - Workspace context → per-workspace repo ("ws-{id}")
+  Factory mode (per-workspace repos) is the production default.
+  Shared-repo + branch isolation is legacy/test mode only.
+  Repo-aware services: CommitIndexService, RepositoryStateService,
+  ContextNavigationService, ConflictDetectionService,
+  WorkspaceProjectionService, ContextCompareService,
+  SelectiveTransferService, DslOperationsFacade.
+
 ExternalGitSyncService
   ├── fetchFromExternal() → JGit Transport.fetch() from remote
   ├── pushToExternal(branch) → JGit Transport.push() to remote

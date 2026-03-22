@@ -1,6 +1,7 @@
 package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.mapper.ModelToAstMapper;
 import com.taxonomy.dsl.model.ArchitectureElement;
 import com.taxonomy.dsl.model.ArchitectureRelation;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
@@ -10,6 +11,7 @@ import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.TransferConflict;
 import com.taxonomy.dto.TransferSelection;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -35,34 +37,72 @@ public class SelectiveTransferService {
 
     private static final Logger log = LoggerFactory.getLogger(SelectiveTransferService.class);
 
-    private final DslGitRepository gitRepository;
+    private final DslGitRepositoryFactory repositoryFactory;
     private final ContextNavigationService contextNavigationService;
     private final WorkspaceResolver workspaceResolver;
     private final TaxDslParser parser = new TaxDslParser();
     private final AstToModelMapper astMapper = new AstToModelMapper();
+    private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
 
     public SelectiveTransferService(DslGitRepositoryFactory repositoryFactory,
                                     ContextNavigationService contextNavigationService,
                                     WorkspaceResolver workspaceResolver) {
-        this.gitRepository = repositoryFactory.getSystemRepository();
+        this.repositoryFactory = repositoryFactory;
         this.contextNavigationService = contextNavigationService;
         this.workspaceResolver = workspaceResolver;
     }
 
     /**
+     * Resolve the Git repository for the given workspace context.
+     *
+     * @param ctx the workspace context (use {@link WorkspaceContext#SHARED}
+     *            for the system repository)
+     * @return the resolved DslGitRepository
+     */
+    private DslGitRepository resolveRepository(WorkspaceContext ctx) {
+        return repositoryFactory.resolveRepository(ctx);
+    }
+
+    /**
+     * Resolve the current workspace context from the authenticated user.
+     * Falls back to {@link WorkspaceContext#SHARED} if resolution fails.
+     */
+    private WorkspaceContext resolveContext() {
+        try {
+            return workspaceResolver.resolveCurrentContext();
+        } catch (Exception e) {
+            return WorkspaceContext.SHARED;
+        }
+    }
+
+    /**
      * Preview a selective transfer without modifying any data.
      *
-     * <p>Returns the list of conflicts that would occur if the transfer
-     * were applied.
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #previewTransfer(TransferSelection, WorkspaceContext)} for workspace-aware resolution.
      *
      * @param selection the transfer selection
      * @return list of conflicts (empty if no conflicts)
      * @throws IOException if Git operations fail
      */
     public List<TransferConflict> previewTransfer(TransferSelection selection) throws IOException {
-        CanonicalArchitectureModel sourceModel = loadModel(selection.sourceContextId());
-        CanonicalArchitectureModel targetModel = loadModel(selection.targetContextId());
+        return previewTransfer(selection, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Preview a selective transfer without modifying any data.
+     *
+     * @param selection the transfer selection
+     * @param ctx       the workspace context for repository resolution
+     * @return list of conflicts (empty if no conflicts)
+     * @throws IOException if Git operations fail
+     */
+    public List<TransferConflict> previewTransfer(TransferSelection selection,
+                                                  WorkspaceContext ctx) throws IOException {
+        DslGitRepository repo = resolveRepository(ctx);
+        CanonicalArchitectureModel sourceModel = loadModel(repo, selection.sourceContextId());
+        CanonicalArchitectureModel targetModel = loadModel(repo, selection.targetContextId());
 
         return detectConflicts(sourceModel, targetModel, selection);
     }
@@ -71,13 +111,18 @@ public class SelectiveTransferService {
      * Apply a selective transfer, merging selected elements and relations
      * from the source context into the target context.
      *
+     * <p>This is a request-bound operation — it resolves the current workspace
+     * context from the authenticated user via {@code WorkspaceResolver}.
+     *
      * @param selection the transfer selection
      * @return the commit ID of the resulting commit
      * @throws IOException if Git operations fail
      */
     public String applyTransfer(TransferSelection selection) throws IOException {
-        CanonicalArchitectureModel sourceModel = loadModel(selection.sourceContextId());
-        CanonicalArchitectureModel targetModel = loadModel(selection.targetContextId());
+        WorkspaceContext ctx = resolveContext();
+        DslGitRepository repo = resolveRepository(ctx);
+        CanonicalArchitectureModel sourceModel = loadModel(repo, selection.sourceContextId());
+        CanonicalArchitectureModel targetModel = loadModel(repo, selection.targetContextId());
 
         // Merge selected elements
         Map<String, ArchitectureElement> targetElements = targetModel.getElements().stream()
@@ -106,13 +151,17 @@ public class SelectiveTransferService {
         targetModel.getRelations().clear();
         targetModel.getRelations().addAll(targetRelations.values());
 
-        // Serialize back to DSL and commit
-        var doc = parser.parse(gitRepository.getDslAtCommit(selection.targetContextId()));
-        String mergedDsl = serializer.serialize(doc);
+        // Serialize merged model back to DSL and commit
+        String targetDsl = repo.getDslAtCommit(selection.targetContextId());
+        var originalDoc = parser.parse(targetDsl);
+        String namespace = originalDoc.getMeta() != null
+                ? originalDoc.getMeta().namespace() : "default";
+        var mergedDoc = modelToAstMapper.toDocument(targetModel, namespace);
+        String mergedDsl = serializer.serialize(mergedDoc);
 
         String targetBranch = contextNavigationService.getCurrentContext(
                 workspaceResolver.resolveCurrentUsername()).branch();
-        String commitId = gitRepository.commitDsl(
+        String commitId = repo.commitDsl(
                 targetBranch, mergedDsl, "system",
                 "Selective transfer: " + selection.selectedElementIds().size() + " elements, "
                         + selection.selectedRelationIds().size() + " relations");
@@ -127,8 +176,8 @@ public class SelectiveTransferService {
 
     // ── Internal helpers ────────────────────────────────────────────
 
-    private CanonicalArchitectureModel loadModel(String commitId) throws IOException {
-        String dsl = gitRepository.getDslAtCommit(commitId);
+    private CanonicalArchitectureModel loadModel(DslGitRepository repo, String commitId) throws IOException {
+        String dsl = repo.getDslAtCommit(commitId);
         if (dsl == null) {
             throw new IOException("No DSL content at commit: " + commitId);
         }
