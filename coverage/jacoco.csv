@@ -85,8 +85,8 @@ Taxonomy Application,com.taxonomy,AppConfig,0,57,0,0,0,16,0,5,0,5
 Taxonomy Application,com.taxonomy.export.controller,ExportApiController,79,265,13,25,17,54,12,15,1,7
 Taxonomy Application,com.taxonomy.security.config,KeycloakSecurityConfig,122,0,0,0,30,0,13,0,13,0
 Taxonomy Application,com.taxonomy.security.config,AuthorizationRulesConfigurer,19,461,1,1,1,28,1,2,0,2
-Taxonomy Application,com.taxonomy.security.config,LoginRateLimitFilter.FailureTracker,101,0,10,0,24,0,10,0,5,0
-Taxonomy Application,com.taxonomy.security.config,LoginRateLimitFilter,101,72,21,9,18,20,15,8,2,6
+Taxonomy Application,com.taxonomy.security.config,LoginRateLimitFilter.FailureTracker,37,64,3,7,10,14,5,5,2,3
+Taxonomy Application,com.taxonomy.security.config,LoginRateLimitFilter,53,137,16,22,11,30,13,14,0,8
 Taxonomy Application,com.taxonomy.security.config,SecurityAuditListener,50,0,2,0,13,0,6,0,5,0
 Taxonomy Application,com.taxonomy.security.config,ActuatorSecurityFilter,45,24,11,3,12,8,6,3,0,2
 Taxonomy Application,com.taxonomy.security.config,SecurityDataInitializer,0,99,2,2,0,24,2,5,0,5
@@ -210,7 +210,7 @@ Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser,10,556,4,50
 Taxonomy Application,com.taxonomy.analysis.service,AnalysisRelationGenerator,15,341,7,29,3,65,8,16,2,4
 Taxonomy Application,com.taxonomy.analysis.service,LlmProviderConfig,149,218,71,47,35,46,71,12,4,11
 Taxonomy Application,com.taxonomy.versioning.controller,ContextNavigationController,77,274,11,9,20,54,8,16,1,13
-Taxonomy Application,com.taxonomy.versioning.controller,DslApiController,739,1394,38,34,176,286,40,44,17,31
+Taxonomy Application,com.taxonomy.versioning.controller,DslApiController,760,1394,38,34,181,286,40,44,17,31
 Taxonomy Application,com.taxonomy.versioning.controller,GitStateController,0,63,0,0,0,15,0,5,0,5
 Taxonomy Application,com.taxonomy.catalog.controller,ArchiMateImportController,20,25,0,2,5,8,0,4,0,3
 Taxonomy Application,com.taxonomy.catalog.controller,ApiController,29,25,2,2,5,9,2,3,0,3
