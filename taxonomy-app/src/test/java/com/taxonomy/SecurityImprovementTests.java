@@ -88,7 +88,8 @@ class SecurityImprovementTests {
     void authenticatedUserIsNotBlockedByLockout() throws Exception {
         // Simulate failed login attempts to trigger lockout via private recordFailure method.
         // Uses ReflectionTestUtils to avoid adding test-only public methods to production code.
-        for (int i = 0; i < 3; i++) {
+        int maxAttempts = (int) ReflectionTestUtils.getField(loginRateLimitFilter, "maxAttempts");
+        for (int i = 0; i < maxAttempts; i++) {
             ReflectionTestUtils.invokeMethod(loginRateLimitFilter, "recordFailure", "10.99.99.99");
         }
         // Verify IP is actually locked out
