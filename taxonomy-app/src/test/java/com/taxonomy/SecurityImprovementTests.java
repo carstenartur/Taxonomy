@@ -86,6 +86,8 @@ class SecurityImprovementTests {
 
     @Test
     void authenticatedUserIsNotBlockedByLockout() throws Exception {
+        assertThat(loginRateLimitFilter).as("LoginRateLimitFilter bean must be present").isNotNull();
+
         // Simulate failed login attempts to trigger lockout via private recordFailure method.
         // Uses ReflectionTestUtils to avoid adding test-only public methods to production code.
         int maxAttempts = (int) ReflectionTestUtils.getField(loginRateLimitFilter, "maxAttempts");
@@ -94,6 +96,14 @@ class SecurityImprovementTests {
         }
         // Verify IP is actually locked out
         assertThat(loginRateLimitFilter.getTrackers()).containsKey("10.99.99.99");
+
+        // Unauthenticated request from locked-out IP must still be rejected.
+        // Spring Security runs before LoginRateLimitFilter (order -100 vs. default),
+        // so unauthenticated requests get 401 before reaching the rate limit filter.
+        mockMvc.perform(get("/api/taxonomy")
+                        .accept(MediaType.APPLICATION_JSON)
+                        .header("X-Forwarded-For", "10.99.99.99"))
+                .andExpect(status().isUnauthorized());
 
         // Authenticated user from the same locked-out IP should NOT be blocked
         mockMvc.perform(get("/api/taxonomy")

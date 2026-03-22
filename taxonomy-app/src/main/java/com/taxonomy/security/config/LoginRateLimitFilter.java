@@ -12,6 +12,10 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,7 +62,12 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
 
         // Authenticated users must not be blocked by brute-force protection —
         // they have already proven their identity via session or HTTP Basic.
-        boolean isAuthenticated = request.getUserPrincipal() != null;
+        // Explicitly exclude AnonymousAuthenticationToken so that unauthenticated
+        // API requests remain subject to lockout.
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isAuthenticated = auth != null
+                && auth.isAuthenticated()
+                && !(auth instanceof AnonymousAuthenticationToken);
 
         // Check if IP is currently locked out
         FailureTracker tracker = trackers.get(clientIp);
