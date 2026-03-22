@@ -7,13 +7,13 @@
 
 ## 1. Overview
 
-The multi-user workspace model provides isolated editing environments for concurrent users. Each user gets an independent workspace with its own branch, navigation context, projection state, and sync tracking. The underlying Git repository (`DslGitRepository`) is shared; isolation is achieved through branches and per-user state management.
+The multi-user workspace model provides isolated editing environments for concurrent users. Each user gets an independent workspace with its own branch, navigation context, projection state, and sync tracking. In the default configuration (factory mode), each workspace gets a logically separate Git repository via `DslGitRepositoryFactory.getWorkspaceRepository(workspaceId)`. Branch-level isolation within a shared repository is only used in legacy/test mode. See [REPOSITORY_TOPOLOGY.md](../en/REPOSITORY_TOPOLOGY.md) for details.
 
 ---
 
 ## 2. Design Principles
 
-1. **Branch-level isolation** — Each user works on their own Git branch. No two users accidentally overwrite each other's work.
+1. **Repository-level isolation** — Each user works in their own logical Git repository (default). Branch-level isolation is supported as a legacy fallback.
 2. **Lazy initialization** — Workspaces are created on first access, not pre-provisioned.
 3. **Graceful degradation** — If persistence fails, the workspace still functions in-memory.
 4. **Shared integration point** — The `draft` branch serves as the shared/canonical repository state.
@@ -258,7 +258,7 @@ Workspace isolation applies to **mutable, user-generated data**, not to the read
 | **TaxonomyRelation** (DSL-materialized) | ✅ Yes | Created per workspace via DSL materialization. `workspace_id` column. |
 | **RelationHypothesis** (analysis) | ✅ Yes | Generated per workspace during analysis. `workspace_id` column. |
 | **RelationProposal** (user) | ✅ Yes | User-generated proposals, scoped to workspace. `workspace_id` column. |
-| **ArchitectureCommitIndex** | ⚠️ Branch-filtered | Branch field already exists as `@KeywordField`. Filtered by `currentBranch`. |
+| **ArchitectureCommitIndex** | ✅ Repository-scoped | Commits are read from the correct workspace repository via `resolveRepository()`. Branch filtering provides additional scoping within a repository. |
 | **ArchitectureDslDocument** | ⚠️ Branch-filtered | Has `branch` and `commitId`. Workspace derived from branch. |
 
 ### Entity Extensions

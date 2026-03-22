@@ -204,6 +204,13 @@ DslGitRepositoryFactory
   ├── resolveRepository(WorkspaceContext) → kontextbasierte Auflösung
   └── evict(workspaceId) → Cache-Bereinigung bei Löschung
 
+Service Repository Routing:
+  Alle Services lösen das korrekte Repository pro Request über
+  resolveRepository() mit dem aktiven WorkspaceContext aus dem
+  WorkspaceContextResolver auf. Im SHARED-Kontext (kein Workspace)
+  wird das System-Repository zurückgegeben (abwärtskompatibel).
+  Bei aktivem Workspace-Kontext wird das Workspace-Repository verwendet.
+
 ExternalGitSyncService
   ├── fetchFromExternal() → JGit Transport.fetch() vom Remote
   ├── pushToExternal(branch) → JGit Transport.push() zum Remote
