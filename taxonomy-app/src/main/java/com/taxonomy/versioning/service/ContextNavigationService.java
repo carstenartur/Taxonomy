@@ -77,6 +77,10 @@ public class ContextNavigationService {
     /**
      * Open a read-only context for a specific branch and commit.
      *
+     * <p>Uses the system repository (SHARED context). Use
+     * {@link #openReadOnly(String, String, String, WorkspaceContext, String, String)}
+     * for workspace-aware resolution.
+     *
      * @param username    the user performing the navigation
      * @param branch      the branch to view
      * @param commitId    the commit SHA (null for HEAD)
@@ -86,8 +90,24 @@ public class ContextNavigationService {
      */
     public ContextRef openReadOnly(String username, String branch, String commitId,
                                    String searchQuery, String elementId) {
+        return openReadOnly(username, branch, commitId, WorkspaceContext.SHARED, searchQuery, elementId);
+    }
+
+    /**
+     * Open a read-only context for a specific branch and commit.
+     *
+     * @param username    the user performing the navigation
+     * @param branch      the branch to view
+     * @param commitId    the commit SHA (null for HEAD)
+     * @param ctx         the workspace context for repository resolution
+     * @param searchQuery the search query that led here (may be null)
+     * @param elementId   the matched element ID (may be null)
+     * @return the new read-only context
+     */
+    public ContextRef openReadOnly(String username, String branch, String commitId,
+                                   WorkspaceContext ctx, String searchQuery, String elementId) {
         UserWorkspaceState state = resolveState(username);
-        String resolvedCommit = resolveCommit(branch, commitId, WorkspaceContext.SHARED);
+        String resolvedCommit = resolveCommit(branch, commitId, ctx);
 
         ContextRef previous = state.getCurrentContext();
         ContextRef newCtx = new ContextRef(

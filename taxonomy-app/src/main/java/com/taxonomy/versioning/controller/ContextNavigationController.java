@@ -93,7 +93,7 @@ public class ContextNavigationController {
         WorkspaceContext ctx = resolveContext();
         if (readOnly) {
             return ResponseEntity.ok(
-                    navigationService.openReadOnly(user, branch, commitId, searchQuery, elementId));
+                    navigationService.openReadOnly(user, branch, commitId, ctx, searchQuery, elementId));
         } else {
             return ResponseEntity.ok(
                     navigationService.switchContext(user, branch, commitId, ctx));

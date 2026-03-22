@@ -85,6 +85,14 @@ public class CommitIndexService {
     /**
      * Index all unindexed commits on the given branch.
      *
+     * <p><b>Known limitation:</b> {@link ArchitectureCommitIndex} is keyed only by
+     * {@code commit_id} and filtered by {@code branch}. In factory mode with
+     * per-workspace repositories, different workspaces may share branch names
+     * (e.g. {@code draft}), causing potential cross-workspace leakage in search
+     * results. A future enhancement should add a repository/workspace
+     * discriminator column to {@code ArchitectureCommitIndex} and include it in
+     * uniqueness constraints and search filters.
+     *
      * @param branch the Git branch to index
      * @param ctx    the workspace context for repository resolution
      * @return number of newly indexed commits

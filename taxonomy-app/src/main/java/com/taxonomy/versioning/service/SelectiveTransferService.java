@@ -1,6 +1,7 @@
 package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.mapper.ModelToAstMapper;
 import com.taxonomy.dsl.model.ArchitectureElement;
 import com.taxonomy.dsl.model.ArchitectureRelation;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
@@ -41,6 +42,7 @@ public class SelectiveTransferService {
     private final WorkspaceResolver workspaceResolver;
     private final TaxDslParser parser = new TaxDslParser();
     private final AstToModelMapper astMapper = new AstToModelMapper();
+    private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
 
     public SelectiveTransferService(DslGitRepositoryFactory repositoryFactory,
@@ -149,9 +151,13 @@ public class SelectiveTransferService {
         targetModel.getRelations().clear();
         targetModel.getRelations().addAll(targetRelations.values());
 
-        // Serialize back to DSL and commit
-        var doc = parser.parse(repo.getDslAtCommit(selection.targetContextId()));
-        String mergedDsl = serializer.serialize(doc);
+        // Serialize merged model back to DSL and commit
+        String targetDsl = repo.getDslAtCommit(selection.targetContextId());
+        var originalDoc = parser.parse(targetDsl);
+        String namespace = originalDoc.getMeta() != null
+                ? originalDoc.getMeta().namespace() : "default";
+        var mergedDoc = modelToAstMapper.toDocument(targetModel, namespace);
+        String mergedDsl = serializer.serialize(mergedDoc);
 
         String targetBranch = contextNavigationService.getCurrentContext(
                 workspaceResolver.resolveCurrentUsername()).branch();
