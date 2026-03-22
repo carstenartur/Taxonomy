@@ -215,7 +215,8 @@ Service Repository Routing:
   Shared-repo + branch isolation is legacy/test mode only.
   Repo-aware services: CommitIndexService, RepositoryStateService,
   ContextNavigationService, ConflictDetectionService,
-  WorkspaceProjectionService, DslOperationsFacade.
+  WorkspaceProjectionService, ContextCompareService,
+  SelectiveTransferService, DslOperationsFacade.
 
 ExternalGitSyncService
   ├── fetchFromExternal() → JGit Transport.fetch() from remote

@@ -216,7 +216,8 @@ Service Repository Routing:
   Shared-Repo + Branch-Isolation ist nur Legacy-/Test-Modus.
   Repo-fähige Services: CommitIndexService, RepositoryStateService,
   ContextNavigationService, ConflictDetectionService,
-  WorkspaceProjectionService, DslOperationsFacade.
+  WorkspaceProjectionService, ContextCompareService,
+  SelectiveTransferService, DslOperationsFacade.
 
 ExternalGitSyncService
   ├── fetchFromExternal() → JGit Transport.fetch() vom Remote

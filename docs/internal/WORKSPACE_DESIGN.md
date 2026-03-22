@@ -369,6 +369,8 @@ Backend services accept an **explicit `WorkspaceContext` parameter** on methods 
 | `ContextNavigationService` | `switchContext(user, branch, commitId, ctx)`, `createVariantFromCurrent(user, name, ctx)` | Explicit parameter |
 | `ConflictDetectionService` | `previewMerge(from, into, ctx)`, `previewCherryPick(commitId, branch, ctx)`, `getMergeConflictDetails(from, into, ctx)`, `getCherryPickConflictDetails(commitId, branch, ctx)` | Explicit parameter |
 | `WorkspaceProjectionService` | `isProjectionStale(user, branch, ctx)` | Explicit parameter |
+| `ContextCompareService` | `compareContexts(left, right, ctx)`, `compareBranches(left, right, ctx)` | Explicit parameter |
+| `SelectiveTransferService` | `previewTransfer(selection, ctx)`, `applyTransfer(selection)` | Explicit parameter / `resolveCurrentContext()` for apply |
 | **`DslOperationsFacade`** | All Git methods (`commitDsl`, `getDslHistory`, `merge`, `listBranches`, etc.) | `resolveCurrentContext()` — the **only** place that reads from SecurityContext |
 
 All repo-aware methods also provide backward-compatible overloads without the `ctx` parameter that default to `WorkspaceContext.SHARED` (system repository).

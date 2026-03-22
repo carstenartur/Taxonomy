@@ -9,6 +9,7 @@ import com.taxonomy.dto.TransferSelection;
 import com.taxonomy.versioning.service.ContextCompareService;
 import com.taxonomy.versioning.service.ContextNavigationService;
 import com.taxonomy.versioning.service.SelectiveTransferService;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -56,6 +57,18 @@ public class ContextNavigationController {
         this.workspaceResolver = workspaceResolver;
     }
 
+    /**
+     * Resolve the current workspace context from the authenticated user.
+     * Falls back to {@link WorkspaceContext#SHARED} if resolution fails.
+     */
+    private WorkspaceContext resolveContext() {
+        try {
+            return workspaceResolver.resolveCurrentContext();
+        } catch (Exception e) {
+            return WorkspaceContext.SHARED;
+        }
+    }
+
     // ── Phase 1: Context Navigation ─────────────────────────────────
 
     @GetMapping("/current")
@@ -77,12 +90,13 @@ public class ContextNavigationController {
             @RequestParam(required = false) String searchQuery,
             @RequestParam(required = false) String elementId) {
         String user = workspaceResolver.resolveCurrentUsername();
+        WorkspaceContext ctx = resolveContext();
         if (readOnly) {
             return ResponseEntity.ok(
                     navigationService.openReadOnly(user, branch, commitId, searchQuery, elementId));
         } else {
             return ResponseEntity.ok(
-                    navigationService.switchContext(user, branch, commitId));
+                    navigationService.switchContext(user, branch, commitId, ctx));
         }
     }
 
@@ -117,7 +131,7 @@ public class ContextNavigationController {
             @RequestParam String name) {
         try {
             String user = workspaceResolver.resolveCurrentUsername();
-            ContextRef variant = navigationService.createVariantFromCurrent(user, name);
+            ContextRef variant = navigationService.createVariantFromCurrent(user, name, resolveContext());
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("context", variant);
             result.put("branch", variant.branch());
@@ -152,9 +166,9 @@ public class ContextNavigationController {
 
             ContextComparison comparison;
             if (leftCommit != null || rightCommit != null) {
-                comparison = compareService.compareContexts(left, right);
+                comparison = compareService.compareContexts(left, right, resolveContext());
             } else {
-                comparison = compareService.compareBranches(left, right);
+                comparison = compareService.compareBranches(left, right, resolveContext());
             }
             return ResponseEntity.ok(applyFilter(comparison, filter));
         } catch (IOException e) {
@@ -172,7 +186,7 @@ public class ContextNavigationController {
     public ResponseEntity<Map<String, Object>> previewTransfer(
             @RequestBody TransferSelection selection) {
         try {
-            List<TransferConflict> conflicts = transferService.previewTransfer(selection);
+            List<TransferConflict> conflicts = transferService.previewTransfer(selection, resolveContext());
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("conflicts", conflicts);
             result.put("hasConflicts", !conflicts.isEmpty());

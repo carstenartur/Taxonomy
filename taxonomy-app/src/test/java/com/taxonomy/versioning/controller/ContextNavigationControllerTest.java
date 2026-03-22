@@ -2,6 +2,7 @@ package com.taxonomy.versioning.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,6 +28,56 @@ class ContextNavigationControllerTest {
     private MockMvc mockMvc;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private static final String SAMPLE_DSL = """
+            meta {
+              language: "taxdsl";
+              version: "2.0";
+              namespace: "test";
+            }
+
+            element CP-TEST type Capability {
+              title: "Test Element";
+            }
+            """;
+
+    /**
+     * Ensure at least one commit exists on the {@code draft} branch so
+     * that the current context's {@code commitId} is non-null.
+     *
+     * <p>In production there is always at least one taxonomy-import commit.
+     * Without this setup, the current context's {@code commitId} would be
+     * {@code null}, causing compare and transfer tests to fail.
+     *
+     * <p>The commit is made through the API to ensure it lands in whatever
+     * repository the current user's workspace context resolves to.
+     */
+    @BeforeEach
+    void ensureInitialCommit() throws Exception {
+        // Check if there's already a commit (from a previous test in this class)
+        MvcResult ctx = mockMvc.perform(get("/api/context/current"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode json = objectMapper.readTree(ctx.getResponse().getContentAsString());
+        if (!json.get("commitId").isNull()) {
+            return; // Already have a commit
+        }
+
+        // Commit through the API so it lands in the correct repo for the user
+        mockMvc.perform(post("/api/dsl/commit")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(SAMPLE_DSL)
+                        .param("branch", "draft")
+                        .param("author", "system")
+                        .param("message", "initial test import"))
+                .andExpect(status().isOk());
+
+        // Refresh the user's navigation context so commitId is non-null
+        mockMvc.perform(post("/api/context/open")
+                        .param("branch", "draft")
+                        .param("readOnly", "false"))
+                .andExpect(status().isOk());
+    }
 
     @Test
     void getCurrentContextReturnsOk() throws Exception {
