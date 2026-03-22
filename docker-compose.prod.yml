@@ -1,0 +1,62 @@
+##
+## Production Docker Compose — Caddy (automatic HTTPS) + Taxonomy App
+##
+## Usage:
+##   cp .env.example .env        # edit with your domain and credentials
+##   docker compose -f docker-compose.prod.yml up -d --build
+##
+## Ports exposed to the internet:
+##   443  — HTTPS (Caddy, automatic Let's Encrypt certificate)
+##    80  — HTTP → HTTPS redirect + ACME challenge only
+##
+## Port 8080 is INTERNAL ONLY (Docker network) — never published to the host.
+##
+
+services:
+  # ─── Taxonomy Application ───────────────────────────────────
+  taxonomy:
+    build: .
+    # Or use the published image instead of building locally:
+    # image: ghcr.io/carstenartur/taxonomy:latest
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - TAXONOMY_ADMIN_PASSWORD=${TAXONOMY_ADMIN_PASSWORD:-admin}
+      - TAXONOMY_EMBEDDING_ENABLED=${TAXONOMY_EMBEDDING_ENABLED:-true}
+      - TAXONOMY_THYMELEAF_CACHE=true
+      - TAXONOMY_SWAGGER_PUBLIC=false
+      - TAXONOMY_AUDIT_LOGGING=true
+    expose:
+      - "8080"                    # internal only — Caddy connects here
+    volumes:
+      - taxonomy-data:/app/data   # persist database + Lucene index
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/api/status/startup"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # ─── Caddy Reverse Proxy (automatic HTTPS) ──────────────────
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"                   # HTTP → HTTPS redirect + ACME challenge
+      - "443:443"                 # HTTPS
+      - "443:443/udp"             # HTTP/3 (QUIC)
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data          # TLS certificates
+      - caddy-config:/config      # Caddy runtime config
+    environment:
+      - DOMAIN=${DOMAIN:?Set DOMAIN in .env (e.g. taxonomy.example.com)}
+    depends_on:
+      taxonomy:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  taxonomy-data:
+  caddy-data:
+  caddy-config:

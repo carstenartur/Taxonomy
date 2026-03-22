@@ -84,11 +84,17 @@ The system scores every taxonomy node, selects the most relevant elements (score
 | **Maven 3.9+** | Build only |
 | **LLM API key** _or_ `LLM_PROVIDER=LOCAL_ONNX` | Required for AI analysis; browsing and search work without it |
 
-### Run locally
+### Run locally (development only)
 
 ```bash
 git clone https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
+
+# Build the sibling modules first (required once, or after changes)
+mvn install -DskipTests
+
+# Then start the application from the app module
+cd taxonomy-app
 
 # With Gemini (default)
 GEMINI_API_KEY=your-key mvn spring-boot:run
@@ -102,17 +108,40 @@ mvn spring-boot:run
 
 Open <http://localhost:8080> and log in with `admin` / `admin`.
 
-> ⚠️ **Local development only:** The default credentials `admin` / `admin` are intended
-> for local development. For any non-local deployment, set the `TAXONOMY_ADMIN_PASSWORD`
-> environment variable before exposing the application.
+> ⚠️ **`localhost` only.** The commands above start an unencrypted HTTP server for local
+> development. **Never expose port 8080 to the internet.** For any non-local deployment,
+> use the Docker + HTTPS setup below.
 
 **→ Now follow the [Core Workflow](#core-workflow-ui) above to run your first analysis.**
 
-### Docker
+### Docker (production — with HTTPS)
+
+For any deployment beyond `localhost`, use Docker with a reverse proxy that provides
+automatic HTTPS. The repository includes a ready-to-use
+[`docker-compose.prod.yml`](docker-compose.prod.yml) with [Caddy](https://caddyserver.com)
+for automatic TLS certificate provisioning:
 
 ```bash
+# 1. Clone and configure
+git clone https://github.com/carstenartur/Taxonomy.git
+cd Taxonomy
+cp .env.example .env          # edit .env with your domain and API key
+
+# 2. Start (HTTPS on port 443, automatic Let's Encrypt certificate)
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Open `https://your-domain.example.com` and log in with the password you set in `.env`.
+
+> See the [Deployment Guide](docs/en/DEPLOYMENT_GUIDE.md) for VPS, Render.com,
+> and cloud deployment instructions, alternative reverse proxies (nginx),
+> and Spring Boot native SSL.
+
+**Docker without HTTPS (local testing only):**
+```bash
 docker build -t taxonomy-analyzer .
-docker run -p 8080:8080 -e GEMINI_API_KEY=your-key taxonomy-analyzer
+docker run -p 8080:8080 -e LLM_PROVIDER=LOCAL_ONNX taxonomy-analyzer
+# Access at http://localhost:8080 — never expose this to the internet
 ```
 
 ### Build & Test

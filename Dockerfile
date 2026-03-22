@@ -20,6 +20,8 @@ FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY --from=build /workspace/taxonomy-app/target/taxonomy-app-*.jar app.jar
 RUN mkdir -p /app/data
+# Port 8080 is for INTERNAL communication only (e.g. Caddy reverse proxy inside Docker network).
+# NEVER publish this port to the internet. Use docker-compose.prod.yml for HTTPS on port 443.
 EXPOSE 8080
 # -XX:+UseSerialGC        : lower GC memory overhead than G1 for small (≤1 GB) heaps
 # -Xss512k                : reduce per-thread stack size (default 1 MB is wasteful on constrained hosts)
