@@ -579,7 +579,7 @@ class ScreenshotGeneratorIT {
         WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
         // Clear statusArea before clicking to avoid false signals from a previous analysis
-        js("document.getElementById('statusArea').textContent = '';");
+        js("var el = document.getElementById('statusArea'); if (el) { el.textContent = ''; }");
         js("arguments[0].click();", analyzeBtn);
         // First wait for statusArea to become non-empty (analysis started or immediately finished)
         try {
@@ -650,9 +650,15 @@ class ScreenshotGeneratorIT {
     private void closeModalAndWait(String modalId) {
         js("var el = document.getElementById(arguments[0]);" +
                 "if (el) {" +
-                "  var inst = bootstrap.Modal.getInstance(el);" +
-                "  if (inst) { inst.hide(); }" +
-                "  else {" +
+                "  var hasBootstrap = (typeof bootstrap !== 'undefined' && bootstrap.Modal);" +
+                "  if (hasBootstrap) {" +
+                "    var inst = bootstrap.Modal.getInstance(el);" +
+                "    if (inst) { inst.hide(); }" +
+                "    else {" +
+                "      el.classList.remove('show'); el.style.display='none';" +
+                "      el.setAttribute('data-modal-visible', 'false');" +
+                "    }" +
+                "  } else {" +
                 "    el.classList.remove('show'); el.style.display='none';" +
                 "    el.setAttribute('data-modal-visible', 'false');" +
                 "  }" +
@@ -886,15 +892,25 @@ class ScreenshotGeneratorIT {
            "if (el) el.removeAttribute('data-modal-visible');", modalId);
 
         // Remove 'fade' class to skip CSS transition (instant show),
-        // then open via Bootstrap API
+        // then open via Bootstrap API when available, or fall back to a
+        // minimal DOM-based show in environments where Bootstrap is missing.
         js("var el = document.getElementById(arguments[0]);" +
            "if (el) {" +
            "  el.classList.remove('fade');" +
-           "  var inst = bootstrap.Modal.getOrCreateInstance(el);" +
-           "  inst.show();" +
+           "  if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {" +
+           "    var inst = bootstrap.Modal.getOrCreateInstance(el);" +
+           "    inst.show();" +
+           "  } else {" +
+           "    el.classList.add('show');" +
+           "    el.style.display='block';" +
+           "    el.setAttribute('aria-modal','true');" +
+           "    el.removeAttribute('aria-hidden');" +
+           "    el.setAttribute('data-modal-visible','true');" +
+           "  }" +
            "}", modalId);
 
-        // Wait for Bootstrap's own 'shown.bs.modal' event
+        // Wait for Bootstrap's own 'shown.bs.modal' event (or the fallback
+        // setting data-modal-visible='true' when Bootstrap is not present)
         wait(10).until(ExpectedConditions.attributeToBe(
                 By.id(modalId), "data-modal-visible", "true"));
     }
