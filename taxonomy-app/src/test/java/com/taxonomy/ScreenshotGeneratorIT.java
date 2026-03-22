@@ -578,6 +578,8 @@ class ScreenshotGeneratorIT {
                 textarea, REQUIREMENT_TEXT);
         WebElement analyzeBtn = driver.findElement(By.id("analyzeBtn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", analyzeBtn);
+        // Clear statusArea before clicking to avoid false signals from a previous analysis
+        js("var el = document.getElementById('statusArea'); if (el) { el.textContent = ''; }");
         js("arguments[0].click();", analyzeBtn);
         // First wait for statusArea to become non-empty (analysis started or immediately finished)
         try {
@@ -640,30 +642,34 @@ class ScreenshotGeneratorIT {
     }
 
     /**
-     * Closes a Bootstrap modal directly via DOM manipulation, bypassing the fade animation.
-     * This avoids timing issues when waiting for the Bootstrap animation to complete.
-     * Also disposes Bootstrap's internal modal instance to fully reset its state.
+     * Closes a Bootstrap modal and waits for the {@code hidden.bs.modal} event.
+     * Uses Bootstrap's native {@code hide()} API with a DOM fallback.
+     * No {@code Thread.sleep()} needed — the global event listener sets
+     * {@code data-modal-visible="false"} when the transition completes.
      */
-    private void closeModalViaDOM(String modalId) {
-        js("var el = document.getElementById(arguments[0]); " +
-                "if (el) { " +
-                "  try { var inst = bootstrap.Modal.getInstance(el); if (inst) { inst.dispose(); } } catch(e) {} " +
-                "  el.classList.remove('show'); el.style.display='none'; " +
-                "  el.removeAttribute('aria-modal'); el.setAttribute('aria-hidden','true'); " +
-                "} " +
-                "document.querySelectorAll('.modal-backdrop').forEach(b => b.remove()); " +
-                "document.querySelectorAll('.modal.show').forEach(m => { m.classList.remove('show'); m.style.display='none'; }); " +
-                "document.body.classList.remove('modal-open'); " +
-                "document.body.style.overflow=''; " +
+    private void closeModalAndWait(String modalId) {
+        js("var el = document.getElementById(arguments[0]);" +
+                "if (el) {" +
+                "  var hasBootstrap = (typeof bootstrap !== 'undefined' && bootstrap.Modal);" +
+                "  if (hasBootstrap) {" +
+                "    var inst = bootstrap.Modal.getInstance(el);" +
+                "    if (inst) { inst.hide(); }" +
+                "    else {" +
+                "      el.classList.remove('show'); el.style.display='none';" +
+                "      el.setAttribute('data-modal-visible', 'false');" +
+                "    }" +
+                "  } else {" +
+                "    el.classList.remove('show'); el.style.display='none';" +
+                "    el.setAttribute('data-modal-visible', 'false');" +
+                "  }" +
+                "}" +
+                "document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());" +
+                "document.body.classList.remove('modal-open');" +
+                "document.body.style.overflow='';" +
                 "document.body.style.paddingRight='';",
                 modalId);
-        wait(5).until(ExpectedConditions.invisibilityOfElementLocated(By.id(modalId)));
-        // Brief pause to let the browser settle after DOM manipulation
-        try {
-            Thread.sleep(300);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        wait(5).until(ExpectedConditions.attributeToBe(
+                By.id(modalId), "data-modal-visible", "false"));
     }
 
     /** Makes the admin lock button visible (it is hidden until the AI status check resolves). */
@@ -745,11 +751,13 @@ class ScreenshotGeneratorIT {
     }
 
     /**
-     * Waits for D3 tree/treemap transition animations (300ms) to complete.
-     * A 500ms pause ensures all SVG elements have settled into their final positions.
+     * Waits for D3 tree/treemap transition animations to complete.
+     * Uses the {@code data-transitions-complete} attribute set by the JS
+     * after {@code transition.end()} resolves — no Thread.sleep() needed.
      */
-    private void waitForD3Transition() {
-        try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    private void waitForTransitionsComplete() {
+        wait(10).until(ExpectedConditions.attributeToBe(
+                By.id("taxonomyTree"), "data-transitions-complete", "true"));
     }
 
     /**
@@ -862,6 +870,8 @@ class ScreenshotGeneratorIT {
            "  try { var i = bootstrap.Modal.getInstance(m); if (i) i.dispose(); } catch(e) {}" +
            "  m.classList.remove('show'); m.style.display='none';" +
            "  m.removeAttribute('aria-modal'); m.setAttribute('aria-hidden','true');" +
+           "  m.removeAttribute('data-modal-visible');" +
+           "  m.removeAttribute('data-content-ready');" +
            "});" +
            "document.body.classList.remove('modal-open');" +
            "document.body.style.overflow='';" +
@@ -871,35 +881,38 @@ class ScreenshotGeneratorIT {
     }
 
     /**
-     * Shows a Bootstrap modal using direct DOM manipulation, bypassing Bootstrap's JS animation.
-     * This is a reliable fallback for when Bootstrap is loaded from CDN and may not be available,
-     * or when Bootstrap's show() animation does not complete within Selenium's wait window.
-     * Call this AFTER any action that should have triggered Bootstrap's own show() method.
+     * Opens a Bootstrap modal and waits for the {@code shown.bs.modal} event to fire.
+     * Uses Bootstrap's native {@code show()} API — no DOM manipulation needed.
+     * The global event listener sets {@code data-modal-visible="true"} when the
+     * transition completes, guaranteeing full opacity.
      */
-    private void showModalViaDOM(String modalId) {
-        js("(function(id) {" +
-           "  var el = document.getElementById(id);" +
-           "  if (!el) return;" +
-           "  el.style.display = 'block';" +
-           "  el.style.opacity = '1';" +
-           "  el.classList.add('show');" +
-           "  el.removeAttribute('aria-hidden');" +
-           "  el.setAttribute('aria-modal', 'true');" +
-           "  document.body.classList.add('modal-open');" +
-           "  if (!document.querySelector('.modal-backdrop')) {" +
-           "    var bd = document.createElement('div');" +
-           "    bd.className = 'modal-backdrop show';" +
-           "    document.body.appendChild(bd);" +
+    private void showModalAndWait(String modalId) {
+        // Remove any stale signal from previous test
+        js("var el = document.getElementById(arguments[0]);" +
+           "if (el) el.removeAttribute('data-modal-visible');", modalId);
+
+        // Remove 'fade' class to skip CSS transition (instant show),
+        // then open via Bootstrap API when available, or fall back to a
+        // minimal DOM-based show in environments where Bootstrap is missing.
+        js("var el = document.getElementById(arguments[0]);" +
+           "if (el) {" +
+           "  el.classList.remove('fade');" +
+           "  if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {" +
+           "    var inst = bootstrap.Modal.getOrCreateInstance(el);" +
+           "    inst.show();" +
+           "  } else {" +
+           "    el.classList.add('show');" +
+           "    el.style.display='block';" +
+           "    el.setAttribute('aria-modal','true');" +
+           "    el.removeAttribute('aria-hidden');" +
+           "    el.setAttribute('data-modal-visible','true');" +
            "  }" +
-           "})(arguments[0]);", modalId);
-        // Verify DOM manipulation took effect via JS.  Selenium's visibilityOfElementLocated
-        // is unreliable here because Bootstrap's ".modal.fade" CSS transition can make the
-        // element appear as zero-opacity during the transition period, even though our inline
-        // style.opacity = '1' should override it.  A JS-based check avoids that race.
-        wait(10).until(d -> (Boolean) ((JavascriptExecutor) d).executeScript(
-                "var el = document.getElementById(arguments[0]);" +
-                "return el != null && el.style.display === 'block' && el.classList.contains('show');",
-                modalId));
+           "}", modalId);
+
+        // Wait for Bootstrap's own 'shown.bs.modal' event (or the fallback
+        // setting data-modal-visible='true' when Bootstrap is not present)
+        wait(10).until(ExpectedConditions.attributeToBe(
+                By.id(modalId), "data-modal-visible", "true"));
     }
 
     /** Opens a <details> element if it is currently closed. */
@@ -1003,8 +1016,8 @@ class ScreenshotGeneratorIT {
                     "return document.querySelectorAll('#taxonomyTree svg g.tv-node').length;");
             return nodeCount != null && nodeCount > 0;
         });
-        // Brief pause to let D3 tree transitions (300ms animation) complete
-        waitForD3Transition();
+        // Wait for D3 tree transitions to complete (event-driven via data-transitions-complete)
+        waitForTransitionsComplete();
         saveScreenshot("07-tree-view.png");
         safeClick(By.id("viewList"));
     }
@@ -1059,7 +1072,7 @@ class ScreenshotGeneratorIT {
 
     @Test
     @Order(13)
-    void captureProposeRelationsModal() throws IOException, InterruptedException {
+    void captureProposeRelationsModal() throws IOException {
         // Clean up any leftover modal state from a previous failed retry run
         resetModalState();
         navigateToTab("analyze");
@@ -1071,13 +1084,18 @@ class ScreenshotGeneratorIT {
         // Use JS click to work around any overlay or scroll positioning issues
         WebElement proposeBtn = driver.findElement(By.cssSelector(".proposal-btn"));
         js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", proposeBtn);
+        // Clear stale content-ready signal before clicking
+        js("var m = document.getElementById('proposeRelationsModal');" +
+           "if (m) m.removeAttribute('data-content-ready');");
         js("arguments[0].click();", proposeBtn);
-        // Brief pause to allow the event handler to set modal content
-        Thread.sleep(1000);
-        // Show modal via DOM manipulation (reliable fallback when Bootstrap CDN is slow/unavailable)
-        showModalViaDOM("proposeRelationsModal");
+        // Wait for the click handler to set modal content (data-content-ready="true")
+        wait(10).until(ExpectedConditions.attributeToBe(
+                By.id("proposeRelationsModal"), "data-content-ready", "true"));
+        // Wait for modal to be fully shown via Bootstrap API
+        wait(10).until(ExpectedConditions.attributeToBe(
+                By.id("proposeRelationsModal"), "data-modal-visible", "true"));
         saveScreenshot("13-propose-relations-modal.png");
-        closeModalViaDOM("proposeRelationsModal");
+        closeModalAndWait("proposeRelationsModal");
         js("window.scrollTo(0, 0);");
     }
 
@@ -1141,7 +1159,7 @@ class ScreenshotGeneratorIT {
 
     @Test
     @Order(18)
-    void captureLeafJustificationModal() throws IOException, InterruptedException {
+    void captureLeafJustificationModal() throws IOException {
         // Reload the page for a clean JS state
         resetPageState();
         // Clean up any leftover Bootstrap modal state from a previous failed retry run
@@ -1182,10 +1200,11 @@ class ScreenshotGeneratorIT {
         // which is more reliable than getText() which returns empty on hidden modals.
         wait(15).until(ExpectedConditions.attributeToBe(
                 By.id("leafJustificationModalBody"), "data-modal-loaded", "true"));
-        // Force show via DOM in case Bootstrap CDN is unavailable or animation did not fire
-        showModalViaDOM("leafJustificationModal");
+        // Wait for Bootstrap's shown.bs.modal event (data-modal-visible set by global listener)
+        wait(10).until(ExpectedConditions.attributeToBe(
+                By.id("leafJustificationModal"), "data-modal-visible", "true"));
         saveScreenshot("18-leaf-justification-modal.png");
-        closeModalViaDOM("leafJustificationModal");
+        closeModalAndWait("leafJustificationModal");
         js("window.scrollTo(0, 0);");
         // Reset to non-interactive for subsequent tests
         forceNonInteractiveMode();
@@ -2045,12 +2064,12 @@ class ScreenshotGeneratorIT {
     void captureVariantCreationModal() throws IOException {
         navigateToTab("versions");
         // Open the Create Variant modal
-        showModalViaDOM("createVariantModal");
+        showModalAndWait("createVariantModal");
         // Pre-fill the variant name input for the screenshot
         js("var input = document.getElementById('variantNameInput');" +
            "if (input) { input.value = 'feature-voice-services'; input.dispatchEvent(new Event('input')); }");
         saveScreenshot("46-variant-creation-modal.png");
-        closeModalViaDOM("createVariantModal");
+        closeModalAndWait("createVariantModal");
     }
 
     @Test
@@ -2092,7 +2111,7 @@ class ScreenshotGeneratorIT {
     @Order(48)
     void captureCompareModalBranches() throws IOException {
         // Open the compare modal
-        showModalViaDOM("contextCompareModal");
+        showModalAndWait("contextCompareModal");
         // Populate the branch dropdowns with sample data if they are empty
         js("var leftSel = document.getElementById('compareLeftBranch');" +
            "var rightSel = document.getElementById('compareRightBranch');" +
@@ -2107,7 +2126,7 @@ class ScreenshotGeneratorIT {
            "  rightSel.value = 'feature-voice';" +
            "}");
         saveScreenshot("48-compare-modal-branches.png");
-        closeModalViaDOM("contextCompareModal");
+        closeModalAndWait("contextCompareModal");
     }
 
     @Test
@@ -2188,7 +2207,7 @@ class ScreenshotGeneratorIT {
     @Order(52)
     void captureMergeConflictModal() throws IOException {
         navigateToTab("analyze");
-        showModalViaDOM("mergeConflictModal");
+        showModalAndWait("mergeConflictModal");
         // Populate conflict modal with sample content — realistic architecture overlay
         // conflict (relation status change), not canonical title rename
         js("document.getElementById('conflictOursLabel').textContent = 'Ours (draft)';" +
@@ -2200,12 +2219,12 @@ class ScreenshotGeneratorIT {
            "document.getElementById('conflictResolvedContent').value = " +
            "'relation CO-1011 USES CR-1047 {\\n  status: accepted;\\n}';");
         saveScreenshot("52-merge-conflict-modal.png");
-        closeModalViaDOM("mergeConflictModal");
+        closeModalAndWait("mergeConflictModal");
     }
 
     @Test
     @Order(53)
-    void captureMergeConflictResolved() throws IOException, InterruptedException {
+    void captureMergeConflictResolved() throws IOException {
         navigateToTab("analyze");
         // Simulate a toast notification for resolved conflict
         js("var toastEl = document.getElementById('operationToast');" +
@@ -2218,7 +2237,9 @@ class ScreenshotGeneratorIT {
            "  if (header) { header.className = 'toast-header bg-success text-white'; }" +
            "  toastEl.classList.add('show');" +
            "}");
-        Thread.sleep(1000);
+        // Wait for the show class to be applied (synchronous DOM change)
+        wait(5).until(ExpectedConditions.attributeContains(
+                By.id("operationToast"), "class", "show"));
         saveScreenshot("53-merge-conflict-resolved.png");
         js("var toastEl = document.getElementById('operationToast');" +
            "if (toastEl) toastEl.classList.remove('show');");
@@ -2228,7 +2249,7 @@ class ScreenshotGeneratorIT {
     @Order(54)
     void captureCherryPickConflictModal() throws IOException {
         navigateToTab("analyze");
-        showModalViaDOM("mergeConflictModal");
+        showModalAndWait("mergeConflictModal");
         // Populate as cherry-pick conflict — realistic relation change, not title rename
         js("document.getElementById('mergeConflictModalLabel').textContent = " +
            "'\\u26A0\\uFE0F Cherry-Pick Conflict — Manual Resolution Required';" +
@@ -2240,7 +2261,7 @@ class ScreenshotGeneratorIT {
            "'relation CP-1023 REALIZES CR-1047 {\\n  status: accepted;\\n}';" +
            "document.getElementById('conflictResolvedContent').value = '';");
         saveScreenshot("54-cherry-pick-conflict-modal.png");
-        closeModalViaDOM("mergeConflictModal");
+        closeModalAndWait("mergeConflictModal");
         // Reset title
         js("document.getElementById('mergeConflictModalLabel').textContent = " +
            "'\\u26A0\\uFE0F Merge Conflict — Manual Resolution Required';");
@@ -2276,9 +2297,9 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(56)
     void captureSyncResolveModal() throws IOException {
-        showModalViaDOM("syncDivergedModal");
+        showModalAndWait("syncDivergedModal");
         saveScreenshot("56-sync-resolve-modal.png");
-        closeModalViaDOM("syncDivergedModal");
+        closeModalAndWait("syncDivergedModal");
     }
 
     @Test
@@ -2317,7 +2338,7 @@ class ScreenshotGeneratorIT {
 
     @Test
     @Order(58)
-    void captureMergeSuccessToast() throws IOException, InterruptedException {
+    void captureMergeSuccessToast() throws IOException {
         navigateToTab("analyze");
         // Show a success toast for merge
         js("var toastEl = document.getElementById('operationToast');" +
@@ -2330,7 +2351,9 @@ class ScreenshotGeneratorIT {
            "  if (header) { header.className = 'toast-header bg-success text-white'; }" +
            "  toastEl.classList.add('show');" +
            "}");
-        Thread.sleep(1000);
+        // Wait for the show class to be applied (synchronous DOM change)
+        wait(5).until(ExpectedConditions.attributeContains(
+                By.id("operationToast"), "class", "show"));
         saveScreenshot("58-merge-success-toast.png");
         js("var toastEl = document.getElementById('operationToast');" +
            "if (toastEl) toastEl.classList.remove('show');");
@@ -2338,7 +2361,7 @@ class ScreenshotGeneratorIT {
 
     @Test
     @Order(59)
-    void captureCherryPickSuccessToast() throws IOException, InterruptedException {
+    void captureCherryPickSuccessToast() throws IOException {
         navigateToTab("analyze");
         // Show a success toast for cherry-pick
         js("var toastEl = document.getElementById('operationToast');" +
@@ -2351,7 +2374,9 @@ class ScreenshotGeneratorIT {
            "  if (header) { header.className = 'toast-header bg-success text-white'; }" +
            "  toastEl.classList.add('show');" +
            "}");
-        Thread.sleep(1000);
+        // Wait for the show class to be applied (synchronous DOM change)
+        wait(5).until(ExpectedConditions.attributeContains(
+                By.id("operationToast"), "class", "show"));
         saveScreenshot("59-cherry-pick-success-toast.png");
         js("var toastEl = document.getElementById('operationToast');" +
            "if (toastEl) toastEl.classList.remove('show');");
@@ -2361,7 +2386,7 @@ class ScreenshotGeneratorIT {
     @Order(60)
     void captureMergePreviewModal() throws IOException {
         navigateToTab("analyze");
-        showModalViaDOM("mergePreviewModal");
+        showModalAndWait("mergePreviewModal");
         // Inject preview content
         js("var content = document.getElementById('mergePreviewContent');" +
            "if (content) {" +
@@ -2372,14 +2397,14 @@ class ScreenshotGeneratorIT {
            "var btn = document.getElementById('mergePreviewProceedBtn');" +
            "if (btn) btn.classList.remove('d-none');");
         saveScreenshot("60-merge-preview-modal.png");
-        closeModalViaDOM("mergePreviewModal");
+        closeModalAndWait("mergePreviewModal");
     }
 
     @Test
     @Order(61)
     void captureMergePreviewFastForward() throws IOException {
         navigateToTab("analyze");
-        showModalViaDOM("mergePreviewModal");
+        showModalAndWait("mergePreviewModal");
         // Inject fast-forward preview
         js("var content = document.getElementById('mergePreviewContent');" +
            "if (content) {" +
@@ -2390,14 +2415,14 @@ class ScreenshotGeneratorIT {
            "var btn = document.getElementById('mergePreviewProceedBtn');" +
            "if (btn) btn.classList.remove('d-none');");
         saveScreenshot("61-merge-preview-fast-forward.png");
-        closeModalViaDOM("mergePreviewModal");
+        closeModalAndWait("mergePreviewModal");
     }
 
     @Test
     @Order(62)
     void captureCherryPickPreviewModal() throws IOException {
         navigateToTab("analyze");
-        showModalViaDOM("cherryPickPreviewModal");
+        showModalAndWait("cherryPickPreviewModal");
         // Inject cherry-pick preview content
         js("var content = document.getElementById('cherryPickPreviewContent');" +
            "if (content) {" +
@@ -2408,7 +2433,7 @@ class ScreenshotGeneratorIT {
            "var btn = document.getElementById('cherryPickPreviewProceedBtn');" +
            "if (btn) btn.classList.remove('d-none');");
         saveScreenshot("62-cherry-pick-preview-modal.png");
-        closeModalViaDOM("cherryPickPreviewModal");
+        closeModalAndWait("cherryPickPreviewModal");
     }
 
     @Test
@@ -2564,8 +2589,8 @@ class ScreenshotGeneratorIT {
         safeClick(By.id("viewDecision"));
         wait(5).until(ExpectedConditions.attributeContains(By.id("viewDecision"), "class", "btn-primary"));
         wait(10).until(ExpectedConditions.attributeToBe(By.id("taxonomyTree"), "data-view-rendered", "decision"));
-        // Brief pause to let the D3 treemap rendering complete
-        waitForD3Transition();
+        // Wait for D3 decision map transitions to complete (event-driven via data-transitions-complete)
+        waitForTransitionsComplete();
         saveScreenshot("69-decision-map-scored.png");
         safeClick(By.id("viewList"));
     }

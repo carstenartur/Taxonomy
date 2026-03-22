@@ -316,8 +316,11 @@
         var g = zoomLayer.append('g');
 
         var nodeSeq = 0;
+        var updateToken = 0;
 
         function update(source) {
+            container.removeAttribute('data-transitions-complete');
+            var currentToken = ++updateToken;
             treeLayout(root);
             var nodes = root.descendants();
             var links = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
@@ -379,7 +382,7 @@
             var nodeUpdate = nodeEnter.merge(node);
 
             // Horizontal layout: translate(y, x) — y is horizontal position, x is vertical
-            nodeUpdate.transition().duration(300)
+            var nodeT = nodeUpdate.transition().duration(300)
                 .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })
                 .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; });
 
@@ -423,7 +426,7 @@
                     return diag({ source: o, target: o });
                 });
 
-            linkEnter.merge(link).transition().duration(300).attr('d', diag);
+            var linkT = linkEnter.merge(link).transition().duration(300).attr('d', diag);
 
             link.exit().transition().duration(300)
                 .attr('d', function () {
@@ -431,6 +434,18 @@
                     return diag({ source: o, target: o });
                 })
                 .remove();
+
+            // Signal when ALL transitions (nodes + links) complete.
+            // The version token prevents stale handlers from a prior update()
+            // from racing with a newer call that already cleared the attribute.
+            var settle = function () {
+                if (currentToken === updateToken) {
+                    container.setAttribute('data-transitions-complete', 'true');
+                }
+            };
+            Promise.all([nodeT.end(), linkT.end()])
+                .then(settle)
+                .catch(settle);
 
             // Save positions for transitions
             nodes.forEach(function (d) { d.x0 = d.x; d.y0 = d.y; });
@@ -595,6 +610,7 @@
 
         var g = zoomLayer.append('g');
         var nodeSeq = 0;
+        var dmUpdateToken = 0;
 
         var RANK_EMOJIS = ['', '\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49']; // 🥇🥈🥉
 
@@ -640,6 +656,8 @@
         }
 
         function dmUpdate(source) {
+            container.removeAttribute('data-transitions-complete');
+            var currentToken = ++dmUpdateToken;
             treeLayout(root);
             var nodes = root.descendants();
             var links = root.links().filter(function (l) { return l.source.data.code !== '__root__'; });
@@ -696,7 +714,7 @@
 
             var nodeUpdate = nodeEnter.merge(node);
 
-            nodeUpdate.transition().duration(300)
+            var nodeT = nodeUpdate.transition().duration(300)
                 .attr('transform', function (d) { return 'translate(' + d.y + ',' + d.x + ')'; })
                 .style('opacity', function (d) { return d.data.code === '__root__' ? 0 : 1; });
 
@@ -745,7 +763,7 @@
                 });
 
             var linkUpdate = linkEnter.merge(link);
-            linkUpdate.transition().duration(300).attr('d', diag);
+            var linkT = linkUpdate.transition().duration(300).attr('d', diag);
             linkUpdate
                 .attr('stroke', dmLinkStroke)
                 .attr('stroke-width', dmLinkStrokeWidth);
@@ -756,6 +774,18 @@
                     return diag({ source: o, target: o });
                 })
                 .remove();
+
+            // Signal when ALL transitions (nodes + links) complete.
+            // The version token prevents stale handlers from a prior dmUpdate()
+            // from racing with a newer call that already cleared the attribute.
+            var settle = function () {
+                if (currentToken === dmUpdateToken) {
+                    container.setAttribute('data-transitions-complete', 'true');
+                }
+            };
+            Promise.all([nodeT.end(), linkT.end()])
+                .then(settle)
+                .catch(settle);
 
             nodes.forEach(function (d) { d.x0 = d.x; d.y0 = d.y; });
         }
