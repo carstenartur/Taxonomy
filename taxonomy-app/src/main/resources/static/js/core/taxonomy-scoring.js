@@ -565,6 +565,7 @@
         if (!modal || !titleEl || !bodyEl) return;
         titleEl.textContent = t('scoring.justification.title', nodeCode);
         bodyEl.textContent = justification;
+        bodyEl.setAttribute('data-modal-loaded', 'true');
         const bsModal = new bootstrap.Modal(modal);
         bsModal.show();
     }

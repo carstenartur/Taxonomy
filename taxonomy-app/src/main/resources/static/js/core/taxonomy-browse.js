@@ -797,8 +797,12 @@
                 break;
             case 'summary':
                 SC().renderSummaryView(data, scores);
+                document.getElementById('taxonomyTree').setAttribute('data-view-rendered', 'summary');
                 break;
         }
+        document.dispatchEvent(new CustomEvent('taxonomy:view-rendered', {
+            detail: { view: S.currentView }
+        }));
         updateExportGroupVisibility();
     }
 

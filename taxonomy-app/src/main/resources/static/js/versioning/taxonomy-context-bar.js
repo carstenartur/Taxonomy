@@ -143,6 +143,7 @@ window.TaxonomyContextBar = (function () {
         html += '</div>'; // workspace-bar
         container.innerHTML = html;
         container.classList.remove('d-none');
+        container.setAttribute('data-context-rendered', 'true');
 
         // Update sync info in context bar (AP 6)
         updateSyncInfoInBar();
