@@ -22,21 +22,41 @@ final class ContainerTestUtils {
     /**
      * Dynamically resolves the Spring Boot fat JAR in the {@code target/} directory.
      * This avoids hardcoding the version, which changes during release builds
-     * (e.g. {@code taxonomy-1.0.0-SNAPSHOT.jar} vs {@code taxonomy-1.0.0.jar}).
+     * (e.g. {@code taxonomy-app-1.0.0-SNAPSHOT.jar} vs {@code taxonomy-app-1.0.0.jar}).
+     * <p>
+     * When run via Maven Failsafe the working directory is {@code taxonomy-app/},
+     * so {@code target/} resolves correctly. When launched from an IDE the working
+     * directory is typically the repository root, so we also try
+     * {@code taxonomy-app/target/} as a fallback.
      */
     static Path findApplicationJar() {
-        try (var stream = Files.list(Path.of("target"))) {
-            return stream
-                    .filter(p -> p.getFileName().toString().matches("taxonomy-.*\\.jar"))
-                    .filter(p -> !p.getFileName().toString().contains("sources"))
-                    .filter(p -> !p.getFileName().toString().contains("javadoc"))
-                    .filter(p -> p.toFile().length() > 1_000_000) // Spring Boot fat JAR should be large
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalStateException(
-                            "No taxonomy-*.jar found in target/. Run 'mvn package -DskipTests' first."));
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to scan target/ directory for application JAR", e);
+        // When run via Maven Failsafe the CWD is taxonomy-app/, so target/ works.
+        // When launched from an IDE the CWD is the repo root — but the repo root
+        // also has a target/ directory (build metadata, no JARs). We therefore
+        // search *both* candidate directories for the fat JAR.
+        Path moduleTarget = Path.of("target");
+        Path repoRootTarget = Path.of("taxonomy-app", "target");
+        for (Path targetDir : new Path[]{moduleTarget, repoRootTarget}) {
+            if (!Files.isDirectory(targetDir)) {
+                continue;
+            }
+            try (var stream = Files.list(targetDir)) {
+                var jar = stream
+                        .filter(p -> p.getFileName().toString().matches("taxonomy-.*\\.jar"))
+                        .filter(p -> !p.getFileName().toString().contains("sources"))
+                        .filter(p -> !p.getFileName().toString().contains("javadoc"))
+                        .filter(p -> p.toFile().length() > 1_000_000) // Spring Boot fat JAR should be large
+                        .findFirst();
+                if (jar.isPresent()) {
+                    return jar.get();
+                }
+            } catch (IOException e) {
+                throw new UncheckedIOException("Failed to scan " + targetDir + "/ directory for application JAR", e);
+            }
         }
+        throw new IllegalStateException(
+                "No taxonomy-*.jar found in " + moduleTarget + "/ or " + repoRootTarget
+                        + "/. Run 'mvn package -DskipTests' first.");
     }
 
     /**

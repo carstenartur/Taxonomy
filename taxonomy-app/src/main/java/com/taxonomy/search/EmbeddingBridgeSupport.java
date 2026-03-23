@@ -18,7 +18,7 @@ import java.util.function.Function;
  */
 public final class EmbeddingBridgeSupport {
 
-    /** The vector dimension used by the ONNX embedding model (all-MiniLM-L6-v2). */
+    /** The vector dimension used by the ONNX embedding model (bge-small-en-v1.5). */
     static final int VECTOR_DIMENSION = 384;
 
     private EmbeddingBridgeSupport() { /* utility class */ }

@@ -123,7 +123,10 @@ public class GraphSearchService {
 
             return new GraphSearchResult(matchedNodes, relationCountByRoot, topRelationTypes, summary);
 
-        } catch (Exception e) {
+        } catch (Exception | LinkageError e) {
+            // LinkageError covers UnsatisfiedLinkError / NoClassDefFoundError from
+            // native DJL / ONNX Runtime library loading, which would otherwise
+            // propagate as an unhandled 500 error.
             log.error("Graph search failed for query '{}': {}", queryText, e.getMessage());
             return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),
                     Collections.emptyMap(), "Graph search failed: " + e.getMessage());
