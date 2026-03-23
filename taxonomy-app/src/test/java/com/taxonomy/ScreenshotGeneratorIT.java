@@ -2594,4 +2594,48 @@ class ScreenshotGeneratorIT {
         saveScreenshot("69-decision-map-scored.png");
         safeClick(By.id("viewList"));
     }
+
+    // ── Screenshot 70: Swagger UI (API Documentation) ─────────────────────────
+
+    @Test
+    @Order(70)
+    void captureSwaggerUi() throws IOException {
+        // Navigate to Swagger UI
+        driver.get("http://app:8080/swagger-ui.html");
+
+        // Wait for Swagger UI framework to load (info section with API title)
+        try {
+            wait(30).until(ExpectedConditions.presenceOfElementLocated(
+                    By.cssSelector(".swagger-ui .info")));
+        } catch (org.openqa.selenium.TimeoutException e) {
+            // springdoc may be disabled — skip gracefully
+            Assumptions.assumeTrue(false,
+                    "Skipping: Swagger UI did not load (TAXONOMY_SPRINGDOC_ENABLED may be false)");
+        }
+
+        // Wait for at least one operation block (endpoint) to render
+        wait(15).until(ExpectedConditions.presenceOfElementLocated(
+                By.cssSelector(".swagger-ui .opblock")));
+
+        // Collapse all expanded tag sections for a cleaner overview screenshot
+        js("document.querySelectorAll('.swagger-ui .opblock-tag-section.is-open')" +
+           ".forEach(function(s) {" +
+           "  var h = s.querySelector('.opblock-tag'); if (h) h.click();" +
+           "});");
+
+        // Wait for collapse animations to complete
+        wait(5).until(d -> {
+            Long openCount = (Long) ((JavascriptExecutor) d).executeScript(
+                    "return document.querySelectorAll('.swagger-ui .opblock-tag-section.is-open').length;");
+            return openCount != null && openCount == 0;
+        });
+
+        // Scroll to top to capture the API info + tag overview
+        js("window.scrollTo(0, 0);");
+
+        saveScreenshot("70-swagger-ui.png");
+
+        // Return to main application for subsequent tests
+        resetPageState();
+    }
 }
