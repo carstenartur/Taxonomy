@@ -136,7 +136,7 @@ import com.taxonomy.search.NodeEmbeddingBinder;
      * otherwise {@link #modelName}.
      */
     public String effectiveModelUrl() {
-<span class="pc bpc" id="L139" title="2 of 4 branches missed.">        return (modelDir != null &amp;&amp; !modelDir.isBlank()) ? modelDir : modelName;</span>
+<span class="pc bpc" id="L139" title="1 of 4 branches missed.">        return (modelDir != null &amp;&amp; !modelDir.isBlank()) ? modelDir : modelName;</span>
     }
 
     /** Returns the lazily loaded DJL model, downloading it on first call. */
@@ -166,16 +166,16 @@ import com.taxonomy.search.NodeEmbeddingBinder;
 <span class="fc" id="L166">                    } catch (Exception primary) {</span>
                         // When the djl:// protocol fails (e.g. URL truncation in Alpine),
                         // try loading directly from HuggingFace before giving up.
-<span class="pc bpc" id="L169" title="3 of 4 branches missed.">                        if (url.startsWith(&quot;djl://&quot;) &amp;&amp; allowDownload) {</span>
-<span class="nc" id="L170">                            log.warn(&quot;djl:// URL failed ({}), trying HuggingFace fallback…&quot;,</span>
-<span class="nc" id="L171">                                    primary.getMessage());</span>
+<span class="pc bpc" id="L169" title="1 of 4 branches missed.">                        if (url.startsWith(&quot;djl://&quot;) &amp;&amp; allowDownload) {</span>
+<span class="fc" id="L170">                            log.warn(&quot;djl:// URL failed ({}), trying HuggingFace fallback…&quot;,</span>
+<span class="fc" id="L171">                                    primary.getMessage());</span>
                             try {
 <span class="nc" id="L173">                                model = loadFromUrl(FALLBACK_MODEL_URL);</span>
 <span class="nc" id="L174">                                log.info(&quot;Embedding model loaded from HuggingFace fallback.&quot;);</span>
-<span class="nc" id="L175">                            } catch (Exception fallback) {</span>
-<span class="nc" id="L176">                                log.error(&quot;Fallback also failed: {}&quot;, fallback.getMessage());</span>
-<span class="nc" id="L177">                                modelLoadFailed = true;</span>
-<span class="nc" id="L178">                                throw primary;</span>
+<span class="fc" id="L175">                            } catch (Exception fallback) {</span>
+<span class="fc" id="L176">                                log.error(&quot;Fallback also failed: {}&quot;, fallback.getMessage());</span>
+<span class="fc" id="L177">                                modelLoadFailed = true;</span>
+<span class="fc" id="L178">                                throw primary;</span>
 <span class="nc" id="L179">                            }</span>
                         } else {
 <span class="fc" id="L181">                            modelLoadFailed = true;</span>
@@ -193,7 +193,7 @@ import com.taxonomy.search.NodeEmbeddingBinder;
     private ZooModel&lt;String, float[]&gt; loadFromUrl(String url) throws Exception {
         // Local directory paths need the file:// prefix for DJL
 <span class="fc" id="L195">        String resolvedUrl = url;</span>
-<span class="pc bpc" id="L196" title="4 of 8 branches missed.">        if (!url.startsWith(&quot;djl://&quot;) &amp;&amp; !url.startsWith(&quot;http://&quot;) &amp;&amp; !url.startsWith(&quot;https://&quot;) &amp;&amp; !url.startsWith(&quot;file:&quot;)) {</span>
+<span class="pc bpc" id="L196" title="2 of 8 branches missed.">        if (!url.startsWith(&quot;djl://&quot;) &amp;&amp; !url.startsWith(&quot;http://&quot;) &amp;&amp; !url.startsWith(&quot;https://&quot;) &amp;&amp; !url.startsWith(&quot;file:&quot;)) {</span>
 <span class="fc" id="L197">            resolvedUrl = &quot;file://&quot; + url;</span>
         }
 
@@ -219,7 +219,7 @@ import com.taxonomy.search.NodeEmbeddingBinder;
         try {
 <span class="pc bpc" id="L220" title="1 of 2 branches missed.">            String path = url.startsWith(&quot;file://&quot;) ? url.substring(&quot;file://&quot;.length()) : url;</span>
 <span class="fc" id="L221">            java.nio.file.Path dir = java.nio.file.Path.of(path);</span>
-<span class="pc bpc" id="L222" title="1 of 2 branches missed.">            if (!java.nio.file.Files.isDirectory(dir)) return;</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">            if (!java.nio.file.Files.isDirectory(dir)) return;</span>
 <span class="fc" id="L223">            java.nio.file.Path servingProps = dir.resolve(&quot;serving.properties&quot;);</span>
 
             // Check if existing file has valid content (e.g. no leading whitespace corruption)
