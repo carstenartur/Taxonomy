@@ -42,6 +42,7 @@ Generated PNG files are written to `docs/images/` and must be committed to the r
 | `45` – `51` | No | Workspace UI: User Badge, Variant Modal, Variants Browser, Compare Modal, Copy Back, Read-Only, Context Bar with Origin |
 | `52` – `68` | No | Extended workspace: Sync Tab states, Transfer, Merge, History Search, Diff View |
 | `69`         | Yes (mock mode) | Scored Decision Map (populated with analysis results) |
+| `70`         | No              | Swagger UI (API Documentation)                        |
 
 LLM-dependent tests are skipped gracefully with `Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null)` when no key is present.
 
