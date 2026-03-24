@@ -42,11 +42,12 @@ final class ContainerTestUtils {
             }
             try (var stream = Files.list(targetDir)) {
                 var jar = stream
-                        .filter(p -> p.getFileName().toString().matches("taxonomy-.*\\.jar"))
+                        .filter(p -> p.getFileName().toString().matches("taxonomy-app-.*\\.jar"))
+                        .filter(p -> !p.getFileName().toString().contains("original"))
                         .filter(p -> !p.getFileName().toString().contains("sources"))
                         .filter(p -> !p.getFileName().toString().contains("javadoc"))
                         .filter(p -> p.toFile().length() > 1_000_000) // Spring Boot fat JAR should be large
-                        .findFirst();
+                        .max(java.util.Comparator.comparingLong(p -> p.toFile().length()));
                 if (jar.isPresent()) {
                     return jar.get();
                 }
@@ -55,7 +56,7 @@ final class ContainerTestUtils {
             }
         }
         throw new IllegalStateException(
-                "No taxonomy-*.jar found in " + moduleTarget + "/ or " + repoRootTarget
+                "No taxonomy-app-*.jar found in " + moduleTarget + "/ or " + repoRootTarget
                         + "/. Run 'mvn package -DskipTests' first.");
     }
 

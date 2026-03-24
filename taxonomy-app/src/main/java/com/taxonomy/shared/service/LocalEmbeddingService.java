@@ -183,7 +183,7 @@ public class LocalEmbeddingService {
                         log.error("Failed to load embedding model from '{}'; semantic search disabled. Error: {}",
                                 url, primary.getMessage());
                         if (primary instanceof Exception ex) throw ex;
-                        throw new IllegalStateException("Native library loading failed", primary);
+                        throw new Exception("Native library loading failed", primary);
                     }
                 }
             }
@@ -218,8 +218,18 @@ public class LocalEmbeddingService {
             log.warn("Migrating legacy djl:// URL to HuggingFace download: {} → {}", url, hfUrl);
             localPath = downloadHuggingFaceModel(hfUrl);
         } else {
-            // Local path
-            localPath = url.startsWith("file://") ? url.substring("file://".length()) : url;
+            // Local path or file: URI
+            if (url.startsWith("file:")) {
+                try {
+                    // Use URI + Paths to correctly handle file:/, file:///, and Windows drive letters
+                    localPath = java.nio.file.Paths.get(java.net.URI.create(url)).toString();
+                } catch (IllegalArgumentException e) {
+                    log.warn("Invalid file: URI '{}', falling back to raw path handling", url, e);
+                    localPath = url.replaceFirst("^file:(//)?", "");
+                }
+            } else {
+                localPath = url;
+            }
         }
 
         ensureServingProperties(localPath);
@@ -274,7 +284,29 @@ public class LocalEmbeddingService {
             }
 
             log.info("Downloading {} → {}", fileUrl, localFile);
-            try (java.io.InputStream in = java.net.URI.create(fileUrl).toURL().openStream()) {
+            java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(30))
+                    .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
+                    .build();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(fileUrl))
+                    .timeout(java.time.Duration.ofMinutes(5))
+                    .GET()
+                    .build();
+            java.net.http.HttpResponse<java.io.InputStream> response;
+            try {
+                response = httpClient.send(
+                        request, java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new java.io.IOException("Download interrupted for " + fileUrl, ie);
+            }
+            if (response.statusCode() != 200) {
+                modelLoadFailed = true;
+                throw new Exception("Failed to download " + fileUrl
+                        + ": HTTP " + response.statusCode());
+            }
+            try (java.io.InputStream in = response.body()) {
                 java.nio.file.Files.copy(in, localFile,
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
