@@ -1,6 +1,5 @@
 package com.taxonomy.shared.service;
 
-import ai.djl.Application;
 import ai.djl.inference.Predictor;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ZooModel;
@@ -39,9 +38,9 @@ import com.taxonomy.search.NodeEmbeddingBinder;
  *   <li>{@code TAXONOMY_EMBEDDING_ENABLED} (default {@code true}) — set to {@code false} to
  *       disable all embedding and semantic search globally.</li>
  *   <li>{@code TAXONOMY_EMBEDDING_MODEL_DIR} — path to a pre-downloaded model directory;
- *       empty = DJL auto-download to {@code ~/.djl.ai/}.</li>
- *   <li>{@code TAXONOMY_EMBEDDING_MODEL_NAME} — DJL model URL;
- *       default {@code djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5}.</li>
+ *       empty = auto-download from HuggingFace into {@code ~/.djl.ai/cache/taxonomy/}.</li>
+ *   <li>{@code TAXONOMY_EMBEDDING_MODEL_NAME} — HuggingFace model URL or local path;
+ *       default {@code https://huggingface.co/BAAI/bge-small-en-v1.5}.</li>
  *   <li>{@code TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD} (default {@code true}) — set to
  *       {@code false} to prevent runtime model downloads (CI mode).  When disabled, a local
  *       model must be provided via {@code TAXONOMY_EMBEDDING_MODEL_DIR}.</li>
@@ -63,13 +62,26 @@ public class LocalEmbeddingService {
 
     private static final Logger log = LoggerFactory.getLogger(LocalEmbeddingService.class);
 
-    /** Default DJL model-zoo URL for the ONNX export of bge-small-en-v1.5. */
+    /**
+     * Default HuggingFace model identifier for downloading the ONNX export.
+     *
+     * <p><strong>Note:</strong> The previous default {@code djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5}
+     * never worked because DJL's {@code HfModelZoo} registers with GROUP_ID
+     * {@code ai.djl.huggingface.pytorch} and only supports the PyTorch engine —
+     * not OnnxRuntime. We now download the ONNX model files directly from
+     * HuggingFace into a local cache directory.
+     */
     public static final String DEFAULT_MODEL_URL =
-            "djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5";
+            "https://huggingface.co/BAAI/bge-small-en-v1.5";
 
-    /** Fallback URL used when the {@code djl://} protocol fails (e.g. URL truncation in Alpine). */
-    static final String FALLBACK_MODEL_URL =
-            "https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx";
+    /** Base URL pattern for resolving individual files from a HuggingFace model repo. */
+    private static final String HF_RESOLVE_PATTERN = "%s/resolve/main/%s";
+
+    /** Files to download from HuggingFace for a working ONNX model directory. */
+    private static final String[] HF_MODEL_FILES = {
+            "onnx/model.onnx",
+            "tokenizer.json"
+    };
 
     /**
      * Default query prefix for asymmetric retrieval with BGE models.
@@ -93,7 +105,7 @@ public class LocalEmbeddingService {
     @Value("${embedding.model.dir:}")
     private String modelDir;
 
-    @Value("${embedding.model.name:djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5}")
+    @Value("${embedding.model.name:https://huggingface.co/BAAI/bge-small-en-v1.5}")
     private String modelName;
 
     @Value("${embedding.query.prefix:Represent this sentence for searching relevant passages: }")
@@ -152,7 +164,8 @@ public class LocalEmbeddingService {
                 if (model == null) {
                     String url = effectiveModelUrl();
                     // When downloads are disabled, only local paths are allowed
-                    if (!allowDownload && url.startsWith("djl://")) {
+                    if (!allowDownload && (url.startsWith("http://") || url.startsWith("https://")
+                            || url.startsWith("djl://"))) {
                         modelLoadFailed = true;
                         log.error("Model download disabled (embedding.allow-download=false) "
                                 + "and no local model found. Set TAXONOMY_EMBEDDING_MODEL_DIR.");
@@ -161,28 +174,16 @@ public class LocalEmbeddingService {
                     }
                     log.info("Loading embedding model via DJL / ONNX Runtime from {} …", url);
                     try {
-                        model = loadFromUrl(url);
+                        model = loadModel(url);
                         log.info("Embedding model loaded successfully.");
-                    } catch (Exception primary) {
-                        // When the djl:// protocol fails (e.g. URL truncation in Alpine),
-                        // try loading directly from HuggingFace before giving up.
-                        if (url.startsWith("djl://") && allowDownload) {
-                            log.warn("djl:// URL failed ({}), trying HuggingFace fallback…",
-                                    primary.getMessage());
-                            try {
-                                model = loadFromUrl(FALLBACK_MODEL_URL);
-                                log.info("Embedding model loaded from HuggingFace fallback.");
-                            } catch (Exception fallback) {
-                                log.error("Fallback also failed: {}", fallback.getMessage());
-                                modelLoadFailed = true;
-                                throw primary;
-                            }
-                        } else {
-                            modelLoadFailed = true;
-                            log.error("Failed to load DJL model from '{}'; semantic search disabled. Error: {}",
-                                    url, primary.getMessage());
-                            throw primary;
-                        }
+                    } catch (Exception | LinkageError primary) {
+                        // LinkageError covers UnsatisfiedLinkError / NoClassDefFoundError
+                        // from native DJL / ONNX Runtime library loading failures.
+                        modelLoadFailed = true;
+                        log.error("Failed to load embedding model from '{}'; semantic search disabled. Error: {}",
+                                url, primary.getMessage());
+                        if (primary instanceof Exception ex) throw ex;
+                        throw new IllegalStateException("Native library loading failed", primary);
                     }
                 }
             }
@@ -190,23 +191,97 @@ public class LocalEmbeddingService {
         return model;
     }
 
-    private ZooModel<String, float[]> loadFromUrl(String url) throws Exception {
-        // Local directory paths need the file:// prefix for DJL
-        String resolvedUrl = url;
-        if (!url.startsWith("djl://") && !url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("file:")) {
-            resolvedUrl = "file://" + url;
+    /**
+     * Loads a DJL ONNX model from the given URL or local path.
+     *
+     * <p>Supported URL schemes:
+     * <ul>
+     *   <li>{@code https://huggingface.co/{org}/{model}} — downloads {@code onnx/model.onnx}
+     *       and {@code tokenizer.json} to a local cache directory, generates
+     *       {@code serving.properties}, and loads from there.</li>
+     *   <li>Local directory path — loads directly (auto-generates {@code serving.properties}
+     *       if missing).</li>
+     *   <li>{@code file://} prefix — same as local directory.</li>
+     * </ul>
+     */
+    private ZooModel<String, float[]> loadModel(String url) throws Exception {
+        String localPath;
+
+        if (url.startsWith("https://huggingface.co/") || url.startsWith("http://huggingface.co/")) {
+            localPath = downloadHuggingFaceModel(url);
+        } else if (url.startsWith("djl://")) {
+            // Legacy djl:// URLs never worked with OnnxRuntime — extract the model ID
+            // and try to download from HuggingFace instead.
+            // djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5 → BAAI/bge-small-en-v1.5
+            String modelId = url.replaceFirst("djl://[^/]+/", "");
+            String hfUrl = "https://huggingface.co/" + modelId;
+            log.warn("Migrating legacy djl:// URL to HuggingFace download: {} → {}", url, hfUrl);
+            localPath = downloadHuggingFaceModel(hfUrl);
+        } else {
+            // Local path
+            localPath = url.startsWith("file://") ? url.substring("file://".length()) : url;
         }
 
-        // DJL requires a serving.properties file to recognize a local model directory.
-        // Auto-generate one if the URL points to a local directory that lacks it.
-        ensureServingProperties(url);
+        ensureServingProperties(localPath);
 
-        return Criteria.builder()
-                .optApplication(Application.NLP.TEXT_EMBEDDING)
-                .setTypes(String.class, float[].class)
-                .optModelUrls(resolvedUrl)
-                .optEngine("OnnxRuntime")
-                .build().loadModel();
+        // Convert local path to a proper file: URI (handles Windows drive letters + backslashes)
+        String fileUrl = java.nio.file.Path.of(localPath).toUri().toString();
+        log.info("Loading DJL model from local path: {} (URI: {})", localPath, fileUrl);
+        try {
+            return Criteria.builder()
+                    .setTypes(String.class, float[].class)
+                    .optModelUrls(fileUrl)
+                    .optEngine("OnnxRuntime")
+                    .build().loadModel();
+        } catch (Exception e) {
+            log.error("DJL Criteria.loadModel() failed for URI '{}': {}", fileUrl, e.getMessage(), e);
+            throw e;
+        }
+    }
+
+    /**
+     * Downloads the ONNX model files from a HuggingFace repository URL into a local
+     * cache directory under {@code ~/.djl.ai/cache/taxonomy/}.
+     *
+     * <p>Downloads are skipped if the files already exist locally (idempotent).
+     *
+     * @param hfRepoUrl e.g. {@code https://huggingface.co/BAAI/bge-small-en-v1.5}
+     * @return absolute path to the local model directory
+     */
+    private String downloadHuggingFaceModel(String hfRepoUrl) throws Exception {
+        // Derive a cache directory name from the repo URL
+        // https://huggingface.co/BAAI/bge-small-en-v1.5 → BAAI--bge-small-en-v1.5
+        String repoId = hfRepoUrl
+                .replaceFirst("https?://huggingface\\.co/", "")
+                .replaceAll("[/\\\\]", "--");
+        java.nio.file.Path cacheDir = java.nio.file.Path.of(
+                System.getProperty("user.home"), ".djl.ai", "cache", "taxonomy", repoId);
+        java.nio.file.Files.createDirectories(cacheDir);
+
+        String baseUrl = hfRepoUrl.endsWith("/")
+                ? hfRepoUrl.substring(0, hfRepoUrl.length() - 1) : hfRepoUrl;
+
+        for (String relPath : HF_MODEL_FILES) {
+            String fileUrl = String.format(HF_RESOLVE_PATTERN, baseUrl, relPath);
+            // Flatten onnx/model.onnx → model.onnx in local cache
+            String localName = relPath.contains("/")
+                    ? relPath.substring(relPath.lastIndexOf('/') + 1) : relPath;
+            java.nio.file.Path localFile = cacheDir.resolve(localName);
+
+            if (java.nio.file.Files.exists(localFile) && java.nio.file.Files.size(localFile) > 0) {
+                log.debug("Model file already cached: {}", localFile);
+                continue;
+            }
+
+            log.info("Downloading {} → {}", fileUrl, localFile);
+            try (java.io.InputStream in = java.net.URI.create(fileUrl).toURL().openStream()) {
+                java.nio.file.Files.copy(in, localFile,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+            log.info("Downloaded {} ({} bytes)", localName, java.nio.file.Files.size(localFile));
+        }
+
+        return cacheDir.toAbsolutePath().toString();
     }
 
     /**
@@ -215,6 +290,12 @@ public class LocalEmbeddingService {
      * discover the model.  Also detects and repairs malformed files (e.g. with leading
      * whitespace from YAML heredoc indentation in CI workflows).
      */
+    private static final String SERVING_PROPERTIES_CONTENT =
+            "engine=OnnxRuntime\n"
+            + "option.modelName=model\n"
+            + "translatorFactory=ai.djl.huggingface.translator.TextEmbeddingTranslatorFactory\n"
+            + "option.mapLocation=true\n";
+
     private void ensureServingProperties(String url) {
         try {
             String path = url.startsWith("file://") ? url.substring("file://".length()) : url;
@@ -222,23 +303,25 @@ public class LocalEmbeddingService {
             if (!java.nio.file.Files.isDirectory(dir)) return;
             java.nio.file.Path servingProps = dir.resolve("serving.properties");
 
-            // Check if existing file has valid content (e.g. no leading whitespace corruption)
+            // Check if existing file has valid content (correct engine + translator factory)
             if (java.nio.file.Files.exists(servingProps)) {
                 String existing = java.nio.file.Files.readString(servingProps);
-                if (existing.lines().anyMatch(l -> l.startsWith("engine="))) {
+                if (existing.contains("engine=OnnxRuntime")
+                        && existing.contains("TextEmbeddingTranslatorFactory")) {
                     return; // file is valid
                 }
-                log.warn("serving.properties exists but appears malformed; regenerating");
+                log.warn("serving.properties exists but is missing OnnxRuntime engine or "
+                        + "TextEmbeddingTranslatorFactory; regenerating");
                 // fall through to regeneration
             }
 
             // Only generate if there is actually an ONNX model file present
-            boolean hasOnnx = java.nio.file.Files.list(dir)
-                    .anyMatch(p -> p.getFileName().toString().endsWith(".onnx"));
+            boolean hasOnnx;
+            try (var files = java.nio.file.Files.list(dir)) {
+                hasOnnx = files.anyMatch(p -> p.getFileName().toString().endsWith(".onnx"));
+            }
             if (!hasOnnx) return;
-            String content = "engine=OnnxRuntime\noption.modelName=model\n"
-                    + "translatorFactory=ai.djl.huggingface.tokenizers.HuggingFaceTokenizer\n";
-            java.nio.file.Files.writeString(servingProps, content);
+            java.nio.file.Files.writeString(servingProps, SERVING_PROPERTIES_CONTENT);
             log.info("Auto-generated serving.properties in {}", dir);
         } catch (Exception e) {
             log.warn("Could not auto-generate serving.properties: {}", e.getMessage());

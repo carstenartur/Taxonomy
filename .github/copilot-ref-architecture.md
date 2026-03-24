@@ -20,7 +20,7 @@
 | `TaxonomyService` | Loads taxonomy from Excel workbook (Apache POI), builds in-memory tree |
 | `LlmService` | Calls Google Gemini (or other provider) for analysis; throws `LlmRateLimitException` on 429 |
 | `RelationProposalService` | Manages proposed cross-taxonomy relations (create, accept, reject) |
-| `LocalEmbeddingService` | Generates local KNN embeddings via DJL + ONNX (all-MiniLM-L6-v2) |
+| `LocalEmbeddingService` | Generates local KNN embeddings via DJL + ONNX (BAAI/bge-small-en-v1.5) |
 | `DerivedMetadataService` | Recomputes graph metadata (hub/bridge/leaf/isolated roles, relation counts) |
 | `ArchitectureSummaryService` | Produces architecture summaries (top capabilities, gaps, hub nodes) |
 | `DslGitRepository` | JGit-backed version control for DSL documents stored in the database |
@@ -68,5 +68,5 @@ Total: approximately 2,500 nodes across all roots.
 - **Hibernate Search 8 + Lucene 9** — full-text and KNN search
 - **Thymeleaf** — server-side HTML rendering (single Bootstrap 5 page UI)
 - **JGit** — version control for DSL documents, stored in HSQLDB/external DB
-- **DJL + ONNX Runtime** — local embedding model (all-MiniLM-L6-v2)
+- **DJL + ONNX Runtime** — local embedding model (BAAI/bge-small-en-v1.5)
 - **Google Gemini** — LLM analysis (free-tier, rate-limited)
