@@ -177,7 +177,7 @@ public class RequirementArchitectureViewService {
                 sb.append("anchor ").append(anchor.getNodeCode());
                 for (RequirementElementView e : propagated) {
                     sb.append("\n  → ").append(e.getNodeCode())
-                      .append(" (").append(String.format("%.2f", e.getRelevance())).append(")");
+                      .append(" (").append(String.format(Locale.US, "%.2f", e.getRelevance())).append(")");
                 }
                 log.debug(sb.toString());
             }

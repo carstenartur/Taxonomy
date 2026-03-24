@@ -429,7 +429,7 @@ class ScreenshotGeneratorIT {
                 new ImageFromDockerfile()
                         .withFileFromPath("app.jar", ContainerTestUtils.findApplicationJar())
                         .withDockerfileFromBuilder(builder -> builder
-                                .from("eclipse-temurin:17-jre-alpine")
+                                .from("eclipse-temurin:17-jre")
                                 .workDir("/app")
                                 .copy("app.jar", "app.jar")
                                 .expose(8080)

@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -64,7 +65,7 @@ public class ArchiMateDiagramService {
                     node.id(),
                     node.label(),
                     toArchiMateType(node.type()),
-                    "Relevance: " + String.format("%.2f", node.relevance())));
+                    "Relevance: " + String.format(Locale.US, "%.2f", node.relevance())));
         }
         return elements;
     }

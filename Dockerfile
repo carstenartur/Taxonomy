@@ -1,7 +1,7 @@
 # ---- build stage ----
-FROM eclipse-temurin:17-jdk-alpine AS build
+FROM eclipse-temurin:17-jdk AS build
 WORKDIR /workspace
-RUN apk add --no-cache maven
+RUN apt-get update && apt-get install -y --no-install-recommends maven && rm -rf /var/lib/apt/lists/*
 COPY pom.xml .
 COPY taxonomy-domain/pom.xml taxonomy-domain/pom.xml
 COPY taxonomy-dsl/pom.xml taxonomy-dsl/pom.xml
@@ -16,7 +16,7 @@ COPY taxonomy-app/src taxonomy-app/src
 RUN mvn -q -DskipTests package
 
 # ---- runtime stage ----
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=build /workspace/taxonomy-app/target/taxonomy-app-*.jar app.jar
 RUN mkdir -p /app/data

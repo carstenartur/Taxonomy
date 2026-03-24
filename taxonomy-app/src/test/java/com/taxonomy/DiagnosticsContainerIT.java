@@ -11,7 +11,7 @@ import java.time.Duration;
 /**
  * Integration tests for the Diagnostics endpoint running inside a real Docker
  * container. Uses the pre-built application JAR packaged into an
- * eclipse-temurin:17-jre-alpine container. Validates that the application
+ * eclipse-temurin:17-jre container. Validates that the application
  * starts correctly and the diagnostics and other API endpoints behave as
  * expected in a production-like setup.
  * <p>
@@ -25,7 +25,7 @@ class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
             new ImageFromDockerfile()
                     .withFileFromPath("app.jar", ContainerTestUtils.findApplicationJar())
                     .withDockerfileFromBuilder(builder -> builder
-                            .from("eclipse-temurin:17-jre-alpine")
+                            .from("eclipse-temurin:17-jre")
                             .workDir("/app")
                             .copy("app.jar", "app.jar")
                             .expose(8080)

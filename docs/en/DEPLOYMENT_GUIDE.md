@@ -28,8 +28,8 @@ The repository includes a multi-stage `Dockerfile`:
 
 | Stage | Base Image | Purpose |
 |---|---|---|
-| **build** | `eclipse-temurin:17-jdk-alpine` | Compiles the application with Maven |
-| **runtime** | `eclipse-temurin:17-jre-alpine` | Runs the application (minimal image) |
+| **build** | `eclipse-temurin:17-jdk` | Compiles the application with Maven |
+| **runtime** | `eclipse-temurin:17-jre` | Runs the application (glibc-based for ONNX Runtime compatibility) |
 
 ```bash
 # Build the image

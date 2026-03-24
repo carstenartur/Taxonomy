@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import com.taxonomy.analysis.service.AnalysisRelationGenerator;
 import com.taxonomy.catalog.model.TaxonomyRelation;
@@ -336,7 +337,7 @@ public class HypothesisService {
                     .append(h.getTargetNodeId()).append("\n");
             sb.append("  status ").append(h.getStatus().name().toLowerCase()).append("\n");
             if (h.getConfidence() > 0) {
-                sb.append("  confidence ").append(String.format("%.2f", h.getConfidence())).append("\n");
+                sb.append("  confidence ").append(String.format(Locale.US, "%.2f", h.getConfidence())).append("\n");
             }
             sb.append("\n");
         }
