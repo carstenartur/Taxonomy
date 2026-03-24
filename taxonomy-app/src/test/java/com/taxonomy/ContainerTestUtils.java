@@ -20,33 +20,48 @@ final class ContainerTestUtils {
     }
 
     /**
-     * Dynamically resolves the Spring Boot fat JAR in the {@code target/} directory.
-     * This avoids hardcoding the version, which changes during release builds
-     * (e.g. {@code taxonomy-app-1.0.0-SNAPSHOT.jar} vs {@code taxonomy-app-1.0.0.jar}).
+     * Resolves the Spring Boot fat JAR in the {@code target/} directory.
      * <p>
-     * When run via Maven Failsafe the working directory is {@code taxonomy-app/},
-     * so {@code target/} resolves correctly. When launched from an IDE the working
-     * directory is typically the repository root, so we also try
-     * {@code taxonomy-app/target/} as a fallback.
+     * When run via Maven Failsafe, the {@code project.build.finalName} system
+     * property is set (e.g. {@code taxonomy-app-1.1.3-SNAPSHOT}), so the JAR
+     * name is constructed deterministically as {@code <finalName>.jar}.
+     * <p>
+     * When launched from an IDE (system property absent), a regex scan of
+     * {@code target/} and {@code taxonomy-app/target/} is used as a fallback,
+     * excluding {@code -original}, {@code -sources}, and {@code -javadoc} JARs
+     * and preferring the largest remaining match.
      */
     static Path findApplicationJar() {
-        // When run via Maven Failsafe the CWD is taxonomy-app/, so target/ works.
-        // When launched from an IDE the CWD is the repo root — but the repo root
-        // also has a target/ directory (build metadata, no JARs). We therefore
-        // search *both* candidate directories for the fat JAR.
         Path moduleTarget = Path.of("target");
         Path repoRootTarget = Path.of("taxonomy-app", "target");
+
+        // --- Deterministic path via Maven system property (set by Failsafe) ---
+        String finalName = System.getProperty("project.build.finalName");
+        if (finalName != null) {
+            String jarName = finalName + ".jar";
+            for (Path targetDir : new Path[]{moduleTarget, repoRootTarget}) {
+                Path candidate = targetDir.resolve(jarName);
+                if (Files.isRegularFile(candidate)) {
+                    return candidate;
+                }
+            }
+            throw new IllegalStateException(
+                    "Expected JAR '" + jarName + "' not found in " + moduleTarget + "/ or "
+                            + repoRootTarget + "/. Run 'mvn package -DskipTests' first.");
+        }
+
+        // --- Fallback for IDE runs: scan target/ directories ---
         for (Path targetDir : new Path[]{moduleTarget, repoRootTarget}) {
             if (!Files.isDirectory(targetDir)) {
                 continue;
             }
             try (var stream = Files.list(targetDir)) {
                 var jar = stream
-                        .filter(p -> p.getFileName().toString().matches("taxonomy-.*\\.jar"))
+                        .filter(p -> p.getFileName().toString().matches("taxonomy-app-.*\\.jar"))
+                        .filter(p -> !p.getFileName().toString().contains("original"))
                         .filter(p -> !p.getFileName().toString().contains("sources"))
                         .filter(p -> !p.getFileName().toString().contains("javadoc"))
-                        .filter(p -> p.toFile().length() > 1_000_000) // Spring Boot fat JAR should be large
-                        .findFirst();
+                        .max(java.util.Comparator.comparingLong(p -> p.toFile().length()));
                 if (jar.isPresent()) {
                     return jar.get();
                 }
@@ -55,7 +70,7 @@ final class ContainerTestUtils {
             }
         }
         throw new IllegalStateException(
-                "No taxonomy-*.jar found in " + moduleTarget + "/ or " + repoRootTarget
+                "No taxonomy-app-*.jar found in " + moduleTarget + "/ or " + repoRootTarget
                         + "/. Run 'mvn package -DskipTests' first.");
     }
 
