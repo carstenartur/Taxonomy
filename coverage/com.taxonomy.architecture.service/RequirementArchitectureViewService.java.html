@@ -177,7 +177,7 @@ public class RequirementArchitectureViewService {
 <span class="fc" id="L177">                sb.append(&quot;anchor &quot;).append(anchor.getNodeCode());</span>
 <span class="fc bfc" id="L178" title="All 2 branches covered.">                for (RequirementElementView e : propagated) {</span>
 <span class="fc" id="L179">                    sb.append(&quot;\n  → &quot;).append(e.getNodeCode())</span>
-<span class="fc" id="L180">                      .append(&quot; (&quot;).append(String.format(&quot;%.2f&quot;, e.getRelevance())).append(&quot;)&quot;);</span>
+<span class="fc" id="L180">                      .append(&quot; (&quot;).append(String.format(Locale.US, &quot;%.2f&quot;, e.getRelevance())).append(&quot;)&quot;);</span>
 <span class="fc" id="L181">                }</span>
 <span class="fc" id="L182">                log.debug(sb.toString());</span>
             }

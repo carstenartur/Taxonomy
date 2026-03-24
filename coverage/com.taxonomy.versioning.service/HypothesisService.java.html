@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import com.taxonomy.analysis.service.AnalysisRelationGenerator;
 import com.taxonomy.catalog.model.TaxonomyRelation;
@@ -43,7 +44,7 @@ import com.taxonomy.workspace.service.WorkspaceContextResolver;
 @Service
 public class HypothesisService {
 
-<span class="fc" id="L46">    private static final Logger log = LoggerFactory.getLogger(HypothesisService.class);</span>
+<span class="fc" id="L47">    private static final Logger log = LoggerFactory.getLogger(HypothesisService.class);</span>
 
     private final RelationHypothesisRepository hypothesisRepository;
     private final RelationEvidenceRepository evidenceRepository;
@@ -57,14 +58,14 @@ public class HypothesisService {
                              TaxonomyRelationService relationService,
                              TaxonomyNodeRepository nodeRepository,
                              DslGitRepositoryFactory repositoryFactory,
-<span class="fc" id="L60">                             WorkspaceContextResolver contextResolver) {</span>
-<span class="fc" id="L61">        this.hypothesisRepository = hypothesisRepository;</span>
-<span class="fc" id="L62">        this.evidenceRepository = evidenceRepository;</span>
-<span class="fc" id="L63">        this.relationService = relationService;</span>
-<span class="fc" id="L64">        this.nodeRepository = nodeRepository;</span>
-<span class="fc" id="L65">        this.gitRepository = repositoryFactory.getSystemRepository();</span>
-<span class="fc" id="L66">        this.contextResolver = contextResolver;</span>
-<span class="fc" id="L67">    }</span>
+<span class="fc" id="L61">                             WorkspaceContextResolver contextResolver) {</span>
+<span class="fc" id="L62">        this.hypothesisRepository = hypothesisRepository;</span>
+<span class="fc" id="L63">        this.evidenceRepository = evidenceRepository;</span>
+<span class="fc" id="L64">        this.relationService = relationService;</span>
+<span class="fc" id="L65">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L66">        this.gitRepository = repositoryFactory.getSystemRepository();</span>
+<span class="fc" id="L67">        this.contextResolver = contextResolver;</span>
+<span class="fc" id="L68">    }</span>
 
     /**
      * Persist provisional relation hypothesis DTOs (from analysis) to the database
@@ -84,58 +85,58 @@ public class HypothesisService {
     @Transactional
     public List&lt;RelationHypothesis&gt; persistFromAnalysis(List&lt;RelationHypothesisDto&gt; hypotheses,
                                                          String sessionId) {
-<span class="fc bfc" id="L87" title="All 4 branches covered.">        if (hypotheses == null || hypotheses.isEmpty()) {</span>
-<span class="fc" id="L88">            return List.of();</span>
+<span class="fc bfc" id="L88" title="All 4 branches covered.">        if (hypotheses == null || hypotheses.isEmpty()) {</span>
+<span class="fc" id="L89">            return List.of();</span>
         }
-<span class="pc bpc" id="L90" title="1 of 2 branches missed.">        final String effectiveSessionId = sessionId != null ? sessionId : UUID.randomUUID().toString();</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        final String effectiveSessionId = sessionId != null ? sessionId : UUID.randomUUID().toString();</span>
 
-<span class="fc" id="L92">        List&lt;RelationHypothesis&gt; persisted = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L93" title="All 2 branches covered.">        for (RelationHypothesisDto dto : hypotheses) {</span>
+<span class="fc" id="L93">        List&lt;RelationHypothesis&gt; persisted = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        for (RelationHypothesisDto dto : hypotheses) {</span>
             // Skip duplicates in the same session
-<span class="fc" id="L95">            List&lt;RelationHypothesis&gt; existing = hypothesisRepository</span>
-<span class="fc" id="L96">                    .findBySourceNodeIdAndTargetNodeIdAndRelationType(</span>
-<span class="fc" id="L97">                            dto.getSourceCode(), dto.getTargetCode(),</span>
-<span class="fc" id="L98">                            RelationType.valueOf(dto.getRelationType()));</span>
-<span class="fc" id="L99">            boolean alreadyExists = existing.stream()</span>
-<span class="fc" id="L100">                    .anyMatch(h -&gt; effectiveSessionId.equals(h.getAnalysisSessionId()));</span>
-<span class="fc bfc" id="L101" title="All 2 branches covered.">            if (alreadyExists) {</span>
-<span class="fc" id="L102">                continue;</span>
+<span class="fc" id="L96">            List&lt;RelationHypothesis&gt; existing = hypothesisRepository</span>
+<span class="fc" id="L97">                    .findBySourceNodeIdAndTargetNodeIdAndRelationType(</span>
+<span class="fc" id="L98">                            dto.getSourceCode(), dto.getTargetCode(),</span>
+<span class="fc" id="L99">                            RelationType.valueOf(dto.getRelationType()));</span>
+<span class="fc" id="L100">            boolean alreadyExists = existing.stream()</span>
+<span class="fc" id="L101">                    .anyMatch(h -&gt; effectiveSessionId.equals(h.getAnalysisSessionId()));</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            if (alreadyExists) {</span>
+<span class="fc" id="L103">                continue;</span>
             }
 
-<span class="fc" id="L105">            RelationHypothesis entity = new RelationHypothesis();</span>
-<span class="fc" id="L106">            entity.setSourceNodeId(dto.getSourceCode());</span>
-<span class="fc" id="L107">            entity.setTargetNodeId(dto.getTargetCode());</span>
-<span class="fc" id="L108">            entity.setRelationType(RelationType.valueOf(dto.getRelationType()));</span>
-<span class="fc" id="L109">            entity.setConfidence(dto.getConfidence());</span>
-<span class="fc" id="L110">            entity.setStatus(HypothesisStatus.PROVISIONAL);</span>
-<span class="fc" id="L111">            entity.setAnalysisSessionId(effectiveSessionId);</span>
+<span class="fc" id="L106">            RelationHypothesis entity = new RelationHypothesis();</span>
+<span class="fc" id="L107">            entity.setSourceNodeId(dto.getSourceCode());</span>
+<span class="fc" id="L108">            entity.setTargetNodeId(dto.getTargetCode());</span>
+<span class="fc" id="L109">            entity.setRelationType(RelationType.valueOf(dto.getRelationType()));</span>
+<span class="fc" id="L110">            entity.setConfidence(dto.getConfidence());</span>
+<span class="fc" id="L111">            entity.setStatus(HypothesisStatus.PROVISIONAL);</span>
+<span class="fc" id="L112">            entity.setAnalysisSessionId(effectiveSessionId);</span>
 
-<span class="fc" id="L113">            WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
-<span class="fc" id="L114">            entity.setWorkspaceId(ctx.workspaceId());</span>
-<span class="fc" id="L115">            entity.setOwnerUsername(ctx.username());</span>
+<span class="fc" id="L114">            WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="fc" id="L115">            entity.setWorkspaceId(ctx.workspaceId());</span>
+<span class="fc" id="L116">            entity.setOwnerUsername(ctx.username());</span>
 
-<span class="fc" id="L117">            RelationHypothesis saved = hypothesisRepository.save(entity);</span>
-<span class="fc" id="L118">            persisted.add(saved);</span>
+<span class="fc" id="L118">            RelationHypothesis saved = hypothesisRepository.save(entity);</span>
+<span class="fc" id="L119">            persisted.add(saved);</span>
 
             // Create evidence record from reasoning
-<span class="pc bpc" id="L121" title="2 of 4 branches missed.">            if (dto.getReasoning() != null &amp;&amp; !dto.getReasoning().isBlank()) {</span>
-<span class="fc" id="L122">                RelationEvidence evidence = new RelationEvidence();</span>
-<span class="fc" id="L123">                evidence.setHypothesis(saved);</span>
-<span class="fc" id="L124">                evidence.setEvidenceType(&quot;analysis-rule&quot;);</span>
-<span class="fc" id="L125">                evidence.setSummary(dto.getReasoning());</span>
-<span class="fc" id="L126">                evidence.setConfidence(dto.getConfidence());</span>
-<span class="fc" id="L127">                evidenceRepository.save(evidence);</span>
+<span class="pc bpc" id="L122" title="2 of 4 branches missed.">            if (dto.getReasoning() != null &amp;&amp; !dto.getReasoning().isBlank()) {</span>
+<span class="fc" id="L123">                RelationEvidence evidence = new RelationEvidence();</span>
+<span class="fc" id="L124">                evidence.setHypothesis(saved);</span>
+<span class="fc" id="L125">                evidence.setEvidenceType(&quot;analysis-rule&quot;);</span>
+<span class="fc" id="L126">                evidence.setSummary(dto.getReasoning());</span>
+<span class="fc" id="L127">                evidence.setConfidence(dto.getConfidence());</span>
+<span class="fc" id="L128">                evidenceRepository.save(evidence);</span>
             }
-<span class="fc" id="L129">        }</span>
+<span class="fc" id="L130">        }</span>
 
-<span class="fc" id="L131">        log.info(&quot;Persisted {} hypotheses for session {}&quot;, persisted.size(), effectiveSessionId);</span>
+<span class="fc" id="L132">        log.info(&quot;Persisted {} hypotheses for session {}&quot;, persisted.size(), effectiveSessionId);</span>
 
         // Generate DSL and commit to &quot;draft&quot; branch
-<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (!persisted.isEmpty()) {</span>
-<span class="fc" id="L135">            commitHypothesesAsDsl(persisted, effectiveSessionId);</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (!persisted.isEmpty()) {</span>
+<span class="fc" id="L136">            commitHypothesesAsDsl(persisted, effectiveSessionId);</span>
         }
 
-<span class="fc" id="L138">        return persisted;</span>
+<span class="fc" id="L139">        return persisted;</span>
     }
 
     /**
@@ -154,48 +155,48 @@ public class HypothesisService {
      */
     @Transactional
     public RelationHypothesis accept(Long hypothesisId) {
-<span class="fc" id="L157">        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)</span>
-<span class="fc" id="L158">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Hypothesis not found: &quot; + hypothesisId));</span>
+<span class="fc" id="L158">        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)</span>
+<span class="fc" id="L159">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Hypothesis not found: &quot; + hypothesisId));</span>
 
-<span class="fc bfc" id="L160" title="All 2 branches covered.">        if (hypothesis.getStatus() == HypothesisStatus.ACCEPTED) {</span>
-<span class="fc" id="L161">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already ACCEPTED&quot;);</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (hypothesis.getStatus() == HypothesisStatus.ACCEPTED) {</span>
+<span class="fc" id="L162">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already ACCEPTED&quot;);</span>
         }
-<span class="pc bpc" id="L163" title="1 of 2 branches missed.">        if (hypothesis.getStatus() == HypothesisStatus.REJECTED) {</span>
-<span class="nc" id="L164">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already REJECTED&quot;);</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        if (hypothesis.getStatus() == HypothesisStatus.REJECTED) {</span>
+<span class="nc" id="L165">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already REJECTED&quot;);</span>
         }
 
         // Create real TaxonomyRelation if both nodes exist
-<span class="fc" id="L168">        boolean relationCreated = false;</span>
-<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if (nodeRepository.findByCode(hypothesis.getSourceNodeId()).isPresent()</span>
-<span class="pc bpc" id="L170" title="1 of 2 branches missed.">                &amp;&amp; nodeRepository.findByCode(hypothesis.getTargetNodeId()).isPresent()) {</span>
+<span class="fc" id="L169">        boolean relationCreated = false;</span>
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">        if (nodeRepository.findByCode(hypothesis.getSourceNodeId()).isPresent()</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">                &amp;&amp; nodeRepository.findByCode(hypothesis.getTargetNodeId()).isPresent()) {</span>
             // Use the hypothesis's stored workspace (not the current user's context)
-<span class="fc" id="L172">            String workspaceId = hypothesis.getWorkspaceId();</span>
-<span class="fc" id="L173">            String ownerUsername = hypothesis.getOwnerUsername();</span>
-<span class="fc" id="L174">            relationService.createRelation(</span>
-<span class="fc" id="L175">                    hypothesis.getSourceNodeId(),</span>
-<span class="fc" id="L176">                    hypothesis.getTargetNodeId(),</span>
-<span class="fc" id="L177">                    hypothesis.getRelationType(),</span>
+<span class="fc" id="L173">            String workspaceId = hypothesis.getWorkspaceId();</span>
+<span class="fc" id="L174">            String ownerUsername = hypothesis.getOwnerUsername();</span>
+<span class="fc" id="L175">            relationService.createRelation(</span>
+<span class="fc" id="L176">                    hypothesis.getSourceNodeId(),</span>
+<span class="fc" id="L177">                    hypothesis.getTargetNodeId(),</span>
+<span class="fc" id="L178">                    hypothesis.getRelationType(),</span>
                     &quot;Accepted from hypothesis &quot; + hypothesisId,
                     &quot;hypothesis-accepted&quot;,
                     workspaceId, ownerUsername);
-<span class="fc" id="L181">            relationCreated = true;</span>
-<span class="fc" id="L182">        } else {</span>
-<span class="nc" id="L183">            log.warn(&quot;Could not create relation for hypothesis {}: source or target node not found&quot;,</span>
+<span class="fc" id="L182">            relationCreated = true;</span>
+<span class="fc" id="L183">        } else {</span>
+<span class="nc" id="L184">            log.warn(&quot;Could not create relation for hypothesis {}: source or target node not found&quot;,</span>
                     hypothesisId);
         }
 
-<span class="fc" id="L187">        hypothesis.setStatus(HypothesisStatus.ACCEPTED);</span>
-<span class="fc" id="L188">        hypothesisRepository.save(hypothesis);</span>
+<span class="fc" id="L188">        hypothesis.setStatus(HypothesisStatus.ACCEPTED);</span>
+<span class="fc" id="L189">        hypothesisRepository.save(hypothesis);</span>
 
-<span class="fc" id="L190">        log.info(&quot;Accepted hypothesis {}: {} --[{}]--&gt; {} (relation created: {})&quot;,</span>
-<span class="fc" id="L191">                hypothesisId, hypothesis.getSourceNodeId(),</span>
-<span class="fc" id="L192">                hypothesis.getRelationType(), hypothesis.getTargetNodeId(),</span>
-<span class="fc" id="L193">                relationCreated);</span>
+<span class="fc" id="L191">        log.info(&quot;Accepted hypothesis {}: {} --[{}]--&gt; {} (relation created: {})&quot;,</span>
+<span class="fc" id="L192">                hypothesisId, hypothesis.getSourceNodeId(),</span>
+<span class="fc" id="L193">                hypothesis.getRelationType(), hypothesis.getTargetNodeId(),</span>
+<span class="fc" id="L194">                relationCreated);</span>
 
         // Commit accepted relation as DSL to &quot;accepted&quot; branch
-<span class="fc" id="L196">        commitHypothesesAsDsl(List.of(hypothesis), &quot;accepted-&quot; + hypothesisId);</span>
+<span class="fc" id="L197">        commitHypothesesAsDsl(List.of(hypothesis), &quot;accepted-&quot; + hypothesisId);</span>
 
-<span class="fc" id="L198">        return hypothesis;</span>
+<span class="fc" id="L199">        return hypothesis;</span>
     }
 
     /**
@@ -206,24 +207,24 @@ public class HypothesisService {
      */
     @Transactional
     public RelationHypothesis reject(Long hypothesisId) {
-<span class="fc" id="L209">        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)</span>
-<span class="fc" id="L210">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Hypothesis not found: &quot; + hypothesisId));</span>
+<span class="fc" id="L210">        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)</span>
+<span class="fc" id="L211">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Hypothesis not found: &quot; + hypothesisId));</span>
 
-<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        if (hypothesis.getStatus() == HypothesisStatus.ACCEPTED) {</span>
-<span class="nc" id="L213">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already ACCEPTED&quot;);</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">        if (hypothesis.getStatus() == HypothesisStatus.ACCEPTED) {</span>
+<span class="nc" id="L214">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already ACCEPTED&quot;);</span>
         }
-<span class="fc bfc" id="L215" title="All 2 branches covered.">        if (hypothesis.getStatus() == HypothesisStatus.REJECTED) {</span>
-<span class="fc" id="L216">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already REJECTED&quot;);</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">        if (hypothesis.getStatus() == HypothesisStatus.REJECTED) {</span>
+<span class="fc" id="L217">            throw new IllegalStateException(&quot;Hypothesis &quot; + hypothesisId + &quot; is already REJECTED&quot;);</span>
         }
 
-<span class="fc" id="L219">        hypothesis.setStatus(HypothesisStatus.REJECTED);</span>
-<span class="fc" id="L220">        hypothesisRepository.save(hypothesis);</span>
+<span class="fc" id="L220">        hypothesis.setStatus(HypothesisStatus.REJECTED);</span>
+<span class="fc" id="L221">        hypothesisRepository.save(hypothesis);</span>
 
-<span class="fc" id="L222">        log.info(&quot;Rejected hypothesis {}: {} --[{}]--&gt; {}&quot;,</span>
-<span class="fc" id="L223">                hypothesisId, hypothesis.getSourceNodeId(),</span>
-<span class="fc" id="L224">                hypothesis.getRelationType(), hypothesis.getTargetNodeId());</span>
+<span class="fc" id="L223">        log.info(&quot;Rejected hypothesis {}: {} --[{}]--&gt; {}&quot;,</span>
+<span class="fc" id="L224">                hypothesisId, hypothesis.getSourceNodeId(),</span>
+<span class="fc" id="L225">                hypothesis.getRelationType(), hypothesis.getTargetNodeId());</span>
 
-<span class="fc" id="L226">        return hypothesis;</span>
+<span class="fc" id="L227">        return hypothesis;</span>
     }
 
     /**
@@ -234,17 +235,17 @@ public class HypothesisService {
      */
     @Transactional
     public RelationHypothesis applyForSession(Long hypothesisId) {
-<span class="fc" id="L237">        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)</span>
-<span class="fc" id="L238">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Hypothesis not found: &quot; + hypothesisId));</span>
+<span class="fc" id="L238">        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)</span>
+<span class="fc" id="L239">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Hypothesis not found: &quot; + hypothesisId));</span>
 
-<span class="fc" id="L240">        hypothesis.setAppliedInCurrentAnalysis(true);</span>
-<span class="fc" id="L241">        hypothesisRepository.save(hypothesis);</span>
+<span class="fc" id="L241">        hypothesis.setAppliedInCurrentAnalysis(true);</span>
+<span class="fc" id="L242">        hypothesisRepository.save(hypothesis);</span>
 
-<span class="fc" id="L243">        log.info(&quot;Applied hypothesis {} for current session: {} --[{}]--&gt; {}&quot;,</span>
-<span class="fc" id="L244">                hypothesisId, hypothesis.getSourceNodeId(),</span>
-<span class="fc" id="L245">                hypothesis.getRelationType(), hypothesis.getTargetNodeId());</span>
+<span class="fc" id="L244">        log.info(&quot;Applied hypothesis {} for current session: {} --[{}]--&gt; {}&quot;,</span>
+<span class="fc" id="L245">                hypothesisId, hypothesis.getSourceNodeId(),</span>
+<span class="fc" id="L246">                hypothesis.getRelationType(), hypothesis.getTargetNodeId());</span>
 
-<span class="fc" id="L247">        return hypothesis;</span>
+<span class="fc" id="L248">        return hypothesis;</span>
     }
 
     /**
@@ -252,11 +253,11 @@ public class HypothesisService {
      */
     @Transactional(readOnly = true)
     public List&lt;RelationHypothesis&gt; findByStatus(HypothesisStatus status) {
-<span class="fc" id="L255">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
-<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        if (ctx.workspaceId() != null) {</span>
-<span class="nc" id="L257">            return hypothesisRepository.findByStatusAndWorkspace(status, ctx.workspaceId());</span>
+<span class="fc" id="L256">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        if (ctx.workspaceId() != null) {</span>
+<span class="nc" id="L258">            return hypothesisRepository.findByStatusAndWorkspace(status, ctx.workspaceId());</span>
         }
-<span class="fc" id="L259">        return hypothesisRepository.findByStatus(status);</span>
+<span class="fc" id="L260">        return hypothesisRepository.findByStatus(status);</span>
     }
 
     /**
@@ -264,11 +265,11 @@ public class HypothesisService {
      */
     @Transactional(readOnly = true)
     public List&lt;RelationHypothesis&gt; findAll() {
-<span class="fc" id="L267">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
-<span class="pc bpc" id="L268" title="1 of 2 branches missed.">        if (ctx.workspaceId() != null) {</span>
-<span class="nc" id="L269">            return hypothesisRepository.findByWorkspaceIdIsNullOrWorkspaceId(ctx.workspaceId());</span>
+<span class="fc" id="L268">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">        if (ctx.workspaceId() != null) {</span>
+<span class="nc" id="L270">            return hypothesisRepository.findByWorkspaceIdIsNullOrWorkspaceId(ctx.workspaceId());</span>
         }
-<span class="fc" id="L271">        return hypothesisRepository.findAll();</span>
+<span class="fc" id="L272">        return hypothesisRepository.findAll();</span>
     }
 
     /**
@@ -276,7 +277,7 @@ public class HypothesisService {
      */
     @Transactional(readOnly = true)
     public List&lt;RelationEvidence&gt; findEvidence(Long hypothesisId) {
-<span class="fc" id="L279">        return evidenceRepository.findByHypothesisId(hypothesisId);</span>
+<span class="fc" id="L280">        return evidenceRepository.findByHypothesisId(hypothesisId);</span>
     }
 
     // ── DSL generation + Git commit ─────────────────────────────────
@@ -288,60 +289,60 @@ public class HypothesisService {
      */
     private void commitHypothesesAsDsl(List&lt;RelationHypothesis&gt; hypotheses, String sessionId) {
         try {
-<span class="fc" id="L291">            String dslText = generateDsl(hypotheses);</span>
-<span class="fc" id="L292">            String branch = hypotheses.stream()</span>
-<span class="fc bfc" id="L293" title="All 4 branches covered.">                    .anyMatch(h -&gt; h.getStatus() == HypothesisStatus.ACCEPTED)</span>
-<span class="fc" id="L294">                    ? &quot;accepted&quot; : &quot;draft&quot;;</span>
+<span class="fc" id="L292">            String dslText = generateDsl(hypotheses);</span>
+<span class="fc" id="L293">            String branch = hypotheses.stream()</span>
+<span class="fc bfc" id="L294" title="All 4 branches covered.">                    .anyMatch(h -&gt; h.getStatus() == HypothesisStatus.ACCEPTED)</span>
+<span class="fc" id="L295">                    ? &quot;accepted&quot; : &quot;draft&quot;;</span>
 
-<span class="fc" id="L296">            String commitId = gitRepository.commitDsl(</span>
+<span class="fc" id="L297">            String commitId = gitRepository.commitDsl(</span>
                     branch, dslText,
                     &quot;hypothesis-service&quot;,
                     &quot;Auto-generated from analysis session &quot; + sessionId);
 
-<span class="fc" id="L301">            log.info(&quot;Committed {} hypotheses as DSL to branch '{}': {}&quot;,</span>
-<span class="fc" id="L302">                    hypotheses.size(), branch, commitId);</span>
-<span class="nc" id="L303">        } catch (IOException e) {</span>
-<span class="nc" id="L304">            log.warn(&quot;Failed to commit hypotheses as DSL to Git: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L302">            log.info(&quot;Committed {} hypotheses as DSL to branch '{}': {}&quot;,</span>
+<span class="fc" id="L303">                    hypotheses.size(), branch, commitId);</span>
+<span class="nc" id="L304">        } catch (IOException e) {</span>
+<span class="nc" id="L305">            log.warn(&quot;Failed to commit hypotheses as DSL to Git: {}&quot;, e.getMessage());</span>
             // Non-fatal: DB persistence already succeeded
-<span class="fc" id="L306">        }</span>
-<span class="fc" id="L307">    }</span>
+<span class="fc" id="L307">        }</span>
+<span class="fc" id="L308">    }</span>
 
     /**
      * Generate DSL text from a list of hypotheses.
      */
     private String generateDsl(List&lt;RelationHypothesis&gt; hypotheses) {
-<span class="fc" id="L313">        StringBuilder sb = new StringBuilder();</span>
-<span class="fc" id="L314">        sb.append(&quot;meta\n&quot;);</span>
-<span class="fc" id="L315">        sb.append(&quot;  language \&quot;taxdsl\&quot;\n&quot;);</span>
-<span class="fc" id="L316">        sb.append(&quot;  version \&quot;1.0\&quot;\n&quot;);</span>
-<span class="fc" id="L317">        sb.append(&quot;  namespace \&quot;hypothesis-auto\&quot;\n\n&quot;);</span>
+<span class="fc" id="L314">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L315">        sb.append(&quot;meta\n&quot;);</span>
+<span class="fc" id="L316">        sb.append(&quot;  language \&quot;taxdsl\&quot;\n&quot;);</span>
+<span class="fc" id="L317">        sb.append(&quot;  version \&quot;1.0\&quot;\n&quot;);</span>
+<span class="fc" id="L318">        sb.append(&quot;  namespace \&quot;hypothesis-auto\&quot;\n\n&quot;);</span>
 
         // Track declared elements to avoid duplicates
-<span class="fc" id="L320">        java.util.Set&lt;String&gt; declaredElements = new java.util.LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L321">        java.util.Set&lt;String&gt; declaredElements = new java.util.LinkedHashSet&lt;&gt;();</span>
 
-<span class="fc bfc" id="L322" title="All 2 branches covered.">        for (RelationHypothesis h : hypotheses) {</span>
+<span class="fc bfc" id="L323" title="All 2 branches covered.">        for (RelationHypothesis h : hypotheses) {</span>
             // Element declarations for source and target (avoid duplicates)
-<span class="pc bpc" id="L324" title="1 of 2 branches missed.">            if (declaredElements.add(h.getSourceNodeId())) {</span>
-<span class="fc" id="L325">                sb.append(&quot;element &quot;).append(h.getSourceNodeId()).append(&quot; type Node\n&quot;);</span>
-<span class="fc" id="L326">                sb.append(&quot;  title \&quot;&quot;).append(h.getSourceNodeId()).append(&quot;\&quot;\n\n&quot;);</span>
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">            if (declaredElements.add(h.getSourceNodeId())) {</span>
+<span class="fc" id="L326">                sb.append(&quot;element &quot;).append(h.getSourceNodeId()).append(&quot; type Node\n&quot;);</span>
+<span class="fc" id="L327">                sb.append(&quot;  title \&quot;&quot;).append(h.getSourceNodeId()).append(&quot;\&quot;\n\n&quot;);</span>
             }
-<span class="pc bpc" id="L328" title="1 of 2 branches missed.">            if (declaredElements.add(h.getTargetNodeId())) {</span>
-<span class="fc" id="L329">                sb.append(&quot;element &quot;).append(h.getTargetNodeId()).append(&quot; type Node\n&quot;);</span>
-<span class="fc" id="L330">                sb.append(&quot;  title \&quot;&quot;).append(h.getTargetNodeId()).append(&quot;\&quot;\n\n&quot;);</span>
+<span class="pc bpc" id="L329" title="1 of 2 branches missed.">            if (declaredElements.add(h.getTargetNodeId())) {</span>
+<span class="fc" id="L330">                sb.append(&quot;element &quot;).append(h.getTargetNodeId()).append(&quot; type Node\n&quot;);</span>
+<span class="fc" id="L331">                sb.append(&quot;  title \&quot;&quot;).append(h.getTargetNodeId()).append(&quot;\&quot;\n\n&quot;);</span>
             }
 
             // Relation declaration
-<span class="fc" id="L334">            sb.append(&quot;relation &quot;).append(h.getSourceNodeId()).append(&quot; &quot;)</span>
-<span class="fc" id="L335">                    .append(h.getRelationType().name()).append(&quot; &quot;)</span>
-<span class="fc" id="L336">                    .append(h.getTargetNodeId()).append(&quot;\n&quot;);</span>
-<span class="fc" id="L337">            sb.append(&quot;  status &quot;).append(h.getStatus().name().toLowerCase()).append(&quot;\n&quot;);</span>
-<span class="pc bpc" id="L338" title="1 of 2 branches missed.">            if (h.getConfidence() &gt; 0) {</span>
-<span class="fc" id="L339">                sb.append(&quot;  confidence &quot;).append(String.format(&quot;%.2f&quot;, h.getConfidence())).append(&quot;\n&quot;);</span>
+<span class="fc" id="L335">            sb.append(&quot;relation &quot;).append(h.getSourceNodeId()).append(&quot; &quot;)</span>
+<span class="fc" id="L336">                    .append(h.getRelationType().name()).append(&quot; &quot;)</span>
+<span class="fc" id="L337">                    .append(h.getTargetNodeId()).append(&quot;\n&quot;);</span>
+<span class="fc" id="L338">            sb.append(&quot;  status &quot;).append(h.getStatus().name().toLowerCase()).append(&quot;\n&quot;);</span>
+<span class="pc bpc" id="L339" title="1 of 2 branches missed.">            if (h.getConfidence() &gt; 0) {</span>
+<span class="fc" id="L340">                sb.append(&quot;  confidence &quot;).append(String.format(Locale.US, &quot;%.2f&quot;, h.getConfidence())).append(&quot;\n&quot;);</span>
             }
-<span class="fc" id="L341">            sb.append(&quot;\n&quot;);</span>
-<span class="fc" id="L342">        }</span>
+<span class="fc" id="L342">            sb.append(&quot;\n&quot;);</span>
+<span class="fc" id="L343">        }</span>
 
-<span class="fc" id="L344">        return sb.toString();</span>
+<span class="fc" id="L345">        return sb.toString();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
