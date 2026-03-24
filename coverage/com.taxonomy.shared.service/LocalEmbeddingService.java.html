@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LocalEmbeddingService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.service</a> &gt; <span class="el_source">LocalEmbeddingService.java</span></div><h1>LocalEmbeddingService.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.service;
 
-import ai.djl.Application;
 import ai.djl.inference.Predictor;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ZooModel;
@@ -39,9 +38,9 @@ import com.taxonomy.search.NodeEmbeddingBinder;
  *   &lt;li&gt;{@code TAXONOMY_EMBEDDING_ENABLED} (default {@code true}) — set to {@code false} to
  *       disable all embedding and semantic search globally.&lt;/li&gt;
  *   &lt;li&gt;{@code TAXONOMY_EMBEDDING_MODEL_DIR} — path to a pre-downloaded model directory;
- *       empty = DJL auto-download to {@code ~/.djl.ai/}.&lt;/li&gt;
- *   &lt;li&gt;{@code TAXONOMY_EMBEDDING_MODEL_NAME} — DJL model URL;
- *       default {@code djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5}.&lt;/li&gt;
+ *       empty = auto-download from HuggingFace into {@code ~/.djl.ai/cache/taxonomy/}.&lt;/li&gt;
+ *   &lt;li&gt;{@code TAXONOMY_EMBEDDING_MODEL_NAME} — HuggingFace model URL or local path;
+ *       default {@code https://huggingface.co/BAAI/bge-small-en-v1.5}.&lt;/li&gt;
  *   &lt;li&gt;{@code TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD} (default {@code true}) — set to
  *       {@code false} to prevent runtime model downloads (CI mode).  When disabled, a local
  *       model must be provided via {@code TAXONOMY_EMBEDDING_MODEL_DIR}.&lt;/li&gt;
@@ -59,17 +58,30 @@ import com.taxonomy.search.NodeEmbeddingBinder;
  * &lt;p&gt;Enable as the LLM provider with {@code LLM_PROVIDER=LOCAL_ONNX}.  No API key required.
  */
 @Service
-<span class="fc" id="L62">public class LocalEmbeddingService {</span>
+<span class="fc" id="L61">public class LocalEmbeddingService {</span>
 
-<span class="fc" id="L64">    private static final Logger log = LoggerFactory.getLogger(LocalEmbeddingService.class);</span>
+<span class="fc" id="L63">    private static final Logger log = LoggerFactory.getLogger(LocalEmbeddingService.class);</span>
 
-    /** Default DJL model-zoo URL for the ONNX export of bge-small-en-v1.5. */
+    /**
+     * Default HuggingFace model identifier for downloading the ONNX export.
+     *
+     * &lt;p&gt;&lt;strong&gt;Note:&lt;/strong&gt; The previous default {@code djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5}
+     * never worked because DJL's {@code HfModelZoo} registers with GROUP_ID
+     * {@code ai.djl.huggingface.pytorch} and only supports the PyTorch engine —
+     * not OnnxRuntime. We now download the ONNX model files directly from
+     * HuggingFace into a local cache directory.
+     */
     public static final String DEFAULT_MODEL_URL =
-            &quot;djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5&quot;;
+            &quot;https://huggingface.co/BAAI/bge-small-en-v1.5&quot;;
 
-    /** Fallback URL used when the {@code djl://} protocol fails (e.g. URL truncation in Alpine). */
-    static final String FALLBACK_MODEL_URL =
-            &quot;https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx&quot;;
+    /** Base URL pattern for resolving individual files from a HuggingFace model repo. */
+    private static final String HF_RESOLVE_PATTERN = &quot;%s/resolve/main/%s&quot;;
+
+    /** Files to download from HuggingFace for a working ONNX model directory. */
+<span class="fc" id="L81">    private static final String[] HF_MODEL_FILES = {</span>
+            &quot;onnx/model.onnx&quot;,
+            &quot;tokenizer.json&quot;
+    };
 
     /**
      * Default query prefix for asymmetric retrieval with BGE models.
@@ -93,7 +105,7 @@ import com.taxonomy.search.NodeEmbeddingBinder;
     @Value(&quot;${embedding.model.dir:}&quot;)
     private String modelDir;
 
-    @Value(&quot;${embedding.model.name:djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5}&quot;)
+    @Value(&quot;${embedding.model.name:https://huggingface.co/BAAI/bge-small-en-v1.5}&quot;)
     private String modelName;
 
     @Value(&quot;${embedding.query.prefix:Represent this sentence for searching relevant passages: }&quot;)
@@ -105,8 +117,8 @@ import com.taxonomy.search.NodeEmbeddingBinder;
     // ── DJL model (lazy) ──────────────────────────────────────────────────────
 
     private volatile ZooModel&lt;String, float[]&gt; model;
-<span class="fc" id="L108">    private volatile boolean modelLoadFailed = false;</span>
-<span class="fc" id="L109">    private final Object modelLock = new Object();</span>
+<span class="fc" id="L120">    private volatile boolean modelLoadFailed = false;</span>
+<span class="fc" id="L121">    private final Object modelLock = new Object();</span>
 
     // ── Dependencies ──────────────────────────────────────────────────────────
 
@@ -120,7 +132,7 @@ import com.taxonomy.search.NodeEmbeddingBinder;
      * ({@code TAXONOMY_EMBEDDING_ENABLED=true}, which is the default).
      */
     public boolean isEnabled() {
-<span class="fc" id="L123">        return embeddingEnabled;</span>
+<span class="fc" id="L135">        return embeddingEnabled;</span>
     }
 
     /**
@@ -128,7 +140,7 @@ import com.taxonomy.search.NodeEmbeddingBinder;
      * successfully (or has not been tried yet).
      */
     public boolean isAvailable() {
-<span class="fc bfc" id="L131" title="All 4 branches covered.">        return embeddingEnabled &amp;&amp; !modelLoadFailed;</span>
+<span class="fc bfc" id="L143" title="All 4 branches covered.">        return embeddingEnabled &amp;&amp; !modelLoadFailed;</span>
     }
 
     /**
@@ -136,77 +148,140 @@ import com.taxonomy.search.NodeEmbeddingBinder;
      * otherwise {@link #modelName}.
      */
     public String effectiveModelUrl() {
-<span class="pc bpc" id="L139" title="2 of 4 branches missed.">        return (modelDir != null &amp;&amp; !modelDir.isBlank()) ? modelDir : modelName;</span>
+<span class="pc bpc" id="L151" title="2 of 4 branches missed.">        return (modelDir != null &amp;&amp; !modelDir.isBlank()) ? modelDir : modelName;</span>
     }
 
     /** Returns the lazily loaded DJL model, downloading it on first call. */
     ZooModel&lt;String, float[]&gt; getModel() throws Exception {
-<span class="pc bpc" id="L144" title="1 of 2 branches missed.">        if (!embeddingEnabled) {</span>
-<span class="nc" id="L145">            throw new IllegalStateException(&quot;Embedding is disabled (TAXONOMY_EMBEDDING_ENABLED=false)&quot;);</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">        if (!embeddingEnabled) {</span>
+<span class="nc" id="L157">            throw new IllegalStateException(&quot;Embedding is disabled (TAXONOMY_EMBEDDING_ENABLED=false)&quot;);</span>
         }
-<span class="pc bpc" id="L147" title="1 of 2 branches missed.">        if (modelLoadFailed) {</span>
-<span class="nc" id="L148">            throw new IllegalStateException(&quot;DJL model failed to load previously; embedding unavailable&quot;);</span>
+<span class="pc bpc" id="L159" title="1 of 2 branches missed.">        if (modelLoadFailed) {</span>
+<span class="nc" id="L160">            throw new IllegalStateException(&quot;DJL model failed to load previously; embedding unavailable&quot;);</span>
         }
-<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (model == null) {</span>
-<span class="fc" id="L151">            synchronized (modelLock) {</span>
-<span class="pc bpc" id="L152" title="1 of 2 branches missed.">                if (model == null) {</span>
-<span class="fc" id="L153">                    String url = effectiveModelUrl();</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        if (model == null) {</span>
+<span class="fc" id="L163">            synchronized (modelLock) {</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">                if (model == null) {</span>
+<span class="fc" id="L165">                    String url = effectiveModelUrl();</span>
                     // When downloads are disabled, only local paths are allowed
-<span class="pc bpc" id="L155" title="3 of 4 branches missed.">                    if (!allowDownload &amp;&amp; url.startsWith(&quot;djl://&quot;)) {</span>
-<span class="nc" id="L156">                        modelLoadFailed = true;</span>
-<span class="nc" id="L157">                        log.error(&quot;Model download disabled (embedding.allow-download=false) &quot;</span>
+<span class="pc bpc" id="L167" title="5 of 6 branches missed.">                    if (!allowDownload &amp;&amp; (url.startsWith(&quot;http://&quot;) || url.startsWith(&quot;https://&quot;)</span>
+<span class="nc bnc" id="L168" title="All 2 branches missed.">                            || url.startsWith(&quot;djl://&quot;))) {</span>
+<span class="nc" id="L169">                        modelLoadFailed = true;</span>
+<span class="nc" id="L170">                        log.error(&quot;Model download disabled (embedding.allow-download=false) &quot;</span>
                                 + &quot;and no local model found. Set TAXONOMY_EMBEDDING_MODEL_DIR.&quot;);
-<span class="nc" id="L159">                        throw new IllegalStateException(</span>
+<span class="nc" id="L172">                        throw new IllegalStateException(</span>
                                 &quot;No local model and download disabled (TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false)&quot;);
                     }
-<span class="fc" id="L162">                    log.info(&quot;Loading embedding model via DJL / ONNX Runtime from {} …&quot;, url);</span>
+<span class="fc" id="L175">                    log.info(&quot;Loading embedding model via DJL / ONNX Runtime from {} …&quot;, url);</span>
                     try {
-<span class="nc" id="L164">                        model = loadFromUrl(url);</span>
-<span class="nc" id="L165">                        log.info(&quot;Embedding model loaded successfully.&quot;);</span>
-<span class="fc" id="L166">                    } catch (Exception primary) {</span>
-                        // When the djl:// protocol fails (e.g. URL truncation in Alpine),
-                        // try loading directly from HuggingFace before giving up.
-<span class="pc bpc" id="L169" title="3 of 4 branches missed.">                        if (url.startsWith(&quot;djl://&quot;) &amp;&amp; allowDownload) {</span>
-<span class="nc" id="L170">                            log.warn(&quot;djl:// URL failed ({}), trying HuggingFace fallback…&quot;,</span>
-<span class="nc" id="L171">                                    primary.getMessage());</span>
-                            try {
-<span class="nc" id="L173">                                model = loadFromUrl(FALLBACK_MODEL_URL);</span>
-<span class="nc" id="L174">                                log.info(&quot;Embedding model loaded from HuggingFace fallback.&quot;);</span>
-<span class="nc" id="L175">                            } catch (Exception fallback) {</span>
-<span class="nc" id="L176">                                log.error(&quot;Fallback also failed: {}&quot;, fallback.getMessage());</span>
-<span class="nc" id="L177">                                modelLoadFailed = true;</span>
-<span class="nc" id="L178">                                throw primary;</span>
-<span class="nc" id="L179">                            }</span>
-                        } else {
-<span class="fc" id="L181">                            modelLoadFailed = true;</span>
-<span class="fc" id="L182">                            log.error(&quot;Failed to load DJL model from '{}'; semantic search disabled. Error: {}&quot;,</span>
-<span class="fc" id="L183">                                    url, primary.getMessage());</span>
-<span class="fc" id="L184">                            throw primary;</span>
-                        }
-<span class="nc" id="L186">                    }</span>
+<span class="nc" id="L177">                        model = loadModel(url);</span>
+<span class="nc" id="L178">                        log.info(&quot;Embedding model loaded successfully.&quot;);</span>
+<span class="fc" id="L179">                    } catch (Exception | LinkageError primary) {</span>
+                        // LinkageError covers UnsatisfiedLinkError / NoClassDefFoundError
+                        // from native DJL / ONNX Runtime library loading failures.
+<span class="fc" id="L182">                        modelLoadFailed = true;</span>
+<span class="fc" id="L183">                        log.error(&quot;Failed to load embedding model from '{}'; semantic search disabled. Error: {}&quot;,</span>
+<span class="fc" id="L184">                                url, primary.getMessage());</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">                        if (primary instanceof Exception ex) throw ex;</span>
+<span class="nc" id="L186">                        throw new IllegalStateException(&quot;Native library loading failed&quot;, primary);</span>
+<span class="nc" id="L187">                    }</span>
                 }
-<span class="nc" id="L188">            }</span>
+<span class="nc" id="L189">            }</span>
         }
-<span class="nc" id="L190">        return model;</span>
+<span class="nc" id="L191">        return model;</span>
     }
 
-    private ZooModel&lt;String, float[]&gt; loadFromUrl(String url) throws Exception {
-        // Local directory paths need the file:// prefix for DJL
-<span class="fc" id="L195">        String resolvedUrl = url;</span>
-<span class="pc bpc" id="L196" title="4 of 8 branches missed.">        if (!url.startsWith(&quot;djl://&quot;) &amp;&amp; !url.startsWith(&quot;http://&quot;) &amp;&amp; !url.startsWith(&quot;https://&quot;) &amp;&amp; !url.startsWith(&quot;file:&quot;)) {</span>
-<span class="fc" id="L197">            resolvedUrl = &quot;file://&quot; + url;</span>
+    /**
+     * Loads a DJL ONNX model from the given URL or local path.
+     *
+     * &lt;p&gt;Supported URL schemes:
+     * &lt;ul&gt;
+     *   &lt;li&gt;{@code https://huggingface.co/{org}/{model}} — downloads {@code onnx/model.onnx}
+     *       and {@code tokenizer.json} to a local cache directory, generates
+     *       {@code serving.properties}, and loads from there.&lt;/li&gt;
+     *   &lt;li&gt;Local directory path — loads directly (auto-generates {@code serving.properties}
+     *       if missing).&lt;/li&gt;
+     *   &lt;li&gt;{@code file://} prefix — same as local directory.&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+    private ZooModel&lt;String, float[]&gt; loadModel(String url) throws Exception {
+        String localPath;
+
+<span class="pc bpc" id="L210" title="2 of 4 branches missed.">        if (url.startsWith(&quot;https://huggingface.co/&quot;) || url.startsWith(&quot;http://huggingface.co/&quot;)) {</span>
+<span class="nc" id="L211">            localPath = downloadHuggingFaceModel(url);</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        } else if (url.startsWith(&quot;djl://&quot;)) {</span>
+            // Legacy djl:// URLs never worked with OnnxRuntime — extract the model ID
+            // and try to download from HuggingFace instead.
+            // djl://ai.djl.huggingface/BAAI/bge-small-en-v1.5 → BAAI/bge-small-en-v1.5
+<span class="nc" id="L216">            String modelId = url.replaceFirst(&quot;djl://[^/]+/&quot;, &quot;&quot;);</span>
+<span class="nc" id="L217">            String hfUrl = &quot;https://huggingface.co/&quot; + modelId;</span>
+<span class="nc" id="L218">            log.warn(&quot;Migrating legacy djl:// URL to HuggingFace download: {} → {}&quot;, url, hfUrl);</span>
+<span class="nc" id="L219">            localPath = downloadHuggingFaceModel(hfUrl);</span>
+<span class="nc" id="L220">        } else {</span>
+            // Local path
+<span class="pc bpc" id="L222" title="1 of 2 branches missed.">            localPath = url.startsWith(&quot;file://&quot;) ? url.substring(&quot;file://&quot;.length()) : url;</span>
         }
 
-        // DJL requires a serving.properties file to recognize a local model directory.
-        // Auto-generate one if the URL points to a local directory that lacks it.
-<span class="fc" id="L202">        ensureServingProperties(url);</span>
+<span class="fc" id="L225">        ensureServingProperties(localPath);</span>
 
-<span class="pc" id="L204">        return Criteria.builder()</span>
-<span class="fc" id="L205">                .optApplication(Application.NLP.TEXT_EMBEDDING)</span>
-<span class="fc" id="L206">                .setTypes(String.class, float[].class)</span>
-<span class="fc" id="L207">                .optModelUrls(resolvedUrl)</span>
-<span class="fc" id="L208">                .optEngine(&quot;OnnxRuntime&quot;)</span>
-<span class="nc" id="L209">                .build().loadModel();</span>
+        // Convert local path to a proper file: URI (handles Windows drive letters + backslashes)
+<span class="fc" id="L228">        String fileUrl = java.nio.file.Path.of(localPath).toUri().toString();</span>
+<span class="fc" id="L229">        log.info(&quot;Loading DJL model from local path: {} (URI: {})&quot;, localPath, fileUrl);</span>
+        try {
+<span class="pc" id="L231">            return Criteria.builder()</span>
+<span class="fc" id="L232">                    .setTypes(String.class, float[].class)</span>
+<span class="fc" id="L233">                    .optModelUrls(fileUrl)</span>
+<span class="fc" id="L234">                    .optEngine(&quot;OnnxRuntime&quot;)</span>
+<span class="nc" id="L235">                    .build().loadModel();</span>
+<span class="fc" id="L236">        } catch (Exception e) {</span>
+<span class="fc" id="L237">            log.error(&quot;DJL Criteria.loadModel() failed for URI '{}': {}&quot;, fileUrl, e.getMessage(), e);</span>
+<span class="fc" id="L238">            throw e;</span>
+        }
+    }
+
+    /**
+     * Downloads the ONNX model files from a HuggingFace repository URL into a local
+     * cache directory under {@code ~/.djl.ai/cache/taxonomy/}.
+     *
+     * &lt;p&gt;Downloads are skipped if the files already exist locally (idempotent).
+     *
+     * @param hfRepoUrl e.g. {@code https://huggingface.co/BAAI/bge-small-en-v1.5}
+     * @return absolute path to the local model directory
+     */
+    private String downloadHuggingFaceModel(String hfRepoUrl) throws Exception {
+        // Derive a cache directory name from the repo URL
+        // https://huggingface.co/BAAI/bge-small-en-v1.5 → BAAI--bge-small-en-v1.5
+<span class="nc" id="L254">        String repoId = hfRepoUrl</span>
+<span class="nc" id="L255">                .replaceFirst(&quot;https?://huggingface\\.co/&quot;, &quot;&quot;)</span>
+<span class="nc" id="L256">                .replaceAll(&quot;[/\\\\]&quot;, &quot;--&quot;);</span>
+<span class="nc" id="L257">        java.nio.file.Path cacheDir = java.nio.file.Path.of(</span>
+<span class="nc" id="L258">                System.getProperty(&quot;user.home&quot;), &quot;.djl.ai&quot;, &quot;cache&quot;, &quot;taxonomy&quot;, repoId);</span>
+<span class="nc" id="L259">        java.nio.file.Files.createDirectories(cacheDir);</span>
+
+<span class="nc bnc" id="L261" title="All 2 branches missed.">        String baseUrl = hfRepoUrl.endsWith(&quot;/&quot;)</span>
+<span class="nc" id="L262">                ? hfRepoUrl.substring(0, hfRepoUrl.length() - 1) : hfRepoUrl;</span>
+
+<span class="nc bnc" id="L264" title="All 2 branches missed.">        for (String relPath : HF_MODEL_FILES) {</span>
+<span class="nc" id="L265">            String fileUrl = String.format(HF_RESOLVE_PATTERN, baseUrl, relPath);</span>
+            // Flatten onnx/model.onnx → model.onnx in local cache
+<span class="nc bnc" id="L267" title="All 2 branches missed.">            String localName = relPath.contains(&quot;/&quot;)</span>
+<span class="nc" id="L268">                    ? relPath.substring(relPath.lastIndexOf('/') + 1) : relPath;</span>
+<span class="nc" id="L269">            java.nio.file.Path localFile = cacheDir.resolve(localName);</span>
+
+<span class="nc bnc" id="L271" title="All 4 branches missed.">            if (java.nio.file.Files.exists(localFile) &amp;&amp; java.nio.file.Files.size(localFile) &gt; 0) {</span>
+<span class="nc" id="L272">                log.debug(&quot;Model file already cached: {}&quot;, localFile);</span>
+<span class="nc" id="L273">                continue;</span>
+            }
+
+<span class="nc" id="L276">            log.info(&quot;Downloading {} → {}&quot;, fileUrl, localFile);</span>
+<span class="nc" id="L277">            try (java.io.InputStream in = java.net.URI.create(fileUrl).toURL().openStream()) {</span>
+<span class="nc" id="L278">                java.nio.file.Files.copy(in, localFile,</span>
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+<span class="nc" id="L281">            log.info(&quot;Downloaded {} ({} bytes)&quot;, localName, java.nio.file.Files.size(localFile));</span>
+        }
+
+<span class="nc" id="L284">        return cacheDir.toAbsolutePath().toString();</span>
     }
 
     /**
@@ -215,35 +290,43 @@ import com.taxonomy.search.NodeEmbeddingBinder;
      * discover the model.  Also detects and repairs malformed files (e.g. with leading
      * whitespace from YAML heredoc indentation in CI workflows).
      */
+    private static final String SERVING_PROPERTIES_CONTENT =
+            &quot;engine=OnnxRuntime\n&quot;
+            + &quot;option.modelName=model\n&quot;
+            + &quot;translatorFactory=ai.djl.huggingface.translator.TextEmbeddingTranslatorFactory\n&quot;
+            + &quot;option.mapLocation=true\n&quot;;
+
     private void ensureServingProperties(String url) {
         try {
-<span class="pc bpc" id="L220" title="1 of 2 branches missed.">            String path = url.startsWith(&quot;file://&quot;) ? url.substring(&quot;file://&quot;.length()) : url;</span>
-<span class="fc" id="L221">            java.nio.file.Path dir = java.nio.file.Path.of(path);</span>
-<span class="pc bpc" id="L222" title="1 of 2 branches missed.">            if (!java.nio.file.Files.isDirectory(dir)) return;</span>
-<span class="fc" id="L223">            java.nio.file.Path servingProps = dir.resolve(&quot;serving.properties&quot;);</span>
+<span class="pc bpc" id="L301" title="1 of 2 branches missed.">            String path = url.startsWith(&quot;file://&quot;) ? url.substring(&quot;file://&quot;.length()) : url;</span>
+<span class="fc" id="L302">            java.nio.file.Path dir = java.nio.file.Path.of(path);</span>
+<span class="pc bpc" id="L303" title="1 of 2 branches missed.">            if (!java.nio.file.Files.isDirectory(dir)) return;</span>
+<span class="fc" id="L304">            java.nio.file.Path servingProps = dir.resolve(&quot;serving.properties&quot;);</span>
 
-            // Check if existing file has valid content (e.g. no leading whitespace corruption)
-<span class="fc bfc" id="L226" title="All 2 branches covered.">            if (java.nio.file.Files.exists(servingProps)) {</span>
-<span class="fc" id="L227">                String existing = java.nio.file.Files.readString(servingProps);</span>
-<span class="pc bpc" id="L228" title="1 of 2 branches missed.">                if (existing.lines().anyMatch(l -&gt; l.startsWith(&quot;engine=&quot;))) {</span>
-<span class="fc" id="L229">                    return; // file is valid</span>
+            // Check if existing file has valid content (correct engine + translator factory)
+<span class="fc bfc" id="L307" title="All 2 branches covered.">            if (java.nio.file.Files.exists(servingProps)) {</span>
+<span class="fc" id="L308">                String existing = java.nio.file.Files.readString(servingProps);</span>
+<span class="pc bpc" id="L309" title="1 of 2 branches missed.">                if (existing.contains(&quot;engine=OnnxRuntime&quot;)</span>
+<span class="pc bpc" id="L310" title="1 of 2 branches missed.">                        &amp;&amp; existing.contains(&quot;TextEmbeddingTranslatorFactory&quot;)) {</span>
+<span class="fc" id="L311">                    return; // file is valid</span>
                 }
-<span class="nc" id="L231">                log.warn(&quot;serving.properties exists but appears malformed; regenerating&quot;);</span>
+<span class="nc" id="L313">                log.warn(&quot;serving.properties exists but is missing OnnxRuntime engine or &quot;</span>
+                        + &quot;TextEmbeddingTranslatorFactory; regenerating&quot;);
                 // fall through to regeneration
             }
 
             // Only generate if there is actually an ONNX model file present
-<span class="fc" id="L236">            boolean hasOnnx = java.nio.file.Files.list(dir)</span>
-<span class="fc" id="L237">                    .anyMatch(p -&gt; p.getFileName().toString().endsWith(&quot;.onnx&quot;));</span>
-<span class="pc bpc" id="L238" title="1 of 2 branches missed.">            if (!hasOnnx) return;</span>
-<span class="fc" id="L239">            String content = &quot;engine=OnnxRuntime\noption.modelName=model\n&quot;</span>
-                    + &quot;translatorFactory=ai.djl.huggingface.tokenizers.HuggingFaceTokenizer\n&quot;;
-<span class="fc" id="L241">            java.nio.file.Files.writeString(servingProps, content);</span>
-<span class="fc" id="L242">            log.info(&quot;Auto-generated serving.properties in {}&quot;, dir);</span>
-<span class="nc" id="L243">        } catch (Exception e) {</span>
-<span class="nc" id="L244">            log.warn(&quot;Could not auto-generate serving.properties: {}&quot;, e.getMessage());</span>
-<span class="fc" id="L245">        }</span>
-<span class="fc" id="L246">    }</span>
+            boolean hasOnnx;
+<span class="fc" id="L320">            try (var files = java.nio.file.Files.list(dir)) {</span>
+<span class="fc" id="L321">                hasOnnx = files.anyMatch(p -&gt; p.getFileName().toString().endsWith(&quot;.onnx&quot;));</span>
+            }
+<span class="pc bpc" id="L323" title="1 of 2 branches missed.">            if (!hasOnnx) return;</span>
+<span class="fc" id="L324">            java.nio.file.Files.writeString(servingProps, SERVING_PROPERTIES_CONTENT);</span>
+<span class="fc" id="L325">            log.info(&quot;Auto-generated serving.properties in {}&quot;, dir);</span>
+<span class="nc" id="L326">        } catch (Exception e) {</span>
+<span class="nc" id="L327">            log.warn(&quot;Could not auto-generate serving.properties: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L328">        }</span>
+<span class="fc" id="L329">    }</span>
 
     // ── Index status ──────────────────────────────────────────────────────────
 
@@ -254,12 +337,12 @@ import com.taxonomy.search.NodeEmbeddingBinder;
     @Transactional(readOnly = true)
     public int indexedNodeCount() {
         try {
-<span class="fc" id="L257">            SearchSession session = Search.session(entityManager);</span>
-<span class="fc" id="L258">            return (int) session.search(TaxonomyNode.class)</span>
-<span class="fc" id="L259">                    .where(f -&gt; f.matchAll())</span>
-<span class="fc" id="L260">                    .fetchTotalHitCount();</span>
-<span class="nc" id="L261">        } catch (Exception e) {</span>
-<span class="nc" id="L262">            return 0;</span>
+<span class="fc" id="L340">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L341">            return (int) session.search(TaxonomyNode.class)</span>
+<span class="fc" id="L342">                    .where(f -&gt; f.matchAll())</span>
+<span class="fc" id="L343">                    .fetchTotalHitCount();</span>
+<span class="nc" id="L344">        } catch (Exception e) {</span>
+<span class="nc" id="L345">            return 0;</span>
         }
     }
 
@@ -272,8 +355,8 @@ import com.taxonomy.search.NodeEmbeddingBinder;
      * @throws Exception if the model cannot be loaded or inference fails
      */
     public float[] embed(String text) throws Exception {
-<span class="nc" id="L275">        try (Predictor&lt;String, float[]&gt; predictor = getModel().newPredictor()) {</span>
-<span class="nc" id="L276">            return predictor.predict(text);</span>
+<span class="nc" id="L358">        try (Predictor&lt;String, float[]&gt; predictor = getModel().newPredictor()) {</span>
+<span class="nc" id="L359">            return predictor.predict(text);</span>
         }
     }
 
@@ -285,9 +368,9 @@ import com.taxonomy.search.NodeEmbeddingBinder;
      * @throws Exception if the model cannot be loaded or inference fails
      */
     public float[] embedQuery(String text) throws Exception {
-<span class="pc bpc" id="L288" title="2 of 4 branches missed.">        String prefixed = (queryPrefix != null &amp;&amp; !queryPrefix.isEmpty())</span>
-<span class="pc" id="L289">                ? queryPrefix + text : text;</span>
-<span class="nc" id="L290">        return embed(prefixed);</span>
+<span class="pc bpc" id="L371" title="2 of 4 branches missed.">        String prefixed = (queryPrefix != null &amp;&amp; !queryPrefix.isEmpty())</span>
+<span class="pc" id="L372">                ? queryPrefix + text : text;</span>
+<span class="nc" id="L373">        return embed(prefixed);</span>
     }
 
     /**
@@ -302,45 +385,45 @@ import com.taxonomy.search.NodeEmbeddingBinder;
      */
     @Transactional(readOnly = true)
     public Map&lt;String, Integer&gt; scoreNodes(String businessText, List&lt;TaxonomyNode&gt; nodes) {
-<span class="fc" id="L305">        Map&lt;String, Integer&gt; scores = new HashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L306" title="All 2 branches covered.">        for (TaxonomyNode node : nodes) {</span>
-<span class="fc" id="L307">            scores.put(node.getCode(), 0);</span>
-<span class="fc" id="L308">        }</span>
+<span class="fc" id="L388">        Map&lt;String, Integer&gt; scores = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L389" title="All 2 branches covered.">        for (TaxonomyNode node : nodes) {</span>
+<span class="fc" id="L390">            scores.put(node.getCode(), 0);</span>
+<span class="fc" id="L391">        }</span>
 
-<span class="pc bpc" id="L310" title="1 of 2 branches missed.">        if (!isAvailable()) return scores;</span>
+<span class="pc bpc" id="L393" title="1 of 2 branches missed.">        if (!isAvailable()) return scores;</span>
 
         try {
-<span class="nc" id="L313">            float[] queryVector = embedQuery(businessText);</span>
-<span class="nc" id="L314">            List&lt;String&gt; nodeCodes = nodes.stream()</span>
-<span class="nc" id="L315">                    .map(TaxonomyNode::getCode).collect(Collectors.toList());</span>
+<span class="nc" id="L396">            float[] queryVector = embedQuery(businessText);</span>
+<span class="nc" id="L397">            List&lt;String&gt; nodeCodes = nodes.stream()</span>
+<span class="nc" id="L398">                    .map(TaxonomyNode::getCode).collect(Collectors.toList());</span>
 
-<span class="nc" id="L317">            SearchSession session = Search.session(entityManager);</span>
+<span class="nc" id="L400">            SearchSession session = Search.session(entityManager);</span>
             // Use score projection so we can map Lucene scores to percentages
-<span class="nc" id="L319">            List&lt;List&lt;?&gt;&gt; hits = session.search(TaxonomyNode.class)</span>
-<span class="nc" id="L320">                    .select(f -&gt; f.composite(f.entity(TaxonomyNode.class), f.score()))</span>
-<span class="nc" id="L321">                    .where(f -&gt; f.knn(nodes.size())</span>
-<span class="nc" id="L322">                            .field(&quot;embedding&quot;)</span>
-<span class="nc" id="L323">                            .matching(queryVector)</span>
-<span class="nc" id="L324">                            .filter(f.terms().field(&quot;code&quot;).matchingAny(nodeCodes)))</span>
-<span class="nc" id="L325">                    .fetchHits(nodes.size());</span>
+<span class="nc" id="L402">            List&lt;List&lt;?&gt;&gt; hits = session.search(TaxonomyNode.class)</span>
+<span class="nc" id="L403">                    .select(f -&gt; f.composite(f.entity(TaxonomyNode.class), f.score()))</span>
+<span class="nc" id="L404">                    .where(f -&gt; f.knn(nodes.size())</span>
+<span class="nc" id="L405">                            .field(&quot;embedding&quot;)</span>
+<span class="nc" id="L406">                            .matching(queryVector)</span>
+<span class="nc" id="L407">                            .filter(f.terms().field(&quot;code&quot;).matchingAny(nodeCodes)))</span>
+<span class="nc" id="L408">                    .fetchHits(nodes.size());</span>
 
-<span class="nc bnc" id="L327" title="All 2 branches missed.">            for (List&lt;?&gt; hit : hits) {</span>
-<span class="nc" id="L328">                TaxonomyNode node = (TaxonomyNode) hit.get(0);</span>
-<span class="nc" id="L329">                float luceneScore = (Float) hit.get(1);</span>
+<span class="nc bnc" id="L410" title="All 2 branches missed.">            for (List&lt;?&gt; hit : hits) {</span>
+<span class="nc" id="L411">                TaxonomyNode node = (TaxonomyNode) hit.get(0);</span>
+<span class="nc" id="L412">                float luceneScore = (Float) hit.get(1);</span>
                 // Lucene COSINE KNN score = (1 + cosineSim) / 2 → cosineSim in [-1, 1]
                 // Map cosineSim to percentage: cosineSim = 2 * luceneScore - 1
-<span class="nc" id="L332">                int percentage = (int) Math.round((2.0 * luceneScore - 1.0) * 100.0);</span>
-<span class="nc" id="L333">                percentage = Math.max(0, Math.min(100, percentage));</span>
-<span class="nc" id="L334">                scores.put(node.getCode(), percentage);</span>
-<span class="nc" id="L335">            }</span>
+<span class="nc" id="L415">                int percentage = (int) Math.round((2.0 * luceneScore - 1.0) * 100.0);</span>
+<span class="nc" id="L416">                percentage = Math.max(0, Math.min(100, percentage));</span>
+<span class="nc" id="L417">                scores.put(node.getCode(), percentage);</span>
+<span class="nc" id="L418">            }</span>
 
-<span class="nc" id="L337">            log.info(&quot;LOCAL_ONNX scores: {}&quot;, scores);</span>
+<span class="nc" id="L420">            log.info(&quot;LOCAL_ONNX scores: {}&quot;, scores);</span>
 
-<span class="fc" id="L339">        } catch (Exception e) {</span>
-<span class="fc" id="L340">            log.error(&quot;Error in KNN vector scoring; returning zero scores&quot;, e);</span>
-<span class="nc" id="L341">        }</span>
+<span class="fc" id="L422">        } catch (Exception e) {</span>
+<span class="fc" id="L423">            log.error(&quot;Error in KNN vector scoring; returning zero scores&quot;, e);</span>
+<span class="nc" id="L424">        }</span>
 
-<span class="fc" id="L343">        return scores;</span>
+<span class="fc" id="L426">        return scores;</span>
     }
 
     /**
@@ -354,17 +437,17 @@ import com.taxonomy.search.NodeEmbeddingBinder;
      */
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNodeDto&gt; semanticSearch(String queryText, int topK) {
-<span class="fc bfc" id="L357" title="All 2 branches covered.">        if (!isAvailable()) return Collections.emptyList();</span>
+<span class="fc bfc" id="L440" title="All 2 branches covered.">        if (!isAvailable()) return Collections.emptyList();</span>
         try {
-<span class="nc" id="L359">            float[] queryVector = embedQuery(queryText);</span>
-<span class="nc" id="L360">            SearchSession session = Search.session(entityManager);</span>
-<span class="nc" id="L361">            List&lt;TaxonomyNode&gt; hits = session.search(TaxonomyNode.class)</span>
-<span class="nc" id="L362">                    .where(f -&gt; f.knn(topK).field(&quot;embedding&quot;).matching(queryVector))</span>
-<span class="nc" id="L363">                    .fetchHits(topK);</span>
-<span class="nc" id="L364">            return hits.stream().map(this::toFlatDto).collect(Collectors.toList());</span>
-<span class="fc" id="L365">        } catch (Exception e) {</span>
-<span class="fc" id="L366">            log.error(&quot;Semantic search failed for query '{}': {}&quot;, queryText, e.getMessage());</span>
-<span class="fc" id="L367">            return Collections.emptyList();</span>
+<span class="nc" id="L442">            float[] queryVector = embedQuery(queryText);</span>
+<span class="nc" id="L443">            SearchSession session = Search.session(entityManager);</span>
+<span class="nc" id="L444">            List&lt;TaxonomyNode&gt; hits = session.search(TaxonomyNode.class)</span>
+<span class="nc" id="L445">                    .where(f -&gt; f.knn(topK).field(&quot;embedding&quot;).matching(queryVector))</span>
+<span class="nc" id="L446">                    .fetchHits(topK);</span>
+<span class="nc" id="L447">            return hits.stream().map(this::toFlatDto).collect(Collectors.toList());</span>
+<span class="fc" id="L448">        } catch (Exception e) {</span>
+<span class="fc" id="L449">            log.error(&quot;Semantic search failed for query '{}': {}&quot;, queryText, e.getMessage());</span>
+<span class="fc" id="L450">            return Collections.emptyList();</span>
         }
     }
 
@@ -379,66 +462,66 @@ import com.taxonomy.search.NodeEmbeddingBinder;
      */
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNodeDto&gt; findSimilarNodes(String nodeCode, int topK) {
-<span class="pc bpc" id="L382" title="1 of 2 branches missed.">        if (!isAvailable()) return Collections.emptyList();</span>
+<span class="pc bpc" id="L465" title="1 of 2 branches missed.">        if (!isAvailable()) return Collections.emptyList();</span>
         try {
-<span class="nc" id="L384">            TaxonomyNode node = entityManager.createQuery(</span>
+<span class="nc" id="L467">            TaxonomyNode node = entityManager.createQuery(</span>
                             &quot;SELECT n FROM TaxonomyNode n WHERE n.code = :code&quot;, TaxonomyNode.class)
-<span class="nc" id="L386">                    .setParameter(&quot;code&quot;, nodeCode)</span>
-<span class="nc" id="L387">                    .getResultStream().findFirst().orElse(null);</span>
-<span class="nc bnc" id="L388" title="All 2 branches missed.">            if (node == null) {</span>
-<span class="nc" id="L389">                log.warn(&quot;Node '{}' not found in database&quot;, nodeCode);</span>
-<span class="nc" id="L390">                return Collections.emptyList();</span>
+<span class="nc" id="L469">                    .setParameter(&quot;code&quot;, nodeCode)</span>
+<span class="nc" id="L470">                    .getResultStream().findFirst().orElse(null);</span>
+<span class="nc bnc" id="L471" title="All 2 branches missed.">            if (node == null) {</span>
+<span class="nc" id="L472">                log.warn(&quot;Node '{}' not found in database&quot;, nodeCode);</span>
+<span class="nc" id="L473">                return Collections.emptyList();</span>
             }
 
-<span class="nc" id="L393">            String nodeText = buildNodeText(node);</span>
-<span class="nc" id="L394">            float[] queryVector = embed(nodeText);</span>
+<span class="nc" id="L476">            String nodeText = buildNodeText(node);</span>
+<span class="nc" id="L477">            float[] queryVector = embed(nodeText);</span>
 
-<span class="nc" id="L396">            SearchSession session = Search.session(entityManager);</span>
+<span class="nc" id="L479">            SearchSession session = Search.session(entityManager);</span>
             // Retrieve topK+1 so we can exclude the source node
-<span class="nc" id="L398">            List&lt;TaxonomyNode&gt; hits = session.search(TaxonomyNode.class)</span>
-<span class="nc" id="L399">                    .where(f -&gt; f.knn(topK + 1).field(&quot;embedding&quot;).matching(queryVector))</span>
-<span class="nc" id="L400">                    .fetchHits(topK + 1);</span>
+<span class="nc" id="L481">            List&lt;TaxonomyNode&gt; hits = session.search(TaxonomyNode.class)</span>
+<span class="nc" id="L482">                    .where(f -&gt; f.knn(topK + 1).field(&quot;embedding&quot;).matching(queryVector))</span>
+<span class="nc" id="L483">                    .fetchHits(topK + 1);</span>
 
-<span class="nc" id="L402">            return hits.stream()</span>
-<span class="nc bnc" id="L403" title="All 2 branches missed.">                    .filter(n -&gt; !nodeCode.equals(n.getCode()))</span>
-<span class="nc" id="L404">                    .limit(topK)</span>
-<span class="nc" id="L405">                    .map(this::toFlatDto)</span>
-<span class="nc" id="L406">                    .collect(Collectors.toList());</span>
-<span class="nc" id="L407">        } catch (Exception e) {</span>
-<span class="nc" id="L408">            log.error(&quot;findSimilarNodes failed for node '{}': {}&quot;, nodeCode, e.getMessage());</span>
-<span class="nc" id="L409">            return Collections.emptyList();</span>
+<span class="nc" id="L485">            return hits.stream()</span>
+<span class="nc bnc" id="L486" title="All 2 branches missed.">                    .filter(n -&gt; !nodeCode.equals(n.getCode()))</span>
+<span class="nc" id="L487">                    .limit(topK)</span>
+<span class="nc" id="L488">                    .map(this::toFlatDto)</span>
+<span class="nc" id="L489">                    .collect(Collectors.toList());</span>
+<span class="nc" id="L490">        } catch (Exception e) {</span>
+<span class="nc" id="L491">            log.error(&quot;findSimilarNodes failed for node '{}': {}&quot;, nodeCode, e.getMessage());</span>
+<span class="nc" id="L492">            return Collections.emptyList();</span>
         }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private String buildNodeText(TaxonomyNode node) {
-<span class="nc bnc" id="L416" title="All 2 branches missed.">        StringBuilder sb = new StringBuilder(node.getNameEn() != null ? node.getNameEn() : &quot;&quot;);</span>
-<span class="nc bnc" id="L417" title="All 4 branches missed.">        if (node.getDescriptionEn() != null &amp;&amp; !node.getDescriptionEn().isBlank()) {</span>
-<span class="nc" id="L418">            sb.append(&quot;. &quot;).append(node.getDescriptionEn());</span>
+<span class="nc bnc" id="L499" title="All 2 branches missed.">        StringBuilder sb = new StringBuilder(node.getNameEn() != null ? node.getNameEn() : &quot;&quot;);</span>
+<span class="nc bnc" id="L500" title="All 4 branches missed.">        if (node.getDescriptionEn() != null &amp;&amp; !node.getDescriptionEn().isBlank()) {</span>
+<span class="nc" id="L501">            sb.append(&quot;. &quot;).append(node.getDescriptionEn());</span>
         }
-<span class="nc" id="L420">        return sb.toString();</span>
+<span class="nc" id="L503">        return sb.toString();</span>
     }
 
     private TaxonomyNodeDto toFlatDto(TaxonomyNode node) {
-<span class="nc" id="L424">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
-<span class="nc" id="L425">        dto.setId(node.getId());</span>
-<span class="nc" id="L426">        dto.setCode(node.getCode());</span>
-<span class="nc" id="L427">        dto.setUuid(node.getUuid());</span>
-<span class="nc" id="L428">        dto.setNameEn(node.getNameEn());</span>
-<span class="nc" id="L429">        dto.setNameDe(node.getNameDe());</span>
-<span class="nc" id="L430">        dto.setDescriptionEn(node.getDescriptionEn());</span>
-<span class="nc" id="L431">        dto.setDescriptionDe(node.getDescriptionDe());</span>
-<span class="nc" id="L432">        dto.setParentCode(node.getParentCode());</span>
-<span class="nc" id="L433">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
-<span class="nc" id="L434">        dto.setLevel(node.getLevel());</span>
-<span class="nc" id="L435">        dto.setDataset(node.getDataset());</span>
-<span class="nc" id="L436">        dto.setExternalId(node.getExternalId());</span>
-<span class="nc" id="L437">        dto.setSource(node.getSource());</span>
-<span class="nc" id="L438">        dto.setReference(node.getReference());</span>
-<span class="nc" id="L439">        dto.setSortOrder(node.getSortOrder());</span>
-<span class="nc" id="L440">        dto.setState(node.getState());</span>
-<span class="nc" id="L441">        return dto;</span>
+<span class="nc" id="L507">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
+<span class="nc" id="L508">        dto.setId(node.getId());</span>
+<span class="nc" id="L509">        dto.setCode(node.getCode());</span>
+<span class="nc" id="L510">        dto.setUuid(node.getUuid());</span>
+<span class="nc" id="L511">        dto.setNameEn(node.getNameEn());</span>
+<span class="nc" id="L512">        dto.setNameDe(node.getNameDe());</span>
+<span class="nc" id="L513">        dto.setDescriptionEn(node.getDescriptionEn());</span>
+<span class="nc" id="L514">        dto.setDescriptionDe(node.getDescriptionDe());</span>
+<span class="nc" id="L515">        dto.setParentCode(node.getParentCode());</span>
+<span class="nc" id="L516">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
+<span class="nc" id="L517">        dto.setLevel(node.getLevel());</span>
+<span class="nc" id="L518">        dto.setDataset(node.getDataset());</span>
+<span class="nc" id="L519">        dto.setExternalId(node.getExternalId());</span>
+<span class="nc" id="L520">        dto.setSource(node.getSource());</span>
+<span class="nc" id="L521">        dto.setReference(node.getReference());</span>
+<span class="nc" id="L522">        dto.setSortOrder(node.getSortOrder());</span>
+<span class="nc" id="L523">        dto.setState(node.getState());</span>
+<span class="nc" id="L524">        return dto;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

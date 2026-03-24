@@ -177,7 +177,7 @@ Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService,63,41,19,1
 Taxonomy Application,com.taxonomy.shared.service,HealthSummaryService,0,200,0,10,0,36,0,7,0,2
 Taxonomy Application,com.taxonomy.shared.service,PromptTemplateService,46,342,6,20,13,75,6,26,1,18
 Taxonomy Application,com.taxonomy.shared.service,PromptTemplateService.PromptCategory,0,27,0,0,0,5,0,1,0,1
-Taxonomy Application,com.taxonomy.shared.service,LocalEmbeddingService,448,260,36,30,96,65,36,21,8,16
+Taxonomy Application,com.taxonomy.shared.service,LocalEmbeddingService,604,300,49,31,116,69,44,20,9,15
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.State,0,33,0,0,0,6,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService,0,77,0,4,0,13,0,10,0,8
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.StateSnapshot,0,15,0,0,0,1,0,1,0,1

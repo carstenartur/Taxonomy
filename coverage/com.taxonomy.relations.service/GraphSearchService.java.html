@@ -123,60 +123,63 @@ public class GraphSearchService {
 
 <span class="nc" id="L124">            return new GraphSearchResult(matchedNodes, relationCountByRoot, topRelationTypes, summary);</span>
 
-<span class="nc" id="L126">        } catch (Exception e) {</span>
-<span class="nc" id="L127">            log.error(&quot;Graph search failed for query '{}': {}&quot;, queryText, e.getMessage());</span>
-<span class="nc" id="L128">            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),</span>
-<span class="nc" id="L129">                    Collections.emptyMap(), &quot;Graph search failed: &quot; + e.getMessage());</span>
+<span class="nc" id="L126">        } catch (Exception | LinkageError e) {</span>
+            // LinkageError covers UnsatisfiedLinkError / NoClassDefFoundError from
+            // native DJL / ONNX Runtime library loading, which would otherwise
+            // propagate as an unhandled 500 error.
+<span class="nc" id="L130">            log.error(&quot;Graph search failed for query '{}': {}&quot;, queryText, e.getMessage());</span>
+<span class="nc" id="L131">            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),</span>
+<span class="nc" id="L132">                    Collections.emptyMap(), &quot;Graph search failed: &quot; + e.getMessage());</span>
         }
     }
 
     private String buildSummary(Map&lt;String, Long&gt; byRoot, Map&lt;String, Long&gt; byType, String query) {
-<span class="nc bnc" id="L134" title="All 4 branches missed.">        if (byRoot.isEmpty() &amp;&amp; byType.isEmpty()) {</span>
-<span class="nc" id="L135">            return &quot;No graph relationships matched for: &quot; + query;</span>
+<span class="nc bnc" id="L137" title="All 4 branches missed.">        if (byRoot.isEmpty() &amp;&amp; byType.isEmpty()) {</span>
+<span class="nc" id="L138">            return &quot;No graph relationships matched for: &quot; + query;</span>
         }
 
-<span class="nc" id="L138">        StringBuilder sb = new StringBuilder();</span>
-<span class="nc bnc" id="L139" title="All 2 branches missed.">        if (!byRoot.isEmpty()) {</span>
-<span class="nc" id="L140">            Optional&lt;Map.Entry&lt;String, Long&gt;&gt; topRoot = byRoot.entrySet().stream()</span>
-<span class="nc" id="L141">                    .max(Map.Entry.comparingByValue());</span>
-<span class="nc" id="L142">            topRoot.ifPresent(e -&gt; sb.append(e.getKey())</span>
-<span class="nc" id="L143">                    .append(&quot; has the most matching relationships (&quot;)</span>
-<span class="nc" id="L144">                    .append(e.getValue()).append(&quot;)&quot;));</span>
+<span class="nc" id="L141">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (!byRoot.isEmpty()) {</span>
+<span class="nc" id="L143">            Optional&lt;Map.Entry&lt;String, Long&gt;&gt; topRoot = byRoot.entrySet().stream()</span>
+<span class="nc" id="L144">                    .max(Map.Entry.comparingByValue());</span>
+<span class="nc" id="L145">            topRoot.ifPresent(e -&gt; sb.append(e.getKey())</span>
+<span class="nc" id="L146">                    .append(&quot; has the most matching relationships (&quot;)</span>
+<span class="nc" id="L147">                    .append(e.getValue()).append(&quot;)&quot;));</span>
         }
-<span class="nc bnc" id="L146" title="All 2 branches missed.">        if (!byType.isEmpty()) {</span>
-<span class="nc" id="L147">            Optional&lt;Map.Entry&lt;String, Long&gt;&gt; topType = byType.entrySet().stream()</span>
-<span class="nc" id="L148">                    .max(Map.Entry.comparingByValue());</span>
-<span class="nc" id="L149">            topType.ifPresent(e -&gt; {</span>
-<span class="nc bnc" id="L150" title="All 2 branches missed.">                if (sb.length() &gt; 0) sb.append(&quot;. &quot;);</span>
-<span class="nc bnc" id="L151" title="All 2 branches missed.">                String typeName = e.getKey() != null</span>
-<span class="nc" id="L152">                        ? e.getKey().toLowerCase().replace('_', ' ') : &quot;unknown&quot;;</span>
-<span class="nc" id="L153">                sb.append(&quot;Most common relation type: &quot;)</span>
-<span class="nc" id="L154">                        .append(typeName)</span>
-<span class="nc" id="L155">                        .append(&quot; (&quot;).append(e.getValue()).append(&quot;)&quot;);</span>
-<span class="nc" id="L156">            });</span>
+<span class="nc bnc" id="L149" title="All 2 branches missed.">        if (!byType.isEmpty()) {</span>
+<span class="nc" id="L150">            Optional&lt;Map.Entry&lt;String, Long&gt;&gt; topType = byType.entrySet().stream()</span>
+<span class="nc" id="L151">                    .max(Map.Entry.comparingByValue());</span>
+<span class="nc" id="L152">            topType.ifPresent(e -&gt; {</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">                if (sb.length() &gt; 0) sb.append(&quot;. &quot;);</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                String typeName = e.getKey() != null</span>
+<span class="nc" id="L155">                        ? e.getKey().toLowerCase().replace('_', ' ') : &quot;unknown&quot;;</span>
+<span class="nc" id="L156">                sb.append(&quot;Most common relation type: &quot;)</span>
+<span class="nc" id="L157">                        .append(typeName)</span>
+<span class="nc" id="L158">                        .append(&quot; (&quot;).append(e.getValue()).append(&quot;)&quot;);</span>
+<span class="nc" id="L159">            });</span>
         }
-<span class="nc" id="L158">        return sb.toString();</span>
+<span class="nc" id="L161">        return sb.toString();</span>
     }
 
     private TaxonomyNodeDto toFlatDto(TaxonomyNode node) {
-<span class="nc" id="L162">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
-<span class="nc" id="L163">        dto.setId(node.getId());</span>
-<span class="nc" id="L164">        dto.setCode(node.getCode());</span>
-<span class="nc" id="L165">        dto.setUuid(node.getUuid());</span>
-<span class="nc" id="L166">        dto.setNameEn(node.getNameEn());</span>
-<span class="nc" id="L167">        dto.setNameDe(node.getNameDe());</span>
-<span class="nc" id="L168">        dto.setDescriptionEn(node.getDescriptionEn());</span>
-<span class="nc" id="L169">        dto.setDescriptionDe(node.getDescriptionDe());</span>
-<span class="nc" id="L170">        dto.setParentCode(node.getParentCode());</span>
-<span class="nc" id="L171">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
-<span class="nc" id="L172">        dto.setLevel(node.getLevel());</span>
-<span class="nc" id="L173">        dto.setDataset(node.getDataset());</span>
-<span class="nc" id="L174">        dto.setExternalId(node.getExternalId());</span>
-<span class="nc" id="L175">        dto.setSource(node.getSource());</span>
-<span class="nc" id="L176">        dto.setReference(node.getReference());</span>
-<span class="nc" id="L177">        dto.setSortOrder(node.getSortOrder());</span>
-<span class="nc" id="L178">        dto.setState(node.getState());</span>
-<span class="nc" id="L179">        return dto;</span>
+<span class="nc" id="L165">        TaxonomyNodeDto dto = new TaxonomyNodeDto();</span>
+<span class="nc" id="L166">        dto.setId(node.getId());</span>
+<span class="nc" id="L167">        dto.setCode(node.getCode());</span>
+<span class="nc" id="L168">        dto.setUuid(node.getUuid());</span>
+<span class="nc" id="L169">        dto.setNameEn(node.getNameEn());</span>
+<span class="nc" id="L170">        dto.setNameDe(node.getNameDe());</span>
+<span class="nc" id="L171">        dto.setDescriptionEn(node.getDescriptionEn());</span>
+<span class="nc" id="L172">        dto.setDescriptionDe(node.getDescriptionDe());</span>
+<span class="nc" id="L173">        dto.setParentCode(node.getParentCode());</span>
+<span class="nc" id="L174">        dto.setTaxonomyRoot(node.getTaxonomyRoot());</span>
+<span class="nc" id="L175">        dto.setLevel(node.getLevel());</span>
+<span class="nc" id="L176">        dto.setDataset(node.getDataset());</span>
+<span class="nc" id="L177">        dto.setExternalId(node.getExternalId());</span>
+<span class="nc" id="L178">        dto.setSource(node.getSource());</span>
+<span class="nc" id="L179">        dto.setReference(node.getReference());</span>
+<span class="nc" id="L180">        dto.setSortOrder(node.getSortOrder());</span>
+<span class="nc" id="L181">        dto.setState(node.getState());</span>
+<span class="nc" id="L182">        return dto;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
