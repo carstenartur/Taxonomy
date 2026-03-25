@@ -77,6 +77,15 @@
     </dependencyManagement>
     <build>
         <plugins>
+            <!-- Skip spring-boot:run/repackage on the root aggregator POM
+                 (taxonomy-app overrides this with its own plugin declaration). -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
             <!-- SBOM generation (CycloneDX) — required by BSI for software supply chain transparency -->
             <plugin>
                 <groupId>org.cyclonedx</groupId>
