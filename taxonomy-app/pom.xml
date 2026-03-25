@@ -92,7 +92,7 @@
         <dependency>
             <groupId>org.hibernate.search</groupId>
             <artifactId>hibernate-search-mapper-orm</artifactId>
-            <version>8.2.2.Final</version>
+            <version>8.3.0.Final</version>
         </dependency>
         <dependency>
             <groupId>org.hibernate.search</groupId>
