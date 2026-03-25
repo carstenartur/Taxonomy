@@ -244,7 +244,8 @@ final class ContainerTestUtils {
      */
     static GenericContainer<?> oracleAppContainer(Network network) {
         return appContainer(network, "oracle",
-                "jdbc:oracle:thin:@db:1521/taxonomy", "taxonomy", "taxonomy");
+                "jdbc:oracle:thin:@db:1521/taxonomy", "taxonomy", "taxonomy")
+                .withStartupTimeout(Duration.ofSeconds(300));
     }
 
     /**
