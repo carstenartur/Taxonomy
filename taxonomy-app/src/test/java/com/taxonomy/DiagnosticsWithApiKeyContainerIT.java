@@ -5,8 +5,6 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -43,22 +41,8 @@ class DiagnosticsWithApiKeyContainerIT {
             Base64.getEncoder().encodeToString("admin:admin".getBytes());
 
     @Container
-    static GenericContainer<?> app = new GenericContainer<>(
-            new ImageFromDockerfile()
-                    .withFileFromPath("app.jar", ContainerTestUtils.findApplicationJar())
-                    .withDockerfileFromBuilder(builder -> builder
-                            .from("eclipse-temurin:17-jre")
-                            .workDir("/app")
-                            .copy("app.jar", "app.jar")
-                            .expose(8080)
-                            .entryPoint("java", "-jar", "app.jar")
-                            .build()))
-            .withExposedPorts(8080)
-            .withEnv("GEMINI_API_KEY", "test1234fake")
-            .withStartupTimeout(Duration.ofSeconds(120))
-            .waitingFor(Wait.forHttp("/actuator/health")
-                    .forStatusCode(200)
-                    .forPort(8080));
+    static GenericContainer<?> app = ContainerTestUtils.appContainer()
+            .withEnv("GEMINI_API_KEY", "test1234fake");
 
     private String baseUrl() {
         return "http://" + app.getHost() + ":" + app.getMappedPort(8080);

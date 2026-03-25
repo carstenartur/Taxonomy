@@ -22,7 +22,6 @@ import org.testcontainers.containers.BrowserWebDriverContainer;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.io.File;
@@ -425,23 +424,10 @@ class ScreenshotGeneratorIT {
 
         network = Network.newNetwork();
 
-        GenericContainer<?> appContainer = new GenericContainer<>(
-                new ImageFromDockerfile()
-                        .withFileFromPath("app.jar", ContainerTestUtils.findApplicationJar())
-                        .withDockerfileFromBuilder(builder -> builder
-                                .from("eclipse-temurin:17-jre")
-                                .workDir("/app")
-                                .copy("app.jar", "app.jar")
-                                .expose(8080)
-                                .entryPoint("java", "-jar", "app.jar")
-                                .build()))
-                .withNetwork(network)
-                .withNetworkAliases("app")
-                .withExposedPorts(8080)
+        GenericContainer<?> appContainer = ContainerTestUtils.appContainer(network)
                 .withEnv("ADMIN_PASSWORD", "testpassword123")
                 .withEnv("LLM_MOCK", "true")
                 .withEnv("TAXONOMY_GIT_BOOTSTRAP", "true")
-                .withStartupTimeout(Duration.ofSeconds(180))
                 // Wait for the taxonomy to be fully loaded and search index built.
                 // The /api/status/startup endpoint returns {"status":"ready"} once
                 // AppInitializationStateService transitions to READY — works for both
