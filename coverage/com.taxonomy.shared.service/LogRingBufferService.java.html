@@ -44,9 +44,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 <span class="fc" id="L44">                    event.getFormattedMessage()</span>
                 );
 <span class="fc" id="L46">                entries.addLast(entry);</span>
-<span class="fc bfc" id="L47" title="All 2 branches covered.">                if (size.incrementAndGet() &gt; MAX_ENTRIES) {</span>
-<span class="fc" id="L48">                    entries.pollFirst();</span>
-<span class="fc" id="L49">                    size.decrementAndGet();</span>
+<span class="pc bpc" id="L47" title="1 of 2 branches missed.">                if (size.incrementAndGet() &gt; MAX_ENTRIES) {</span>
+<span class="nc" id="L48">                    entries.pollFirst();</span>
+<span class="nc" id="L49">                    size.decrementAndGet();</span>
                 }
 <span class="fc" id="L51">            }</span>
         };
