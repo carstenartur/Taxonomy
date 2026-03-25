@@ -6,6 +6,8 @@ import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -26,7 +28,7 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class DslGitRepositoryFactory {
 
-<span class="fc" id="L29">    private static final Logger log = LoggerFactory.getLogger(DslGitRepositoryFactory.class);</span>
+<span class="fc" id="L31">    private static final Logger log = LoggerFactory.getLogger(DslGitRepositoryFactory.class);</span>
 
     /** The well-known repository name for the system (shared) repository. */
     static final String SYSTEM_REPO_NAME = &quot;taxonomy-dsl&quot;;
@@ -35,11 +37,11 @@ public class DslGitRepositoryFactory {
     static final String WORKSPACE_REPO_PREFIX = &quot;ws-&quot;;
 
     private final SessionFactory sessionFactory;
-<span class="fc" id="L38">    private final ConcurrentMap&lt;String, DslGitRepository&gt; cache = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="fc" id="L40">    private final ConcurrentMap&lt;String, DslGitRepository&gt; cache = new ConcurrentHashMap&lt;&gt;();</span>
 
-<span class="fc" id="L40">    public DslGitRepositoryFactory(SessionFactory sessionFactory) {</span>
-<span class="fc" id="L41">        this.sessionFactory = sessionFactory;</span>
-<span class="fc" id="L42">    }</span>
+<span class="fc" id="L42">    public DslGitRepositoryFactory(SessionFactory sessionFactory) {</span>
+<span class="fc" id="L43">        this.sessionFactory = sessionFactory;</span>
+<span class="fc" id="L44">    }</span>
 
     /**
      * Get the system repository (shared &quot;draft&quot; branch, legacy data).
@@ -47,18 +49,28 @@ public class DslGitRepositoryFactory {
      * @return the system-wide shared DslGitRepository
      */
     public DslGitRepository getSystemRepository() {
-<span class="fc" id="L50">        return cache.computeIfAbsent(SYSTEM_REPO_NAME, this::createRepository);</span>
+<span class="fc" id="L52">        return cache.computeIfAbsent(SYSTEM_REPO_NAME, this::createRepository);</span>
     }
 
     /**
      * Get a per-workspace repository with a logically separate Git namespace.
      *
+     * &lt;p&gt;When a workspace repository is created for the first time it is
+     * &lt;em&gt;seeded&lt;/em&gt; from the system repository's {@code draft} branch.
+     * This mirrors the {@code git clone} workflow: the initial taxonomy
+     * import commit that the bootstrap created on the system repo is copied
+     * into the workspace so that the user starts with a non-empty history.
+     *
      * @param workspaceId the workspace identifier
      * @return the workspace-specific DslGitRepository
      */
     public DslGitRepository getWorkspaceRepository(String workspaceId) {
-<span class="fc" id="L60">        String repoName = WORKSPACE_REPO_PREFIX + workspaceId;</span>
-<span class="fc" id="L61">        return cache.computeIfAbsent(repoName, this::createRepository);</span>
+<span class="fc" id="L68">        String repoName = WORKSPACE_REPO_PREFIX + workspaceId;</span>
+<span class="fc" id="L69">        return cache.computeIfAbsent(repoName, name -&gt; {</span>
+<span class="fc" id="L70">            DslGitRepository repo = createRepository(name);</span>
+<span class="fc" id="L71">            seedFromSystemRepo(repo);</span>
+<span class="fc" id="L72">            return repo;</span>
+        });
     }
 
     /**
@@ -72,10 +84,10 @@ public class DslGitRepositoryFactory {
      * @return the resolved DslGitRepository
      */
     public DslGitRepository resolveRepository(WorkspaceContext ctx) {
-<span class="fc bfc" id="L75" title="All 4 branches covered.">        if (ctx == null || ctx.workspaceId() == null) {</span>
-<span class="fc" id="L76">            return getSystemRepository();</span>
+<span class="fc bfc" id="L87" title="All 4 branches covered.">        if (ctx == null || ctx.workspaceId() == null) {</span>
+<span class="fc" id="L88">            return getSystemRepository();</span>
         }
-<span class="fc" id="L78">        return getWorkspaceRepository(ctx.workspaceId());</span>
+<span class="fc" id="L90">        return getWorkspaceRepository(ctx.workspaceId());</span>
     }
 
     /**
@@ -86,8 +98,8 @@ public class DslGitRepositoryFactory {
      * @param workspaceId the workspace identifier to evict
      */
     public void evict(String workspaceId) {
-<span class="fc" id="L89">        cache.remove(WORKSPACE_REPO_PREFIX + workspaceId);</span>
-<span class="fc" id="L90">    }</span>
+<span class="fc" id="L101">        cache.remove(WORKSPACE_REPO_PREFIX + workspaceId);</span>
+<span class="fc" id="L102">    }</span>
 
     /**
      * Create a new DslGitRepository for the given name.
@@ -99,13 +111,44 @@ public class DslGitRepositoryFactory {
      * @return a new DslGitRepository instance
      */
     protected DslGitRepository createRepository(String name) {
-<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (sessionFactory != null) {</span>
-<span class="fc" id="L103">            log.info(&quot;Creating database-backed DslGitRepository '{}'&quot;, name);</span>
-<span class="fc" id="L104">            return new DslGitRepository(sessionFactory, name);</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if (sessionFactory != null) {</span>
+<span class="fc" id="L115">            log.info(&quot;Creating database-backed DslGitRepository '{}'&quot;, name);</span>
+<span class="fc" id="L116">            return new DslGitRepository(sessionFactory, name);</span>
         }
-<span class="fc" id="L106">        log.info(&quot;Creating in-memory DslGitRepository '{}' (test mode)&quot;, name);</span>
-<span class="fc" id="L107">        return new DslGitRepository(</span>
+<span class="fc" id="L118">        log.info(&quot;Creating in-memory DslGitRepository '{}' (test mode)&quot;, name);</span>
+<span class="fc" id="L119">        return new DslGitRepository(</span>
                 new InMemoryRepository(new DfsRepositoryDescription(name)));
     }
+
+    /**
+     * Seed a newly created workspace repository from the system repository.
+     *
+     * &lt;p&gt;Reads the DSL content at the HEAD of the system repo's {@code draft}
+     * branch and commits it as the initial commit on the workspace repo's
+     * {@code draft} branch.  This is the equivalent of {@code git clone}:
+     * every workspace starts with the taxonomy import that the bootstrap
+     * created on the central repository.
+     *
+     * &lt;p&gt;If the system repository has no {@code draft} branch yet (e.g. during
+     * early bootstrap), the seeding is silently skipped — the workspace will
+     * be populated once the user makes their first commit.
+     *
+     * @param workspace the newly created workspace repository to seed
+     */
+    private void seedFromSystemRepo(DslGitRepository workspace) {
+        try {
+<span class="fc" id="L140">            DslGitRepository system = getSystemRepository();</span>
+<span class="fc" id="L141">            String dsl = system.getDslAtHead(&quot;draft&quot;);</span>
+<span class="pc bpc" id="L142" title="1 of 4 branches missed.">            if (dsl != null &amp;&amp; !dsl.isBlank()) {</span>
+<span class="fc" id="L143">                workspace.commitDsl(&quot;draft&quot;, dsl, &quot;system&quot;,</span>
+                        &quot;Initial clone from system repository&quot;);
+<span class="fc" id="L145">                log.info(&quot;Seeded workspace repo from system repo draft branch&quot;);</span>
+            } else {
+<span class="fc" id="L147">                log.debug(&quot;System repo draft branch is empty — skipping workspace seed&quot;);</span>
+            }
+<span class="nc" id="L149">        } catch (IOException e) {</span>
+<span class="nc" id="L150">            log.warn(&quot;Failed to seed workspace repo from system repo: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L151">        }</span>
+<span class="fc" id="L152">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

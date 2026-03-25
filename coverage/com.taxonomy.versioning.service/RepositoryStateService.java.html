@@ -328,25 +328,41 @@ public class RepositoryStateService {
 <span class="fc" id="L328">        return workspaceManager.getOrCreateWorkspace(username);</span>
     }
 
+    /**
+     * Ensure that the workspace state for the given user is provisioned.
+     *
+     * &lt;p&gt;This triggers lazy workspace creation (via
+     * {@link com.taxonomy.workspace.service.WorkspaceManager#getOrCreateWorkspace})
+     * so that subsequent calls to
+     * {@link com.taxonomy.workspace.service.WorkspaceContextResolver#resolveForUser}
+     * find the workspace and return a workspace-scoped context instead of
+     * {@link com.taxonomy.workspace.service.WorkspaceContext#SHARED}.
+     *
+     * @param username the authenticated user's username
+     */
+    public void ensureWorkspaceState(String username) {
+<span class="fc" id="L344">        resolveState(username);</span>
+<span class="fc" id="L345">    }</span>
+
     private boolean isProjectionStaleForCommit(UserWorkspaceState ws, String headCommit) {
-<span class="fc" id="L332">        String projCommit = ws.getLastProjectionCommit();</span>
-<span class="fc bfc" id="L333" title="All 4 branches covered.">        if (headCommit == null || projCommit == null) {</span>
-<span class="fc" id="L334">            return false;</span>
+<span class="fc" id="L348">        String projCommit = ws.getLastProjectionCommit();</span>
+<span class="fc bfc" id="L349" title="All 4 branches covered.">        if (headCommit == null || projCommit == null) {</span>
+<span class="fc" id="L350">            return false;</span>
         }
-<span class="fc bfc" id="L336" title="All 2 branches covered.">        return !headCommit.equals(projCommit);</span>
+<span class="fc bfc" id="L352" title="All 2 branches covered.">        return !headCommit.equals(projCommit);</span>
     }
 
     private boolean isIndexStale(UserWorkspaceState ws, String headCommit) {
-<span class="fc" id="L340">        String idxCommit = ws.getLastIndexCommit();</span>
-<span class="fc bfc" id="L341" title="All 4 branches covered.">        if (headCommit == null || idxCommit == null) {</span>
-<span class="fc" id="L342">            return false;</span>
+<span class="fc" id="L356">        String idxCommit = ws.getLastIndexCommit();</span>
+<span class="fc bfc" id="L357" title="All 4 branches covered.">        if (headCommit == null || idxCommit == null) {</span>
+<span class="fc" id="L358">            return false;</span>
         }
-<span class="fc bfc" id="L344" title="All 2 branches covered.">        return !headCommit.equals(idxCommit);</span>
+<span class="fc bfc" id="L360" title="All 2 branches covered.">        return !headCommit.equals(idxCommit);</span>
     }
 
     private String abbreviateSha(String commitId) {
-<span class="pc bpc" id="L348" title="1 of 2 branches missed.">        if (commitId == null) return &quot;null&quot;;</span>
-<span class="fc" id="L349">        return commitId.substring(0, Math.min(7, commitId.length()));</span>
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">        if (commitId == null) return &quot;null&quot;;</span>
+<span class="fc" id="L365">        return commitId.substring(0, Math.min(7, commitId.length()));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
