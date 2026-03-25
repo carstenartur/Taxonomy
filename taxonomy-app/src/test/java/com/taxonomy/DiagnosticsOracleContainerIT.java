@@ -24,21 +24,10 @@ class DiagnosticsOracleContainerIT extends AbstractDatabaseContainerIT {
     static Network network = Network.newNetwork();
 
     @Container
-    static OracleContainer db = new OracleContainer("gvenzl/oracle-free:23-slim-faststart")
-            .withNetwork(network)
-            .withNetworkAliases("db")
-            .withDatabaseName("taxonomy")
-            .withUsername("taxonomy")
-            .withPassword("taxonomy");
+    static OracleContainer db = ContainerTestUtils.oracleContainer(network);
 
     @Container
-    static GenericContainer<?> app = ContainerTestUtils.appContainer(network)
-            .withEnv("SPRING_PROFILES_ACTIVE", "oracle")
-            .withEnv("TAXONOMY_DATASOURCE_URL",
-                    "jdbc:oracle:thin:@db:1521/taxonomy")
-            .withEnv("SPRING_DATASOURCE_USERNAME", "taxonomy")
-            .withEnv("SPRING_DATASOURCE_PASSWORD", "taxonomy")
-            .withEnv("TAXONOMY_DDL_AUTO", "create")
+    static GenericContainer<?> app = ContainerTestUtils.oracleAppContainer(network)
             .dependsOn(db);
 
     @Override

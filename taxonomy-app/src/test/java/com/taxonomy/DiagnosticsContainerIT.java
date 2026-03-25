@@ -1,11 +1,8 @@
 package com.taxonomy;
 
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-
-import java.time.Duration;
 
 /**
  * Integration tests for the Diagnostics endpoint running inside a real Docker
@@ -20,13 +17,7 @@ import java.time.Duration;
 class DiagnosticsContainerIT extends AbstractDatabaseContainerIT {
 
     @Container
-    static GenericContainer<?> app = new GenericContainer<>(
-            ContainerTestUtils.sharedImage())
-            .withExposedPorts(8080)
-            .withStartupTimeout(Duration.ofSeconds(120))
-            .waitingFor(Wait.forHttp("/actuator/health")
-                    .forStatusCode(200)
-                    .forPort(8080));
+    static GenericContainer<?> app = ContainerTestUtils.appContainer();
 
     @Override
     protected GenericContainer<?> getAppContainer() {

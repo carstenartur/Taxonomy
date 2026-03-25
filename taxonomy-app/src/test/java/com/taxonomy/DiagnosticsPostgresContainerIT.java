@@ -5,7 +5,6 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * Runs the same diagnostics + API tests as {@link DiagnosticsContainerIT}
@@ -24,20 +23,12 @@ class DiagnosticsPostgresContainerIT extends AbstractDatabaseContainerIT {
     static Network network = Network.newNetwork();
 
     @Container
-    static PostgreSQLContainer db = new PostgreSQLContainer("postgres:16-alpine")
-            .withNetwork(network)
-            .withNetworkAliases("db")
-            .withDatabaseName("taxonomy")
-            .withUsername("taxonomy")
-            .withPassword("taxonomy");
+    @SuppressWarnings("rawtypes")
+    static org.testcontainers.postgresql.PostgreSQLContainer db =
+            ContainerTestUtils.postgresContainer(network);
 
     @Container
-    static GenericContainer<?> app = ContainerTestUtils.appContainer(network)
-            .withEnv("SPRING_PROFILES_ACTIVE", "postgres")
-            .withEnv("TAXONOMY_DATASOURCE_URL", "jdbc:postgresql://db:5432/taxonomy")
-            .withEnv("SPRING_DATASOURCE_USERNAME", "taxonomy")
-            .withEnv("SPRING_DATASOURCE_PASSWORD", "taxonomy")
-            .withEnv("TAXONOMY_DDL_AUTO", "create")
+    static GenericContainer<?> app = ContainerTestUtils.postgresAppContainer(network)
             .dependsOn(db);
 
     @Override

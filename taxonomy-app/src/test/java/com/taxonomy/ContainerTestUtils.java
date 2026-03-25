@@ -11,6 +11,9 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.ImageFromDockerfile;
+import org.testcontainers.mssqlserver.MSSQLServerContainer;
+import org.testcontainers.oracle.OracleContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * Shared utilities for container-based integration tests.
@@ -104,6 +107,32 @@ final class ContainerTestUtils {
                         + "/. Run 'mvn package -DskipTests' first.");
     }
 
+    // ── Docker image constants ──────────────────────────────────────────────
+
+    static final String POSTGRES_IMAGE = "postgres:16-alpine";
+    static final String ORACLE_IMAGE = "gvenzl/oracle-free:23-slim-faststart";
+    static final String MSSQL_IMAGE = "mcr.microsoft.com/mssql/server:2022-CU18-ubuntu-22.04";
+
+    /** Strong password required by SQL Server's complexity rules. */
+    static final String MSSQL_PASSWORD = "A_Str0ng_Required_Password";
+
+    // ── Application container factories ──────────────────────────────────────
+
+    /**
+     * Creates a standalone application container (no Docker network).
+     * Suitable for HSQLDB-backed tests that need no external database.
+     *
+     * @return a configured but <em>not yet started</em> {@link GenericContainer}
+     */
+    static GenericContainer<?> appContainer() {
+        return new GenericContainer<>(SHARED_IMAGE)
+                .withExposedPorts(8080)
+                .withStartupTimeout(Duration.ofSeconds(120))
+                .waitingFor(Wait.forHttp("/actuator/health")
+                        .forStatusCode(200)
+                        .forPort(8080));
+    }
+
     /**
      * Creates a pre-configured application container on the given Docker network.
      * The container is built from the Spring Boot fat JAR and exposes port 8080.
@@ -122,5 +151,111 @@ final class ContainerTestUtils {
                 .waitingFor(Wait.forHttp("/actuator/health")
                         .forStatusCode(200)
                         .forPort(8080));
+    }
+
+    /**
+     * Creates an application container pre-configured with database connection
+     * environment variables. This eliminates the repetitive 5-env-var block
+     * that every database-backed container test otherwise needs.
+     *
+     * @param network  the Docker network to attach the container to
+     * @param profile  Spring profile name (e.g. {@code "postgres"}, {@code "oracle"}, {@code "mssql"})
+     * @param jdbcUrl  JDBC URL using the Docker network alias (e.g. {@code "jdbc:postgresql://db:5432/taxonomy"})
+     * @param username database username
+     * @param password database password
+     * @return a configured but <em>not yet started</em> {@link GenericContainer}
+     */
+    static GenericContainer<?> appContainer(Network network, String profile,
+                                            String jdbcUrl, String username, String password) {
+        return appContainer(network)
+                .withEnv("SPRING_PROFILES_ACTIVE", profile)
+                .withEnv("TAXONOMY_DATASOURCE_URL", jdbcUrl)
+                .withEnv("SPRING_DATASOURCE_USERNAME", username)
+                .withEnv("SPRING_DATASOURCE_PASSWORD", password)
+                .withEnv("TAXONOMY_DDL_AUTO", "create");
+    }
+
+    // ── Database container factories ─────────────────────────────────────────
+
+    /**
+     * Creates a PostgreSQL container with the standard test credentials.
+     *
+     * @param network the Docker network to attach the container to
+     * @return a configured but <em>not yet started</em> {@link PostgreSQLContainer}
+     */
+    @SuppressWarnings("rawtypes")
+    static PostgreSQLContainer postgresContainer(Network network) {
+        return new PostgreSQLContainer(POSTGRES_IMAGE)
+                .withNetwork(network)
+                .withNetworkAliases("db")
+                .withDatabaseName("taxonomy")
+                .withUsername("taxonomy")
+                .withPassword("taxonomy");
+    }
+
+    /**
+     * Creates an Oracle Database Free container with the standard test credentials.
+     *
+     * @param network the Docker network to attach the container to
+     * @return a configured but <em>not yet started</em> {@link OracleContainer}
+     */
+    static OracleContainer oracleContainer(Network network) {
+        return new OracleContainer(ORACLE_IMAGE)
+                .withNetwork(network)
+                .withNetworkAliases("db")
+                .withDatabaseName("taxonomy")
+                .withUsername("taxonomy")
+                .withPassword("taxonomy");
+    }
+
+    /**
+     * Creates a Microsoft SQL Server container with the standard test credentials.
+     *
+     * @param network the Docker network to attach the container to
+     * @return a configured but <em>not yet started</em> {@link MSSQLServerContainer}
+     */
+    @SuppressWarnings({"resource", "rawtypes"})
+    static MSSQLServerContainer mssqlContainer(Network network) {
+        return new MSSQLServerContainer(MSSQL_IMAGE)
+                .withNetwork(network)
+                .withNetworkAliases("db")
+                .withPassword(MSSQL_PASSWORD)
+                .acceptLicense();
+    }
+
+    // ── Pre-configured app + DB shortcuts ────────────────────────────────────
+
+    /**
+     * Creates an application container pre-configured for PostgreSQL.
+     *
+     * @param network the Docker network (must also host the Postgres container)
+     * @return a configured but <em>not yet started</em> {@link GenericContainer}
+     */
+    static GenericContainer<?> postgresAppContainer(Network network) {
+        return appContainer(network, "postgres",
+                "jdbc:postgresql://db:5432/taxonomy", "taxonomy", "taxonomy");
+    }
+
+    /**
+     * Creates an application container pre-configured for Oracle.
+     *
+     * @param network the Docker network (must also host the Oracle container)
+     * @return a configured but <em>not yet started</em> {@link GenericContainer}
+     */
+    static GenericContainer<?> oracleAppContainer(Network network) {
+        return appContainer(network, "oracle",
+                "jdbc:oracle:thin:@db:1521/taxonomy", "taxonomy", "taxonomy");
+    }
+
+    /**
+     * Creates an application container pre-configured for SQL Server.
+     *
+     * @param network the Docker network (must also host the MSSQL container)
+     * @return a configured but <em>not yet started</em> {@link GenericContainer}
+     */
+    static GenericContainer<?> mssqlAppContainer(Network network) {
+        return appContainer(network, "mssql",
+                "jdbc:sqlserver://db:1433;databaseName=master;encrypt=false;trustServerCertificate=true;loginTimeout=30",
+                "sa", MSSQL_PASSWORD);
     }
 }

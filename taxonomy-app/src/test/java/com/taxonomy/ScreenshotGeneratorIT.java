@@ -424,15 +424,10 @@ class ScreenshotGeneratorIT {
 
         network = Network.newNetwork();
 
-        GenericContainer<?> appContainer = new GenericContainer<>(
-                ContainerTestUtils.sharedImage())
-                .withNetwork(network)
-                .withNetworkAliases("app")
-                .withExposedPorts(8080)
+        GenericContainer<?> appContainer = ContainerTestUtils.appContainer(network)
                 .withEnv("ADMIN_PASSWORD", "testpassword123")
                 .withEnv("LLM_MOCK", "true")
                 .withEnv("TAXONOMY_GIT_BOOTSTRAP", "true")
-                .withStartupTimeout(Duration.ofSeconds(180))
                 // Wait for the taxonomy to be fully loaded and search index built.
                 // The /api/status/startup endpoint returns {"status":"ready"} once
                 // AppInitializationStateService transitions to READY — works for both
