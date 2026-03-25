@@ -18,11 +18,9 @@ import java.time.Instant;
  * projection needs to be rebuilt.
  */
 @Entity
-@Table(name = "workspace_projection", indexes = {
-    @Index(name = "idx_projection_username", columnList = "username"),
-    @Index(name = "idx_projection_workspace", columnList = "workspace_id")
-}, uniqueConstraints = {
-    @UniqueConstraint(name = "uq_projection_username", columnNames = "username")
+@Table(name = "workspace_projection", uniqueConstraints = {
+    @UniqueConstraint(name = "uq_projection_username", columnNames = "username"),
+    @UniqueConstraint(name = "uq_projection_workspace", columnNames = "workspace_id")
 })
 public class WorkspaceProjection {
 
@@ -30,10 +28,10 @@ public class WorkspaceProjection {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String username;
 
-    @Column(name = "workspace_id", nullable = false, unique = true)
+    @Column(name = "workspace_id", nullable = false)
     private String workspaceId;
 
     @Column(name = "projection_commit_id")

@@ -23,11 +23,9 @@ import java.time.Instant;
  * </ul>
  */
 @Entity
-@Table(name = "sync_state", indexes = {
-    @Index(name = "idx_sync_username", columnList = "username"),
-    @Index(name = "idx_sync_workspace", columnList = "workspace_id")
-}, uniqueConstraints = {
-    @UniqueConstraint(name = "uq_sync_username", columnNames = "username")
+@Table(name = "sync_state", uniqueConstraints = {
+    @UniqueConstraint(name = "uq_sync_username", columnNames = "username"),
+    @UniqueConstraint(name = "uq_sync_workspace", columnNames = "workspace_id")
 })
 public class SyncState {
 
@@ -35,10 +33,10 @@ public class SyncState {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String username;
 
-    @Column(name = "workspace_id", nullable = false, unique = true)
+    @Column(name = "workspace_id", nullable = false)
     private String workspaceId;
 
     @Column(name = "last_synced_commit_id")
