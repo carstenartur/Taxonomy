@@ -18,11 +18,9 @@ import java.time.Instant;
  * projection needs to be rebuilt.
  */
 @Entity
-@Table(name = &quot;workspace_projection&quot;, indexes = {
-    @Index(name = &quot;idx_projection_username&quot;, columnList = &quot;username&quot;),
-    @Index(name = &quot;idx_projection_workspace&quot;, columnList = &quot;workspace_id&quot;)
-}, uniqueConstraints = {
-    @UniqueConstraint(name = &quot;uq_projection_username&quot;, columnNames = &quot;username&quot;)
+@Table(name = &quot;workspace_projection&quot;, uniqueConstraints = {
+    @UniqueConstraint(name = &quot;uq_projection_username&quot;, columnNames = &quot;username&quot;),
+    @UniqueConstraint(name = &quot;uq_projection_workspace&quot;, columnNames = &quot;workspace_id&quot;)
 })
 public class WorkspaceProjection {
 
@@ -30,10 +28,10 @@ public class WorkspaceProjection {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String username;
 
-    @Column(name = &quot;workspace_id&quot;, nullable = false, unique = true)
+    @Column(name = &quot;workspace_id&quot;, nullable = false)
     private String workspaceId;
 
     @Column(name = &quot;projection_commit_id&quot;)
@@ -51,7 +49,7 @@ public class WorkspaceProjection {
     @Column(name = &quot;index_timestamp&quot;)
     private Instant indexTimestamp;
 
-<span class="fc" id="L54">    @Column(nullable = false)</span>
+<span class="fc" id="L52">    @Column(nullable = false)</span>
     private boolean stale = false;
 
     @Column(name = &quot;created_at&quot;, nullable = false)
@@ -60,95 +58,95 @@ public class WorkspaceProjection {
     @Column(name = &quot;updated_at&quot;)
     private Instant updatedAt;
 
-<span class="fc" id="L63">    public WorkspaceProjection() {</span>
-<span class="fc" id="L64">    }</span>
+<span class="fc" id="L61">    public WorkspaceProjection() {</span>
+<span class="fc" id="L62">    }</span>
 
     public Long getId() {
-<span class="nc" id="L67">        return id;</span>
+<span class="nc" id="L65">        return id;</span>
     }
 
     public void setId(Long id) {
-<span class="nc" id="L71">        this.id = id;</span>
-<span class="nc" id="L72">    }</span>
+<span class="nc" id="L69">        this.id = id;</span>
+<span class="nc" id="L70">    }</span>
 
     public String getUsername() {
-<span class="fc" id="L75">        return username;</span>
+<span class="fc" id="L73">        return username;</span>
     }
 
     public void setUsername(String username) {
-<span class="fc" id="L79">        this.username = username;</span>
-<span class="fc" id="L80">    }</span>
+<span class="fc" id="L77">        this.username = username;</span>
+<span class="fc" id="L78">    }</span>
 
     public String getWorkspaceId() {
-<span class="fc" id="L83">        return workspaceId;</span>
+<span class="fc" id="L81">        return workspaceId;</span>
     }
 
     public void setWorkspaceId(String workspaceId) {
-<span class="fc" id="L87">        this.workspaceId = workspaceId;</span>
-<span class="fc" id="L88">    }</span>
+<span class="fc" id="L85">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L86">    }</span>
 
     public String getProjectionCommitId() {
-<span class="fc" id="L91">        return projectionCommitId;</span>
+<span class="fc" id="L89">        return projectionCommitId;</span>
     }
 
     public void setProjectionCommitId(String projectionCommitId) {
-<span class="fc" id="L95">        this.projectionCommitId = projectionCommitId;</span>
-<span class="fc" id="L96">    }</span>
+<span class="fc" id="L93">        this.projectionCommitId = projectionCommitId;</span>
+<span class="fc" id="L94">    }</span>
 
     public String getProjectionBranch() {
-<span class="fc" id="L99">        return projectionBranch;</span>
+<span class="fc" id="L97">        return projectionBranch;</span>
     }
 
     public void setProjectionBranch(String projectionBranch) {
-<span class="fc" id="L103">        this.projectionBranch = projectionBranch;</span>
-<span class="fc" id="L104">    }</span>
+<span class="fc" id="L101">        this.projectionBranch = projectionBranch;</span>
+<span class="fc" id="L102">    }</span>
 
     public Instant getProjectionTimestamp() {
-<span class="fc" id="L107">        return projectionTimestamp;</span>
+<span class="fc" id="L105">        return projectionTimestamp;</span>
     }
 
     public void setProjectionTimestamp(Instant projectionTimestamp) {
-<span class="fc" id="L111">        this.projectionTimestamp = projectionTimestamp;</span>
-<span class="fc" id="L112">    }</span>
+<span class="fc" id="L109">        this.projectionTimestamp = projectionTimestamp;</span>
+<span class="fc" id="L110">    }</span>
 
     public String getIndexCommitId() {
-<span class="fc" id="L115">        return indexCommitId;</span>
+<span class="fc" id="L113">        return indexCommitId;</span>
     }
 
     public void setIndexCommitId(String indexCommitId) {
-<span class="fc" id="L119">        this.indexCommitId = indexCommitId;</span>
-<span class="fc" id="L120">    }</span>
+<span class="fc" id="L117">        this.indexCommitId = indexCommitId;</span>
+<span class="fc" id="L118">    }</span>
 
     public Instant getIndexTimestamp() {
-<span class="fc" id="L123">        return indexTimestamp;</span>
+<span class="fc" id="L121">        return indexTimestamp;</span>
     }
 
     public void setIndexTimestamp(Instant indexTimestamp) {
-<span class="fc" id="L127">        this.indexTimestamp = indexTimestamp;</span>
-<span class="fc" id="L128">    }</span>
+<span class="fc" id="L125">        this.indexTimestamp = indexTimestamp;</span>
+<span class="fc" id="L126">    }</span>
 
     public boolean isStale() {
-<span class="fc" id="L131">        return stale;</span>
+<span class="fc" id="L129">        return stale;</span>
     }
 
     public void setStale(boolean stale) {
-<span class="fc" id="L135">        this.stale = stale;</span>
-<span class="fc" id="L136">    }</span>
+<span class="fc" id="L133">        this.stale = stale;</span>
+<span class="fc" id="L134">    }</span>
 
     public Instant getCreatedAt() {
-<span class="fc" id="L139">        return createdAt;</span>
+<span class="fc" id="L137">        return createdAt;</span>
     }
 
     public void setCreatedAt(Instant createdAt) {
-<span class="fc" id="L143">        this.createdAt = createdAt;</span>
-<span class="fc" id="L144">    }</span>
+<span class="fc" id="L141">        this.createdAt = createdAt;</span>
+<span class="fc" id="L142">    }</span>
 
     public Instant getUpdatedAt() {
-<span class="nc" id="L147">        return updatedAt;</span>
+<span class="nc" id="L145">        return updatedAt;</span>
     }
 
     public void setUpdatedAt(Instant updatedAt) {
-<span class="fc" id="L151">        this.updatedAt = updatedAt;</span>
-<span class="fc" id="L152">    }</span>
+<span class="fc" id="L149">        this.updatedAt = updatedAt;</span>
+<span class="fc" id="L150">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
