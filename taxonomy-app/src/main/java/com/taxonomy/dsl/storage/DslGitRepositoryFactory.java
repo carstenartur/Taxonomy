@@ -6,6 +6,8 @@ import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
 import org.hibernate.SessionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -53,12 +55,22 @@ public class DslGitRepositoryFactory {
     /**
      * Get a per-workspace repository with a logically separate Git namespace.
      *
+     * <p>When a workspace repository is created for the first time it is
+     * <em>seeded</em> from the system repository's {@code draft} branch.
+     * This mirrors the {@code git clone} workflow: the initial taxonomy
+     * import commit that the bootstrap created on the system repo is copied
+     * into the workspace so that the user starts with a non-empty history.
+     *
      * @param workspaceId the workspace identifier
      * @return the workspace-specific DslGitRepository
      */
     public DslGitRepository getWorkspaceRepository(String workspaceId) {
         String repoName = WORKSPACE_REPO_PREFIX + workspaceId;
-        return cache.computeIfAbsent(repoName, this::createRepository);
+        return cache.computeIfAbsent(repoName, name -> {
+            DslGitRepository repo = createRepository(name);
+            seedFromSystemRepo(repo);
+            return repo;
+        });
     }
 
     /**
@@ -106,5 +118,36 @@ public class DslGitRepositoryFactory {
         log.info("Creating in-memory DslGitRepository '{}' (test mode)", name);
         return new DslGitRepository(
                 new InMemoryRepository(new DfsRepositoryDescription(name)));
+    }
+
+    /**
+     * Seed a newly created workspace repository from the system repository.
+     *
+     * <p>Reads the DSL content at the HEAD of the system repo's {@code draft}
+     * branch and commits it as the initial commit on the workspace repo's
+     * {@code draft} branch.  This is the equivalent of {@code git clone}:
+     * every workspace starts with the taxonomy import that the bootstrap
+     * created on the central repository.
+     *
+     * <p>If the system repository has no {@code draft} branch yet (e.g. during
+     * early bootstrap), the seeding is silently skipped — the workspace will
+     * be populated once the user makes their first commit.
+     *
+     * @param workspace the newly created workspace repository to seed
+     */
+    private void seedFromSystemRepo(DslGitRepository workspace) {
+        try {
+            DslGitRepository system = getSystemRepository();
+            String dsl = system.getDslAtHead("draft");
+            if (dsl != null && !dsl.isBlank()) {
+                workspace.commitDsl("draft", dsl, "system",
+                        "Initial clone from system repository");
+                log.info("Seeded workspace repo from system repo draft branch");
+            } else {
+                log.debug("System repo draft branch is empty — skipping workspace seed");
+            }
+        } catch (IOException e) {
+            log.warn("Failed to seed workspace repo from system repo: {}", e.getMessage());
+        }
     }
 }

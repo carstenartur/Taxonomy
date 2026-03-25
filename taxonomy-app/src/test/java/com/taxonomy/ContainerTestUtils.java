@@ -5,6 +5,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.concurrent.Future;
 
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
@@ -16,7 +17,36 @@ import org.testcontainers.images.builder.ImageFromDockerfile;
  */
 final class ContainerTestUtils {
 
+    /**
+     * Lazily built Docker image that is shared across <em>all</em> container
+     * integration tests. The image is built exactly once (the first time any
+     * test needs it) and then reused, avoiding the creation of many identical
+     * Docker images that waste disk space.
+     * <p>
+     * The deterministic image name {@code taxonomy-app-it:latest} lets Docker
+     * recognise a cache hit even across JVM restarts as long as the underlying
+     * app JAR has not changed.
+     */
+    private static final Future<String> SHARED_IMAGE = new ImageFromDockerfile(
+            "taxonomy-app-it", false)
+            .withFileFromPath("app.jar", findApplicationJar())
+            .withDockerfileFromBuilder(builder -> builder
+                    .from("eclipse-temurin:17-jre")
+                    .workDir("/app")
+                    .copy("app.jar", "app.jar")
+                    .expose(8080)
+                    .entryPoint("java", "-jar", "app.jar")
+                    .build());
+
     private ContainerTestUtils() {
+    }
+
+    /**
+     * Returns the shared Docker image future that all container tests should
+     * use. The image is built at most once.
+     */
+    static Future<String> sharedImage() {
+        return SHARED_IMAGE;
     }
 
     /**
@@ -84,16 +114,7 @@ final class ContainerTestUtils {
      * @return a configured but <em>not yet started</em> {@link GenericContainer}
      */
     static GenericContainer<?> appContainer(Network network) {
-        return new GenericContainer<>(
-                new ImageFromDockerfile()
-                        .withFileFromPath("app.jar", findApplicationJar())
-                        .withDockerfileFromBuilder(builder -> builder
-                                .from("eclipse-temurin:17-jre")
-                                .workDir("/app")
-                                .copy("app.jar", "app.jar")
-                                .expose(8080)
-                                .entryPoint("java", "-jar", "app.jar")
-                                .build()))
+        return new GenericContainer<>(SHARED_IMAGE)
                 .withNetwork(network)
                 .withNetworkAliases("app")
                 .withExposedPorts(8080)

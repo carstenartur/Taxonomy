@@ -8,7 +8,6 @@ import com.taxonomy.dto.ElementHistoryAggregation;
 import com.taxonomy.architecture.model.ArchitectureCommitIndex;
 import com.taxonomy.architecture.repository.ArchitectureCommitIndexRepository;
 import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.hibernate.search.mapper.orm.Search;
@@ -43,18 +42,15 @@ public class CommitIndexService {
 
     private final DslGitRepositoryFactory repositoryFactory;
     private final ArchitectureCommitIndexRepository indexRepository;
-    private final WorkspaceContextResolver contextResolver;
     private final DslTokenizer tokenizer = new DslTokenizer();
 
     @PersistenceContext
     private EntityManager entityManager;
 
     public CommitIndexService(DslGitRepositoryFactory repositoryFactory,
-                              ArchitectureCommitIndexRepository indexRepository,
-                              WorkspaceContextResolver contextResolver) {
+                              ArchitectureCommitIndexRepository indexRepository) {
         this.repositoryFactory = repositoryFactory;
         this.indexRepository = indexRepository;
-        this.contextResolver = contextResolver;
     }
 
     /**
@@ -148,22 +144,6 @@ public class CommitIndexService {
     }
 
     /**
-     * Resolves the current branch filter for workspace-scoped search.
-     * Returns {@code null} if no branch filter should be applied (SHARED context).
-     */
-    private String resolveBranchFilter() {
-        try {
-            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
-            if (!WorkspaceContext.SHARED.equals(ctx)) {
-                return ctx.currentBranch();
-            }
-        } catch (Exception e) {
-            log.debug("Could not resolve workspace branch filter: {}", e.getMessage());
-        }
-        return null;
-    }
-
-    /**
      * Full-text search across commit history using Hibernate Search.
      *
      * <p>Searches tokenized DSL text (with boost 1.0), commit messages (boost 0.5),
@@ -189,23 +169,16 @@ public class CommitIndexService {
         if (query == null || query.isBlank()) {
             return Collections.emptyList();
         }
-        String activeBranch = resolveBranchFilter();
         try {
             SearchSession session = Search.session(entityManager);
             String lower = query.toLowerCase(Locale.ROOT);
 
             return session.search(ArchitectureCommitIndex.class)
-                    .where(f -> {
-                        var bool = f.bool();
-                        if (activeBranch != null) {
-                            bool.must(f.match().field("branch").matching(activeBranch));
-                        }
-                        bool.should(f.match().field("tokenizedChangeText").matching(lower).boost(1.0f))
-                            .should(f.match().field("message").matching(query).boost(0.5f))
-                            .should(f.match().field("affectedElementIds").matching(lower).boost(3.0f))
-                            .should(f.match().field("affectedRelationIds").matching(lower).boost(2.0f));
-                        return bool;
-                    })
+                    .where(f -> f.bool()
+                        .should(f.match().field("tokenizedChangeText").matching(lower).boost(1.0f))
+                        .should(f.match().field("message").matching(query).boost(0.5f))
+                        .should(f.match().field("affectedElementIds").matching(lower).boost(3.0f))
+                        .should(f.match().field("affectedRelationIds").matching(lower).boost(2.0f)))
                     .sort(f -> f.score())
                     .fetchHits(maxResults);
         } catch (Exception e) {
@@ -225,21 +198,14 @@ public class CommitIndexService {
         if (elementId == null || elementId.isBlank()) {
             return Collections.emptyList();
         }
-        String activeBranch = resolveBranchFilter();
         try {
             SearchSession session = Search.session(entityManager);
             return session.search(ArchitectureCommitIndex.class)
-                    .where(f -> {
-                        var bool = f.bool();
-                        if (activeBranch != null) {
-                            bool.must(f.match().field("branch").matching(activeBranch));
-                        }
-                        bool.should(f.match().field("affectedElementIds")
+                    .where(f -> f.bool()
+                        .should(f.match().field("affectedElementIds")
                                     .matching(elementId.toLowerCase(Locale.ROOT)).boost(3.0f))
-                            .should(f.match().field("tokenizedChangeText")
-                                    .matching(elementId.toLowerCase(Locale.ROOT)).boost(1.0f));
-                        return bool;
-                    })
+                        .should(f.match().field("tokenizedChangeText")
+                                    .matching(elementId.toLowerCase(Locale.ROOT)).boost(1.0f)))
                     .sort(f -> f.score())
                     .fetchHits(50);
         } catch (Exception e) {
@@ -259,21 +225,14 @@ public class CommitIndexService {
         if (relationKey == null || relationKey.isBlank()) {
             return Collections.emptyList();
         }
-        String activeBranch = resolveBranchFilter();
         try {
             SearchSession session = Search.session(entityManager);
             return session.search(ArchitectureCommitIndex.class)
-                    .where(f -> {
-                        var bool = f.bool();
-                        if (activeBranch != null) {
-                            bool.must(f.match().field("branch").matching(activeBranch));
-                        }
-                        bool.should(f.match().field("affectedRelationIds")
+                    .where(f -> f.bool()
+                        .should(f.match().field("affectedRelationIds")
                                     .matching(relationKey.toLowerCase(Locale.ROOT)).boost(3.0f))
-                            .should(f.match().field("tokenizedChangeText")
-                                    .matching(relationKey.toLowerCase(Locale.ROOT)).boost(1.0f));
-                        return bool;
-                    })
+                        .should(f.match().field("tokenizedChangeText")
+                                    .matching(relationKey.toLowerCase(Locale.ROOT)).boost(1.0f)))
                     .sort(f -> f.score())
                     .fetchHits(50);
         } catch (Exception e) {

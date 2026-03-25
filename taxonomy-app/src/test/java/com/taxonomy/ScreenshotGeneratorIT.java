@@ -22,7 +22,6 @@ import org.testcontainers.containers.BrowserWebDriverContainer;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.io.File;
@@ -426,15 +425,7 @@ class ScreenshotGeneratorIT {
         network = Network.newNetwork();
 
         GenericContainer<?> appContainer = new GenericContainer<>(
-                new ImageFromDockerfile()
-                        .withFileFromPath("app.jar", ContainerTestUtils.findApplicationJar())
-                        .withDockerfileFromBuilder(builder -> builder
-                                .from("eclipse-temurin:17-jre")
-                                .workDir("/app")
-                                .copy("app.jar", "app.jar")
-                                .expose(8080)
-                                .entryPoint("java", "-jar", "app.jar")
-                                .build()))
+                ContainerTestUtils.sharedImage())
                 .withNetwork(network)
                 .withNetworkAliases("app")
                 .withExposedPorts(8080)

@@ -75,9 +75,21 @@ public class DslOperationsFacade {
     /**
      * Resolve the current workspace context from the authenticated user.
      * Falls back to {@link WorkspaceContext#SHARED} if resolution fails.
+     *
+     * <p>Eagerly provisions the workspace state via
+     * {@link RepositoryStateService} before resolving the context.
+     * Without this, the very first call in a request returns {@code SHARED}
+     * (no workspace yet), but a later call (after {@code getViewContext}
+     * triggers lazy workspace creation) returns a workspace-scoped context
+     * — causing two operations in the same flow to target different repos.
      */
     private WorkspaceContext resolveContext() {
         try {
+            // Ensure workspace state is provisioned before resolving context,
+            // so that resolveCurrentContext() finds the workspace on the
+            // very first call (mirrors what getViewContext does internally).
+            String username = workspaceResolver.resolveCurrentUsername();
+            repositoryStateService.ensureWorkspaceState(username);
             return workspaceResolver.resolveCurrentContext();
         } catch (Exception e) {
             return WorkspaceContext.SHARED;

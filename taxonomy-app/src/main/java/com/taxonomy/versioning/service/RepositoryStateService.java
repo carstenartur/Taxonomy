@@ -328,6 +328,22 @@ public class RepositoryStateService {
         return workspaceManager.getOrCreateWorkspace(username);
     }
 
+    /**
+     * Ensure that the workspace state for the given user is provisioned.
+     *
+     * <p>This triggers lazy workspace creation (via
+     * {@link com.taxonomy.workspace.service.WorkspaceManager#getOrCreateWorkspace})
+     * so that subsequent calls to
+     * {@link com.taxonomy.workspace.service.WorkspaceContextResolver#resolveForUser}
+     * find the workspace and return a workspace-scoped context instead of
+     * {@link com.taxonomy.workspace.service.WorkspaceContext#SHARED}.
+     *
+     * @param username the authenticated user's username
+     */
+    public void ensureWorkspaceState(String username) {
+        resolveState(username);
+    }
+
     private boolean isProjectionStaleForCommit(UserWorkspaceState ws, String headCommit) {
         String projCommit = ws.getLastProjectionCommit();
         if (headCommit == null || projCommit == null) {

@@ -7,9 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
@@ -47,15 +45,7 @@ class LocalOnnxPipelineIT {
 
     @Container
     static GenericContainer<?> app = new GenericContainer<>(
-            new ImageFromDockerfile()
-                    .withFileFromPath("app.jar", ContainerTestUtils.findApplicationJar())
-                    .withDockerfileFromBuilder(builder -> builder
-                            .from("eclipse-temurin:17-jre")
-                            .workDir("/app")
-                            .copy("app.jar", "app.jar")
-                            .expose(8080)
-                            .entryPoint("java", "-jar", "app.jar")
-                            .build()))
+            ContainerTestUtils.sharedImage())
             .withExposedPorts(8080)
             .withEnv("LLM_PROVIDER", "LOCAL_ONNX")
             .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true")
