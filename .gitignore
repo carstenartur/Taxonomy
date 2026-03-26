@@ -1,3 +1,5 @@
 target/
 .env
+taxonomy-app/codemirror-build/node_modules/
+taxonomy-app/codemirror-build/package-lock.json
 
