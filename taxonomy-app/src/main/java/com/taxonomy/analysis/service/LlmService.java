@@ -420,7 +420,7 @@ public class LlmService {
                         progress);
 
                 // Score root independently (0-100) to gauge branch relevance
-                com.taxonomy.dto.LlmCallDetail rootDetail = callLlmPropagatingDetailed(businessText, List.of(root), 100);
+                LlmCallDetail rootDetail = callLlmPropagatingDetailed(businessText, List.of(root), 100);
                 int rootScore = rootDetail.getScores().getOrDefault(root.getCode(), 0);
                 allScores.put(root.getCode(), rootScore);
                 callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),
@@ -454,7 +454,7 @@ public class LlmService {
                                         int parentScore) {
         if (nodes == null || nodes.isEmpty()) return;
 
-        com.taxonomy.dto.LlmCallDetail detail = callLlmPropagatingDetailed(businessText, nodes, parentScore);
+        LlmCallDetail detail = callLlmPropagatingDetailed(businessText, nodes, parentScore);
         allScores.putAll(detail.getScores());
         if (detail.getDiscrepancy() != null) {
             allDiscrepancies.add(detail.getDiscrepancy());
@@ -488,13 +488,13 @@ public class LlmService {
      * provider name, and call duration. Used by the interactive-mode API endpoint so
      * the frontend can display the LLM communication log.
      */
-    public com.taxonomy.dto.LlmCallDetail analyzeSingleBatchDetailed(
+    public LlmCallDetail analyzeSingleBatchDetailed(
             String businessText, List<TaxonomyNode> nodes, int parentScore) {
         try {
             return callLlmPropagatingDetailed(businessText, nodes, parentScore);
         } catch (Exception e) {
             log.error("Error in detailed LLM call", e);
-            com.taxonomy.dto.LlmCallDetail detail = new com.taxonomy.dto.LlmCallDetail();
+            LlmCallDetail detail = new LlmCallDetail();
             detail.setScores(responseParser.zeroScores(nodes));
             detail.setProvider(getActiveProviderName());
             detail.setPrompt("");
@@ -639,9 +639,9 @@ public class LlmService {
      * Like {@link #callLlmPropagating} but also captures timing, the prompt, and the
      * raw LLM text response, returning them in a {@link com.taxonomy.dto.LlmCallDetail}.
      */
-    private com.taxonomy.dto.LlmCallDetail callLlmPropagatingDetailed(
+    private LlmCallDetail callLlmPropagatingDetailed(
             String businessText, List<TaxonomyNode> nodes, int parentScore) {
-        com.taxonomy.dto.LlmCallDetail detail = new com.taxonomy.dto.LlmCallDetail();
+        LlmCallDetail detail = new LlmCallDetail();
         detail.setProvider(getActiveProviderName());
 
         // ── Mock path ─────────────────────────────────────────────────────────

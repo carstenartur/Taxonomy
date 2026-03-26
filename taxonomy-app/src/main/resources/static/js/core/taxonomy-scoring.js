@@ -325,6 +325,10 @@
         setAnalyzing(true);
         B().clearStatus();
         clearAnalysisLog();
+        var llmCommLogEl = document.getElementById('llmCommLogContent');
+        if (llmCommLogEl) {
+            llmCommLogEl.innerHTML = '';
+        }
         S.currentScores = {};
         S.currentReasons = {};
         document.getElementById('businessText').classList.remove('stale-results');
