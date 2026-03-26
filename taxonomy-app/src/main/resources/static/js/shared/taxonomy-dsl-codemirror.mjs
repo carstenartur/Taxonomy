@@ -22,7 +22,7 @@ import {
     Compartment,
     keymap,
     MergeView
-} from '/js/vendor/codemirror-bundle.mjs';
+} from '../vendor/codemirror-bundle.mjs';
 
 // ── TaxDSL token sets ──────────────────────────────────────────────────
 const BLOCK_KEYWORDS = new Set([
