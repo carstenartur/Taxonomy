@@ -420,11 +420,11 @@ public class LlmService {
                         progress);
 
                 // Score root independently (0-100) to gauge branch relevance
-                ScoreParseResult rootResult = callLlmResult(businessText, List.of(root), 100);
-                int rootScore = rootResult.scores().getOrDefault(root.getCode(), 0);
+                com.taxonomy.dto.LlmCallDetail rootDetail = callLlmPropagatingDetailed(businessText, List.of(root), 100);
+                int rootScore = rootDetail.getScores().getOrDefault(root.getCode(), 0);
                 allScores.put(root.getCode(), rootScore);
-                callback.onScores(rootResult.scores(), rootResult.reasons(),
-                        root.getName() + " scored " + rootScore + "/100");
+                callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),
+                        root.getName() + " scored " + rootScore + "/100", rootDetail);
 
                 if (rootScore > 0) {
                     // Score Level-1 children distributing the root's score
@@ -454,14 +454,14 @@ public class LlmService {
                                         int parentScore) {
         if (nodes == null || nodes.isEmpty()) return;
 
-        ScoreParseResult result = callLlmResult(businessText, nodes, parentScore);
-        allScores.putAll(result.scores());
-        if (result.discrepancy() != null) {
-            allDiscrepancies.add(result.discrepancy());
+        com.taxonomy.dto.LlmCallDetail detail = callLlmPropagatingDetailed(businessText, nodes, parentScore);
+        allScores.putAll(detail.getScores());
+        if (detail.getDiscrepancy() != null) {
+            allDiscrepancies.add(detail.getDiscrepancy());
         }
-        callback.onScores(result.scores(), result.reasons(), "Evaluated " + nodes.size() + " node(s)");
+        callback.onScores(detail.getScores(), detail.getReasons(), "Evaluated " + nodes.size() + " node(s)", detail);
 
-        for (Map.Entry<String, Integer> entry : result.scores().entrySet()) {
+        for (Map.Entry<String, Integer> entry : detail.getScores().entrySet()) {
             if (entry.getValue() > 0) {
                 List<TaxonomyNode> children = taxonomyService.getChildrenOf(entry.getKey());
                 if (!children.isEmpty()) {
@@ -736,6 +736,7 @@ public class LlmService {
                 ScoreParseResult parsed = responseParser.parseScoreParseResult(rawText, nodes, parentScore);
                 detail.setScores(parsed.scores());
                 detail.setReasons(parsed.reasons());
+                detail.setDiscrepancy(parsed.discrepancy());
                 recordSuccess();
             } catch (Exception e) {
                 log.error("Failed to parse scores in detailed LLM call", e);

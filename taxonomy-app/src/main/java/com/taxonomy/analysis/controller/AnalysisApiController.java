@@ -202,11 +202,21 @@ public class AnalysisApiController {
 
                     @Override
                     public void onScores(Map<String, Integer> newScores, Map<String, String> reasons,
-                                         String description) {
+                                         String description, LlmCallDetail detail) {
                         Map<String, Object> payload = new LinkedHashMap<>();
                         payload.put("scores", newScores);
                         payload.put("reasons", reasons != null ? reasons : Map.of());
                         payload.put("description", description);
+                        payload.put("message", description);
+                        if (detail != null) {
+                            payload.put("prompt", detail.getPrompt() != null ? detail.getPrompt() : "");
+                            payload.put("rawResponse", detail.getRawResponse() != null ? detail.getRawResponse() : "");
+                            payload.put("provider", detail.getProvider() != null ? detail.getProvider() : "");
+                            payload.put("durationMs", detail.getDurationMs());
+                            if (detail.getError() != null) {
+                                payload.put("error", detail.getError());
+                            }
+                        }
                         sendEvent(emitter, "scores", payload);
                     }
 
