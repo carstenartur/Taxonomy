@@ -1,6 +1,7 @@
 package com.taxonomy.shared.service;
 
 import ai.djl.inference.Predictor;
+import ai.djl.huggingface.translator.TextEmbeddingTranslatorFactory;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ZooModel;
 import com.taxonomy.dto.TaxonomyNodeDto;
@@ -235,17 +236,18 @@ public class LocalEmbeddingService {
 
         ensureServingProperties(localPath);
 
-        // Convert local path to a proper file: URI (handles Windows drive letters + backslashes)
-        String fileUrl = java.nio.file.Path.of(localPath).toUri().toString();
-        log.info("Loading DJL model from local path: {} (URI: {})", localPath, fileUrl);
+        java.nio.file.Path modelPath = java.nio.file.Path.of(localPath);
+        log.info("Loading DJL model from local path: {}", modelPath.toAbsolutePath());
         try {
             return Criteria.builder()
                     .setTypes(String.class, float[].class)
-                    .optModelUrls(fileUrl)
+                    .optModelPath(modelPath)
+                    .optModelName("model")
                     .optEngine("OnnxRuntime")
+                    .optTranslatorFactory(new TextEmbeddingTranslatorFactory())
                     .build().loadModel();
         } catch (Exception e) {
-            log.error("DJL Criteria.loadModel() failed for URI '{}': {}", fileUrl, e.getMessage(), e);
+            log.error("DJL Criteria.loadModel() failed for path '{}': {}", modelPath.toAbsolutePath(), e.getMessage(), e);
             throw e;
         }
     }
