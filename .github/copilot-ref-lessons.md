@@ -47,3 +47,13 @@ The `DslGitRepository` uses `HibernateRepository` backed by the same `SessionFac
 **Fix:** Always discover real codes at runtime by querying `GET /api/taxonomy`. Walk the returned tree to find nodes that actually exist. Real codes follow the `XX-XXXX` format (two uppercase letters, hyphen, four digits) — e.g., `CP-1023`, `CR-1047` — but not all four-digit numbers exist. The Excel workbook is the only source of truth.
 
 **Key takeaway:** Never hardcode specific taxonomy codes in tests or documentation examples. Always query the live taxonomy and use what comes back.
+
+---
+
+## DJL: use optModelPath + explicit TranslatorFactory for local ONNX models (2026-03-26)
+
+**Problem:** `Criteria.builder().optModelUrls(fileUrl)` with a `file:///` URI failed with `ModelNotFoundException: No model with the specified URI or the matching Input/Output type is found.` when loading the `BAAI/bge-small-en-v1.5` ONNX model from a local cache directory on Linux. The `optModelUrls` path creates a `DefaultModelZoo` → `RepositoryFactoryImpl` → `LocalRepositoryFactory` → `SimpleRepository` chain. `SimpleRepository` has complex metadata/artifact resolution that depends on correctly discovering the model via `serving.properties`, but the discovery can silently fail — the `ModelLoader` finds the model directory but cannot match the Input/Output types because the `TranslatorFactory` is never resolved from `serving.properties`.
+
+**Fix:** Replace `optModelUrls(fileUrl)` with `optModelPath(Path)` which uses the same `DefaultModelZoo` but converts a `Path` directly to a proper URI, avoiding `file:` URI parsing issues. Additionally, set `optTranslatorFactory(new TextEmbeddingTranslatorFactory())` explicitly so DJL does not need to discover the translator from `serving.properties`. Also set `optModelName("model")` to tell DJL the ONNX file is named `model.onnx`.
+
+**Key takeaway:** When loading local DJL models, prefer `optModelPath(Path)` over `optModelUrls(String)`, and always set `optTranslatorFactory()` explicitly to avoid relying on `serving.properties` discovery. The `serving.properties` file is still generated as a fallback but is no longer the primary mechanism for translator selection.
