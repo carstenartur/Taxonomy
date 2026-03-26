@@ -586,6 +586,64 @@ class ScreenshotGeneratorIT {
     }
 
     /**
+     * Waits for CodeMirror to be ready and populates the DSL editor with exported DSL text.
+     * Uses event-driven waits at each step instead of silent fallbacks.
+     *
+     * @param requireRelations if true, asserts that the DSL text contains "relation" blocks
+     * @return the DSL text that was loaded into the editor
+     */
+    private String loadDslEditorWithAssertions(boolean requireRelations) {
+        // Step 1: Assert CodeMirror loaded — fail with a diagnostic message if it never initializes
+        try {
+            wait(30).until(d -> {
+                Boolean ready = (Boolean) ((JavascriptExecutor) d).executeScript(
+                        "return window.dslCmView != null;");
+                return Boolean.TRUE.equals(ready);
+            });
+        } catch (org.openqa.selenium.TimeoutException e) {
+            Assertions.fail("CodeMirror EditorView (window.dslCmView) was never initialized — " +
+                    "the ES module taxonomy-dsl-codemirror.mjs likely failed to load its esm.sh imports");
+        }
+
+        // Step 2: Assert /api/dsl/export returns data
+        js("window.__dslExportText = null;" +
+           "fetch('/api/dsl/export').then(r => r.text()).then(t => { window.__dslExportText = t; })" +
+           ".catch(e => { window.__dslExportText = 'ERROR:' + e.message; });");
+        wait(10).until(d -> {
+            String result = (String) ((JavascriptExecutor) d).executeScript(
+                    "return window.__dslExportText;");
+            return result != null;
+        });
+        String exportText = (String) ((JavascriptExecutor) driver).executeScript(
+                "return window.__dslExportText;");
+        Assertions.assertFalse(exportText.startsWith("ERROR:"),
+                "DSL export API failed: " + exportText);
+        Assertions.assertTrue(exportText.length() > 10,
+                "DSL export returned unexpectedly short text (" + exportText.length() + " chars)");
+
+        // Step 3: Assert editor content was set
+        js("var v = window.dslCmView;" +
+           "v.dispatch({changes: {from: 0, to: v.state.doc.length, insert: window.__dslExportText}});");
+        wait(5).until(d -> {
+            String content = (String) ((JavascriptExecutor) d).executeScript(
+                    "var v = window.dslCmView; return v ? v.state.doc.toString() : '';");
+            return content != null && content.length() > 50;
+        });
+        String editorContent = (String) ((JavascriptExecutor) driver).executeScript(
+                "var v = window.dslCmView; return v ? v.state.doc.toString() : '';");
+        Assertions.assertTrue(editorContent.length() > 50,
+                "Editor content is empty or too short after setting DSL export text");
+
+        // Step 4: Optionally assert relation blocks present
+        if (requireRelations) {
+            Assertions.assertTrue(editorContent.contains("relation"),
+                    "DSL export does not contain any 'relation' blocks — accepted relations may not be exported");
+        }
+
+        return editorContent;
+    }
+
+    /**
      * Pre-seeds 4 taxonomy relations via the REST API so that
      * {@code RelevancePropagationService.propagate()} has edges to traverse when the
      * architecture view is rendered.  Without these relations only the 3 anchor nodes
@@ -1645,24 +1703,7 @@ class ScreenshotGeneratorIT {
         // Ensure Git history with branches exists for realistic DSL content
         buildGitHistory();
         navigateToTab("dsl-editor");
-        // Fetch DSL export and populate CodeMirror 6 editor (dslEditorContainer + window.dslCmView)
-        js("fetch('/api/dsl/export').then(r => r.text()).then(t => {" +
-           "  var view = window.dslCmView;" +
-           "  if (view && t && t.trim().length > 0) {" +
-           "    view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: t}});" +
-           "  }" +
-           "});");
-        try {
-            wait(15).until(d -> {
-                String content = (String) ((JavascriptExecutor) d).executeScript(
-                        "var v = window.dslCmView; return v ? v.state.doc.toString() : '';");
-                return content != null && !content.isBlank() && content.length() > 50;
-            });
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Fallback: inject representative DSL into CodeMirror editor
-            js("var view = window.dslCmView;" +
-               "if (view) view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: " + jsStringLiteral(FALLBACK_DSL_TEXT) + "}});");
-        }
+        loadDslEditorWithAssertions(false);
         saveScreenshot("34-dsl-editor-panel.png");
     }
 
@@ -1920,24 +1961,7 @@ class ScreenshotGeneratorIT {
     @Order(40)
     void captureDslWithRelations() throws IOException {
         navigateToTab("dsl-editor");
-        // Fetch the DSL export which should now include relation blocks from accepted proposals
-        js("fetch('/api/dsl/export').then(r => r.text()).then(t => {" +
-           "  var view = window.dslCmView;" +
-           "  if (view && t && t.trim().length > 0) {" +
-           "    view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: t}});" +
-           "  }" +
-           "});");
-        try {
-            wait(15).until(d -> {
-                String content = (String) ((JavascriptExecutor) d).executeScript(
-                        "var v = window.dslCmView; return v ? v.state.doc.toString() : '';");
-                return content != null && !content.isBlank() && content.contains("relation");
-            });
-        } catch (org.openqa.selenium.TimeoutException e) {
-            // Fallback: inject DSL with relation blocks into CodeMirror editor
-            js("var view = window.dslCmView;" +
-               "if (view) view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: " + jsStringLiteral(FALLBACK_DSL_TEXT) + "}});");
-        }
+        loadDslEditorWithAssertions(true);
         // Inject healthy status badges to avoid capturing "unavailable" / error states
         // (AI badge, Embeddings badge, Git status bar) in the documentation screenshot
         injectHealthyStatusBadges();

@@ -382,50 +382,57 @@ document.addEventListener('DOMContentLoaded', () => {
     const container = document.getElementById('dslEditorContainer');
     if (!container) return;
 
-    const view = new EditorView({
-        doc: '',
-        extensions: [
-            basicSetup,
-            taxDslLanguage,
-            autocompletion({ override: [taxDslCompletions] }),
-            taxDslLinter,
-            lintGutter(),
-            themeCompartment.of(getCurrentTheme()),
-            EditorView.theme({
-                '&': { height: 'auto', minHeight: '300px', fontSize: '0.82rem' },
-                '.cm-scroller': {
-                    fontFamily: 'var(--bs-font-monospace, monospace)',
-                    overflow: 'auto',
-                    maxHeight: '500px'
-                }
-            }),
-            keymap.of([{
-                key: 'Shift-Alt-f',
-                run: () => {
-                    if (typeof window.dslFormatContent === 'function') {
-                        window.dslFormatContent();
+    try {
+        const view = new EditorView({
+            doc: '',
+            extensions: [
+                basicSetup,
+                taxDslLanguage,
+                autocompletion({ override: [taxDslCompletions] }),
+                taxDslLinter,
+                lintGutter(),
+                themeCompartment.of(getCurrentTheme()),
+                EditorView.theme({
+                    '&': { height: 'auto', minHeight: '300px', fontSize: '0.82rem' },
+                    '.cm-scroller': {
+                        fontFamily: 'var(--bs-font-monospace, monospace)',
+                        overflow: 'auto',
+                        maxHeight: '500px'
                     }
-                    return true;
-                }
-            }])
-        ],
-        parent: container
-    });
-
-    window.dslCmView = view;
-    container.dispatchEvent(new CustomEvent('cm-ready'));
-
-    // Pre-fetch taxonomy codes for autocompletion
-    fetchTaxCodes();
-
-    // Sync theme when dark mode toggles
-    const observer = new MutationObserver(() => {
-        view.dispatch({
-            effects: themeCompartment.reconfigure(getCurrentTheme())
+                }),
+                keymap.of([{
+                    key: 'Shift-Alt-f',
+                    run: () => {
+                        if (typeof window.dslFormatContent === 'function') {
+                            window.dslFormatContent();
+                        }
+                        return true;
+                    }
+                }])
+            ],
+            parent: container
         });
-    });
-    observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['data-bs-theme']
-    });
+
+        window.dslCmView = view;
+        container.dispatchEvent(new CustomEvent('cm-ready'));
+
+        // Pre-fetch taxonomy codes for autocompletion
+        fetchTaxCodes();
+
+        // Sync theme when dark mode toggles
+        const observer = new MutationObserver(() => {
+            view.dispatch({
+                effects: themeCompartment.reconfigure(getCurrentTheme())
+            });
+        });
+        observer.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['data-bs-theme']
+        });
+    } catch (err) {
+        console.error('[taxonomy-dsl-codemirror] Failed to initialize CodeMirror editor:', err);
+        // Dispatch cm-ready even on error so taxonomy-dsl-editor.js does not hang forever.
+        // window.dslCmView remains null, allowing the editor JS to show a graceful error.
+        container.dispatchEvent(new CustomEvent('cm-ready', { detail: { error: err.message } }));
+    }
 });

@@ -1029,4 +1029,46 @@ class DslApiControllerTest {
                 .andExpect(jsonPath("$.commitId").isNotEmpty())
                 .andExpect(jsonPath("$.resolution").value("manual"));
     }
+
+    // ── Export content assertions ────────────────────────────────────
+
+    @Test
+    void exportContainsMetaBlock() throws Exception {
+        mockMvc.perform(get("/api/dsl/export"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("meta")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("language:")));
+    }
+
+    @Test
+    void exportContainsElementDataWhenNodesExist() throws Exception {
+        // The embedded H2 test database is pre-populated from the taxonomy Excel workbook.
+        // A successful export must contain element blocks for the non-root nodes.
+        mockMvc.perform(get("/api/dsl/export"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("element")));
+    }
+
+    @Test
+    void exportContainsRelationBlocksAfterHypothesisAccepted() throws Exception {
+        // Create and accept a hypothesis between two root-level codes.
+        // The relation is created on the default workspace (null workspaceId).
+        RelationHypothesis h = new RelationHypothesis();
+        h.setSourceNodeId("BP");
+        h.setTargetNodeId("CP");
+        h.setRelationType(RelationType.SUPPORTS);
+        h.setStatus(com.taxonomy.model.HypothesisStatus.PROVISIONAL);
+        h.setConfidence(0.90);
+        h.setAnalysisSessionId("export-relation-test");
+        h = hypothesisRepository.save(h);
+
+        mockMvc.perform(post("/api/dsl/hypotheses/" + h.getId() + "/accept"))
+                .andExpect(status().isOk());
+
+        // The accepted hypothesis creates a TaxonomyRelation in the database.
+        // The export must now include a relation block.
+        mockMvc.perform(get("/api/dsl/export"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("relation")));
+    }
 }

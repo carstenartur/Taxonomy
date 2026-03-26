@@ -35,6 +35,15 @@
         var view = window.dslCmView;
         if (view) {
             view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+        } else {
+            // CodeMirror failed to initialise — show a visible error so the user can diagnose
+            if (editorContainer) {
+                var errMsg = document.createElement('div');
+                errMsg.className = 'alert alert-danger small mt-2';
+                errMsg.textContent = 'DSL editor not available — CodeMirror failed to load (check browser console for details).';
+                editorContainer.appendChild(errMsg);
+            }
+            console.error('[taxonomy-dsl-editor] setEditorContent called but window.dslCmView is null');
         }
     }
 
@@ -79,7 +88,42 @@
         if (window.dslCmView) {
             loadCurrent();
         } else {
-            editorContainer.addEventListener('cm-ready', loadCurrent, { once: true });
+            var cmReadyHandled = false;
+
+            function onCmReady() {
+                if (cmReadyHandled) return;
+                cmReadyHandled = true;
+                clearTimeout(cmReadyTimeout);
+                if (window.dslCmView) {
+                    loadCurrent();
+                } else {
+                    showCmLoadError();
+                }
+            }
+
+            function showCmLoadError() {
+                console.error('[taxonomy-dsl-editor] CodeMirror (window.dslCmView) was never set — ' +
+                    'taxonomy-dsl-codemirror.mjs may have failed to resolve its esm.sh imports.');
+                if (editorContainer) {
+                    var errDiv = document.createElement('div');
+                    errDiv.className = 'alert alert-danger small mt-2';
+                    errDiv.textContent = 'DSL editor could not be initialised. ' +
+                        'This is usually caused by a failed network request to esm.sh. ' +
+                        'Check the browser console for details.';
+                    editorContainer.appendChild(errDiv);
+                }
+            }
+
+            editorContainer.addEventListener('cm-ready', onCmReady, { once: true });
+
+            // Safety net: if cm-ready never fires within 10 s, show a diagnostic error
+            var cmReadyTimeout = setTimeout(function () {
+                if (!cmReadyHandled) {
+                    cmReadyHandled = true;
+                    editorContainer.removeEventListener('cm-ready', onCmReady);
+                    showCmLoadError();
+                }
+            }, 10000);
         }
     }
 
