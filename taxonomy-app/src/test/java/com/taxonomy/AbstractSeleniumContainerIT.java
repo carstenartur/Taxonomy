@@ -328,6 +328,11 @@ abstract class AbstractSeleniumContainerIT {
     @Test
     @Order(19)
     void switchBackToEnglish() {
+        // Navigate back to home/browse page first (test 18 may have left us on the Help page)
+        driver.get("http://app:8080/");
+        new WebDriverWait(driver, Duration.ofSeconds(30))
+                .until(ExpectedConditions.presenceOfElementLocated(By.id("langSelector")));
+
         // Switch back to English to not affect any further tests
         org.openqa.selenium.support.ui.Select langSelect =
                 new org.openqa.selenium.support.ui.Select(
