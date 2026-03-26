@@ -63,8 +63,8 @@ public class GraphSearchService {
     @Transactional(readOnly = true)
     public GraphSearchResult graphSearch(String queryText, int maxResults) {
 <span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (!embeddingService.isAvailable()) {</span>
-<span class="fc" id="L66">            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),</span>
-<span class="fc" id="L67">                    Collections.emptyMap(), &quot;Semantic search is not available (embedding model not loaded).&quot;);</span>
+<span class="nc" id="L66">            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),</span>
+<span class="nc" id="L67">                    Collections.emptyMap(), &quot;Semantic search is not available (embedding model not loaded).&quot;);</span>
         }
 
         try {
@@ -123,13 +123,13 @@ public class GraphSearchService {
 
 <span class="nc" id="L124">            return new GraphSearchResult(matchedNodes, relationCountByRoot, topRelationTypes, summary);</span>
 
-<span class="nc" id="L126">        } catch (Exception | LinkageError e) {</span>
+<span class="fc" id="L126">        } catch (Exception | LinkageError e) {</span>
             // LinkageError covers UnsatisfiedLinkError / NoClassDefFoundError from
             // native DJL / ONNX Runtime library loading, which would otherwise
             // propagate as an unhandled 500 error.
-<span class="nc" id="L130">            log.error(&quot;Graph search failed for query '{}': {}&quot;, queryText, e.getMessage());</span>
-<span class="nc" id="L131">            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),</span>
-<span class="nc" id="L132">                    Collections.emptyMap(), &quot;Graph search failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L130">            log.error(&quot;Graph search failed for query '{}': {}&quot;, queryText, e.getMessage());</span>
+<span class="fc" id="L131">            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),</span>
+<span class="fc" id="L132">                    Collections.emptyMap(), &quot;Graph search failed: &quot; + e.getMessage());</span>
         }
     }
 

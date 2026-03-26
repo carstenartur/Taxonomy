@@ -110,14 +110,14 @@ public class ArchitectureRecommendationService {
 
             // If embedding service is available, score candidates semantically
             List&lt;TaxonomyNode&gt; ranked;
-<span class="pc bpc" id="L113" title="2 of 6 branches missed.">            if (embeddingService.isAvailable() &amp;&amp; businessText != null &amp;&amp; !businessText.isBlank()) {</span>
+<span class="pc bpc" id="L113" title="3 of 6 branches missed.">            if (embeddingService.isAvailable() &amp;&amp; businessText != null &amp;&amp; !businessText.isBlank()) {</span>
 <span class="fc" id="L114">                ranked = rankByEmbeddingSimilarity(candidates, businessText);</span>
             } else {
                 // Fallback: use first N candidates sorted by level (leaf nodes are more specific)
-<span class="fc" id="L117">                ranked = candidates.stream()</span>
-<span class="fc" id="L118">                        .sorted(Comparator.comparingInt(TaxonomyNode::getLevel).reversed())</span>
-<span class="fc" id="L119">                        .limit(MAX_PROPOSALS_PER_GAP)</span>
-<span class="fc" id="L120">                        .collect(Collectors.toList());</span>
+<span class="nc" id="L117">                ranked = candidates.stream()</span>
+<span class="nc" id="L118">                        .sorted(Comparator.comparingInt(TaxonomyNode::getLevel).reversed())</span>
+<span class="nc" id="L119">                        .limit(MAX_PROPOSALS_PER_GAP)</span>
+<span class="nc" id="L120">                        .collect(Collectors.toList());</span>
             }
 
 <span class="fc" id="L123">            int added = 0;</span>

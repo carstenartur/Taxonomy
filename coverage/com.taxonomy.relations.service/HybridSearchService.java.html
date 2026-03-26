@@ -56,9 +56,9 @@ public class HybridSearchService {
     public List&lt;TaxonomyNodeDto&gt; hybridSearch(String queryText, int maxResults) {
 <span class="fc" id="L57">        List&lt;TaxonomyNodeDto&gt; fullText = searchService.search(queryText, maxResults);</span>
 
-<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (!embeddingService.isAvailable()) {</span>
-<span class="fc" id="L60">            log.debug(&quot;Embedding unavailable; hybrid search returning full-text only results&quot;);</span>
-<span class="fc" id="L61">            return fullText;</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (!embeddingService.isAvailable()) {</span>
+<span class="nc" id="L60">            log.debug(&quot;Embedding unavailable; hybrid search returning full-text only results&quot;);</span>
+<span class="nc" id="L61">            return fullText;</span>
         }
 
 <span class="fc" id="L64">        List&lt;TaxonomyNodeDto&gt; semantic = embeddingService.semanticSearch(queryText, maxResults);</span>
