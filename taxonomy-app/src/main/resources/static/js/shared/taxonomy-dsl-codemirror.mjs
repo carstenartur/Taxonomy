@@ -12,15 +12,17 @@
  * 'cm-ready' CustomEvent on #dslEditorContainer.
  */
 
-import { EditorView, basicSetup } from 'https://esm.sh/codemirror@6';
-import { StreamLanguage, HighlightStyle, syntaxHighlighting } from 'https://esm.sh/@codemirror/language@6';
-import { tags } from 'https://esm.sh/@lezer/highlight@1';
-import { oneDark } from 'https://esm.sh/@codemirror/theme-one-dark@6';
-import { linter, lintGutter } from 'https://esm.sh/@codemirror/lint@6';
-import { autocompletion } from 'https://esm.sh/@codemirror/autocomplete@6';
-import { Compartment } from 'https://esm.sh/@codemirror/state@6';
-import { keymap } from 'https://esm.sh/@codemirror/view@6';
-import { MergeView } from 'https://esm.sh/@codemirror/merge@6.6.1';
+import {
+    EditorView, basicSetup,
+    StreamLanguage, HighlightStyle, syntaxHighlighting,
+    tags,
+    oneDark,
+    linter, lintGutter,
+    autocompletion,
+    Compartment,
+    keymap,
+    MergeView
+} from '/js/vendor/codemirror-bundle.mjs';
 
 // ── TaxDSL token sets ──────────────────────────────────────────────────
 const BLOCK_KEYWORDS = new Set([
