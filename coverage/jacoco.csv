@@ -60,7 +60,7 @@ Taxonomy Application,com.taxonomy.relations.controller,RelationApiController,9,1
 Taxonomy Application,com.taxonomy.relations.controller,CoverageApiController.RecordCoverageRequest,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.security.service,DatabaseUserDetailsService,0,52,0,2,0,14,0,5,0,4
 Taxonomy Application,com.taxonomy.shared.controller,PreferencesController,67,10,4,0,17,4,6,2,4,2
-Taxonomy Application,com.taxonomy.shared.controller,HelpController,104,916,20,8,24,48,14,11,1,10
+Taxonomy Application,com.taxonomy.shared.controller,HelpController,104,937,20,8,24,48,14,11,1,10
 Taxonomy Application,com.taxonomy.shared.controller,I18nApiController,6,61,1,3,2,16,1,4,0,3
 Taxonomy Application,com.taxonomy.shared.controller,HelpController.DocEntry,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.controller,AdminApiController,91,456,23,21,18,87,21,16,3,12
