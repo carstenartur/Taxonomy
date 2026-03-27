@@ -1063,10 +1063,18 @@ class ScreenshotGeneratorIT {
     }
 
     /**
-     * Opens a Bootstrap modal and waits for the {@code shown.bs.modal} event to fire.
-     * Uses Bootstrap's native {@code show()} API — no DOM manipulation needed.
-     * The global event listener sets {@code data-modal-visible="true"} when the
-     * transition completes, guaranteeing full opacity.
+     * Opens a Bootstrap modal and waits for the {@code shown.bs.modal} event to fire
+     * <b>and</b> for the {@code .modal-content} element to be actually rendered with
+     * visible dimensions.  The two-phase wait prevents screenshots that capture only
+     * the darkened backdrop before the browser has laid out the dialog.
+     *
+     * <ol>
+     *   <li>Phase 1 — event-driven: waits for {@code data-modal-visible="true"}
+     *       (set by the global {@code shown.bs.modal} listener or the DOM fallback).</li>
+     *   <li>Phase 2 — render-driven: polls {@code getBoundingClientRect().height}
+     *       on {@code .modal-content} until it exceeds 50 px, confirming the browser
+     *       has completed the reflow and the dialog is visible.</li>
+     * </ol>
      */
     private void showModalAndWait(String modalId) {
         // Remove any stale signal from previous test
@@ -1074,27 +1082,44 @@ class ScreenshotGeneratorIT {
            "if (el) el.removeAttribute('data-modal-visible');", modalId);
 
         // Remove 'fade' class to skip CSS transition (instant show),
+        // set display:block eagerly to reduce async layout work,
         // then open via Bootstrap API when available, or fall back to a
         // minimal DOM-based show in environments where Bootstrap is missing.
         js("var el = document.getElementById(arguments[0]);" +
            "if (el) {" +
            "  el.classList.remove('fade');" +
+           "  el.style.display='block';" +
            "  if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {" +
            "    var inst = bootstrap.Modal.getOrCreateInstance(el);" +
            "    inst.show();" +
            "  } else {" +
            "    el.classList.add('show');" +
-           "    el.style.display='block';" +
            "    el.setAttribute('aria-modal','true');" +
            "    el.removeAttribute('aria-hidden');" +
            "    el.setAttribute('data-modal-visible','true');" +
            "  }" +
            "}", modalId);
 
-        // Wait for Bootstrap's own 'shown.bs.modal' event (or the fallback
+        // Phase 1: Wait for Bootstrap's own 'shown.bs.modal' event (or the fallback
         // setting data-modal-visible='true' when Bootstrap is not present)
         wait(10).until(ExpectedConditions.attributeToBe(
                 By.id(modalId), "data-modal-visible", "true"));
+
+        // Phase 2: Ensure .modal-content has been laid out by the browser.
+        // getBoundingClientRect() is synchronous and returns 0-height when the
+        // element has not been reflowed yet.  Selenium polls every 500 ms.
+        // 50 px is well below any real modal but safely above an un-laid-out element.
+        wait(10).until(d -> {
+            Object result = ((JavascriptExecutor) d).executeScript(
+                "var m = document.getElementById(arguments[0]);" +
+                "if (!m) return 0;" +
+                "var el = m.querySelector('.modal-content');" +
+                "if (!el) return 0;" +
+                "return Math.round(el.getBoundingClientRect().height);",
+                modalId);
+            long height = (result instanceof Number) ? ((Number) result).longValue() : 0;
+            return height > 50;
+        });
     }
 
     /** Opens a <details> element if it is currently closed. */
