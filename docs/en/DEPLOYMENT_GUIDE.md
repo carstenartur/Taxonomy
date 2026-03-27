@@ -22,9 +22,19 @@ This guide covers deploying the Taxonomy Architecture Analyzer using Docker and 
 
 ## 1. Docker Deployment
 
-### Building the Docker Image
+### Official Container Image
 
-The repository includes a multi-stage `Dockerfile`:
+The official image is published to **GitHub Container Registry (GHCR)** on every push
+to `main`. See the [Container Image Guide](CONTAINER_IMAGE.md) for tag details, Docker
+Compose usage, volumes, and upgrade procedures.
+
+```bash
+docker pull ghcr.io/carstenartur/taxonomy:latest
+```
+
+### Building the Docker Image Locally
+
+If you prefer to build from source, the repository includes a multi-stage `Dockerfile`:
 
 | Stage | Base Image | Purpose |
 |---|---|---|
@@ -46,21 +56,21 @@ docker build -t taxonomy-analyzer .
 
 **Minimal (browser-only, no AI):**
 ```bash
-docker run -p 8080:8080 taxonomy-analyzer
+docker run -p 8080:8080 ghcr.io/carstenartur/taxonomy:latest
 ```
 
 **With a cloud LLM provider (e.g. Gemini):**
 ```bash
 docker run -p 8080:8080 \
   -e GEMINI_API_KEY=your-gemini-api-key \
-  taxonomy-analyzer
+  ghcr.io/carstenartur/taxonomy:latest
 ```
 
 **With local offline AI (no API key needed):**
 ```bash
 docker run -p 8080:8080 \
   -e LLM_PROVIDER=LOCAL_ONNX \
-  taxonomy-analyzer
+  ghcr.io/carstenartur/taxonomy:latest
 ```
 
 **Full production configuration:**
@@ -74,7 +84,7 @@ docker run -d \
   -e TAXONOMY_EMBEDDING_ENABLED=true \
   -e TAXONOMY_SWAGGER_PUBLIC=false \
   -e TAXONOMY_AUDIT_LOGGING=true \
-  taxonomy-analyzer
+  ghcr.io/carstenartur/taxonomy:latest
 ```
 
 ### Required `-e` Flags
@@ -126,7 +136,9 @@ docker run -d \
 
 ### Using the Published Image
 
-The CI/CD pipeline publishes a Docker image to GitHub Container Registry:
+The CI/CD pipeline publishes the official image to GitHub Container Registry.
+See the [Container Image Guide](CONTAINER_IMAGE.md) for all available tags and
+upgrade instructions.
 
 ```bash
 docker pull ghcr.io/carstenartur/taxonomy:latest

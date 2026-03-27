@@ -22,9 +22,19 @@ Dieses Handbuch behandelt die Bereitstellung des Taxonomy Architecture Analyzer 
 
 ## 1. Docker-Bereitstellung
 
-### Docker-Image erstellen
+### Offizielles Container-Image
 
-Das Repository enthält ein mehrstufiges `Dockerfile`:
+Das offizielle Image wird bei jedem Push auf `main` in der **GitHub Container Registry (GHCR)**
+veröffentlicht. Siehe den [Container-Image-Leitfaden](CONTAINER_IMAGE.md) für Tag-Details,
+Docker-Compose-Nutzung, Volumes und Aktualisierungsverfahren.
+
+```bash
+docker pull ghcr.io/carstenartur/taxonomy:latest
+```
+
+### Docker-Image lokal erstellen
+
+Wenn Sie lieber aus dem Quellcode bauen, enthält das Repository ein mehrstufiges `Dockerfile`:
 
 | Stufe | Base Image | Zweck |
 |---|---|---|
@@ -46,21 +56,21 @@ docker build -t taxonomy-analyzer .
 
 **Minimal (nur Browser, ohne KI):**
 ```bash
-docker run -p 8080:8080 taxonomy-analyzer
+docker run -p 8080:8080 ghcr.io/carstenartur/taxonomy:latest
 ```
 
 **Mit einem Cloud-LLM-Anbieter (z. B. Gemini):**
 ```bash
 docker run -p 8080:8080 \
   -e GEMINI_API_KEY=your-gemini-api-key \
-  taxonomy-analyzer
+  ghcr.io/carstenartur/taxonomy:latest
 ```
 
 **Mit lokaler Offline-KI (kein API-Schlüssel erforderlich):**
 ```bash
 docker run -p 8080:8080 \
   -e LLM_PROVIDER=LOCAL_ONNX \
-  taxonomy-analyzer
+  ghcr.io/carstenartur/taxonomy:latest
 ```
 
 **Vollständige Produktionskonfiguration:**
@@ -74,7 +84,7 @@ docker run -d \
   -e TAXONOMY_EMBEDDING_ENABLED=true \
   -e TAXONOMY_SWAGGER_PUBLIC=false \
   -e TAXONOMY_AUDIT_LOGGING=true \
-  taxonomy-analyzer
+  ghcr.io/carstenartur/taxonomy:latest
 ```
 
 ### Erforderliche `-e`-Flags
@@ -125,7 +135,9 @@ docker run -d \
 
 ### Veröffentlichtes Image verwenden
 
-Die CI/CD-Pipeline veröffentlicht ein Docker-Image in der GitHub Container Registry:
+Die CI/CD-Pipeline veröffentlicht das offizielle Image in der GitHub Container Registry.
+Siehe den [Container-Image-Leitfaden](CONTAINER_IMAGE.md) für alle verfügbaren Tags und
+Aktualisierungsanleitungen.
 
 ```bash
 docker pull ghcr.io/carstenartur/taxonomy:latest
