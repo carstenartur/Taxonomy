@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.service;
 
+import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 
 import java.util.List;
@@ -15,7 +16,8 @@ public interface AnalysisEventCallback {
     void onPhase(String message, int progressPercent);
 
     /** Partial scores have arrived; merge these into the UI immediately. */
-    void onScores(Map<String, Integer> newScores, Map<String, String> reasons, String description);
+    void onScores(Map<String, Integer> newScores, Map<String, String> reasons, String description,
+                  LlmCallDetail detail);
 
     /** A parent node is about to be expanded; its children are next to be evaluated. */
     void onExpanding(String parentCode, List<String> childCodes);

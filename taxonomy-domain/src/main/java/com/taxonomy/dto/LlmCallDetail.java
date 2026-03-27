@@ -4,7 +4,7 @@ import java.util.Map;
 
 /**
  * Captures details of a single LLM API call: the prompt sent, the raw text response,
- * parsed scores, reasons per node, provider name, and call duration.
+ * parsed scores, reasons per node, provider name, call duration, and any discrepancy.
  */
 public class LlmCallDetail {
 
@@ -15,6 +15,7 @@ public class LlmCallDetail {
     private String provider;
     private long durationMs;
     private String error;
+    private TaxonomyDiscrepancy discrepancy;
 
     public LlmCallDetail() {}
 
@@ -38,4 +39,7 @@ public class LlmCallDetail {
 
     public String getError() { return error; }
     public void setError(String error) { this.error = error; }
+
+    public TaxonomyDiscrepancy getDiscrepancy() { return discrepancy; }
+    public void setDiscrepancy(TaxonomyDiscrepancy discrepancy) { this.discrepancy = discrepancy; }
 }

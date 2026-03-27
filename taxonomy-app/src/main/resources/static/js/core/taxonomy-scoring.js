@@ -324,6 +324,11 @@
 
         setAnalyzing(true);
         B().clearStatus();
+        clearAnalysisLog();
+        var llmCommLogEl = document.getElementById('llmCommLogContent');
+        if (llmCommLogEl) {
+            llmCommLogEl.innerHTML = '';
+        }
         S.currentScores = {};
         S.currentReasons = {};
         document.getElementById('businessText').classList.remove('stale-results');
@@ -352,6 +357,20 @@
             Object.entries(data.scores).forEach(function ([code, pct]) {
                 applyScoreToNode(code, pct, data.reasons ? data.reasons[code] : null);
             });
+            if (data.prompt !== undefined || data.rawResponse !== undefined) {
+                appendLlmLogEntry(
+                    data.message || data.description || 'streaming',
+                    data.scores,
+                    {
+                        prompt: data.prompt || '',
+                        rawResponse: data.rawResponse || '',
+                        provider: data.provider || '',
+                        durationMs: data.durationMs || 0,
+                        reasons: data.reasons || {},
+                        error: data.error || null
+                    }
+                );
+            }
         });
 
         eventSource.addEventListener('expanding', function (e) {
