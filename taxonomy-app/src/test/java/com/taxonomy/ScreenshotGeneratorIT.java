@@ -2862,11 +2862,15 @@ class ScreenshotGeneratorIT {
            "  if (p.id === 'versions-variants') { p.classList.remove('d-none'); }" +
            "  else { p.classList.add('d-none'); }" +
            "});");
-        // Wait for the variants list to populate
-        wait(15).until(d -> {
-            Long count = (Long) ((JavascriptExecutor) d).executeScript(
-                    "return document.querySelectorAll('#variantsList .card, #variantsList .list-group-item').length;");
-            return count != null && count >= 2;
+        // Explicitly trigger variant loading — the pane was hidden (d-none) so auto-load may not fire
+        js("if (window.TaxonomyVariants) { window.TaxonomyVariants.refresh(); }");
+        // Wait for the variants browser to load (matches working Test 47 pattern)
+        wait(30).until(d -> {
+            String html = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('variantsBrowser');" +
+                    "return el ? el.innerHTML : '';");
+            return html != null && html.contains("variant-card")
+                    && !html.contains("Loading");
         });
         injectHealthyStatusBadges();
         saveScreenshot("72-rich-variants-browser.png");
