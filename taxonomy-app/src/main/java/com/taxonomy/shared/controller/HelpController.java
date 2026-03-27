@@ -69,6 +69,7 @@ public class HelpController {
         new String[]{"DEVELOPER_GUIDE",           "🛠️", "help.toc.DEVELOPER_GUIDE",               "help.audience.developers"},
         new String[]{"FEATURE_MATRIX",             "📋", "help.toc.FEATURE_MATRIX",                "help.audience.developers"},
         new String[]{"DEPLOYMENT_GUIDE",          "🚀", "help.toc.DEPLOYMENT_GUIDE",              "help.audience.devops"},
+        new String[]{"CONTAINER_IMAGE",           "🐳", "help.toc.CONTAINER_IMAGE",               "help.audience.devops"},
         new String[]{"SECURITY",                  "🔒", "help.toc.SECURITY",                      "help.audience.admins"},
         new String[]{"DATABASE_SETUP",            "🗄️", "help.toc.DATABASE_SETUP",                "help.audience.devops"},
         new String[]{"DEPLOYMENT_CHECKLIST",      "✅", "help.toc.DEPLOYMENT_CHECKLIST",           "help.audience.devops"},

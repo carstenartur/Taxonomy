@@ -114,10 +114,35 @@ Open <http://localhost:8080> and log in with `admin` / `admin`.
 
 **→ Now follow the [Core Workflow](#core-workflow-ui) above to run your first analysis.**
 
+### Container Image
+
+The official Docker image is published to **GitHub Container Registry** on every push
+to `main`:
+
+```
+ghcr.io/carstenartur/taxonomy
+```
+
+**Pull and run (quick start):**
+```bash
+docker pull ghcr.io/carstenartur/taxonomy:latest
+docker run -p 8080:8080 ghcr.io/carstenartur/taxonomy:latest
+# Open http://localhost:8080 — never expose port 8080 to the internet
+```
+
+| Tag | Example | Description |
+|---|---|---|
+| `latest` | `ghcr.io/carstenartur/taxonomy:latest` | Most recent build from the default branch (`main`) |
+| `main` | `ghcr.io/carstenartur/taxonomy:main` | Identical to `latest` (branch-name tag) |
+| `sha-<hash>` | `ghcr.io/carstenartur/taxonomy:sha-abc1234` | Pinned to a specific commit — use for reproducible deployments |
+
+> See the [Container Image Guide](docs/en/CONTAINER_IMAGE.md) for Docker Compose usage,
+> environment variables, volume mounts, and upgrade notes.
+
 ### Docker (production — with HTTPS)
 
-For any deployment beyond `localhost`, use Docker with a reverse proxy that provides
-automatic HTTPS. The repository includes a ready-to-use
+For any deployment beyond `localhost`, use Docker Compose with a reverse proxy that
+provides automatic HTTPS. The repository includes a ready-to-use
 [`docker-compose.prod.yml`](docker-compose.prod.yml) with [Caddy](https://caddyserver.com)
 for automatic TLS certificate provisioning:
 
@@ -128,7 +153,7 @@ cd Taxonomy
 cp .env.example .env          # edit .env with your domain and API key
 
 # 2. Start (HTTPS on port 443, automatic Let's Encrypt certificate)
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 Open `https://your-domain.example.com` and log in with the password you set in `.env`.
@@ -139,8 +164,7 @@ Open `https://your-domain.example.com` and log in with the password you set in `
 
 **Docker without HTTPS (local testing only):**
 ```bash
-docker build -t taxonomy-analyzer .
-docker run -p 8080:8080 -e LLM_PROVIDER=LOCAL_ONNX taxonomy-analyzer
+docker run -p 8080:8080 -e LLM_PROVIDER=LOCAL_ONNX ghcr.io/carstenartur/taxonomy:latest
 # Access at http://localhost:8080 — never expose this to the internet
 ```
 
@@ -198,6 +222,7 @@ Taxonomy/
 | **[API Reference](docs/en/API_REFERENCE.md)** | REST API quick-reference with request/response examples |
 | **[Curl Examples](docs/en/CURL_EXAMPLES.md)** | End-to-end automation examples |
 | **[Configuration](docs/en/CONFIGURATION_REFERENCE.md)** | Environment variables and settings |
+| **[Container Image](docs/en/CONTAINER_IMAGE.md)** | GHCR image, Docker Compose, tags, volumes, upgrades |
 | **[Deployment](docs/en/DEPLOYMENT_GUIDE.md)** | Docker, Render.com, health checks |
 | **[Deployment Checklist](docs/en/DEPLOYMENT_CHECKLIST.md)** | Pre-deployment verification checklist |
 | **[Security](docs/en/SECURITY.md)** | Authentication, roles, permissions, deployment hardening |
