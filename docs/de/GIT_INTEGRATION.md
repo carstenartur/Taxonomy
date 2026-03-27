@@ -2,6 +2,8 @@
 
 Der Taxonomy Architecture Analyzer verwendet **JGit**, um eine vollständige Git-Versionskontrolle für Architecture-DSL-Dokumente bereitzustellen. Das Git-Repository wird in der Anwendungsdatenbank gespeichert (kein Dateisystem erforderlich), was Ihnen Branching, Commit-Historie, Diff, Merge und Cherry-Pick-Funktionen für Ihre Architekturmodelle bietet.
 
+> **📌 Für die grafische Benutzerführung** zu Varianten, Merge und Versionsverlauf siehe [Arbeitsbereich & Versionierung](WORKSPACE_VERSIONING.md).
+
 ## Inhaltsverzeichnis
 
 - [Überblick](#überblick)
@@ -19,7 +21,7 @@ Der Taxonomy Architecture Analyzer verwendet **JGit**, um eine vollständige Git
 - [Hypothesen-Lebenszyklus](#hypothesen-lebenszyklus)
 - [Commit-Historie-Suche](#commit-historie-suche)
 - [Taxonomie-Pflege](#taxonomie-pflege)
-- [REST-API-Endpunkte](#rest-api-endpunkte)
+- [REST-API-Referenz (für Entwickler & Automatisierung)](#rest-api-referenz-für-entwickler--automatisierung)
 - [Verwandte Dokumentation](#verwandte-dokumentation)
 
 ---
@@ -29,6 +31,8 @@ Der Taxonomy Architecture Analyzer verwendet **JGit**, um eine vollständige Git
 Architecture-DSL-Dokumente (`.taxdsl`-Dateien) werden in einem JGit-DFS-Repository (Distributed File System) gespeichert, das durch HSQLDB-Tabellen (`git_packs`, `git_reflog`) unterstützt wird. Jede Änderung an der DSL erzeugt einen Git-Commit mit Autor, Zeitstempel und Commit-Nachricht — und bietet damit eine vollständige Audit-Spur.
 
 Der Git-Zustand wird über die UI-Statusleiste und die REST-API bereitgestellt, sodass Sie den Zustand des Repositorys überwachen, veraltete Projektionen erkennen und Merge-/Cherry-Pick-Operationen vor der Ausführung in der Vorschau betrachten können.
+
+![Kontextleiste](../images/44-context-bar.png)
 
 ---
 
@@ -121,6 +125,21 @@ Wichtige Methoden von `DslGitRepository`:
 
 Der Standard-Branch ist `draft`. Sie können Feature-Branches erstellen, um mit Architekturänderungen zu experimentieren, ohne den Haupt-Branch zu beeinflussen.
 
+Navigieren Sie zu **Versionen → Varianten** und klicken Sie auf **🌿 Neue Variante**. Geben Sie den Namen ein (z.B. `feature/new-service`) und bestätigen Sie mit **Erstellen**.
+
+![Varianten-Erstellung](../images/46-variant-creation-modal.png)
+
+Das Varianten-Panel zeigt alle vorhandenen Varianten als Karten:
+
+![Varianten-Browser](../images/47-variants-browser-tab.png)
+
+Mit wachsendem Projekt existieren mehrere Branches nebeneinander — Feature-Branches, Review-Branches und Hotfix-Branches — jeder mit eigener Commit-Historie:
+
+![Varianten-Browser mit mehreren Branches](../images/72-rich-variants-browser.png)
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
+
 ```
 POST /api/dsl/branches
 {
@@ -128,6 +147,8 @@ POST /api/dsl/branches
   "startPoint": "draft"
 }
 ```
+
+</details>
 
 Der aktive Branch für die Materialisierung wird über die Einstellung `dsl.default-branch` konfiguriert (siehe [Einstellungen](PREFERENCES.md)).
 
@@ -142,17 +163,37 @@ Jede DSL-Änderung erzeugt einen Git-Commit mit:
 - **Nachricht** — Beschreibung der Änderung
 - **Zeitstempel** — Wann der Commit erstellt wurde
 
-Commit-Historie anzeigen:
+Navigieren Sie zu **Versionen → Verlauf**. Die Zeitleiste zeigt alle Commits mit Nachricht, Autor, Zeitstempel und Hash.
+
+![Versionsverlauf-Zeitleiste](../images/66-versions-timeline.png)
+
+In einem realen Projekt wächst die Zeitleiste, während sich die Architektur weiterentwickelt — mit Commits mehrerer Teammitglieder über verschiedene Branches hinweg. Der folgende Screenshot zeigt eine realistische Zeitleiste mit zahlreichen Commits für Architekturverfeinerung, Beziehungsreviews und Feature-Branches:
+
+![Reichhaltige Versionsverlauf-Zeitleiste mit mehreren Branches](../images/71-rich-version-timeline.png)
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
 GET /api/dsl/history?branch=draft&limit=20
 ```
+
+</details>
 
 ---
 
 ## Diff und Vergleich
 
 Zwei Diff-Modi stehen zur Verfügung:
+
+Klicken Sie auf **🔍 Vergleichen** in der Kontextleiste oder im Verlauf. Die Vergleichsansicht zeigt drei Ebenen: Zusammenfassung, Drei-Spalten-Raster und DSL-Diff.
+
+![Vergleichsdialog](../images/48-compare-modal-branches.png)
+
+![Diff-Ansicht](../images/68-diff-view.png)
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 | Modus | Endpunkt | Ausgabe |
 |---|---|---|
@@ -165,11 +206,32 @@ Sie können auch zwischen Branches vergleichen:
 GET /api/dsl/diff-branches?from=draft&to=main
 ```
 
+</details>
+
 ---
 
 ## Cherry-Pick
 
 Einen bestimmten Commit von einem Branch auf einen anderen portieren:
+
+Im **Versionsverlauf** wählen Sie den gewünschten Commit und klicken Sie auf die Übertragen-Aktion. Das System zeigt eine Vorschau mit Konfliktprüfung.
+
+### Schritt für Schritt: Cherry-Pick eines Commits
+
+**1. Vorher** — Der draft-Branch hat seine eigene Historie. Sie möchten einen bestimmten geprüften Commit aus dem `review`-Branch übernehmen:
+
+![Zeitleiste vor Cherry-Pick](../images/73-cherry-pick-before.png)
+
+**2. Vorschau** — Klicken Sie auf die Übertragen-Aktion beim gewünschten Commit. Das Vorschau-Modal zeigt, was sich ändert:
+
+![Cherry-Pick-Vorschau](../images/62-cherry-pick-preview-modal.png)
+
+**3. Nachher** — Nach Bestätigung erscheint der cherry-gepickte Commit als neuer Commit auf dem draft-Branch:
+
+![Zeitleiste nach Cherry-Pick](../images/74-cherry-pick-after.png)
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
 POST /api/dsl/cherry-pick
@@ -179,6 +241,8 @@ POST /api/dsl/cherry-pick
 }
 ```
 
+</details>
+
 Die Operation verwendet intern Drei-Wege-Merge-Logik. Verwenden Sie zuerst den Vorschau-Endpunkt, um auf Konflikte zu prüfen (siehe [Konflikterkennung](#konflikterkennung)).
 
 ---
@@ -186,6 +250,19 @@ Die Operation verwendet intern Drei-Wege-Merge-Logik. Verwenden Sie zuerst den V
 ## Merge
 
 Zwei Branches mittels Drei-Wege-Merge zusammenführen:
+
+Im **Varianten-Panel** klicken Sie auf **🔀 Integrieren** bei der gewünschten Variante. Ein Vorschau-Modal zeigt die Zusammenfassung der Änderungen.
+
+![Merge-Vorschau](../images/60-merge-preview-modal.png)
+
+![Fast-Forward-Merge](../images/61-merge-preview-fast-forward.png)
+
+Nach einer erfolgreichen Zusammenführung wird ein Bestätigungs-Toast angezeigt:
+
+![Erfolgreiche Zusammenführung](../images/58-merge-success-toast.png)
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
 POST /api/dsl/merge
@@ -195,6 +272,8 @@ POST /api/dsl/merge
 }
 ```
 
+</details>
+
 Die Merge-Strategie ist RECURSIVE (Standard-Git-Verhalten). Fast-Forward-Merges werden durchgeführt, wenn der Ziel-Branch ein direkter Vorgänger des Quell-Branches ist.
 
 ---
@@ -203,7 +282,16 @@ Die Merge-Strategie ist RECURSIVE (Standard-Git-Verhalten). Fast-Forward-Merges 
 
 Vor der Ausführung eines Merge oder Cherry-Pick können Sie die Operation in der Vorschau betrachten, um auf Konflikte zu prüfen:
 
+Bei der Zusammenführung prüft das System automatisch auf Konflikte. Bei Konflikten öffnet sich der Konfliktlösungs-Dialog mit einer Seite-an-Seite-Ansicht der divergierenden Inhalte.
+
+![Konflikt-Dialog](../images/52-merge-conflict-modal.png)
+
+![Konflikt gelöst](../images/53-merge-conflict-resolved.png)
+
 ### Merge-Vorschau
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
 GET /api/dsl/merge/preview?from=feature/new-service&into=draft
@@ -224,7 +312,12 @@ Antwort:
 }
 ```
 
+</details>
+
 ### Cherry-Pick-Vorschau
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
 GET /api/dsl/cherry-pick/preview?commitId=abc1234&branch=draft
@@ -242,11 +335,18 @@ Antwort:
 }
 ```
 
+</details>
+
 ### Sicherheitsprüfung für Operationen
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```
 GET /api/dsl/operation/check?branch=draft
 ```
+
+</details>
 
 Der `RepositoryStateGuard` prüft, ob eine Schreiboperation auf dem gegebenen Branch sicher ausgeführt werden kann.
 
@@ -312,13 +412,9 @@ relation CO-1011 USES CR-1047 {
 
 Ein Reviewer akzeptiert eine vorgeschlagene Beziehung auf dem `review`-Branch. Die Änderung wird per Cherry-Pick auf `draft` übertragen:
 
-```
-POST /api/dsl/cherry-pick
-{
-  "commitId": "a3f8c2d...",
-  "targetBranch": "draft"
-}
-```
+Der Reviewer öffnet den **Versionsverlauf** des review-Branches, findet den Commit `a3f8c2d` und überträgt ihn per Klick auf die Übertragen-Aktion in den `draft`-Branch.
+
+![Cherry-Pick-Erfolg](../images/59-cherry-pick-success-toast.png)
 
 Der Cherry-Pick-Commit ändert nur den Beziehungsstatus:
 ```diff
@@ -359,12 +455,19 @@ Benutzer ändern häufig Architekturansichten und Anforderungszuordnungen:
 
 DSL-Dokumente werden in die Anwendungsdatenbank **materialisiert**. Dadurch werden `TaxonomyRelation`-Entitäten aus DSL-Beziehungen erstellt, die im Graph Explorer, in den Beziehungsvorschlägen und in der Architekturansicht sichtbar werden.
 
+Nach Änderungen zeigt die **Git-Statusleiste** den Status ‚Projektion veraltet'. Klicken Sie auf **Materialisieren** in der Statusleiste, um die Datenbank zu aktualisieren.
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
+
 Zwei Materialisierungsmodi stehen zur Verfügung:
 
 | Modus | Endpunkt | Beschreibung |
 |---|---|---|
 | **Vollständig** | `POST /api/dsl/materialize` | Ersetzt alle Beziehungen durch DSL-Inhalte |
 | **Inkrementell** | `POST /api/dsl/materialize-incremental` | Wendet nur das Delta zwischen zwei Versionen an |
+
+</details>
 
 Nach der Materialisierung zeichnet der `RepositoryStateService` den Projektions-Commit auf, um zu verfolgen, ob die Datenbank mit dem Git-HEAD synchron ist.
 
@@ -374,12 +477,19 @@ Nach der Materialisierung zeichnet der `RepositoryStateService` den Projektions-
 
 Das System verfolgt, ob die Datenbankprojektion und der Suchindex mit dem Git-HEAD synchron sind:
 
+Die Git-Statusleiste am oberen Rand zeigt automatisch den Synchronisationsstatus. Bei Veralterung erscheint ein Warnindikator.
+
+![Git-Statusleiste](../images/43-git-status-bar.png)
+
 | Feld | Bedeutung |
 |---|---|
 | `projectionStale` | Datenbankbeziehungen weichen vom Git-HEAD ab |
 | `indexStale` | Suchindex weicht vom Git-HEAD ab |
 
 **Veralterungslogik:** Wenn der SHA des zuletzt materialisierten Commits mit dem SHA des aktuellen HEAD-Commits übereinstimmt, ist die Projektion **nicht veraltet**. Andernfalls ist sie veraltet und sollte erneut materialisiert werden.
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 Veralterung abfragen:
 
@@ -395,6 +505,8 @@ Antwort:
   "indexStale": false
 }
 ```
+
+</details>
 
 Die Benutzeroberfläche pollt `/api/git/state` alle 10 Sekunden, um einen Statusindikator anzuzeigen, wenn die Projektion veraltet ist.
 
@@ -457,7 +569,9 @@ Die Commit-Historie wird in Hibernate Search für die Volltextsuche indexiert. S
 
 ---
 
-## REST-API-Endpunkte
+## REST-API-Referenz (für Entwickler & Automatisierung)
+
+Die folgenden Endpunkte sind für die programmatische Integration und Automatisierung gedacht. Für die tägliche Arbeit verwenden Sie die grafische Oberfläche (siehe [Arbeitsbereich & Versionierung](WORKSPACE_VERSIONING.md)).
 
 ### Git-Zustand
 

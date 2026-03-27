@@ -86,6 +86,12 @@ class ScreenshotGeneratorIT {
     /** Guard flag: {@link #buildGitHistory()} runs at most once per test class execution. */
     private static boolean gitHistoryBuilt;
 
+    /** Guard flag: {@link #buildRichGitHistory()} runs at most once per test class execution. */
+    private static boolean richGitHistoryBuilt;
+
+    /** Stores the commit ID captured during the rich history build for cherry-pick tests. */
+    private static String cherryPickSourceCommitId;
+
     /** Regex matching any terminal analysis status (success, error, or unavailable). */
     private static final java.util.regex.Pattern ANALYSIS_DONE_PATTERN =
             java.util.regex.Pattern.compile("(?i)complete|error|not available|unavailable|0 matches");
@@ -830,6 +836,196 @@ class ScreenshotGeneratorIT {
         wait(15).until(d -> {
             Object result = ((JavascriptExecutor) d).executeScript(
                     "return window.__featureCommit && window.__featureCommit.commitId ? 'ok' : null;");
+            return "ok".equals(result);
+        });
+    }
+
+    /**
+     * Builds a rich, realistic Git history with 12+ commits across 4 branches.
+     * <p>
+     * This creates a history that experienced Git users can relate to:
+     * <ol>
+     *   <li>Multiple sequential commits on {@code draft} (architecture evolution)</li>
+     *   <li>A {@code feature-voice} branch with its own commit series</li>
+     *   <li>A {@code review} branch where accepted changes are collected</li>
+     *   <li>A {@code hotfix/urgent-fix} branch for emergency changes</li>
+     * </ol>
+     * The history is realistic: it shows incremental architecture refinement across
+     * branches, typical of how experienced teams work with the tool.
+     * <p>
+     * Also captures {@link #cherryPickSourceCommitId} for downstream cherry-pick tests.
+     * <p>
+     * Guarded by {@link #richGitHistoryBuilt} — runs at most once per test class execution.
+     */
+    private void buildRichGitHistory() {
+        // Ensure base history exists first
+        buildGitHistory();
+        if (richGitHistoryBuilt) return;
+        richGitHistoryBuilt = true;
+
+        // ── 1. Additional commits on draft (architecture evolution) ──
+
+        String draftV2 =
+                "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+                "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n}\n\n" +
+                "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
+                "element BP-1327 type Process {\n  title: \"Enable\";\n  description: \"Mission enablement process\";\n}\n\n" +
+                "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
+                "relation CR-1047 SUPPORTS BP-1327 {\n  status: proposed;\n}\n";
+
+        commitAndWait("draft", "Add+process+layer+BP-1327", draftV2, "__richCommit1");
+
+        String draftV3 =
+                "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+                "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n}\n\n" +
+                "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
+                "element BP-1327 type Process {\n  title: \"Enable\";\n  description: \"Mission enablement process\";\n}\n\n" +
+                "element CO-1011 type Component {\n  title: \"Voice Gateway\";\n  description: \"SIP/RTP gateway for voice traffic\";\n}\n\n" +
+                "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
+                "relation CR-1047 SUPPORTS BP-1327 {\n  status: accepted;\n}\n\n" +
+                "relation CO-1011 USES CR-1047 {\n  status: proposed;\n}\n";
+
+        commitAndWait("draft", "Accept+CR-1047+supports+BP-1327%2C+add+Voice+Gateway", draftV3, "__richCommit2");
+
+        String draftV4 =
+                "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+                "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n}\n\n" +
+                "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
+                "element BP-1327 type Process {\n  title: \"Enable\";\n  description: \"Mission enablement process\";\n}\n\n" +
+                "element CO-1011 type Component {\n  title: \"Voice Gateway\";\n  description: \"SIP/RTP gateway for voice traffic\";\n}\n\n" +
+                "element IP-1659 type InformationProduct {\n  title: \"Situation Reports\";\n  description: \"Aggregated operational situation data\";\n}\n\n" +
+                "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
+                "relation CR-1047 SUPPORTS BP-1327 {\n  status: accepted;\n}\n\n" +
+                "relation CO-1011 USES CR-1047 {\n  status: proposed;\n}\n\n" +
+                "relation BP-1327 PRODUCES IP-1659 {\n  status: proposed;\n}\n";
+
+        commitAndWait("draft", "Add+information+product+IP-1659+with+PRODUCES+relation", draftV4, "__richCommit3");
+
+        // ── 2. Create review branch and add commits there ──
+
+        js("fetch('/api/dsl/branches?name=review&fromBranch=draft', { method: 'POST' })" +
+           ".then(r => r.json()).then(d => { window.__reviewBranch = d; });");
+        wait(15).until(d -> {
+            Object result = ((JavascriptExecutor) d).executeScript(
+                    "return window.__reviewBranch && window.__reviewBranch.branch === 'review' ? 'ok' : null;");
+            return "ok".equals(result);
+        });
+
+        String reviewV1 =
+                "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+                "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n}\n\n" +
+                "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
+                "element BP-1327 type Process {\n  title: \"Enable\";\n  description: \"Mission enablement process\";\n}\n\n" +
+                "element CO-1011 type Component {\n  title: \"Voice Gateway\";\n  description: \"SIP/RTP gateway for voice traffic\";\n}\n\n" +
+                "element IP-1659 type InformationProduct {\n  title: \"Situation Reports\";\n  description: \"Aggregated operational situation data\";\n}\n\n" +
+                "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
+                "relation CR-1047 SUPPORTS BP-1327 {\n  status: accepted;\n}\n\n" +
+                "relation CO-1011 USES CR-1047 {\n  status: accepted;\n}\n\n" +
+                "relation BP-1327 PRODUCES IP-1659 {\n  status: accepted;\n}\n";
+
+        commitAndWait("review", "Review%3A+accept+all+proposed+relations", reviewV1, "__reviewCommit1");
+
+        String reviewV2 =
+                "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+                "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n}\n\n" +
+                "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
+                "element BP-1327 type Process {\n  title: \"Enable\";\n  description: \"Mission enablement process\";\n}\n\n" +
+                "element CO-1011 type Component {\n  title: \"Voice Gateway\";\n  description: \"SIP/RTP gateway for voice traffic\";\n}\n\n" +
+                "element IP-1659 type InformationProduct {\n  title: \"Situation Reports\";\n  description: \"Aggregated operational situation data\";\n}\n\n" +
+                "element UA-1015 type Application {\n  title: \"Air Applications\";\n  description: \"Airborne communication systems\";\n}\n\n" +
+                "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
+                "relation CR-1047 SUPPORTS BP-1327 {\n  status: accepted;\n}\n\n" +
+                "relation CO-1011 USES CR-1047 {\n  status: accepted;\n}\n\n" +
+                "relation BP-1327 PRODUCES IP-1659 {\n  status: accepted;\n}\n\n" +
+                "relation UA-1015 USES CO-1011 {\n  status: proposed;\n}\n";
+
+        commitAndWait("review", "Add+UA-1015+Air+Applications+with+voice+gateway+dependency", reviewV2, "__reviewCommit2");
+
+        // Capture the review commit ID for cherry-pick tests
+        cherryPickSourceCommitId = (String) ((JavascriptExecutor) driver).executeScript(
+                "return window.__reviewCommit2 ? window.__reviewCommit2.commitId : null;");
+
+        // ── 3. Create hotfix branch from draft with urgent change ──
+
+        js("fetch('/api/dsl/branches?name=hotfix%2Furgent-fix&fromBranch=draft', { method: 'POST' })" +
+           ".then(r => r.json()).then(d => { window.__hotfixBranch = d; });");
+        wait(15).until(d -> {
+            Object result = ((JavascriptExecutor) d).executeScript(
+                    "return window.__hotfixBranch && window.__hotfixBranch.branch === 'hotfix/urgent-fix' ? 'ok' : null;");
+            return "ok".equals(result);
+        });
+
+        String hotfixV1 =
+                "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+                "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n  x-priority: \"critical\";\n}\n\n" +
+                "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
+                "element BP-1327 type Process {\n  title: \"Enable\";\n  description: \"Mission enablement process\";\n}\n\n" +
+                "element CO-1011 type Component {\n  title: \"Voice Gateway\";\n  description: \"SIP/RTP gateway for voice traffic\";\n}\n\n" +
+                "element IP-1659 type InformationProduct {\n  title: \"Situation Reports\";\n  description: \"Aggregated operational situation data\";\n}\n\n" +
+                "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
+                "relation CR-1047 SUPPORTS BP-1327 {\n  status: accepted;\n}\n\n" +
+                "relation CO-1011 USES CR-1047 {\n  status: proposed;\n}\n\n" +
+                "relation BP-1327 PRODUCES IP-1659 {\n  status: proposed;\n}\n";
+
+        commitAndWait("hotfix%2Furgent-fix", "Hotfix%3A+mark+Secure+Voice+as+critical+priority", hotfixV1, "__hotfixCommit1");
+
+        // ── 4. More commits on feature-voice (parallel development) ──
+
+        String featureV2 =
+                "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+                "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n  x-alias: \"SecVoice\";\n}\n\n" +
+                "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
+                "element CO-1011 type Component {\n  title: \"Voice Gateway\";\n  description: \"SIP/RTP gateway for voice traffic\";\n}\n\n" +
+                "element CO-1056 type Component {\n  title: \"Transmission Services\";\n  description: \"Data transmission middleware\";\n}\n\n" +
+                "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
+                "relation CO-1011 USES CR-1047 {\n  status: proposed;\n}\n\n" +
+                "relation CO-1056 SUPPORTS CO-1011 {\n  status: proposed;\n}\n";
+
+        commitAndWait("feature-voice", "Add+Transmission+Services+CO-1056+supporting+Voice+Gateway", featureV2, "__featureV2Commit");
+
+        String featureV3 =
+                "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+                "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n  x-alias: \"SecVoice\";\n  x-note: \"Reviewed 2026-Q1\";\n}\n\n" +
+                "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
+                "element CO-1011 type Component {\n  title: \"Voice Gateway\";\n  description: \"SIP/RTP gateway for voice traffic\";\n}\n\n" +
+                "element CO-1056 type Component {\n  title: \"Transmission Services\";\n  description: \"Data transmission middleware\";\n}\n\n" +
+                "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
+                "relation CO-1011 USES CR-1047 {\n  status: accepted;\n}\n\n" +
+                "relation CO-1056 SUPPORTS CO-1011 {\n  status: accepted;\n}\n";
+
+        commitAndWait("feature-voice", "Accept+all+relations+and+add+review+annotation", featureV3, "__featureV3Commit");
+
+        // ── 5. Another commit on draft (continuing main line) ──
+
+        String draftV5 =
+                "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
+                "element CP-1023 type Capability {\n  title: \"Secure Voice\";\n  description: \"Encrypted voice communication\";\n}\n\n" +
+                "element CR-1047 type CoreService {\n  title: \"Core Communication Services\";\n}\n\n" +
+                "element BP-1327 type Process {\n  title: \"Enable\";\n  description: \"Mission enablement process\";\n}\n\n" +
+                "element CO-1011 type Component {\n  title: \"Voice Gateway\";\n  description: \"SIP/RTP gateway for voice traffic\";\n}\n\n" +
+                "element IP-1659 type InformationProduct {\n  title: \"Situation Reports\";\n  description: \"Aggregated operational situation data\";\n}\n\n" +
+                "view \"Communication Architecture\" {\n  include: CP-1023, CR-1047, CO-1011, BP-1327, IP-1659;\n  layout: hierarchical;\n}\n\n" +
+                "relation CP-1023 REALIZES CR-1047 {\n  status: accepted;\n}\n\n" +
+                "relation CR-1047 SUPPORTS BP-1327 {\n  status: accepted;\n}\n\n" +
+                "relation CO-1011 USES CR-1047 {\n  status: proposed;\n}\n\n" +
+                "relation BP-1327 PRODUCES IP-1659 {\n  status: proposed;\n}\n";
+
+        commitAndWait("draft", "Define+Communication+Architecture+view", draftV5, "__richCommit5");
+    }
+
+    /**
+     * Helper: commits DSL content on a branch and waits for the commit to complete.
+     * Uses a window variable (e.g. {@code __richCommit1}) to signal completion.
+     */
+    private void commitAndWait(String branch, String messageEncoded, String dslContent, String windowVar) {
+        js("fetch('/api/dsl/commit?branch=" + branch + "&message=" + messageEncoded + "', " +
+           "{ method: 'POST', headers: {'Content-Type': 'text/plain'}, " +
+           "  body: " + jsStringLiteral(dslContent) + " " +
+           "}).then(r => r.json()).then(d => { window." + windowVar + " = d; });");
+
+        wait(15).until(d -> {
+            Object result = ((JavascriptExecutor) d).executeScript(
+                    "return window." + windowVar + " && window." + windowVar + ".commitId ? 'ok' : null;");
             return "ok".equals(result);
         });
     }
@@ -2623,5 +2819,123 @@ class ScreenshotGeneratorIT {
 
         // Return to main application for subsequent tests
         resetPageState();
+    }
+
+    // ── Screenshots 71–74: Rich Git History & Cherry-Pick Workflow ─────────────
+
+    @Test
+    @Order(71)
+    void captureRichVersionTimeline() throws IOException {
+        // Build a rich history with 12+ commits across 4 branches
+        buildRichGitHistory();
+        navigateToTab("versions");
+        // Switch to History sub-tab
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        // Wait for the timeline to load with real data
+        wait(15).until(d -> {
+            String state = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('versionsTimeline');" +
+                    "return el ? el.getAttribute('data-state') : '';");
+            return "loaded".equals(state);
+        });
+        injectHealthyStatusBadges();
+        saveScreenshot("71-rich-version-timeline.png");
+    }
+
+    @Test
+    @Order(72)
+    void captureRichVariantsBrowser() throws IOException {
+        // Show the variants panel with multiple branches (draft, feature-voice, review, hotfix)
+        buildRichGitHistory();
+        navigateToTab("versions");
+        // Switch to the Variants sub-tab
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'variants');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-variants') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        // Explicitly trigger variant loading — the pane was hidden (d-none) so auto-load may not fire
+        js("if (window.TaxonomyVariants) { window.TaxonomyVariants.refresh(); }");
+        // Wait for the variants browser to load (matches working Test 47 pattern)
+        wait(30).until(d -> {
+            String html = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('variantsBrowser');" +
+                    "return el ? el.innerHTML : '';");
+            return html != null && html.contains("variant-card")
+                    && !html.contains("Loading");
+        });
+        injectHealthyStatusBadges();
+        saveScreenshot("72-rich-variants-browser.png");
+    }
+
+    @Test
+    @Order(73)
+    void captureCherryPickWorkflowBefore() throws IOException {
+        // Show the version timeline on draft BEFORE cherry-picking a commit from review
+        buildRichGitHistory();
+        Assumptions.assumeTrue(cherryPickSourceCommitId != null,
+                "Skipping: cherry-pick source commit ID not captured during buildRichGitHistory()");
+        navigateToTab("versions");
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        wait(15).until(d -> {
+            String state = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('versionsTimeline');" +
+                    "return el ? el.getAttribute('data-state') : '';");
+            return "loaded".equals(state);
+        });
+        injectHealthyStatusBadges();
+        saveScreenshot("73-cherry-pick-before.png");
+    }
+
+    @Test
+    @Order(74)
+    void captureCherryPickWorkflowExecute() throws IOException {
+        // Execute a REAL cherry-pick via the REST API and capture the result
+        buildRichGitHistory();
+        Assumptions.assumeTrue(cherryPickSourceCommitId != null,
+                "Skipping: cherry-pick source commit ID not captured during buildRichGitHistory()");
+
+        // Execute real cherry-pick: pick the review commit onto draft
+        js("fetch('/api/dsl/cherry-pick?commitId=" + cherryPickSourceCommitId +
+           "&targetBranch=draft', { method: 'POST' })" +
+           ".then(r => r.json()).then(d => { window.__cherryPickResult = d; });");
+
+        wait(15).until(d -> {
+            Object result = ((JavascriptExecutor) d).executeScript(
+                    "return window.__cherryPickResult ? 'ok' : null;");
+            return "ok".equals(result);
+        });
+
+        // Navigate to versions to show the timeline with the cherry-picked commit
+        navigateToTab("versions");
+        js("document.querySelectorAll('[data-versions-tab]').forEach(function(l) {" +
+           "  l.classList.toggle('active', l.getAttribute('data-versions-tab') === 'history');" +
+           "});" +
+           "document.querySelectorAll('.versions-sub-pane').forEach(function(p) {" +
+           "  if (p.id === 'versions-history') { p.classList.remove('d-none'); }" +
+           "  else { p.classList.add('d-none'); }" +
+           "});");
+        wait(15).until(d -> {
+            String state = (String) ((JavascriptExecutor) d).executeScript(
+                    "var el = document.getElementById('versionsTimeline');" +
+                    "return el ? el.getAttribute('data-state') : '';");
+            return "loaded".equals(state);
+        });
+        injectHealthyStatusBadges();
+        saveScreenshot("74-cherry-pick-after.png");
     }
 }

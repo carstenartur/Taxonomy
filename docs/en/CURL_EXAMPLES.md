@@ -1,9 +1,10 @@
-# Taxonomy Architecture Analyzer — Curl Workflow Examples
+# Curl Examples for Automation & Integration
 
-> **Purpose:** These examples show how to automate Taxonomy Architecture Analyzer
-> workflows using command-line tools. They are intended for CI/CD pipelines,
-> batch processing, and system integration — **not** as a substitute for the
-> [web-based GUI](USER_GUIDE.md) for interactive use.
+> ⚠️ **Note:** The following examples are intended for **developers and automation**
+> (CI/CD pipelines, batch processing, system integration).
+> For daily work, use the graphical user interface. See:
+> - [User Guide](USER_GUIDE.md) for the Web UI
+> - [Examples](EXAMPLES.md) for GUI-based workflows
 
 End-to-end curl workflows for common tasks. For the full endpoint reference, see [API Reference](API_REFERENCE.md)
 or [Swagger UI](http://localhost:8080/swagger-ui.html).
@@ -11,6 +12,8 @@ or [Swagger UI](http://localhost:8080/swagger-ui.html).
 **Authentication:** All API endpoints require HTTP Basic auth (`-u admin:admin`).
 
 ---
+
+> 💡 **GUI equivalent:** **Analyze** tab → Enter text → **Analyze** → Export buttons in Architecture View. See [Example 1](EXAMPLES.md#1-requirement--architecture).
 
 ## Workflow 1: Analyze a Requirement and Export ArchiMate
 
@@ -43,6 +46,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
 
 ---
 
+> 💡 **GUI equivalent:** **Analyze** tab → Analyze → **Gaps** tab → **🔍 Start Gap Analysis** → **Recommendations** tab. See [Example 3](EXAMPLES.md#3-architecture-gap-analysis).
+
 ## Workflow 2: Analyze → Gap Analysis → Recommendation
 
 Identify architecture gaps and get AI-generated recommendations.
@@ -65,6 +70,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/recommend \
 ```
 
 ---
+
+> 💡 **GUI equivalent:** **Relation Proposals** panel → **Propose Relations** → Accept/Reject → Graph Explorer. See [Example 4](EXAMPLES.md#4-relation-proposals).
 
 ## Workflow 3: Propose Relations → Review → Verify in Graph
 
@@ -93,6 +100,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/proposals/bulk \
 
 ---
 
+> 💡 **GUI equivalent:** **DSL Editor** (DSL tab) → Edit → **💾 Save** → **Variants Panel** for merge. See [Example 8](EXAMPLES.md#8-architecture-dsl-workflow).
+
 ## Workflow 4: DSL Export → Edit → Commit → Diff → Merge
 
 Export the architecture as DSL text, edit it, commit changes, and merge branches.
@@ -119,6 +128,8 @@ curl -u admin:admin "http://localhost:8080/api/dsl/history?branch=main"
 ```
 
 ---
+
+> 💡 **GUI equivalent:** All endpoints listed here are also accessible via the graphical user interface. See [User Guide](USER_GUIDE.md).
 
 ## Quick Reference: Individual Endpoints
 

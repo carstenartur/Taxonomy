@@ -24,7 +24,11 @@ This document shows worked examples of common tasks in the Taxonomy Architecture
 
 ### Step 1 — Enter the requirement
 
-Open `http://localhost:8080` and paste into the analysis text area:
+Open `http://localhost:8080`. The analysis panel is displayed on the right side:
+
+![Analysis panel](../images/04-analysis-panel-empty.png)
+
+Paste into the analysis text area:
 
 > _"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments and coordinated workflow management for clinical teams."_
 
@@ -40,9 +44,13 @@ Click **Analyze with AI**. The system scores every taxonomy node (0–100) and o
 | UA-1015 | Air Applications | 74 |
 | BP-1327 | Enable | 71 |
 
+![Scored taxonomy tree](../images/15-scored-taxonomy-tree.png)
+
 ### Step 3 — Generate the architecture view
 
 The system automatically selects nodes with score ≥ 70 as anchors, propagates relevance through taxonomy relations, and builds a structured architecture model:
+
+![Architecture view](../images/20-architecture-view.png)
 
 ```
 Capability: Communication and Information System Capabilities (CP-1023)
@@ -62,13 +70,16 @@ Click an export button to download the architecture as ArchiMate XML, Visio `.vs
 
 ![Detailed architecture view](../images/38-architecture-view-detailed.png)
 
-### REST API equivalent
+<details>
+<summary>🔧 REST API equivalent (for automation)</summary>
 
 ```bash
 curl -u admin:admin -X POST http://localhost:8080/api/analyze \
   -d "businessText=Provide+integrated+communication+platform+for+hospital+staff" \
   -d "includeArchitectureView=true"
 ```
+
+</details>
 
 ---
 
@@ -83,11 +94,18 @@ curl -u admin:admin -X POST http://localhost:8080/api/analyze \
 3. Click **Failure Impact**.
 4. The result shows every element that depends on `CR-1047`, directly or transitively.
 
-### REST API
+![Failure impact analysis in Graph Explorer](../images/22-graph-explorer-failure.png)
+
+See also [User Guide](USER_GUIDE.md) for details on the Graph Explorer interface.
+
+<details>
+<summary>🔧 REST API equivalent (for automation)</summary>
 
 ```bash
 curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
 ```
+
+</details>
 
 ### Example result
 
@@ -108,13 +126,17 @@ curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact
 
 **Goal:** Find missing relations and incomplete architecture patterns in the context of a requirement.
 
-### Web UI
+### Web UI (recommended)
 
 1. Analyze a requirement (see [Example 1](#1-requirement--architecture)).
-2. The gap analysis runs automatically alongside the architecture view generation.
-3. Missing relations and incomplete patterns are reported in the results.
+2. Switch to the **Gaps** tab in the results area.
+3. Click **🔍 Start Gap Analysis**.
+4. The results table shows missing relations and incomplete architecture patterns.
 
-### REST API
+![Gap analysis results](../images/27-coverage-dashboard-data.png)
+
+<details>
+<summary>🔧 REST API equivalent (for automation)</summary>
 
 ```bash
 curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
@@ -124,6 +146,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
     "scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}
   }'
 ```
+
+</details>
 
 ### Example result
 
@@ -157,6 +181,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
 
 In the **Relation Proposals** panel, click **Propose Relations** for a specific node or use the bulk proposal endpoint.
 
+![Relation proposals](../images/13-propose-relations-modal.png)
+
 ### Step 2 — Review
 
 Each proposal shows:
@@ -171,7 +197,12 @@ Click **Accept** to add the relation to the knowledge graph, or **Reject** to di
 
 ![Accepted proposal](../images/36-proposal-accepted.png)
 
-### REST API
+After accepting, the relation becomes visible in the knowledge graph:
+
+![Graph with accepted relation](../images/37-graph-with-accepted-relation.png)
+
+<details>
+<summary>🔧 REST API equivalent (for automation)</summary>
 
 ```bash
 # Generate proposals for a node
@@ -197,13 +228,27 @@ curl -u admin:admin -X POST http://localhost:8080/api/proposals/bulk \
 curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/revert"
 ```
 
+</details>
+
 ---
 
 ## 5. Architecture Recommendations
 
 **Goal:** Get AI-driven suggestions for additional architecture elements and relations.
 
-### REST API
+### Web UI (recommended)
+
+1. Analyze a requirement (see [Example 1](#1-requirement--architecture)).
+2. Switch to the **Recommendations** tab in the results area.
+3. Click **💡 Generate Recommendations**.
+4. The result cards show recommended additional architecture elements and relations.
+
+![Architecture view with recommendations](../images/20-architecture-view.png)
+
+See also [User Guide](USER_GUIDE.md) for details on the recommendations interface.
+
+<details>
+<summary>🔧 REST API equivalent (for automation)</summary>
 
 ```bash
 curl -u admin:admin -X POST http://localhost:8080/api/recommend \
@@ -213,6 +258,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/recommend \
     "scores": {"CO-1056": 88, "CR-1047": 81}
   }'
 ```
+
+</details>
 
 ### Example result
 
@@ -233,6 +280,19 @@ curl -u admin:admin -X POST http://localhost:8080/api/recommend \
 ## 6. Diagram Export
 
 **Goal:** Export an architecture view to an industry-standard format.
+
+### Web UI (recommended)
+
+Click the desired export button in the **Architecture View**:
+
+- **📦 ArchiMate** — Exports as ArchiMate 3.x XML (compatible with Archi, BiZZdesign, MEGA)
+- **📊 Visio** — Exports as `.vsdx` file
+- **📝 Mermaid** — Exports as Mermaid flowchart code
+
+![Export buttons](../images/23-export-buttons.png)
+
+<details>
+<summary>🔧 REST API equivalent (for automation)</summary>
 
 ### ArchiMate XML
 
@@ -262,6 +322,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}'
 ```
 
+</details>
+
 The response is a Mermaid flowchart code block that renders in GitHub, GitLab, Notion, and Confluence:
 
 ```mermaid
@@ -287,6 +349,8 @@ graph TD
 
 Paste the requirement into the analysis panel and click **Analyze with AI**.
 
+![Analysis panel](../images/04-analysis-panel-empty.png)
+
 The system scores all ~2,500 taxonomy nodes. Top matches might include:
 
 | Code | Node | Score |
@@ -296,15 +360,21 @@ The system scores all ~2,500 taxonomy nodes. Top matches might include:
 | CR-1047 | Infrastructure Services | 78 |
 | BP-1481 | Protect | 72 |
 
+![Scored taxonomy tree](../images/15-scored-taxonomy-tree.png)
+
 ### Step 2 — Review the architecture view
 
 The architecture view groups scored nodes by layer (Capability → Service → Process) and shows relations between them.
 
+![Architecture view](../images/20-architecture-view.png)
+
 ### Step 3 — Check for gaps
 
-The gap analysis (automatic or via `POST /api/gap/analyze`) may identify:
+The gap analysis (automatic in the **Gaps** tab) may identify:
 - Missing link between Intelligence Capabilities and Surveillance Services
 - Incomplete "Full Stack" pattern (no Information Product layer)
+
+![Gap analysis dashboard](../images/27-coverage-dashboard-data.png)
 
 ### Step 4 — Generate relation proposals
 
@@ -312,17 +382,34 @@ Click **Propose Relations** in the Relation Proposals panel. The AI might sugges
 - `CI-1023 REALIZES CP-1022` — "Monitoring services realize the intelligence capability"
 - `CR-1047 SUPPORTS CI-1023` — "Infrastructure services support field monitoring"
 
+![Relation proposals panel](../images/12-relation-proposals-panel.png)
+
 Accept the proposals that make sense; reject the rest.
 
 ### Step 5 — Export
 
 Click **ArchiMate** to download the architecture as XML. Import into Archi or BiZZdesign for further refinement.
 
+![Export buttons](../images/23-export-buttons.png)
+
 ---
 
 ## 8. Architecture DSL Workflow
 
 **Goal:** Use the text-based DSL to define and version architecture elements.
+
+### Web UI (recommended)
+
+1. Open the **DSL Editor** via the **DSL** tab in the right panel.
+2. Edit the Architecture DSL directly in the editor.
+3. Click **💾 Save** to commit your changes.
+4. Use the **Version History** (**Versions → History** tab) to compare changes.
+5. Merge branches via the **Variants Panel** (see [example in Git Integration](GIT_INTEGRATION.md#merge)).
+
+![DSL Editor](../images/34-dsl-editor-panel.png)
+
+<details>
+<summary>🔧 REST API equivalent (for automation)</summary>
 
 ### Step 1 — Export current state as DSL
 
@@ -379,6 +466,8 @@ curl -u admin:admin -X POST "http://localhost:8080/api/dsl/merge?fromBranch=draf
 
 The merged changes are materialized into the relation database and become visible in the graph and architecture views.
 
+</details>
+
 ---
 
 ## 9. JSON Export with Source Provenance
@@ -388,6 +477,9 @@ contains additional fields linking requirements to their original source
 documents.
 
 ### Export
+
+<details>
+<summary>🔧 REST API equivalent (for automation)</summary>
 
 ```bash
 curl -s http://localhost:8080/api/scores/export \
@@ -425,5 +517,7 @@ curl -s http://localhost:8080/api/scores/import \
     }]
   }' | jq .
 ```
+
+</details>
 
 Legacy version 1 JSON files (without provenance) are still accepted.

@@ -1,4 +1,10 @@
-# Taxonomy Architecture Analyzer — cURL-Workflow-Beispiele
+# cURL-Beispiele für Automatisierung & Integration
+
+> ⚠️ **Hinweis:** Die folgenden Beispiele richten sich an **Entwickler und Automatisierung**
+> (CI/CD-Pipelines, Batch-Verarbeitung, Systemintegration).
+> Für die tägliche Arbeit verwenden Sie die grafische Oberfläche. Siehe:
+> - [Benutzerhandbuch](USER_GUIDE.md) für die Web-UI
+> - [Beispiele](EXAMPLES.md) für GUI-basierte Workflows
 
 End-to-End-cURL-Workflows für häufige Aufgaben. Die vollständige Endpunkt-Referenz finden Sie in der [API-Referenz](API_REFERENCE.md)
 oder der [Swagger UI](http://localhost:8080/swagger-ui.html).
@@ -6,6 +12,8 @@ oder der [Swagger UI](http://localhost:8080/swagger-ui.html).
 **Authentifizierung:** Alle API-Endpunkte erfordern HTTP-Basic-Authentifizierung (`-u admin:admin`).
 
 ---
+
+> 💡 **GUI-Äquivalent:** Reiter **Analysieren** → Text eingeben → **Analysieren** klicken → Export-Schaltflächen in der Architekturansicht. Siehe [Beispiel 1](EXAMPLES.md#1-anforderung--architektur).
 
 ## Workflow 1: Anforderung analysieren und ArchiMate exportieren
 
@@ -38,6 +46,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
 
 ---
 
+> 💡 **GUI-Äquivalent:** Reiter **Analysieren** → Analysieren → Reiter **Lücken** → **🔍 Lückenanalyse starten** → Reiter **Empfehlungen**. Siehe [Beispiel 3](EXAMPLES.md#3-architektur-lückenanalyse).
+
 ## Workflow 2: Analyse → Lückenanalyse → Empfehlung
 
 Identifizieren Sie Architekturlücken und erhalten Sie KI-generierte Empfehlungen.
@@ -60,6 +70,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/recommend \
 ```
 
 ---
+
+> 💡 **GUI-Äquivalent:** Panel **Beziehungsvorschläge** → **Vorschläge generieren** → Akzeptieren/Ablehnen → Graph Explorer. Siehe [Beispiel 4](EXAMPLES.md#4-beziehungsvorschläge).
 
 ## Workflow 3: Beziehungen vorschlagen → Prüfen → Im Graphen verifizieren
 
@@ -88,6 +100,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/proposals/bulk \
 
 ---
 
+> 💡 **GUI-Äquivalent:** **DSL-Editor** (Reiter DSL) → Bearbeiten → **💾 Speichern** → **Varianten-Panel** für Merge. Siehe [Beispiel 8](EXAMPLES.md#8-architektur-dsl-workflow).
+
 ## Workflow 4: DSL-Export → Bearbeiten → Commit → Diff → Merge
 
 Exportieren Sie die Architektur als DSL-Text, bearbeiten Sie diesen, committen Sie die Änderungen und führen Sie Branches zusammen.
@@ -114,6 +128,8 @@ curl -u admin:admin "http://localhost:8080/api/dsl/history?branch=main"
 ```
 
 ---
+
+> 💡 **GUI-Äquivalent:** Alle hier aufgeführten Endpunkte sind auch über die grafische Oberfläche erreichbar. Siehe [Benutzerhandbuch](USER_GUIDE.md).
 
 ## Kurzreferenz: Einzelne Endpunkte
 

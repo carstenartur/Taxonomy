@@ -244,6 +244,7 @@ public class LocalEmbeddingService {
                     .optModelPath(modelPath)
                     .optModelName("model")
                     .optEngine("OnnxRuntime")
+                    .optArgument("includeTokenTypes", true)
                     .optTranslatorFactory(new TextEmbeddingTranslatorFactory())
                     .build().loadModel();
         } catch (Exception e) {
@@ -329,7 +330,8 @@ public class LocalEmbeddingService {
             "engine=OnnxRuntime\n"
             + "option.modelName=model\n"
             + "translatorFactory=ai.djl.huggingface.translator.TextEmbeddingTranslatorFactory\n"
-            + "option.mapLocation=true\n";
+            + "option.mapLocation=true\n"
+            + "option.includeTokenTypes=true\n";
 
     private void ensureServingProperties(String url) {
         try {
@@ -342,11 +344,12 @@ public class LocalEmbeddingService {
             if (java.nio.file.Files.exists(servingProps)) {
                 String existing = java.nio.file.Files.readString(servingProps);
                 if (existing.contains("engine=OnnxRuntime")
-                        && existing.contains("TextEmbeddingTranslatorFactory")) {
+                        && existing.contains("TextEmbeddingTranslatorFactory")
+                        && existing.contains("includeTokenTypes=true")) {
                     return; // file is valid
                 }
-                log.warn("serving.properties exists but is missing OnnxRuntime engine or "
-                        + "TextEmbeddingTranslatorFactory; regenerating");
+                log.warn("serving.properties exists but is missing OnnxRuntime engine, "
+                        + "TextEmbeddingTranslatorFactory, or includeTokenTypes; regenerating");
                 // fall through to regeneration
             }
 
