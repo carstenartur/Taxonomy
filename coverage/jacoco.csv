@@ -11,7 +11,7 @@ Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateObjDatabase.ByteArra
 Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateObjDatabase,76,244,5,11,25,55,9,12,5,8
 Taxonomy Application,com.taxonomy.relations.service,RelationValidationService.ValidationResult,0,35,0,0,0,10,0,6,0,6
 Taxonomy Application,com.taxonomy.relations.service,RelationQualityService,148,122,8,4,22,33,9,6,3,6
-Taxonomy Application,com.taxonomy.relations.service,GraphSearchService,366,34,21,1,75,10,22,3,11,3
+Taxonomy Application,com.taxonomy.relations.service,GraphSearchService,252,148,18,4,52,33,19,6,8,6
 Taxonomy Application,com.taxonomy.relations.service,RelationCandidateService,6,138,5,5,0,25,4,7,0,6
 Taxonomy Application,com.taxonomy.relations.service,RelationProposalService,200,342,13,12,34,76,14,11,3,9
 Taxonomy Application,com.taxonomy.relations.service,RelationTraversalService,36,65,3,5,7,17,3,5,1,3
@@ -177,7 +177,7 @@ Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService,63,41,19,1
 Taxonomy Application,com.taxonomy.shared.service,HealthSummaryService,0,200,0,10,0,36,0,7,0,2
 Taxonomy Application,com.taxonomy.shared.service,PromptTemplateService,46,342,6,20,13,75,6,26,1,18
 Taxonomy Application,com.taxonomy.shared.service,PromptTemplateService.PromptCategory,0,27,0,0,0,5,0,1,0,1
-Taxonomy Application,com.taxonomy.shared.service,LocalEmbeddingService,631,339,49,33,129,83,44,21,7,17
+Taxonomy Application,com.taxonomy.shared.service,LocalEmbeddingService,487,491,49,35,105,109,41,25,3,21
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.State,0,33,0,0,0,6,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService,0,77,0,4,0,13,0,10,0,8
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.StateSnapshot,0,15,0,0,0,1,0,1,0,1

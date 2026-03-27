@@ -68,22 +68,22 @@ public class GraphSearchService {
         }
 
         try {
-<span class="nc" id="L71">            float[] queryVector = embeddingService.embedQuery(queryText);</span>
-<span class="nc" id="L72">            SearchSession session = Search.session(entityManager);</span>
+<span class="fc" id="L71">            float[] queryVector = embeddingService.embedQuery(queryText);</span>
+<span class="fc" id="L72">            SearchSession session = Search.session(entityManager);</span>
 
             // 1. Search TaxonomyNode index by KNN
-<span class="nc" id="L75">            List&lt;TaxonomyNode&gt; nodeHits = session.search(TaxonomyNode.class)</span>
-<span class="nc" id="L76">                    .where(f -&gt; f.knn(maxResults).field(&quot;embedding&quot;).matching(queryVector))</span>
-<span class="nc" id="L77">                    .fetchHits(maxResults);</span>
+<span class="fc" id="L75">            List&lt;TaxonomyNode&gt; nodeHits = session.search(TaxonomyNode.class)</span>
+<span class="fc" id="L76">                    .where(f -&gt; f.knn(maxResults).field(&quot;embedding&quot;).matching(queryVector))</span>
+<span class="fc" id="L77">                    .fetchHits(maxResults);</span>
 
-<span class="nc" id="L79">            List&lt;TaxonomyNodeDto&gt; matchedNodes = nodeHits.stream()</span>
-<span class="nc" id="L80">                    .map(this::toFlatDto)</span>
-<span class="nc" id="L81">                    .collect(Collectors.toList());</span>
+<span class="fc" id="L79">            List&lt;TaxonomyNodeDto&gt; matchedNodes = nodeHits.stream()</span>
+<span class="fc" id="L80">                    .map(this::toFlatDto)</span>
+<span class="fc" id="L81">                    .collect(Collectors.toList());</span>
 
             // 2. Search TaxonomyRelation index by KNN with optional workspace filter
-<span class="nc" id="L84">            WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="fc" id="L84">            WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
             List&lt;TaxonomyRelation&gt; relationHits;
-<span class="nc bnc" id="L86" title="All 2 branches missed.">            if (ctx.workspaceId() != null) {</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">            if (ctx.workspaceId() != null) {</span>
                 // Provisioned workspace — filter to workspace-owned + shared (null) relations
 <span class="nc" id="L88">                relationHits = session.search(TaxonomyRelation.class)</span>
 <span class="nc" id="L89">                        .where(f -&gt; f.bool()</span>
@@ -96,46 +96,46 @@ public class GraphSearchService {
 <span class="nc" id="L96">                        .fetchHits(maxResults * 2);</span>
             } else {
                 // SHARED context — no workspace filter, return all relations
-<span class="nc" id="L99">                relationHits = session.search(TaxonomyRelation.class)</span>
-<span class="nc" id="L100">                        .where(f -&gt; f.knn(maxResults * 2).field(&quot;embedding&quot;).matching(queryVector))</span>
-<span class="nc" id="L101">                        .fetchHits(maxResults * 2);</span>
+<span class="fc" id="L99">                relationHits = session.search(TaxonomyRelation.class)</span>
+<span class="fc" id="L100">                        .where(f -&gt; f.knn(maxResults * 2).field(&quot;embedding&quot;).matching(queryVector))</span>
+<span class="fc" id="L101">                        .fetchHits(maxResults * 2);</span>
             }
 
             // 3. Aggregate relation hits by taxonomy root (via sourceNode.taxonomyRoot)
-<span class="nc" id="L105">            Map&lt;String, Long&gt; relationCountByRoot = relationHits.stream()</span>
-<span class="nc bnc" id="L106" title="All 4 branches missed.">                    .filter(r -&gt; r.getSourceNode() != null &amp;&amp; r.getSourceNode().getTaxonomyRoot() != null)</span>
-<span class="nc" id="L107">                    .collect(Collectors.groupingBy(</span>
+<span class="fc" id="L105">            Map&lt;String, Long&gt; relationCountByRoot = relationHits.stream()</span>
+<span class="pc bnc" id="L106" title="All 4 branches missed.">                    .filter(r -&gt; r.getSourceNode() != null &amp;&amp; r.getSourceNode().getTaxonomyRoot() != null)</span>
+<span class="fc" id="L107">                    .collect(Collectors.groupingBy(</span>
 <span class="nc" id="L108">                            r -&gt; r.getSourceNode().getTaxonomyRoot(),</span>
-<span class="nc" id="L109">                            Collectors.counting()));</span>
+<span class="fc" id="L109">                            Collectors.counting()));</span>
 
             // 4. Aggregate by relation type
-<span class="nc" id="L112">            Map&lt;String, Long&gt; topRelationTypes = relationHits.stream()</span>
-<span class="nc bnc" id="L113" title="All 2 branches missed.">                    .filter(r -&gt; r.getRelationType() != null)</span>
-<span class="nc" id="L114">                    .collect(Collectors.groupingBy(</span>
+<span class="fc" id="L112">            Map&lt;String, Long&gt; topRelationTypes = relationHits.stream()</span>
+<span class="pc bnc" id="L113" title="All 2 branches missed.">                    .filter(r -&gt; r.getRelationType() != null)</span>
+<span class="fc" id="L114">                    .collect(Collectors.groupingBy(</span>
 <span class="nc" id="L115">                            r -&gt; r.getRelationType().name(),</span>
-<span class="nc" id="L116">                            Collectors.counting()));</span>
+<span class="fc" id="L116">                            Collectors.counting()));</span>
 
             // 5. Build summary
-<span class="nc" id="L119">            String summary = buildSummary(relationCountByRoot, topRelationTypes, queryText);</span>
+<span class="fc" id="L119">            String summary = buildSummary(relationCountByRoot, topRelationTypes, queryText);</span>
 
-<span class="nc" id="L121">            log.debug(&quot;Graph search for '{}': {} node hits, {} relation hits&quot;,</span>
-<span class="nc" id="L122">                    queryText, nodeHits.size(), relationHits.size());</span>
+<span class="fc" id="L121">            log.debug(&quot;Graph search for '{}': {} node hits, {} relation hits&quot;,</span>
+<span class="fc" id="L122">                    queryText, nodeHits.size(), relationHits.size());</span>
 
-<span class="nc" id="L124">            return new GraphSearchResult(matchedNodes, relationCountByRoot, topRelationTypes, summary);</span>
+<span class="fc" id="L124">            return new GraphSearchResult(matchedNodes, relationCountByRoot, topRelationTypes, summary);</span>
 
-<span class="fc" id="L126">        } catch (Exception | LinkageError e) {</span>
+<span class="nc" id="L126">        } catch (Exception | LinkageError e) {</span>
             // LinkageError covers UnsatisfiedLinkError / NoClassDefFoundError from
             // native DJL / ONNX Runtime library loading, which would otherwise
             // propagate as an unhandled 500 error.
-<span class="fc" id="L130">            log.error(&quot;Graph search failed for query '{}': {}&quot;, queryText, e.getMessage());</span>
-<span class="fc" id="L131">            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),</span>
-<span class="fc" id="L132">                    Collections.emptyMap(), &quot;Graph search failed: &quot; + e.getMessage());</span>
+<span class="nc" id="L130">            log.error(&quot;Graph search failed for query '{}': {}&quot;, queryText, e.getMessage());</span>
+<span class="nc" id="L131">            return new GraphSearchResult(Collections.emptyList(), Collections.emptyMap(),</span>
+<span class="nc" id="L132">                    Collections.emptyMap(), &quot;Graph search failed: &quot; + e.getMessage());</span>
         }
     }
 
     private String buildSummary(Map&lt;String, Long&gt; byRoot, Map&lt;String, Long&gt; byType, String query) {
-<span class="nc bnc" id="L137" title="All 4 branches missed.">        if (byRoot.isEmpty() &amp;&amp; byType.isEmpty()) {</span>
-<span class="nc" id="L138">            return &quot;No graph relationships matched for: &quot; + query;</span>
+<span class="pc bpc" id="L137" title="2 of 4 branches missed.">        if (byRoot.isEmpty() &amp;&amp; byType.isEmpty()) {</span>
+<span class="fc" id="L138">            return &quot;No graph relationships matched for: &quot; + query;</span>
         }
 
 <span class="nc" id="L141">        StringBuilder sb = new StringBuilder();</span>
