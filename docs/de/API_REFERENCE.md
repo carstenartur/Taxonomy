@@ -1,5 +1,8 @@
 # Taxonomy Architecture Analyzer — API-Referenz
 
+> **📌 Diese Referenz richtet sich an Entwickler und Integratoren.** Für die tägliche Arbeit
+> verwenden Sie die grafische Oberfläche (siehe [Benutzerhandbuch](USER_GUIDE.md)).
+
 Alle Endpunkte erfordern **HTTP-Basic-Authentifizierung**, sofern nicht als öffentlich gekennzeichnet.
 CSRF ist für `/api/**` deaktiviert — REST-Clients benötigen keine CSRF-Tokens.
 
@@ -9,7 +12,7 @@ CSRF ist für `/api/**` deaktiviert — REST-Clients benötigen keine CSRF-Token
 
 Interaktive Dokumentation: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) (wenn die Anwendung läuft).
 
-> End-to-End-Workflow-Beispiele mit cURL finden Sie unter [cURL-Workflow-Beispiele](CURL_EXAMPLES.md).
+> End-to-End-Workflow-Beispiele mit cURL finden Sie unter [cURL-Beispiele für Automatisierung & Integration](CURL_EXAMPLES.md).
 
 ---
 
@@ -292,6 +295,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/scores/import \
 ---
 
 ## Berichte
+
+> 💡 **GUI:** Klicken Sie auf die Export-Buttons (**📄 Markdown**, **🌐 HTML**, **📋 DOCX**) in der Architekturansicht.
 
 Analyseergebnisse als formatierte Berichte exportieren:
 
@@ -770,7 +775,7 @@ curl -u alice:password http://localhost:8080/api/workspace/topology
 
 | Dokument | Inhalt |
 |---|---|
-| [cURL-Beispiele](CURL_EXAMPLES.md) | Kopierbare cURL-Befehle für jeden Endpunkt |
+| [cURL-Beispiele für Automatisierung](CURL_EXAMPLES.md) | Kopierbare cURL-Befehle für jeden Endpunkt |
 | [Sicherheit](SECURITY.md) | Authentifizierung, Rollen, Deployment-Härtung |
 | [Konfiguration](CONFIGURATION_REFERENCE.md) | Umgebungsvariablen und Einstellungen |
 | [Swagger UI](http://localhost:8080/swagger-ui.html) | Interaktiver API-Explorer (wenn die Anwendung läuft) |

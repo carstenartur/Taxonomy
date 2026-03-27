@@ -20,7 +20,7 @@ CSRF is disabled for `/api/**` — REST clients do not need CSRF tokens.
 
 Interactive docs: [`/swagger-ui.html`](http://localhost:8080/swagger-ui.html) (when the app is running).
 
-> For end-to-end workflow examples using curl, see [Curl Workflow Examples](CURL_EXAMPLES.md).
+> For end-to-end workflow examples using curl, see [Curl Examples for Automation & Integration](CURL_EXAMPLES.md).
 
 ---
 
@@ -335,6 +335,8 @@ the import endpoint.
 ---
 
 ## Reports
+
+> 💡 **GUI:** Click the export buttons (**📄 Markdown**, **🌐 HTML**, **📋 DOCX**) in the Architecture View.
 
 Export analysis results as formatted reports:
 
@@ -813,7 +815,7 @@ curl -u alice:password http://localhost:8080/api/workspace/topology
 
 | Document | Contents |
 |---|---|
-| [Curl Examples](CURL_EXAMPLES.md) | Copy-paste curl commands for every endpoint |
+| [Curl Examples for Automation](CURL_EXAMPLES.md) | Copy-paste curl commands for every endpoint |
 | [Security](SECURITY.md) | Authentication, roles, deployment hardening |
 | [Configuration](CONFIGURATION_REFERENCE.md) | Environment variables and settings |
 | [Swagger UI](http://localhost:8080/swagger-ui.html) | Interactive API explorer (when running) |
