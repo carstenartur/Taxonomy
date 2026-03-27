@@ -1077,23 +1077,42 @@ class ScreenshotGeneratorIT {
      * </ol>
      */
     private void showModalAndWait(String modalId) {
+        // Debug: log DOM state before opening modal
+        try {
+            String debugInfo = (String) ((JavascriptExecutor) driver).executeScript(
+                "var el = document.getElementById(arguments[0]);" +
+                "var bs = (typeof bootstrap !== 'undefined' && typeof bootstrap.Modal !== 'undefined');" +
+                "var backdrops = document.querySelectorAll('.modal-backdrop').length;" +
+                "var bodyOpen = document.body.classList.contains('modal-open');" +
+                "var elExists = !!el;" +
+                "var display = el ? getComputedStyle(el).display : 'MISSING';" +
+                "var hasShow = el ? el.classList.contains('show') : false;" +
+                "var modalsOpen = document.querySelectorAll('.modal.show').length;" +
+                "return 'modal=' + arguments[0] + ' exists=' + elExists + ' bootstrap=' + bs" +
+                " + ' backdrops=' + backdrops + ' bodyModalOpen=' + bodyOpen" +
+                " + ' display=' + display + ' hasShow=' + hasShow + ' otherModalsOpen=' + modalsOpen;",
+                modalId);
+            System.out.println("[showModalAndWait] PRE-STATE: " + debugInfo);
+        } catch (Exception e) {
+            System.out.println("[showModalAndWait] PRE-STATE debug failed: " + e.getMessage());
+        }
+
         // Remove any stale signal from previous test
         js("var el = document.getElementById(arguments[0]);" +
            "if (el) el.removeAttribute('data-modal-visible');", modalId);
 
         // Remove 'fade' class to skip CSS transition (instant show),
-        // set display:block eagerly to reduce async layout work,
         // then open via Bootstrap API when available, or fall back to a
         // minimal DOM-based show in environments where Bootstrap is missing.
         js("var el = document.getElementById(arguments[0]);" +
            "if (el) {" +
            "  el.classList.remove('fade');" +
-           "  el.style.display='block';" +
            "  if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {" +
            "    var inst = bootstrap.Modal.getOrCreateInstance(el);" +
            "    inst.show();" +
            "  } else {" +
            "    el.classList.add('show');" +
+           "    el.style.display='block';" +
            "    el.setAttribute('aria-modal','true');" +
            "    el.removeAttribute('aria-hidden');" +
            "    el.setAttribute('data-modal-visible','true');" +
@@ -2270,6 +2289,7 @@ class ScreenshotGeneratorIT {
     @Order(46)
     void captureVariantCreationModal() throws IOException {
         navigateToTab("versions");
+        resetModalState();
         // Open the Create Variant modal
         showModalAndWait("createVariantModal");
         // Pre-fill the variant name input for the screenshot
@@ -2317,6 +2337,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(48)
     void captureCompareModalBranches() throws IOException {
+        resetModalState();
         // Open the compare modal
         showModalAndWait("contextCompareModal");
         // Populate the branch dropdowns with sample data if they are empty
@@ -2414,6 +2435,7 @@ class ScreenshotGeneratorIT {
     @Order(52)
     void captureMergeConflictModal() throws IOException {
         navigateToTab("analyze");
+        resetModalState();
         showModalAndWait("mergeConflictModal");
         // Populate conflict modal with sample content — realistic architecture overlay
         // conflict (relation status change), not canonical title rename
@@ -2433,6 +2455,7 @@ class ScreenshotGeneratorIT {
     @Order(53)
     void captureMergeConflictResolved() throws IOException {
         navigateToTab("analyze");
+        resetModalState();
         // Simulate a toast notification for resolved conflict
         js("var toastEl = document.getElementById('operationToast');" +
            "var titleEl = document.getElementById('operationToastTitle');" +
@@ -2456,6 +2479,7 @@ class ScreenshotGeneratorIT {
     @Order(54)
     void captureCherryPickConflictModal() throws IOException {
         navigateToTab("analyze");
+        resetModalState();
         showModalAndWait("mergeConflictModal");
         // Populate as cherry-pick conflict — realistic relation change, not title rename
         js("document.getElementById('mergeConflictModalLabel').textContent = " +
@@ -2504,6 +2528,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(56)
     void captureSyncResolveModal() throws IOException {
+        resetModalState();
         showModalAndWait("syncDivergedModal");
         saveScreenshot("56-sync-resolve-modal.png");
         closeModalAndWait("syncDivergedModal");
@@ -2593,6 +2618,7 @@ class ScreenshotGeneratorIT {
     @Order(60)
     void captureMergePreviewModal() throws IOException {
         navigateToTab("analyze");
+        resetModalState();
         showModalAndWait("mergePreviewModal");
         // Inject preview content
         js("var content = document.getElementById('mergePreviewContent');" +
@@ -2611,6 +2637,7 @@ class ScreenshotGeneratorIT {
     @Order(61)
     void captureMergePreviewFastForward() throws IOException {
         navigateToTab("analyze");
+        resetModalState();
         showModalAndWait("mergePreviewModal");
         // Inject fast-forward preview
         js("var content = document.getElementById('mergePreviewContent');" +
@@ -2629,6 +2656,7 @@ class ScreenshotGeneratorIT {
     @Order(62)
     void captureCherryPickPreviewModal() throws IOException {
         navigateToTab("analyze");
+        resetModalState();
         showModalAndWait("cherryPickPreviewModal");
         // Inject cherry-pick preview content
         js("var content = document.getElementById('cherryPickPreviewContent');" +
@@ -2737,6 +2765,7 @@ class ScreenshotGeneratorIT {
     @Order(67)
     void captureVersionRestoreConfirm() throws IOException {
         navigateToTab("versions");
+        resetModalState();
         // Inject a simulated restore confirmation dialog
         js("var timeline = document.getElementById('versionsTimeline');" +
            "if (timeline) {" +
