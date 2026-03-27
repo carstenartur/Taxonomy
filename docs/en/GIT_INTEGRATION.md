@@ -133,6 +133,10 @@ The variants panel shows all existing variants as cards:
 
 ![Variants browser](../images/47-variants-browser-tab.png)
 
+As the project grows, multiple branches coexist — feature branches, review branches, and hotfix branches — each with their own commit history:
+
+![Rich variants browser with multiple branches](../images/72-rich-variants-browser.png)
+
 <details>
 <summary>🔧 REST API equivalent (for automation)</summary>
 
@@ -162,6 +166,10 @@ Every DSL change creates a Git commit with:
 Navigate to **Versions → History**. The timeline shows all commits with message, author, timestamp, and hash.
 
 ![Version history timeline](../images/66-versions-timeline.png)
+
+In a real project, the timeline grows as the architecture evolves — with commits from multiple team members across different branches. The screenshot below shows a realistic timeline with dozens of commits spanning architecture refinement, relation reviews, and feature branches:
+
+![Rich version timeline with multiple branches](../images/71-rich-version-timeline.png)
 
 <details>
 <summary>🔧 REST API equivalent (for automation)</summary>
@@ -208,7 +216,19 @@ Port a specific commit from one branch to another:
 
 In the **Version History**, select the desired commit and click the transfer action. The system shows a preview with conflict checking.
 
+### Step-by-step: Cherry-picking a commit
+
+**1. Before** — The draft branch has its own history. You want to bring a specific reviewed commit from the `review` branch:
+
+![Timeline before cherry-pick](../images/73-cherry-pick-before.png)
+
+**2. Preview** — Click the transfer action on the desired commit. The preview modal shows what will change:
+
 ![Cherry-pick preview](../images/62-cherry-pick-preview-modal.png)
+
+**3. After** — Once confirmed, the cherry-picked commit appears as a new commit on the draft branch:
+
+![Timeline after cherry-pick](../images/74-cherry-pick-after.png)
 
 <details>
 <summary>🔧 REST API equivalent (for automation)</summary>

@@ -133,6 +133,10 @@ Das Varianten-Panel zeigt alle vorhandenen Varianten als Karten:
 
 ![Varianten-Browser](../images/47-variants-browser-tab.png)
 
+Mit wachsendem Projekt existieren mehrere Branches nebeneinander — Feature-Branches, Review-Branches und Hotfix-Branches — jeder mit eigener Commit-Historie:
+
+![Varianten-Browser mit mehreren Branches](../images/72-rich-variants-browser.png)
+
 <details>
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
@@ -162,6 +166,10 @@ Jede DSL-Änderung erzeugt einen Git-Commit mit:
 Navigieren Sie zu **Versionen → Verlauf**. Die Zeitleiste zeigt alle Commits mit Nachricht, Autor, Zeitstempel und Hash.
 
 ![Versionsverlauf-Zeitleiste](../images/66-versions-timeline.png)
+
+In einem realen Projekt wächst die Zeitleiste, während sich die Architektur weiterentwickelt — mit Commits mehrerer Teammitglieder über verschiedene Branches hinweg. Der folgende Screenshot zeigt eine realistische Zeitleiste mit zahlreichen Commits für Architekturverfeinerung, Beziehungsreviews und Feature-Branches:
+
+![Reichhaltige Versionsverlauf-Zeitleiste mit mehreren Branches](../images/71-rich-version-timeline.png)
 
 <details>
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
@@ -208,7 +216,19 @@ Einen bestimmten Commit von einem Branch auf einen anderen portieren:
 
 Im **Versionsverlauf** wählen Sie den gewünschten Commit und klicken Sie auf die Übertragen-Aktion. Das System zeigt eine Vorschau mit Konfliktprüfung.
 
+### Schritt für Schritt: Cherry-Pick eines Commits
+
+**1. Vorher** — Der draft-Branch hat seine eigene Historie. Sie möchten einen bestimmten geprüften Commit aus dem `review`-Branch übernehmen:
+
+![Zeitleiste vor Cherry-Pick](../images/73-cherry-pick-before.png)
+
+**2. Vorschau** — Klicken Sie auf die Übertragen-Aktion beim gewünschten Commit. Das Vorschau-Modal zeigt, was sich ändert:
+
 ![Cherry-Pick-Vorschau](../images/62-cherry-pick-preview-modal.png)
+
+**3. Nachher** — Nach Bestätigung erscheint der cherry-gepickte Commit als neuer Commit auf dem draft-Branch:
+
+![Zeitleiste nach Cherry-Pick](../images/74-cherry-pick-after.png)
 
 <details>
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
