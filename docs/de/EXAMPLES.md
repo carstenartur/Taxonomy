@@ -31,6 +31,8 @@ Dieses Dokument zeigt ausgearbeitete Beispiele für häufige Aufgaben im Taxonom
 
 Klicken Sie auf **Analyze with AI**. Das System bewertet jeden Taxonomie-Knoten (0–100) und überlagert die Ergebnisse im Baum:
 
+![Bewerteter Taxonomie-Baum](../images/15-scored-taxonomy-tree.png)
+
 | Code | Knoten | Bewertung |
 |---|---|---|
 | CP-1023 | Communication and Information System Capabilities | 92 |
@@ -61,13 +63,16 @@ Klicken Sie auf eine Export-Schaltfläche, um die Architektur als ArchiMate XML,
 
 ![Detaillierte Architekturansicht](../images/38-architecture-view-detailed.png)
 
-### REST-API-Äquivalent
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```bash
 curl -u admin:admin -X POST http://localhost:8080/api/analyze \
   -d "businessText=Provide+integrated+communication+platform+for+hospital+staff" \
   -d "includeArchitectureView=true"
 ```
+
+</details>
 
 ---
 
@@ -82,11 +87,16 @@ curl -u admin:admin -X POST http://localhost:8080/api/analyze \
 3. Klicken Sie auf **Failure Impact**.
 4. Das Ergebnis zeigt jedes Element, das direkt oder transitiv von `CR-1047` abhängt.
 
-### REST-API
+Siehe auch [Benutzerhandbuch](USER_GUIDE.md) für Details zur Graph-Explorer-Oberfläche.
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```bash
 curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact"
 ```
+
+</details>
 
 ### Beispielergebnis
 
@@ -107,13 +117,17 @@ curl -u admin:admin "http://localhost:8080/api/graph/node/CR-1047/failure-impact
 
 **Ziel:** Fehlende Beziehungen und unvollständige Architekturmuster im Kontext einer Anforderung finden.
 
-### Web-Oberfläche
+### Web-Oberfläche (empfohlen)
 
 1. Analysieren Sie eine Anforderung (siehe [Beispiel 1](#1-anforderung--architektur)).
-2. Die Lückenanalyse wird automatisch zusammen mit der Architekturansicht-Generierung durchgeführt.
-3. Fehlende Beziehungen und unvollständige Muster werden in den Ergebnissen angezeigt.
+2. Wechseln Sie zum Reiter **Lücken** im Ergebnisbereich.
+3. Klicken Sie auf **🔍 Lückenanalyse starten**.
+4. Die Ergebnistabelle zeigt fehlende Beziehungen und unvollständige Architekturmuster.
 
-### REST-API
+![Lückenanalyse-Ergebnisse](../images/27-coverage-dashboard-data.png)
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```bash
 curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
@@ -123,6 +137,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
     "scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}
   }'
 ```
+
+</details>
 
 ### Beispielergebnis
 
@@ -156,6 +172,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/gap/analyze \
 
 Klicken Sie im Panel **Relation Proposals** auf **Propose Relations** für einen bestimmten Knoten oder verwenden Sie den Massenvorschlags-Endpunkt.
 
+![Beziehungsvorschläge](../images/13-propose-relations-modal.png)
+
 ### Schritt 2 — Überprüfen
 
 Jeder Vorschlag zeigt:
@@ -170,7 +188,8 @@ Klicken Sie auf **Accept**, um die Beziehung zum Wissensgraphen hinzuzufügen, o
 
 ![Akzeptierter Vorschlag](../images/36-proposal-accepted.png)
 
-### REST-API
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```bash
 # Vorschläge für einen Knoten generieren
@@ -196,13 +215,25 @@ curl -u admin:admin -X POST http://localhost:8080/api/proposals/bulk \
 curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/revert"
 ```
 
+</details>
+
 ---
 
 ## 5. Architekturempfehlungen
 
 **Ziel:** KI-gesteuerte Vorschläge für zusätzliche Architekturelemente und Beziehungen erhalten.
 
-### REST-API
+### Web-Oberfläche (empfohlen)
+
+1. Analysieren Sie eine Anforderung (siehe [Beispiel 1](#1-anforderung--architektur)).
+2. Wechseln Sie zum Reiter **Empfehlungen** im Ergebnisbereich.
+3. Klicken Sie auf **💡 Empfehlungen generieren**.
+4. Die Ergebniskarten zeigen empfohlene zusätzliche Architekturelemente und Beziehungen.
+
+Siehe auch [Benutzerhandbuch](USER_GUIDE.md) für Details zur Empfehlungs-Oberfläche.
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ```bash
 curl -u admin:admin -X POST http://localhost:8080/api/recommend \
@@ -212,6 +243,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/recommend \
     "scores": {"CO-1056": 88, "CR-1047": 81}
   }'
 ```
+
+</details>
 
 ### Beispielergebnis
 
@@ -232,6 +265,19 @@ curl -u admin:admin -X POST http://localhost:8080/api/recommend \
 ## 6. Diagramm-Export
 
 **Ziel:** Eine Architekturansicht in ein branchenübliches Format exportieren.
+
+### Web-Oberfläche (empfohlen)
+
+Klicken Sie in der **Architekturansicht** auf die gewünschte Export-Schaltfläche:
+
+- **📦 ArchiMate** — Exportiert als ArchiMate 3.x XML (kompatibel mit Archi, BiZZdesign, MEGA)
+- **📊 Visio** — Exportiert als `.vsdx`-Datei
+- **📝 Mermaid** — Exportiert als Mermaid-Flussdiagramm-Code
+
+![Export-Schaltflächen](../images/23-export-buttons.png)
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ### ArchiMate XML
 
@@ -260,6 +306,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
   -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}'
 ```
+
+</details>
 
 Die Antwort ist ein Mermaid-Flussdiagramm-Codeblock, der in GitHub, GitLab, Notion und Confluence gerendert wird:
 
@@ -301,7 +349,7 @@ Die Architekturansicht gruppiert bewertete Knoten nach Schicht (Capability → S
 
 ### Schritt 3 — Auf Lücken prüfen
 
-Die Lückenanalyse (automatisch oder über `POST /api/gap/analyze`) kann folgende Ergebnisse liefern:
+Die Lückenanalyse (automatisch im Reiter **Lücken**) kann folgende Ergebnisse liefern:
 - Fehlende Verbindung zwischen Intelligence Capabilities und Surveillance Services
 - Unvollständiges „Full Stack"-Muster (keine Information Product-Schicht)
 
@@ -322,6 +370,19 @@ Klicken Sie auf **ArchiMate**, um die Architektur als XML herunterzuladen. Impor
 ## 8. Architektur-DSL-Workflow
 
 **Ziel:** Die textbasierte DSL verwenden, um Architekturelemente zu definieren und zu versionieren.
+
+### Web-Oberfläche (empfohlen)
+
+1. Öffnen Sie den **DSL-Editor** über den Reiter **DSL** im rechten Panel.
+2. Bearbeiten Sie die Architektur-DSL direkt im Editor.
+3. Klicken Sie auf **💾 Speichern**, um die Änderungen zu committen.
+4. Nutzen Sie den **Versionsverlauf** (Reiter **Versionen → Verlauf**), um Änderungen zu vergleichen.
+5. Führen Sie Branches über das **Varianten-Panel** zusammen (siehe [Beispiel in der Git-Integration](GIT_INTEGRATION.md#merge)).
+
+![DSL-Editor](../images/34-dsl-editor-panel.png)
+
+<details>
+<summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
 ### Schritt 1 — Aktuellen Zustand als DSL exportieren
 
@@ -377,3 +438,5 @@ curl -u admin:admin -X POST "http://localhost:8080/api/dsl/merge?fromBranch=draf
 ```
 
 Die zusammengeführten Änderungen werden in die Beziehungsdatenbank materialisiert und werden im Graphen und in den Architekturansichten sichtbar.
+
+</details>
