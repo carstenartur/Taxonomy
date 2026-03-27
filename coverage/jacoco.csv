@@ -93,7 +93,7 @@ Taxonomy Application,com.taxonomy.security.config,SecurityDataInitializer,0,99,2
 Taxonomy Application,com.taxonomy.security.config,SecurityConfig,0,71,0,0,0,20,0,9,0,9
 Taxonomy Application,com.taxonomy.search.controller,SearchApiController,37,112,10,18,5,26,10,12,0,8
 Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController,293,291,36,24,69,81,27,11,1,7
-Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController.new AnalysisEventCallback() {...},55,106,2,2,12,21,4,5,2,5
+Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController.new AnalysisEventCallback() {...},59,158,7,7,12,29,9,5,2,5
 Taxonomy Application,com.taxonomy.architecture.model,ArchitectureCommitIndex,8,79,1,1,2,24,3,22,2,22
 Taxonomy Application,com.taxonomy.architecture.model,ArchitectureDslDocument,8,58,1,1,2,18,3,16,2,16
 Taxonomy Application,com.taxonomy.export.service,ExportFacade,28,104,1,1,6,27,4,7,3,7
@@ -129,7 +129,7 @@ Taxonomy Application,com.taxonomy.workspace.service,SystemRepositoryService,6,78
 Taxonomy Application,com.taxonomy.workspace.service,WorkspaceResolver,2,26,3,3,1,8,3,3,0,3
 Taxonomy Application,com.taxonomy.workspace.service,UserWorkspaceState,5,122,1,3,1,37,1,21,0,20
 Taxonomy Application,com.taxonomy.workspace.service,ExternalGitSyncService.ExternalSyncStatus,0,18,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.workspace.service,WorkspaceManager,439,749,49,39,89,193,41,39,10,26
+Taxonomy Application,com.taxonomy.workspace.service,WorkspaceManager,423,765,48,40,84,198,39,41,9,27
 Taxonomy Application,com.taxonomy.workspace.service,SyncIntegrationService,141,647,25,35,42,157,19,30,0,18
 Taxonomy Application,com.taxonomy.workspace.service,RepositoryStateGuard.OperationCheck,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.workspace.service,SyncIntegrationService.DivergedStrategy,0,21,0,0,0,4,0,1,0,1
@@ -181,7 +181,7 @@ Taxonomy Application,com.taxonomy.shared.service,LocalEmbeddingService,631,339,4
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.State,0,33,0,0,0,6,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService,0,77,0,4,0,13,0,10,0,8
 Taxonomy Application,com.taxonomy.shared.service,AppInitializationStateService.StateSnapshot,0,15,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService.new AppenderBase() {...},0,42,0,2,0,11,0,3,0,2
+Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService.new AppenderBase() {...},10,32,1,1,2,9,1,2,0,2
 Taxonomy Application,com.taxonomy.shared.config,CsvKeywordAnalyzer,0,24,0,0,0,5,0,3,0,3
 Taxonomy Application,com.taxonomy.shared.config,RateLimitFilter.WindowCounter,25,30,3,3,6,6,2,3,0,2
 Taxonomy Application,com.taxonomy.shared.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0,4,0,2,0
@@ -199,11 +199,11 @@ Taxonomy Application,com.taxonomy.shared.config,VersionModelAdvice,0,6,0,0,0,2,0
 Taxonomy Application,com.taxonomy.analysis.service,AnalysisRelationGenerator.ScoredNode,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,SavedAnalysisService,2,189,1,23,0,44,1,18,0,7
 Taxonomy Application,com.taxonomy.analysis.service,LlmRateLimitException,9,0,0,0,4,0,2,0,2,0
-Taxonomy Application,com.taxonomy.analysis.service,LlmService.ScoreParseResult,6,41,0,2,2,4,1,3,1,2
+Taxonomy Application,com.taxonomy.analysis.service,LlmService.ScoreParseResult,35,12,2,0,5,1,3,1,2,1
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},0,6,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},0,6,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},0,6,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.analysis.service,LlmService,1996,846,209,57,415,196,139,36,18,24
+Taxonomy Application,com.taxonomy.analysis.service,LlmService,2030,818,214,52,424,188,141,34,19,23
 Taxonomy Application,com.taxonomy.analysis.service,LlmProvider,0,45,0,0,0,8,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,AnalysisFacade,0,25,0,0,0,7,0,3,0,3
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser,10,556,4,50,3,105,4,36,0,13
@@ -216,7 +216,7 @@ Taxonomy Application,com.taxonomy.catalog.controller,ArchiMateImportController,2
 Taxonomy Application,com.taxonomy.catalog.controller,ApiController,29,25,2,2,5,9,2,3,0,3
 Taxonomy Application,com.taxonomy.catalog.controller,TaxonomyController,0,19,0,0,0,6,0,2,0,2
 Taxonomy Application,com.taxonomy.catalog.controller,ImportApiController,47,71,1,3,7,18,1,6,0,5
-Taxonomy Application,com.taxonomy.preferences,PreferencesService,59,283,9,7,13,58,8,13,1,12
+Taxonomy Application,com.taxonomy.preferences,PreferencesService,40,302,8,8,9,62,7,14,1,12
 Taxonomy Application,com.taxonomy.preferences,PreferencesStorageConfig,0,15,0,0,0,4,0,3,0,3
 Taxonomy Application,com.taxonomy.catalog.service.importer,FrameworkImportService.RegisteredProfile,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.catalog.service.importer,StructurizrDslParser,17,286,17,43,5,62,17,22,0,6
