@@ -32,6 +32,8 @@ Architecture-DSL-Dokumente (`.taxdsl`-Dateien) werden in einem JGit-DFS-Reposito
 
 Der Git-Zustand wird über die UI-Statusleiste und die REST-API bereitgestellt, sodass Sie den Zustand des Repositorys überwachen, veraltete Projektionen erkennen und Merge-/Cherry-Pick-Operationen vor der Ausführung in der Vorschau betrachten können.
 
+![Kontextleiste](../images/44-context-bar.png)
+
 ---
 
 ## Datenmodell-Schichten
@@ -127,6 +129,10 @@ Navigieren Sie zu **Versionen → Varianten** und klicken Sie auf **🌿 Neue Va
 
 ![Varianten-Erstellung](../images/46-variant-creation-modal.png)
 
+Das Varianten-Panel zeigt alle vorhandenen Varianten als Karten:
+
+![Varianten-Browser](../images/47-variants-browser-tab.png)
+
 <details>
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
@@ -202,6 +208,8 @@ Einen bestimmten Commit von einem Branch auf einen anderen portieren:
 
 Im **Versionsverlauf** wählen Sie den gewünschten Commit und klicken Sie auf die Übertragen-Aktion. Das System zeigt eine Vorschau mit Konfliktprüfung.
 
+![Cherry-Pick-Vorschau](../images/62-cherry-pick-preview-modal.png)
+
 <details>
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
@@ -228,6 +236,10 @@ Im **Varianten-Panel** klicken Sie auf **🔀 Integrieren** bei der gewünschten
 ![Merge-Vorschau](../images/60-merge-preview-modal.png)
 
 ![Fast-Forward-Merge](../images/61-merge-preview-fast-forward.png)
+
+Nach einer erfolgreichen Zusammenführung wird ein Bestätigungs-Toast angezeigt:
+
+![Erfolgreiche Zusammenführung](../images/58-merge-success-toast.png)
 
 <details>
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
@@ -381,6 +393,8 @@ relation CO-1011 USES CR-1047 {
 Ein Reviewer akzeptiert eine vorgeschlagene Beziehung auf dem `review`-Branch. Die Änderung wird per Cherry-Pick auf `draft` übertragen:
 
 Der Reviewer öffnet den **Versionsverlauf** des review-Branches, findet den Commit `a3f8c2d` und überträgt ihn per Klick auf die Übertragen-Aktion in den `draft`-Branch.
+
+![Cherry-Pick-Erfolg](../images/59-cherry-pick-success-toast.png)
 
 Der Cherry-Pick-Commit ändert nur den Beziehungsstatus:
 ```diff

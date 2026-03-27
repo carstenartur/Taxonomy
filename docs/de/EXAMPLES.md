@@ -23,7 +23,11 @@ Dieses Dokument zeigt ausgearbeitete Beispiele für häufige Aufgaben im Taxonom
 
 ### Schritt 1 — Anforderung eingeben
 
-Öffnen Sie `http://localhost:8080` und fügen Sie folgenden Text in das Analyse-Textfeld ein:
+Öffnen Sie `http://localhost:8080`. Das Analyse-Panel wird auf der rechten Seite angezeigt:
+
+![Analyse-Panel](../images/04-analysis-panel-empty.png)
+
+Fügen Sie folgenden Text in das Analyse-Textfeld ein:
 
 > _„Bereitstellung einer integrierten Kommunikationsplattform für Krankenhauspersonal, die Echtzeit-Sprach- und Datenaustausch zwischen Abteilungen sowie koordiniertes Workflow-Management für klinische Teams ermöglicht."_
 
@@ -44,6 +48,8 @@ Klicken Sie auf **Analyze with AI**. Das System bewertet jeden Taxonomie-Knoten 
 ### Schritt 3 — Architekturansicht generieren
 
 Das System wählt automatisch Knoten mit einer Bewertung ≥ 70 als Anker aus, propagiert die Relevanz über Taxonomie-Beziehungen und erstellt ein strukturiertes Architekturmodell:
+
+![Architekturansicht](../images/20-architecture-view.png)
 
 ```
 Capability: Communication and Information System Capabilities (CP-1023)
@@ -86,6 +92,8 @@ curl -u admin:admin -X POST http://localhost:8080/api/analyze \
 2. Geben Sie den Knoten-Code ein, z. B. `CR-1047` (Infrastructure Services).
 3. Klicken Sie auf **Failure Impact**.
 4. Das Ergebnis zeigt jedes Element, das direkt oder transitiv von `CR-1047` abhängt.
+
+![Ausfallauswirkungsanalyse im Graph Explorer](../images/22-graph-explorer-failure.png)
 
 Siehe auch [Benutzerhandbuch](USER_GUIDE.md) für Details zur Graph-Explorer-Oberfläche.
 
@@ -188,6 +196,10 @@ Klicken Sie auf **Accept**, um die Beziehung zum Wissensgraphen hinzuzufügen, o
 
 ![Akzeptierter Vorschlag](../images/36-proposal-accepted.png)
 
+Nach dem Akzeptieren wird die Beziehung im Wissensgraphen sichtbar:
+
+![Graph mit akzeptierter Beziehung](../images/37-graph-with-accepted-relation.png)
+
 <details>
 <summary>🔧 REST-API-Äquivalent (für Automatisierung)</summary>
 
@@ -229,6 +241,8 @@ curl -u admin:admin -X POST "http://localhost:8080/api/proposals/42/revert"
 2. Wechseln Sie zum Reiter **Empfehlungen** im Ergebnisbereich.
 3. Klicken Sie auf **💡 Empfehlungen generieren**.
 4. Die Ergebniskarten zeigen empfohlene zusätzliche Architekturelemente und Beziehungen.
+
+![Architekturansicht mit Empfehlungen](../images/20-architecture-view.png)
 
 Siehe auch [Benutzerhandbuch](USER_GUIDE.md) für Details zur Empfehlungs-Oberfläche.
 
@@ -334,6 +348,8 @@ graph TD
 
 Fügen Sie die Anforderung in das Analyse-Panel ein und klicken Sie auf **Analyze with AI**.
 
+![Analyse-Panel](../images/04-analysis-panel-empty.png)
+
 Das System bewertet alle ca. 2.500 Taxonomie-Knoten. Top-Übereinstimmungen könnten folgende sein:
 
 | Code | Knoten | Bewertung |
@@ -343,9 +359,13 @@ Das System bewertet alle ca. 2.500 Taxonomie-Knoten. Top-Übereinstimmungen kön
 | CR-1047 | Infrastructure Services | 78 |
 | BP-1481 | Protect | 72 |
 
+![Bewerteter Taxonomie-Baum](../images/15-scored-taxonomy-tree.png)
+
 ### Schritt 2 — Architekturansicht überprüfen
 
 Die Architekturansicht gruppiert bewertete Knoten nach Schicht (Capability → Service → Process) und zeigt die Beziehungen zwischen ihnen.
+
+![Architekturansicht](../images/20-architecture-view.png)
 
 ### Schritt 3 — Auf Lücken prüfen
 
@@ -353,17 +373,23 @@ Die Lückenanalyse (automatisch im Reiter **Lücken**) kann folgende Ergebnisse 
 - Fehlende Verbindung zwischen Intelligence Capabilities und Surveillance Services
 - Unvollständiges „Full Stack"-Muster (keine Information Product-Schicht)
 
+![Lückenanalyse-Dashboard](../images/27-coverage-dashboard-data.png)
+
 ### Schritt 4 — Beziehungsvorschläge generieren
 
 Klicken Sie im Panel „Relation Proposals" auf **Propose Relations**. Die KI könnte vorschlagen:
 - `CI-1023 REALIZES CP-1022` — „Überwachungsdienste realisieren die Aufklärungsfähigkeit"
 - `CR-1047 SUPPORTS CI-1023` — „Infrastrukturdienste unterstützen die Feldüberwachung"
 
+![Beziehungsvorschläge-Panel](../images/12-relation-proposals-panel.png)
+
 Akzeptieren Sie die sinnvollen Vorschläge; lehnen Sie die übrigen ab.
 
 ### Schritt 5 — Exportieren
 
 Klicken Sie auf **ArchiMate**, um die Architektur als XML herunterzuladen. Importieren Sie die Datei in Archi oder BiZZdesign zur weiteren Verfeinerung.
+
+![Export-Schaltflächen](../images/23-export-buttons.png)
 
 ---
 

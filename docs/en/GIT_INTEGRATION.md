@@ -32,6 +32,8 @@ Architecture DSL documents (`.taxdsl` files) are stored in a JGit DFS (Distribut
 
 The Git state is exposed through the UI status bar and REST API, allowing you to monitor repository health, detect stale projections, and preview merge/cherry-pick operations before executing them.
 
+![Context bar](../images/44-context-bar.png)
+
 ---
 
 ## Data Model Layers
@@ -127,6 +129,10 @@ Navigate to **Versions → Variants** and click **🌿 New Variant**. Enter the 
 
 ![Variant creation](../images/46-variant-creation-modal.png)
 
+The variants panel shows all existing variants as cards:
+
+![Variants browser](../images/47-variants-browser-tab.png)
+
 <details>
 <summary>🔧 REST API equivalent (for automation)</summary>
 
@@ -202,6 +208,8 @@ Port a specific commit from one branch to another:
 
 In the **Version History**, select the desired commit and click the transfer action. The system shows a preview with conflict checking.
 
+![Cherry-pick preview](../images/62-cherry-pick-preview-modal.png)
+
 <details>
 <summary>🔧 REST API equivalent (for automation)</summary>
 
@@ -228,6 +236,10 @@ In the **Variants Panel**, click **🔀 Integrate** on the desired variant. A pr
 ![Merge preview](../images/60-merge-preview-modal.png)
 
 ![Fast-forward merge](../images/61-merge-preview-fast-forward.png)
+
+After a successful merge, a confirmation toast is displayed:
+
+![Merge success](../images/58-merge-success-toast.png)
 
 <details>
 <summary>🔧 REST API equivalent (for automation)</summary>
@@ -381,6 +393,8 @@ relation CO-1011 USES CR-1047 {
 A reviewer accepts a proposed relation on the `review` branch. The change is cherry-picked to `draft`:
 
 The reviewer opens the **Version History** of the review branch, finds commit `a3f8c2d`, and transfers it to the `draft` branch using the transfer action.
+
+![Cherry-pick success](../images/59-cherry-pick-success-toast.png)
 
 The cherry-picked commit changes only the relation status:
 ```diff
