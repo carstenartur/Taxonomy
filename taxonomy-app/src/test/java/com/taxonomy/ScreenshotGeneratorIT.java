@@ -49,7 +49,9 @@ import com.taxonomy.shared.service.AppInitializationStateService;
 class ScreenshotGeneratorIT {
 
     private static final String REQUIREMENT_TEXT =
-            "Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments";
+            "Provide an integrated communication platform for hospital staff, enabling real-time voice " +
+            "and data exchange between departments, with a clinical dashboard application for patient " +
+            "handoff tracking and team coordination";
 
     private static final String FALLBACK_DSL_TEXT =
             "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
@@ -489,9 +491,9 @@ class ScreenshotGeneratorIT {
      * {@code RelevancePropagationService.propagate()} has edges to traverse when the
      * architecture view is rendered.  These root-level relations, combined with
      * hierarchy-aware leaf-node inheritance and enrichment, produce 20+ elements
-     * across 6 layers with 7 cross-layer relationships.
+     * across 7+ layers with cross-layer relationships including User Applications.
      * <p>
-     * Uses root-level taxonomy codes (CP, CR, BP, BR, CI, CO, IP) that are always present
+     * Uses root-level taxonomy codes (CP, CR, BP, BR, CI, CO, IP, UA) that are always present
      * after the catalogue is loaded.  Duplicates are harmless because the propagation
      * just finds more paths.
      */
@@ -503,8 +505,10 @@ class ScreenshotGeneratorIT {
            "  {sourceCode:'CR',targetCode:'BR',relationType:'SUPPORTS',description:'arch-seed'}," +
            "  {sourceCode:'CR',targetCode:'CI',relationType:'DEPENDS_ON',description:'arch-seed'}," +
            "  {sourceCode:'CR',targetCode:'CP',relationType:'FULFILLS',description:'arch-seed'}," +
+           "  {sourceCode:'CR',targetCode:'UA',relationType:'SUPPORTS',description:'arch-seed'}," +
            "  {sourceCode:'CO',targetCode:'CR',relationType:'SUPPORTS',description:'arch-seed'}," +
            "  {sourceCode:'CO',targetCode:'BP',relationType:'SUPPORTS',description:'arch-seed'}," +
+           "  {sourceCode:'CO',targetCode:'IP',relationType:'USES',description:'arch-seed'}," +
            "  {sourceCode:'BP',targetCode:'IP',relationType:'USES',description:'arch-seed'}" +
            "];" +
            "rels.forEach(function(rel) {" +
@@ -515,7 +519,7 @@ class ScreenshotGeneratorIT {
            "  }).then(function() { window.__relsDone++; })" +
            "   .catch(function() { window.__relsDone++; });" +
            "});");
-        wait(15).until(d -> 8L == (Long) ((JavascriptExecutor) d).executeScript(
+        wait(15).until(d -> 10L == (Long) ((JavascriptExecutor) d).executeScript(
                 "return window.__relsDone;"));
     }
 

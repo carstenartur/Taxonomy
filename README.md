@@ -28,13 +28,13 @@ flowchart LR
 
 ## Quick Example
 
-> _"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments and coordinated workflow management for clinical teams."_
+> _"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments, with a clinical dashboard application for patient handoff tracking and team coordination."_
 
 <img src="docs/images/15-scored-taxonomy-tree.png" alt="Scored taxonomy tree" width="700">
 
 The system scores every taxonomy node, selects the most relevant elements (score ≥ 70), propagates relevance through architecture relations, and generates an interactive architecture view. Each element is shown with its **full name** (e.g. "Transport Services"), **layer label** (e.g. "Communications Services"), and **relevance percentage** — with ★ anchor nodes and ⚠️ hotspots clearly highlighted. Ready for export to ArchiMate, Visio, or Mermaid.
 
-**Architecture view generated from this requirement — 20 elements across 6 layers:**
+**Architecture view generated from this requirement — spanning Capabilities, Services, Applications, and Processes:**
 
 <img src="docs/images/20-architecture-view.png" alt="Generated architecture view" width="700">
 
