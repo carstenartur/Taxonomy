@@ -82,7 +82,7 @@ Taxonomy Application,com.taxonomy.provenance.model,SourceFragment,36,46,0,0,10,1
 Taxonomy Application,com.taxonomy.provenance.model,RequirementSourceLink,12,59,0,0,3,19,3,15,3,15
 Taxonomy Application,com.taxonomy,TaxonomyApplication,8,0,0,0,3,0,2,0,2,0
 Taxonomy Application,com.taxonomy,AppConfig,0,57,0,0,0,16,0,5,0,5
-Taxonomy Application,com.taxonomy.export.controller,ExportApiController,79,265,13,25,17,54,12,15,1,7
+Taxonomy Application,com.taxonomy.export.controller,ExportApiController,100,265,17,25,21,54,15,15,2,7
 Taxonomy Application,com.taxonomy.security.config,KeycloakSecurityConfig,122,0,0,0,30,0,13,0,13,0
 Taxonomy Application,com.taxonomy.security.config,AuthorizationRulesConfigurer,19,461,1,1,1,28,1,2,0,2
 Taxonomy Application,com.taxonomy.security.config,LoginRateLimitFilter.FailureTracker,37,64,3,7,10,14,5,5,2,3
@@ -96,7 +96,7 @@ Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController,293,
 Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController.new AnalysisEventCallback() {...},59,158,7,7,12,29,9,5,2,5
 Taxonomy Application,com.taxonomy.architecture.model,ArchitectureCommitIndex,8,79,1,1,2,24,3,22,2,22
 Taxonomy Application,com.taxonomy.architecture.model,ArchitectureDslDocument,8,58,1,1,2,18,3,16,2,16
-Taxonomy Application,com.taxonomy.export.service,ExportFacade,28,104,1,1,6,27,4,7,3,7
+Taxonomy Application,com.taxonomy.export.service,ExportFacade,38,104,1,1,8,27,5,7,4,7
 Taxonomy Application,com.taxonomy.preferences.storage,PreferencesCommit,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.preferences.storage,PreferencesGitRepository,9,272,4,16,1,65,3,15,0,8
 Taxonomy Application,com.taxonomy.workspace.model,UserWorkspace,13,151,0,0,5,64,4,37,4,37
@@ -145,7 +145,7 @@ Taxonomy Application,com.taxonomy.architecture.service,ArchitectureGraphQuerySer
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureSummaryService,67,270,9,9,7,57,11,12,3,11
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService,25,491,12,42,4,92,11,22,0,6
 Taxonomy Application,com.taxonomy.architecture.service,DerivedMetadataService,42,164,3,17,9,39,5,11,2,4
-Taxonomy Application,com.taxonomy.architecture.service,RequirementArchitectureViewService,263,743,33,69,57,160,23,40,2,10
+Taxonomy Application,com.taxonomy.architecture.service,RequirementArchitectureViewService,122,884,21,81,25,192,18,45,1,11
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService.PatternStep,0,20,0,0,0,2,0,2,0,2
 Taxonomy Application,com.taxonomy.architecture.service,ExplanationTraceService,65,391,23,27,8,72,21,13,1,8
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureGraphQueryServiceImpl,62,963,23,84,13,197,19,55,0,20

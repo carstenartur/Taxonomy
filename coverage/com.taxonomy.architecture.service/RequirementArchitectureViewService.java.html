@@ -304,7 +304,7 @@ public class RequirementArchitectureViewService {
 <span class="fc bfc" id="L304" title="All 2 branches covered.">        for (RequirementRelationshipView rv : relationships) {</span>
 <span class="fc" id="L305">            Long key = rv.getRelationId();</span>
 <span class="fc" id="L306">            RequirementRelationshipView existing = deduped.get(key);</span>
-<span class="pc bpc" id="L307" title="3 of 4 branches missed.">            if (existing == null || rv.getPropagatedRelevance() &gt; existing.getPropagatedRelevance()) {</span>
+<span class="pc bpc" id="L307" title="1 of 4 branches missed.">            if (existing == null || rv.getPropagatedRelevance() &gt; existing.getPropagatedRelevance()) {</span>
 <span class="fc" id="L308">                deduped.put(key, rv);</span>
             }
 <span class="fc" id="L310">        }</span>
@@ -370,52 +370,52 @@ public class RequirementArchitectureViewService {
 <span class="pc bpc" id="L370" title="1 of 2 branches missed.">            if (score &lt; LEAF_ENRICHMENT_MIN_SCORE) continue;</span>
 <span class="fc bfc" id="L371" title="All 2 branches covered.">            if (includedCodes.contains(code)) continue;</span>
             // Must be a leaf code (contains a dash, e.g. &quot;CO-1063&quot;)
-<span class="pc bpc" id="L373" title="1 of 2 branches missed.">            if (!code.contains(&quot;-&quot;)) continue;</span>
+<span class="fc bfc" id="L373" title="All 2 branches covered.">            if (!code.contains(&quot;-&quot;)) continue;</span>
 
-<span class="nc" id="L375">            String rootPrefix = code.substring(0, code.indexOf('-'));</span>
-<span class="nc bnc" id="L376" title="All 2 branches missed.">            if (!representedRoots.contains(rootPrefix)) continue;</span>
+<span class="fc" id="L375">            String rootPrefix = code.substring(0, code.indexOf('-'));</span>
+<span class="pc bpc" id="L376" title="1 of 2 branches missed.">            if (!representedRoots.contains(rootPrefix)) continue;</span>
 
-<span class="nc" id="L378">            leafScoresByRoot.computeIfAbsent(rootPrefix, k -&gt; new ArrayList&lt;&gt;()).add(entry);</span>
-<span class="nc" id="L379">        }</span>
+<span class="fc" id="L378">            leafScoresByRoot.computeIfAbsent(rootPrefix, k -&gt; new ArrayList&lt;&gt;()).add(entry);</span>
+<span class="fc" id="L379">        }</span>
 
         // For each root, pick the top-N leaf nodes by score
-<span class="pc bpc" id="L382" title="1 of 2 branches missed.">        for (Map.Entry&lt;String, List&lt;Map.Entry&lt;String, Integer&gt;&gt;&gt; rootEntry : leafScoresByRoot.entrySet()) {</span>
-<span class="nc" id="L383">            String root = rootEntry.getKey();</span>
-<span class="nc" id="L384">            List&lt;Map.Entry&lt;String, Integer&gt;&gt; candidates = rootEntry.getValue();</span>
-<span class="nc" id="L385">            candidates.sort(Comparator.&lt;Map.Entry&lt;String, Integer&gt;, Integer&gt;comparing(Map.Entry::getValue).reversed());</span>
+<span class="fc bfc" id="L382" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;Map.Entry&lt;String, Integer&gt;&gt;&gt; rootEntry : leafScoresByRoot.entrySet()) {</span>
+<span class="fc" id="L383">            String root = rootEntry.getKey();</span>
+<span class="fc" id="L384">            List&lt;Map.Entry&lt;String, Integer&gt;&gt; candidates = rootEntry.getValue();</span>
+<span class="fc" id="L385">            candidates.sort(Comparator.&lt;Map.Entry&lt;String, Integer&gt;, Integer&gt;comparing(Map.Entry::getValue).reversed());</span>
 
-<span class="nc" id="L387">            int added = 0;</span>
-<span class="nc bnc" id="L388" title="All 2 branches missed.">            for (Map.Entry&lt;String, Integer&gt; candidate : candidates) {</span>
-<span class="nc bnc" id="L389" title="All 2 branches missed.">                if (added &gt;= MAX_LEAF_ENRICHMENT) break;</span>
-<span class="nc" id="L390">                String leafCode = candidate.getKey();</span>
-<span class="nc" id="L391">                int leafScore = candidate.getValue();</span>
+<span class="fc" id="L387">            int added = 0;</span>
+<span class="fc bfc" id="L388" title="All 2 branches covered.">            for (Map.Entry&lt;String, Integer&gt; candidate : candidates) {</span>
+<span class="pc bpc" id="L389" title="1 of 2 branches missed.">                if (added &gt;= MAX_LEAF_ENRICHMENT) break;</span>
+<span class="fc" id="L390">                String leafCode = candidate.getKey();</span>
+<span class="fc" id="L391">                int leafScore = candidate.getValue();</span>
 
-<span class="nc" id="L393">                RequirementElementView element = new RequirementElementView();</span>
-<span class="nc" id="L394">                element.setNodeCode(leafCode);</span>
-<span class="nc" id="L395">                element.setRelevance(leafScore / 100.0);</span>
-<span class="nc bnc" id="L396" title="All 2 branches missed.">                boolean isAnchor = leafScore &gt;= ANCHOR_THRESHOLD_HIGH;</span>
-<span class="nc bnc" id="L397" title="All 2 branches missed.">                element.setHopDistance(isAnchor ? 0 : 1);</span>
-<span class="nc" id="L398">                element.setAnchor(isAnchor);</span>
-<span class="nc" id="L399">                element.setIncludedBecause(&quot;leaf-enrichment: top-scoring in &quot; + root);</span>
+<span class="fc" id="L393">                RequirementElementView element = new RequirementElementView();</span>
+<span class="fc" id="L394">                element.setNodeCode(leafCode);</span>
+<span class="fc" id="L395">                element.setRelevance(leafScore / 100.0);</span>
+<span class="pc bpc" id="L396" title="1 of 2 branches missed.">                boolean isAnchor = leafScore &gt;= ANCHOR_THRESHOLD_HIGH;</span>
+<span class="pc bpc" id="L397" title="1 of 2 branches missed.">                element.setHopDistance(isAnchor ? 0 : 1);</span>
+<span class="fc" id="L398">                element.setAnchor(isAnchor);</span>
+<span class="fc" id="L399">                element.setIncludedBecause(&quot;leaf-enrichment: top-scoring in &quot; + root);</span>
 
-<span class="nc" id="L401">                Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(leafCode);</span>
-<span class="nc bnc" id="L402" title="All 2 branches missed.">                if (nodeOpt.isPresent()) {</span>
-<span class="nc" id="L403">                    TaxonomyNode node = nodeOpt.get();</span>
-<span class="nc" id="L404">                    element.setTitle(node.getNameEn());</span>
-<span class="nc" id="L405">                    element.setTaxonomySheet(node.getTaxonomyRoot());</span>
-<span class="nc" id="L406">                } else {</span>
+<span class="fc" id="L401">                Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(leafCode);</span>
+<span class="pc bpc" id="L402" title="1 of 2 branches missed.">                if (nodeOpt.isPresent()) {</span>
+<span class="fc" id="L403">                    TaxonomyNode node = nodeOpt.get();</span>
+<span class="fc" id="L404">                    element.setTitle(node.getNameEn());</span>
+<span class="fc" id="L405">                    element.setTaxonomySheet(node.getTaxonomyRoot());</span>
+<span class="fc" id="L406">                } else {</span>
 <span class="nc" id="L407">                    element.setTaxonomySheet(root);</span>
                 }
 
-<span class="nc" id="L410">                elements.add(element);</span>
-<span class="nc" id="L411">                includedCodes.add(leafCode);</span>
-<span class="nc" id="L412">                added++;</span>
-<span class="nc" id="L413">            }</span>
+<span class="fc" id="L410">                elements.add(element);</span>
+<span class="fc" id="L411">                includedCodes.add(leafCode);</span>
+<span class="fc" id="L412">                added++;</span>
+<span class="fc" id="L413">            }</span>
 
-<span class="nc bnc" id="L415" title="All 2 branches missed.">            if (added &gt; 0) {</span>
-<span class="nc" id="L416">                log.debug(&quot;Enriched layer {} with {} leaf node(s)&quot;, root, added);</span>
+<span class="pc bpc" id="L415" title="1 of 2 branches missed.">            if (added &gt; 0) {</span>
+<span class="fc" id="L416">                log.debug(&quot;Enriched layer {} with {} leaf node(s)&quot;, root, added);</span>
             }
-<span class="nc" id="L418">        }</span>
+<span class="fc" id="L418">        }</span>
 
         // Re-sort: anchors first, then by relevance descending
 <span class="fc" id="L421">        elements.sort(Comparator</span>
