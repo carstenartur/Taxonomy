@@ -3,39 +3,38 @@ package com.taxonomy.catalog.service;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import org.springframework.stereotype.Service;
 
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.IntStream;
 
 /**
  * Walks the taxonomy hierarchy from root to leaf and distributes scores
  * so that every node on the path carries a score.
  *
- * <p>The distributor operates in two complementary modes:
+ * <p>The distributor uses two pluggable components:
+ * <ul>
+ *   <li>{@link NodeScorer} — provides raw relevance scores for a batch of
+ *       sibling nodes.  Implementations can source scores from cloud LLMs,
+ *       local embedding models, pre-recorded analysis files, or deterministic
+ *       algorithms.</li>
+ *   <li>{@link DistributionStrategy} — decides how those raw scores relate
+ *       to the parent's score.  {@link BudgetDistribution} normalises children
+ *       to sum to the parent (standard hierarchical narrowing);
+ *       {@link IndependentScoring} keeps each node's raw 0–100 score, which
+ *       can discover taxonomy flaws where children match better than parents
+ *       or vice versa.</li>
+ * </ul>
  *
- * <h3>1 — Full distribution ({@link #distribute})</h3>
- * Takes a set of root-level scores and recursively distributes each root's
- * budget across all its descendants.  Every child's score is proportional
- * to a deterministic weight derived from its node code, and at every level
- * the children's scores sum exactly to their parent's score.
- *
- * <p>This mode is used by {@code MockScoreGeneratorIT} to produce the
- * mock-score JSON files that ship in {@code src/main/resources/mock-scores/}.
- *
- * <h3>2 — Path fill-in ({@link #fillIntermediateScores})</h3>
- * Takes an existing partial scores map (roots + selected leaves) and
- * fills in the missing intermediate nodes so that the path from every
- * root to every scored leaf is complete.  Intermediate scores are
- * interpolated linearly between the nearest scored ancestor and the
- * nearest scored descendant on each path.
- *
- * <p>This mode is useful when hand-crafting showcase scores
- * (e.g.&nbsp;in {@code ReadmeShowcaseTest}) where only the root and
- * a few key leaf scores are known, and the intermediate values should
- * be derived automatically.
+ * <h3>Convenience methods</h3>
+ * <ul>
+ *   <li>{@link #distribute(Map, Map)} — backward-compatible overload that
+ *       uses {@link DeterministicNodeScorer} + {@link BudgetDistribution}.</li>
+ *   <li>{@link #distribute(Map, Map, String, NodeScorer, DistributionStrategy)}
+ *       — full-featured overload with pluggable scorer and strategy.</li>
+ *   <li>{@link #fillIntermediateScores(Map)} — fills in missing intermediate
+ *       nodes by linear interpolation.</li>
+ * </ul>
  */
 @Service
 public class HierarchyScoreDistributor {
@@ -46,7 +45,7 @@ public class HierarchyScoreDistributor {
         this.taxonomyService = taxonomyService;
     }
 
-    // ── Full distribution ──────────────────────────────────────────────────
+    // ── Result record ──────────────────────────────────────────────────────
 
     /**
      * Result of a full score distribution.
@@ -58,20 +57,29 @@ public class HierarchyScoreDistributor {
             Map<String, Integer> scores,
             Map<String, String> reasons) {}
 
+    // ── Full distribution (pluggable) ──────────────────────────────────────
+
     /**
-     * Distributes root-level scores across the entire taxonomy hierarchy.
+     * Distributes root-level scores across the entire taxonomy hierarchy
+     * using a pluggable scorer and strategy.
      *
-     * <p>For each root, the given score is subdivided among its children
-     * at every level so that child scores always sum exactly to their
-     * parent's score.  The weight assigned to each child is deterministic
-     * (derived from {@code Math.abs(code.hashCode()) % 100 + 1}).
+     * <p>For each root, the hierarchy is walked depth-first. At every level
+     * the {@code scorer} is asked for raw scores, which the {@code strategy}
+     * then adjusts (e.g. normalise to parent budget, or keep independent).
      *
-     * @param rootScores  two-letter root code → integer score (0–100)
-     * @param rootReasons two-letter root code → reason text
+     * @param rootScores       two-letter root code → integer score (0–100)
+     * @param rootReasons      two-letter root code → reason text
+     * @param requirementText  the business requirement being analysed
+     *                         (passed through to the scorer)
+     * @param scorer           provides raw scores for each batch of siblings
+     * @param strategy         adjusts raw scores according to its constraints
      * @return scores and reasons for <em>all</em> nodes in the taxonomy
      */
     public DistributionResult distribute(Map<String, Integer> rootScores,
-                                         Map<String, String> rootReasons) {
+                                         Map<String, String> rootReasons,
+                                         String requirementText,
+                                         NodeScorer scorer,
+                                         DistributionStrategy strategy) {
 
         List<TaxonomyNode> roots = taxonomyService.getRootNodes()
                 .stream()
@@ -85,22 +93,42 @@ public class HierarchyScoreDistributor {
             int rootScore = rootScores.getOrDefault(root.getCode(), 0);
             scores.put(root.getCode(), rootScore);
             reasons.put(root.getCode(), rootReasons.getOrDefault(root.getCode(), ""));
-            distributeRecursively(root.getCode(), rootScore, scores, reasons, rootReasons);
+            walkRecursively(root.getCode(), rootScore, requirementText,
+                    scorer, strategy, scores, reasons, rootReasons);
         }
 
         return new DistributionResult(scores, reasons);
     }
 
+    // ── Backward-compatible overload ───────────────────────────────────────
+
     /**
-     * Recursively distributes {@code parentScore} across the children of
-     * {@code parentCode}, guaranteeing that the sum of all child scores
-     * equals {@code parentScore}.
+     * Distributes root-level scores using the default
+     * {@link DeterministicNodeScorer} and {@link BudgetDistribution} strategy.
+     *
+     * <p>This is equivalent to calling
+     * {@code distribute(rootScores, rootReasons, "", DeterministicNodeScorer.INSTANCE, BudgetDistribution.INSTANCE)}.
+     *
+     * @param rootScores  two-letter root code → integer score (0–100)
+     * @param rootReasons two-letter root code → reason text
+     * @return scores and reasons for <em>all</em> nodes in the taxonomy
      */
-    private void distributeRecursively(String parentCode,
-                                       int parentScore,
-                                       Map<String, Integer> scores,
-                                       Map<String, String> reasons,
-                                       Map<String, String> rootReasons) {
+    public DistributionResult distribute(Map<String, Integer> rootScores,
+                                         Map<String, String> rootReasons) {
+        return distribute(rootScores, rootReasons, "",
+                DeterministicNodeScorer.INSTANCE, BudgetDistribution.INSTANCE);
+    }
+
+    // ── Recursive hierarchy walk ───────────────────────────────────────────
+
+    private void walkRecursively(String parentCode,
+                                 int parentScore,
+                                 String requirementText,
+                                 NodeScorer scorer,
+                                 DistributionStrategy strategy,
+                                 Map<String, Integer> scores,
+                                 Map<String, String> reasons,
+                                 Map<String, String> rootReasons) {
 
         List<TaxonomyNode> children = taxonomyService.getChildrenOf(parentCode);
         if (children.isEmpty()) {
@@ -117,45 +145,26 @@ public class HierarchyScoreDistributor {
                 scores.put(child.getCode(), 0);
                 String root = child.getTaxonomyRoot() != null ? child.getTaxonomyRoot() : "";
                 reasons.put(child.getCode(), rootReasons.getOrDefault(root, ""));
-                distributeRecursively(child.getCode(), 0, scores, reasons, rootReasons);
+                walkRecursively(child.getCode(), 0, requirementText,
+                        scorer, strategy, scores, reasons, rootReasons);
             }
             return;
         }
 
-        // Deterministic weights from node codes
-        int[] weights = children.stream()
-                .mapToInt(c -> (Math.abs(c.getCode().hashCode()) % 100) + 1)
-                .toArray();
-        int totalWeight = Arrays.stream(weights).sum();
+        // Step 1: Get raw scores from the scorer
+        Map<String, Integer> rawScores = scorer.score(requirementText, children, parentScore);
 
-        // Floor-based proportional distribution
-        int[] childScores = new int[children.size()];
-        double[] fractions = new double[children.size()];
-        int distributed = 0;
-        for (int i = 0; i < children.size(); i++) {
-            double raw = (double) parentScore * weights[i] / totalWeight;
-            childScores[i] = (int) raw;
-            fractions[i]   = raw - childScores[i];
-            distributed   += childScores[i];
-        }
+        // Step 2: Apply the distribution strategy
+        Map<String, Integer> adjustedScores = strategy.adjust(rawScores, parentScore);
 
-        // Distribute remainder to nodes with largest fractional parts
-        int remainder = parentScore - distributed;
-        Integer[] byFraction = IntStream.range(0, children.size())
-                .boxed()
-                .sorted((a, b) -> Double.compare(fractions[b], fractions[a]))
-                .toArray(Integer[]::new);
-        for (int i = 0; i < remainder; i++) {
-            childScores[byFraction[i]]++;
-        }
-
-        // Store scores and recurse
-        for (int i = 0; i < children.size(); i++) {
-            TaxonomyNode child = children.get(i);
-            scores.put(child.getCode(), childScores[i]);
+        // Step 3: Store and recurse
+        for (TaxonomyNode child : children) {
+            int childScore = adjustedScores.getOrDefault(child.getCode(), 0);
+            scores.put(child.getCode(), childScore);
             String root = child.getTaxonomyRoot() != null ? child.getTaxonomyRoot() : "";
             reasons.put(child.getCode(), rootReasons.getOrDefault(root, ""));
-            distributeRecursively(child.getCode(), childScores[i], scores, reasons, rootReasons);
+            walkRecursively(child.getCode(), childScore, requirementText,
+                    scorer, strategy, scores, reasons, rootReasons);
         }
     }
 

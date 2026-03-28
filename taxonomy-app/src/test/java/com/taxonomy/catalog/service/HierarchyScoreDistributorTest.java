@@ -15,7 +15,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for {@link HierarchyScoreDistributor}.
+ * Unit tests for {@link HierarchyScoreDistributor} and the pluggable
+ * {@link NodeScorer} / {@link DistributionStrategy} components.
  */
 @ExtendWith(MockitoExtension.class)
 class HierarchyScoreDistributorTest {
@@ -26,7 +27,7 @@ class HierarchyScoreDistributorTest {
     @InjectMocks
     private HierarchyScoreDistributor distributor;
 
-    // ── distribute() ───────────────────────────────────────────────────────
+    // ── distribute() with default scorer + strategy ────────────────────────
 
     @Test
     void distributeAssignsScoresToAllNodes() {
@@ -95,6 +96,179 @@ class HierarchyScoreDistributorTest {
 
         assertThat(result.reasons()).containsEntry("CP", "Capabilities are relevant");
         assertThat(result.reasons()).containsEntry("CP-1000", "Capabilities are relevant");
+    }
+
+    // ── distribute() with pluggable scorer + strategy ──────────────────────
+
+    @Test
+    void distributeWithIndependentScoringKeepsRawScores() {
+        TaxonomyNode root = node("RT", 0, null);
+        TaxonomyNode a    = node("RT-1000", 1, "RT");
+        TaxonomyNode b    = node("RT-1001", 1, "RT");
+
+        when(taxonomyService.getRootNodes()).thenReturn(List.of(root));
+        when(taxonomyService.getChildrenOf("RT")).thenReturn(List.of(a, b));
+        when(taxonomyService.getChildrenOf("RT-1000")).thenReturn(List.of());
+        when(taxonomyService.getChildrenOf("RT-1001")).thenReturn(List.of());
+
+        // Custom scorer: child A=90, child B=20 (sum > parent 50)
+        NodeScorer scorer = (req, nodes, parent) -> {
+            Map<String, Integer> s = new LinkedHashMap<>();
+            for (TaxonomyNode n : nodes) {
+                s.put(n.getCode(), "RT-1000".equals(n.getCode()) ? 90 : 20);
+            }
+            return s;
+        };
+
+        var result = distributor.distribute(
+                Map.of("RT", 50),
+                Map.of("RT", "test"),
+                "some requirement",
+                scorer,
+                IndependentScoring.INSTANCE);
+
+        // Independent scoring keeps raw values — children don't sum to parent
+        assertThat(result.scores().get("RT")).isEqualTo(50);
+        assertThat(result.scores().get("RT-1000")).isEqualTo(90);
+        assertThat(result.scores().get("RT-1001")).isEqualTo(20);
+    }
+
+    @Test
+    void distributeWithBudgetStrategyNormalisesChildren() {
+        TaxonomyNode root = node("RT", 0, null);
+        TaxonomyNode a    = node("RT-1000", 1, "RT");
+        TaxonomyNode b    = node("RT-1001", 1, "RT");
+
+        when(taxonomyService.getRootNodes()).thenReturn(List.of(root));
+        when(taxonomyService.getChildrenOf("RT")).thenReturn(List.of(a, b));
+        when(taxonomyService.getChildrenOf("RT-1000")).thenReturn(List.of());
+        when(taxonomyService.getChildrenOf("RT-1001")).thenReturn(List.of());
+
+        // Custom scorer: raw weights 75 and 25
+        NodeScorer scorer = (req, nodes, parent) -> {
+            Map<String, Integer> s = new LinkedHashMap<>();
+            for (TaxonomyNode n : nodes) {
+                s.put(n.getCode(), "RT-1000".equals(n.getCode()) ? 75 : 25);
+            }
+            return s;
+        };
+
+        var result = distributor.distribute(
+                Map.of("RT", 80),
+                Map.of("RT", "test"),
+                "some requirement",
+                scorer,
+                BudgetDistribution.INSTANCE);
+
+        // Budget distribution normalises: children must sum to parent (80)
+        int aScore = result.scores().get("RT-1000");
+        int bScore = result.scores().get("RT-1001");
+        assertThat(aScore + bScore).isEqualTo(80);
+        // 75% weight gets 60, 25% weight gets 20
+        assertThat(aScore).isEqualTo(60);
+        assertThat(bScore).isEqualTo(20);
+    }
+
+    @Test
+    void distributeWithRecordedScorerAndIndependentStrategy() {
+        TaxonomyNode root = node("RT", 0, null);
+        TaxonomyNode a    = node("RT-1000", 1, "RT");
+        TaxonomyNode b    = node("RT-1001", 1, "RT");
+
+        when(taxonomyService.getRootNodes()).thenReturn(List.of(root));
+        when(taxonomyService.getChildrenOf("RT")).thenReturn(List.of(a, b));
+        when(taxonomyService.getChildrenOf("RT-1000")).thenReturn(List.of());
+        when(taxonomyService.getChildrenOf("RT-1001")).thenReturn(List.of());
+
+        // Pre-recorded scores: child A=85 (higher than parent!), child B=10
+        Map<String, Integer> recorded = Map.of("RT", 50, "RT-1000", 85, "RT-1001", 10);
+        RecordedNodeScorer scorer = new RecordedNodeScorer(recorded);
+
+        var result = distributor.distribute(
+                Map.of("RT", 50),
+                Map.of("RT", "test"),
+                "irrelevant",
+                scorer,
+                IndependentScoring.INSTANCE);
+
+        // Independent strategy: child score can exceed parent (taxonomy flaw detected!)
+        assertThat(result.scores().get("RT-1000")).isEqualTo(85);
+        assertThat(result.scores().get("RT-1001")).isEqualTo(10);
+    }
+
+    // ── DeterministicNodeScorer ────────────────────────────────────────────
+
+    @Test
+    void deterministicScorerProducesDeterministicWeights() {
+        TaxonomyNode a = node("CP-1000", 1, "CP");
+        TaxonomyNode b = node("CP-1001", 1, "CP");
+
+        Map<String, Integer> scores1 = DeterministicNodeScorer.INSTANCE.score("", List.of(a, b), 100);
+        Map<String, Integer> scores2 = DeterministicNodeScorer.INSTANCE.score("", List.of(a, b), 100);
+
+        assertThat(scores1).isEqualTo(scores2);
+        assertThat(scores1.values()).allMatch(v -> v >= 1 && v <= 100);
+    }
+
+    // ── RecordedNodeScorer ─────────────────────────────────────────────────
+
+    @Test
+    void recordedScorerReturnsZeroForUnknownNodes() {
+        Map<String, Integer> recorded = Map.of("CP-1000", 75);
+        RecordedNodeScorer scorer = new RecordedNodeScorer(recorded);
+
+        TaxonomyNode known   = node("CP-1000", 1, "CP");
+        TaxonomyNode unknown = node("CP-9999", 1, "CP");
+
+        Map<String, Integer> scores = scorer.score("test", List.of(known, unknown), 100);
+
+        assertThat(scores.get("CP-1000")).isEqualTo(75);
+        assertThat(scores.get("CP-9999")).isZero();
+    }
+
+    // ── BudgetDistribution ─────────────────────────────────────────────────
+
+    @Test
+    void budgetDistributionSumsToParent() {
+        Map<String, Integer> raw = new LinkedHashMap<>();
+        raw.put("A", 40);
+        raw.put("B", 30);
+        raw.put("C", 30);
+
+        Map<String, Integer> adjusted = BudgetDistribution.INSTANCE.adjust(raw, 100);
+
+        assertThat(adjusted.values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(100);
+    }
+
+    @Test
+    void budgetDistributionHandlesZeroParent() {
+        Map<String, Integer> raw = Map.of("A", 50, "B", 50);
+
+        Map<String, Integer> adjusted = BudgetDistribution.INSTANCE.adjust(raw, 0);
+
+        assertThat(adjusted.values()).allMatch(v -> v == 0);
+    }
+
+    // ── IndependentScoring ─────────────────────────────────────────────────
+
+    @Test
+    void independentScoringKeepsRawValues() {
+        Map<String, Integer> raw = Map.of("A", 90, "B", 5);
+
+        Map<String, Integer> adjusted = IndependentScoring.INSTANCE.adjust(raw, 50);
+
+        assertThat(adjusted).containsEntry("A", 90);
+        assertThat(adjusted).containsEntry("B", 5);
+    }
+
+    @Test
+    void independentScoringClampsToValidRange() {
+        Map<String, Integer> raw = Map.of("A", 150, "B", -10);
+
+        Map<String, Integer> adjusted = IndependentScoring.INSTANCE.adjust(raw, 50);
+
+        assertThat(adjusted.get("A")).isEqualTo(100);
+        assertThat(adjusted.get("B")).isZero();
     }
 
     // ── fillIntermediateScores() ───────────────────────────────────────────
