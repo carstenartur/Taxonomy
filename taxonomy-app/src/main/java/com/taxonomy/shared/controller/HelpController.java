@@ -82,6 +82,7 @@ public class HelpController {
         new String[]{"ACCESSIBILITY",             "♿", "help.toc.ACCESSIBILITY",                 "help.audience.everyone"},
         new String[]{"BSI_KI_CHECKLIST",          "📜", "help.toc.BSI_KI_CHECKLIST",              "help.audience.admins"},
         new String[]{"DIGITAL_SOVEREIGNTY",       "🏴", "help.toc.DIGITAL_SOVEREIGNTY",           "help.audience.admins"},
+        new String[]{"DEUTSCHLAND_STACK_CONFORMITY", "🇩🇪", "help.toc.DEUTSCHLAND_STACK_CONFORMITY", "help.audience.admins"},
         new String[]{"USE_CASE_WISSENSKONSERVIERUNG", "📚", "help.toc.USE_CASE_WISSENSKONSERVIERUNG","help.audience.everyone"},
         new String[]{"VERWALTUNGSINTEGRATION",    "🏢", "help.toc.VERWALTUNGSINTEGRATION",        "help.audience.admins"},
         new String[]{"DOCUMENT_IMPORT",           "📄", "help.toc.DOCUMENT_IMPORT",               "help.audience.everyone"},

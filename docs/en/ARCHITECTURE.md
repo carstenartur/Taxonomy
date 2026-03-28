@@ -7,6 +7,7 @@ This document describes the architecture of the Taxonomy Architecture Analyzer �
 ## Table of Contents
 
 - [System Overview](#system-overview)
+- [Architecture Principles](#architecture-principles)
 - [High-Level Architecture](#high-level-architecture)
 - [Key Components](#key-components)
 - [Architecture View Generation Pipeline](#architecture-view-generation-pipeline)
@@ -30,6 +31,26 @@ The application is a single Spring Boot 4 / Java 17 web application with the fol
 - **Multi-provider LLM integration** — business requirements can be analysed by any of six supported language model providers (Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral), or by a local offline model (`bge-small-en-v1.5` via DJL / ONNX Runtime) that requires no API key.
 - **Taxonomy tree visualisation** — the hierarchy is rendered as a collapsible Bootstrap 5 tree with colour-coded match overlays.
 - **Architecture intelligence** — scored analysis results are automatically assembled into architecture views, which can be exported to ArchiMate XML, Visio `.vsdx`, and Mermaid flowcharts.
+
+---
+
+## Architecture Principles
+
+The system design follows these guiding principles, aligned with the
+[Deutschland-Stack Architecture Principles](https://deutschland-stack.gov.de/gesamtbild/#architekturprinzipien):
+
+| Principle | How it is applied |
+|---|---|
+| **Open Standards** | All exports use open formats (ArchiMate 3.x XML, OpenAPI, Mermaid, ONNX, CycloneDX). No proprietary data formats are required. |
+| **Open Source First** | MIT license. Full source code public. openCode-compatible. |
+| **Interoperability** | REST API with OpenAPI spec. Framework import pipeline (UAF, APQC, C4). Export to 5+ formats. |
+| **Modularity & Reuse** | 4 Maven modules with minimal coupling. 3 modules are Spring-free and independently testable. |
+| **Integration** | Import pipelines for UAF/DoDAF, APQC PCF, C4/Structurizr. Keycloak SSO. External Git sync. |
+| **Scalability** | Stateless REST API. Pluggable database backend (HSQLDB, PostgreSQL, MSSQL, Oracle). Container-ready. |
+| **Security & Trust** | Spring Security 3-role model. HSTS/CSP headers. Rate limiting. Air-gapped operation. GDPR documentation. |
+| **Cooperative Ecosystem** | Public GitHub repository. Docker images on GHCR. CI/CD with GitHub Actions. CycloneDX SBOM. |
+
+For the full conformity assessment, see [Deutschland-Stack Conformity](DEUTSCHLAND_STACK_CONFORMITY.md).
 
 ---
 

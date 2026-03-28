@@ -7,6 +7,7 @@ Dieses Dokument beschreibt die Architektur des Taxonomy Architecture Analyzer �
 ## Inhaltsverzeichnis
 
 - [Systemüberblick](#systemüberblick)
+- [Architekturprinzipien](#architekturprinzipien)
 - [Übergeordnete Architektur](#übergeordnete-architektur)
 - [Schlüsselkomponenten](#schlüsselkomponenten)
 - [Pipeline zur Generierung der Architekturansicht](#pipeline-zur-generierung-der-architekturansicht)
@@ -30,6 +31,26 @@ Die Anwendung ist eine einzelne Spring Boot 4 / Java 17 Webanwendung mit folgend
 - **Multi-Anbieter-LLM-Integration** — Geschäftsanforderungen können von einem der sechs unterstützten Sprachmodellanbieter (Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral) oder von einem lokalen Offline-Modell (`bge-small-en-v1.5` über DJL / ONNX Runtime) analysiert werden, das keinen API-Schlüssel benötigt.
 - **Taxonomiebaum-Visualisierung** — Die Hierarchie wird als zusammenklappbarer Bootstrap-5-Baum mit farbcodierten Übereinstimmungs-Overlays dargestellt.
 - **Architekturintelligenz** — Bewertete Analyseergebnisse werden automatisch zu Architekturansichten zusammengestellt, die als ArchiMate-XML, Visio `.vsdx` und Mermaid-Flussdiagramme exportiert werden können.
+
+---
+
+## Architekturprinzipien
+
+Das Systemdesign folgt diesen Leitprinzipien, abgestimmt auf die
+[Deutschland-Stack Architekturprinzipien](https://deutschland-stack.gov.de/gesamtbild/#architekturprinzipien):
+
+| Prinzip | Anwendung im Projekt |
+|---|---|
+| **Offene Standards** | Alle Exporte nutzen offene Formate (ArchiMate 3.x XML, OpenAPI, Mermaid, ONNX, CycloneDX). Keine proprietären Datenformate erforderlich. |
+| **Open Source First** | MIT-Lizenz. Vollständiger Quellcode öffentlich. openCode-kompatibel. |
+| **Interoperabilität** | REST API mit OpenAPI-Spezifikation. Framework-Import-Pipeline (UAF, APQC, C4). Export in 5+ Formate. |
+| **Modularität & Wiederverwendung** | 4 Maven-Module mit minimaler Kopplung. 3 Module sind Spring-frei und unabhängig testbar. |
+| **Integration** | Import-Pipelines für UAF/DoDAF, APQC PCF, C4/Structurizr. Keycloak SSO. Externe Git-Synchronisation. |
+| **Skalierbarkeit** | Stateless REST API. Austauschbares Datenbank-Backend (HSQLDB, PostgreSQL, MSSQL, Oracle). Container-fähig. |
+| **Sicherheit & Vertrauen** | Spring Security 3-Rollen-Modell. HSTS/CSP-Header. Rate Limiting. Air-Gapped-Betrieb. DSGVO-Dokumentation. |
+| **Kooperatives Ökosystem** | Öffentliches GitHub-Repository. Docker-Images auf GHCR. CI/CD mit GitHub Actions. CycloneDX SBOM. |
+
+Für die vollständige Konformitätsbewertung siehe [Deutschland-Stack Konformität](DEUTSCHLAND_STACK_CONFORMITY.md).
 
 ---
 

@@ -18,6 +18,8 @@ Dieses Handbuch richtet sich an Entwicklerinnen und Entwickler, die zum Taxonomy
 - [Hibernate Search und Lucene](#hibernate-search-und-lucene)
 - [Testkonventionen](#testkonventionen)
 - [Häufige Stolperfallen](#häufige-stolperfallen)
+- [Architekturkonventionen](#architekturkonventionen)
+- [Definition of Done — Benutzer-sichtbare Funktionen](#definition-of-done--benutzer-sichtbare-funktionen)
 
 ---
 
@@ -347,6 +349,49 @@ class MyControllerTest {
 4. **SimpleDriverDataSource:** Die Anwendung verwendet `SimpleDriverDataSource` anstelle von HikariCP für die In-Process-HSQLDB. Das bedeutet keinen Connection Pool — was beabsichtigt ist, um den Speicherverbrauch zu reduzieren. Wechseln Sie nicht zu HikariCP, ohne die Auswirkungen zu verstehen.
 
 5. **Rate Limiting in Tests:** Der `RateLimitFilter` ist während `@SpringBootTest`-Tests aktiv. Wenn Tests LLM-gestützte Endpunkte schnell hintereinander aufrufen, können sie vom Rate Limiting betroffen sein. Erwägen Sie bei Bedarf die Deaktivierung über `TAXONOMY_RATE_LIMIT_PER_MINUTE=0` in der Testkonfiguration.
+
+---
+
+## Architekturkonventionen
+
+Diese Konventionen gewährleisten Homogenität (Deutschland-Stack Prinzip 4 — Modularität & Wiederverwendbarkeit) im gesamten Codebase.
+Siehe [Architekturprinzipien](ARCHITECTURE.md#architekturprinzipien) für die vollständige Prinzip-Zuordnung.
+
+### Benennung
+
+| Bereich | Konvention | Beispiel |
+|---|---|---|
+| REST-Controller | `*Controller` oder `*ApiController` | `ProposalApiController` |
+| Services | `*Service` | `ArchitectureGapService` |
+| JPA-Entitäten | Singular, PascalCase | `TaxonomyRelation` |
+| DTOs | `*Dto`, `*View`, `*Result` | `GapAnalysisView` |
+| Enums | PascalCase, in `taxonomy-domain` | `RelationType` |
+| REST-Pfade | `/api/{ressource}` (Plural, Kebab-Case) | `/api/relations/proposals` |
+
+### Fehlerbehandlung
+
+- Controller geben `ResponseEntity` mit entsprechenden HTTP-Statuscodes zurück
+- Service-Exceptions erweitern domänenspezifische Ausnahmeklassen
+- LLM-Rate-Limits werden als `LlmRateLimitException` → HTTP 429 behandelt
+
+### Checkliste für neue Services
+
+1. In `taxonomy-app/.../service/` platzieren
+2. Mit `@Service` annotieren
+3. `username`-Parameter akzeptieren, wenn Workspace-bezogen
+4. Unit-Test mit `@SpringBootTest` hinzufügen
+5. In ARCHITECTURE.md dokumentieren, wenn es eine Schlüsselkomponente ist
+
+### Daten-Eigentümermodell
+
+| Entität | Eigentümer | Veränderbarkeit |
+|---|---|---|
+| `TaxonomyNode` | System (Excel-Import) | Nur-Lesen nach Startup |
+| `TaxonomyRelation` | Workspace | Lesen-Schreiben, Workspace-bezogen |
+| `RelationHypothesis` | Workspace | Transient oder akzeptiert |
+| `RelationProposal` | Workspace | Lebenszyklus: vorgeschlagen → akzeptiert/abgelehnt |
+| DSL-Inhalt | Workspace (JGit) | Über Git-Commits versioniert |
+| `ArchitectureCommitIndex` | Branch | Bei Materialisierung neu erstellt |
 
 ---
 

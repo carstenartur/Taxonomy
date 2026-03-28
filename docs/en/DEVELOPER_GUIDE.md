@@ -18,6 +18,8 @@ This guide is intended for developers contributing to the Taxonomy Architecture 
 - [Hibernate Search and Lucene](#hibernate-search-and-lucene)
 - [Testing Conventions](#testing-conventions)
 - [Common Pitfalls](#common-pitfalls)
+- [Architecture Conventions](#architecture-conventions)
+- [Definition of Done — User-Facing Features](#definition-of-done--user-facing-features)
 
 ---
 
@@ -346,6 +348,49 @@ class MyControllerTest {
 4. **SimpleDriverDataSource:** The application uses `SimpleDriverDataSource` instead of HikariCP for in-process HSQLDB. This means no connection pool — which is intentional for reduced memory usage. Do not switch to HikariCP without understanding the implications.
 
 5. **Rate limiting in tests:** The `RateLimitFilter` is active during `@SpringBootTest` tests. If tests hit LLM-backed endpoints rapidly, they may be rate-limited. Consider disabling via `TAXONOMY_RATE_LIMIT_PER_MINUTE=0` in test configuration if needed.
+
+---
+
+## Architecture Conventions
+
+These conventions ensure homogeneity (Deutschland-Stack Principle 4 — Modularity & Reuse) across the codebase.
+See [Architecture Principles](ARCHITECTURE.md#architecture-principles) for the full principle mapping.
+
+### Naming
+
+| Scope | Convention | Example |
+|---|---|---|
+| REST controllers | `*Controller` or `*ApiController` | `ProposalApiController` |
+| Services | `*Service` | `ArchitectureGapService` |
+| JPA entities | Singular noun, PascalCase | `TaxonomyRelation` |
+| DTOs | `*Dto`, `*View`, `*Result` | `GapAnalysisView` |
+| Enums | PascalCase, in `taxonomy-domain` | `RelationType` |
+| REST paths | `/api/{resource}` (plural, kebab-case) | `/api/relations/proposals` |
+
+### Error Handling
+
+- Controllers return `ResponseEntity` with appropriate HTTP status codes
+- Service exceptions extend domain-specific exception classes
+- LLM rate limits are caught as `LlmRateLimitException` → HTTP 429
+
+### New Service Checklist
+
+1. Place in `taxonomy-app/.../service/`
+2. Annotate with `@Service`
+3. Accept `username` parameter if workspace-aware
+4. Add unit test with `@SpringBootTest`
+5. Document in ARCHITECTURE.md if it is a key component
+
+### Data Ownership Model
+
+| Entity | Owner | Mutability |
+|---|---|---|
+| `TaxonomyNode` | System (Excel import) | Read-only after startup |
+| `TaxonomyRelation` | Workspace | Read-write, workspace-scoped |
+| `RelationHypothesis` | Workspace | Transient or accepted |
+| `RelationProposal` | Workspace | Lifecycle: proposed → accepted/rejected |
+| DSL content | Workspace (JGit) | Versioned via Git commits |
+| `ArchitectureCommitIndex` | Branch | Rebuilt on materialization |
 
 ---
 

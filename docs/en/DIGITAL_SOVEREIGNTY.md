@@ -143,6 +143,27 @@ Further details: [AI Transparency — Configuration for Government Use](AI_TRANS
 
 ---
 
+## Deutschland-Stack Architecture Principles
+
+The Taxonomy Architecture Analyzer has been assessed against the 8 architecture
+principles of the [Deutschland-Stack](https://deutschland-stack.gov.de/gesamtbild/#architekturprinzipien):
+
+| # | Principle | Status |
+|---|---|---|
+| 1 | Offene Standards | ✅ |
+| 2 | Open Source First | ✅ |
+| 3 | Interoperabilität und Anschlussfähigkeit | ✅ |
+| 4 | Modularität und Wiederverwendbarkeit | ✅ |
+| 5 | Integration bestehender Lösungen | ✅ |
+| 6 | Skalierbarkeit und Zukunftsfähigkeit | ✅ |
+| 7 | Sichere, effiziente, vertrauenswürdige Systeme | ✅ |
+| 8 | Kooperationsorientiertes Ökosystem | ✅ |
+
+See [Deutschland-Stack Conformity Assessment](DEUTSCHLAND_STACK_CONFORMITY.md) for
+the detailed mapping with evidence references.
+
+---
+
 ## Related Documentation
 
 - [AI Transparency](AI_TRANSPARENCY.md) — AI transparency and data flows
@@ -151,3 +172,4 @@ Further details: [AI Transparency — Configuration for Government Use](AI_TRANS
 - [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) — Deployment checklist for government environments
 - [Deployment Guide](DEPLOYMENT_GUIDE.md) — Docker and deployment instructions
 - [Administration Integration](VERWALTUNGSINTEGRATION.md) — FIM/115/XÖV integration roadmap
+- [Deutschland-Stack Conformity](DEUTSCHLAND_STACK_CONFORMITY.md) — Full conformity assessment
