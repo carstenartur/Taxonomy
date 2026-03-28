@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IndependentScoring.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">IndependentScoring.java</span></div><h1>IndependentScoring.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Independent scoring: each node keeps its raw 0–100 score from the
+ * {@link NodeScorer}, regardless of the parent's score.
+ *
+ * &lt;p&gt;This strategy is useful for discovering &lt;strong&gt;taxonomy flaws&lt;/strong&gt;
+ * where child nodes match a requirement better than the parent, or where the
+ * parent is highly relevant but none of its children are. Such mismatches
+ * indicate potential gaps or misclassifications in the taxonomy hierarchy.
+ *
+ * &lt;p&gt;Because scores are not normalised to the parent budget, a child's score
+ * can exceed the parent's score — this is intentional and represents a finding.
+ */
+public final class IndependentScoring implements DistributionStrategy {
+
+    /** Singleton instance. */
+<span class="fc" id="L21">    public static final IndependentScoring INSTANCE = new IndependentScoring();</span>
+
+    private IndependentScoring() {}
+
+    @Override
+    public Map&lt;String, Integer&gt; adjust(Map&lt;String, Integer&gt; rawScores, int parentScore) {
+        // Keep raw scores unchanged — clamp to [0, 100] only
+<span class="fc" id="L28">        Map&lt;String, Integer&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : rawScores.entrySet()) {</span>
+<span class="fc" id="L30">            result.put(entry.getKey(), Math.max(0, Math.min(100, entry.getValue())));</span>
+<span class="fc" id="L31">        }</span>
+<span class="fc" id="L32">        return result;</span>
+    }
+
+    @Override
+    public String name() {
+<span class="nc" id="L37">        return &quot;independent&quot;;</span>
+    }
+
+    @Override
+    public String description() {
+<span class="nc" id="L42">        return &quot;Each node scored independently (0–100), ignoring parent values. &quot;</span>
+                + &quot;Can discover taxonomy flaws where children match better than parents.&quot;;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

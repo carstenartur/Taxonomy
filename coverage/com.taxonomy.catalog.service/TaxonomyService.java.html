@@ -646,29 +646,51 @@ public class TaxonomyService {
      */
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNode&gt; getPathToRoot(String code) {
-<span class="nc" id="L649">        TaxonomyNode node = repository.findByCode(code).orElse(null);</span>
-<span class="nc bnc" id="L650" title="All 2 branches missed.">        if (node == null) return List.of();</span>
-<span class="nc" id="L651">        LinkedList&lt;TaxonomyNode&gt; path = new LinkedList&lt;&gt;();</span>
-<span class="nc" id="L652">        TaxonomyNode current = node;</span>
-<span class="nc bnc" id="L653" title="All 2 branches missed.">        while (current != null) {</span>
-<span class="nc" id="L654">            path.addFirst(current);</span>
-<span class="nc" id="L655">            String parentCode = current.getParentCode();</span>
-<span class="nc bnc" id="L656" title="All 4 branches missed.">            if (parentCode == null || parentCode.isBlank()) break;</span>
-<span class="nc" id="L657">            current = repository.findByCode(parentCode).orElse(null);</span>
-<span class="nc" id="L658">        }</span>
-<span class="nc" id="L659">        return List.copyOf(path);</span>
+<span class="fc" id="L649">        TaxonomyNode node = repository.findByCode(code).orElse(null);</span>
+<span class="fc bfc" id="L650" title="All 2 branches covered.">        if (node == null) return List.of();</span>
+<span class="fc" id="L651">        LinkedList&lt;TaxonomyNode&gt; path = new LinkedList&lt;&gt;();</span>
+<span class="fc" id="L652">        TaxonomyNode current = node;</span>
+<span class="pc bpc" id="L653" title="1 of 2 branches missed.">        while (current != null) {</span>
+<span class="fc" id="L654">            path.addFirst(current);</span>
+<span class="fc" id="L655">            String parentCode = current.getParentCode();</span>
+<span class="pc bpc" id="L656" title="1 of 4 branches missed.">            if (parentCode == null || parentCode.isBlank()) break;</span>
+<span class="fc" id="L657">            current = repository.findByCode(parentCode).orElse(null);</span>
+<span class="fc" id="L658">        }</span>
+<span class="fc" id="L659">        return List.copyOf(path);</span>
+    }
+
+    /**
+     * Loads all taxonomy nodes once and builds a parent-code → sorted-children map.
+     * Useful for bulk operations that need to walk the full hierarchy without
+     * incurring N+1 per-node queries.
+     *
+     * @return map from parent code to sorted list of children
+     */
+    @Transactional(readOnly = true)
+    public Map&lt;String, List&lt;TaxonomyNode&gt;&gt; getChildrenMap() {
+<span class="nc" id="L671">        List&lt;TaxonomyNode&gt; allNodes = repository.findAll();</span>
+<span class="nc" id="L672">        Map&lt;String, List&lt;TaxonomyNode&gt;&gt; map = new HashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L673" title="All 2 branches missed.">        for (TaxonomyNode node : allNodes) {</span>
+<span class="nc" id="L674">            String parentCode = node.getParentCode();</span>
+<span class="nc bnc" id="L675" title="All 4 branches missed.">            if (parentCode != null &amp;&amp; !parentCode.isBlank()) {</span>
+<span class="nc" id="L676">                map.computeIfAbsent(parentCode, k -&gt; new ArrayList&lt;&gt;()).add(node);</span>
+            }
+<span class="nc" id="L678">        }</span>
+        // Sort each child list by code for determinism
+<span class="nc" id="L680">        map.values().forEach(list -&gt; list.sort(Comparator.comparing(TaxonomyNode::getCode)));</span>
+<span class="nc" id="L681">        return map;</span>
     }
 
     public TaxonomyNodeDto applyScores(TaxonomyNodeDto dto, Map&lt;String, Integer&gt; scores) {
-<span class="fc bfc" id="L663" title="All 2 branches covered.">        if (scores.containsKey(dto.getCode())) {</span>
-<span class="fc" id="L664">            dto.setMatchPercentage(scores.get(dto.getCode()));</span>
+<span class="fc bfc" id="L685" title="All 2 branches covered.">        if (scores.containsKey(dto.getCode())) {</span>
+<span class="fc" id="L686">            dto.setMatchPercentage(scores.get(dto.getCode()));</span>
         }
-<span class="fc" id="L666">        List&lt;TaxonomyNodeDto&gt; updatedChildren = new ArrayList&lt;&gt;();</span>
-<span class="fc bfc" id="L667" title="All 2 branches covered.">        for (TaxonomyNodeDto child : dto.getChildren()) {</span>
-<span class="fc" id="L668">            updatedChildren.add(applyScores(child, scores));</span>
-<span class="fc" id="L669">        }</span>
-<span class="fc" id="L670">        dto.setChildren(updatedChildren);</span>
-<span class="fc" id="L671">        return dto;</span>
+<span class="fc" id="L688">        List&lt;TaxonomyNodeDto&gt; updatedChildren = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L689" title="All 2 branches covered.">        for (TaxonomyNodeDto child : dto.getChildren()) {</span>
+<span class="fc" id="L690">            updatedChildren.add(applyScores(child, scores));</span>
+<span class="fc" id="L691">        }</span>
+<span class="fc" id="L692">        dto.setChildren(updatedChildren);</span>
+<span class="fc" id="L693">        return dto;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

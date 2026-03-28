@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DeterministicNodeScorer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">DeterministicNodeScorer.java</span></div><h1>DeterministicNodeScorer.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Scores nodes using deterministic weights derived from their code hashes.
+ *
+ * &lt;p&gt;This scorer ignores the requirement text and produces stable,
+ * reproducible scores that vary across sibling nodes but are consistent
+ * across runs. Each node's weight is {@code Math.floorMod(code.hashCode(), 100) + 1}.
+ *
+ * &lt;p&gt;Intended for offline mock-score generation (see {@code MockScoreGeneratorIT}),
+ * not for live analysis.  When combined with {@link BudgetDistribution}, the
+ * resulting scores guarantee that children sum exactly to the parent.
+ */
+public final class DeterministicNodeScorer implements NodeScorer {
+
+    /** Singleton instance. */
+<span class="fc" id="L23">    public static final DeterministicNodeScorer INSTANCE = new DeterministicNodeScorer();</span>
+
+    private DeterministicNodeScorer() {}
+
+    @Override
+    public Map&lt;String, Integer&gt; score(String requirementText,
+                                      List&lt;TaxonomyNode&gt; nodes,
+                                      int parentScore) {
+<span class="fc" id="L31">        Map&lt;String, Integer&gt; scores = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">        for (TaxonomyNode node : nodes) {</span>
+            // Weight range: 1–100, deterministic per code (floorMod avoids negative from Integer.MIN_VALUE)
+<span class="fc" id="L34">            int weight = Math.floorMod(node.getCode().hashCode(), 100) + 1;</span>
+<span class="fc" id="L35">            scores.put(node.getCode(), weight);</span>
+<span class="fc" id="L36">        }</span>
+<span class="fc" id="L37">        return scores;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

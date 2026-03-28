@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BudgetDistribution.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">BudgetDistribution.java</span></div><h1>BudgetDistribution.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.IntStream;
+
+/**
+ * Standard hierarchical narrowing: children's scores are normalised so they
+ * sum exactly to the parent's score (budget distribution).
+ *
+ * &lt;p&gt;Uses the largest-remainder method to distribute the parent budget
+ * proportionally based on the raw scores.  This guarantees that:
+ * &lt;ul&gt;
+ *   &lt;li&gt;Every child score is a non-negative integer&lt;/li&gt;
+ *   &lt;li&gt;The sum of all child scores equals {@code parentScore} exactly&lt;/li&gt;
+ *   &lt;li&gt;Children with higher raw scores receive a proportionally larger share&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;If all raw scores are zero, children receive zero scores.
+ */
+public final class BudgetDistribution implements DistributionStrategy {
+
+    /** Singleton instance. */
+<span class="fc" id="L26">    public static final BudgetDistribution INSTANCE = new BudgetDistribution();</span>
+
+    private BudgetDistribution() {}
+
+    @Override
+    public Map&lt;String, Integer&gt; adjust(Map&lt;String, Integer&gt; rawScores, int parentScore) {
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">        if (rawScores.isEmpty()) {</span>
+<span class="nc" id="L33">            return Map.of();</span>
+        }
+
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        if (parentScore == 0) {</span>
+<span class="fc" id="L37">            Map&lt;String, Integer&gt; zeros = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L38">            rawScores.keySet().forEach(k -&gt; zeros.put(k, 0));</span>
+<span class="fc" id="L39">            return zeros;</span>
+        }
+
+<span class="fc" id="L42">        List&lt;String&gt; keys = List.copyOf(rawScores.keySet());</span>
+<span class="fc" id="L43">        int[] weights = keys.stream()</span>
+<span class="fc" id="L44">                .mapToInt(k -&gt; Math.max(rawScores.getOrDefault(k, 0), 0))</span>
+<span class="fc" id="L45">                .toArray();</span>
+<span class="fc" id="L46">        int totalWeight = Arrays.stream(weights).sum();</span>
+
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">        if (totalWeight == 0) {</span>
+            // All raw scores are 0 — distribute equally with remainder to first nodes
+<span class="nc" id="L50">            Map&lt;String, Integer&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L51">            int base = parentScore / keys.size();</span>
+<span class="nc" id="L52">            int remainder = parentScore - base * keys.size();</span>
+<span class="nc bnc" id="L53" title="All 2 branches missed.">            for (int i = 0; i &lt; keys.size(); i++) {</span>
+<span class="nc bnc" id="L54" title="All 2 branches missed.">                result.put(keys.get(i), base + (i &lt; remainder ? 1 : 0));</span>
+            }
+<span class="nc" id="L56">            return result;</span>
+        }
+
+        // Largest-remainder proportional distribution
+<span class="fc" id="L60">        int[] childScores = new int[keys.size()];</span>
+<span class="fc" id="L61">        double[] fractions = new double[keys.size()];</span>
+<span class="fc" id="L62">        int distributed = 0;</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        for (int i = 0; i &lt; keys.size(); i++) {</span>
+<span class="fc" id="L64">            double raw = (double) parentScore * weights[i] / totalWeight;</span>
+<span class="fc" id="L65">            childScores[i] = (int) raw;</span>
+<span class="fc" id="L66">            fractions[i] = raw - childScores[i];</span>
+<span class="fc" id="L67">            distributed += childScores[i];</span>
+        }
+
+<span class="fc" id="L70">        int remainder = parentScore - distributed;</span>
+<span class="fc" id="L71">        Integer[] byFraction = IntStream.range(0, keys.size())</span>
+<span class="fc" id="L72">                .boxed()</span>
+<span class="fc" id="L73">                .sorted((a, b) -&gt; Double.compare(fractions[b], fractions[a]))</span>
+<span class="fc" id="L74">                .toArray(Integer[]::new);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        for (int i = 0; i &lt; remainder; i++) {</span>
+<span class="fc" id="L76">            childScores[byFraction[i]]++;</span>
+        }
+
+<span class="fc" id="L79">        Map&lt;String, Integer&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        for (int i = 0; i &lt; keys.size(); i++) {</span>
+<span class="fc" id="L81">            result.put(keys.get(i), childScores[i]);</span>
+        }
+<span class="fc" id="L83">        return result;</span>
+    }
+
+    @Override
+    public String name() {
+<span class="nc" id="L88">        return &quot;budget&quot;;</span>
+    }
+
+    @Override
+    public String description() {
+<span class="nc" id="L93">        return &quot;Children's scores sum exactly to the parent's score (hierarchical narrowing).&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

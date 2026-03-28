@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>HierarchyScoreDistributor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">HierarchyScoreDistributor.java</span></div><h1>HierarchyScoreDistributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import org.springframework.stereotype.Service;
+
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Walks the taxonomy hierarchy from root to leaf and distributes scores
+ * so that every node on the path carries a score.
+ *
+ * &lt;p&gt;The distributor uses two pluggable components:
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@link NodeScorer} — provides raw relevance scores for a batch of
+ *       sibling nodes.  Implementations can source scores from cloud LLMs,
+ *       local embedding models, pre-recorded analysis files, or deterministic
+ *       algorithms.&lt;/li&gt;
+ *   &lt;li&gt;{@link DistributionStrategy} — decides how those raw scores relate
+ *       to the parent's score.  {@link BudgetDistribution} normalises children
+ *       to sum to the parent (standard hierarchical narrowing);
+ *       {@link IndependentScoring} keeps each node's raw 0–100 score, which
+ *       can discover taxonomy flaws where children match better than parents
+ *       or vice versa.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;h3&gt;Convenience methods&lt;/h3&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@link #distribute(Map, Map)} — backward-compatible overload that
+ *       uses {@link DeterministicNodeScorer} + {@link BudgetDistribution}.&lt;/li&gt;
+ *   &lt;li&gt;{@link #distribute(Map, Map, String, NodeScorer, DistributionStrategy)}
+ *       — full-featured overload with pluggable scorer and strategy.&lt;/li&gt;
+ *   &lt;li&gt;{@link #fillIntermediateScores(Map)} — fills in missing intermediate
+ *       nodes by linear interpolation.&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+@Service
+public class HierarchyScoreDistributor {
+
+    private final TaxonomyService taxonomyService;
+
+<span class="fc" id="L44">    public HierarchyScoreDistributor(TaxonomyService taxonomyService) {</span>
+<span class="fc" id="L45">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L46">    }</span>
+
+    // ── Result record ──────────────────────────────────────────────────────
+
+    /**
+     * Result of a full score distribution.
+     *
+     * @param scores  node-code → integer score for every taxonomy node
+     * @param reasons node-code → human-readable reason text
+     */
+<span class="fc" id="L56">    public record DistributionResult(</span>
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, String&gt; reasons) {}
+
+    // ── Full distribution (pluggable) ──────────────────────────────────────
+
+    /**
+     * Distributes root-level scores across the entire taxonomy hierarchy
+     * using a pluggable scorer and strategy.
+     *
+     * &lt;p&gt;For each root, the hierarchy is walked depth-first. At every level
+     * the {@code scorer} is asked for raw scores, which the {@code strategy}
+     * then adjusts (e.g. normalise to parent budget, or keep independent).
+     *
+     * @param rootScores       two-letter root code → integer score (0–100)
+     * @param rootReasons      two-letter root code → reason text
+     * @param requirementText  the business requirement being analysed
+     *                         (passed through to the scorer)
+     * @param scorer           provides raw scores for each batch of siblings
+     * @param strategy         adjusts raw scores according to its constraints
+     * @return scores and reasons for &lt;em&gt;all&lt;/em&gt; nodes in the taxonomy
+     */
+    public DistributionResult distribute(Map&lt;String, Integer&gt; rootScores,
+                                         Map&lt;String, String&gt; rootReasons,
+                                         String requirementText,
+                                         NodeScorer scorer,
+                                         DistributionStrategy strategy) {
+
+<span class="fc" id="L84">        List&lt;TaxonomyNode&gt; roots = taxonomyService.getRootNodes()</span>
+<span class="fc" id="L85">                .stream()</span>
+<span class="fc" id="L86">                .sorted(Comparator.comparing(TaxonomyNode::getCode))</span>
+<span class="fc" id="L87">                .toList();</span>
+
+        // Pre-load the full parent→children map once to avoid N+1 queries
+<span class="fc" id="L90">        Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap = taxonomyService.getChildrenMap();</span>
+
+<span class="fc" id="L92">        Map&lt;String, Integer&gt; scores  = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L93">        Map&lt;String, String&gt;  reasons = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (TaxonomyNode root : roots) {</span>
+<span class="fc" id="L96">            int rootScore = rootScores.getOrDefault(root.getCode(), 0);</span>
+<span class="fc" id="L97">            scores.put(root.getCode(), rootScore);</span>
+<span class="fc" id="L98">            reasons.put(root.getCode(), rootReasons.getOrDefault(root.getCode(), &quot;&quot;));</span>
+<span class="fc" id="L99">            walkRecursively(root.getCode(), rootScore, requirementText,</span>
+                    scorer, strategy, childrenMap, scores, reasons, rootReasons);
+<span class="fc" id="L101">        }</span>
+
+<span class="fc" id="L103">        return new DistributionResult(scores, reasons);</span>
+    }
+
+    // ── Backward-compatible overload ───────────────────────────────────────
+
+    /**
+     * Distributes root-level scores using the default
+     * {@link DeterministicNodeScorer} and {@link BudgetDistribution} strategy.
+     *
+     * &lt;p&gt;This is equivalent to calling
+     * {@code distribute(rootScores, rootReasons, &quot;&quot;, DeterministicNodeScorer.INSTANCE, BudgetDistribution.INSTANCE)}.
+     *
+     * @param rootScores  two-letter root code → integer score (0–100)
+     * @param rootReasons two-letter root code → reason text
+     * @return scores and reasons for &lt;em&gt;all&lt;/em&gt; nodes in the taxonomy
+     */
+    public DistributionResult distribute(Map&lt;String, Integer&gt; rootScores,
+                                         Map&lt;String, String&gt; rootReasons) {
+<span class="fc" id="L121">        return distribute(rootScores, rootReasons, &quot;&quot;,</span>
+                DeterministicNodeScorer.INSTANCE, BudgetDistribution.INSTANCE);
+    }
+
+    // ── Recursive hierarchy walk ───────────────────────────────────────────
+
+    private void walkRecursively(String parentCode,
+                                 int parentScore,
+                                 String requirementText,
+                                 NodeScorer scorer,
+                                 DistributionStrategy strategy,
+                                 Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap,
+                                 Map&lt;String, Integer&gt; scores,
+                                 Map&lt;String, String&gt; reasons,
+                                 Map&lt;String, String&gt; rootReasons) {
+
+<span class="fc" id="L137">        List&lt;TaxonomyNode&gt; children = childrenMap.getOrDefault(parentCode, List.of());</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (children.isEmpty()) {</span>
+<span class="fc" id="L139">            return;</span>
+        }
+
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (parentScore == 0) {</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">            for (TaxonomyNode child : children) {</span>
+<span class="fc" id="L144">                scores.put(child.getCode(), 0);</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">                String root = child.getTaxonomyRoot() != null ? child.getTaxonomyRoot() : &quot;&quot;;</span>
+<span class="fc" id="L146">                reasons.put(child.getCode(), rootReasons.getOrDefault(root, &quot;&quot;));</span>
+<span class="fc" id="L147">                walkRecursively(child.getCode(), 0, requirementText,</span>
+                        scorer, strategy, childrenMap, scores, reasons, rootReasons);
+<span class="fc" id="L149">            }</span>
+<span class="fc" id="L150">            return;</span>
+        }
+
+        // Step 1: Get raw scores from the scorer
+<span class="fc" id="L154">        Map&lt;String, Integer&gt; rawScores = scorer.score(requirementText, children, parentScore);</span>
+
+        // Step 2: Apply the distribution strategy
+<span class="fc" id="L157">        Map&lt;String, Integer&gt; adjustedScores = strategy.adjust(rawScores, parentScore);</span>
+
+        // Validate: adjusted map must contain exactly the children's codes
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        for (TaxonomyNode child : children) {</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">            if (!adjustedScores.containsKey(child.getCode())) {</span>
+<span class="nc" id="L162">                throw new IllegalStateException(</span>
+<span class="nc" id="L163">                        &quot;DistributionStrategy '&quot; + strategy.name()</span>
+                                + &quot;' did not return a score for child code '&quot;
+<span class="nc" id="L165">                                + child.getCode() + &quot;' of parent '&quot; + parentCode + &quot;'&quot;);</span>
+            }
+<span class="fc" id="L167">        }</span>
+
+        // Step 3: Store and recurse
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        for (TaxonomyNode child : children) {</span>
+<span class="fc" id="L171">            int childScore = adjustedScores.getOrDefault(child.getCode(), 0);</span>
+<span class="fc" id="L172">            scores.put(child.getCode(), childScore);</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">            String root = child.getTaxonomyRoot() != null ? child.getTaxonomyRoot() : &quot;&quot;;</span>
+<span class="fc" id="L174">            reasons.put(child.getCode(), rootReasons.getOrDefault(root, &quot;&quot;));</span>
+<span class="fc" id="L175">            walkRecursively(child.getCode(), childScore, requirementText,</span>
+                    scorer, strategy, childrenMap, scores, reasons, rootReasons);
+<span class="fc" id="L177">        }</span>
+<span class="fc" id="L178">    }</span>
+
+    // ── Path fill-in ───────────────────────────────────────────────────────
+
+    /**
+     * Fills in missing intermediate node scores so that every scored leaf
+     * has a complete path of scores from its root.
+     *
+     * &lt;p&gt;For each scored non-root node, the method walks from root to that
+     * node using the taxonomy parent chain.  If any intermediate node is
+     * missing from the map, its score is interpolated linearly between
+     * the nearest scored ancestor and the nearest scored descendant on
+     * the path.
+     *
+     * @param scores mutable map of node-code → score (modified in place)
+     */
+    public void fillIntermediateScores(Map&lt;String, Integer&gt; scores) {
+        // Collect non-root scored codes; iterate a snapshot to allow mutation
+<span class="fc" id="L196">        List&lt;String&gt; nonRootCodes = scores.keySet().stream()</span>
+<span class="fc" id="L197">                .filter(code -&gt; code.contains(&quot;-&quot;))</span>
+<span class="fc" id="L198">                .toList();</span>
+
+<span class="fc bfc" id="L200" title="All 2 branches covered.">        for (String code : nonRootCodes) {</span>
+<span class="fc" id="L201">            List&lt;TaxonomyNode&gt; path = taxonomyService.getPathToRoot(code);</span>
+<span class="fc bfc" id="L202" title="All 2 branches covered.">            if (path.size() &lt;= 2) {</span>
+                // Direct child of root — nothing to fill
+<span class="fc" id="L204">                continue;</span>
+            }
+
+            // Walk from root towards the leaf, filling gaps
+<span class="fc bfc" id="L208" title="All 2 branches covered.">            for (int i = 1; i &lt; path.size() - 1; i++) {</span>
+<span class="fc" id="L209">                String nodeCode = path.get(i).getCode();</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">                if (scores.containsKey(nodeCode)) {</span>
+<span class="fc" id="L211">                    continue; // already scored</span>
+                }
+
+                // Find nearest scored ancestor (walking backwards from i)
+<span class="fc" id="L215">                int ancestorScore = 0;</span>
+<span class="fc" id="L216">                int ancestorIdx = 0;</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                for (int a = i - 1; a &gt;= 0; a--) {</span>
+<span class="fc" id="L218">                    Integer s = scores.get(path.get(a).getCode());</span>
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">                    if (s != null) {</span>
+<span class="fc" id="L220">                        ancestorScore = s;</span>
+<span class="fc" id="L221">                        ancestorIdx = a;</span>
+<span class="fc" id="L222">                        break;</span>
+                    }
+                }
+
+                // Find nearest scored descendant (walking forwards from i)
+<span class="fc" id="L227">                int descendantScore = 0;</span>
+<span class="fc" id="L228">                int descendantIdx = path.size() - 1;</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">                for (int d = i + 1; d &lt; path.size(); d++) {</span>
+<span class="fc" id="L230">                    Integer s = scores.get(path.get(d).getCode());</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">                    if (s != null) {</span>
+<span class="fc" id="L232">                        descendantScore = s;</span>
+<span class="fc" id="L233">                        descendantIdx = d;</span>
+<span class="fc" id="L234">                        break;</span>
+                    }
+                }
+
+                // Linear interpolation between ancestor and descendant
+<span class="fc" id="L239">                int span = descendantIdx - ancestorIdx;</span>
+<span class="fc" id="L240">                int step = i - ancestorIdx;</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">                int interpolated = span &gt; 0</span>
+<span class="fc" id="L242">                        ? ancestorScore + (descendantScore - ancestorScore) * step / span</span>
+<span class="pc" id="L243">                        : ancestorScore;</span>
+
+<span class="fc" id="L245">                scores.put(nodeCode, interpolated);</span>
+            }
+<span class="fc" id="L247">        }</span>
+<span class="fc" id="L248">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

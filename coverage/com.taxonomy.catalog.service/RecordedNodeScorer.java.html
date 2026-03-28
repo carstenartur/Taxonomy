@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RecordedNodeScorer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service</a> &gt; <span class="el_source">RecordedNodeScorer.java</span></div><h1>RecordedNodeScorer.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.dto.SavedAnalysis;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Scores nodes by looking up pre-computed values from a {@link SavedAnalysis}.
+ *
+ * &lt;p&gt;This scorer reads scores from a previously recorded analysis (e.g. a
+ * mock-score JSON file or an LLM recording export). Nodes not found in the
+ * recording receive a score of zero.
+ *
+ * &lt;p&gt;When combined with {@link IndependentScoring}, this faithfully replays
+ * the recorded scores. When combined with {@link BudgetDistribution}, the
+ * recorded scores are used as proportional weights and redistributed so that
+ * children sum to the parent — useful for regenerating normalised mock data
+ * from an existing analysis.
+ */
+public final class RecordedNodeScorer implements NodeScorer {
+
+    private final Map&lt;String, Integer&gt; recordedScores;
+
+    /**
+     * Creates a scorer backed by the given recorded analysis.
+     *
+     * @param analysis saved analysis with pre-computed scores
+     */
+<span class="nc" id="L32">    public RecordedNodeScorer(SavedAnalysis analysis) {</span>
+<span class="nc bnc" id="L33" title="All 2 branches missed.">        this.recordedScores = analysis.getScores() != null</span>
+<span class="nc" id="L34">                ? Map.copyOf(analysis.getScores())</span>
+<span class="nc" id="L35">                : Map.of();</span>
+<span class="nc" id="L36">    }</span>
+
+    /**
+     * Creates a scorer backed by an explicit scores map (defensive copy).
+     *
+     * @param scores pre-computed node code → score map
+     */
+<span class="fc" id="L43">    public RecordedNodeScorer(Map&lt;String, Integer&gt; scores) {</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        this.recordedScores = scores != null ? Map.copyOf(scores) : Map.of();</span>
+<span class="fc" id="L45">    }</span>
+
+    @Override
+    public Map&lt;String, Integer&gt; score(String requirementText,
+                                      List&lt;TaxonomyNode&gt; nodes,
+                                      int parentScore) {
+<span class="fc" id="L51">        Map&lt;String, Integer&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        for (TaxonomyNode node : nodes) {</span>
+<span class="fc" id="L53">            result.put(node.getCode(), recordedScores.getOrDefault(node.getCode(), 0));</span>
+<span class="fc" id="L54">        }</span>
+<span class="fc" id="L55">        return result;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
