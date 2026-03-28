@@ -2,6 +2,12 @@ package com.taxonomy.dto;
 
 public class RequirementRelationshipView {
 
+    /** Relation is included for scoring traceability (typically root-level propagation). */
+    public static final String CATEGORY_TRACE = "trace";
+
+    /** Relation represents a concrete cross-category architecture impact (typically leaf-to-leaf). */
+    public static final String CATEGORY_IMPACT = "impact";
+
     private Long relationId;
     private String sourceCode;
     private String targetCode;
@@ -9,6 +15,7 @@ public class RequirementRelationshipView {
     private double propagatedRelevance;
     private int hopDistance;
     private String includedBecause;
+    private String relationCategory = CATEGORY_TRACE;
 
     public RequirementRelationshipView() {}
 
@@ -32,4 +39,7 @@ public class RequirementRelationshipView {
 
     public String getIncludedBecause() { return includedBecause; }
     public void setIncludedBecause(String includedBecause) { this.includedBecause = includedBecause; }
+
+    public String getRelationCategory() { return relationCategory; }
+    public void setRelationCategory(String relationCategory) { this.relationCategory = relationCategory; }
 }

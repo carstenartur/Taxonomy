@@ -236,6 +236,25 @@ class ReadmeShowcaseTest {
         // Must have visible relations
         assertThat(diagram.edges()).isNotEmpty();
 
+        // Must include impact relations (concrete cross-category leaf-to-leaf)
+        assertThat(diagram.edges().stream().anyMatch(e -> "impact".equals(e.relationCategory())))
+                .as("Diagram must contain impact (leaf-to-leaf) relations")
+                .isTrue();
+
+        // Must also retain trace relations for traceability
+        assertThat(view.getIncludedRelationships().stream()
+                .anyMatch(r -> "trace".equals(r.getRelationCategory())))
+                .as("Architecture view must retain trace (root-level) relations")
+                .isTrue();
+
+        // Impact relations should connect leaf nodes (contain '-'), not just roots
+        var impactEdges = diagram.edges().stream()
+                .filter(e -> "impact".equals(e.relationCategory())).toList();
+        for (var edge : impactEdges) {
+            assertThat(edge.sourceId()).contains("-");
+            assertThat(edge.targetId()).contains("-");
+        }
+
         // Must include anchors
         assertThat(diagram.nodes().stream().anyMatch(n -> n.anchor())).isTrue();
 
@@ -456,11 +475,35 @@ class ReadmeShowcaseTest {
 
         showcase.append("\n");
 
-        // Included Relationships table
-        showcase.append("**Included Relationships** — traversed by relevance propagation:\n\n");
+        // Impact Relationships table — concrete cross-category relations
+        List<RequirementRelationshipView> impactRels = view.getIncludedRelationships().stream()
+                .filter(r -> "impact".equals(r.getRelationCategory()))
+                .toList();
+        List<RequirementRelationshipView> traceRels = view.getIncludedRelationships().stream()
+                .filter(r -> !"impact".equals(r.getRelationCategory()))
+                .toList();
+
+        showcase.append("**Impact Relationships** — concrete cross-category architecture connections:\n\n");
+        showcase.append("| Source | Target | Relation Type | Relevance | Derived From |\n");
+        showcase.append("|---|---|---|---|---|\n");
+        for (RequirementRelationshipView rel : impactRels) {
+            String pct = String.format("%.0f%%", rel.getPropagatedRelevance() * 100);
+            String srcName = codeToTitle.getOrDefault(rel.getSourceCode(), rel.getSourceCode());
+            String tgtName = codeToTitle.getOrDefault(rel.getTargetCode(), rel.getTargetCode());
+            showcase.append("| ").append(rel.getSourceCode()).append(" ").append(srcName)
+                    .append(" | ").append(rel.getTargetCode()).append(" ").append(tgtName)
+                    .append(" | ").append(rel.getRelationType())
+                    .append(" | ").append(pct)
+                    .append(" | ").append(rel.getIncludedBecause() != null ? rel.getIncludedBecause() : "—")
+                    .append(" |\n");
+        }
+
+        showcase.append("\n");
+
+        showcase.append("**Trace Relationships** — root-level propagation for scoring traceability:\n\n");
         showcase.append("| Source | Target | Relation Type | Propagated Relevance | Hop |\n");
         showcase.append("|---|---|---|---|---|\n");
-        for (RequirementRelationshipView rel : view.getIncludedRelationships()) {
+        for (RequirementRelationshipView rel : traceRels) {
             String pct = String.format("%.0f%%", rel.getPropagatedRelevance() * 100);
             showcase.append("| ").append(rel.getSourceCode())
                     .append(" | ").append(rel.getTargetCode())

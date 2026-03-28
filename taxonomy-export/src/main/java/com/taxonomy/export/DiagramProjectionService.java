@@ -107,11 +107,17 @@ public class DiagramProjectionService {
                     rel.getSourceCode(),
                     rel.getTargetCode(),
                     rel.getRelationType(),
-                    rel.getPropagatedRelevance()));
+                    rel.getPropagatedRelevance(),
+                    rel.getRelationCategory()));
             if (edges.size() >= MAX_EDGES) {
                 break;
             }
         }
+
+        // Sort: impact relations first (more concrete), then by relevance descending
+        edges.sort(Comparator
+                .comparing((DiagramEdge e) -> "impact".equals(e.relationCategory()) ? 0 : 1)
+                .thenComparing(Comparator.comparingDouble(DiagramEdge::relevance).reversed()));
 
         log.info("DiagramProjection: {} nodes, {} edges from architecture view", nodes.size(), edges.size());
 

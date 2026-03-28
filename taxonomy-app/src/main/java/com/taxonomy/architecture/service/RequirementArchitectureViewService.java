@@ -122,7 +122,7 @@ public class RequirementArchitectureViewService {
         // 4b. Enrich with top-scoring leaf nodes so each layer shows concrete elements
         enrichWithLeafNodes(elements, scores, pathCache);
 
-        // 5. Build included relationships
+        // 5. Build included relationships (trace relations from propagation)
         List<RequirementRelationshipView> relationships = buildRelationships(propagation);
 
         // 5b. If no confirmed relationships were found but provisional relations exist,
@@ -163,10 +163,18 @@ public class RequirementArchitectureViewService {
             view.getNotes().add("Architecture view limited to " + maxArchitectureNodes + " elements.");
         }
 
+        // 7. Generate concrete impact relations AFTER truncation so that
+        //    only elements surviving the limit are used as endpoints.
+        generateImpactRelations(elements, relationships);
+
         view.setIncludedElements(elements);
         view.setIncludedRelationships(relationships);
 
-        // 7. Add notes
+        // 8. Emit impact relations as provisional hypotheses so they flow
+        //    through the existing Accept/Reject UI and can be LLM-evaluated.
+        emitImpactHypotheses(relationships, provisionalRelations);
+
+        // 9. Add notes
         if (usedProvisional) {
             view.getNotes().add("Architecture view built using AI-suggested provisional relations " +
                     "(not yet confirmed).");
@@ -175,14 +183,14 @@ public class RequirementArchitectureViewService {
                     "only direct matches are included.");
         }
 
-        // 8. Populate summary statistics
+        // 10. Populate summary statistics
         int maxHop = elements.stream().mapToInt(RequirementElementView::getHopDistance).max().orElse(0);
         view.setTotalAnchors(anchors.size());
         view.setTotalElements(elements.size());
         view.setTotalRelationships(relationships.size());
         view.setMaxHopDistance(maxHop);
 
-        // 9. Structured logging
+        // 11. Structured logging
         log.info("RequirementArchitectureView summary: anchors={}, elements={}, relationships={}, maxHopDistance={}",
                 anchors.size(), elements.size(), relationships.size(), maxHop);
 
@@ -304,6 +312,7 @@ public class RequirementArchitectureViewService {
             rv.setPropagatedRelevance(tr.getPropagatedRelevance());
             rv.setHopDistance(tr.getHopDistance());
             rv.setIncludedBecause(tr.getReason());
+            rv.setRelationCategory(RequirementRelationshipView.CATEGORY_TRACE);
             relationships.add(rv);
         }
 
@@ -435,6 +444,146 @@ public class RequirementArchitectureViewService {
         elements.sort(Comparator
                 .comparing(RequirementElementView::isAnchor).reversed()
                 .thenComparing(Comparator.comparingDouble(RequirementElementView::getRelevance).reversed()));
+    }
+
+    /**
+     * Emits derived impact relations as {@link RelationHypothesisDto} entries
+     * into the provisional relations list, so they flow through the existing
+     * Accept/Reject UI and can be evaluated by the LLM.
+     *
+     * <p>Only impact-category relations that don't already exist as confirmed
+     * or provisional relations are emitted. The confidence is derived from the
+     * propagated relevance, and the reasoning indicates the derivation source.
+     */
+    private void emitImpactHypotheses(List<RequirementRelationshipView> relationships,
+                                       List<RelationHypothesisDto> provisionalRelations) {
+        if (provisionalRelations == null) return;
+
+        Set<String> existingSignatures = new LinkedHashSet<>();
+        for (RelationHypothesisDto h : provisionalRelations) {
+            existingSignatures.add(h.getSourceCode() + "->" + h.getTargetCode() + ":" + h.getRelationType());
+        }
+
+        for (RequirementRelationshipView rel : relationships) {
+            if (!RequirementRelationshipView.CATEGORY_IMPACT.equals(rel.getRelationCategory())) {
+                continue;
+            }
+            String sig = rel.getSourceCode() + "->" + rel.getTargetCode() + ":" + rel.getRelationType();
+            if (!existingSignatures.add(sig)) continue;
+
+            String srcTitle = nodeRepository.findByCode(rel.getSourceCode())
+                    .map(TaxonomyNode::getNameEn).orElse(rel.getSourceCode());
+            String tgtTitle = nodeRepository.findByCode(rel.getTargetCode())
+                    .map(TaxonomyNode::getNameEn).orElse(rel.getTargetCode());
+
+            RelationHypothesisDto hyp = new RelationHypothesisDto(
+                    rel.getSourceCode(), srcTitle,
+                    rel.getTargetCode(), tgtTitle,
+                    rel.getRelationType(),
+                    rel.getPropagatedRelevance(),
+                    rel.getIncludedBecause());
+            provisionalRelations.add(hyp);
+        }
+    }
+
+    /**
+     * Generates concrete impact relations between leaf nodes from different
+     * taxonomy categories. For each trace (root-to-root) relation, finds the
+     * most concrete (deepest, highest-scoring) leaf node in each endpoint's
+     * category and creates a derived impact relation between them.
+     *
+     * <p>This ensures the final architecture view prioritizes meaningful
+     * cross-category connections (e.g. UA-1574 → CR-1047) over abstract
+     * root-level propagation relations (e.g. UA → CR).
+     */
+    private void generateImpactRelations(List<RequirementElementView> elements,
+                                          List<RequirementRelationshipView> relationships) {
+        // Group leaf elements by their taxonomy root
+        Map<String, List<RequirementElementView>> leafByRoot = new LinkedHashMap<>();
+        for (RequirementElementView el : elements) {
+            String code = el.getNodeCode();
+            if (!code.contains("-")) continue;
+            String root = code.substring(0, code.indexOf('-'));
+            leafByRoot.computeIfAbsent(root, k -> new ArrayList<>()).add(el);
+        }
+
+        // For each trace relation, try to derive a concrete impact relation
+        List<RequirementRelationshipView> impactRelations = new ArrayList<>();
+        Set<String> impactSignatures = new LinkedHashSet<>();
+
+        for (RequirementRelationshipView trace : relationships) {
+            String srcRoot = rootOf(trace.getSourceCode());
+            String tgtRoot = rootOf(trace.getTargetCode());
+            if (srcRoot == null || tgtRoot == null) continue;
+            if (srcRoot.equals(tgtRoot)) continue;
+
+            List<RequirementElementView> srcLeaves = leafByRoot.getOrDefault(srcRoot, List.of());
+            List<RequirementElementView> tgtLeaves = leafByRoot.getOrDefault(tgtRoot, List.of());
+            if (srcLeaves.isEmpty() || tgtLeaves.isEmpty()) continue;
+
+            // Pick the best leaf in each category (highest relevance, preferring deeper nodes)
+            RequirementElementView bestSrc = pickBestLeaf(srcLeaves);
+            RequirementElementView bestTgt = pickBestLeaf(tgtLeaves);
+
+            String sig = bestSrc.getNodeCode() + "->" + bestTgt.getNodeCode() + ":" + trace.getRelationType();
+            if (!impactSignatures.add(sig)) continue;
+
+            RequirementRelationshipView impact = new RequirementRelationshipView();
+            impact.setSourceCode(bestSrc.getNodeCode());
+            impact.setTargetCode(bestTgt.getNodeCode());
+            impact.setRelationType(trace.getRelationType());
+            impact.setPropagatedRelevance(
+                    Math.min(bestSrc.getRelevance(), bestTgt.getRelevance()));
+            impact.setHopDistance(0);
+            impact.setIncludedBecause("impact: " + bestSrc.getNodeCode() + " → " + bestTgt.getNodeCode()
+                    + " (derived from " + trace.getSourceCode() + " → " + trace.getTargetCode() + ")");
+            impact.setRelationCategory(RequirementRelationshipView.CATEGORY_IMPACT);
+            impactRelations.add(impact);
+        }
+
+        if (!impactRelations.isEmpty()) {
+            relationships.addAll(impactRelations);
+            log.info("Generated {} impact relation(s) from {} trace relation(s)",
+                    impactRelations.size(), relationships.size() - impactRelations.size());
+        }
+    }
+
+    /**
+     * Returns the taxonomy root code for a node code. For leaf codes like "CP-1023"
+     * returns "CP"; for root codes like "CP" returns "CP" as-is.
+     */
+    private static String rootOf(String code) {
+        if (code == null) return null;
+        int dash = code.indexOf('-');
+        return dash >= 0 ? code.substring(0, dash) : code;
+    }
+
+    /**
+     * Picks the best leaf node: prefers deeper nodes (longer hierarchy path = more
+     * concrete), breaking ties by higher relevance. This ensures the most specific
+     * available node is used for impact relations.
+     */
+    private static RequirementElementView pickBestLeaf(List<RequirementElementView> leaves) {
+        return leaves.stream()
+                .max(Comparator
+                        .comparingInt((RequirementElementView e) -> pathDepth(e.getHierarchyPath()))
+                        .thenComparingDouble(RequirementElementView::getRelevance))
+                .orElse(leaves.get(0));
+    }
+
+    /**
+     * Returns the depth of a hierarchy path by counting path segments.
+     * E.g. "CP > CP-1000 > CP-1023" → 3, "CP > CP-1000" → 2, "CP" → 1.
+     */
+    private static int pathDepth(String path) {
+        if (path == null || path.isEmpty()) return 0;
+        int count = 1;
+        int idx = 0;
+        while ((idx = path.indexOf(" > ", idx)) >= 0) {
+            count++;
+            idx += 3;
+        }
+        return count;
     }
 
     /**
