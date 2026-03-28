@@ -98,7 +98,7 @@ flowchart TD
     class CO_1063 comm
 ```
 
-> **Legend:** ★ = direct match (anchor) · ⚠ = change hotspot (relevance ≥ 80%) · Nodes without markers = propagated through architecture relations · [%] = relevance score · Arrow labels = relation type (realizes, supports, uses, …)
+> **Legend:** ★ = direct match (anchor) · ⚠ = impact hotspot (relevance ≥ 80%) · Nodes without markers = propagated through architecture relations · [%] = relevance score · Arrow labels = relation type (realizes, supports, uses, …)
 
 **Included Elements** — selected by the pipeline (anchors + propagated + enriched leaf nodes):
 
