@@ -393,9 +393,10 @@ public class RequirementArchitectureViewService {
                 RequirementElementView element = new RequirementElementView();
                 element.setNodeCode(leafCode);
                 element.setRelevance(leafScore / 100.0);
-                element.setHopDistance(0);
-                element.setAnchor(leafScore >= ANCHOR_THRESHOLD_HIGH);
-                element.setIncludedBecause("top-scoring element in " + root);
+                boolean isAnchor = leafScore >= ANCHOR_THRESHOLD_HIGH;
+                element.setHopDistance(isAnchor ? 0 : 1);
+                element.setAnchor(isAnchor);
+                element.setIncludedBecause("leaf-enrichment: top-scoring in " + root);
 
                 Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(leafCode);
                 if (nodeOpt.isPresent()) {
