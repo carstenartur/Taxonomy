@@ -205,9 +205,11 @@ public class MermaidExportService {
             }
         }
 
-        // Limit edges to top N by relevance to keep the diagram readable
+        // Limit edges to top N — prefer impact edges over trace edges, then by relevance
         if (showcaseEdges.size() > MermaidLabels.SHOWCASE_MAX_EDGES) {
-            showcaseEdges.sort(Comparator.comparingDouble(DiagramEdge::relevance).reversed());
+            showcaseEdges.sort(Comparator
+                    .comparing((DiagramEdge e) -> "impact".equals(e.relationCategory()) ? 0 : 1)
+                    .thenComparing(Comparator.comparingDouble(DiagramEdge::relevance).reversed()));
             showcaseEdges = new ArrayList<>(showcaseEdges.subList(0, MermaidLabels.SHOWCASE_MAX_EDGES));
         }
 

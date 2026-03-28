@@ -846,23 +846,45 @@
                 html += '</tbody></table></div>';
             }
 
-            // Relationships table
+            // Relationships table — split into impact and trace
             if (hasRelationships) {
-                html += '<h6 class="mb-1">Included Relationships</h6>';
-                html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
-                html += '<thead><tr><th>Source</th><th>→</th><th>Target</th><th>Type</th><th>Relevance</th><th>Hops</th><th>Reason</th></tr></thead><tbody>';
-                relationships.forEach(r => {
-                    html += '<tr>' +
-                        '<td>' + escapeHtml(r.sourceCode) + '</td>' +
-                        '<td>→</td>' +
-                        '<td>' + escapeHtml(r.targetCode) + '</td>' +
-                        '<td>' + escapeHtml(r.relationType) + '</td>' +
-                        '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
-                        '<td>' + r.hopDistance + '</td>' +
-                        '<td>' + escapeHtml(r.includedBecause || '') + '</td>' +
-                        '</tr>';
-                });
-                html += '</tbody></table></div>';
+                var impactRels = relationships.filter(function(r) { return r.relationCategory === 'impact'; });
+                var traceRels = relationships.filter(function(r) { return r.relationCategory !== 'impact'; });
+
+                if (impactRels.length > 0) {
+                    html += '<h6 class="mb-1">' + t('archview.impact.relations.title') + ' <span class="badge bg-primary">' + impactRels.length + '</span></h6>';
+                    html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
+                    html += '<thead><tr><th>' + t('archview.impact.col.source') + '</th><th>\u2192</th><th>' + t('archview.impact.col.target') + '</th><th>' + t('archview.impact.col.type') + '</th><th>' + t('archview.impact.col.relevance') + '</th><th>' + t('archview.impact.col.derived') + '</th></tr></thead><tbody>';
+                    impactRels.forEach(r => {
+                        html += '<tr class="table-info">' +
+                            '<td>' + escapeHtml(r.sourceCode) + '</td>' +
+                            '<td>\u2192</td>' +
+                            '<td>' + escapeHtml(r.targetCode) + '</td>' +
+                            '<td>' + escapeHtml(r.relationType) + '</td>' +
+                            '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
+                            '<td>' + escapeHtml(r.includedBecause || '') + '</td>' +
+                            '</tr>';
+                    });
+                    html += '</tbody></table></div>';
+                }
+
+                if (traceRels.length > 0) {
+                    html += '<h6 class="mb-1">' + t('archview.trace.relations.title') + ' <span class="badge bg-secondary">' + traceRels.length + '</span></h6>';
+                    html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
+                    html += '<thead><tr><th>' + t('archview.trace.col.source') + '</th><th>\u2192</th><th>' + t('archview.trace.col.target') + '</th><th>' + t('archview.trace.col.type') + '</th><th>' + t('archview.trace.col.relevance') + '</th><th>' + t('archview.trace.col.hops') + '</th><th>' + t('archview.trace.col.reason') + '</th></tr></thead><tbody>';
+                    traceRels.forEach(r => {
+                        html += '<tr>' +
+                            '<td>' + escapeHtml(r.sourceCode) + '</td>' +
+                            '<td>\u2192</td>' +
+                            '<td>' + escapeHtml(r.targetCode) + '</td>' +
+                            '<td>' + escapeHtml(r.relationType) + '</td>' +
+                            '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
+                            '<td>' + r.hopDistance + '</td>' +
+                            '<td>' + escapeHtml(r.includedBecause || '') + '</td>' +
+                            '</tr>';
+                    });
+                    html += '</tbody></table></div>';
+                }
             }
 
             html += '</details>';
