@@ -199,6 +199,45 @@ class DiagramProjectionServiceTest {
     }
 
     @Test
+    void rootCodeIsResolvedToFullLayerName() {
+        var view = new RequirementArchitectureView();
+        var elem = createElement("CP-1023", "Cap A", "CP", 0.8, false);
+        view.setIncludedElements(List.of(elem));
+
+        DiagramModel result = service.project(view, "Test");
+
+        assertEquals("Capabilities", result.nodes().get(0).type());
+        assertEquals(1, result.nodes().get(0).layer());
+    }
+
+    @Test
+    void allRootCodesAreResolvedCorrectly() {
+        var view = new RequirementArchitectureView();
+        view.setIncludedElements(List.of(
+                createElement("N1", "n", "BP", 0.9, true),
+                createElement("N2", "n", "BR", 0.9, true),
+                createElement("N3", "n", "CP", 0.9, true),
+                createElement("N4", "n", "CI", 0.9, true),
+                createElement("N5", "n", "CO", 0.9, true),
+                createElement("N6", "n", "CR", 0.9, true),
+                createElement("N7", "n", "UA", 0.9, true),
+                createElement("N8", "n", "IP", 0.9, true)
+        ));
+
+        DiagramModel result = service.project(view, "Test");
+
+        var types = result.nodes().stream().map(DiagramNode::type).toList();
+        assertTrue(types.contains("Business Processes"));
+        assertTrue(types.contains("Business Roles"));
+        assertTrue(types.contains("Capabilities"));
+        assertTrue(types.contains("COI Services"));
+        assertTrue(types.contains("Communications Services"));
+        assertTrue(types.contains("Core Services"));
+        assertTrue(types.contains("User Applications"));
+        assertTrue(types.contains("Information Products"));
+    }
+
+    @Test
     void layoutIsAlwaysLRWithGrouping() {
         var view = new RequirementArchitectureView();
         var elem = createElement("CP-1023", "Cap", "Capabilities", 0.8, false);
