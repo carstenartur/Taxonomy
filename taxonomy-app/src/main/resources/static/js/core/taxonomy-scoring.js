@@ -756,7 +756,7 @@
         const hasElements = elements.length > 0;
         const hasRelationships = relationships.length > 0;
         if (hasElements || hasRelationships) {
-            html += '<details class="impact-details">';
+            html += '<details class="impact-details" open>';
             html += '<summary>📋 Detail: ' + elements.length + ' Elements, ' + relationships.length + ' Relationships</summary>';
 
             // Elements table
@@ -1100,7 +1100,7 @@
                 html += '<span class="summary-layer-element" data-code="' + escapeHtml(el.nodeCode) +
                     '" title="' + escapeHtml(el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '')) + '">';
                 html += escapeHtml(el.nodeCode);
-                if (el.title) html += ' ' + escapeHtml(el.title.substring(0, 30));
+                if (el.title) html += ' \u2013 ' + escapeHtml(el.title.substring(0, 50));
                 html += ' <span class="summary-pct">[' + pct + '%]</span>';
                 if (el.anchor) html += ' ★';
                 html += '</span>';

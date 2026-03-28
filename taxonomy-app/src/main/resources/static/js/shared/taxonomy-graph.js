@@ -486,7 +486,8 @@
 
         node.append('circle')
             .attr('r', function (d) {
-                if (d.isAnchor) return 14;
+                if (d.isAnchor) return 16;
+                if (d.isHotspot) return 12;
                 return Math.max(6, 6 + d.relevance * 8);
             })
             .attr('fill', function (d) {
@@ -504,8 +505,8 @@
                 return '#fff';
             })
             .attr('stroke-width', function (d) {
-                if (d.isAnchor) return 3;
-                if (d.isHotspot) return 2.5;
+                if (d.isAnchor) return 3.5;
+                if (d.isHotspot) return 3;
                 return 1.5;
             })
             .style('cursor', 'pointer');
@@ -514,7 +515,7 @@
         node.filter(function (d) { return d.isHotspot; })
             .classed('impact-node-pulse', true);
 
-        // Labels: code + short title + score for anchors
+        // Labels: code + title + score for anchors
         node.append('text')
             .attr('dx', 16)
             .attr('dy', 4)
@@ -523,7 +524,7 @@
             .text(function (d) {
                 var label = d.id;
                 if (d.title && d.title !== d.id) {
-                    label += ' ' + d.title.substring(0, 18);
+                    label += ' \u2013 ' + d.title.substring(0, 30);
                 }
                 if (d.isAnchor) label += ' \u2605' + (d.relevance * 100).toFixed(0) + '%';
                 return label;
