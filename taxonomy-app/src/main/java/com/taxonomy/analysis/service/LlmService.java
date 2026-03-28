@@ -771,7 +771,8 @@ public class LlmService {
      * on error (including logging). Rate-limit exceptions are propagated.
      */
     private String callGeminiHttpBody(String prompt, String apiKey) {
-        // REPLAY: attempt to return a previously recorded response
+        // REPLAY: return a previously recorded response — skips throttle and real API call.
+        // This is intentional: replayed responses are local I/O, not rate-limited API calls.
         if (recordReplayService != null && recordReplayService.isReplayMode()) {
             Optional<String> recorded = recordReplayService.replay(prompt);
             if (recorded.isPresent()) return recorded.get();
@@ -782,6 +783,7 @@ public class LlmService {
             log.warn("No LLM recording found for prompt hash — falling back to live API");
         }
 
+        // Real API path — throttle to respect RPM rate limits
         throttleOutgoingLlmCall();
         applyCurrentTimeout();
         Map<String, Object> body    = new LinkedHashMap<>();
@@ -826,7 +828,8 @@ public class LlmService {
                 log.info("LLM Response [GEMINI] — raw response (first 500 chars): {}",
                         responseBody.substring(0, Math.min(responseBody.length(), 500)));
 
-                // RECORD: persist the prompt + response for future replay
+                // RECORD: persist prompt + response for future replay.
+                // This runs AFTER the throttled real API call, so rate limits are respected.
                 if (recordReplayService != null && recordReplayService.isRecordMode()) {
                     recordReplayService.record(prompt, responseBody, "GEMINI", null);
                 }
@@ -856,7 +859,8 @@ public class LlmService {
      */
     private String callOpenAiCompatibleHttpBody(String prompt, String apiKey,
                                                  LlmProvider provider) {
-        // REPLAY: attempt to return a previously recorded response
+        // REPLAY: return a previously recorded response — skips throttle and real API call.
+        // This is intentional: replayed responses are local I/O, not rate-limited API calls.
         if (recordReplayService != null && recordReplayService.isReplayMode()) {
             Optional<String> recorded = recordReplayService.replay(prompt);
             if (recorded.isPresent()) return recorded.get();
@@ -867,6 +871,7 @@ public class LlmService {
             log.warn("No LLM recording found for prompt hash — falling back to live API");
         }
 
+        // Real API path — throttle to respect RPM rate limits
         throttleOutgoingLlmCall();
         applyCurrentTimeout();
         String url = providerConfig.getOpenAiCompatibleUrl(provider);
@@ -904,7 +909,8 @@ public class LlmService {
                 log.info("LLM Response [{}] — raw response (first 500 chars): {}",
                         provider, response.getBody().substring(0, Math.min(response.getBody().length(), 500)));
 
-                // RECORD: persist the prompt + response for future replay
+                // RECORD: persist prompt + response for future replay.
+                // This runs AFTER the throttled real API call, so rate limits are respected.
                 if (recordReplayService != null && recordReplayService.isRecordMode()) {
                     recordReplayService.record(prompt, response.getBody(), provider.name(), null);
                 }

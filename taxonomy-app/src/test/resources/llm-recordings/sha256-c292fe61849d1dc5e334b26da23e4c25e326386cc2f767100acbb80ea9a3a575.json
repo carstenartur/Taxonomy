@@ -1,0 +1,9 @@
+{
+  "promptHash" : "sha256-c292fe61849d1dc5e334b26da23e4c25e326386cc2f767100acbb80ea9a3a575",
+  "promptText" : "Rate the following taxonomy nodes for the requirement: Provide an integrated communication platform for hospital staff. Nodes: CP-1023 (Communication Protocols), CR-1047 (Communication Resources). Parent score: 100. Return JSON with scores.",
+  "responseBody" : "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"CP-1023\\\": 55, \\\"CR-1047\\\": 45}\"}]},\"finishReason\":\"STOP\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":42,\"candidatesTokenCount\":15,\"totalTokenCount\":57}}",
+  "provider" : "GEMINI",
+  "recordedAt" : "2026-03-28T12:00:00Z",
+  "testOrigin" : "LlmRecordReplayServiceTest#replayWithRealisticGeminiRecording",
+  "lastUsed" : "2026-03-28T12:00:00Z"
+}

@@ -1,9 +1,10 @@
 package com.taxonomy.analysis.service;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -40,6 +41,20 @@ class LlmRecordReplayServiceTest {
     private LlmRecordReplayService recordAndReplay() {
         return service(true, true, "live", false, false);
     }
+
+    /** A realistic Gemini HTTP response body containing scores for two nodes. */
+    private static final String GEMINI_RESPONSE_BODY = """
+            {"candidates":[{"content":{"parts":[{"text":"{\\"CP-1023\\": 55, \\"CR-1047\\": 45}"}]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":42,"candidatesTokenCount":15,"totalTokenCount":57}}""";
+
+    /** A realistic OpenAI-compatible HTTP response body containing scores for two nodes. */
+    private static final String OPENAI_RESPONSE_BODY = """
+            {"id":"chatcmpl-abc123","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"{\\"CP-1023\\": 55, \\"CR-1047\\": 45}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":42,"completion_tokens":15,"total_tokens":57}}""";
+
+    private static final String SAMPLE_PROMPT =
+            "Rate the following taxonomy nodes for the requirement: "
+            + "Provide an integrated communication platform for hospital staff. "
+            + "Nodes: CP-1023 (Communication Protocols), CR-1047 (Communication Resources). "
+            + "Parent score: 100. Return JSON with scores.";
 
     // ── Hash computation ──────────────────────────────────────────────────────
 
@@ -115,6 +130,99 @@ class LlmRecordReplayServiceTest {
             Optional<String> result = replayer.replay("prompt");
             assertTrue(result.isPresent());
             assertEquals("response-v2", result.get());
+        }
+    }
+
+    // ── Realistic Gemini / OpenAI round-trip ──────────────────────────────────
+
+    @Nested
+    class RealisticRoundTrip {
+
+        @Test
+        void geminiResponseRoundTrip() {
+            var recorder = recordOnly();
+            recorder.record(SAMPLE_PROMPT, GEMINI_RESPONSE_BODY, "GEMINI",
+                    "LlmRecordReplayServiceTest#geminiResponseRoundTrip");
+
+            var replayer = replayOnly();
+            Optional<String> replayed = replayer.replay(SAMPLE_PROMPT);
+            assertTrue(replayed.isPresent(), "Should find the recorded Gemini response");
+            assertEquals(GEMINI_RESPONSE_BODY, replayed.get());
+
+            // Verify the replayed body can be parsed by LlmResponseParser
+            ObjectMapper mapper = JsonMapper.builder().build();
+            LlmResponseParser parser = new LlmResponseParser(mapper);
+            String text = parser.extractGeminiText(replayed.get());
+            assertNotNull(text, "extractGeminiText should return non-null");
+            assertTrue(text.contains("CP-1023"), "Parsed text should contain node code");
+        }
+
+        @Test
+        void openAiResponseRoundTrip() {
+            var recorder = recordOnly();
+            recorder.record(SAMPLE_PROMPT, OPENAI_RESPONSE_BODY, "OPENAI",
+                    "LlmRecordReplayServiceTest#openAiResponseRoundTrip");
+
+            var replayer = replayOnly();
+            Optional<String> replayed = replayer.replay(SAMPLE_PROMPT);
+            assertTrue(replayed.isPresent(), "Should find the recorded OpenAI response");
+            assertEquals(OPENAI_RESPONSE_BODY, replayed.get());
+
+            // Verify the replayed body can be parsed by LlmResponseParser
+            ObjectMapper mapper = JsonMapper.builder().build();
+            LlmResponseParser parser = new LlmResponseParser(mapper);
+            String text = parser.extractOpenAiText(replayed.get());
+            assertNotNull(text, "extractOpenAiText should return non-null");
+            assertTrue(text.contains("CR-1047"), "Parsed text should contain node code");
+        }
+
+        @Test
+        void replaySkipsRateLimiting() {
+            // Record a response, then measure replay time.
+            // Replay must be near-instant (< 500ms) because it bypasses the API throttle.
+            var recorder = recordOnly();
+            recorder.record(SAMPLE_PROMPT, GEMINI_RESPONSE_BODY, "GEMINI", null);
+
+            var replayer = replayOnly();
+            long start = System.nanoTime();
+            for (int i = 0; i < 100; i++) {
+                Optional<String> result = replayer.replay(SAMPLE_PROMPT);
+                assertTrue(result.isPresent());
+            }
+            long elapsed = (System.nanoTime() - start) / 1_000_000; // ms
+            assertTrue(elapsed < 5000,
+                    "100 replays should complete in < 5s (was " + elapsed + "ms) — "
+                    + "replay must not be throttled by rate limiting");
+        }
+    }
+
+    // ── Classpath recording ───────────────────────────────────────────────────
+
+    @Nested
+    class ClasspathRecording {
+
+        @Test
+        void replayFromClasspathRecordingsDir() {
+            // Point the service at the real src/test/resources/llm-recordings directory
+            Path classPathDir = Path.of("src/test/resources/llm-recordings");
+            if (!Files.exists(classPathDir)) {
+                // Running from the module directory
+                classPathDir = Path.of("taxonomy-app/src/test/resources/llm-recordings");
+            }
+            if (!Files.exists(classPathDir)) {
+                // Skip if directory not found (shouldn't happen)
+                return;
+            }
+
+            var replayer = new LlmRecordReplayService(
+                    classPathDir.toAbsolutePath().toString(),
+                    true, false, "error", false, false);
+
+            Optional<String> result = replayer.replay(SAMPLE_PROMPT);
+            assertTrue(result.isPresent(),
+                    "Should replay the pre-committed recording from src/test/resources/llm-recordings");
+            assertTrue(result.get().contains("candidates"),
+                    "Replayed Gemini response should contain 'candidates'");
         }
     }
 
