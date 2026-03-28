@@ -131,16 +131,25 @@ class ReadmeShowcaseTest {
         // IMPORTANT: The taxonomy hierarchy has up to 5 levels beneath each root.
         // Every intermediate node on the path from root to leaf must carry a score
         // so that the hierarchical narrowing is visible.  The paths are:
-        //   CP → CP-1000 → CP-1023                          (3 levels)
-        //   CP → CP-1000 → CP-1010 → CP-1030                (4 levels)
-        //   CO → CO-1000 → CO-1011                           (3 levels)
-        //   CO → CO-1000 → CO-1063                           (3 levels)
-        //   CO → CO-1000 → CO-1063 → CO-1050 → CO-1019      (5 levels)
-        //   CR → CR-1000 → CR-1047                           (3 levels)
-        //   CR → CR-1000 → CR-1047 → CR-1039 → CR-1021      (5 levels)
-        //   UA → UA-1000 → UA-1015                           (3 levels)
-        //   BP → BP-1000 → BP-1327                           (3 levels)
-        //   BR → BR-1000 → BR-1154 → BR-1161 → BR-1063 → BR-1043  (6 levels)
+        //   CP → CP-1000 → CP-1023                                            (3 levels)
+        //   CP → CP-1000 → CP-1010 → CP-1030                                  (4 levels)
+        //   CO → CO-1000 → CO-1011                                             (3 levels)
+        //   CO → CO-1000 → CO-1063 → CO-1050 → CO-1019                        (5 levels)
+        //   CR → CR-1000 → CR-1047 → CR-1039 → CR-1021                        (5 levels)
+        //   UA → UA-1000 → UA-1179 → UA-1574                                  (4 levels)
+        //   BP → BP-1000 → BP-1327 → BP-1490 → BP-1697                        (5 levels)
+        //   IP → IP-1000 → IP-1078 → IP-1023 → IP-2106                        (5 levels)
+        //   BR → BR-1000 → BR-1057 → BR-1023 → BR-1334                        (5 levels)
+        //
+        // Leaf nodes are chosen for DOMAIN RELEVANCE to the hospital requirement,
+        // not just highest raw score.  Each leaf should be semantically convincing:
+        //   CP-1023 Communication & Information System Capabilities  — direct match
+        //   CO-1011 Communications Access Services                   — voice/data exchange
+        //   CR-1047 Infrastructure Services                          — platform infrastructure
+        //   UA-1574 Unified Communication Applications               — hospital comms app
+        //   BP-1697 Medical Command, Control And Communication       — clinical workflow
+        //   IP-2106 CIS Coordination                                 — coordination data products
+        //   BR-1334 CIS Coordination and Advice Roles                — staff coordination roles
         Map<String, Integer> scores = new LinkedHashMap<>();
 
         // Root-level scores (anchors are selected at score >= 70)
@@ -149,8 +158,8 @@ class ReadmeShowcaseTest {
         scores.put("CR", 81);
         scores.put("UA", 74);
         scores.put("BP", 71);
+        scores.put("IP", 60);
         scores.put("BR", 55);
-        scores.put("IP", 50);
         scores.put("CI", 45);
 
         // Intermediate + leaf scores — every node on the path from root to leaf.
@@ -166,29 +175,37 @@ class ReadmeShowcaseTest {
         scores.put("CO-1000", 86);  // Communications Services (L1 container)
         scores.put("CO-1011", 80);  // Communications Access Services (L2)
         scores.put("CO-1063", 70);  // Transport Services (L2)
-        scores.put("CO-1050", 55);  // Switching Services (L3)
+        scores.put("CO-1050", 55);  // Transit Services (L3)
         scores.put("CO-1019", 52);  // Frame Switching Services (L4)
 
         // CR path: CR → CR-1000 → CR-1047 → CR-1039 → CR-1021
         scores.put("CR-1000", 79);  // Core Services (L1 container)
         scores.put("CR-1047", 75);  // Infrastructure Services (L2)
-        scores.put("CR-1039", 52);  // Security Services (L3)
+        scores.put("CR-1039", 52);  // Infrastructure CIS Security Services (L3)
         scores.put("CR-1021", 48);  // Digital Certificate Services (L4)
 
-        // UA path: UA → UA-1000 → UA-1015
+        // UA path: UA → UA-1000 → UA-1179 → UA-1574
         scores.put("UA-1000", 72);  // User Applications (L1 container)
-        scores.put("UA-1015", 68);  // Air Applications (L2)
+        scores.put("UA-1179", 68);  // Communication and Collaboration Applications (L2)
+        scores.put("UA-1574", 62);  // Unified Communication Applications (L3 leaf)
 
-        // BP path: BP → BP-1000 → BP-1327
+        // BP path: BP → BP-1000 → BP-1327 → BP-1490 → BP-1697
         scores.put("BP-1000", 69);  // Business Processes (L1 container)
-        scores.put("BP-1327", 65);  // Enable (L2)
+        scores.put("BP-1327", 65);  // Enable (L2 intermediate)
+        scores.put("BP-1490", 58);  // Health Services (L3)
+        scores.put("BP-1697", 52);  // Medical Command, Control And Communication (L4 leaf)
 
-        // BR path: BR → BR-1000 → BR-1154 → BR-1161 → BR-1063 → BR-1043
+        // IP path: IP → IP-1000 → IP-1078 → IP-1023 → IP-2106
+        scores.put("IP-1000", 58);  // Information Products (L1 container)
+        scores.put("IP-1078", 48);  // Operation Enabling Information Products (L2)
+        scores.put("IP-1023", 42);  // CIS Information Products (L3)
+        scores.put("IP-2106", 38);  // CIS Coordination (L4 leaf)
+
+        // BR path: BR → BR-1000 → BR-1057 → BR-1023 → BR-1334
         scores.put("BR-1000", 53);  // Business Roles (L1 container)
-        scores.put("BR-1154", 45);  // Management Roles (L2)
-        scores.put("BR-1161", 42);  // Facilities Roles (L3)
-        scores.put("BR-1063", 38);  // Facilities Management (L4)
-        scores.put("BR-1043", 35);  // Facilities Management Roles (L5)
+        scores.put("BR-1057", 45);  // Functional Military Roles (L2)
+        scores.put("BR-1023", 38);  // CIS Staff Roles (L3)
+        scores.put("BR-1334", 32);  // CIS Coordination and Advice Roles (L4 leaf)
 
         // ── Run the REAL pipeline ──────────────────────────────────────────
 
