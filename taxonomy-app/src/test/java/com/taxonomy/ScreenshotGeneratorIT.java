@@ -2017,7 +2017,7 @@ class ScreenshotGeneratorIT {
            "  if (view && t && t.trim().length > 0) {" +
            "    view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: t}});" +
            "  }" +
-           "}).catch(function() {});");
+           "}).catch(function() { /* silently ignored — fallback DSL injected below on timeout */ });");
         try {
             wait(15).until(d -> {
                 String content = (String) ((JavascriptExecutor) d).executeScript(

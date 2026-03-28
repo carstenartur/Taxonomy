@@ -124,7 +124,7 @@ flowchart TD
 <details>
 <summary><strong>Scoring trace</strong> — how relevance narrows from root to leaf</summary>
 
-The LLM does **not** score leaf nodes in isolation. It first evaluates each root category (distributing a total relevance budget), then recursively narrows the score into child nodes at each taxonomy level. Every intermediate node receives a score and carries architectural meaning — the result is **hierarchical narrowing**, not isolated leaf matching. A score of 85% on a leaf under a 92% root means that particular child consumed most of its parent's budget — the path from root to leaf forms a traceable scoring chain where each level narrows the previous one.
+The LLM does **not** score leaf nodes in isolation. It first evaluates each root category (distributing a total relevance budget), then recursively narrows the score into child nodes at each taxonomy level. Every intermediate node receives a score and carries architectural meaning — the result is **hierarchical narrowing**, not isolated leaf matching. Each level's score forms a traceable chain: a leaf score of 85% under a 92% root means that child consumed most of its parent's budget.
 
 | Scoring Path | Score | Role |
 |---|---|---|
