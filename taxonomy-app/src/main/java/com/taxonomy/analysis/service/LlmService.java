@@ -90,6 +90,18 @@ public class LlmService {
     @Autowired(required = false)
     private SimpleClientHttpRequestFactory llmRequestFactory;
 
+    /** Optional — LLM record/replay service for test recordings. May be {@code null}. */
+    @Autowired(required = false)
+    private LlmRecordReplayService recordReplayService;
+
+    /**
+     * Returns {@code true} when an API key is not strictly required because replay mode
+     * is active and may serve a recorded response (possibly with live fallback).
+     */
+    private boolean isReplayActive() {
+        return recordReplayService != null && recordReplayService.isReplayMode();
+    }
+
     // ── Outgoing RPM throttle (sliding window) ────────────────────────────────
     /** Timestamps (ms) of the most recent outgoing LLM API calls, kept in a FIFO queue. */
     private final ArrayDeque<Long> callTimestamps = new ArrayDeque<>();
@@ -543,7 +555,7 @@ public class LlmService {
             }
 
             String apiKey = getApiKey(provider);
-            if (apiKey == null || apiKey.isBlank()) {
+            if ((apiKey == null || apiKey.isBlank()) && !isReplayActive()) {
                 log.warn("⚠️ LLM analysis skipped: No API key configured for provider {}. "
                         + "Set environment variable {}_API_KEY to enable AI analysis.",
                         provider, provider.name());
@@ -612,7 +624,7 @@ public class LlmService {
 
         String apiKey = getApiKey(provider);
 
-        if (apiKey == null || apiKey.isBlank()) {
+        if ((apiKey == null || apiKey.isBlank()) && !isReplayActive()) {
             log.warn("⚠️ LLM analysis skipped: No API key configured for provider {}. "
                     + "Set environment variable {}_API_KEY to enable AI analysis.",
                     provider, provider.name());
@@ -685,7 +697,7 @@ public class LlmService {
         // ── API-based path ────────────────────────────────────────────────────
         String apiKey = getApiKey(provider);
 
-        if (apiKey == null || apiKey.isBlank()) {
+        if ((apiKey == null || apiKey.isBlank()) && !isReplayActive()) {
             String errorMsg = "No API key configured for provider " + provider
                     + ". Set environment variable " + provider.name() + "_API_KEY.";
             log.warn("⚠️ LLM analysis skipped: {}", errorMsg);
@@ -759,6 +771,19 @@ public class LlmService {
      * on error (including logging). Rate-limit exceptions are propagated.
      */
     private String callGeminiHttpBody(String prompt, String apiKey) {
+        // REPLAY: return a previously recorded response — skips throttle and real API call.
+        // This is intentional: replayed responses are local I/O, not rate-limited API calls.
+        if (recordReplayService != null && recordReplayService.isReplayMode()) {
+            Optional<String> recorded = recordReplayService.replay(prompt);
+            if (recorded.isPresent()) return recorded.get();
+            if (!recordReplayService.isFallbackLive()) {
+                log.warn("No LLM recording found for prompt hash — no fallback configured");
+                return null;
+            }
+            log.warn("No LLM recording found for prompt hash — falling back to live API");
+        }
+
+        // Real API path — throttle to respect RPM rate limits
         throttleOutgoingLlmCall();
         applyCurrentTimeout();
         Map<String, Object> body    = new LinkedHashMap<>();
@@ -802,6 +827,13 @@ public class LlmService {
             if (response.getStatusCode().is2xxSuccessful() && responseBody != null) {
                 log.info("LLM Response [GEMINI] — raw response (first 500 chars): {}",
                         responseBody.substring(0, Math.min(responseBody.length(), 500)));
+
+                // RECORD: persist prompt + response for future replay.
+                // This runs AFTER the throttled real API call, so rate limits are respected.
+                if (recordReplayService != null && recordReplayService.isRecordMode()) {
+                    recordReplayService.record(prompt, responseBody, "GEMINI", null);
+                }
+
                 return responseBody;
             }
             log.error("Gemini API returned status {}", response.getStatusCode());
@@ -827,6 +859,19 @@ public class LlmService {
      */
     private String callOpenAiCompatibleHttpBody(String prompt, String apiKey,
                                                  LlmProvider provider) {
+        // REPLAY: return a previously recorded response — skips throttle and real API call.
+        // This is intentional: replayed responses are local I/O, not rate-limited API calls.
+        if (recordReplayService != null && recordReplayService.isReplayMode()) {
+            Optional<String> recorded = recordReplayService.replay(prompt);
+            if (recorded.isPresent()) return recorded.get();
+            if (!recordReplayService.isFallbackLive()) {
+                log.warn("No LLM recording found for prompt hash — no fallback configured");
+                return null;
+            }
+            log.warn("No LLM recording found for prompt hash — falling back to live API");
+        }
+
+        // Real API path — throttle to respect RPM rate limits
         throttleOutgoingLlmCall();
         applyCurrentTimeout();
         String url = providerConfig.getOpenAiCompatibleUrl(provider);
@@ -863,6 +908,13 @@ public class LlmService {
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 log.info("LLM Response [{}] — raw response (first 500 chars): {}",
                         provider, response.getBody().substring(0, Math.min(response.getBody().length(), 500)));
+
+                // RECORD: persist prompt + response for future replay.
+                // This runs AFTER the throttled real API call, so rate limits are respected.
+                if (recordReplayService != null && recordReplayService.isRecordMode()) {
+                    recordReplayService.record(prompt, response.getBody(), provider.name(), null);
+                }
+
                 return response.getBody();
             }
             log.error("{} API returned status {}", provider, response.getStatusCode());
@@ -1143,7 +1195,7 @@ public class LlmService {
         }
 
         String apiKey = getApiKey(provider);
-        if (apiKey == null || apiKey.isBlank()) {
+        if ((apiKey == null || apiKey.isBlank()) && !isReplayActive()) {
             log.warn("No API key for provider {} — cannot call LLM", provider);
             return null;
         }
