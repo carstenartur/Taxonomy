@@ -537,6 +537,43 @@
                 }
             }
         });
+        highlightScoringPaths(scores);
+    }
+
+    /**
+     * Highlight the scoring path from root through intermediate nodes to
+     * scored leaves.  Any ancestor of a scored node that itself has a score
+     * receives the CSS class {@code tax-scoring-path}, which renders a
+     * coloured left-border so readers can trace the hierarchical narrowing.
+     */
+    function highlightScoringPaths(scores) {
+        // Remove previous highlights
+        document.querySelectorAll('.tax-scoring-path').forEach(function (el) {
+            el.classList.remove('tax-scoring-path');
+        });
+        if (!scores) return;
+
+        // For every scored leaf (code containing '-'), walk up to root and
+        // mark each ancestor that also carries a score.
+        Object.entries(scores).forEach(function (entry) {
+            var code = entry[0];
+            var pct  = entry[1];
+            if (pct <= 0 || !code.includes('-')) return;
+
+            var el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
+            if (!el) return;
+
+            var parent = el.parentElement;
+            while (parent) {
+                if (parent.classList.contains('tax-node')) {
+                    var parentCode = parent.dataset.code;
+                    if (parentCode && scores[parentCode] > 0) {
+                        parent.classList.add('tax-scoring-path');
+                    }
+                }
+                parent = parent.parentElement;
+            }
+        });
     }
 
     // ── Leaf Justification ────────────────────────────────────────────────────
@@ -1112,8 +1149,15 @@
             elements.sort(function (a, b) { return b.relevance - a.relevance; });
             elements.forEach(function (el) {
                 var pct = (el.relevance * 100).toFixed(0);
+                // Build hierarchy path shown in tooltip
+                var path = el.nodeCode;
+                if (el.nodeCode.indexOf('-') !== -1) {
+                    var root = el.nodeCode.substring(0, 2);
+                    var rootCfg = LAYER_CONFIG[root];
+                    path = root + ' ' + (rootCfg ? rootCfg.label : root) + ' › ' + el.nodeCode;
+                }
                 html += '<span class="summary-layer-element" data-code="' + escapeHtml(el.nodeCode) +
-                    '" title="' + escapeHtml(el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '')) + '">';
+                    '" title="' + escapeHtml(path + ' — ' + (el.title || '') + ' — ' + (el.includedBecause || '')) + '">';
                 html += escapeHtml(el.nodeCode);
                 if (el.title) html += ' \u2013 ' + escapeHtml(el.title.substring(0, 50));
                 html += ' <span class="summary-pct">[' + pct + '%]</span>';
@@ -1163,6 +1207,7 @@
         applyScoreToNode: applyScoreToNode,
         markNodeAsEvaluating: markNodeAsEvaluating,
         expandMatched: expandMatched,
+        highlightScoringPaths: highlightScoringPaths,
         expandNodeByCode: expandNodeByCode,
         setAnalyzing: setAnalyzing,
         clearAnalysisLog: clearAnalysisLog,

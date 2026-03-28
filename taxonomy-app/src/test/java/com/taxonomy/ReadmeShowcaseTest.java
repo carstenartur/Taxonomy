@@ -20,7 +20,9 @@ import org.springframework.security.test.context.support.WithMockUser;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -212,26 +214,107 @@ class ReadmeShowcaseTest {
         showcase.append("% = relevance score · ");
         showcase.append("Arrow labels = relation type\n\n");
 
-        // Detail tables in collapsible section
-        showcase.append("<details>\n");
-        showcase.append("<summary><strong>Pipeline details</strong> — included elements and relationships</summary>\n\n");
-
-        // Included Elements table
-        showcase.append("**Included Elements** — selected by the pipeline "
-                + "(anchors + propagated + enriched leaf nodes):\n\n");
-        showcase.append("| Code | Name | Layer | Relevance | Role | Included Because |\n");
-        showcase.append("|---|---|---|---|---|---|\n");
-        // Map root codes to layer names for the table
+        // Map root codes to layer names (shared by all tables)
         Map<String, String> rootToLayer = Map.of(
                 "CP", "Capabilities", "BP", "Business Processes", "BR", "Business Roles",
                 "CR", "Core Services", "CI", "COI Services", "CO", "Communications Services",
                 "UA", "User Applications", "IP", "Information Products");
+
+        // Build code → title map from included elements
+        Map<String, String> codeToTitle = new LinkedHashMap<>();
+        for (RequirementElementView el : view.getIncludedElements()) {
+            codeToTitle.put(el.getNodeCode(),
+                    el.getTitle() != null ? el.getTitle() : el.getNodeCode());
+        }
+
+        // ── Scoring Trace section ──────────────────────────────────────────
+
+        showcase.append("<details>\n");
+        showcase.append("<summary><strong>Scoring trace</strong> — "
+                + "how relevance narrows from root to leaf</summary>\n\n");
+        showcase.append("The LLM does **not** score leaf nodes in isolation. "
+                + "It first evaluates each root category (distributing a total relevance budget), "
+                + "then recursively narrows the score into child nodes at each taxonomy level. "
+                + "Every intermediate node receives a score and carries architectural meaning — "
+                + "the result is **hierarchical narrowing**, not isolated leaf matching.\n\n");
+
+        showcase.append("| Scoring Path | Score | Role |\n");
+        showcase.append("|---|---|---|\n");
+
+        // Group leaf scores by their root prefix
+        Map<String, List<Map.Entry<String, Integer>>> leafByRoot = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> e : scores.entrySet()) {
+            String code = e.getKey();
+            if (code.contains("-")) {
+                String root = code.substring(0, 2);
+                leafByRoot.computeIfAbsent(root, k -> new ArrayList<>()).add(e);
+            }
+        }
+
+        // Iterate roots in descending score order
+        List<Map.Entry<String, Integer>> rootEntries = scores.entrySet().stream()
+                .filter(e -> !e.getKey().contains("-"))
+                .sorted((a, b) -> b.getValue().compareTo(a.getValue()))
+                .toList();
+
+        for (Map.Entry<String, Integer> rootEntry : rootEntries) {
+            String rootCode = rootEntry.getKey();
+            int rootScore = rootEntry.getValue();
+            String rootName = rootToLayer.getOrDefault(rootCode, rootCode);
+
+            List<Map.Entry<String, Integer>> leaves =
+                    leafByRoot.getOrDefault(rootCode, List.of());
+
+            showcase.append("| **").append(rootCode).append("** ").append(rootName)
+                    .append(" | **").append(rootScore).append("%** | Root category |\n");
+
+            for (int i = 0; i < leaves.size(); i++) {
+                Map.Entry<String, Integer> leaf = leaves.get(i);
+                String leafName = codeToTitle.getOrDefault(leaf.getKey(), leaf.getKey());
+                String prefix = (i == leaves.size() - 1) ? "└" : "├";
+                showcase.append("| &ensp;").append(prefix).append(" ")
+                        .append(leaf.getKey()).append(" ").append(leafName)
+                        .append(" | ").append(leaf.getValue())
+                        .append("% | Leaf — narrowed from ").append(rootScore)
+                        .append("% |\n");
+            }
+            if (leaves.isEmpty()) {
+                showcase.append("| &ensp;└ _(no leaf nodes scored above threshold)_ "
+                        + "| — | — |\n");
+            }
+        }
+
+        showcase.append("\n> Each root score is the **budget** that the LLM distributes "
+                + "among its children. A leaf score of 85% under a root of 92% means "
+                + "that child consumed most of the parent's relevance.\n");
+        showcase.append("\n</details>\n\n");
+
+        // ── Detail tables in collapsible section ───────────────────────────
+
+        showcase.append("<details>\n");
+        showcase.append("<summary><strong>Pipeline details</strong> — included elements and relationships</summary>\n\n");
+
+        // Included Elements table (with Path column)
+        showcase.append("**Included Elements** — selected by the pipeline "
+                + "(anchors + propagated + enriched leaf nodes):\n\n");
+        showcase.append("| Code | Name | Layer | Relevance | Path | Role | Included Because |\n");
+        showcase.append("|---|---|---|---|---|---|---|\n");
         for (RequirementElementView el : view.getIncludedElements()) {
             String name = el.getTitle() != null ? el.getTitle() : el.getNodeCode();
             String sheet = el.getTaxonomySheet() != null
                     ? rootToLayer.getOrDefault(el.getTaxonomySheet(), el.getTaxonomySheet())
                     : "—";
             String pct = String.format("%.0f%%", el.getRelevance() * 100);
+            // Build hierarchy path: root > leaf (or just root for root-level nodes)
+            String path;
+            String code = el.getNodeCode();
+            if (code.contains("-")) {
+                String root = code.substring(0, 2);
+                String rootName = rootToLayer.getOrDefault(root, root);
+                path = root + " " + rootName + " > " + code;
+            } else {
+                path = code + " _(root)_";
+            }
             String role;
             if (el.isAnchor()) {
                 role = "★ Anchor";
@@ -242,10 +325,11 @@ class ReadmeShowcaseTest {
                 role = "Propagated";
             }
             String reason = el.getIncludedBecause() != null ? el.getIncludedBecause() : "—";
-            showcase.append("| ").append(el.getNodeCode())
+            showcase.append("| ").append(code)
                     .append(" | ").append(name)
                     .append(" | ").append(sheet)
                     .append(" | ").append(pct)
+                    .append(" | ").append(path)
                     .append(" | ").append(role)
                     .append(" | ").append(reason)
                     .append(" |\n");
