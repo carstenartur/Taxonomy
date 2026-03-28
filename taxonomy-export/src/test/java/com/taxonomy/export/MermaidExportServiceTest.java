@@ -432,10 +432,10 @@ class MermaidExportServiceTest {
         // Create more edges than SHOWCASE_MAX_EDGES
         List<DiagramNode> nodes = new ArrayList<>(List.of(cap));
         List<DiagramEdge> edges = new ArrayList<>();
-        for (int i = 0; i < MermaidLabels.SHOWCASE_MAX_EDGES + 5; i++) {
-            String nodeId = "CR-" + (1000 + i);
-            nodes.add(new DiagramNode(nodeId, "Svc" + i, "Core Services", 0.5 + i * 0.01, false, 3));
-            edges.add(new DiagramEdge("e" + i, "CP-1023", nodeId, "REALIZES", 0.5 + i * 0.01));
+        for (int idx = 0; idx < MermaidLabels.SHOWCASE_MAX_EDGES + 5; idx++) {
+            String nodeId = "CR-" + (1000 + idx);
+            nodes.add(new DiagramNode(nodeId, "Svc" + idx, "Core Services", 0.5 + idx * 0.01, false, 3));
+            edges.add(new DiagramEdge("e" + idx, "CP-1023", nodeId, "REALIZES", 0.5 + idx * 0.01));
         }
         var fullModel = new DiagramModel("Test", nodes, edges, new DiagramLayout("LR", true));
 
