@@ -24,12 +24,7 @@ flowchart LR
     style E fill:#fce4ec
 ```
 
-The AI analysis step is **hierarchical** — it scores root categories first, then distributes each root's relevance budget into its children at every taxonomy level. The result is two complementary outputs:
-
-| Output | What it shows |
-|---|---|
-| **Scoring Trace** | How relevance narrows from root → intermediate → leaf (the _path_ through the taxonomy) |
-| **Architecture Impact** | Which layers, elements, and cross-layer relations are affected (the _result_ for architects) |
+The AI analysis step is **hierarchical** — it scores root categories first, then distributes each root's relevance budget into its children at every taxonomy level. This produces a **scoring trace** (how relevance narrows from root to leaf) and an **architecture impact view** (which layers and relations are affected). See the [showcase below](#architecture-impact-showcase) for a worked example.
 
 ---
 

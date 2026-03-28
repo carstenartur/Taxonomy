@@ -1912,7 +1912,7 @@ class ScreenshotGeneratorIT {
 
     @Test
     @Order(38)
-    void captureDetailedArchitectureView() throws IOException, InterruptedException {
+    void captureDetailedArchitectureView() throws IOException {
         // Reload page for clean state
         resetPageState();
         forceNonInteractiveMode();
@@ -1962,8 +1962,9 @@ class ScreenshotGeneratorIT {
         js("var d = document.querySelector('#architectureViewContent .impact-details');" +
            "if (d) d.setAttribute('open', '');");
 
-        // Brief wait for the <details> expansion to reflow and render the tables.
-        Thread.sleep(500);
+        // Wait for the <details> element to be expanded and its content visible.
+        wait(5).until(ExpectedConditions.attributeContains(
+                By.cssSelector("#architectureViewContent .impact-details"), "open", ""));
 
         // Scroll to the expanded detail tables (not the panel top) so the screenshot
         // shows the element/relationship tables — visually distinct from screenshot 20.
