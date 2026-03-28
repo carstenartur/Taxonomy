@@ -203,12 +203,16 @@ Taxonomy Application,com.taxonomy.analysis.service,LlmService.ScoreParseResult,3
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},0,6,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},0,6,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser.new TypeReference() {...},0,6,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.analysis.service,LlmService,2030,818,214,52,424,188,141,34,19,23
+Taxonomy Application,com.taxonomy.analysis.service,LlmService,2131,833,246,56,442,189,159,35,19,24
+Taxonomy Application,com.taxonomy.analysis.service,LlmRecordReplayService.ManifestEntry,0,3,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.analysis.service,LlmRecordingEntry,0,24,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,LlmProvider,0,45,0,0,0,8,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,AnalysisFacade,0,25,0,0,0,7,0,3,0,3
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser,10,556,4,50,3,105,4,36,0,13
 Taxonomy Application,com.taxonomy.analysis.service,AnalysisRelationGenerator,15,341,7,29,3,65,8,16,2,4
 Taxonomy Application,com.taxonomy.analysis.service,LlmProviderConfig,149,218,71,47,35,46,71,12,4,11
+Taxonomy Application,com.taxonomy.analysis.service,LlmRecordReplayService,121,449,16,28,25,96,15,22,3,12
+Taxonomy Application,com.taxonomy.analysis.service,LlmRecordReplayService.ManifestData,0,11,0,0,0,3,0,1,0,1
 Taxonomy Application,com.taxonomy.versioning.controller,ContextNavigationController,77,274,11,9,20,54,8,16,1,13
 Taxonomy Application,com.taxonomy.versioning.controller,DslApiController,760,1394,38,34,181,286,40,44,17,31
 Taxonomy Application,com.taxonomy.versioning.controller,GitStateController,0,63,0,0,0,15,0,5,0,5

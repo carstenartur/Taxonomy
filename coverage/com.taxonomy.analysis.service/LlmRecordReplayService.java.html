@@ -1,0 +1,312 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LlmRecordReplayService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmRecordReplayService.java</span></div><h1>LlmRecordReplayService.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
+
+/**
+ * Records and replays raw LLM HTTP responses so that integration tests can run
+ * without a real API key once the recordings exist.
+ *
+ * &lt;h3&gt;Modes (controlled via system properties / Spring properties)&lt;/h3&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code llm.replay=true} — attempt to replay a previously recorded
+ *       response for each prompt.  If no recording exists the behaviour depends
+ *       on {@code llm.replay.fallback}.&lt;/li&gt;
+ *   &lt;li&gt;{@code llm.record=true} — after a real API call, persist the
+ *       prompt + response so it can be replayed later.&lt;/li&gt;
+ *   &lt;li&gt;{@code llm.replay.fallback=live} — when replaying and no recording
+ *       is found, fall through to the real API call &lt;em&gt;and&lt;/em&gt; record the
+ *       result.&lt;/li&gt;
+ *   &lt;li&gt;{@code llm.prune=true} — after the test run, mark recordings that
+ *       were never replayed as &lt;em&gt;stale&lt;/em&gt;.&lt;/li&gt;
+ *   &lt;li&gt;{@code llm.prune.delete=true} — delete stale recordings.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;h3&gt;Storage layout&lt;/h3&gt;
+ * &lt;pre&gt;
+ *   src/test/resources/llm-recordings/
+ *     manifest.json          — index of all recordings
+ *     sha256-&amp;lt;hex&amp;gt;.json — individual recording files
+ * &lt;/pre&gt;
+ */
+@Service
+public class LlmRecordReplayService {
+
+<span class="fc" id="L50">    private static final Logger log = LoggerFactory.getLogger(LlmRecordReplayService.class);</span>
+
+    private final Path recordingsDir;
+    private final ObjectMapper mapper;
+
+    private final boolean replayMode;
+    private final boolean recordMode;
+    private final String  replayFallback;
+    private final boolean pruneMode;
+    private final boolean pruneDeleteMode;
+
+    /** Hashes replayed during this JVM run — used for pruning. */
+<span class="fc" id="L62">    private final Set&lt;String&gt; replayedHashes = ConcurrentHashMap.newKeySet();</span>
+
+    public LlmRecordReplayService(
+            @Value(&quot;${llm.recordings.dir:#{null}}&quot;) String configuredDir,
+            @Value(&quot;${llm.replay:false}&quot;) boolean replayMode,
+            @Value(&quot;${llm.record:false}&quot;) boolean recordMode,
+            @Value(&quot;${llm.replay.fallback:error}&quot;) String replayFallback,
+            @Value(&quot;${llm.prune:false}&quot;) boolean pruneMode,
+<span class="fc" id="L70">            @Value(&quot;${llm.prune.delete:false}&quot;) boolean pruneDeleteMode) {</span>
+
+<span class="fc" id="L72">        this.replayMode = replayMode;</span>
+<span class="fc" id="L73">        this.recordMode = recordMode;</span>
+<span class="fc" id="L74">        this.replayFallback = replayFallback;</span>
+<span class="fc" id="L75">        this.pruneMode = pruneMode;</span>
+<span class="fc" id="L76">        this.pruneDeleteMode = pruneDeleteMode;</span>
+
+        // Determine recordings directory
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">        if (configuredDir != null &amp;&amp; !configuredDir.isBlank()) {</span>
+<span class="fc" id="L80">            this.recordingsDir = Path.of(configuredDir);</span>
+        } else {
+<span class="fc" id="L82">            this.recordingsDir = detectRecordingsDir();</span>
+        }
+
+<span class="fc" id="L85">        this.mapper = JsonMapper.builder().build();</span>
+
+<span class="fc bfc" id="L87" title="All 4 branches covered.">        if (replayMode || recordMode) {</span>
+<span class="fc" id="L88">            log.info(&quot;LLM Record/Replay — replay={}, record={}, fallback={}, prune={}, prune.delete={}, dir={}&quot;,</span>
+<span class="fc" id="L89">                    replayMode, recordMode, replayFallback, pruneMode, pruneDeleteMode, recordingsDir);</span>
+        }
+<span class="fc" id="L91">    }</span>
+
+    // ── Public API ────────────────────────────────────────────────────────────
+
+<span class="fc" id="L95">    public boolean isReplayMode()  { return replayMode; }</span>
+<span class="fc" id="L96">    public boolean isRecordMode()  { return recordMode; }</span>
+
+    /**
+     * Returns {@code true} when replay mode is active and a missing recording
+     * should fall through to a live API call (and be recorded).
+     */
+    public boolean isFallbackLive() {
+<span class="fc" id="L103">        return &quot;live&quot;.equalsIgnoreCase(replayFallback);</span>
+    }
+
+    /**
+     * Attempts to replay a recorded response for the given prompt.
+     *
+     * @param prompt the LLM prompt text
+     * @return the raw HTTP response body if a recording exists, otherwise empty
+     */
+    public Optional&lt;String&gt; replay(String prompt) {
+<span class="fc" id="L113">        String hash = hashPrompt(prompt);</span>
+<span class="fc" id="L114">        Path file = recordingsDir.resolve(hash + &quot;.json&quot;);</span>
+
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (!Files.exists(file)) {</span>
+<span class="fc" id="L117">            return Optional.empty();</span>
+        }
+
+        try {
+<span class="fc" id="L121">            LlmRecordingEntry entry = mapper.readValue(file.toFile(), LlmRecordingEntry.class);</span>
+<span class="fc" id="L122">            replayedHashes.add(hash);</span>
+
+            // Update lastUsed in manifest (best-effort)
+<span class="fc" id="L125">            updateManifestLastUsed(hash);</span>
+
+<span class="fc" id="L127">            log.info(&quot;LLM REPLAY — returning recorded response for hash {} (recorded at {})&quot;,</span>
+<span class="fc" id="L128">                    hash, entry.recordedAt());</span>
+<span class="fc" id="L129">            return Optional.of(entry.responseBody());</span>
+<span class="nc" id="L130">        } catch (Exception e) {</span>
+<span class="nc" id="L131">            log.warn(&quot;Failed to read LLM recording {}: {}&quot;, file, e.getMessage());</span>
+<span class="nc" id="L132">            return Optional.empty();</span>
+        }
+    }
+
+    /**
+     * Records a prompt + raw response so it can be replayed later.
+     *
+     * @param prompt       the LLM prompt text
+     * @param rawResponse  the raw HTTP response body
+     * @param provider     the provider name (e.g. &quot;GEMINI&quot;)
+     * @param testOrigin   optional test class#method that triggered the call
+     */
+    public void record(String prompt, String rawResponse, String provider, String testOrigin) {
+<span class="fc" id="L145">        String hash = hashPrompt(prompt);</span>
+<span class="fc" id="L146">        String now = Instant.now().toString();</span>
+
+<span class="fc" id="L148">        LlmRecordingEntry entry = new LlmRecordingEntry(</span>
+                hash, prompt, rawResponse, provider, now, testOrigin, now);
+
+        try {
+<span class="fc" id="L152">            Files.createDirectories(recordingsDir);</span>
+<span class="fc" id="L153">            Path file = recordingsDir.resolve(hash + &quot;.json&quot;);</span>
+<span class="fc" id="L154">            mapper.writeValue(file.toFile(), entry);</span>
+<span class="fc" id="L155">            log.info(&quot;LLM RECORD — saved recording {} for provider {} ({})&quot;,</span>
+                    hash, provider, testOrigin);
+
+<span class="fc" id="L158">            updateManifest(hash, now);</span>
+<span class="nc" id="L159">        } catch (IOException e) {</span>
+<span class="nc" id="L160">            log.error(&quot;Failed to write LLM recording for hash {}: {}&quot;, hash, e.getMessage(), e);</span>
+<span class="fc" id="L161">        }</span>
+<span class="fc" id="L162">    }</span>
+
+    /**
+     * Marks recordings that were never replayed in this JVM run as stale.
+     * If {@code llm.prune.delete=true}, stale recordings are deleted.
+     */
+    public void pruneUnused() {
+<span class="pc bpc" id="L169" title="3 of 4 branches missed.">        if (!pruneMode &amp;&amp; !pruneDeleteMode) return;</span>
+
+<span class="fc" id="L171">        Path manifestFile = recordingsDir.resolve(&quot;manifest.json&quot;);</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">        if (!Files.exists(manifestFile)) return;</span>
+
+        try {
+<span class="fc" id="L175">            ManifestData manifest = mapper.readValue(manifestFile.toFile(), ManifestData.class);</span>
+<span class="fc" id="L176">            int staleCount = 0;</span>
+<span class="fc" id="L177">            List&lt;String&gt; toDelete = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L179" title="All 2 branches covered.">            for (Map.Entry&lt;String, ManifestEntry&gt; e : manifest.recordings.entrySet()) {</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">                if (!replayedHashes.contains(e.getKey())) {</span>
+<span class="fc" id="L181">                    e.getValue().stale = true;</span>
+<span class="fc" id="L182">                    staleCount++;</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">                    if (pruneDeleteMode) {</span>
+<span class="fc" id="L184">                        toDelete.add(e.getKey());</span>
+                    }
+                }
+<span class="fc" id="L187">            }</span>
+
+            // Delete stale files
+<span class="fc bfc" id="L190" title="All 2 branches covered.">            for (String hash : toDelete) {</span>
+<span class="fc" id="L191">                Path file = recordingsDir.resolve(hash + &quot;.json&quot;);</span>
+<span class="fc" id="L192">                Files.deleteIfExists(file);</span>
+<span class="fc" id="L193">                manifest.recordings.remove(hash);</span>
+<span class="fc" id="L194">                log.info(&quot;LLM PRUNE — deleted stale recording {}&quot;, hash);</span>
+<span class="fc" id="L195">            }</span>
+
+<span class="fc" id="L197">            mapper.writeValue(manifestFile.toFile(), manifest);</span>
+<span class="fc" id="L198">            log.info(&quot;LLM PRUNE — {} stale recordings{}&quot;, staleCount,</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">                    pruneDeleteMode ? &quot; (deleted)&quot; : &quot; (marked)&quot;);</span>
+<span class="nc" id="L200">        } catch (Exception e) {</span>
+<span class="nc" id="L201">            log.error(&quot;Failed to prune LLM recordings: {}&quot;, e.getMessage(), e);</span>
+<span class="fc" id="L202">        }</span>
+<span class="fc" id="L203">    }</span>
+
+    // ── Hash computation ──────────────────────────────────────────────────────
+
+    /**
+     * Computes a SHA-256 hash of the whitespace-normalised prompt text.
+     * Normalisation collapses all whitespace runs to a single space and trims,
+     * so minor formatting changes do not invalidate existing recordings.
+     */
+    String hashPrompt(String prompt) {
+<span class="fc" id="L213">        String normalised = prompt.strip().replaceAll(&quot;\\s+&quot;, &quot; &quot;);</span>
+        try {
+<span class="fc" id="L215">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L216">            byte[] hashBytes = digest.digest(normalised.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L217">            return &quot;sha256-&quot; + HexFormat.of().formatHex(hashBytes);</span>
+<span class="nc" id="L218">        } catch (NoSuchAlgorithmException e) {</span>
+<span class="nc" id="L219">            throw new IllegalStateException(&quot;SHA-256 not available&quot;, e);</span>
+        }
+    }
+
+    // ── Manifest management ───────────────────────────────────────────────────
+
+    private void updateManifest(String hash, String now) {
+<span class="fc" id="L226">        Path manifestFile = recordingsDir.resolve(&quot;manifest.json&quot;);</span>
+        ManifestData manifest;
+        try {
+<span class="fc bfc" id="L229" title="All 2 branches covered.">            if (Files.exists(manifestFile)) {</span>
+<span class="fc" id="L230">                manifest = mapper.readValue(manifestFile.toFile(), ManifestData.class);</span>
+            } else {
+<span class="fc" id="L232">                manifest = new ManifestData();</span>
+            }
+
+<span class="fc" id="L235">            ManifestEntry entry = new ManifestEntry();</span>
+<span class="fc" id="L236">            entry.file = hash + &quot;.json&quot;;</span>
+<span class="fc" id="L237">            entry.lastUsed = now;</span>
+<span class="fc" id="L238">            entry.stale = false;</span>
+<span class="fc" id="L239">            manifest.recordings.put(hash, entry);</span>
+
+<span class="fc" id="L241">            mapper.writeValue(manifestFile.toFile(), manifest);</span>
+<span class="nc" id="L242">        } catch (Exception e) {</span>
+<span class="nc" id="L243">            log.warn(&quot;Failed to update manifest: {}&quot;, e.getMessage());</span>
+<span class="fc" id="L244">        }</span>
+<span class="fc" id="L245">    }</span>
+
+    private void updateManifestLastUsed(String hash) {
+<span class="fc" id="L248">        Path manifestFile = recordingsDir.resolve(&quot;manifest.json&quot;);</span>
+<span class="pc bpc" id="L249" title="1 of 2 branches missed.">        if (!Files.exists(manifestFile)) return;</span>
+
+        try {
+<span class="fc" id="L252">            ManifestData manifest = mapper.readValue(manifestFile.toFile(), ManifestData.class);</span>
+<span class="fc" id="L253">            ManifestEntry entry = manifest.recordings.get(hash);</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">            if (entry != null) {</span>
+<span class="fc" id="L255">                entry.lastUsed = Instant.now().toString();</span>
+<span class="fc" id="L256">                entry.stale = false;</span>
+<span class="fc" id="L257">                mapper.writeValue(manifestFile.toFile(), manifest);</span>
+            }
+<span class="nc" id="L259">        } catch (Exception e) {</span>
+<span class="nc" id="L260">            log.warn(&quot;Failed to update manifest lastUsed for {}: {}&quot;, hash, e.getMessage());</span>
+<span class="fc" id="L261">        }</span>
+<span class="fc" id="L262">    }</span>
+
+    /**
+     * Detects the recordings directory by looking for the standard location
+     * relative to the project root.
+     */
+    private static Path detectRecordingsDir() {
+        // Try src/test/resources/llm-recordings relative to CWD first,
+        // then walk up to find a Maven module root.
+<span class="fc" id="L271">        Path cwd = Path.of(&quot;&quot;).toAbsolutePath();</span>
+
+        // Walk up looking for a pom.xml with src/test/resources
+<span class="fc" id="L274">        Path candidate = cwd;</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">        for (int i = 0; i &lt; 5; i++) {</span>
+<span class="fc" id="L276">            Path testResources = candidate.resolve(&quot;src/test/resources/llm-recordings&quot;);</span>
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">            if (Files.exists(candidate.resolve(&quot;pom.xml&quot;))</span>
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">                    &amp;&amp; Files.exists(candidate.resolve(&quot;src/test/resources&quot;))) {</span>
+<span class="fc" id="L279">                return testResources;</span>
+            }
+            // Check if this is a multi-module project — look for a module with src/test/resources
+<span class="nc" id="L282">            try (Stream&lt;Path&gt; children = Files.list(candidate)) {</span>
+<span class="nc" id="L283">                Optional&lt;Path&gt; moduleDir = children</span>
+<span class="nc" id="L284">                        .filter(Files::isDirectory)</span>
+<span class="nc" id="L285">                        .filter(d -&gt; Files.exists(d.resolve(&quot;pom.xml&quot;)))</span>
+<span class="nc" id="L286">                        .filter(d -&gt; Files.exists(d.resolve(&quot;src/test/resources&quot;)))</span>
+<span class="nc" id="L287">                        .findFirst();</span>
+<span class="nc bnc" id="L288" title="All 2 branches missed.">                if (moduleDir.isPresent()) {</span>
+<span class="nc" id="L289">                    return moduleDir.get().resolve(&quot;src/test/resources/llm-recordings&quot;);</span>
+                }
+<span class="nc bnc" id="L291" title="All 2 branches missed.">            } catch (IOException ignored) { }</span>
+<span class="nc" id="L292">            candidate = candidate.getParent();</span>
+<span class="nc bnc" id="L293" title="All 2 branches missed.">            if (candidate == null) break;</span>
+        }
+        // Fallback
+<span class="nc" id="L296">        return cwd.resolve(&quot;src/test/resources/llm-recordings&quot;);</span>
+    }
+
+    // ── Manifest POJOs ────────────────────────────────────────────────────────
+
+<span class="fc" id="L301">    static class ManifestData {</span>
+<span class="fc" id="L302">        public int version = 1;</span>
+<span class="fc" id="L303">        public Map&lt;String, ManifestEntry&gt; recordings = new LinkedHashMap&lt;&gt;();</span>
+    }
+
+<span class="fc" id="L306">    static class ManifestEntry {</span>
+        public String file;
+        public String lastUsed;
+        public boolean stale;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
