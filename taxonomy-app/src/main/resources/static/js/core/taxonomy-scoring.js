@@ -778,7 +778,12 @@
                     ' <span class="badge bg-secondary" style="font-size:0.7rem;">' + layerElements.length + '</span></div>';
 
                 html += '<div class="impact-swimlane-nodes">';
-                layerElements.sort((a, b) => b.relevance - a.relevance);
+                layerElements.sort(function(a, b) {
+                    var aIsLeaf = a.nodeCode.includes('-') ? 0 : 1;
+                    var bIsLeaf = b.nodeCode.includes('-') ? 0 : 1;
+                    if (aIsLeaf !== bIsLeaf) return aIsLeaf - bIsLeaf;
+                    return b.relevance - a.relevance;
+                });
                 layerElements.forEach(el => {
                     const pct = (el.relevance * 100).toFixed(0);
                     let nodeClasses = 'impact-node';
