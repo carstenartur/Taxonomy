@@ -64,7 +64,8 @@ class ReadmeShowcaseTest {
     @BeforeEach
     void ensureSeedRelations() {
         // Set up the key seed relations that the real CSV data would provide.
-        // ArchitectureViewTests cleans relations in its @BeforeEach, so we must
+        // Other test classes (e.g. ArchitectureViewTests) may share this Spring
+        // context and clean relations in their own @BeforeEach, so we must
         // recreate them here to ensure the propagation produces a rich result.
         relationRepository.deleteAll();
 
@@ -217,9 +218,14 @@ class ReadmeShowcaseTest {
                     ? rootToLayer.getOrDefault(el.getTaxonomySheet(), el.getTaxonomySheet())
                     : "—";
             String pct = String.format("%.0f%%", el.getRelevance() * 100);
-            String role = el.isAnchor() ? "★ Anchor" : "Propagated";
-            if (el.getIncludedBecause() != null && el.getIncludedBecause().startsWith("leaf-enrichment")) {
+            String role;
+            if (el.isAnchor()) {
+                role = "★ Anchor";
+            } else if (el.getIncludedBecause() != null
+                    && el.getIncludedBecause().startsWith("leaf-enrichment")) {
                 role = "Enriched leaf";
+            } else {
+                role = "Propagated";
             }
             String reason = el.getIncludedBecause() != null ? el.getIncludedBecause() : "—";
             showcase.append("| ").append(el.getNodeCode())
