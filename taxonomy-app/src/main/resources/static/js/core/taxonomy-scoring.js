@@ -1154,7 +1154,7 @@
                 if (el.nodeCode.indexOf('-') !== -1) {
                     var root = el.nodeCode.substring(0, 2);
                     var rootCfg = LAYER_CONFIG[root];
-                    path = root + ' ' + (rootCfg ? rootCfg.label : root) + ' › ' + el.nodeCode;
+                    path = root + ' ' + (rootCfg ? rootCfg.label : root) + ' > ' + el.nodeCode;
                 }
                 html += '<span class="summary-layer-element" data-code="' + escapeHtml(el.nodeCode) +
                     '" title="' + escapeHtml(path + ' — ' + (el.title || '') + ' — ' + (el.includedBecause || '')) + '">';
