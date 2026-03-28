@@ -344,7 +344,9 @@ class ReadmeShowcaseTest {
                 continue;
             }
 
-            // For each leaf, render the full path from root to leaf
+            // For each leaf, render the full path from root to leaf.
+            // Track already-shown intermediate codes to avoid duplicates.
+            var shownIntermediates = new java.util.HashSet<String>();
             for (int li = 0; li < rootLeaves.size(); li++) {
                 String leafCode = rootLeaves.get(li);
                 List<TaxonomyNode> fullPath = pathCache.get(leafCode);
@@ -358,18 +360,9 @@ class ReadmeShowcaseTest {
                     String nodeName = codeToTitle.getOrDefault(n.getCode(), n.getCode());
                     int parentScore = scores.getOrDefault(fullPath.get(pi - 1).getCode(), 0);
 
-                    // Determine if this intermediate was already shown by a previous leaf path
-                    // (avoid duplicating shared ancestors)
-                    if (!isLeaf && li > 0) {
-                        boolean alreadyShown = false;
-                        for (int prev = 0; prev < li; prev++) {
-                            List<TaxonomyNode> prevPath = pathCache.get(rootLeaves.get(prev));
-                            if (prevPath.stream().anyMatch(pn -> pn.getCode().equals(n.getCode()))) {
-                                alreadyShown = true;
-                                break;
-                            }
-                        }
-                        if (alreadyShown) continue;
+                    // Skip already-shown intermediates (shared ancestors)
+                    if (!isLeaf && shownIntermediates.contains(n.getCode())) {
+                        continue;
                     }
 
                     // Indentation: depth within the tree (pi = 1 → 1 indent, etc.)
@@ -383,6 +376,10 @@ class ReadmeShowcaseTest {
                             .append(n.getCode()).append(" ").append(nodeName)
                             .append(" | ").append(nodeScore).append("%")
                             .append(" | ").append(role).append(" |\n");
+
+                    if (!isLeaf) {
+                        shownIntermediates.add(n.getCode());
+                    }
                 }
             }
         }

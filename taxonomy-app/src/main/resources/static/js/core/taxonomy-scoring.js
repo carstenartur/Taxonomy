@@ -815,14 +815,16 @@
             if (hasElements) {
                 html += '<h6 class="mb-1 mt-2">Included Elements</h6>';
                 html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
-                html += '<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead><tbody>';
+                html += '<thead><tr><th>Code</th><th>Title</th><th>Path</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead><tbody>';
                 elements.forEach(e => {
                     const rowClass = e.anchor ? 'table-success' : '';
                     const sheetCfg = LAYER_CONFIG[e.taxonomySheet];
                     const sheetLabel = sheetCfg ? sheetCfg.label : (e.taxonomySheet || '');
+                    const pathLabel = e.hierarchyPath || e.nodeCode;
                     html += '<tr class="' + rowClass + '">' +
                         '<td>' + escapeHtml(e.nodeCode) + '</td>' +
                         '<td>' + escapeHtml(e.title || '') + '</td>' +
+                        '<td>' + escapeHtml(pathLabel) + '</td>' +
                         '<td>' + escapeHtml(sheetLabel) + '</td>' +
                         '<td>' + (e.relevance * 100).toFixed(1) + '%</td>' +
                         '<td>' + e.hopDistance + '</td>' +
@@ -1151,8 +1153,10 @@
                 var pct = (el.relevance * 100).toFixed(0);
                 // Use full hierarchy path from backend (e.g. "CP > CP-1000 > CP-1023")
                 var path = el.hierarchyPath || el.nodeCode;
+                var titleParts = [path, el.title || '', el.includedBecause || '']
+                    .filter(function (p) { return p.length > 0; });
                 html += '<span class="summary-layer-element" data-code="' + escapeHtml(el.nodeCode) +
-                    '" title="' + escapeHtml(path + ' — ' + (el.title || '') + ' — ' + (el.includedBecause || '')) + '">';
+                    '" title="' + escapeHtml(titleParts.join(' — ')) + '">';
                 html += escapeHtml(el.nodeCode);
                 if (el.title) html += ' \u2013 ' + escapeHtml(el.title.substring(0, 50));
                 html += ' <span class="summary-pct">[' + pct + '%]</span>';
