@@ -14,7 +14,7 @@ Taxonomy Application,com.taxonomy.relations.service,RelationQualityService,148,1
 Taxonomy Application,com.taxonomy.relations.service,GraphSearchService,252,148,18,4,52,33,19,6,8,6
 Taxonomy Application,com.taxonomy.relations.service,RelationCandidateService,6,138,5,5,0,25,4,7,0,6
 Taxonomy Application,com.taxonomy.relations.service,RelationProposalService,200,342,13,12,34,76,14,11,3,9
-Taxonomy Application,com.taxonomy.relations.service,RelationTraversalService,36,65,3,5,7,17,3,5,1,3
+Taxonomy Application,com.taxonomy.relations.service,RelationTraversalService,36,88,4,10,7,23,4,8,1,4
 Taxonomy Application,com.taxonomy.relations.service,RelationReviewService,94,170,6,2,20,37,4,8,0,8
 Taxonomy Application,com.taxonomy.relations.service,RequirementCoverageService,2,248,3,9,0,47,3,20,0,17
 Taxonomy Application,com.taxonomy.relations.service,HybridSearchService,39,34,2,2,6,10,2,3,0,3
@@ -45,7 +45,7 @@ Taxonomy Application,com.taxonomy.workspace.controller,ExternalSyncController,11
 Taxonomy Application,com.taxonomy.catalog.service,PropagationResult.TraversedRelation,0,27,0,0,0,10,0,5,0,5
 Taxonomy Application,com.taxonomy.catalog.service,SearchService,11,186,2,2,4,37,2,6,0,6
 Taxonomy Application,com.taxonomy.catalog.service,TaxonomyRelationService,106,333,15,15,16,73,13,21,2,17
-Taxonomy Application,com.taxonomy.catalog.service,RelevancePropagationService,16,289,8,20,4,53,6,12,0,4
+Taxonomy Application,com.taxonomy.catalog.service,RelevancePropagationService,22,313,12,24,5,60,9,13,0,4
 Taxonomy Application,com.taxonomy.catalog.service,ArchiMateXmlImporter.ParsedRelationship,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.catalog.service,ArchiMateXmlImporter.ParsedElement,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.catalog.service,PropagationResult,0,27,0,0,0,10,0,5,0,5
@@ -145,7 +145,7 @@ Taxonomy Application,com.taxonomy.architecture.service,ArchitectureGraphQuerySer
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureSummaryService,67,270,9,9,7,57,11,12,3,11
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService,25,491,12,42,4,92,11,22,0,6
 Taxonomy Application,com.taxonomy.architecture.service,DerivedMetadataService,42,164,3,17,9,39,5,11,2,4
-Taxonomy Application,com.taxonomy.architecture.service,RequirementArchitectureViewService,118,666,18,60,24,140,14,35,1,9
+Taxonomy Application,com.taxonomy.architecture.service,RequirementArchitectureViewService,263,743,33,69,57,160,23,40,2,10
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService.PatternStep,0,20,0,0,0,2,0,2,0,2
 Taxonomy Application,com.taxonomy.architecture.service,ExplanationTraceService,65,391,23,27,8,72,21,13,1,8
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureGraphQueryServiceImpl,62,963,23,84,13,197,19,55,0,20
