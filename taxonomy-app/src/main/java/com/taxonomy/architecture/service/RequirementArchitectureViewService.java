@@ -564,6 +564,9 @@ public class RequirementArchitectureViewService {
      * available node is used for impact relations.
      */
     private static RequirementElementView pickBestLeaf(List<RequirementElementView> leaves) {
+        if (leaves.isEmpty()) {
+            throw new IllegalArgumentException("leaves must not be empty");
+        }
         return leaves.stream()
                 .max(Comparator
                         .comparingInt((RequirementElementView e) -> pathDepth(e.getHierarchyPath()))
