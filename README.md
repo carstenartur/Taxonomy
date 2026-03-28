@@ -35,7 +35,7 @@ The system scores every taxonomy node, selects the most relevant elements (score
 ```mermaid
 flowchart TD
     subgraph Capabilities["Capabilities"]
-        CP_1023["Communication and Information System Capabilities ★ [85%]"]
+        CP_1023["Communication and Information System Capabilities ★ ⚠ [85%]"]
     end
     subgraph Business_Processes["Business Processes"]
         BP_1327["Enable [65%]"]
@@ -54,28 +54,28 @@ flowchart TD
         UA_1015["Air Applications [68%]"]
     end
     subgraph Communications_Services["Communications Services"]
-        CO_1011["Communications Access Services ★ [80%]"]
+        CO_1011["Communications Access Services ★ ⚠ [80%]"]
         CO_1019["Frame Switching Services [52%]"]
         CO_1063["Transport Services [35%]"]
     end
-    CP_1023 -->|REALIZES| CI
-    CP_1023 -->|REALIZES| CO_1011
-    CP_1023 -->|REALIZES| CR_1047
-    CO_1011 -->|SUPPORTS| BP_1327
-    CO_1011 -->|DEPENDS_ON| CR_1047
-    CO_1011 -->|SUPPORTS| CR_1047
-    CR_1047 -->|SUPPORTS| BP_1327
-    CR_1047 -->|SUPPORTS| BR_1043
-    CR_1047 -->|FULFILLS| CP_1023
-    CR_1047 -->|DEPENDS_ON| CI
-    CR_1047 -->|SUPPORTS| UA_1015
-    UA_1015 -->|SUPPORTS| BP_1327
-    UA_1015 -->|USES| CI
-    UA_1015 -->|USES| CO_1011
-    UA_1015 -->|USES| CR_1047
-    CI -->|SUPPORTS| BP_1327
-    CI -->|SUPPORTS| BR_1043
-    CI -->|FULFILLS| CP_1023
+    CP_1023 -->|realizes| CI
+    CP_1023 -->|realizes| CO_1011
+    CP_1023 -->|realizes| CR_1047
+    CO_1011 -->|supports| BP_1327
+    CO_1011 -->|depends on| CR_1047
+    CO_1011 -->|supports| CR_1047
+    CR_1047 -->|supports| BP_1327
+    CR_1047 -->|supports| BR_1043
+    CR_1047 -->|fulfills| CP_1023
+    CR_1047 -->|depends on| CI
+    CR_1047 -->|supports| UA_1015
+    UA_1015 -->|supports| BP_1327
+    UA_1015 -->|uses| CI
+    UA_1015 -->|uses| CO_1011
+    UA_1015 -->|uses| CR_1047
+    CI -->|supports| BP_1327
+    CI -->|supports| BR_1043
+    CI -->|fulfills| CP_1023
     classDef cap fill:#4A90D9,color:#fff,stroke:#2171B5
     classDef proc fill:#27AE60,color:#fff,stroke:#1E8449
     classDef role fill:#27AE60,color:#fff,stroke:#1E8449
@@ -83,7 +83,9 @@ flowchart TD
     classDef app fill:#8E44AD,color:#fff,stroke:#6C3483
     classDef info fill:#3498DB,color:#fff,stroke:#2980B9
     classDef comm fill:#E74C3C,color:#fff,stroke:#C0392B
+    classDef hotspot fill:#D32F2F,color:#fff,stroke:#B71C1C,stroke-width:3px
     class CP_1023 cap
+    class CP_1023 hotspot
     class BP_1327 proc
     class BR_1043 role
     class CR_1047 svc
@@ -91,11 +93,12 @@ flowchart TD
     class CI svc
     class UA_1015 app
     class CO_1011 comm
+    class CO_1011 hotspot
     class CO_1019 comm
     class CO_1063 comm
 ```
 
-> **Legend:** ★ = direct match (anchor node, scored ≥ 70 by AI) · Nodes without ★ = propagated through architecture relations · [%] = relevance score · Arrow labels = relation type (REALIZES, SUPPORTS, USES, …)
+> **Legend:** ★ = direct match (anchor) · ⚠ = change hotspot (relevance ≥ 80%) · Nodes without markers = propagated through architecture relations · [%] = relevance score · Arrow labels = relation type (realizes, supports, uses, …)
 
 **Included Elements** — selected by the pipeline (anchors + propagated + enriched leaf nodes):
 

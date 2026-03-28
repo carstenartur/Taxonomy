@@ -62,7 +62,7 @@ class MermaidExportTests {
         assertThat(result).startsWith("flowchart LR");
         assertThat(result).contains("CP_001");
         assertThat(result).contains("BP_001");
-        assertThat(result).contains("SUPPORTS");
+        assertThat(result).contains("supports");
         assertThat(result).contains("Capabilities");
         assertThat(result).contains("Business Processes");
     }

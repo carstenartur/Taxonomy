@@ -318,20 +318,26 @@ curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
 ```bash
 curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
-  -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}'
+  -d '{"businessText": "Integrierte Kommunikationsplattform für Krankenhauspersonal", "locale": "de"}'
 ```
 
 </details>
 
-Die Antwort ist ein Mermaid-Flussdiagramm-Codeblock, der in GitHub, GitLab, Notion und Confluence gerendert wird:
+Die Antwort ist ein Mermaid-Flussdiagramm-Codeblock, der in GitHub, GitLab, Notion und Confluence gerendert wird. Mit `"locale": "de"` werden Ebenen- und Beziehungsbeschriftungen auf Deutsch ausgegeben:
 
 ```mermaid
 graph TD
-    CP-1023["Communication and Information System Capabilities"]
-    CO-1011["Communications Access Services"]
-    CR-1047["Infrastructure Services"]
-    CP-1023 -->|supports| CO-1011
-    CO-1011 -->|realises| CR-1047
+    subgraph Faehigkeiten["Fähigkeiten"]
+        CP_1023["Communication and Information System Capabilities ★ ⚠ [85%]"]
+    end
+    subgraph Kommunikationsdienste["Kommunikationsdienste"]
+        CO_1011["Communications Access Services ★ ⚠ [80%]"]
+    end
+    subgraph Kerndienste["Kerndienste"]
+        CR_1047["Infrastructure Services ★ [75%]"]
+    end
+    CP_1023 -->|unterstützt| CO_1011
+    CO_1011 -->|realisiert| CR_1047
 ```
 
 ---

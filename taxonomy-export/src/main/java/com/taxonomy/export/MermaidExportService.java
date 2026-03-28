@@ -18,6 +18,12 @@ import java.util.stream.Collectors;
  *
  * <p>The generated output is suitable for embedding in GitHub READMEs, Confluence pages,
  * and any Markdown renderer that supports Mermaid diagrams.</p>
+ *
+ * <h3>Internationalization</h3>
+ * <p>All overloads accept an optional {@link MermaidLabels} parameter.
+ * When provided, display labels (layer titles, relation edge labels, anchor/hotspot
+ * markers) are resolved through localized labels while internal identifiers
+ * (node IDs, classDef names, edge source/target references) remain stable.</p>
  */
 public class MermaidExportService {
 
@@ -34,13 +40,26 @@ public class MermaidExportService {
             "Communications Services", "comm"
     );
 
+    // ── Standard export ─────────────────────────────────────────────────────
+
     /**
-     * Exports a {@link DiagramModel} as a Mermaid flowchart string.
+     * Exports a {@link DiagramModel} as a Mermaid flowchart string using default English labels.
      *
      * @param model the neutral diagram model
      * @return Mermaid-formatted diagram text
      */
     public String export(DiagramModel model) {
+        return export(model, MermaidLabels.english());
+    }
+
+    /**
+     * Exports a {@link DiagramModel} as a Mermaid flowchart string using the given localized labels.
+     *
+     * @param model  the neutral diagram model
+     * @param labels locale-specific display labels
+     * @return Mermaid-formatted diagram text
+     */
+    public String export(DiagramModel model, MermaidLabels labels) {
         if (model == null || model.nodes().isEmpty()) {
             return "flowchart LR\n    empty[\"No data\"]\n";
         }
@@ -66,18 +85,13 @@ public class MermaidExportService {
             String type = entry.getKey();
             List<DiagramNode> nodes = entry.getValue();
             String subId = sanitizeId(type);
+            String displayType = labels.layerLabel(type);
 
-            sb.append("    subgraph ").append(subId).append("[\"").append(escape(type)).append("\"]\n");
+            sb.append("    subgraph ").append(subId).append("[\"").append(escape(displayType)).append("\"]\n");
             for (DiagramNode node : nodes) {
                 String nodeId = sanitizeId(node.id());
                 String label = node.id() + " " + node.label();
-                if (node.anchor()) {
-                    label += " ★";
-                }
-                double pct = node.relevance() * 100;
-                if (pct > 0) {
-                    label += " [" + String.format("%.0f%%", pct) + "]";
-                }
+                label += buildSuffix(node, labels);
                 sb.append("        ").append(nodeId).append("[\"").append(escape(label)).append("\"]\n");
             }
             sb.append("    end\n");
@@ -87,45 +101,49 @@ public class MermaidExportService {
         for (DiagramEdge edge : model.edges()) {
             String src = sanitizeId(edge.sourceId());
             String tgt = sanitizeId(edge.targetId());
-            sb.append("    ").append(src).append(" -->|").append(escape(edge.relationType())).append("| ").append(tgt).append('\n');
+            String relLabel = labels.relationLabel(edge.relationType());
+            sb.append("    ").append(src).append(" -->|").append(escape(relLabel)).append("| ").append(tgt).append('\n');
         }
 
-        // Class definitions for styling
-        sb.append("    classDef cap fill:#4A90D9,color:#fff,stroke:#2171B5\n");
-        sb.append("    classDef proc fill:#27AE60,color:#fff,stroke:#1E8449\n");
-        sb.append("    classDef role fill:#27AE60,color:#fff,stroke:#1E8449\n");
-        sb.append("    classDef svc fill:#F39C12,color:#fff,stroke:#D68910\n");
-        sb.append("    classDef app fill:#8E44AD,color:#fff,stroke:#6C3483\n");
-        sb.append("    classDef info fill:#3498DB,color:#fff,stroke:#2980B9\n");
-        sb.append("    classDef comm fill:#E74C3C,color:#fff,stroke:#C0392B\n");
-
-        // Apply classes to nodes
-        for (DiagramNode node : model.nodes()) {
-            String cls = LAYER_STYLE.getOrDefault(node.type(), "");
-            if (!cls.isEmpty()) {
-                sb.append("    class ").append(sanitizeId(node.id())).append(" ").append(cls).append('\n');
-            }
-        }
+        appendStyleDefinitions(sb);
+        appendClassAssignments(sb, model.nodes(), labels);
 
         return sb.toString();
     }
 
+    // ── Showcase export ─────────────────────────────────────────────────────
+
     /**
-     * Exports a {@link DiagramModel} optimized for README/showcase rendering.
+     * Exports a {@link DiagramModel} optimized for README/showcase rendering
+     * using default English labels.
      *
-     * <p>Differences from {@link #export(DiagramModel)}:
+     * @param model the neutral diagram model
+     * @return Mermaid-formatted diagram text optimized for showcase/README embedding
+     */
+    public String exportShowcase(DiagramModel model) {
+        return exportShowcase(model, MermaidLabels.english());
+    }
+
+    /**
+     * Exports a {@link DiagramModel} optimized for README/showcase rendering
+     * using the given localized labels.
+     *
+     * <p>Differences from {@link #export(DiagramModel, MermaidLabels)}:
      * <ul>
      *   <li>Uses top-down (TD) layout for multi-layer readability</li>
      *   <li>Suppresses root-level nodes (two-letter codes like "CP") when
      *       concrete leaf nodes exist in the same layer</li>
      *   <li>Re-routes edges from suppressed root nodes to the highest-relevance
      *       leaf node in the same layer, so cross-layer relations remain visible</li>
+     *   <li>Marks high-relevance nodes (≥ 80%) as hotspots with a visual marker</li>
+     *   <li>Uses display-friendly relation labels (e.g. "realizes" instead of "REALIZES")</li>
      * </ul>
      *
-     * @param model the neutral diagram model
+     * @param model  the neutral diagram model
+     * @param labels locale-specific display labels
      * @return Mermaid-formatted diagram text optimized for showcase/README embedding
      */
-    public String exportShowcase(DiagramModel model) {
+    public String exportShowcase(DiagramModel model, MermaidLabels labels) {
         if (model == null || model.nodes().isEmpty()) {
             return "flowchart TD\n    empty[\"No data\"]\n";
         }
@@ -145,7 +163,6 @@ public class MermaidExportService {
         List<DiagramNode> showcaseNodes = new ArrayList<>();
         Map<String, String> rootToLeafReroute = new LinkedHashMap<>();
         Set<String> allTypes = new LinkedHashSet<>();
-        // Preserve layer order by collecting all types
         model.nodes().stream()
                 .sorted(Comparator.comparingInt(DiagramNode::layer))
                 .forEach(n -> allTypes.add(n.type()));
@@ -155,7 +172,6 @@ public class MermaidExportService {
             List<DiagramNode> roots = rootByType.getOrDefault(type, List.of());
             if (!leaves.isEmpty()) {
                 showcaseNodes.addAll(leaves);
-                // Map each root ID → highest-relevance leaf ID for edge re-routing
                 DiagramNode bestLeaf = leaves.stream()
                         .max(Comparator.comparingDouble(DiagramNode::relevance))
                         .orElse(leaves.get(0));
@@ -201,19 +217,14 @@ public class MermaidExportService {
             String type = entry.getKey();
             List<DiagramNode> nodes = entry.getValue();
             String subId = sanitizeId(type);
+            String displayType = labels.layerLabel(type);
 
             sb.append("    subgraph ").append(subId)
-              .append("[\"").append(escape(type)).append("\"]\n");
+              .append("[\"").append(escape(displayType)).append("\"]\n");
             for (DiagramNode node : nodes) {
                 String nodeId = sanitizeId(node.id());
                 String label = node.label();
-                if (node.anchor()) {
-                    label += " ★";
-                }
-                double pct = node.relevance() * 100;
-                if (pct > 0) {
-                    label += " [" + String.format("%.0f%%", pct) + "]";
-                }
+                label += buildSuffix(node, labels);
                 sb.append("        ").append(nodeId)
                   .append("[\"").append(escape(label)).append("\"]\n");
             }
@@ -223,11 +234,38 @@ public class MermaidExportService {
         for (DiagramEdge edge : showcaseEdges) {
             String src = sanitizeId(edge.sourceId());
             String tgt = sanitizeId(edge.targetId());
+            String relLabel = labels.relationLabel(edge.relationType());
             sb.append("    ").append(src).append(" -->|")
-              .append(escape(edge.relationType())).append("| ").append(tgt).append('\n');
+              .append(escape(relLabel)).append("| ").append(tgt).append('\n');
         }
 
-        // Class definitions and application
+        appendStyleDefinitions(sb);
+        appendClassAssignments(sb, showcaseNodes, labels);
+
+        return sb.toString();
+    }
+
+    // ── Shared helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Builds the suffix for a node label: anchor marker, hotspot marker, relevance percentage.
+     */
+    private String buildSuffix(DiagramNode node, MermaidLabels labels) {
+        StringBuilder suffix = new StringBuilder();
+        if (node.anchor()) {
+            suffix.append(' ').append(labels.anchorMarker());
+        }
+        if (node.relevance() >= MermaidLabels.HOTSPOT_THRESHOLD) {
+            suffix.append(' ').append(labels.hotspotMarker());
+        }
+        double pct = node.relevance() * 100;
+        if (pct > 0) {
+            suffix.append(" [").append(String.format("%.0f%%", pct)).append(']');
+        }
+        return suffix.toString();
+    }
+
+    private void appendStyleDefinitions(StringBuilder sb) {
         sb.append("    classDef cap fill:#4A90D9,color:#fff,stroke:#2171B5\n");
         sb.append("    classDef proc fill:#27AE60,color:#fff,stroke:#1E8449\n");
         sb.append("    classDef role fill:#27AE60,color:#fff,stroke:#1E8449\n");
@@ -235,14 +273,20 @@ public class MermaidExportService {
         sb.append("    classDef app fill:#8E44AD,color:#fff,stroke:#6C3483\n");
         sb.append("    classDef info fill:#3498DB,color:#fff,stroke:#2980B9\n");
         sb.append("    classDef comm fill:#E74C3C,color:#fff,stroke:#C0392B\n");
-        for (DiagramNode node : showcaseNodes) {
+        sb.append("    classDef hotspot fill:#D32F2F,color:#fff,stroke:#B71C1C,stroke-width:3px\n");
+    }
+
+    private void appendClassAssignments(StringBuilder sb, List<DiagramNode> nodes,
+                                         MermaidLabels labels) {
+        for (DiagramNode node : nodes) {
             String cls = LAYER_STYLE.getOrDefault(node.type(), "");
             if (!cls.isEmpty()) {
-                sb.append("    class ").append(sanitizeId(node.id())).append(" ").append(cls).append('\n');
+                sb.append("    class ").append(sanitizeId(node.id())).append(' ').append(cls).append('\n');
+            }
+            if (node.relevance() >= MermaidLabels.HOTSPOT_THRESHOLD) {
+                sb.append("    class ").append(sanitizeId(node.id())).append(" hotspot\n");
             }
         }
-
-        return sb.toString();
     }
 
     private int layerOrder(String type) {

@@ -96,7 +96,7 @@ class MermaidExportServiceTest {
 
         String result = service.export(model);
 
-        assertTrue(result.contains("CP_1023 -->|REALIZES| CR_1047"));
+        assertTrue(result.contains("CP_1023 -->|realizes| CR_1047"));
     }
 
     @Test
@@ -245,8 +245,8 @@ class MermaidExportServiceTest {
 
         String result = service.exportShowcase(model);
 
-        // Edge should be re-routed from CP→CR to CP-1023→CR-1047
-        assertTrue(result.contains("CP_1023 -->|REALIZES| CR_1047"),
+        // Edge should be re-routed from CP→CR to CP-1023→CR-1047 with localized label
+        assertTrue(result.contains("CP_1023 -->|realizes| CR_1047"),
                 "Edge should be re-routed through leaf nodes");
         assertFalse(result.contains("CP -->|"),
                 "Original root-based edge should not appear");
@@ -261,7 +261,7 @@ class MermaidExportServiceTest {
         String result = service.exportShowcase(model);
 
         // Showcase mode uses label only (no code prefix) for cleaner display
-        assertTrue(result.contains("Communication Capabilities ★"));
+        assertTrue(result.contains("Communication Capabilities ★ ⚠"));
     }
 
     @Test
@@ -279,8 +279,104 @@ class MermaidExportServiceTest {
 
         String result = service.exportShowcase(model);
 
-        // Count occurrences of the re-routed edge
-        int count = result.split("CP_1023 -->\\|REALIZES\\| CR_1047", -1).length - 1;
+        // Count occurrences of the re-routed edge (now lowercase label)
+        int count = result.split("CP_1023 -->\\|realizes\\| CR_1047", -1).length - 1;
         assertEquals(1, count, "Deduplicated edges should appear only once");
+    }
+
+    // ── Localization tests ──────────────────────────────────────────────
+
+    @Test
+    void exportWithGermanLabelsUsesLocalizedLayerNames() {
+        var node = new DiagramNode("CP-1023", "Cap A", "Capabilities", 0.8, false, 1);
+        var model = new DiagramModel("Test", List.of(node), List.of(),
+                new DiagramLayout("LR", true));
+
+        String result = service.export(model, MermaidLabels.german());
+
+        assertTrue(result.contains("F\u00e4higkeiten"), "German layer label expected");
+        assertFalse(result.contains("subgraph Capabilities[\"Capabilities\""),
+                "English label should not appear in subgraph title");
+    }
+
+    @Test
+    void exportWithGermanLabelsUsesLocalizedRelationLabels() {
+        var node1 = new DiagramNode("CP-1023", "Cap A", "Capabilities", 0.8, false, 1);
+        var node2 = new DiagramNode("CR-1047", "Svc B", "Core Services", 0.7, false, 3);
+        var edge = new DiagramEdge("e1", "CP-1023", "CR-1047", "REALIZES", 0.75);
+        var model = new DiagramModel("Test", List.of(node1, node2), List.of(edge),
+                new DiagramLayout("LR", true));
+
+        String result = service.export(model, MermaidLabels.german());
+
+        assertTrue(result.contains("realisiert"), "German relation label expected");
+    }
+
+    @Test
+    void showcaseWithGermanLabels() {
+        var node = new DiagramNode("CP-1023", "Comm Cap", "Capabilities", 0.85, true, 1);
+        var model = new DiagramModel("Test", List.of(node), List.of(),
+                new DiagramLayout("LR", true));
+
+        String result = service.exportShowcase(model, MermaidLabels.german());
+
+        assertTrue(result.contains("F\u00e4higkeiten"), "German layer label expected");
+    }
+
+    @Test
+    void hotspotMarkerAppliedToHighRelevanceNodes() {
+        var hot = new DiagramNode("CP-1023", "Hot Node", "Capabilities", 0.85, true, 1);
+        var normal = new DiagramNode("CR-1047", "Normal Node", "Core Services", 0.5, false, 3);
+        var model = new DiagramModel("Test", List.of(hot, normal), List.of(),
+                new DiagramLayout("LR", true));
+
+        String result = service.export(model);
+
+        assertTrue(result.contains("Hot Node ★ ⚠"), "Hotspot marker expected on high-relevance node");
+        assertFalse(result.contains("Normal Node ★"), "Normal node should not have anchor marker");
+        assertFalse(result.contains("Normal Node") && result.contains("⚠ [50%]"),
+                "Normal node should not have hotspot marker");
+        assertTrue(result.contains("classDef hotspot"), "Hotspot class definition expected");
+        assertTrue(result.contains("class CP_1023 hotspot"), "Hotspot class should be applied to hot node");
+    }
+
+    @Test
+    void subgraphIdRemainsStableAcrossLocales() {
+        var node = new DiagramNode("CP-1023", "Cap", "Capabilities", 0.8, false, 1);
+        var model = new DiagramModel("Test", List.of(node), List.of(),
+                new DiagramLayout("LR", true));
+
+        String english = service.export(model, MermaidLabels.english());
+        String german = service.export(model, MermaidLabels.german());
+
+        // Subgraph ID must be the same (stable) — only the display label changes
+        assertTrue(english.contains("subgraph Capabilities[\"Capabilities\"]"));
+        assertTrue(german.contains("subgraph Capabilities[\"F\u00e4higkeiten\"]"));
+    }
+
+    @Test
+    void mermaidLabelsEnglishDefaults() {
+        MermaidLabels labels = MermaidLabels.english();
+        assertEquals("Capabilities", labels.layerLabel("Capabilities"));
+        assertEquals("realizes", labels.relationLabel("REALIZES"));
+        assertEquals("depends on", labels.relationLabel("DEPENDS_ON"));
+        assertEquals("★", labels.anchorMarker());
+        assertEquals("⚠", labels.hotspotMarker());
+    }
+
+    @Test
+    void mermaidLabelsGermanDefaults() {
+        MermaidLabels labels = MermaidLabels.german();
+        assertEquals("F\u00e4higkeiten", labels.layerLabel("Capabilities"));
+        assertEquals("Gesch\u00e4ftsprozesse", labels.layerLabel("Business Processes"));
+        assertEquals("realisiert", labels.relationLabel("REALIZES"));
+        assertEquals("unterst\u00fctzt", labels.relationLabel("SUPPORTS"));
+    }
+
+    @Test
+    void mermaidLabelsFallbackForUnknownKeys() {
+        MermaidLabels labels = MermaidLabels.english();
+        assertEquals("Custom Layer", labels.layerLabel("Custom Layer"));
+        assertEquals("custom type", labels.relationLabel("CUSTOM_TYPE"));
     }
 }

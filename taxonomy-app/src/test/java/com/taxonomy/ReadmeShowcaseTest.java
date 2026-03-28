@@ -9,6 +9,7 @@ import com.taxonomy.dto.RequirementElementView;
 import com.taxonomy.dto.RequirementRelationshipView;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.MermaidExportService;
+import com.taxonomy.export.MermaidLabels;
 import com.taxonomy.model.RelationType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -158,8 +159,8 @@ class ReadmeShowcaseTest {
         // Step 2: Project to neutral diagram model
         DiagramModel diagram = diagramProjectionService.project(view, BUSINESS_TEXT);
 
-        // Step 3: Export as Mermaid SHOWCASE (leaf-dominant, TD layout, re-routed edges)
-        String mermaid = mermaidExportService.exportShowcase(diagram);
+        // Step 3: Export as Mermaid SHOWCASE (leaf-dominant, TD layout, re-routed edges, localized labels)
+        String mermaid = mermaidExportService.exportShowcase(diagram, MermaidLabels.english());
 
         // ── Assertions: the output must satisfy showcase requirements ───────
 
