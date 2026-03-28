@@ -668,7 +668,15 @@
         html += '<span class="impact-kpi">🔗 ' + relationships.length + ' relations</span>';
         html += '<span class="impact-kpi">🏗️ ' + sortedSheets.length + ' layers</span>';
         if (hotspotCodes.size > 0) {
-            html += '<span class="impact-kpi">' + t('analyze.hotspots', hotspotCodes.size) + '</span>';
+            // Show concrete hotspot element names, not just a count
+            var hotspotNames = [];
+            hotspotCodes.forEach(function (code) {
+                var el = elByCode[code];
+                var name = el && el.title ? el.title : code;
+                hotspotNames.push(name);
+            });
+            html += '<span class="impact-kpi impact-kpi-hotspot">⚠️ Hotspots: ' +
+                escapeHtml(hotspotNames.join(', ')) + '</span>';
         }
         html += '</div>';
 
@@ -736,14 +744,21 @@
                     }
                     html += '<span class="' + nodeClasses + '" style="opacity:' + opacity.toFixed(2) + '"' +
                         ' title="' + escapeHtml(titleParts) + '">';
-                    html += escapeHtml(el.nodeCode);
-                    if (el.title) html += ' ' + escapeHtml(el.title.substring(0, 25));
+                    if (el.title) {
+                        html += '<strong>' + escapeHtml(el.title.substring(0, 40)) + '</strong>';
+                        html += ' <span class="impact-node-code">' + escapeHtml(el.nodeCode) + '</span>';
+                    } else {
+                        html += escapeHtml(el.nodeCode);
+                    }
                     if (el.anchor) {
                         html += ' <span class="impact-badge">★ ' + pct + '%</span>';
                     } else {
-                        html += ' <span class="impact-badge">↳' + el.hopDistance + '</span>';
+                        html += ' <span class="impact-badge">' + pct + '%</span>';
                     }
-                    if (hotspotCodes.has(el.nodeCode)) html += ' ⚠️';
+                    if (hotspotCodes.has(el.nodeCode)) {
+                        html += ' <span class="impact-badge impact-badge-hotspot">⚠️ ' +
+                            escapeHtml((hotspotReasons[el.nodeCode] || 'hotspot').substring(0, 40)) + '</span>';
+                    }
                     html += '</span>';
                 });
                 html += '</div></div>';
