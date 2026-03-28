@@ -151,7 +151,7 @@ Taxonomy Application,com.taxonomy.architecture.service,ArchitectureGraphQuerySer
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureSummaryService,67,270,9,9,7,57,11,12,3,11
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService,25,491,12,42,4,92,11,22,0,6
 Taxonomy Application,com.taxonomy.architecture.service,DerivedMetadataService,42,164,3,17,9,39,5,11,2,4
-Taxonomy Application,com.taxonomy.architecture.service,RequirementArchitectureViewService,80,1001,17,91,19,212,15,53,0,14
+Taxonomy Application,com.taxonomy.architecture.service,RequirementArchitectureViewService,79,1002,16,92,19,212,14,54,0,14
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService.PatternStep,0,20,0,0,0,2,0,2,0,2
 Taxonomy Application,com.taxonomy.architecture.service,ExplanationTraceService,65,391,23,27,8,72,21,13,1,8
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureGraphQueryServiceImpl,62,963,23,84,13,197,19,55,0,20

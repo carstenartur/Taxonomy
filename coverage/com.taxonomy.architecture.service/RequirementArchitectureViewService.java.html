@@ -385,7 +385,7 @@ public class RequirementArchitectureViewService {
 <span class="fc bfc" id="L385" title="All 2 branches covered.">            if (!code.contains(&quot;-&quot;)) continue;</span>
 
 <span class="fc" id="L387">            String rootPrefix = code.substring(0, code.indexOf('-'));</span>
-<span class="pc bpc" id="L388" title="1 of 2 branches missed.">            if (!representedRoots.contains(rootPrefix)) continue;</span>
+<span class="fc bfc" id="L388" title="All 2 branches covered.">            if (!representedRoots.contains(rootPrefix)) continue;</span>
 
 <span class="fc" id="L390">            leafScoresByRoot.computeIfAbsent(rootPrefix, k -&gt; new ArrayList&lt;&gt;()).add(entry);</span>
 <span class="fc" id="L391">        }</span>
