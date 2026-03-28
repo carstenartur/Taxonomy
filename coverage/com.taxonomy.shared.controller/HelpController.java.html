@@ -82,6 +82,7 @@ public class HelpController {
         new String[]{&quot;ACCESSIBILITY&quot;,             &quot;♿&quot;, &quot;help.toc.ACCESSIBILITY&quot;,                 &quot;help.audience.everyone&quot;},
         new String[]{&quot;BSI_KI_CHECKLIST&quot;,          &quot;📜&quot;, &quot;help.toc.BSI_KI_CHECKLIST&quot;,              &quot;help.audience.admins&quot;},
         new String[]{&quot;DIGITAL_SOVEREIGNTY&quot;,       &quot;🏴&quot;, &quot;help.toc.DIGITAL_SOVEREIGNTY&quot;,           &quot;help.audience.admins&quot;},
+        new String[]{&quot;DEUTSCHLAND_STACK_CONFORMITY&quot;, &quot;🇩🇪&quot;, &quot;help.toc.DEUTSCHLAND_STACK_CONFORMITY&quot;, &quot;help.audience.admins&quot;},
         new String[]{&quot;USE_CASE_WISSENSKONSERVIERUNG&quot;, &quot;📚&quot;, &quot;help.toc.USE_CASE_WISSENSKONSERVIERUNG&quot;,&quot;help.audience.everyone&quot;},
         new String[]{&quot;VERWALTUNGSINTEGRATION&quot;,    &quot;🏢&quot;, &quot;help.toc.VERWALTUNGSINTEGRATION&quot;,        &quot;help.audience.admins&quot;},
         new String[]{&quot;DOCUMENT_IMPORT&quot;,           &quot;📄&quot;, &quot;help.toc.DOCUMENT_IMPORT&quot;,               &quot;help.audience.everyone&quot;},
@@ -92,61 +93,61 @@ public class HelpController {
     );
 
     /** Set of known doc filenames for validation. */
-<span class="fc" id="L95">    static final List&lt;String&gt; KNOWN_FILENAMES = DOC_METADATA.stream()</span>
-<span class="fc" id="L96">            .map(m -&gt; m[0])</span>
-<span class="fc" id="L97">            .toList();</span>
+<span class="fc" id="L96">    static final List&lt;String&gt; KNOWN_FILENAMES = DOC_METADATA.stream()</span>
+<span class="fc" id="L97">            .map(m -&gt; m[0])</span>
+<span class="fc" id="L98">            .toList();</span>
 
     private final Parser parser;
     private final HtmlRenderer renderer;
     private final MessageSource messageSource;
     /** Cache key format: &quot;locale:docName&quot;, e.g. &quot;de:USER_GUIDE&quot;. */
-<span class="fc" id="L103">    private final ConcurrentHashMap&lt;String, String&gt; htmlCache = new ConcurrentHashMap&lt;&gt;();</span>
+<span class="fc" id="L104">    private final ConcurrentHashMap&lt;String, String&gt; htmlCache = new ConcurrentHashMap&lt;&gt;();</span>
 
-<span class="fc" id="L105">    public HelpController(MessageSource messageSource) {</span>
-<span class="fc" id="L106">        this.messageSource = messageSource;</span>
-<span class="fc" id="L107">        MutableDataSet options = new MutableDataSet();</span>
-<span class="fc" id="L108">        options.set(Parser.EXTENSIONS, Arrays.asList(</span>
-<span class="fc" id="L109">            TablesExtension.create(),</span>
-<span class="fc" id="L110">            AutolinkExtension.create(),</span>
-<span class="fc" id="L111">            StrikethroughExtension.create()</span>
+<span class="fc" id="L106">    public HelpController(MessageSource messageSource) {</span>
+<span class="fc" id="L107">        this.messageSource = messageSource;</span>
+<span class="fc" id="L108">        MutableDataSet options = new MutableDataSet();</span>
+<span class="fc" id="L109">        options.set(Parser.EXTENSIONS, Arrays.asList(</span>
+<span class="fc" id="L110">            TablesExtension.create(),</span>
+<span class="fc" id="L111">            AutolinkExtension.create(),</span>
+<span class="fc" id="L112">            StrikethroughExtension.create()</span>
         ));
-<span class="fc" id="L113">        this.parser = Parser.builder(options).build();</span>
-<span class="fc" id="L114">        this.renderer = HtmlRenderer.builder(options).build();</span>
-<span class="fc" id="L115">    }</span>
+<span class="fc" id="L114">        this.parser = Parser.builder(options).build();</span>
+<span class="fc" id="L115">        this.renderer = HtmlRenderer.builder(options).build();</span>
+<span class="fc" id="L116">    }</span>
 
     /** Returns the ordered table of contents as JSON, with locale-resolved titles. */
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public List&lt;DocEntry&gt; getToc() {
-<span class="fc" id="L121">        Locale locale = LocaleContextHolder.getLocale();</span>
-<span class="fc" id="L122">        return DOC_METADATA.stream()</span>
-<span class="fc" id="L123">                .map(m -&gt; new DocEntry(</span>
+<span class="fc" id="L122">        Locale locale = LocaleContextHolder.getLocale();</span>
+<span class="fc" id="L123">        return DOC_METADATA.stream()</span>
+<span class="fc" id="L124">                .map(m -&gt; new DocEntry(</span>
                         m[0],
-<span class="fc" id="L125">                        messageSource.getMessage(m[2], null, m[0], locale),</span>
+<span class="fc" id="L126">                        messageSource.getMessage(m[2], null, m[0], locale),</span>
                         m[1],
-<span class="fc" id="L127">                        messageSource.getMessage(m[3], null, &quot;Everyone&quot;, locale)))</span>
-<span class="fc" id="L128">                .toList();</span>
+<span class="fc" id="L128">                        messageSource.getMessage(m[3], null, &quot;Everyone&quot;, locale)))</span>
+<span class="fc" id="L129">                .toList();</span>
     }
 
     /** Renders a Markdown document to HTML, with locale-aware resolution. */
     @GetMapping(value = &quot;/{docName}&quot;, produces = MediaType.TEXT_HTML_VALUE)
     @ResponseBody
     public ResponseEntity&lt;String&gt; getDoc(@PathVariable String docName) {
-<span class="pc bpc" id="L135" title="1 of 2 branches missed.">        if (!SAFE_NAME.matcher(docName).matches()) {</span>
-<span class="nc" id="L136">            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(&quot;Invalid document name&quot;);</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if (!SAFE_NAME.matcher(docName).matches()) {</span>
+<span class="nc" id="L137">            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(&quot;Invalid document name&quot;);</span>
         }
         // Only allow documents that exist in the known list
-<span class="fc" id="L139">        boolean knownDoc = KNOWN_FILENAMES.contains(docName);</span>
-<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (!knownDoc) {</span>
-<span class="fc" id="L141">            return ResponseEntity.notFound().build();</span>
+<span class="fc" id="L140">        boolean knownDoc = KNOWN_FILENAMES.contains(docName);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (!knownDoc) {</span>
+<span class="fc" id="L142">            return ResponseEntity.notFound().build();</span>
         }
-<span class="fc" id="L143">        Locale locale = LocaleContextHolder.getLocale();</span>
-<span class="fc" id="L144">        String cacheKey = locale.getLanguage() + &quot;:&quot; + docName;</span>
-<span class="fc" id="L145">        String html = htmlCache.computeIfAbsent(cacheKey, k -&gt; renderDoc(docName, locale));</span>
-<span class="pc bpc" id="L146" title="1 of 2 branches missed.">        if (html == null) {</span>
-<span class="nc" id="L147">            return ResponseEntity.notFound().build();</span>
+<span class="fc" id="L144">        Locale locale = LocaleContextHolder.getLocale();</span>
+<span class="fc" id="L145">        String cacheKey = locale.getLanguage() + &quot;:&quot; + docName;</span>
+<span class="fc" id="L146">        String html = htmlCache.computeIfAbsent(cacheKey, k -&gt; renderDoc(docName, locale));</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">        if (html == null) {</span>
+<span class="nc" id="L148">            return ResponseEntity.notFound().build();</span>
         }
-<span class="fc" id="L149">        return ResponseEntity.ok(html);</span>
+<span class="fc" id="L150">        return ResponseEntity.ok(html);</span>
     }
 
     /** Serves images from classpath docs/images/. */
@@ -155,20 +156,20 @@ public class HelpController {
     public ResponseEntity&lt;byte[]&gt; getImage(@PathVariable String imageName) {
         // Validate the full filename: only alphanumeric, hyphens, underscores, and dots allowed.
         // This prevents path traversal (no slashes, no &quot;..&quot;) while allowing extensions like .png.
-<span class="pc bpc" id="L158" title="2 of 4 branches missed.">        if (!SAFE_IMAGE.matcher(imageName).matches() || imageName.contains(&quot;..&quot;)) {</span>
-<span class="nc" id="L159">            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();</span>
+<span class="pc bpc" id="L159" title="2 of 4 branches missed.">        if (!SAFE_IMAGE.matcher(imageName).matches() || imageName.contains(&quot;..&quot;)) {</span>
+<span class="nc" id="L160">            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();</span>
         }
         try {
-<span class="fc" id="L162">            ClassPathResource resource = new ClassPathResource(&quot;docs/images/&quot; + imageName);</span>
-<span class="pc bpc" id="L163" title="1 of 2 branches missed.">            if (!resource.exists()) {</span>
-<span class="fc" id="L164">                return ResponseEntity.notFound().build();</span>
+<span class="fc" id="L163">            ClassPathResource resource = new ClassPathResource(&quot;docs/images/&quot; + imageName);</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">            if (!resource.exists()) {</span>
+<span class="fc" id="L165">                return ResponseEntity.notFound().build();</span>
             }
-<span class="nc" id="L166">            byte[] bytes = resource.getInputStream().readAllBytes();</span>
-<span class="nc" id="L167">            MediaType mediaType = guessMediaType(imageName);</span>
-<span class="nc" id="L168">            return ResponseEntity.ok().contentType(mediaType).body(bytes);</span>
-<span class="nc" id="L169">        } catch (IOException e) {</span>
-<span class="nc" id="L170">            log.warn(&quot;Could not read image {}: {}&quot;, imageName, e.getMessage());</span>
-<span class="nc" id="L171">            return ResponseEntity.notFound().build();</span>
+<span class="nc" id="L167">            byte[] bytes = resource.getInputStream().readAllBytes();</span>
+<span class="nc" id="L168">            MediaType mediaType = guessMediaType(imageName);</span>
+<span class="nc" id="L169">            return ResponseEntity.ok().contentType(mediaType).body(bytes);</span>
+<span class="nc" id="L170">        } catch (IOException e) {</span>
+<span class="nc" id="L171">            log.warn(&quot;Could not read image {}: {}&quot;, imageName, e.getMessage());</span>
+<span class="nc" id="L172">            return ResponseEntity.notFound().build();</span>
         }
     }
 
@@ -180,44 +181,44 @@ public class HelpController {
      */
     private String renderDoc(String docName, Locale locale) {
         // 1. Try locale-specific path
-<span class="fc" id="L183">        String localePath = &quot;docs/&quot; + locale.getLanguage() + &quot;/&quot; + docName + &quot;.md&quot;;</span>
-<span class="fc" id="L184">        ClassPathResource localeResource = new ClassPathResource(localePath);</span>
-<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        if (localeResource.exists()) {</span>
-<span class="fc" id="L186">            return parseResource(localeResource, docName);</span>
+<span class="fc" id="L184">        String localePath = &quot;docs/&quot; + locale.getLanguage() + &quot;/&quot; + docName + &quot;.md&quot;;</span>
+<span class="fc" id="L185">        ClassPathResource localeResource = new ClassPathResource(localePath);</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">        if (localeResource.exists()) {</span>
+<span class="fc" id="L187">            return parseResource(localeResource, docName);</span>
         }
         // 2. Fallback to English
-<span class="nc" id="L189">        String enPath = &quot;docs/en/&quot; + docName + &quot;.md&quot;;</span>
-<span class="nc" id="L190">        ClassPathResource enResource = new ClassPathResource(enPath);</span>
-<span class="nc bnc" id="L191" title="All 2 branches missed.">        if (enResource.exists()) {</span>
-<span class="nc" id="L192">            return parseResource(enResource, docName);</span>
+<span class="nc" id="L190">        String enPath = &quot;docs/en/&quot; + docName + &quot;.md&quot;;</span>
+<span class="nc" id="L191">        ClassPathResource enResource = new ClassPathResource(enPath);</span>
+<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (enResource.exists()) {</span>
+<span class="nc" id="L193">            return parseResource(enResource, docName);</span>
         }
-<span class="nc" id="L194">        return null;</span>
+<span class="nc" id="L195">        return null;</span>
     }
 
     private String parseResource(ClassPathResource resource, String docName) {
-<span class="fc" id="L198">        try (InputStream in = resource.getInputStream()) {</span>
-<span class="fc" id="L199">            String markdown = new String(in.readAllBytes(), StandardCharsets.UTF_8);</span>
+<span class="fc" id="L199">        try (InputStream in = resource.getInputStream()) {</span>
+<span class="fc" id="L200">            String markdown = new String(in.readAllBytes(), StandardCharsets.UTF_8);</span>
             // Rewrite relative image paths to absolute /help/images/... URLs
-<span class="fc" id="L201">            markdown = markdown.replaceAll(&quot;\\(\\.\\./images/([^)]++)\\)&quot;, &quot;(/help/images/$1)&quot;);</span>
+<span class="fc" id="L202">            markdown = markdown.replaceAll(&quot;\\(\\.\\./images/([^)]++)\\)&quot;, &quot;(/help/images/$1)&quot;);</span>
             // Also rewrite HTML &lt;img src=&quot;../images/...&quot;&gt; tags
-<span class="fc" id="L203">            markdown = markdown.replaceAll(&quot;src=\&quot;\\.\\./images/([^\&quot;]++)\&quot;&quot;, &quot;src=\&quot;/help/images/$1\&quot;&quot;);</span>
-<span class="fc" id="L204">            Node document = parser.parse(markdown);</span>
-<span class="fc" id="L205">            String body = renderer.render(document);</span>
-<span class="fc" id="L206">            return &quot;&lt;div class=\&quot;help-doc-content\&quot;&gt;&quot; + body + &quot;&lt;/div&gt;&quot;;</span>
-<span class="nc" id="L207">        } catch (IOException e) {</span>
-<span class="nc" id="L208">            log.error(&quot;Failed to render help doc {}: {}&quot;, docName, e.getMessage());</span>
-<span class="nc" id="L209">            return null;</span>
+<span class="fc" id="L204">            markdown = markdown.replaceAll(&quot;src=\&quot;\\.\\./images/([^\&quot;]++)\&quot;&quot;, &quot;src=\&quot;/help/images/$1\&quot;&quot;);</span>
+<span class="fc" id="L205">            Node document = parser.parse(markdown);</span>
+<span class="fc" id="L206">            String body = renderer.render(document);</span>
+<span class="fc" id="L207">            return &quot;&lt;div class=\&quot;help-doc-content\&quot;&gt;&quot; + body + &quot;&lt;/div&gt;&quot;;</span>
+<span class="nc" id="L208">        } catch (IOException e) {</span>
+<span class="nc" id="L209">            log.error(&quot;Failed to render help doc {}: {}&quot;, docName, e.getMessage());</span>
+<span class="nc" id="L210">            return null;</span>
         }
     }
 
     private MediaType guessMediaType(String imageName) {
-<span class="nc" id="L214">        String lower = imageName.toLowerCase();</span>
-<span class="nc bnc" id="L215" title="All 2 branches missed.">        if (lower.endsWith(&quot;.png&quot;))  return MediaType.IMAGE_PNG;</span>
-<span class="nc bnc" id="L216" title="All 4 branches missed.">        if (lower.endsWith(&quot;.jpg&quot;) || lower.endsWith(&quot;.jpeg&quot;)) return MediaType.IMAGE_JPEG;</span>
-<span class="nc bnc" id="L217" title="All 2 branches missed.">        if (lower.endsWith(&quot;.gif&quot;)) return MediaType.IMAGE_GIF;</span>
-<span class="nc bnc" id="L218" title="All 2 branches missed.">        if (lower.endsWith(&quot;.svg&quot;)) return MediaType.valueOf(&quot;image/svg+xml&quot;);</span>
-<span class="nc bnc" id="L219" title="All 2 branches missed.">        if (lower.endsWith(&quot;.webp&quot;)) return MediaType.valueOf(&quot;image/webp&quot;);</span>
-<span class="nc" id="L220">        return MediaType.APPLICATION_OCTET_STREAM;</span>
+<span class="nc" id="L215">        String lower = imageName.toLowerCase();</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        if (lower.endsWith(&quot;.png&quot;))  return MediaType.IMAGE_PNG;</span>
+<span class="nc bnc" id="L217" title="All 4 branches missed.">        if (lower.endsWith(&quot;.jpg&quot;) || lower.endsWith(&quot;.jpeg&quot;)) return MediaType.IMAGE_JPEG;</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">        if (lower.endsWith(&quot;.gif&quot;)) return MediaType.IMAGE_GIF;</span>
+<span class="nc bnc" id="L219" title="All 2 branches missed.">        if (lower.endsWith(&quot;.svg&quot;)) return MediaType.valueOf(&quot;image/svg+xml&quot;);</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">        if (lower.endsWith(&quot;.webp&quot;)) return MediaType.valueOf(&quot;image/webp&quot;);</span>
+<span class="nc" id="L221">        return MediaType.APPLICATION_OCTET_STREAM;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
