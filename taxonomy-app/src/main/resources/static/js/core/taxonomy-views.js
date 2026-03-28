@@ -587,7 +587,7 @@
         var rootData = { code: '__root__', name: '', children: filteredData };
         var root = d3.hierarchy(rootData);
 
-        var treeLayout = d3.tree().nodeSize([28, 220]);
+        var treeLayout = d3.tree().nodeSize([28, 280]);
         var containerWidth = container.clientWidth || 800;
 
         var svgWrapper = document.createElement('div');
@@ -725,7 +725,8 @@
             nodeUpdate.select('.dm-label')
                 .text(function (d) {
                     if (d.data.code === '__root__') { return ''; }
-                    var label = d.data.code;
+                    var name = nameMap[d.data.code];
+                    var label = name ? (d.data.code + ' \u2013 ' + name) : d.data.code;
                     var pct = scores[d.data.code];
                     if (pct > 0) { label += ' ' + pct + '%'; }
                     return label;

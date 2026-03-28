@@ -49,7 +49,9 @@ import com.taxonomy.shared.service.AppInitializationStateService;
 class ScreenshotGeneratorIT {
 
     private static final String REQUIREMENT_TEXT =
-            "Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments";
+            "Provide an integrated communication platform for hospital staff, enabling real-time voice " +
+            "and data exchange between departments, with a clinical dashboard application for patient " +
+            "handoff tracking and team coordination";
 
     private static final String FALLBACK_DSL_TEXT =
             "meta {\n  language: \"taxdsl\";\n  version: \"2.0\";\n  namespace: \"default\";\n}\n\n" +
@@ -275,115 +277,8 @@ class ScreenshotGeneratorIT {
             "</tbody></table></div>" +
             "</div>";
 
-    /**
-     * Fallback architecture view HTML injected when the mock-LLM analysis produces too few
-     * elements for a representative screenshot.  Matches the structure produced by
-     * {@code renderArchitectureView()} in taxonomy-scoring.js, featuring 4 layers, 7 nodes,
-     * 5 relationships, KPI summary bar, hotspot badges, and edge labels.
-     */
-    private static final String FALLBACK_ARCHITECTURE_VIEW_HTML =
-            // ── KPI summary bar ──
-            "<div class=\"impact-summary-bar\">" +
-            "<span class=\"impact-kpi\">&#127919; 3 direct matches</span>" +
-            "<span class=\"impact-kpi\">&#128230; 7 affected elements</span>" +
-            "<span class=\"impact-kpi\">&#128279; 5 relations</span>" +
-            "<span class=\"impact-kpi\">&#127959;&#65039; 4 layers</span>" +
-            "<span class=\"impact-kpi\">&#9888;&#65039; 2 change hotspots</span>" +
-            "</div>" +
-            // ── Toggle buttons ──
-            "<div class=\"impact-graph-toggle\">" +
-            "<button class=\"btn btn-sm btn-outline-secondary impact-view-btn\" data-mode=\"graph\">&#128279; Network Graph</button>" +
-            "<button class=\"btn btn-sm btn-primary impact-view-btn\" data-mode=\"swimlane\">&#127959;&#65039; Layer View</button>" +
-            "</div>" +
-            // ── Graph container (hidden in fallback — no D3 simulation) ──
-            "<div id=\"impactGraphView\" style=\"display:none;\"></div>" +
-            // ── Swimlane view (visible in fallback) ──
-            "<div id=\"impactSwimView\">" +
-            // ── Layered Impact Map (swimlanes) ──
-            "<div class=\"impact-map\">" +
-            // Layer 1: Capabilities
-            "<div class=\"impact-swimlane layer-cap\">" +
-            "<div class=\"impact-swimlane-title\">&#128309; Capabilities " +
-            "<span class=\"badge bg-secondary\" style=\"font-size:0.7rem;\">2</span></div>" +
-            "<div class=\"impact-swimlane-nodes\">" +
-            "<span class=\"impact-node impact-node-anchor impact-node-hotspot\" style=\"opacity:0.96\" " +
-            "title=\"CP-1023 Secure Voice Communications — direct-match\">" +
-            "CP-1023 Secure Voice Communica <span class=\"impact-badge\">&#9733; 90%</span> &#9888;&#65039;</span>" +
-            "<span class=\"impact-node\" style=\"opacity:0.74\" " +
-            "title=\"CP-1050 Network Management — propagated\">" +
-            "CP-1050 Network Management <span class=\"impact-badge\">&#8627;1</span></span>" +
-            "</div></div>" +
-            // Edge: Capabilities → Core Services
-            "<div class=\"impact-edge\">&#9474; " +
-            "<span class=\"impact-edge-label\">REALIZES</span><br>&#9660;</div>" +
-            // Layer 2: Core Services
-            "<div class=\"impact-swimlane layer-svc\">" +
-            "<div class=\"impact-swimlane-title\">&#128992; Core Services " +
-            "<span class=\"badge bg-secondary\" style=\"font-size:0.7rem;\">2</span></div>" +
-            "<div class=\"impact-swimlane-nodes\">" +
-            "<span class=\"impact-node impact-node-anchor\" style=\"opacity:0.92\" " +
-            "title=\"CR-1047 Data Exchange Services — direct-match\">" +
-            "CR-1047 Data Exchange Service <span class=\"impact-badge\">&#9733; 80%</span></span>" +
-            "<span class=\"impact-node impact-node-hotspot\" style=\"opacity:0.76\" " +
-            "title=\"CR-1023 Core Communication Services — propagated\">" +
-            "CR-1023 Core Communication S <span class=\"impact-badge\">&#8627;1</span> &#9888;&#65039;</span>" +
-            "</div></div>" +
-            // Edge: Core Services → Business Processes
-            "<div class=\"impact-edge\">&#9474; " +
-            "<span class=\"impact-edge-label\">SUPPORTS</span> " +
-            "<span class=\"impact-edge-label\">DEPENDS_ON</span><br>&#9660;</div>" +
-            // Layer 3: Business Processes
-            "<div class=\"impact-swimlane layer-proc\">" +
-            "<div class=\"impact-swimlane-title\">&#128994; Business Processes " +
-            "<span class=\"badge bg-secondary\" style=\"font-size:0.7rem;\">2</span></div>" +
-            "<div class=\"impact-swimlane-nodes\">" +
-            "<span class=\"impact-node impact-node-anchor\" style=\"opacity:0.88\" " +
-            "title=\"BP-1327 Secure Communications Process — direct-match\">" +
-            "BP-1327 Secure Communication <span class=\"impact-badge\">&#9733; 70%</span></span>" +
-            "<span class=\"impact-node\" style=\"opacity:0.70\" " +
-            "title=\"BP-1100 Network Operations — propagated\">" +
-            "BP-1100 Network Operations <span class=\"impact-badge\">&#8627;2</span></span>" +
-            "</div></div>" +
-            // Edge: Business Processes → Information Products
-            "<div class=\"impact-edge\">&#9474; " +
-            "<span class=\"impact-edge-label\">USES</span><br>&#9660;</div>" +
-            // Layer 4: Information Products
-            "<div class=\"impact-swimlane layer-info\">" +
-            "<div class=\"impact-swimlane-title\">&#128311; Information Products " +
-            "<span class=\"badge bg-secondary\" style=\"font-size:0.7rem;\">1</span></div>" +
-            "<div class=\"impact-swimlane-nodes\">" +
-            "<span class=\"impact-node\" style=\"opacity:0.68\" " +
-            "title=\"IP-2001 Interoperability Framework — propagated\">" +
-            "IP-2001 Interoperability Fra <span class=\"impact-badge\">&#8627;2</span></span>" +
-            "</div></div>" +
-            "</div>" +
-            "</div>" + // end impactSwimView
-            // ── Detail tables (collapsible) ──
-            "<details class=\"impact-details\">" +
-            "<summary>&#128203; Detail: 7 Elements, 5 Relationships</summary>" +
-            "<h6 class=\"mb-1 mt-2\">Included Elements</h6>" +
-            "<div class=\"table-responsive\"><table class=\"table table-sm table-bordered small mb-2\">" +
-            "<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead>" +
-            "<tbody>" +
-            "<tr class=\"table-success\"><td>CP-1023</td><td>Secure Voice Communications</td><td>Capabilities</td><td>90.0%</td><td>0</td><td>&#9733; &#9888;&#65039;</td><td>direct-match</td></tr>" +
-            "<tr class=\"table-success\"><td>CR-1047</td><td>Data Exchange Services</td><td>Core Services</td><td>80.0%</td><td>0</td><td>&#9733;</td><td>direct-match</td></tr>" +
-            "<tr class=\"table-success\"><td>BP-1327</td><td>Secure Communications Process</td><td>Business Processes</td><td>70.0%</td><td>0</td><td>&#9733;</td><td>direct-match</td></tr>" +
-            "<tr><td>CP-1050</td><td>Network Management</td><td>Capabilities</td><td>35.0%</td><td>1</td><td></td><td>propagated</td></tr>" +
-            "<tr><td>CR-1023</td><td>Core Communication Services</td><td>Core Services</td><td>40.0%</td><td>1</td><td>&#9888;&#65039;</td><td>propagated</td></tr>" +
-            "<tr><td>BP-1100</td><td>Network Operations</td><td>Business Processes</td><td>25.0%</td><td>2</td><td></td><td>propagated</td></tr>" +
-            "<tr><td>IP-2001</td><td>Interoperability Framework</td><td>Information Products</td><td>20.0%</td><td>2</td><td></td><td>propagated</td></tr>" +
-            "</tbody></table></div>" +
-            "<h6 class=\"mb-1\">Included Relationships</h6>" +
-            "<div class=\"table-responsive\"><table class=\"table table-sm table-bordered small mb-0\">" +
-            "<thead><tr><th>Source</th><th>&rarr;</th><th>Target</th><th>Type</th><th>Relevance</th><th>Hops</th><th>Reason</th></tr></thead>" +
-            "<tbody>" +
-            "<tr><td>CP-1023</td><td>&rarr;</td><td>CR-1047</td><td>REALIZES</td><td>80.0%</td><td>1</td><td>anchor relation</td></tr>" +
-            "<tr><td>CP-1023</td><td>&rarr;</td><td>CP-1050</td><td>REALIZES</td><td>35.0%</td><td>1</td><td>propagated</td></tr>" +
-            "<tr><td>CR-1047</td><td>&rarr;</td><td>BP-1327</td><td>SUPPORTS</td><td>70.0%</td><td>1</td><td>anchor relation</td></tr>" +
-            "<tr><td>CR-1023</td><td>&rarr;</td><td>BP-1100</td><td>DEPENDS_ON</td><td>25.0%</td><td>2</td><td>propagated</td></tr>" +
-            "<tr><td>BP-1327</td><td>&rarr;</td><td>IP-2001</td><td>USES</td><td>20.0%</td><td>2</td><td>propagated</td></tr>" +
-            "</tbody></table></div>" +
-            "</details>";
+    // No fallback HTML — the architecture view is produced entirely by the real
+    // pipeline (mock-LLM scores → enrichWithLeafNodes → propagation → rendering).
 
     private static final Path OUTPUT_DIR = resolveOutputDir();
 
@@ -592,23 +487,29 @@ class ScreenshotGeneratorIT {
     }
 
     /**
-     * Pre-seeds 4 taxonomy relations via the REST API so that
+     * Pre-seeds taxonomy relations via the REST API so that
      * {@code RelevancePropagationService.propagate()} has edges to traverse when the
-     * architecture view is rendered.  Without these relations only the 3 anchor nodes
-     * (CO, CR, CP) appear — one per swimlane.  With them, propagation spans 4+ taxonomy
-     * sheets producing a representative multi-layer screenshot.
+     * architecture view is rendered.  These root-level relations, combined with
+     * hierarchy-aware leaf-node inheritance and enrichment, produce 20+ elements
+     * across 7+ layers with cross-layer relationships including User Applications.
      * <p>
-     * Uses root-level taxonomy codes (CP, CR, BP, IP, CO) that are always present after
-     * the catalogue is loaded.  Duplicates are harmless because the propagation just
-     * finds more paths.
+     * Uses root-level taxonomy codes (CP, CR, BP, BR, CI, CO, IP, UA) that are always present
+     * after the catalogue is loaded.  Duplicates are harmless because the propagation
+     * just finds more paths.
      */
     private void seedArchitectureViewRelations() {
         js("window.__relsDone = 0;" +
            "var rels = [" +
            "  {sourceCode:'CP',targetCode:'CR',relationType:'REALIZES',description:'arch-seed'}," +
            "  {sourceCode:'CR',targetCode:'BP',relationType:'SUPPORTS',description:'arch-seed'}," +
-           "  {sourceCode:'BP',targetCode:'IP',relationType:'USES',description:'arch-seed'}," +
-           "  {sourceCode:'CO',targetCode:'CR',relationType:'SUPPORTS',description:'arch-seed'}" +
+           "  {sourceCode:'CR',targetCode:'BR',relationType:'SUPPORTS',description:'arch-seed'}," +
+           "  {sourceCode:'CR',targetCode:'CI',relationType:'DEPENDS_ON',description:'arch-seed'}," +
+           "  {sourceCode:'CR',targetCode:'CP',relationType:'FULFILLS',description:'arch-seed'}," +
+           "  {sourceCode:'CR',targetCode:'UA',relationType:'SUPPORTS',description:'arch-seed'}," +
+           "  {sourceCode:'CO',targetCode:'CR',relationType:'SUPPORTS',description:'arch-seed'}," +
+           "  {sourceCode:'CO',targetCode:'BP',relationType:'SUPPORTS',description:'arch-seed'}," +
+           "  {sourceCode:'CO',targetCode:'IP',relationType:'USES',description:'arch-seed'}," +
+           "  {sourceCode:'BP',targetCode:'IP',relationType:'USES',description:'arch-seed'}" +
            "];" +
            "rels.forEach(function(rel) {" +
            "  fetch('/api/relations', {" +
@@ -618,7 +519,7 @@ class ScreenshotGeneratorIT {
            "  }).then(function() { window.__relsDone++; })" +
            "   .catch(function() { window.__relsDone++; });" +
            "});");
-        wait(15).until(d -> 4L == (Long) ((JavascriptExecutor) d).executeScript(
+        wait(15).until(d -> 10L == (Long) ((JavascriptExecutor) d).executeScript(
                 "return window.__relsDone;"));
     }
 
@@ -1462,21 +1363,11 @@ class ScreenshotGeneratorIT {
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
 
-        // If the mock-LLM analysis produced too few swimlanes (< 3 layers) and no D3 graph was
-        // rendered, inject a richer fallback to produce a representative screenshot.
-        Long swimlaneCount = (Long) ((JavascriptExecutor) driver).executeScript(
-                "return document.querySelectorAll('#architectureViewContent .impact-swimlane').length;");
-        Long graphSvgCount = (Long) ((JavascriptExecutor) driver).executeScript(
-                "return document.querySelectorAll('#architectureViewContent .impact-graph-container svg').length;");
-        if ((graphSvgCount == null || graphSvgCount < 1) && (swimlaneCount == null || swimlaneCount < 3)) {
-            js("document.getElementById('architectureViewContent').innerHTML = arguments[0];" +
-               "requestAnimationFrame(function() { requestAnimationFrame(function() {" +
-               "  document.getElementById('architectureViewContent').dataset.rendered = 'true';" +
-               "}); });",
-               FALLBACK_ARCHITECTURE_VIEW_HTML);
-            wait(10).until(ExpectedConditions.attributeToBe(
-                    By.id("architectureViewContent"), "data-rendered", "true"));
-        }
+        // Switch to swimlane view for a more readable static screenshot
+        // (the D3 force graph requires interaction to be fully legible)
+        js("var btn = document.querySelector('.impact-view-btn[data-mode=\"swimlane\"]');" +
+           "if (btn) btn.click();");
+
         saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")), "20-architecture-view.png");
 
         // Reset: navigate back to analyze, switch back to list view and uncheck architecture view
@@ -2058,20 +1949,9 @@ class ScreenshotGeneratorIT {
         navigateToTab("architecture");
         wait(30).until(ExpectedConditions.visibilityOfElementLocated(By.id("architectureViewPanel")));
 
-        // If the mock-LLM analysis produced too few swimlanes and no D3 graph, inject fallback
-        Long swimlaneCount = (Long) ((JavascriptExecutor) driver).executeScript(
-                "return document.querySelectorAll('#architectureViewContent .impact-swimlane').length;");
-        Long graphSvgCount = (Long) ((JavascriptExecutor) driver).executeScript(
-                "return document.querySelectorAll('#architectureViewContent .impact-graph-container svg').length;");
-        if ((graphSvgCount == null || graphSvgCount < 1) && (swimlaneCount == null || swimlaneCount < 3)) {
-            js("document.getElementById('architectureViewContent').innerHTML = arguments[0];" +
-               "requestAnimationFrame(function() { requestAnimationFrame(function() {" +
-               "  document.getElementById('architectureViewContent').dataset.rendered = 'true';" +
-               "}); });",
-               FALLBACK_ARCHITECTURE_VIEW_HTML);
-            wait(10).until(ExpectedConditions.attributeToBe(
-                    By.id("architectureViewContent"), "data-rendered", "true"));
-        }
+        // Switch to swimlane view for readable static screenshot
+        js("var btn = document.querySelector('.impact-view-btn[data-mode=\"swimlane\"]');" +
+           "if (btn) btn.click();");
 
         // Expand the <details> section so the element/relationship tables are visible
         // — this differentiates the "detailed" screenshot from the overview (screenshot 20).

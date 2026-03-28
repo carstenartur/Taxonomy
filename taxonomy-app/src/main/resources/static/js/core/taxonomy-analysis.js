@@ -8,6 +8,14 @@
 
     var escapeHtml = TaxonomyUtils.escapeHtml;
 
+    // Layer label lookup for human-readable display of 2-letter taxonomy roots
+    var LAYER_LABELS = {
+        'CP': 'Capabilities', 'BP': 'Business Processes', 'BR': 'Business Roles',
+        'CI': 'COI Services', 'CO': 'Communications Services', 'CR': 'Core Services',
+        'IP': 'Information Products', 'UA': 'User Applications'
+    };
+    function layerLabel(code) { return LAYER_LABELS[code] || code || ''; }
+
     function getBusinessText() {
         var el = document.getElementById('businessText');
         return el ? el.value.trim() : '';
@@ -353,7 +361,7 @@
             html += '<tr>';
             html += '<td><code>' + escapeHtml(e.nodeCode) + '</code></td>';
             html += '<td>' + escapeHtml(e.title || '') + '</td>';
-            html += '<td><span class="badge bg-light text-dark border">' + escapeHtml(e.taxonomyRoot || '') + '</span></td>';
+            html += '<td><span class="badge bg-light text-dark border">' + escapeHtml(layerLabel(e.taxonomyRoot)) + '</span></td>';
             html += '<td><span class="badge bg-' + color + (color === 'warning' ? ' text-dark' : '') + '">' + e.score + '</span></td>';
             html += '<td class="small text-muted">' + escapeHtml(e.reasoning || '') + '</td>';
             html += '</tr>';
@@ -453,7 +461,7 @@
             html += '<tr>';
             html += '<td><code>' + escapeHtml(e.nodeCode) + '</code></td>';
             html += '<td>' + escapeHtml(e.title || '') + '</td>';
-            html += '<td><span class="badge bg-light text-dark border">' + escapeHtml(e.taxonomySheet || '') + '</span></td>';
+            html += '<td><span class="badge bg-light text-dark border">' + escapeHtml(layerLabel(e.taxonomySheet)) + '</span></td>';
             html += '<td>' + (e.relevance * 100).toFixed(0) + '%</td>';
             html += '<td>' + e.hopDistance + '</td>';
             html += '<td>';

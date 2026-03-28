@@ -8,7 +8,7 @@
 
 **Turn a business requirement into a validated architecture view — in one step.**
 
-Describe what you need in plain English. The Taxonomy Architecture Analyzer scores every node in the C3 Taxonomy Catalogue (~2,500 elements) using AI, discovers architecture relations, and generates exportable diagrams.
+Describe what you need in plain English. The Taxonomy Architecture Analyzer scores every node in the C3 Taxonomy Catalogue (~2,500 elements across 8 architecture layers) using AI, discovers architecture relations, and generates exportable diagrams — with full names, impact hotspots, and clear layer labels visible at every step.
 
 ```mermaid
 flowchart LR
@@ -28,17 +28,15 @@ flowchart LR
 
 ## Quick Example
 
-> _"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments and coordinated workflow management for clinical teams."_
+> _"Provide an integrated communication platform for hospital staff, enabling real-time voice and data exchange between departments, with a clinical dashboard application for patient handoff tracking and team coordination."_
 
 <img src="docs/images/15-scored-taxonomy-tree.png" alt="Scored taxonomy tree" width="700">
 
-The system scores every taxonomy node, selects the most relevant elements (score ≥ 70), propagates relevance through relations, and generates an architecture view — ready for export to ArchiMate, Visio, or Mermaid.
+The system scores every taxonomy node, selects the most relevant elements (score ≥ 70), propagates relevance through architecture relations, and generates an interactive architecture view. Each element is shown with its **full name** (e.g. "Transport Services"), **layer label** (e.g. "Communications Services"), and **relevance percentage** — with ★ anchor nodes and ⚠️ hotspots clearly highlighted. Ready for export to ArchiMate, Visio, or Mermaid.
 
-<details>
-<summary><strong>Architecture view generated from this requirement</strong></summary>
+**Architecture view generated from this requirement — spanning Capabilities, Services, Applications, and Processes:**
 
 <img src="docs/images/20-architecture-view.png" alt="Generated architecture view" width="700">
-</details>
 
 ---
 
@@ -66,8 +64,8 @@ The system scores every taxonomy node, selects the most relevant elements (score
 
 | Area | Capabilities |
 |---|---|
-| **Analysis** | AI-scored taxonomy mapping · semantic, hybrid, and graph search · relevance propagation |
-| **Architecture** | Automatic architecture views · relation proposals with review workflow · gap analysis · pattern detection |
+| **Analysis** | AI-scored taxonomy mapping · semantic, hybrid, and graph search · relevance propagation · full node names and layer labels |
+| **Architecture** | Interactive impact maps with ★ anchors and ⚠️ hotspots · relation proposals with review workflow · gap analysis · pattern detection |
 | **Graph** | Upstream/downstream exploration · failure-impact analysis · requirement impact |
 | **DSL** | Text-based architecture DSL · JGit-backed versioning with branching and merge |
 | **Export** | ArchiMate 3.x XML · Visio `.vsdx` · Mermaid · JSON · Reports (Markdown, HTML, DOCX) |

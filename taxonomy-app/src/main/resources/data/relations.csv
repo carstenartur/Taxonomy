@@ -11,6 +11,7 @@ BP,IP,CONSUMES,Business Processes consume Information Products (TOGAF Data Archi
 UA,CR,USES,User Applications use Core Services (NAF NSV-1: application-service binding),NAF,NSV-1,1.0,TYPE_DEFAULT,false,accepted
 UA,CI,USES,User Applications use COI Services (end-user access to COI services),NAF,NSV-1,1.0,TYPE_DEFAULT,false,accepted
 UA,CO,USES,User Applications use Communications Services (end-user communication binding),NAF,NSV-1,1.0,TYPE_DEFAULT,false,accepted
+CR,UA,SUPPORTS,Core Services support User Applications (TOGAF Application Architecture: service-to-application enablement),TOGAF,Application Architecture,1.0,TYPE_DEFAULT,false,accepted
 CI,CP,FULFILLS,COI Services fulfill Capabilities (NAF NCV-5: service-to-capability assignment),NAF,NCV-5,1.0,TYPE_DEFAULT,false,accepted
 CR,CP,FULFILLS,Core Services fulfill Capabilities (NAF NCV-5: generic service fulfillment),NAF,NCV-5,1.0,TYPE_DEFAULT,false,accepted
 BR,BP,ASSIGNED_TO,Business Roles are assigned to Business Processes (TOGAF Org Mapping: role responsibility),TOGAF,Org Mapping,1.0,TYPE_DEFAULT,false,accepted

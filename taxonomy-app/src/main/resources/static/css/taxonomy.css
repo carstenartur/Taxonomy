@@ -971,6 +971,23 @@
     box-shadow: 0 0 0 3px #e67e22;
 }
 
+.impact-node .impact-node-code {
+    font-size: 0.68rem;
+    opacity: 0.8;
+}
+
+.impact-node .impact-badge-hotspot {
+    background: rgba(230, 126, 34, 0.3);
+    border-radius: 3px;
+    padding: 0 4px;
+    font-size: 0.65rem;
+}
+
+.impact-kpi-hotspot {
+    color: #e67e22 !important;
+    font-weight: 600;
+}
+
 .impact-edge {
     text-align: center;
     color: #6c757d;

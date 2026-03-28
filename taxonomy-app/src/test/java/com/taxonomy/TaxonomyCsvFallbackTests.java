@@ -27,8 +27,8 @@ class TaxonomyCsvFallbackTests {
 
     @Test
     void csvFallbackLoadsRelationsOnStartup() {
-        // 24 original TYPE_DEFAULT + 12 FRAMEWORK_SEED = 36 relations
-        assertThat(relationService.countRelations()).isGreaterThanOrEqualTo(36);
+        // 25 TYPE_DEFAULT + 12 FRAMEWORK_SEED = 37 relations
+        assertThat(relationService.countRelations()).isGreaterThanOrEqualTo(37);
     }
 
     @Test
