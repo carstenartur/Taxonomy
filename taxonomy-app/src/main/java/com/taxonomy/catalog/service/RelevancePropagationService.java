@@ -1,6 +1,7 @@
 package com.taxonomy.catalog.service;
 
 import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -30,7 +31,9 @@ public class RelevancePropagationService {
     static final Map<String, Double> TYPE_WEIGHTS = Map.of(
             "REALIZES", 0.80,
             "SUPPORTS", 0.75,
-            "USES", 0.65
+            "USES", 0.65,
+            "FULFILLS", 0.70,
+            "DEPENDS_ON", 0.60
     );
 
     private final RelationTraversalService traversalService;
@@ -121,6 +124,9 @@ public class RelevancePropagationService {
      * Determines the target node code given a relation and the current source.
      * For outgoing relations from nodeCode, the target is the relation's target.
      * For bidirectional relations where nodeCode is the target, the target becomes the source.
+     *
+     * <p>Hierarchy-aware: if nodeCode is a leaf (e.g. "CO-1023") and the relation
+     * references its root ("CO"), the match is still valid.
      */
     private String determineTarget(TaxonomyRelationDto rel, String nodeCode) {
         if (rel.getSourceCode().equals(nodeCode)) {
@@ -128,6 +134,16 @@ public class RelevancePropagationService {
         }
         if (rel.getTargetCode().equals(nodeCode) && rel.isBidirectional()) {
             return rel.getSourceCode();
+        }
+        // Hierarchy: check if the relation matches via root prefix
+        String rootCode = TaxonomyRootTypes.rootFromId(nodeCode);
+        if (rootCode != null) {
+            if (rel.getSourceCode().equals(rootCode)) {
+                return rel.getTargetCode();
+            }
+            if (rel.getTargetCode().equals(rootCode) && rel.isBidirectional()) {
+                return rel.getSourceCode();
+            }
         }
         return null;
     }

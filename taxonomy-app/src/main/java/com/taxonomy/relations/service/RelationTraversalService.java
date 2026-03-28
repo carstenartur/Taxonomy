@@ -1,6 +1,7 @@
 package com.taxonomy.relations.service;
 
 import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
@@ -14,15 +15,22 @@ import com.taxonomy.catalog.service.TaxonomyRelationService;
 /**
  * Loads and filters traversable relations for the architecture view.
  * Only whitelisted relation types are returned.
+ *
+ * <p>Hierarchy-aware: when a leaf node (e.g. "CO-1023") has no direct
+ * relations, the service also returns relations defined for its root
+ * code ("CO"). This ensures leaf-level anchors inherit the architecture
+ * relations seeded at the root level.
  */
 @Service
 public class RelationTraversalService {
 
-    /** Relation types allowed for v1 propagation. */
+    /** Relation types allowed for propagation. */
     static final List<RelationType> WHITELISTED_TYPES = List.of(
             RelationType.SUPPORTS,
             RelationType.REALIZES,
-            RelationType.USES
+            RelationType.USES,
+            RelationType.FULFILLS,
+            RelationType.DEPENDS_ON
     );
 
     private final TaxonomyRelationRepository relationRepository;
@@ -38,24 +46,20 @@ public class RelationTraversalService {
      * Returns all traversable relations for a given node code,
      * considering both outgoing and incoming (for bidirectional) relations
      * filtered to the whitelisted types.
+     *
+     * <p>If the node is a leaf code (e.g. "CO-1023") with no direct relations,
+     * also includes relations from its taxonomy root code ("CO").
      */
     @Transactional(readOnly = true)
     public List<TaxonomyRelationDto> getTraversableRelations(String nodeCode) {
         List<TaxonomyRelationDto> result = new ArrayList<>();
+        addRelationsFor(nodeCode, result);
 
-        // Outgoing relations of whitelisted types
-        List<TaxonomyRelation> outgoing =
-                relationRepository.findBySourceNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);
-        for (TaxonomyRelation r : outgoing) {
-            result.add(relationService.toDto(r));
-        }
-
-        // Incoming relations of whitelisted types where the relation is bidirectional
-        List<TaxonomyRelation> incoming =
-                relationRepository.findByTargetNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);
-        for (TaxonomyRelation r : incoming) {
-            if (r.isBidirectional()) {
-                result.add(relationService.toDto(r));
+        // Hierarchy fallback: also include root-level relations for leaf nodes
+        if (result.isEmpty()) {
+            String rootCode = TaxonomyRootTypes.rootFromId(nodeCode);
+            if (rootCode != null && !rootCode.equals(nodeCode)) {
+                addRelationsFor(rootCode, result);
             }
         }
 
@@ -73,5 +77,21 @@ public class RelationTraversalService {
             dtos.add(relationService.toDto(r));
         }
         return dtos;
+    }
+
+    private void addRelationsFor(String code, List<TaxonomyRelationDto> result) {
+        List<TaxonomyRelation> outgoing =
+                relationRepository.findBySourceNodeCodeAndRelationTypeIn(code, WHITELISTED_TYPES);
+        for (TaxonomyRelation r : outgoing) {
+            result.add(relationService.toDto(r));
+        }
+
+        List<TaxonomyRelation> incoming =
+                relationRepository.findByTargetNodeCodeAndRelationTypeIn(code, WHITELISTED_TYPES);
+        for (TaxonomyRelation r : incoming) {
+            if (r.isBidirectional()) {
+                result.add(relationService.toDto(r));
+            }
+        }
     }
 }
