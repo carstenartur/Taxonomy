@@ -50,46 +50,50 @@ The system scores every taxonomy node **hierarchically** — first evaluating ro
 
 </details>
 
-**9 concrete architecture elements** across **7 layers** (Capabilities, Communications Services, Core Services, COI Services, User Applications, Business Processes, Business Roles), connected by **18 traced relations** — including ⚠ impact hotspots (≥ 80%) and cross-layer dependency chains:
+**13 concrete architecture elements** across **7 layers** (Capabilities, Communications Services, Core Services, COI Services, User Applications, Business Processes, Business Roles), connected by **18 traced relations** — including ⚠ impact hotspots (≥ 80%) and cross-layer dependency chains:
 
 ```mermaid
 flowchart TD
     subgraph Capabilities["🔵 Capabilities"]
-        CP_1023(["Comm &amp; Info System Capabilities<br/>★ ⚠ 85%"])
+        CP_1000(["Capabilities<br/>★ ⚠ 90%"])
+        CP_1023(["Communication and Information System Ca…<br/>★ ⚠ 85%"])
     end
     subgraph Business_Processes["🟢 Processes"]
+        BP_1000["Business Processes<br/>69%"]
         BP_1327["Enable<br/>65%"]
     end
     subgraph Business_Roles["🟢 Roles"]
-        BR_1043["Facilities Management Roles<br/>35%"]
+        BR_1000["Business Roles<br/>53%"]
     end
     subgraph Core_Services["🟠 Core Services"]
+        CR_1000(["Core Services<br/>★ 79%"])
         CR_1047(["Infrastructure Services<br/>★ 75%"])
-        CR_1021["Digital Certificate Services<br/>48%"]
     end
     subgraph COI_Services["🟠 COI Services"]
         CI["COI Services<br/>74%"]
     end
     subgraph User_Applications["🟣 Applications"]
+        UA_1000(["User Applications<br/>★ 72%"])
         UA_1015["Air Applications<br/>68%"]
     end
     subgraph Communications_Services["🔴 Communications"]
+        CO_1000(["Communications Services<br/>★ ⚠ 86%"])
         CO_1011(["Communications Access Services<br/>★ ⚠ 80%"])
-        CO_1019["Frame Switching Services<br/>52%"]
-        CO_1063["Transport Services<br/>35%"]
+        CO_1063(["Transport Services<br/>★ 70%"])
+        CO_1050["Transit Services<br/>55%"]
     end
-    CP_1023 -->|realizes| CI
-    CP_1023 -->|realizes| CO_1011
-    CP_1023 -->|realizes| CR_1047
-    CO_1011 -->|supports| BP_1327
-    CO_1011 -->|supports| CR_1047
-    CR_1047 -->|supports| BP_1327
-    CR_1047 -->|supports| BR_1043
-    CR_1047 -->|supports| UA_1015
-    CR_1047 -->|fulfills| CP_1023
-    UA_1015 -->|supports| BP_1327
-    CO_1011 -->|depends on| CR_1047
-    CR_1047 -->|depends on| CI
+    CP_1000 -->|realizes| CI
+    CP_1000 -->|realizes| CO_1000
+    CP_1000 -->|realizes| CR_1000
+    CO_1000 -->|supports| BP_1000
+    CO_1000 -->|supports| CR_1000
+    CR_1000 -->|supports| BP_1000
+    CR_1000 -->|supports| BR_1000
+    CR_1000 -->|supports| UA_1000
+    CR_1000 -->|fulfills| CP_1000
+    UA_1000 -->|supports| BP_1000
+    CO_1000 -->|depends on| CR_1000
+    CR_1000 -->|depends on| CI
     classDef cap fill:#4A90D9,color:#fff,stroke:#2171B5
     classDef proc fill:#27AE60,color:#fff,stroke:#1E8449
     classDef role fill:#27AE60,color:#fff,stroke:#1E8449
@@ -98,18 +102,24 @@ flowchart TD
     classDef info fill:#3498DB,color:#fff,stroke:#2980B9
     classDef comm fill:#E74C3C,color:#fff,stroke:#C0392B
     classDef hotspot fill:#D32F2F,color:#fff,stroke:#B71C1C,stroke-width:3px
+    class CP_1000 cap
+    class CP_1000 hotspot
     class CP_1023 cap
     class CP_1023 hotspot
+    class BP_1000 proc
     class BP_1327 proc
-    class BR_1043 role
+    class BR_1000 role
+    class CR_1000 svc
     class CR_1047 svc
-    class CR_1021 svc
     class CI svc
+    class UA_1000 app
     class UA_1015 app
+    class CO_1000 comm
+    class CO_1000 hotspot
     class CO_1011 comm
     class CO_1011 hotspot
-    class CO_1019 comm
     class CO_1063 comm
+    class CO_1050 comm
 ```
 
 > **Legend:** ★ = direct match (anchor) · ⚠ = impact hotspot (≥ 80%) · Rounded nodes = anchors/hotspots · % = relevance score · Arrow labels = relation type
@@ -122,21 +132,33 @@ The LLM does **not** score leaf nodes in isolation. It first evaluates each root
 | Scoring Path | Score | Role |
 |---|---|---|
 | **CP** Capabilities | **92%** | Root category |
-| &ensp;├ CP-1023 Communication and Information System Capabilities | 85% | Leaf — narrowed from 92% |
-| &ensp;└ CP-1030 Cyberspace Battlespace Management Capabilities | 30% | Leaf — narrowed from 92% |
+| &ensp;├ CP-1000 Capabilities | 90% | Intermediate (L1) — narrows 92% |
+| &ensp;&ensp;├ CP-1023 Communication and Information System Capabilities | 85% | Leaf — narrowed from 90% |
+| &ensp;&ensp;├ CP-1010 Battlespace Management Capabilities | 40% | Intermediate (L2) — narrows 90% |
+| &ensp;&ensp;&ensp;└ CP-1030 Cyberspace Battlespace Management Capabilities | 30% | Leaf — narrowed from 40% |
 | **CO** Communications Services | **88%** | Root category |
-| &ensp;├ CO-1011 Communications Access Services | 80% | Leaf — narrowed from 88% |
-| &ensp;├ CO-1019 Frame Switching Services | 52% | Leaf — narrowed from 88% |
-| &ensp;└ CO-1063 Transport Services | 35% | Leaf — narrowed from 88% |
+| &ensp;├ CO-1000 Communications Services | 86% | Intermediate (L1) — narrows 88% |
+| &ensp;&ensp;├ CO-1011 Communications Access Services | 80% | Leaf — narrowed from 86% |
+| &ensp;&ensp;├ CO-1063 Transport Services | 70% | Intermediate (L2) — narrows 86% |
+| &ensp;&ensp;&ensp;├ CO-1050 Transit Services | 55% | Intermediate (L3) — narrows 70% |
+| &ensp;&ensp;&ensp;&ensp;└ CO-1019 Frame Switching Services | 52% | Leaf — narrowed from 55% |
 | **CR** Core Services | **81%** | Root category |
-| &ensp;├ CR-1047 Infrastructure Services | 75% | Leaf — narrowed from 81% |
-| &ensp;└ CR-1021 Digital Certificate Services | 48% | Leaf — narrowed from 81% |
+| &ensp;├ CR-1000 Core Services | 79% | Intermediate (L1) — narrows 81% |
+| &ensp;&ensp;├ CR-1047 Infrastructure Services | 75% | Intermediate (L2) — narrows 79% |
+| &ensp;&ensp;&ensp;├ CR-1039 Infrastructure CIS Security Services | 52% | Intermediate (L3) — narrows 75% |
+| &ensp;&ensp;&ensp;&ensp;└ CR-1021 Digital Certificate Services | 48% | Leaf — narrowed from 52% |
 | **UA** User Applications | **74%** | Root category |
-| &ensp;└ UA-1015 Air Applications | 68% | Leaf — narrowed from 74% |
+| &ensp;├ UA-1000 User Applications | 72% | Intermediate (L1) — narrows 74% |
+| &ensp;&ensp;└ UA-1015 Air Applications | 68% | Leaf — narrowed from 72% |
 | **BP** Business Processes | **71%** | Root category |
-| &ensp;└ BP-1327 Enable | 65% | Leaf — narrowed from 71% |
+| &ensp;├ BP-1000 Business Processes | 69% | Intermediate (L1) — narrows 71% |
+| &ensp;&ensp;└ BP-1327 Enable | 65% | Leaf — narrowed from 69% |
 | **BR** Business Roles | **55%** | Root category |
-| &ensp;└ BR-1043 Facilities Management Roles | 35% | Leaf — narrowed from 55% |
+| &ensp;├ BR-1000 Business Roles | 53% | Intermediate (L1) — narrows 55% |
+| &ensp;&ensp;├ BR-1154 Coordinating Military Roles | 45% | Intermediate (L2) — narrows 53% |
+| &ensp;&ensp;&ensp;├ BR-1161 Sustainment Coordination Roles | 42% | Intermediate (L3) — narrows 45% |
+| &ensp;&ensp;&ensp;&ensp;├ BR-1063 Infrastructure Roles | 38% | Intermediate (L4) — narrows 42% |
+| &ensp;&ensp;&ensp;&ensp;&ensp;└ BR-1043 Facilities Management Roles | 35% | Leaf — narrowed from 38% |
 | **IP** Information Products | **50%** | Root category |
 | &ensp;└ _(no leaf nodes scored above threshold)_ | — | — |
 | **CI** COI Services | **45%** | Root category |
@@ -154,22 +176,25 @@ The LLM does **not** score leaf nodes in isolation. It first evaluates each root
 | Code | Name | Layer | Relevance | Path | Role | Included Because |
 |---|---|---|---|---|---|---|
 | CP | Capabilities | Capabilities | 92% | CP _(root)_ | ★ Anchor | direct-match |
+| CP-1000 | Capabilities | Capabilities | 90% | CP > CP-1000 | ★ Anchor | direct-match |
 | CO | Communications Services | Communications Services | 88% | CO _(root)_ | ★ Anchor | direct-match |
-| CP-1023 | Communication and Information System Capabilities | Capabilities | 85% | CP Capabilities > CP-1023 | ★ Anchor | direct-match |
+| CO-1000 | Communications Services | Communications Services | 86% | CO > CO-1000 | ★ Anchor | direct-match |
+| CP-1023 | Communication and Information System Capabilities | Capabilities | 85% | CP > CP-1000 > CP-1023 | ★ Anchor | direct-match |
 | CR | Core Services | Core Services | 81% | CR _(root)_ | ★ Anchor | direct-match |
-| CO-1011 | Communications Access Services | Communications Services | 80% | CO Communications Services > CO-1011 | ★ Anchor | direct-match |
-| CR-1047 | Infrastructure Services | Core Services | 75% | CR Core Services > CR-1047 | ★ Anchor | direct-match |
+| CO-1011 | Communications Access Services | Communications Services | 80% | CO > CO-1000 > CO-1011 | ★ Anchor | direct-match |
+| CR-1000 | Core Services | Core Services | 79% | CR > CR-1000 | ★ Anchor | direct-match |
+| CR-1047 | Infrastructure Services | Core Services | 75% | CR > CR-1000 > CR-1047 | ★ Anchor | direct-match |
 | UA | User Applications | User Applications | 74% | UA _(root)_ | ★ Anchor | direct-match |
+| UA-1000 | User Applications | User Applications | 72% | UA > UA-1000 | ★ Anchor | direct-match |
 | BP | Business Processes | Business Processes | 71% | BP _(root)_ | ★ Anchor | direct-match |
+| CO-1063 | Transport Services | Communications Services | 70% | CO > CO-1000 > CO-1063 | ★ Anchor | direct-match |
 | CI | COI Services | COI Services | 74% | CI _(root)_ | Propagated | propagated via REALIZES from CP |
-| UA-1015 | Air Applications | User Applications | 68% | UA User Applications > UA-1015 | Enriched leaf | leaf-enrichment: top-scoring in UA |
-| BP-1327 | Enable | Business Processes | 65% | BP Business Processes > BP-1327 | Enriched leaf | leaf-enrichment: top-scoring in BP |
+| BP-1000 | Business Processes | Business Processes | 69% | BP > BP-1000 | Enriched leaf | leaf-enrichment: top-scoring in BP |
+| UA-1015 | Air Applications | User Applications | 68% | UA > UA-1000 > UA-1015 | Enriched leaf | leaf-enrichment: top-scoring in UA |
+| BP-1327 | Enable | Business Processes | 65% | BP > BP-1000 > BP-1327 | Enriched leaf | leaf-enrichment: top-scoring in BP |
 | BR | Business Roles | Business Roles | 61% | BR _(root)_ | Propagated | propagated via SUPPORTS from CR |
-| CO-1019 | Frame Switching Services | Communications Services | 52% | CO Communications Services > CO-1019 | Enriched leaf | leaf-enrichment: top-scoring in CO |
-| CR-1021 | Digital Certificate Services | Core Services | 48% | CR Core Services > CR-1021 | Enriched leaf | leaf-enrichment: top-scoring in CR |
-| CO-1063 | Transport Services | Communications Services | 35% | CO Communications Services > CO-1063 | Enriched leaf | leaf-enrichment: top-scoring in CO |
-| BR-1043 | Facilities Management Roles | Business Roles | 35% | BR Business Roles > BR-1043 | Enriched leaf | leaf-enrichment: top-scoring in BR |
-| CP-1030 | Cyberspace Battlespace Management Capabilities | Capabilities | 30% | CP Capabilities > CP-1030 | Enriched leaf | leaf-enrichment: top-scoring in CP |
+| CO-1050 | Transit Services | Communications Services | 55% | CO > CO-1000 > CO-1063 > CO-1050 | Enriched leaf | leaf-enrichment: top-scoring in CO |
+| BR-1000 | Business Roles | Business Roles | 53% | BR > BR-1000 | Enriched leaf | leaf-enrichment: top-scoring in BR |
 
 **Included Relationships** — traversed by relevance propagation:
 
