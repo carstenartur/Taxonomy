@@ -327,14 +327,14 @@ Die Antwort ist ein Mermaid-Flussdiagramm-Codeblock, der in GitHub, GitLab, Noti
 
 ```mermaid
 graph TD
-    subgraph Faehigkeiten["Fähigkeiten"]
-        CP_1023["Communication and Information System Capabilities ★ ⚠ [85%]"]
+    subgraph Faehigkeiten["🔵 Fähigkeiten"]
+        CP_1023(["Comm &amp; Info System Capabilities<br/>★ ⚠ 85%"])
     end
-    subgraph Kommunikationsdienste["Kommunikationsdienste"]
-        CO_1011["Communications Access Services ★ ⚠ [80%]"]
+    subgraph Kommunikationsdienste["🔴 Kommunikation"]
+        CO_1011(["Communications Access Services<br/>★ ⚠ 80%"])
     end
-    subgraph Kerndienste["Kerndienste"]
-        CR_1047["Infrastructure Services ★ [75%]"]
+    subgraph Kerndienste["🟠 Kerndienste"]
+        CR_1047(["Infrastructure Services<br/>★ 75%"])
     end
     CP_1023 -->|unterstützt| CO_1011
     CO_1011 -->|realisiert| CR_1047

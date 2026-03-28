@@ -137,6 +137,10 @@ public class MermaidExportService {
      *       leaf node in the same layer, so cross-layer relations remain visible</li>
      *   <li>Marks high-relevance nodes (≥ 80%) as hotspots with a visual marker</li>
      *   <li>Uses display-friendly relation labels (e.g. "realizes" instead of "REALIZES")</li>
+     *   <li>Uses abbreviated subgraph titles with emoji for quick visual scanning</li>
+     *   <li>Uses multi-line node labels (name + metadata) for richer cards</li>
+     *   <li>Uses stadium shapes for anchor/hotspot nodes for visual emphasis</li>
+     *   <li>Limits edges to top N most relevant for cleaner diagrams</li>
      * </ul>
      *
      * @param model  the neutral diagram model
@@ -186,7 +190,7 @@ public class MermaidExportService {
         Set<String> showcaseIds = showcaseNodes.stream()
                 .map(DiagramNode::id).collect(Collectors.toCollection(LinkedHashSet::new));
 
-        // ── Re-route and filter edges ───────────────────────────────────────
+        // ── Re-route, filter and limit edges ────────────────────────────────
         List<DiagramEdge> showcaseEdges = new ArrayList<>();
         Set<String> edgeSignatures = new LinkedHashSet<>();
         for (DiagramEdge edge : model.edges()) {
@@ -199,6 +203,12 @@ public class MermaidExportService {
                 showcaseEdges.add(new DiagramEdge(edge.id(), src, tgt,
                         edge.relationType(), edge.relevance()));
             }
+        }
+
+        // Limit edges to top N by relevance to keep the diagram readable
+        if (showcaseEdges.size() > MermaidLabels.SHOWCASE_MAX_EDGES) {
+            showcaseEdges.sort(Comparator.comparingDouble(DiagramEdge::relevance).reversed());
+            showcaseEdges = new ArrayList<>(showcaseEdges.subList(0, MermaidLabels.SHOWCASE_MAX_EDGES));
         }
 
         // ── Render ──────────────────────────────────────────────────────────
@@ -217,16 +227,25 @@ public class MermaidExportService {
             String type = entry.getKey();
             List<DiagramNode> nodes = entry.getValue();
             String subId = sanitizeId(type);
-            String displayType = labels.layerLabel(type);
+            String displayType = labels.showcaseLayerLabel(type);
 
             sb.append("    subgraph ").append(subId)
               .append("[\"").append(escape(displayType)).append("\"]\n");
             for (DiagramNode node : nodes) {
                 String nodeId = sanitizeId(node.id());
-                String label = node.label();
-                label += buildSuffix(node, labels);
-                sb.append("        ").append(nodeId)
-                  .append("[\"").append(escape(label)).append("\"]\n");
+                boolean isProminent = node.anchor() || node.relevance() >= MermaidLabels.HOTSPOT_THRESHOLD;
+                String nameLine = truncateLabel(node.label(), MermaidLabels.SHOWCASE_MAX_LABEL_LENGTH);
+                String metaLine = buildShowcaseMetaLine(node, labels);
+                String label = nameLine + "<br/>" + metaLine;
+
+                // Use stadium shape (["..."]) for prominent nodes, regular ["..."] for others
+                if (isProminent) {
+                    sb.append("        ").append(nodeId)
+                      .append("([\"").append(escape(label)).append("\"])\n");
+                } else {
+                    sb.append("        ").append(nodeId)
+                      .append("[\"").append(escape(label)).append("\"]\n");
+                }
             }
             sb.append("    end\n");
         }
@@ -263,6 +282,36 @@ public class MermaidExportService {
             suffix.append(" [").append(String.format("%.0f%%", pct)).append(']');
         }
         return suffix.toString();
+    }
+
+    /**
+     * Builds the second line of a showcase node label (metadata line).
+     * Format: "★ ⚠ 85%" or "65%" depending on the node's role.
+     */
+    private String buildShowcaseMetaLine(DiagramNode node, MermaidLabels labels) {
+        StringBuilder meta = new StringBuilder();
+        if (node.anchor()) {
+            meta.append(labels.anchorMarker());
+        }
+        if (node.relevance() >= MermaidLabels.HOTSPOT_THRESHOLD) {
+            if (!meta.isEmpty()) meta.append(' ');
+            meta.append(labels.hotspotMarker());
+        }
+        double pct = node.relevance() * 100;
+        if (pct > 0) {
+            if (!meta.isEmpty()) meta.append(' ');
+            meta.append(String.format("%.0f%%", pct));
+        }
+        return meta.toString();
+    }
+
+    /**
+     * Truncates a label to the given max length, appending "…" if truncated.
+     */
+    static String truncateLabel(String label, int maxLength) {
+        if (label == null) return "";
+        if (label.length() <= maxLength) return label;
+        return label.substring(0, maxLength - 1) + "\u2026";
     }
 
     private void appendStyleDefinitions(StringBuilder sb) {

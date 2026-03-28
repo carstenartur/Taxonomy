@@ -10,13 +10,15 @@ import java.util.Map;
  * The Mermaid graph itself uses stable internal identifiers (node IDs,
  * classDef names); only rendered labels are localized.</p>
  *
- * @param layerLabels   maps internal layer type (e.g. "Capabilities") → localized display label
- * @param relationLabels maps internal relation type (e.g. "REALIZES") → localized display label
- * @param anchorMarker  marker symbol for anchor nodes (e.g. "★")
- * @param hotspotMarker marker symbol for hotspot nodes (e.g. "⚠")
+ * @param layerLabels          maps internal layer type (e.g. "Capabilities") → localized display label
+ * @param showcaseLayerLabels  abbreviated layer labels with emoji for showcase/README mode
+ * @param relationLabels       maps internal relation type (e.g. "REALIZES") → localized display label
+ * @param anchorMarker         marker symbol for anchor nodes (e.g. "★")
+ * @param hotspotMarker        marker symbol for hotspot nodes (e.g. "⚠")
  */
 public record MermaidLabels(
         Map<String, String> layerLabels,
+        Map<String, String> showcaseLayerLabels,
         Map<String, String> relationLabels,
         String anchorMarker,
         String hotspotMarker
@@ -24,6 +26,12 @@ public record MermaidLabels(
 
     /** Hotspot threshold: nodes with relevance ≥ this value are marked as hotspots. */
     public static final double HOTSPOT_THRESHOLD = 0.80;
+
+    /** Maximum number of edges in showcase mode to keep the diagram readable. */
+    public static final int SHOWCASE_MAX_EDGES = 12;
+
+    /** Maximum label length before truncation in showcase mode. */
+    public static final int SHOWCASE_MAX_LABEL_LENGTH = 40;
 
     /**
      * Returns the default English labels.
@@ -41,6 +49,18 @@ public record MermaidLabels(
                         Map.entry("User Applications", "User Applications"),
                         Map.entry("Information Products", "Information Products"),
                         Map.entry("Communications Services", "Communications Services")
+                ),
+                Map.ofEntries(
+                        Map.entry("Capabilities", "\uD83D\uDD35 Capabilities"),
+                        Map.entry("Business Processes", "\uD83D\uDFE2 Processes"),
+                        Map.entry("Business Roles", "\uD83D\uDFE2 Roles"),
+                        Map.entry("Services", "\uD83D\uDFE0 Services"),
+                        Map.entry("COI Services", "\uD83D\uDFE0 COI Services"),
+                        Map.entry("Core Services", "\uD83D\uDFE0 Core Services"),
+                        Map.entry("Applications", "\uD83D\uDFE3 Applications"),
+                        Map.entry("User Applications", "\uD83D\uDFE3 Applications"),
+                        Map.entry("Information Products", "\uD83D\uDD37 Info Products"),
+                        Map.entry("Communications Services", "\uD83D\uDD34 Communications")
                 ),
                 Map.ofEntries(
                         Map.entry("REALIZES", "realizes"),
@@ -77,6 +97,18 @@ public record MermaidLabels(
                         Map.entry("Communications Services", "Kommunikationsdienste")
                 ),
                 Map.ofEntries(
+                        Map.entry("Capabilities", "\uD83D\uDD35 F\u00e4higkeiten"),
+                        Map.entry("Business Processes", "\uD83D\uDFE2 Prozesse"),
+                        Map.entry("Business Roles", "\uD83D\uDFE2 Rollen"),
+                        Map.entry("Services", "\uD83D\uDFE0 Dienste"),
+                        Map.entry("COI Services", "\uD83D\uDFE0 COI-Dienste"),
+                        Map.entry("Core Services", "\uD83D\uDFE0 Kerndienste"),
+                        Map.entry("Applications", "\uD83D\uDFE3 Anwendungen"),
+                        Map.entry("User Applications", "\uD83D\uDFE3 Anwendungen"),
+                        Map.entry("Information Products", "\uD83D\uDD37 Infoprodukte"),
+                        Map.entry("Communications Services", "\uD83D\uDD34 Kommunikation")
+                ),
+                Map.ofEntries(
                         Map.entry("REALIZES", "realisiert"),
                         Map.entry("SUPPORTS", "unterst\u00fctzt"),
                         Map.entry("USES", "nutzt"),
@@ -99,6 +131,14 @@ public record MermaidLabels(
      */
     public String layerLabel(String internalType) {
         return layerLabels.getOrDefault(internalType, internalType);
+    }
+
+    /**
+     * Returns the abbreviated showcase layer label (with emoji prefix),
+     * falling back to the full layer label if no showcase mapping exists.
+     */
+    public String showcaseLayerLabel(String internalType) {
+        return showcaseLayerLabels.getOrDefault(internalType, layerLabel(internalType));
     }
 
     /**

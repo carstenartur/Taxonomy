@@ -3,6 +3,7 @@ package com.taxonomy.export;
 import com.taxonomy.diagram.*;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -260,8 +261,11 @@ class MermaidExportServiceTest {
 
         String result = service.exportShowcase(model);
 
-        // Showcase mode uses label only (no code prefix) for cleaner display
-        assertTrue(result.contains("Communication Capabilities ★ ⚠"));
+        // Showcase mode uses multi-line labels with name on top and metadata on bottom
+        assertTrue(result.contains("Communication Capabilities<br/>"), "Name should be on first line");
+        assertTrue(result.contains("★"), "Anchor marker should be present");
+        assertTrue(result.contains("⚠"), "Hotspot marker should be present for relevance ≥ 80%");
+        assertTrue(result.contains("85%"), "Relevance percentage should be present");
     }
 
     @Test
@@ -378,5 +382,117 @@ class MermaidExportServiceTest {
         MermaidLabels labels = MermaidLabels.english();
         assertEquals("Custom Layer", labels.layerLabel("Custom Layer"));
         assertEquals("custom type", labels.relationLabel("CUSTOM_TYPE"));
+    }
+
+    // ── Showcase visual improvement tests ────────────────────────────────
+
+    @Test
+    void showcaseUsesAbbreviatedSubgraphTitles() {
+        var node = new DiagramNode("CP-1023", "Cap", "Capabilities", 0.85, true, 1);
+        var model = new DiagramModel("Test", List.of(node), List.of(),
+                new DiagramLayout("LR", true));
+
+        String result = service.exportShowcase(model);
+
+        // Should use abbreviated showcase layer label with emoji
+        assertTrue(result.contains("\uD83D\uDD35 Capabilities"), "Showcase should use abbreviated layer label with emoji");
+    }
+
+    @Test
+    void showcaseUsesMultiLineLabels() {
+        var node = new DiagramNode("CP-1023", "Comm Capabilities", "Capabilities", 0.85, true, 1);
+        var model = new DiagramModel("Test", List.of(node), List.of(),
+                new DiagramLayout("LR", true));
+
+        String result = service.exportShowcase(model);
+
+        assertTrue(result.contains("<br/>"), "Showcase should use multi-line labels");
+        assertTrue(result.contains("Comm Capabilities<br/>"), "Name should be on first line");
+    }
+
+    @Test
+    void showcaseUsesStadiumShapeForAnchors() {
+        var anchor = new DiagramNode("CP-1023", "Cap", "Capabilities", 0.85, true, 1);
+        var normal = new DiagramNode("CR-1047", "Svc", "Core Services", 0.5, false, 3);
+        var model = new DiagramModel("Test", List.of(anchor, normal), List.of(),
+                new DiagramLayout("LR", true));
+
+        String result = service.exportShowcase(model);
+
+        // Anchor node should use stadium shape ([" ... "])
+        assertTrue(result.contains("CP_1023([\""), "Anchor should use stadium shape");
+        // Normal node should use regular shape [" ... "]
+        assertFalse(result.contains("CR_1047(["), "Non-anchor low-relevance node should use regular shape");
+    }
+
+    @Test
+    void showcaseLimitsEdgesToMaxCount() {
+        var cap = new DiagramNode("CP-1023", "Cap", "Capabilities", 0.9, true, 1);
+        var model = new DiagramModel("Test", List.of(cap), List.of(), new DiagramLayout("LR", true));
+        // Create more edges than SHOWCASE_MAX_EDGES
+        List<DiagramNode> nodes = new ArrayList<>(List.of(cap));
+        List<DiagramEdge> edges = new ArrayList<>();
+        for (int i = 0; i < MermaidLabels.SHOWCASE_MAX_EDGES + 5; i++) {
+            String nodeId = "CR-" + (1000 + i);
+            nodes.add(new DiagramNode(nodeId, "Svc" + i, "Core Services", 0.5 + i * 0.01, false, 3));
+            edges.add(new DiagramEdge("e" + i, "CP-1023", nodeId, "REALIZES", 0.5 + i * 0.01));
+        }
+        var fullModel = new DiagramModel("Test", nodes, edges, new DiagramLayout("LR", true));
+
+        String result = service.exportShowcase(fullModel);
+
+        // Count the number of edge lines (-->|...|)
+        long edgeCount = result.lines().filter(l -> l.contains("-->|")).count();
+        assertTrue(edgeCount <= MermaidLabels.SHOWCASE_MAX_EDGES,
+                "Showcase should limit edges to " + MermaidLabels.SHOWCASE_MAX_EDGES + " but had " + edgeCount);
+    }
+
+    @Test
+    void showcaseTruncatesLongLabels() {
+        var node = new DiagramNode("CP-1023",
+                "Communication and Information System Capabilities for Enterprise Integration",
+                "Capabilities", 0.9, true, 1);
+        var model = new DiagramModel("Test", List.of(node), List.of(),
+                new DiagramLayout("LR", true));
+
+        String result = service.exportShowcase(model);
+
+        // Label should be truncated (not contain the full 70+ char name)
+        assertFalse(result.contains("Enterprise Integration"),
+                "Long label should be truncated in showcase mode");
+        assertTrue(result.contains("\u2026"), "Truncated label should end with ellipsis");
+    }
+
+    @Test
+    void truncateLabelShortTextUnchanged() {
+        assertEquals("Short", MermaidExportService.truncateLabel("Short", 40));
+    }
+
+    @Test
+    void truncateLabelLongTextTruncated() {
+        String result = MermaidExportService.truncateLabel("This is a very long label that exceeds the limit", 20);
+        assertTrue(result.endsWith("\u2026"), "Should end with ellipsis");
+        assertTrue(result.length() <= 20, "Should not exceed max length");
+    }
+
+    @Test
+    void truncateLabelNullReturnsEmpty() {
+        assertEquals("", MermaidExportService.truncateLabel(null, 40));
+    }
+
+    @Test
+    void showcaseLayerLabelReturnsAbbreviatedLabel() {
+        MermaidLabels labels = MermaidLabels.english();
+        assertTrue(labels.showcaseLayerLabel("Communications Services").contains("Communications"),
+                "Showcase label should contain abbreviated name");
+        assertTrue(labels.showcaseLayerLabel("Communications Services").contains("\uD83D\uDD34"),
+                "Showcase label should contain emoji");
+    }
+
+    @Test
+    void showcaseLayerLabelGermanReturnsAbbreviatedLabel() {
+        MermaidLabels labels = MermaidLabels.german();
+        assertTrue(labels.showcaseLayerLabel("Communications Services").contains("Kommunikation"),
+                "German showcase label should contain abbreviated name");
     }
 }

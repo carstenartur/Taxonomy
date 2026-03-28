@@ -328,14 +328,14 @@ The response is a Mermaid flowchart code block that renders in GitHub, GitLab, N
 
 ```mermaid
 graph TD
-    subgraph Capabilities["Capabilities"]
-        CP_1023["Communication and Information System Capabilities ★ ⚠ [85%]"]
+    subgraph Capabilities["🔵 Capabilities"]
+        CP_1023(["Comm &amp; Info System Capabilities<br/>★ ⚠ 85%"])
     end
-    subgraph Communications_Services["Communications Services"]
-        CO_1011["Communications Access Services ★ ⚠ [80%]"]
+    subgraph Communications_Services["🔴 Communications"]
+        CO_1011(["Communications Access Services<br/>★ ⚠ 80%"])
     end
-    subgraph Core_Services["Core Services"]
-        CR_1047["Infrastructure Services ★ [75%]"]
+    subgraph Core_Services["🟠 Core Services"]
+        CR_1047(["Infrastructure Services<br/>★ 75%"])
     end
     CP_1023 -->|supports| CO_1011
     CO_1011 -->|realizes| CR_1047
