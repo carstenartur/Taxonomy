@@ -31,17 +31,17 @@ public final class RecordedNodeScorer implements NodeScorer {
      */
     public RecordedNodeScorer(SavedAnalysis analysis) {
         this.recordedScores = analysis.getScores() != null
-                ? analysis.getScores()
+                ? Map.copyOf(analysis.getScores())
                 : Map.of();
     }
 
     /**
-     * Creates a scorer backed by an explicit scores map.
+     * Creates a scorer backed by an explicit scores map (defensive copy).
      *
      * @param scores pre-computed node code → score map
      */
     public RecordedNodeScorer(Map<String, Integer> scores) {
-        this.recordedScores = scores != null ? scores : Map.of();
+        this.recordedScores = scores != null ? Map.copyOf(scores) : Map.of();
     }
 
     @Override

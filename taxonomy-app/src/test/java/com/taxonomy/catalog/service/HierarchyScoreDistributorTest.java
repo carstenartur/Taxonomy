@@ -39,11 +39,9 @@ class HierarchyScoreDistributorTest {
         TaxonomyNode a2   = node("RT-1020", 2, "RT");
 
         when(taxonomyService.getRootNodes()).thenReturn(List.of(root));
-        when(taxonomyService.getChildrenOf("RT")).thenReturn(List.of(a, b));
-        when(taxonomyService.getChildrenOf("RT-1000")).thenReturn(List.of(a1, a2));
-        when(taxonomyService.getChildrenOf("RT-1001")).thenReturn(List.of());
-        when(taxonomyService.getChildrenOf("RT-1010")).thenReturn(List.of());
-        when(taxonomyService.getChildrenOf("RT-1020")).thenReturn(List.of());
+        when(taxonomyService.getChildrenMap()).thenReturn(Map.of(
+                "RT", List.of(a, b),
+                "RT-1000", List.of(a1, a2)));
 
         var result = distributor.distribute(
                 Map.of("RT", 100),
@@ -70,8 +68,8 @@ class HierarchyScoreDistributorTest {
         TaxonomyNode a    = node("RT-1000", 1, "RT");
 
         when(taxonomyService.getRootNodes()).thenReturn(List.of(root));
-        when(taxonomyService.getChildrenOf("RT")).thenReturn(List.of(a));
-        when(taxonomyService.getChildrenOf("RT-1000")).thenReturn(List.of());
+        when(taxonomyService.getChildrenMap()).thenReturn(Map.of(
+                "RT", List.of(a)));
 
         var result = distributor.distribute(
                 Map.of("RT", 0),
@@ -87,8 +85,8 @@ class HierarchyScoreDistributorTest {
         TaxonomyNode child = node("CP-1000", 1, "CP");
 
         when(taxonomyService.getRootNodes()).thenReturn(List.of(root));
-        when(taxonomyService.getChildrenOf("CP")).thenReturn(List.of(child));
-        when(taxonomyService.getChildrenOf("CP-1000")).thenReturn(List.of());
+        when(taxonomyService.getChildrenMap()).thenReturn(Map.of(
+                "CP", List.of(child)));
 
         var result = distributor.distribute(
                 Map.of("CP", 80),
@@ -107,9 +105,8 @@ class HierarchyScoreDistributorTest {
         TaxonomyNode b    = node("RT-1001", 1, "RT");
 
         when(taxonomyService.getRootNodes()).thenReturn(List.of(root));
-        when(taxonomyService.getChildrenOf("RT")).thenReturn(List.of(a, b));
-        when(taxonomyService.getChildrenOf("RT-1000")).thenReturn(List.of());
-        when(taxonomyService.getChildrenOf("RT-1001")).thenReturn(List.of());
+        when(taxonomyService.getChildrenMap()).thenReturn(Map.of(
+                "RT", List.of(a, b)));
 
         // Custom scorer: child A=90, child B=20 (sum > parent 50)
         NodeScorer scorer = (req, nodes, parent) -> {
@@ -140,9 +137,8 @@ class HierarchyScoreDistributorTest {
         TaxonomyNode b    = node("RT-1001", 1, "RT");
 
         when(taxonomyService.getRootNodes()).thenReturn(List.of(root));
-        when(taxonomyService.getChildrenOf("RT")).thenReturn(List.of(a, b));
-        when(taxonomyService.getChildrenOf("RT-1000")).thenReturn(List.of());
-        when(taxonomyService.getChildrenOf("RT-1001")).thenReturn(List.of());
+        when(taxonomyService.getChildrenMap()).thenReturn(Map.of(
+                "RT", List.of(a, b)));
 
         // Custom scorer: raw weights 75 and 25
         NodeScorer scorer = (req, nodes, parent) -> {
@@ -176,9 +172,8 @@ class HierarchyScoreDistributorTest {
         TaxonomyNode b    = node("RT-1001", 1, "RT");
 
         when(taxonomyService.getRootNodes()).thenReturn(List.of(root));
-        when(taxonomyService.getChildrenOf("RT")).thenReturn(List.of(a, b));
-        when(taxonomyService.getChildrenOf("RT-1000")).thenReturn(List.of());
-        when(taxonomyService.getChildrenOf("RT-1001")).thenReturn(List.of());
+        when(taxonomyService.getChildrenMap()).thenReturn(Map.of(
+                "RT", List.of(a, b)));
 
         // Pre-recorded scores: child A=85 (higher than parent!), child B=10
         Map<String, Integer> recorded = Map.of("RT", 50, "RT-1000", 85, "RT-1001", 10);

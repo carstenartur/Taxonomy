@@ -553,6 +553,16 @@
         });
         if (!scores) return;
 
+        // Build a local index of taxonomy nodes by data-code to avoid
+        // repeated global querySelector calls per scored entry.
+        var codeToNode = {};
+        document.querySelectorAll('.tax-node[data-code]').forEach(function (node) {
+            var code = node.dataset.code;
+            if (code) {
+                codeToNode[code] = node;
+            }
+        });
+
         // For every scored leaf (code containing '-'), walk up to root and
         // mark each ancestor that also carries a score.
         Object.entries(scores).forEach(function (entry) {
@@ -560,7 +570,7 @@
             var pct  = entry[1];
             if (pct <= 0 || !code.includes('-')) return;
 
-            var el = document.querySelector('[data-code="' + CSS.escape(code) + '"]');
+            var el = codeToNode[code];
             if (!el) return;
 
             var parent = el.parentElement;

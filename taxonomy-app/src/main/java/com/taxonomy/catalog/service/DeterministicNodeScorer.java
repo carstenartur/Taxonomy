@@ -11,7 +11,7 @@ import java.util.Map;
  *
  * <p>This scorer ignores the requirement text and produces stable,
  * reproducible scores that vary across sibling nodes but are consistent
- * across runs. Each node's weight is {@code (Math.abs(code.hashCode()) % 100) + 1}.
+ * across runs. Each node's weight is {@code Math.floorMod(code.hashCode(), 100) + 1}.
  *
  * <p>Intended for offline mock-score generation (see {@code MockScoreGeneratorIT}),
  * not for live analysis.  When combined with {@link BudgetDistribution}, the
@@ -30,8 +30,8 @@ public final class DeterministicNodeScorer implements NodeScorer {
                                       int parentScore) {
         Map<String, Integer> scores = new LinkedHashMap<>();
         for (TaxonomyNode node : nodes) {
-            // Weight range: 1–100, deterministic per code
-            int weight = (Math.abs(node.getCode().hashCode()) % 100) + 1;
+            // Weight range: 1–100, deterministic per code (floorMod avoids negative from Integer.MIN_VALUE)
+            int weight = Math.floorMod(node.getCode().hashCode(), 100) + 1;
             scores.put(node.getCode(), weight);
         }
         return scores;

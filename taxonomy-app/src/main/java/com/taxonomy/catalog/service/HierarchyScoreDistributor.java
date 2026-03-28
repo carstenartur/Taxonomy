@@ -86,6 +86,9 @@ public class HierarchyScoreDistributor {
                 .sorted(Comparator.comparing(TaxonomyNode::getCode))
                 .toList();
 
+        // Pre-load the full parent→children map once to avoid N+1 queries
+        Map<String, List<TaxonomyNode>> childrenMap = taxonomyService.getChildrenMap();
+
         Map<String, Integer> scores  = new LinkedHashMap<>();
         Map<String, String>  reasons = new LinkedHashMap<>();
 
@@ -94,7 +97,7 @@ public class HierarchyScoreDistributor {
             scores.put(root.getCode(), rootScore);
             reasons.put(root.getCode(), rootReasons.getOrDefault(root.getCode(), ""));
             walkRecursively(root.getCode(), rootScore, requirementText,
-                    scorer, strategy, scores, reasons, rootReasons);
+                    scorer, strategy, childrenMap, scores, reasons, rootReasons);
         }
 
         return new DistributionResult(scores, reasons);
@@ -126,19 +129,15 @@ public class HierarchyScoreDistributor {
                                  String requirementText,
                                  NodeScorer scorer,
                                  DistributionStrategy strategy,
+                                 Map<String, List<TaxonomyNode>> childrenMap,
                                  Map<String, Integer> scores,
                                  Map<String, String> reasons,
                                  Map<String, String> rootReasons) {
 
-        List<TaxonomyNode> children = taxonomyService.getChildrenOf(parentCode);
+        List<TaxonomyNode> children = childrenMap.getOrDefault(parentCode, List.of());
         if (children.isEmpty()) {
             return;
         }
-
-        // Sort by code for determinism (getChildrenOf sorts by name)
-        children = children.stream()
-                .sorted(Comparator.comparing(TaxonomyNode::getCode))
-                .toList();
 
         if (parentScore == 0) {
             for (TaxonomyNode child : children) {
@@ -146,7 +145,7 @@ public class HierarchyScoreDistributor {
                 String root = child.getTaxonomyRoot() != null ? child.getTaxonomyRoot() : "";
                 reasons.put(child.getCode(), rootReasons.getOrDefault(root, ""));
                 walkRecursively(child.getCode(), 0, requirementText,
-                        scorer, strategy, scores, reasons, rootReasons);
+                        scorer, strategy, childrenMap, scores, reasons, rootReasons);
             }
             return;
         }
@@ -157,6 +156,16 @@ public class HierarchyScoreDistributor {
         // Step 2: Apply the distribution strategy
         Map<String, Integer> adjustedScores = strategy.adjust(rawScores, parentScore);
 
+        // Validate: adjusted map must contain exactly the children's codes
+        for (TaxonomyNode child : children) {
+            if (!adjustedScores.containsKey(child.getCode())) {
+                throw new IllegalStateException(
+                        "DistributionStrategy '" + strategy.name()
+                                + "' did not return a score for child code '"
+                                + child.getCode() + "' of parent '" + parentCode + "'");
+            }
+        }
+
         // Step 3: Store and recurse
         for (TaxonomyNode child : children) {
             int childScore = adjustedScores.getOrDefault(child.getCode(), 0);
@@ -164,7 +173,7 @@ public class HierarchyScoreDistributor {
             String root = child.getTaxonomyRoot() != null ? child.getTaxonomyRoot() : "";
             reasons.put(child.getCode(), rootReasons.getOrDefault(root, ""));
             walkRecursively(child.getCode(), childScore, requirementText,
-                    scorer, strategy, scores, reasons, rootReasons);
+                    scorer, strategy, childrenMap, scores, reasons, rootReasons);
         }
     }
 

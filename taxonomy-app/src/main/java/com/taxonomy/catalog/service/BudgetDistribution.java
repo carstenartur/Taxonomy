@@ -29,6 +29,10 @@ public final class BudgetDistribution implements DistributionStrategy {
 
     @Override
     public Map<String, Integer> adjust(Map<String, Integer> rawScores, int parentScore) {
+        if (rawScores.isEmpty()) {
+            return Map.of();
+        }
+
         if (parentScore == 0) {
             Map<String, Integer> zeros = new LinkedHashMap<>();
             rawScores.keySet().forEach(k -> zeros.put(k, 0));
