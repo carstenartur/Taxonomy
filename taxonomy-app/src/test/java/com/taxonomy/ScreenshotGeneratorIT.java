@@ -1368,7 +1368,11 @@ class ScreenshotGeneratorIT {
         js("var btn = document.querySelector('.impact-view-btn[data-mode=\"swimlane\"]');" +
            "if (btn) btn.click();");
 
-        saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")), "20-architecture-view.png");
+        // Use full-page screenshot instead of element-only to capture the complete
+        // multi-layer architecture result (swimlane groups + summary) — the element
+        // screenshot was too narrow and only showed one or two swimlane groups.
+        js("document.getElementById('architectureViewPanel').scrollIntoView({behavior:'instant', block:'start'});");
+        saveScreenshot("20-architecture-view.png");
 
         // Reset: navigate back to analyze, switch back to list view and uncheck architecture view
         navigateToTab("analyze");
@@ -1958,8 +1962,15 @@ class ScreenshotGeneratorIT {
         js("var d = document.querySelector('#architectureViewContent .impact-details');" +
            "if (d) d.setAttribute('open', '');");
 
-        saveElementScreenshot(driver.findElement(By.id("architectureViewPanel")),
-                "38-architecture-view-detailed.png");
+        // Wait for the <details> element to be expanded and its content visible.
+        wait(5).until(ExpectedConditions.attributeContains(
+                By.cssSelector("#architectureViewContent .impact-details"), "open", ""));
+
+        // Scroll to the expanded detail tables (not the panel top) so the screenshot
+        // shows the element/relationship tables — visually distinct from screenshot 20.
+        js("var d = document.querySelector('#architectureViewContent .impact-details');" +
+           "if (d) d.scrollIntoView({behavior:'instant', block:'start'});");
+        saveScreenshot("38-architecture-view-detailed.png");
 
         // Reset: switch back to list view and uncheck architecture view
         navigateToTab("analyze");
