@@ -214,11 +214,7 @@ public class LlmRecordReplayService {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hashBytes = digest.digest(normalised.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder("sha256-");
-            for (byte b : hashBytes) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
+            return "sha256-" + HexFormat.of().formatHex(hashBytes);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
