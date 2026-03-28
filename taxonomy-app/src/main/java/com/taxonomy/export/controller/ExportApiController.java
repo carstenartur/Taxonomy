@@ -1,6 +1,7 @@
 package com.taxonomy.export.controller;
 
 import com.taxonomy.dto.SavedAnalysis;
+import com.taxonomy.export.MermaidLabels;
 import com.taxonomy.export.service.ExportFacade;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
@@ -75,7 +76,7 @@ public class ExportApiController {
 
     // ── Mermaid Diagram Export ────────────────────────────────────────────────
 
-    @Operation(summary = "Export Mermaid diagram", description = "Generates a Mermaid flowchart from a business requirement for use in Markdown documents", tags = {"Export"})
+    @Operation(summary = "Export Mermaid diagram", description = "Generates a Mermaid flowchart from a business requirement for use in Markdown documents. Accepts optional 'locale' field ('en' or 'de') to localize layer and relation labels.", tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "Mermaid text returned")
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
     @PostMapping("/diagram/mermaid")
@@ -85,11 +86,22 @@ public class ExportApiController {
             return ResponseEntity.badRequest().build();
         }
 
-        String mermaid = exportFacade.exportAsMermaid(businessText);
+        MermaidLabels labels = resolveMermaidLabels(body.get("locale"));
+        String mermaid = exportFacade.exportAsMermaid(businessText, labels);
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8")
                 .body(mermaid);
+    }
+
+    /**
+     * Resolves {@link MermaidLabels} from an optional locale parameter.
+     */
+    private MermaidLabels resolveMermaidLabels(Object localeObj) {
+        if (localeObj instanceof String locale && locale.startsWith("de")) {
+            return MermaidLabels.german();
+        }
+        return MermaidLabels.english();
     }
 
     // ── Structurizr DSL Export ────────────────────────────────────────────────

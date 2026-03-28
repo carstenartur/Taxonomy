@@ -319,20 +319,26 @@ curl -u admin:admin -X POST http://localhost:8080/api/diagram/visio \
 ```bash
 curl -u admin:admin -X POST http://localhost:8080/api/diagram/mermaid \
   -H "Content-Type: application/json" \
-  -d '{"scores": {"CP-1023": 92, "CO-1011": 88, "CR-1047": 81}}'
+  -d '{"businessText": "Integrated communication platform for hospital staff"}'
 ```
 
 </details>
 
-The response is a Mermaid flowchart code block that renders in GitHub, GitLab, Notion, and Confluence:
+The response is a Mermaid flowchart code block that renders in GitHub, GitLab, Notion, and Confluence. Pass `"locale": "de"` for German labels:
 
 ```mermaid
 graph TD
-    CP-1023["Communication and Information System Capabilities"]
-    CO-1011["Communications Access Services"]
-    CR-1047["Infrastructure Services"]
-    CP-1023 -->|supports| CO-1011
-    CO-1011 -->|realises| CR-1047
+    subgraph Capabilities["🔵 Capabilities"]
+        CP_1023(["Comm &amp; Info System Capabilities<br/>★ ⚠ 85%"])
+    end
+    subgraph Communications_Services["🔴 Communications"]
+        CO_1011(["Communications Access Services<br/>★ ⚠ 80%"])
+    end
+    subgraph Core_Services["🟠 Core Services"]
+        CR_1047(["Infrastructure Services<br/>★ 75%"])
+    end
+    CP_1023 -->|supports| CO_1011
+    CO_1011 -->|realizes| CR_1047
 ```
 
 ---

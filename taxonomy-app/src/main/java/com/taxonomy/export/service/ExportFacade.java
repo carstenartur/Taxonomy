@@ -12,6 +12,7 @@ import com.taxonomy.export.ArchiMateDiagramService;
 import com.taxonomy.export.ArchiMateXmlExporter;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.MermaidExportService;
+import com.taxonomy.export.MermaidLabels;
 import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
@@ -101,6 +102,19 @@ public class ExportFacade {
     public String exportAsMermaid(String businessText) {
         DiagramModel diagram = analyzeAndProject(businessText);
         return mermaidExportService.export(diagram);
+    }
+
+    /**
+     * Analyze business text, build an architecture view, and export as Mermaid text
+     * using the given localized labels.
+     *
+     * @param businessText the requirement text to analyze
+     * @param labels       locale-specific display labels for the Mermaid output
+     * @return the Mermaid flowchart text with localized labels
+     */
+    public String exportAsMermaid(String businessText, MermaidLabels labels) {
+        DiagramModel diagram = analyzeAndProject(businessText);
+        return mermaidExportService.export(diagram, labels);
     }
 
     /**

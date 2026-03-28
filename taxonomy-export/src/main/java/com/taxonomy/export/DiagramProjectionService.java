@@ -27,6 +27,23 @@ public class DiagramProjectionService {
     static final int MAX_EDGES = 40;
     static final double MIN_RELEVANCE = 0.35;
 
+    /**
+     * Maps two-letter taxonomy root codes to human-readable layer names.
+     * The architecture view pipeline stores root codes (e.g. "BP") in the
+     * {@code taxonomySheet} field; this mapping resolves them to the full
+     * English names expected by downstream exporters (Mermaid, Visio, etc.).
+     */
+    private static final Map<String, String> ROOT_CODE_TO_LAYER = Map.ofEntries(
+            Map.entry("CP", "Capabilities"),
+            Map.entry("BP", "Business Processes"),
+            Map.entry("BR", "Business Roles"),
+            Map.entry("CR", "Core Services"),
+            Map.entry("CI", "COI Services"),
+            Map.entry("CO", "Communications Services"),
+            Map.entry("UA", "User Applications"),
+            Map.entry("IP", "Information Products")
+    );
+
     private static final Map<String, Integer> LAYER_MAP = Map.ofEntries(
             Map.entry("Capabilities", 1),
             Map.entry("Business Processes", 2),
@@ -58,12 +75,13 @@ public class DiagramProjectionService {
             if (el.getRelevance() < MIN_RELEVANCE && !el.isAnchor()) {
                 continue;
             }
-            int layer = el.getTaxonomySheet() != null
-                    ? LAYER_MAP.getOrDefault(el.getTaxonomySheet(), 0) : 0;
+            String rawType = el.getTaxonomySheet() != null ? el.getTaxonomySheet() : "Unknown";
+            String type = ROOT_CODE_TO_LAYER.getOrDefault(rawType, rawType);
+            int layer = LAYER_MAP.getOrDefault(type, 0);
             nodes.add(new DiagramNode(
                     el.getNodeCode(),
                     el.getTitle() != null ? el.getTitle() : el.getNodeCode(),
-                    el.getTaxonomySheet() != null ? el.getTaxonomySheet() : "Unknown",
+                    type,
                     el.getRelevance(),
                     el.isAnchor(),
                     layer));
