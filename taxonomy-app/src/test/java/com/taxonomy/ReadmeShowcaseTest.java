@@ -302,18 +302,21 @@ class ReadmeShowcaseTest {
         showcase.append("| Scoring Path | Score | Role |\n");
         showcase.append("|---|---|---|\n");
 
-        // Collect the deepest leaf per distinct path (leaf = no scored children)
-        List<String> leafCodes = scores.entrySet().stream()
-                .filter(e -> e.getKey().contains("-"))
-                .map(Map.Entry::getKey)
-                .filter(code -> scores.entrySet().stream()
-                        .noneMatch(e -> {
-                            String other = e.getKey();
-                            if (other.equals(code) || !other.contains("-")) return false;
-                            // check if 'other' has 'code' on its path to root
-                            List<TaxonomyNode> otherPath = taxonomyService.getPathToRoot(other);
-                            return otherPath.stream().anyMatch(n -> n.getCode().equals(code));
-                        }))
+        // Cache all paths for scored non-root codes (avoids repeated DB lookups)
+        Map<String, List<TaxonomyNode>> pathCache = new LinkedHashMap<>();
+        for (String code : scores.keySet()) {
+            if (code.contains("-")) {
+                pathCache.put(code, taxonomyService.getPathToRoot(code));
+            }
+        }
+
+        // Collect the deepest leaf per distinct path (leaf = no scored children).
+        // A code is a leaf if no other scored code has it on its path.
+        List<String> leafCodes = pathCache.keySet().stream()
+                .filter(code -> pathCache.entrySet().stream()
+                        .noneMatch(e -> !e.getKey().equals(code)
+                                && e.getValue().stream()
+                                        .anyMatch(n -> n.getCode().equals(code))))
                 .toList();
 
         // Iterate roots in descending score order
@@ -344,7 +347,7 @@ class ReadmeShowcaseTest {
             // For each leaf, render the full path from root to leaf
             for (int li = 0; li < rootLeaves.size(); li++) {
                 String leafCode = rootLeaves.get(li);
-                List<TaxonomyNode> fullPath = taxonomyService.getPathToRoot(leafCode);
+                List<TaxonomyNode> fullPath = pathCache.get(leafCode);
                 boolean isLastLeaf = (li == rootLeaves.size() - 1);
 
                 // Skip root (already rendered); render intermediates + leaf
@@ -358,11 +361,9 @@ class ReadmeShowcaseTest {
                     // Determine if this intermediate was already shown by a previous leaf path
                     // (avoid duplicating shared ancestors)
                     if (!isLeaf && li > 0) {
-                        // Check if a previous leaf already rendered this node
                         boolean alreadyShown = false;
                         for (int prev = 0; prev < li; prev++) {
-                            List<TaxonomyNode> prevPath =
-                                    taxonomyService.getPathToRoot(rootLeaves.get(prev));
+                            List<TaxonomyNode> prevPath = pathCache.get(rootLeaves.get(prev));
                             if (prevPath.stream().anyMatch(pn -> pn.getCode().equals(n.getCode()))) {
                                 alreadyShown = true;
                                 break;
@@ -407,11 +408,13 @@ class ReadmeShowcaseTest {
                     ? rootToLayer.getOrDefault(el.getTaxonomySheet(), el.getTaxonomySheet())
                     : "—";
             String pct = String.format("%.0f%%", el.getRelevance() * 100);
-            // Build hierarchy path from the real taxonomy tree
+            // Build hierarchy path from the real taxonomy tree (use cache if available)
             String path;
             String code = el.getNodeCode();
             if (code.contains("-")) {
-                List<TaxonomyNode> fullPath = taxonomyService.getPathToRoot(code);
+                List<TaxonomyNode> fullPath = pathCache.containsKey(code)
+                        ? pathCache.get(code)
+                        : taxonomyService.getPathToRoot(code);
                 path = fullPath.stream()
                         .map(TaxonomyNode::getCode)
                         .collect(Collectors.joining(" > "));

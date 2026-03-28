@@ -3,6 +3,7 @@ package com.taxonomy.architecture.service;
 import com.taxonomy.dto.*;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.TaxonomyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -50,11 +51,14 @@ public class RequirementArchitectureViewService {
 
     private final RelevancePropagationService propagationService;
     private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyService taxonomyService;
 
     public RequirementArchitectureViewService(RelevancePropagationService propagationService,
-                                              TaxonomyNodeRepository nodeRepository) {
+                                              TaxonomyNodeRepository nodeRepository,
+                                              TaxonomyService taxonomyService) {
         this.propagationService = propagationService;
         this.nodeRepository = nodeRepository;
+        this.taxonomyService = taxonomyService;
     }
 
     /**
@@ -264,6 +268,8 @@ public class RequirementArchitectureViewService {
                 element.setTaxonomySheet(node.getTaxonomyRoot());
             }
 
+            element.setHierarchyPath(buildHierarchyPath(nodeCode));
+
             elements.add(element);
         }
 
@@ -407,6 +413,8 @@ public class RequirementArchitectureViewService {
                     element.setTaxonomySheet(root);
                 }
 
+                element.setHierarchyPath(buildHierarchyPath(leafCode));
+
                 elements.add(element);
                 includedCodes.add(leafCode);
                 added++;
@@ -421,5 +429,23 @@ public class RequirementArchitectureViewService {
         elements.sort(Comparator
                 .comparing(RequirementElementView::isAnchor).reversed()
                 .thenComparing(Comparator.comparingDouble(RequirementElementView::getRelevance).reversed()));
+    }
+
+    /**
+     * Builds a hierarchy path string for the given node code using the real
+     * taxonomy parent chain (e.g. "CP &gt; CP-1000 &gt; CP-1023").
+     * Returns just the code itself for root-level nodes.
+     */
+    private String buildHierarchyPath(String nodeCode) {
+        List<TaxonomyNode> path = taxonomyService.getPathToRoot(nodeCode);
+        if (path.isEmpty()) {
+            return nodeCode;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < path.size(); i++) {
+            if (i > 0) sb.append(" > ");
+            sb.append(path.get(i).getCode());
+        }
+        return sb.toString();
     }
 }

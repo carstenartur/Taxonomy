@@ -1149,13 +1149,8 @@
             elements.sort(function (a, b) { return b.relevance - a.relevance; });
             elements.forEach(function (el) {
                 var pct = (el.relevance * 100).toFixed(0);
-                // Build hierarchy path shown in tooltip
-                var path = el.nodeCode;
-                if (el.nodeCode.indexOf('-') !== -1) {
-                    var root = el.nodeCode.substring(0, 2);
-                    var rootCfg = LAYER_CONFIG[root];
-                    path = root + ' ' + (rootCfg ? rootCfg.label : root) + ' > ' + el.nodeCode;
-                }
+                // Use full hierarchy path from backend (e.g. "CP > CP-1000 > CP-1023")
+                var path = el.hierarchyPath || el.nodeCode;
                 html += '<span class="summary-layer-element" data-code="' + escapeHtml(el.nodeCode) +
                     '" title="' + escapeHtml(path + ' — ' + (el.title || '') + ' — ' + (el.includedBecause || '')) + '">';
                 html += escapeHtml(el.nodeCode);
