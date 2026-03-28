@@ -3,6 +3,7 @@ package com.taxonomy.architecture.service;
 import com.taxonomy.dto.*;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.TaxonomyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -50,11 +51,14 @@ public class RequirementArchitectureViewService {
 
     private final RelevancePropagationService propagationService;
     private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyService taxonomyService;
 
     public RequirementArchitectureViewService(RelevancePropagationService propagationService,
-                                              TaxonomyNodeRepository nodeRepository) {
+                                              TaxonomyNodeRepository nodeRepository,
+                                              TaxonomyService taxonomyService) {
         this.propagationService = propagationService;
         this.nodeRepository = nodeRepository;
+        this.taxonomyService = taxonomyService;
     }
 
     /**
@@ -112,10 +116,11 @@ public class RequirementArchitectureViewService {
         PropagationResult propagation = propagationService.propagate(anchorRelevances);
 
         // 4. Build included elements
-        List<RequirementElementView> elements = buildElements(propagation);
+        Map<String, String> pathCache = new HashMap<>();
+        List<RequirementElementView> elements = buildElements(propagation, pathCache);
 
         // 4b. Enrich with top-scoring leaf nodes so each layer shows concrete elements
-        enrichWithLeafNodes(elements, scores);
+        enrichWithLeafNodes(elements, scores, pathCache);
 
         // 5. Build included relationships
         List<RequirementRelationshipView> relationships = buildRelationships(propagation);
@@ -132,8 +137,8 @@ public class RequirementArchitectureViewService {
             for (RelationHypothesisDto hyp : provisionalRelations) {
                 // Ensure both endpoints are in the included elements set
                 // (they may not be if one node scored below the anchor threshold)
-                ensureElement(elements, includedCodes, hyp.getSourceCode(), hyp.getSourceName(), scores);
-                ensureElement(elements, includedCodes, hyp.getTargetCode(), hyp.getTargetName(), scores);
+                ensureElement(elements, includedCodes, hyp.getSourceCode(), hyp.getSourceName(), scores, pathCache);
+                ensureElement(elements, includedCodes, hyp.getTargetCode(), hyp.getTargetName(), scores, pathCache);
 
                 RequirementRelationshipView rv = new RequirementRelationshipView();
                 rv.setSourceCode(hyp.getSourceCode());
@@ -240,7 +245,8 @@ public class RequirementArchitectureViewService {
         return anchors;
     }
 
-    private List<RequirementElementView> buildElements(PropagationResult propagation) {
+    private List<RequirementElementView> buildElements(PropagationResult propagation,
+                                                       Map<String, String> pathCache) {
         List<RequirementElementView> elements = new ArrayList<>();
 
         for (Map.Entry<String, Double> entry : propagation.getRelevanceMap().entrySet()) {
@@ -263,6 +269,8 @@ public class RequirementArchitectureViewService {
                 element.setTitle(node.getNameEn());
                 element.setTaxonomySheet(node.getTaxonomyRoot());
             }
+
+            element.setHierarchyPath(buildHierarchyPath(nodeCode, pathCache));
 
             elements.add(element);
         }
@@ -317,7 +325,8 @@ public class RequirementArchitectureViewService {
      * Used when provisional relations reference nodes not already included by propagation.
      */
     private void ensureElement(List<RequirementElementView> elements, Set<String> includedCodes,
-                               String nodeCode, String nodeName, Map<String, Integer> scores) {
+                               String nodeCode, String nodeName, Map<String, Integer> scores,
+                               Map<String, String> pathCache) {
         if (includedCodes.contains(nodeCode)) {
             return;
         }
@@ -338,6 +347,8 @@ public class RequirementArchitectureViewService {
             element.setTaxonomySheet(node.getTaxonomyRoot());
         }
 
+        element.setHierarchyPath(buildHierarchyPath(nodeCode, pathCache));
+
         elements.add(element);
         includedCodes.add(nodeCode);
     }
@@ -351,7 +362,8 @@ public class RequirementArchitectureViewService {
      * for every taxonomy root that already has at least one element in the view.
      * This gives each architecture layer concrete, named substance.
      */
-    private void enrichWithLeafNodes(List<RequirementElementView> elements, Map<String, Integer> scores) {
+    private void enrichWithLeafNodes(List<RequirementElementView> elements, Map<String, Integer> scores,
+                                      Map<String, String> pathCache) {
         Set<String> includedCodes = elements.stream()
                 .map(RequirementElementView::getNodeCode)
                 .collect(Collectors.toCollection(HashSet::new));
@@ -407,6 +419,8 @@ public class RequirementArchitectureViewService {
                     element.setTaxonomySheet(root);
                 }
 
+                element.setHierarchyPath(buildHierarchyPath(leafCode, pathCache));
+
                 elements.add(element);
                 includedCodes.add(leafCode);
                 added++;
@@ -421,5 +435,26 @@ public class RequirementArchitectureViewService {
         elements.sort(Comparator
                 .comparing(RequirementElementView::isAnchor).reversed()
                 .thenComparing(Comparator.comparingDouble(RequirementElementView::getRelevance).reversed()));
+    }
+
+    /**
+     * Builds a hierarchy path string for the given node code using the real
+     * taxonomy parent chain (e.g. "CP &gt; CP-1000 &gt; CP-1023").
+     * Results are cached in {@code pathCache} to avoid repeated DB lookups
+     * within the same request.
+     */
+    private String buildHierarchyPath(String nodeCode, Map<String, String> pathCache) {
+        return pathCache.computeIfAbsent(nodeCode, code -> {
+            List<TaxonomyNode> path = taxonomyService.getPathToRoot(code);
+            if (path.isEmpty()) {
+                return code;
+            }
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < path.size(); i++) {
+                if (i > 0) sb.append(" > ");
+                sb.append(path.get(i).getCode());
+            }
+            return sb.toString();
+        });
     }
 }

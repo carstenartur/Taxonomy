@@ -3,8 +3,7 @@ package com.taxonomy;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.ObjectMapper;
 import com.taxonomy.dto.SavedAnalysis;
-import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.HierarchyScoreDistributor;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
@@ -17,7 +16,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.*;
-import java.util.stream.IntStream;
 
 /**
  * Generates the three mock-score JSON files under {@code src/main/resources/mock-scores/}.
@@ -27,6 +25,10 @@ import java.util.stream.IntStream;
  * parent's score.  This satisfies the correct scoring model: each root taxonomy is rated
  * independently on a 0–100 scale ("how well does this taxonomy cover the requirement?") and
  * the score is then subdivided down the hierarchy.
+ *
+ * <p>The actual distribution logic lives in {@link HierarchyScoreDistributor}, which
+ * walks the taxonomy tree via {@code TaxonomyService} and distributes each parent's
+ * score budget across its children deterministically.
  *
  * <p><b>Opt-in:</b> only runs when the {@code generateMockScores} system property is set.
  * <pre>{@code
@@ -42,7 +44,7 @@ import java.util.stream.IntStream;
 class MockScoreGeneratorIT {
 
     @Autowired
-    private TaxonomyNodeRepository repository;
+    private HierarchyScoreDistributor distributor;
 
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
@@ -158,133 +160,29 @@ class MockScoreGeneratorIT {
     // ── Core generation logic ─────────────────────────────────────────────────
 
     /**
-     * Loads the full taxonomy, computes hierarchical scores for the given root-score map,
-     * and writes a {@link SavedAnalysis} JSON file with scores for <em>all</em> nodes.
+     * Distributes root scores across the entire taxonomy hierarchy using
+     * {@link HierarchyScoreDistributor} and writes the result as a JSON file.
      */
     private void generateAndSave(String requirement,
                                  Map<String, Integer> rootScores,
                                  Map<String, String> rootReasons,
                                  String filename) throws IOException {
 
-        List<TaxonomyNode> allNodes = repository.findAll();
-
-        // Build parent → sorted-children map for deterministic traversal
-        Map<String, List<TaxonomyNode>> childrenMap = buildChildrenMap(allNodes);
-
-        // Collect root nodes (level 0) sorted by code
-        List<TaxonomyNode> roots = allNodes.stream()
-                .filter(n -> n.getLevel() == 0)
-                .sorted(Comparator.comparing(TaxonomyNode::getCode))
-                .toList();
-
-        // Output maps (insertion-ordered: roots first, then children breadth-first)
-        Map<String, Integer> scores  = new LinkedHashMap<>();
-        Map<String, String>  reasons = new LinkedHashMap<>();
-
-        for (TaxonomyNode root : roots) {
-            int rootScore = rootScores.getOrDefault(root.getCode(), 0);
-            scores.put(root.getCode(), rootScore);
-            reasons.put(root.getCode(), rootReasons.getOrDefault(root.getCode(), ""));
-            distributeScores(root.getCode(), rootScore, childrenMap, scores, reasons, rootReasons);
-        }
+        HierarchyScoreDistributor.DistributionResult result =
+                distributor.distribute(rootScores, rootReasons);
 
         SavedAnalysis analysis = new SavedAnalysis();
         analysis.setVersion(1);
         analysis.setRequirement(requirement);
         analysis.setTimestamp(Instant.now().toString());
         analysis.setProvider("MOCK");
-        analysis.setScores(scores);
-        analysis.setReasons(reasons);
+        analysis.setScores(result.scores());
+        analysis.setReasons(result.reasons());
 
         Path output = Path.of("src/main/resources/mock-scores/" + filename);
         MAPPER.writerWithDefaultPrettyPrinter().writeValue(output.toFile(), analysis);
 
         System.out.printf("[MockScoreGenerator] %s: %d nodes written to %s%n",
-                filename, scores.size(), output);
-    }
-
-    /**
-     * Recursively distributes {@code parentScore} across the children of {@code parentCode},
-     * guaranteeing that the sum of all child scores equals {@code parentScore}.
-     *
-     * <p>Each child's weight is a deterministic positive integer derived from its node code
-     * (using {@code (Math.abs(code.hashCode()) % 100) + 1}), so the distribution is stable
-     * across runs but varies across sibling nodes.
-     */
-    private void distributeScores(String parentCode,
-                                  int parentScore,
-                                  Map<String, List<TaxonomyNode>> childrenMap,
-                                  Map<String, Integer> scores,
-                                  Map<String, String> reasons,
-                                  Map<String, String> rootReasonsByRoot) {
-
-        List<TaxonomyNode> children = childrenMap.getOrDefault(parentCode, List.of());
-        if (children.isEmpty()) {
-            return;
-        }
-
-        if (parentScore == 0) {
-            // All children get 0 — the taxonomy is not relevant for this requirement
-            for (TaxonomyNode child : children) {
-                scores.put(child.getCode(), 0);
-                String root = child.getTaxonomyRoot() != null ? child.getTaxonomyRoot() : "";
-                reasons.put(child.getCode(), rootReasonsByRoot.getOrDefault(root, ""));
-                distributeScores(child.getCode(), 0, childrenMap, scores, reasons, rootReasonsByRoot);
-            }
-            return;
-        }
-
-        // Compute deterministic weights from each child's node code
-        int[] weights = children.stream()
-                .mapToInt(c -> (Math.abs(c.getCode().hashCode()) % 100) + 1)
-                .toArray();
-        int totalWeight = Arrays.stream(weights).sum();
-
-        // Floor-based proportional distribution
-        int[] childScores = new int[children.size()];
-        double[] fractions = new double[children.size()];
-        int distributed = 0;
-        for (int i = 0; i < children.size(); i++) {
-            double raw = (double) parentScore * weights[i] / totalWeight;
-            childScores[i] = (int) raw;           // floor
-            fractions[i]   = raw - childScores[i]; // fractional part
-            distributed   += childScores[i];
-        }
-
-        // Distribute remainder (parentScore - floor_sum) to nodes with largest fractions
-        int remainder = parentScore - distributed;
-        Integer[] byFraction = IntStream.range(0, children.size())
-                .boxed()
-                .sorted((a, b) -> Double.compare(fractions[b], fractions[a]))
-                .toArray(Integer[]::new);
-        for (int i = 0; i < remainder; i++) {
-            childScores[byFraction[i]]++;
-        }
-
-        // Store scores and recurse
-        for (int i = 0; i < children.size(); i++) {
-            TaxonomyNode child = children.get(i);
-            scores.put(child.getCode(), childScores[i]);
-            String root = child.getTaxonomyRoot() != null ? child.getTaxonomyRoot() : "";
-            reasons.put(child.getCode(), rootReasonsByRoot.getOrDefault(root, ""));
-            distributeScores(child.getCode(), childScores[i], childrenMap, scores, reasons, rootReasonsByRoot);
-        }
-    }
-
-    /**
-     * Builds a parent-code → sorted-children list map from all loaded nodes.
-     * Children are sorted by code for deterministic traversal order.
-     */
-    private Map<String, List<TaxonomyNode>> buildChildrenMap(List<TaxonomyNode> allNodes) {
-        Map<String, List<TaxonomyNode>> map = new HashMap<>();
-        for (TaxonomyNode node : allNodes) {
-            if (node.getParentCode() != null) {
-                map.computeIfAbsent(node.getParentCode(), k -> new ArrayList<>())
-                   .add(node);
-            }
-        }
-        // Sort each child list by code for determinism
-        map.values().forEach(list -> list.sort(Comparator.comparing(TaxonomyNode::getCode)));
-        return map;
+                filename, result.scores().size(), output);
     }
 }

@@ -187,6 +187,17 @@
     font-size: 0.7em;
 }
 
+/* ── Scoring-path highlight ────────────────────────────────── */
+/* Applied to intermediate nodes whose descendants have scores,
+   making the root → intermediate → leaf narrowing visible.     */
+.tax-scoring-path > .tax-node-header {
+    border-left: 3px solid rgba(0, 128, 0, 0.55);
+}
+
+.tax-scoring-path > .tax-children {
+    border-left: 2px solid rgba(0, 128, 0, 0.35);
+}
+
 /* ── LLM Communication Log ───────────────────────────────── */
 #llmCommLogContent .llm-log-entry {
     border-bottom: 1px solid #dee2e6;

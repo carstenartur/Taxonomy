@@ -659,6 +659,28 @@ public class TaxonomyService {
         return List.copyOf(path);
     }
 
+    /**
+     * Loads all taxonomy nodes once and builds a parent-code → sorted-children map.
+     * Useful for bulk operations that need to walk the full hierarchy without
+     * incurring N+1 per-node queries.
+     *
+     * @return map from parent code to sorted list of children
+     */
+    @Transactional(readOnly = true)
+    public Map<String, List<TaxonomyNode>> getChildrenMap() {
+        List<TaxonomyNode> allNodes = repository.findAll();
+        Map<String, List<TaxonomyNode>> map = new HashMap<>();
+        for (TaxonomyNode node : allNodes) {
+            String parentCode = node.getParentCode();
+            if (parentCode != null && !parentCode.isBlank()) {
+                map.computeIfAbsent(parentCode, k -> new ArrayList<>()).add(node);
+            }
+        }
+        // Sort each child list by code for determinism
+        map.values().forEach(list -> list.sort(Comparator.comparing(TaxonomyNode::getCode)));
+        return map;
+    }
+
     public TaxonomyNodeDto applyScores(TaxonomyNodeDto dto, Map<String, Integer> scores) {
         if (scores.containsKey(dto.getCode())) {
             dto.setMatchPercentage(scores.get(dto.getCode()));

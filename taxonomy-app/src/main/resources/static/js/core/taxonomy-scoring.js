@@ -537,6 +537,53 @@
                 }
             }
         });
+        highlightScoringPaths(scores);
+    }
+
+    /**
+     * Highlight the scoring path from root through intermediate nodes to
+     * scored leaves.  Any ancestor of a scored node that itself has a score
+     * receives the CSS class {@code tax-scoring-path}, which renders a
+     * coloured left-border so readers can trace the hierarchical narrowing.
+     */
+    function highlightScoringPaths(scores) {
+        // Remove previous highlights
+        document.querySelectorAll('.tax-scoring-path').forEach(function (el) {
+            el.classList.remove('tax-scoring-path');
+        });
+        if (!scores) return;
+
+        // Build a local index of taxonomy nodes by data-code to avoid
+        // repeated global querySelector calls per scored entry.
+        var codeToNode = {};
+        document.querySelectorAll('.tax-node[data-code]').forEach(function (node) {
+            var code = node.dataset.code;
+            if (code) {
+                codeToNode[code] = node;
+            }
+        });
+
+        // For every scored leaf (code containing '-'), walk up to root and
+        // mark each ancestor that also carries a score.
+        Object.entries(scores).forEach(function (entry) {
+            var code = entry[0];
+            var pct  = entry[1];
+            if (pct <= 0 || !code.includes('-')) return;
+
+            var el = codeToNode[code];
+            if (!el) return;
+
+            var parent = el.parentElement;
+            while (parent) {
+                if (parent.classList.contains('tax-node')) {
+                    var parentCode = parent.dataset.code;
+                    if (parentCode && scores[parentCode] > 0) {
+                        parent.classList.add('tax-scoring-path');
+                    }
+                }
+                parent = parent.parentElement;
+            }
+        });
     }
 
     // ── Leaf Justification ────────────────────────────────────────────────────
@@ -778,14 +825,16 @@
             if (hasElements) {
                 html += '<h6 class="mb-1 mt-2">Included Elements</h6>';
                 html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
-                html += '<thead><tr><th>Code</th><th>Title</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead><tbody>';
+                html += '<thead><tr><th>Code</th><th>Title</th><th>Path</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead><tbody>';
                 elements.forEach(e => {
                     const rowClass = e.anchor ? 'table-success' : '';
                     const sheetCfg = LAYER_CONFIG[e.taxonomySheet];
                     const sheetLabel = sheetCfg ? sheetCfg.label : (e.taxonomySheet || '');
+                    const pathLabel = e.hierarchyPath || e.nodeCode;
                     html += '<tr class="' + rowClass + '">' +
                         '<td>' + escapeHtml(e.nodeCode) + '</td>' +
                         '<td>' + escapeHtml(e.title || '') + '</td>' +
+                        '<td>' + escapeHtml(pathLabel) + '</td>' +
                         '<td>' + escapeHtml(sheetLabel) + '</td>' +
                         '<td>' + (e.relevance * 100).toFixed(1) + '%</td>' +
                         '<td>' + e.hopDistance + '</td>' +
@@ -1112,8 +1161,12 @@
             elements.sort(function (a, b) { return b.relevance - a.relevance; });
             elements.forEach(function (el) {
                 var pct = (el.relevance * 100).toFixed(0);
+                // Use full hierarchy path from backend (e.g. "CP > CP-1000 > CP-1023")
+                var path = el.hierarchyPath || el.nodeCode;
+                var titleParts = [path, el.title || '', el.includedBecause || '']
+                    .filter(function (p) { return p.length > 0; });
                 html += '<span class="summary-layer-element" data-code="' + escapeHtml(el.nodeCode) +
-                    '" title="' + escapeHtml(el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '')) + '">';
+                    '" title="' + escapeHtml(titleParts.join(' — ')) + '">';
                 html += escapeHtml(el.nodeCode);
                 if (el.title) html += ' \u2013 ' + escapeHtml(el.title.substring(0, 50));
                 html += ' <span class="summary-pct">[' + pct + '%]</span>';
@@ -1163,6 +1216,7 @@
         applyScoreToNode: applyScoreToNode,
         markNodeAsEvaluating: markNodeAsEvaluating,
         expandMatched: expandMatched,
+        highlightScoringPaths: highlightScoringPaths,
         expandNodeByCode: expandNodeByCode,
         setAnalyzing: setAnalyzing,
         clearAnalysisLog: clearAnalysisLog,
