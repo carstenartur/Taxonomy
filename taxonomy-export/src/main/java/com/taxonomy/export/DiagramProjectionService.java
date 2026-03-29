@@ -88,8 +88,8 @@ public class DiagramProjectionService {
                     layer));
         }
 
-        // Sort: impact-selected nodes first, then anchors, then by relevance descending.
-        // This ensures the most semantically valuable nodes survive the MAX_NODES limit.
+        // Sort: anchors first, then by relevance descending — impact-selected nodes
+        // naturally rank high due to their composite scores from ArchitectureImpactSelector.
         nodes.sort(Comparator
                 .comparing((DiagramNode n) -> n.anchor() ? 0 : 1)
                 .thenComparing(Comparator.comparingDouble(DiagramNode::relevance).reversed()));

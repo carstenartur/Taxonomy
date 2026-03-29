@@ -852,7 +852,7 @@
                 html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
                 html += '<thead><tr><th>Code</th><th>Title</th><th>' + t('archview.col.scoring.path') + '</th><th>Sheet</th><th>Relevance</th><th>' + t('archview.col.llm.score') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.col.impact') + '</th></tr></thead><tbody>';
                 elements.forEach(e => {
-                    var rowClass = e.selectedForImpact ? 'table-warning' : (e.anchor ? 'table-success' : '');
+                    const rowClass = e.selectedForImpact ? 'table-warning' : (e.anchor ? 'table-success' : '');
                     const sheetCfg = LAYER_CONFIG[e.taxonomySheet];
                     const sheetLabel = sheetCfg ? sheetCfg.label : (e.taxonomySheet || '');
                     const pathLabel = e.scoringPath || e.hierarchyPath || e.nodeCode;
@@ -885,7 +885,8 @@
                     html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
                     html += '<thead><tr><th>' + t('archview.impact.col.source') + '</th><th>\u2192</th><th>' + t('archview.impact.col.target') + '</th><th>' + t('archview.impact.col.type') + '</th><th>' + t('archview.impact.col.relevance') + '</th><th>' + t('archview.col.confidence') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.col.derivation') + '</th></tr></thead><tbody>';
                     impactRels.forEach(r => {
-                        var relOriginLabel = r.origin ? '<span class="badge bg-' + originBadgeColor(r.origin) + ' text-dark">' + escapeHtml(r.origin) + '</span>' : '';
+                        const relOriginKey = r.origin ? 'relation.origin.' + r.origin.replace(/_/g, '.').toLowerCase() : '';
+                        const relOriginLabel = relOriginKey ? '<span class="badge bg-' + originBadgeColor(r.origin) + ' text-dark">' + escapeHtml(t(relOriginKey)) + '</span>' : '';
                         html += '<tr class="table-info">' +
                             '<td>' + escapeHtml(r.sourceCode) + '</td>' +
                             '<td>\u2192</td>' +
@@ -905,7 +906,8 @@
                     html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
                     html += '<thead><tr><th>' + t('archview.trace.col.source') + '</th><th>\u2192</th><th>' + t('archview.trace.col.target') + '</th><th>' + t('archview.trace.col.type') + '</th><th>' + t('archview.trace.col.relevance') + '</th><th>' + t('archview.trace.col.hops') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.trace.col.reason') + '</th></tr></thead><tbody>';
                     traceRels.forEach(r => {
-                        var traceOriginLabel = r.origin ? '<span class="badge bg-' + originBadgeColor(r.origin) + ' text-dark">' + escapeHtml(r.origin) + '</span>' : '';
+                        const traceOriginKey = r.origin ? 'relation.origin.' + r.origin.replace(/_/g, '.').toLowerCase() : '';
+                        const traceOriginLabel = traceOriginKey ? '<span class="badge bg-' + originBadgeColor(r.origin) + ' text-dark">' + escapeHtml(t(traceOriginKey)) + '</span>' : '';
                         html += '<tr>' +
                             '<td>' + escapeHtml(r.sourceCode) + '</td>' +
                             '<td>\u2192</td>' +
