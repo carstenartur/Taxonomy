@@ -344,10 +344,17 @@ class ScreenshotGeneratorIT {
         app.start();
 
         ChromeOptions chromeOptions = new ChromeOptions();
-        // Recent Chrome versions (145+) enable HTTPS-First mode by default,
-        // which upgrades http:// URLs to https://.  The app container only
-        // speaks plain HTTP so the upgrade causes ERR_SSL_PROTOCOL_ERROR.
-        chromeOptions.addArguments("--disable-features=HttpsUpgrades");
+        // Chrome 145+ aggressively upgrades http:// → https:// (HTTPS-First Mode).
+        // The app container only speaks plain HTTP, causing ERR_SSL_PROTOCOL_ERROR.
+        // Disable all known HTTPS-upgrade feature variants across Chrome versions
+        // and explicitly mark the plain-HTTP app origin as "secure".
+        chromeOptions.addArguments(
+                "--disable-features=HttpsUpgrades,HttpsFirstModeV2,"
+                        + "HttpsFirstBalancedMode,HttpsFirstModeForTypedNavigations,"
+                        + "HttpsFirstModeInterstitial",
+                "--unsafely-treat-insecure-origin-as-secure=http://app:8080",
+                "--ignore-certificate-errors",
+                "--allow-running-insecure-content");
         chrome = new BrowserWebDriverContainer<>()
                 .withNetwork(network)
                 .withCapabilities(chromeOptions);
