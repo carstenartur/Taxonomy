@@ -307,6 +307,22 @@ class DiagramProjectionServiceTest {
         assertTrue(nodeIds.contains("CO-1000"), "CO-1000 should be kept (only node in CO)");
     }
 
+    @Test
+    void scaffoldingKeptWhenConcreteNodesBelowRelevanceThreshold() {
+        var view = new RequirementArchitectureView();
+        // Scaffolding node above MIN_RELEVANCE, concrete node below it and not anchor/impact
+        var scaffolding = createElement("CP-1000", "Cap container", "CP", 0.9, false, 1);
+        var lowRelevanceConcrete = createElement("CP-1023", "Messaging", "CP", 0.1, false, 3);
+        view.setIncludedElements(List.of(scaffolding, lowRelevanceConcrete));
+
+        DiagramModel result = service.project(view, "Test");
+
+        // CP-1023 filtered out by MIN_RELEVANCE, so CP-1000 should be kept as fallback
+        var nodeIds = result.nodes().stream().map(DiagramNode::id).toList();
+        assertTrue(nodeIds.contains("CP-1000"), "CP-1000 should be kept when concrete nodes are filtered out");
+        assertFalse(nodeIds.contains("CP-1023"), "CP-1023 below MIN_RELEVANCE should be excluded");
+    }
+
     // --- helper methods ---
 
     private RequirementElementView createElement(String code, String title,

@@ -70,9 +70,15 @@ public class DiagramProjectionService {
                     new DiagramLayout("LR", true));
         }
 
-        // Pre-compute which categories have concrete (depth > 1) elements
+        // First pass: collect elements that pass the inclusion filter so we can
+        // determine which categories have concrete (depth > 1) nodes *after*
+        // filtering.  Without this, a scaffolding node could be suppressed even
+        // when the only concrete nodes in its category are below MIN_RELEVANCE.
         var categoriesWithConcreteNodes = new java.util.HashSet<String>();
         for (RequirementElementView el : view.getIncludedElements()) {
+            if (el.getRelevance() < MIN_RELEVANCE && !el.isAnchor() && !el.isSelectedForImpact()) {
+                continue;
+            }
             if (el.getTaxonomyDepth() > 1 && el.getTaxonomySheet() != null) {
                 categoriesWithConcreteNodes.add(el.getTaxonomySheet());
             }

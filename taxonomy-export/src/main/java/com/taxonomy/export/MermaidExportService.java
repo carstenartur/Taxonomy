@@ -131,10 +131,12 @@ public class MermaidExportService {
      * <p>Differences from {@link #export(DiagramModel, MermaidLabels)}:
      * <ul>
      *   <li>Uses top-down (TD) layout for multi-layer readability</li>
-     *   <li>Suppresses root-level nodes (two-letter codes like "CP") when
-     *       concrete leaf nodes exist in the same layer</li>
-     *   <li>Re-routes edges from suppressed root nodes to the highest-relevance
-     *       leaf node in the same layer, so cross-layer relations remain visible</li>
+     *   <li>Suppresses taxonomy scaffolding — both root-level nodes (two-letter
+     *       codes like "CP") and first-level container nodes matching the
+     *       {@code XX-1000} pattern (e.g.&nbsp;"CP-1000") — when concrete leaf
+     *       nodes exist in the same layer.  Edges from suppressed nodes are
+     *       re-routed to the highest-relevance leaf node in that layer so
+     *       cross-layer relations remain visible.</li>
      *   <li>Marks high-relevance nodes (≥ 80%) as hotspots with a visual marker</li>
      *   <li>Uses display-friendly relation labels (e.g. "realizes" instead of "REALIZES")</li>
      *   <li>Uses abbreviated subgraph titles with emoji for quick visual scanning</li>
@@ -378,6 +380,18 @@ public class MermaidExportService {
      * suppressed in showcase/impact views when concrete leaf nodes are available.
      */
     static boolean isScaffoldingId(String id) {
-        return id != null && id.matches("[A-Z]{2}-1000");
+        if (id == null || id.length() != 7) {
+            return false;
+        }
+        // Expect pattern [A-Z]{2}-1000
+        if (id.charAt(2) != '-') {
+            return false;
+        }
+        char c0 = id.charAt(0);
+        char c1 = id.charAt(1);
+        if (c0 < 'A' || c0 > 'Z' || c1 < 'A' || c1 > 'Z') {
+            return false;
+        }
+        return id.endsWith("-1000");
     }
 }

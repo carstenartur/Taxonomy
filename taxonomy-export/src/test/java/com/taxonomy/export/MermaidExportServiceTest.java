@@ -520,4 +520,22 @@ class MermaidExportServiceTest {
         assertFalse(MermaidExportService.isScaffoldingId("CP"), "Root code is not scaffolding (separate check)");
         assertFalse(MermaidExportService.isScaffoldingId(null), "null is not scaffolding");
     }
+
+    @Test
+    void showcaseScaffoldingSuppressionWithGermanLabels() {
+        // Verify scaffolding suppression works correctly with German i18n labels
+        var scaffolding = new DiagramNode("CR-1000", "Core Services", "Core Services", 0.9, true, 3);
+        var leaf = new DiagramNode("CR-1047", "Infrastructure Services", "Core Services", 0.85, true, 3);
+        var edge = new DiagramEdge("e1", "CR-1000", "CR-1047", "REALIZES", 0.7);
+        var model = new DiagramModel("Test", List.of(scaffolding, leaf), List.of(edge),
+                new DiagramLayout("LR", true));
+
+        String result = service.exportShowcase(model, MermaidLabels.german());
+
+        // Scaffolding CR-1000 suppressed, leaf CR-1047 kept
+        assertTrue(result.contains("CR_1047"), "Leaf node should be present with German labels");
+        assertFalse(result.contains("CR_1000"), "Scaffolding CR-1000 should be suppressed with German labels");
+        // German layer label should be used
+        assertTrue(result.contains("Kerndienste"), "German showcase layer label should be used");
+    }
 }
