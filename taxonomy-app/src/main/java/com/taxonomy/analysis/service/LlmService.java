@@ -5,17 +5,10 @@ import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.preferences.PreferencesService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
-import org.springframework.http.*;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.client.RestTemplate;
 
 import com.taxonomy.dto.SavedAnalysis;
 
@@ -34,7 +27,9 @@ import com.taxonomy.shared.service.PromptTemplateService;
  * Supports Gemini, OpenAI, DeepSeek, Qwen, Llama, and Mistral.
  *
  * <p>Provider selection and configuration is delegated to {@link LlmProviderConfig}.
- * This class focuses on analysis orchestration and HTTP call logic.
+ * HTTP call logic and per-provider rate-limiting are delegated to {@link LlmGateway}
+ * implementations, accessed via {@link LlmGatewayRegistry}.
+ * This class focuses on analysis orchestration, prompt construction, and response parsing.
  */
 @Service
 public class LlmService {
@@ -65,30 +60,14 @@ public class LlmService {
     /** Maximum number of cross-reference nodes included in a leaf justification prompt. */
     private static final int MAX_CROSS_REFERENCES = 5;
 
-    /**
-     * Buffer added to the sleep duration in the outgoing RPM throttle (milliseconds).
-     * Accounts for minor clock drift so the oldest timestamp is guaranteed to have
-     * left the 60-second window before the next call is made.
-     */
-    private static final long THROTTLE_BUFFER_MS = 50L;
-
     private final LlmProviderConfig providerConfig;
-    private final RestTemplate restTemplate;
+    private final LlmGatewayRegistry gatewayRegistry;
     private final ObjectMapper objectMapper;
     private final TaxonomyService taxonomyService;
     private final PromptTemplateService promptTemplateService;
     private final LocalEmbeddingService localEmbeddingService;
     private final SavedAnalysisService savedAnalysisService;
     private final LlmResponseParser responseParser;
-
-    /** Optional — injected lazily to avoid circular dependencies. May be {@code null}. */
-    @Autowired(required = false)
-    @Lazy
-    private PreferencesService preferencesService;
-
-    /** Optional — injected lazily so the timeout can be updated at runtime. May be {@code null}. */
-    @Autowired(required = false)
-    private SimpleClientHttpRequestFactory llmRequestFactory;
 
     /** Optional — LLM record/replay service for test recordings. May be {@code null}. */
     @Autowired(required = false)
@@ -101,10 +80,6 @@ public class LlmService {
     private boolean isReplayActive() {
         return recordReplayService != null && recordReplayService.isReplayMode();
     }
-
-    // ── Outgoing RPM throttle (sliding window) ────────────────────────────────
-    /** Timestamps (ms) of the most recent outgoing LLM API calls, kept in a FIFO queue. */
-    private final ArrayDeque<Long> callTimestamps = new ArrayDeque<>();
 
     // ── Cached mock data loaded from classpath ────────────────────────────────
     private volatile SavedAnalysis cachedMockAnalysis = null;
@@ -144,14 +119,14 @@ public class LlmService {
     private volatile String  lastError        = null;
 
     public LlmService(LlmProviderConfig providerConfig,
-                      RestTemplate restTemplate,
+                      LlmGatewayRegistry gatewayRegistry,
                       ObjectMapper objectMapper,
                       TaxonomyService taxonomyService,
                       PromptTemplateService promptTemplateService,
                       LocalEmbeddingService localEmbeddingService,
                       SavedAnalysisService savedAnalysisService) {
         this.providerConfig = providerConfig;
-        this.restTemplate = restTemplate;
+        this.gatewayRegistry = gatewayRegistry;
         this.objectMapper = objectMapper;
         this.taxonomyService = taxonomyService;
         this.promptTemplateService = promptTemplateService;
@@ -572,13 +547,9 @@ public class LlmService {
             log.debug("Full LLM prompt:\n{}", prompt);
 
             String rawText;
-            if (provider == LlmProvider.GEMINI) {
-                String body = callGeminiHttpBody(prompt, apiKey);
-                rawText = body != null ? responseParser.extractGeminiText(body) : null;
-            } else {
-                String body = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
-                rawText = body != null ? responseParser.extractOpenAiText(body) : null;
-            }
+            LlmGateway gateway = gatewayRegistry.getGateway(provider);
+            String body = gateway.sendHttpRequest(prompt, apiKey);
+            rawText = body != null ? gateway.extractResponseText(body) : null;
 
             if (rawText == null) {
                 return ScoreParseResult.empty(nodes);
@@ -640,10 +611,16 @@ public class LlmService {
                 provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));
         log.debug("Full LLM prompt:\n{}", prompt);
 
-        if (provider == LlmProvider.GEMINI) {
-            return callGemini(prompt, apiKey, nodes, parentScore);
-        } else {
-            return callOpenAiCompatible(prompt, apiKey, provider, nodes, parentScore);
+        LlmGateway gateway = gatewayRegistry.getGateway(provider);
+        String apiResponseBody = gateway.sendHttpRequest(prompt, apiKey);
+        if (apiResponseBody == null) return responseParser.zeroScores(nodes);
+        String rawText = gateway.extractResponseText(apiResponseBody);
+        if (rawText == null) return responseParser.zeroScores(nodes);
+        try {
+            return responseParser.parseScoreParseResult(rawText, nodes, parentScore).scores();
+        } catch (Exception e) {
+            log.error("Failed to parse LLM response in callLlmPropagating", e);
+            return responseParser.zeroScores(nodes);
         }
     }
 
@@ -721,12 +698,8 @@ public class LlmService {
         log.debug("Full LLM prompt:\n{}", prompt);
 
         long start = System.currentTimeMillis();
-        String apiResponseBody;
-        if (provider == LlmProvider.GEMINI) {
-            apiResponseBody = callGeminiHttpBody(prompt, apiKey);
-        } else {
-            apiResponseBody = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
-        }
+        LlmGateway gateway = gatewayRegistry.getGateway(provider);
+        String apiResponseBody = gateway.sendHttpRequest(prompt, apiKey);
         detail.setDurationMs(System.currentTimeMillis() - start);
 
         if (apiResponseBody == null) {
@@ -738,9 +711,7 @@ public class LlmService {
             return detail;
         }
 
-        String rawText = (provider == LlmProvider.GEMINI)
-                ? responseParser.extractGeminiText(apiResponseBody)
-                : responseParser.extractOpenAiText(apiResponseBody);
+        String rawText = gateway.extractResponseText(apiResponseBody);
         detail.setRawResponse(rawText != null ? rawText : "");
 
         if (rawText != null) {
@@ -764,175 +735,6 @@ public class LlmService {
             recordFailure(errorMsg);
         }
         return detail;
-    }
-
-    /**
-     * Makes the Gemini HTTP call and returns the raw API response body, or {@code null}
-     * on error (including logging). Rate-limit exceptions are propagated.
-     */
-    private String callGeminiHttpBody(String prompt, String apiKey) {
-        // REPLAY: return a previously recorded response — skips throttle and real API call.
-        // This is intentional: replayed responses are local I/O, not rate-limited API calls.
-        if (recordReplayService != null && recordReplayService.isReplayMode()) {
-            Optional<String> recorded = recordReplayService.replay(prompt);
-            if (recorded.isPresent()) return recorded.get();
-            if (!recordReplayService.isFallbackLive()) {
-                log.warn("No LLM recording found for prompt hash — no fallback configured");
-                return null;
-            }
-            log.warn("No LLM recording found for prompt hash — falling back to live API");
-        }
-
-        // Real API path — throttle to respect RPM rate limits
-        throttleOutgoingLlmCall();
-        applyCurrentTimeout();
-        Map<String, Object> body    = new LinkedHashMap<>();
-        Map<String, Object> content = new LinkedHashMap<>();
-        Map<String, Object> part    = new LinkedHashMap<>();
-        part.put("text", prompt);
-        content.put("parts", List.of(part));
-        body.put("contents", List.of(content));
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        try {
-            HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
-
-            ResponseEntity<String> response;
-            try {
-                response = restTemplate.exchange(
-                        providerConfig.getGeminiUrl() + apiKey, HttpMethod.POST, entity, String.class);
-            } catch (HttpClientErrorException e) {
-                if (e.getStatusCode().value() == 429) {
-                    throw new LlmRateLimitException(
-                            "Gemini rate limit (HTTP 429): " + e.getResponseBodyAsString(), e);
-                }
-                throw new RuntimeException("Gemini API error " + e.getStatusCode() + ": " +
-                        e.getResponseBodyAsString(), e);
-            } catch (HttpServerErrorException e) {
-                throw new RuntimeException("Gemini API server error " + e.getStatusCode() + ": " +
-                        e.getResponseBodyAsString(), e);
-            }
-
-            String responseBody = response.getBody();
-
-            if (responseBody != null && responseBody.contains("RESOURCE_EXHAUSTED")) {
-                throw new LlmRateLimitException("Gemini quota exhausted: " + responseBody);
-            }
-            if (responseBody != null && responseBody.contains("\"error\"")) {
-                log.error("Gemini API returned error in body: {}", responseBody);
-                return null;
-            }
-
-            if (response.getStatusCode().is2xxSuccessful() && responseBody != null) {
-                log.info("LLM Response [GEMINI] — raw response (first 500 chars): {}",
-                        responseBody.substring(0, Math.min(responseBody.length(), 500)));
-
-                // RECORD: persist prompt + response for future replay.
-                // This runs AFTER the throttled real API call, so rate limits are respected.
-                if (recordReplayService != null && recordReplayService.isRecordMode()) {
-                    recordReplayService.record(prompt, responseBody, "GEMINI", null);
-                }
-
-                return responseBody;
-            }
-            log.error("Gemini API returned status {}", response.getStatusCode());
-            return null;
-        } catch (LlmRateLimitException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Error calling Gemini API", e);
-            return null;
-        }
-    }
-
-    private Map<String, Integer> callGemini(String prompt, String apiKey,
-                                             List<TaxonomyNode> nodes, int parentScore) {
-        String responseBody = callGeminiHttpBody(prompt, apiKey);
-        if (responseBody == null) return responseParser.zeroScores(nodes);
-        return responseParser.parseGeminiResponse(responseBody, nodes, parentScore);
-    }
-
-    /**
-     * Makes an OpenAI-compatible HTTP call and returns the raw API response body, or
-     * {@code null} on error. Rate-limit exceptions are propagated.
-     */
-    private String callOpenAiCompatibleHttpBody(String prompt, String apiKey,
-                                                 LlmProvider provider) {
-        // REPLAY: return a previously recorded response — skips throttle and real API call.
-        // This is intentional: replayed responses are local I/O, not rate-limited API calls.
-        if (recordReplayService != null && recordReplayService.isReplayMode()) {
-            Optional<String> recorded = recordReplayService.replay(prompt);
-            if (recorded.isPresent()) return recorded.get();
-            if (!recordReplayService.isFallbackLive()) {
-                log.warn("No LLM recording found for prompt hash — no fallback configured");
-                return null;
-            }
-            log.warn("No LLM recording found for prompt hash — falling back to live API");
-        }
-
-        // Real API path — throttle to respect RPM rate limits
-        throttleOutgoingLlmCall();
-        applyCurrentTimeout();
-        String url = providerConfig.getOpenAiCompatibleUrl(provider);
-        String model = providerConfig.getOpenAiCompatibleModel(provider);
-
-        Map<String, Object> body    = new LinkedHashMap<>();
-        Map<String, String> message = new LinkedHashMap<>();
-        message.put("role", "user");
-        message.put("content", prompt);
-        body.put("model", model);
-        body.put("messages", List.of(message));
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
-        try {
-            HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
-
-            ResponseEntity<String> response;
-            try {
-                response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
-            } catch (HttpClientErrorException e) {
-                if (e.getStatusCode().value() == 429) {
-                    throw new LlmRateLimitException(
-                            provider + " rate limit (HTTP 429): " + e.getResponseBodyAsString(), e);
-                }
-                throw new RuntimeException(provider + " API error " + e.getStatusCode() + ": " +
-                        e.getResponseBodyAsString(), e);
-            } catch (HttpServerErrorException e) {
-                throw new RuntimeException(provider + " API server error " + e.getStatusCode() + ": " +
-                        e.getResponseBodyAsString(), e);
-            }
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                log.info("LLM Response [{}] — raw response (first 500 chars): {}",
-                        provider, response.getBody().substring(0, Math.min(response.getBody().length(), 500)));
-
-                // RECORD: persist prompt + response for future replay.
-                // This runs AFTER the throttled real API call, so rate limits are respected.
-                if (recordReplayService != null && recordReplayService.isRecordMode()) {
-                    recordReplayService.record(prompt, response.getBody(), provider.name(), null);
-                }
-
-                return response.getBody();
-            }
-            log.error("{} API returned status {}", provider, response.getStatusCode());
-            return null;
-        } catch (LlmRateLimitException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Error calling {} API", provider, e);
-            return null;
-        }
-    }
-
-    private Map<String, Integer> callOpenAiCompatible(String prompt, String apiKey,
-                                                       LlmProvider provider,
-                                                       List<TaxonomyNode> nodes, int parentScore) {
-        String responseBody = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
-        if (responseBody == null) return responseParser.zeroScores(nodes);
-        return responseParser.parseOpenAiResponse(responseBody, nodes, parentScore);
     }
 
     // ── Score normalization (public API) ─────────────────────────────────────
@@ -1153,14 +955,9 @@ public class LlmService {
         log.debug("Leaf justification prompt:\n{}", prompt);
 
         try {
-            String rawText;
-            if (provider == LlmProvider.GEMINI) {
-                String body = callGeminiHttpBody(prompt, apiKey);
-                rawText = body != null ? responseParser.extractGeminiText(body) : null;
-            } else {
-                String body = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
-                rawText = body != null ? responseParser.extractOpenAiText(body) : null;
-            }
+            LlmGateway gateway = gatewayRegistry.getGateway(provider);
+            String body = gateway.sendHttpRequest(prompt, apiKey);
+            String rawText = body != null ? gateway.extractResponseText(body) : null;
             if (rawText == null || rawText.isBlank()) {
                 return "The LLM did not return a justification. Please try again.";
             }
@@ -1201,14 +998,9 @@ public class LlmService {
         }
 
         try {
-            String body;
-            if (provider == LlmProvider.GEMINI) {
-                body = callGeminiHttpBody(prompt, apiKey);
-                return body != null ? responseParser.extractGeminiText(body) : null;
-            } else {
-                body = callOpenAiCompatibleHttpBody(prompt, apiKey, provider);
-                return body != null ? responseParser.extractOpenAiText(body) : null;
-            }
+            LlmGateway gateway = gatewayRegistry.getGateway(provider);
+            String body = gateway.sendHttpRequest(prompt, apiKey);
+            return body != null ? gateway.extractResponseText(body) : null;
         } catch (LlmRateLimitException e) {
             recordFailure(e.getMessage());
             throw e;
@@ -1217,61 +1009,6 @@ public class LlmService {
             recordFailure(e.getMessage());
             return null;
         }
-    }
-
-    // ── Outgoing RPM throttle ─────────────────────────────────────────────────
-
-    /**
-     * Paces outgoing LLM API calls to respect the configured {@code llm.rpm} preference.
-     *
-     * <p>Uses a sliding-window approach: the timestamps of the most recent calls are kept
-     * in a FIFO queue. If the number of calls in the last 60 seconds has reached the rpm
-     * limit, the current thread sleeps until the oldest call falls outside the window.
-     *
-     * <p>No-op when {@code PreferencesService} is not available or rpm is ≤ 0.
-     */
-    private synchronized void throttleOutgoingLlmCall() {
-        if (preferencesService == null) return;
-        int rpm = preferencesService.getInt("llm.rpm", 5);
-        if (rpm <= 0) return;
-
-        long now = System.currentTimeMillis();
-        long windowStart = now - 60_000L;
-
-        // Discard timestamps older than 1 minute
-        while (!callTimestamps.isEmpty() && callTimestamps.peekFirst() < windowStart) {
-            callTimestamps.pollFirst();
-        }
-
-        // If we've reached the rpm limit, sleep until the oldest call clears the window
-        if (callTimestamps.size() >= rpm) {
-            long oldest = callTimestamps.peekFirst();
-            long sleepMs = oldest + 60_000L - System.currentTimeMillis() + THROTTLE_BUFFER_MS;
-            if (sleepMs > 0) {
-                log.debug("LLM RPM throttle: sleeping {}ms (rpm={}, calls in window={})",
-                        sleepMs, rpm, callTimestamps.size());
-                try {
-                    Thread.sleep(sleepMs);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }
-
-        callTimestamps.addLast(System.currentTimeMillis());
-    }
-
-    /**
-     * Updates the HTTP read timeout on the shared {@link SimpleClientHttpRequestFactory}
-     * from the current {@code llm.timeout.seconds} preference value.
-     *
-     * <p>This allows the timeout to be changed at runtime via the Preferences API without
-     * an application restart. No-op when neither factory nor preferences are available.
-     */
-    private void applyCurrentTimeout() {
-        if (preferencesService == null || llmRequestFactory == null) return;
-        int timeoutSeconds = preferencesService.getInt("llm.timeout.seconds", 30);
-        llmRequestFactory.setReadTimeout(timeoutSeconds * 1000);
     }
 }
 
