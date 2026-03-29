@@ -5,6 +5,7 @@
 [![Tests](https://img.shields.io/endpoint?url=https://carstenartur.github.io/Taxonomy/tests/badge.json)](https://carstenartur.github.io/Taxonomy/tests/surefire-report.html)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SBOM](https://img.shields.io/badge/SBOM-CycloneDX-informational?logo=owasp&style=flat)](https://github.com/carstenartur/Taxonomy/dependency-graph/sbom)
+![GitHub release](https://img.shields.io/github/v/release/carstenartur/Taxonomy?style=flat-square)
 
 **Turn a business requirement into a validated architecture view — in one step.**
 
