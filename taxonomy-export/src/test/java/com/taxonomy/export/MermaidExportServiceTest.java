@@ -495,4 +495,47 @@ class MermaidExportServiceTest {
         assertTrue(labels.showcaseLayerLabel("Communications Services").contains("Kommunikation"),
                 "German showcase label should contain abbreviated name");
     }
+
+    @Test
+    void showcaseSuppressesScaffoldingNodesWhenLeavesExist() {
+        // CP-1000 is a scaffolding container node; CP-1023 is concrete
+        var scaffolding = new DiagramNode("CP-1000", "Capabilities", "Capabilities", 0.9, true, 1);
+        var leaf = new DiagramNode("CP-1023", "Secure Messaging", "Capabilities", 0.85, true, 1);
+        var model = new DiagramModel("Test", List.of(scaffolding, leaf), List.of(),
+                new DiagramLayout("LR", true));
+
+        String result = service.exportShowcase(model);
+
+        assertTrue(result.contains("CP_1023"), "Concrete leaf should be present");
+        assertFalse(result.contains("CP_1000"), "Scaffolding CP-1000 should be suppressed");
+    }
+
+    @Test
+    void isScaffoldingIdRecognisesAllCategories() {
+        for (String cat : List.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA")) {
+            assertTrue(MermaidExportService.isScaffoldingId(cat + "-1000"),
+                    cat + "-1000 should be scaffolding");
+        }
+        assertFalse(MermaidExportService.isScaffoldingId("CP-1023"), "CP-1023 is not scaffolding");
+        assertFalse(MermaidExportService.isScaffoldingId("CP"), "Root code is not scaffolding (separate check)");
+        assertFalse(MermaidExportService.isScaffoldingId(null), "null is not scaffolding");
+    }
+
+    @Test
+    void showcaseScaffoldingSuppressionWithGermanLabels() {
+        // Verify scaffolding suppression works correctly with German i18n labels
+        var scaffolding = new DiagramNode("CR-1000", "Core Services", "Core Services", 0.9, true, 3);
+        var leaf = new DiagramNode("CR-1047", "Infrastructure Services", "Core Services", 0.85, true, 3);
+        var edge = new DiagramEdge("e1", "CR-1000", "CR-1047", "REALIZES", 0.7);
+        var model = new DiagramModel("Test", List.of(scaffolding, leaf), List.of(edge),
+                new DiagramLayout("LR", true));
+
+        String result = service.exportShowcase(model, MermaidLabels.german());
+
+        // Scaffolding CR-1000 suppressed, leaf CR-1047 kept
+        assertTrue(result.contains("CR_1047"), "Leaf node should be present with German labels");
+        assertFalse(result.contains("CR_1000"), "Scaffolding CR-1000 should be suppressed with German labels");
+        // German layer label should be used
+        assertTrue(result.contains("Kerndienste"), "German showcase layer label should be used");
+    }
 }

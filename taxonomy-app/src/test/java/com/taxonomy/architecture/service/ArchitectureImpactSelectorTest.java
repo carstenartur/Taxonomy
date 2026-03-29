@@ -127,6 +127,57 @@ class ArchitectureImpactSelectorTest {
         assertThat(leaf.getOrigin()).isEqualTo(NodeOrigin.DIRECT_SCORED);
     }
 
+    @Test
+    void scaffoldingNodesAreSkippedWhenConcreteDescendantsExist() {
+        // CP-1000 at depth 1 is taxonomy scaffolding; CP-1023 at depth 3 is concrete
+        RequirementElementView scaffolding = createElement("CP-1000", "Capabilities", "CP", 1, 90);
+        RequirementElementView concrete = createElement("CP-1023", "Secure Messaging Service", "CP", 3, 70);
+        List<RequirementElementView> elements = new ArrayList<>(List.of(scaffolding, concrete));
+        Map<String, Integer> scores = Map.of("CP-1000", 90, "CP-1023", 70);
+
+        selector.selectForImpact(elements, scores, Set.of());
+
+        assertThat(scaffolding.isSelectedForImpact()).isFalse();
+        assertThat(concrete.isSelectedForImpact()).isTrue();
+    }
+
+    @Test
+    void scaffoldingNodeSelectedWhenNoConcreteDescendantsExist() {
+        // Only depth-1 node in the category — should still be selected
+        RequirementElementView scaffolding = createElement("CP-1000", "Capabilities", "CP", 1, 85);
+        List<RequirementElementView> elements = new ArrayList<>(List.of(scaffolding));
+
+        selector.selectForImpact(elements, Map.of("CP-1000", 85), Set.of());
+
+        assertThat(scaffolding.isSelectedForImpact()).isTrue();
+    }
+
+    @Test
+    void rootNodeAtDepthZeroIsScaffolding() {
+        RequirementElementView root = createElement("CP", "Capabilities", "CP", 0, 92);
+        RequirementElementView leaf = createElement("CP-1023", "Service", "CP", 3, 70);
+        List<RequirementElementView> elements = new ArrayList<>(List.of(root, leaf));
+
+        boolean isScaffolding = selector.isTaxonomyScaffolding(root, elements);
+
+        assertThat(isScaffolding).isTrue();
+    }
+
+    @Test
+    void scaffoldingDetectionAcrossAllCategories() {
+        // Verify the pattern applies to all 8 root categories
+        for (String cat : List.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA")) {
+            RequirementElementView container = createElement(cat + "-1000", cat + " container", cat, 1, 80);
+            RequirementElementView concrete = createElement(cat + "-1023", cat + " concrete", cat, 3, 60);
+            List<RequirementElementView> elements = new ArrayList<>(List.of(container, concrete));
+
+            boolean isScaffolding = selector.isTaxonomyScaffolding(container, elements);
+            assertThat(isScaffolding)
+                    .as("Category %s: depth-1 container should be scaffolding", cat)
+                    .isTrue();
+        }
+    }
+
     private static RequirementElementView createElement(String code, String title,
                                                          String sheet, int depth, int score) {
         RequirementElementView el = new RequirementElementView();

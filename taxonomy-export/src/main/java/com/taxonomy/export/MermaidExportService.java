@@ -131,10 +131,12 @@ public class MermaidExportService {
      * <p>Differences from {@link #export(DiagramModel, MermaidLabels)}:
      * <ul>
      *   <li>Uses top-down (TD) layout for multi-layer readability</li>
-     *   <li>Suppresses root-level nodes (two-letter codes like "CP") when
-     *       concrete leaf nodes exist in the same layer</li>
-     *   <li>Re-routes edges from suppressed root nodes to the highest-relevance
-     *       leaf node in the same layer, so cross-layer relations remain visible</li>
+     *   <li>Suppresses taxonomy scaffolding — both root-level nodes (two-letter
+     *       codes like "CP") and first-level container nodes matching the
+     *       {@code XX-1000} pattern (e.g.&nbsp;"CP-1000") — when concrete leaf
+     *       nodes exist in the same layer.  Edges from suppressed nodes are
+     *       re-routed to the highest-relevance leaf node in that layer so
+     *       cross-layer relations remain visible.</li>
      *   <li>Marks high-relevance nodes (≥ 80%) as hotspots with a visual marker</li>
      *   <li>Uses display-friendly relation labels (e.g. "realizes" instead of "REALIZES")</li>
      *   <li>Uses abbreviated subgraph titles with emoji for quick visual scanning</li>
@@ -152,14 +154,17 @@ public class MermaidExportService {
             return "flowchart TD\n    empty[\"No data\"]\n";
         }
 
-        // ── Partition nodes into root-level and leaf-level per layer ────────
+        // ── Partition nodes into root-level/scaffolding and leaf-level per layer ──
+        // Root-level: two-letter codes without "-" (e.g. "CP")
+        // Scaffolding: first-level containers matching XX-1000 pattern (e.g. "CP-1000")
+        // Leaf-level: all other nodes with deeper semantic meaning
         Map<String, List<DiagramNode>> leafByType = new LinkedHashMap<>();
         Map<String, List<DiagramNode>> rootByType = new LinkedHashMap<>();
         for (DiagramNode node : model.nodes()) {
-            if (node.id().contains("-")) {
-                leafByType.computeIfAbsent(node.type(), k -> new ArrayList<>()).add(node);
-            } else {
+            if (!node.id().contains("-") || isScaffoldingId(node.id())) {
                 rootByType.computeIfAbsent(node.type(), k -> new ArrayList<>()).add(node);
+            } else {
+                leafByType.computeIfAbsent(node.type(), k -> new ArrayList<>()).add(node);
             }
         }
 
@@ -366,5 +371,27 @@ public class MermaidExportService {
     static String escape(String text) {
         if (text == null) return "";
         return text.replace("\"", "&quot;").replace("#", "&num;");
+    }
+
+    /**
+     * Returns {@code true} if the node ID matches the taxonomy scaffolding pattern
+     * {@code XX-1000} (two uppercase letters, dash, 1000). These first-level
+     * container nodes are semantically redundant with their root and should be
+     * suppressed in showcase/impact views when concrete leaf nodes are available.
+     */
+    static boolean isScaffoldingId(String id) {
+        if (id == null || id.length() != 7) {
+            return false;
+        }
+        // Expect pattern [A-Z]{2}-1000
+        if (id.charAt(2) != '-') {
+            return false;
+        }
+        char c0 = id.charAt(0);
+        char c1 = id.charAt(1);
+        if (c0 < 'A' || c0 > 'Z' || c1 < 'A' || c1 > 'Z') {
+            return false;
+        }
+        return id.endsWith("-1000");
     }
 }

@@ -91,7 +91,8 @@ public class ArchitectureImpactSelector {
                 if (selected >= MAX_IMPACT_PER_CATEGORY) break;
 
                 RequirementElementView el = se.element();
-                if (isGenericWeakNode(el, allScores, categoryElements)) {
+                if (isTaxonomyScaffolding(el, categoryElements)
+                        || isGenericWeakNode(el, allScores, categoryElements)) {
                     continue;
                 }
 
@@ -163,6 +164,24 @@ public class ArchitectureImpactSelector {
         return categoryElements.stream()
                 .filter(e -> e.getTaxonomyDepth() > node.getTaxonomyDepth())
                 .anyMatch(e -> allScores.getOrDefault(e.getNodeCode(), 0) >= halfScore);
+    }
+
+    /**
+     * Returns {@code true} if the node is a taxonomy scaffolding node (depth&nbsp;≤&nbsp;1)
+     * and more concrete descendants (depth&nbsp;&gt;&nbsp;1) exist in the same category.
+     *
+     * <p>Scaffolding nodes are the virtual root (e.g.&nbsp;"CP", depth&nbsp;0) and the
+     * first-level container (e.g.&nbsp;"CP-1000", depth&nbsp;1). They are structural
+     * grouping artifacts that do not carry distinct architectural meaning and should
+     * be suppressed from the impact presentation when deeper, more specific nodes
+     * are available in the same taxonomy category.
+     */
+    boolean isTaxonomyScaffolding(RequirementElementView node,
+                                  List<RequirementElementView> categoryElements) {
+        if (node.getTaxonomyDepth() > 1) return false;
+
+        return categoryElements.stream()
+                .anyMatch(e -> e.getTaxonomyDepth() > 1);
     }
 
     private static double computeReadability(String title) {
