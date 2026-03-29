@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ScoringTraceSelector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">ScoringTraceSelector.java</span></div><h1>ScoringTraceSelector.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.NodeOrigin;
+import com.taxonomy.dto.RequirementAnchor;
+import com.taxonomy.dto.RequirementElementView;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+
+/**
+ * Selects all nodes that form the hierarchical scoring path for each anchor,
+ * so the UI can present a transparent trace from root through intermediates to
+ * the directly-scored leaf.
+ *
+ * &lt;p&gt;For every anchor the full path (root → intermediate → anchor) is
+ * reconstructed using {@link TaxonomyService#getPathToRoot(String)}. Each
+ * intermediate node is marked as {@link NodeOrigin#TRACE_INTERMEDIATE} and
+ * every directly-scored node is marked as {@link NodeOrigin#DIRECT_SCORED}.
+ */
+@Service
+public class ScoringTraceSelector {
+
+<span class="fc" id="L27">    private static final Logger log = LoggerFactory.getLogger(ScoringTraceSelector.class);</span>
+
+    private final TaxonomyService taxonomyService;
+
+<span class="fc" id="L31">    public ScoringTraceSelector(TaxonomyService taxonomyService) {</span>
+<span class="fc" id="L32">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L33">    }</span>
+
+    /**
+     * Builds scoring trace entries for every anchor node.
+     *
+     * @param allScores map of nodeCode → integer score (0–100)
+     * @param anchors   the anchor nodes selected for the architecture view
+     * @return list of trace entries with fully-populated origin and scoring path
+     */
+    public List&lt;RequirementElementView&gt; buildTrace(Map&lt;String, Integer&gt; allScores,
+                                                    List&lt;RequirementAnchor&gt; anchors) {
+<span class="fc" id="L44">        Map&lt;String, RequirementElementView&gt; traceMap = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        for (RequirementAnchor anchor : anchors) {</span>
+<span class="fc" id="L47">            String anchorCode = anchor.getNodeCode();</span>
+<span class="fc" id="L48">            List&lt;TaxonomyNode&gt; pathToRoot = taxonomyService.getPathToRoot(anchorCode);</span>
+
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (pathToRoot.isEmpty()) {</span>
+                // No path found — add anchor node directly
+<span class="fc" id="L52">                addOrUpdate(traceMap, anchorCode, allScores, NodeOrigin.DIRECT_SCORED, null);</span>
+<span class="fc" id="L53">                continue;</span>
+            }
+
+            // pathToRoot is ordered root → leaf; build the scoring path string
+<span class="fc" id="L57">            StringBuilder scoringPath = new StringBuilder();</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            for (int i = 0; i &lt; pathToRoot.size(); i++) {</span>
+<span class="fc" id="L59">                TaxonomyNode pathNode = pathToRoot.get(i);</span>
+<span class="fc" id="L60">                String code = pathNode.getCode();</span>
+<span class="fc" id="L61">                int score = allScores.getOrDefault(code, 0);</span>
+
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                if (i &gt; 0) scoringPath.append(&quot; &gt; &quot;);</span>
+<span class="fc" id="L64">                scoringPath.append(code).append(&quot;(&quot;).append(score).append(&quot;%)&quot;);</span>
+
+<span class="fc" id="L66">                boolean isAnchorNode = code.equals(anchorCode);</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                NodeOrigin origin = isAnchorNode ? NodeOrigin.DIRECT_SCORED</span>
+<span class="fc" id="L68">                                                 : NodeOrigin.TRACE_INTERMEDIATE;</span>
+
+<span class="fc" id="L70">                RequirementElementView entry = addOrUpdate(traceMap, code, allScores, origin, pathNode);</span>
+<span class="fc" id="L71">                entry.setScoringPath(scoringPath.toString());</span>
+<span class="fc" id="L72">                entry.setTaxonomyDepth(pathNode.getLevel());</span>
+            }
+<span class="fc" id="L74">        }</span>
+
+<span class="fc" id="L76">        List&lt;RequirementElementView&gt; result = new ArrayList&lt;&gt;(traceMap.values());</span>
+<span class="fc" id="L77">        log.debug(&quot;Built scoring trace with {} entries for {} anchors&quot;, result.size(), anchors.size());</span>
+<span class="fc" id="L78">        return result;</span>
+    }
+
+    private RequirementElementView addOrUpdate(Map&lt;String, RequirementElementView&gt; traceMap,
+                                                String code, Map&lt;String, Integer&gt; allScores,
+                                                NodeOrigin origin, TaxonomyNode node) {
+<span class="fc" id="L84">        RequirementElementView existing = traceMap.get(code);</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (existing != null) {</span>
+            // Upgrade origin: DIRECT_SCORED takes priority over TRACE_INTERMEDIATE
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            if (origin == NodeOrigin.DIRECT_SCORED</span>
+<span class="nc bnc" id="L88" title="All 2 branches missed.">                    &amp;&amp; existing.getOrigin() == NodeOrigin.TRACE_INTERMEDIATE) {</span>
+<span class="nc" id="L89">                existing.setOrigin(NodeOrigin.DIRECT_SCORED);</span>
+            }
+<span class="fc" id="L91">            return existing;</span>
+        }
+
+<span class="fc" id="L94">        int score = allScores.getOrDefault(code, 0);</span>
+
+<span class="fc" id="L96">        RequirementElementView entry = new RequirementElementView();</span>
+<span class="fc" id="L97">        entry.setNodeCode(code);</span>
+<span class="fc" id="L98">        entry.setOrigin(origin);</span>
+<span class="fc" id="L99">        entry.setDirectLlmScore(score);</span>
+<span class="fc" id="L100">        entry.setRelevance(score / 100.0);</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        entry.setAnchor(origin == NodeOrigin.DIRECT_SCORED);</span>
+
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (node != null) {</span>
+<span class="fc" id="L104">            entry.setTitle(node.getNameEn());</span>
+<span class="fc" id="L105">            entry.setTaxonomySheet(node.getTaxonomyRoot());</span>
+<span class="fc" id="L106">            entry.setTaxonomyDepth(node.getLevel());</span>
+        }
+
+<span class="fc" id="L109">        traceMap.put(code, entry);</span>
+<span class="fc" id="L110">        return entry;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

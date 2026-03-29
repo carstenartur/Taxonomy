@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureImpactSelector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">ArchitectureImpactSelector.java</span></div><h1>ArchitectureImpactSelector.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.dto.NodeOrigin;
+import com.taxonomy.dto.RequirementElementView;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * Selects the most semantically valuable and concrete nodes for the final
+ * architecture impact presentation.
+ *
+ * &lt;p&gt;Uses a composite scoring formula that prioritises leaf-level nodes with
+ * high LLM scores, good specificity (depth in the taxonomy), and
+ * cross-category relation coverage. Generic near-root nodes are suppressed
+ * when more concrete descendants are available.
+ *
+ * &lt;h3&gt;Composite Impact Score&lt;/h3&gt;
+ * &lt;pre&gt;
+ * impactScore = (llmScore × 0.3)
+ *             + (specificityBonus × 0.25)
+ *             + (crossCategoryBonus × 0.2)
+ *             + (leafConcreteness × 0.15)
+ *             + (humanReadability × 0.1)
+ * &lt;/pre&gt;
+ */
+@Service
+<span class="fc" id="L31">public class ArchitectureImpactSelector {</span>
+
+<span class="fc" id="L33">    private static final Logger log = LoggerFactory.getLogger(ArchitectureImpactSelector.class);</span>
+
+    /** Maximum number of impact-selected nodes per taxonomy category. */
+    static final int MAX_IMPACT_PER_CATEGORY = 5;
+
+    /** Names considered generic and weak when found at level ≤ 1. */
+<span class="fc" id="L39">    private static final Set&lt;String&gt; GENERIC_NAMES = Set.of(</span>
+            &quot;enable&quot;, &quot;capabilities&quot;, &quot;support&quot;, &quot;general&quot;, &quot;other&quot;,
+            &quot;manage&quot;, &quot;provide&quot;, &quot;basic&quot;, &quot;core&quot;, &quot;common&quot;
+    );
+
+    // ── Composite scoring weights ───────────────────────────────────────────
+
+    private static final double W_LLM_SCORE        = 0.30;
+    private static final double W_SPECIFICITY       = 0.25;
+    private static final double W_CROSS_CATEGORY    = 0.20;
+    private static final double W_LEAF_CONCRETENESS = 0.15;
+    private static final double W_READABILITY       = 0.10;
+
+    /**
+     * Selects the most impactful nodes from the full element list and marks
+     * them with {@link NodeOrigin#IMPACT_SELECTED}.
+     *
+     * @param elements           all elements from the architecture view
+     * @param allScores          full LLM score map (nodeCode → 0–100)
+     * @param crossCategoryCodes set of node codes that participate in cross-category relations
+     * @return the input list with {@code selectedForImpact} and {@code origin} updated in place
+     */
+    public List&lt;RequirementElementView&gt; selectForImpact(List&lt;RequirementElementView&gt; elements,
+                                                         Map&lt;String, Integer&gt; allScores,
+                                                         Set&lt;String&gt; crossCategoryCodes) {
+<span class="fc bfc" id="L64" title="All 4 branches covered.">        if (elements == null || elements.isEmpty()) {</span>
+<span class="fc" id="L65">            return elements;</span>
+        }
+
+        // Group by taxonomy category (sheet)
+<span class="fc" id="L69">        Map&lt;String, List&lt;RequirementElementView&gt;&gt; byCategory = elements.stream()</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                .filter(e -&gt; e.getTaxonomySheet() != null)</span>
+<span class="fc" id="L71">                .collect(Collectors.groupingBy(RequirementElementView::getTaxonomySheet,</span>
+<span class="fc" id="L72">                                               LinkedHashMap::new, Collectors.toList()));</span>
+
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;RequirementElementView&gt;&gt; entry : byCategory.entrySet()) {</span>
+<span class="fc" id="L75">            String category = entry.getKey();</span>
+<span class="fc" id="L76">            List&lt;RequirementElementView&gt; categoryElements = entry.getValue();</span>
+
+            // Score each element
+<span class="fc" id="L79">            List&lt;ScoredElement&gt; scored = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            for (RequirementElementView el : categoryElements) {</span>
+<span class="fc" id="L81">                double impactScore = computeImpactScore(el, allScores, crossCategoryCodes, categoryElements);</span>
+<span class="fc" id="L82">                scored.add(new ScoredElement(el, impactScore));</span>
+<span class="fc" id="L83">            }</span>
+
+            // Sort by impact score descending
+<span class="fc" id="L86">            scored.sort(Comparator.comparingDouble(ScoredElement::score).reversed());</span>
+
+            // Select top-N, skipping generic weak nodes that have better descendants
+<span class="fc" id="L89">            int selected = 0;</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">            for (ScoredElement se : scored) {</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                if (selected &gt;= MAX_IMPACT_PER_CATEGORY) break;</span>
+
+<span class="fc" id="L93">                RequirementElementView el = se.element();</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                if (isGenericWeakNode(el, allScores, categoryElements)) {</span>
+<span class="fc" id="L95">                    continue;</span>
+                }
+
+<span class="fc" id="L98">                el.setSelectedForImpact(true);</span>
+<span class="fc bfc" id="L99" title="All 4 branches covered.">                if (el.getOrigin() == null || el.getOrigin() == NodeOrigin.PROPAGATED</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">                        || el.getOrigin() == NodeOrigin.TRACE_INTERMEDIATE) {</span>
+<span class="fc" id="L101">                    el.setOrigin(NodeOrigin.IMPACT_SELECTED);</span>
+                }
+<span class="fc" id="L103">                el.setSpecificityScore(se.score());</span>
+<span class="fc" id="L104">                selected++;</span>
+<span class="fc" id="L105">            }</span>
+
+<span class="fc" id="L107">            log.debug(&quot;Impact selection for category {}: {} of {} selected&quot;,</span>
+<span class="fc" id="L108">                    category, selected, categoryElements.size());</span>
+<span class="fc" id="L109">        }</span>
+
+<span class="fc" id="L111">        return elements;</span>
+    }
+
+    /**
+     * Computes the composite impact score for a single element.
+     */
+    double computeImpactScore(RequirementElementView element,
+                              Map&lt;String, Integer&gt; allScores,
+                              Set&lt;String&gt; crossCategoryCodes,
+                              List&lt;RequirementElementView&gt; categoryElements) {
+<span class="fc" id="L121">        String code = element.getNodeCode();</span>
+
+        // 1. LLM score component (normalised to 0–1)
+<span class="fc" id="L124">        double llmComponent = allScores.getOrDefault(code, 0) / 100.0;</span>
+
+        // 2. Specificity: deeper nodes score higher (normalised via depth / 5.0, capped at 1)
+<span class="fc" id="L127">        double specificityComponent = Math.min(element.getTaxonomyDepth() / 5.0, 1.0);</span>
+
+        // 3. Cross-category bonus: node participates in cross-category relations
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        double crossCategoryComponent = crossCategoryCodes.contains(code) ? 1.0 : 0.0;</span>
+
+        // 4. Leaf concreteness: has a dash (leaf code) vs. root code
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        double leafComponent = code.contains(&quot;-&quot;) ? 1.0 : 0.2;</span>
+
+        // 5. Human readability: longer, non-generic names are more readable
+<span class="fc" id="L136">        double readabilityComponent = computeReadability(element.getTitle());</span>
+
+<span class="fc" id="L138">        return (llmComponent * W_LLM_SCORE)</span>
+             + (specificityComponent * W_SPECIFICITY)
+             + (crossCategoryComponent * W_CROSS_CATEGORY)
+             + (leafComponent * W_LEAF_CONCRETENESS)
+             + (readabilityComponent * W_READABILITY);
+    }
+
+    /**
+     * Returns {@code true} if the node is at level ≤ 1 with a generic name
+     * and a more concrete descendant with ≥ 50% of its score exists.
+     */
+    boolean isGenericWeakNode(RequirementElementView node,
+                              Map&lt;String, Integer&gt; allScores,
+                              List&lt;RequirementElementView&gt; categoryElements) {
+<span class="fc bfc" id="L152" title="All 2 branches covered.">        if (node.getTaxonomyDepth() &gt; 1) return false;</span>
+
+<span class="fc" id="L154">        String name = node.getTitle();</span>
+<span class="pc bpc" id="L155" title="1 of 4 branches missed.">        if (name == null || !GENERIC_NAMES.contains(name.toLowerCase().trim())) {</span>
+<span class="fc" id="L156">            return false;</span>
+        }
+
+<span class="fc" id="L159">        int nodeScore = allScores.getOrDefault(node.getNodeCode(), 0);</span>
+<span class="fc" id="L160">        int halfScore = nodeScore / 2;</span>
+
+        // Check if any deeper node in the same category has a score ≥ half of this node's score
+<span class="fc" id="L163">        return categoryElements.stream()</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">                .filter(e -&gt; e.getTaxonomyDepth() &gt; node.getTaxonomyDepth())</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">                .anyMatch(e -&gt; allScores.getOrDefault(e.getNodeCode(), 0) &gt;= halfScore);</span>
+    }
+
+    private static double computeReadability(String title) {
+<span class="pc bpc" id="L169" title="2 of 4 branches missed.">        if (title == null || title.isBlank()) return 0.0;</span>
+<span class="fc" id="L170">        String lower = title.toLowerCase().trim();</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (GENERIC_NAMES.contains(lower)) return 0.2;</span>
+        // Longer titles tend to be more descriptive
+<span class="fc" id="L173">        return Math.min(title.length() / 40.0, 1.0);</span>
+    }
+
+<span class="fc" id="L176">    private record ScoredElement(RequirementElementView element, double score) {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
