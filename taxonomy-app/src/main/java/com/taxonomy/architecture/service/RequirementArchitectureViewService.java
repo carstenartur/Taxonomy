@@ -52,13 +52,19 @@ public class RequirementArchitectureViewService {
     private final RelevancePropagationService propagationService;
     private final TaxonomyNodeRepository nodeRepository;
     private final TaxonomyService taxonomyService;
+    private final ScoringTraceSelector scoringTraceSelector;
+    private final ArchitectureImpactSelector impactSelector;
 
     public RequirementArchitectureViewService(RelevancePropagationService propagationService,
                                               TaxonomyNodeRepository nodeRepository,
-                                              TaxonomyService taxonomyService) {
+                                              TaxonomyService taxonomyService,
+                                              ScoringTraceSelector scoringTraceSelector,
+                                              ArchitectureImpactSelector impactSelector) {
         this.propagationService = propagationService;
         this.nodeRepository = nodeRepository;
         this.taxonomyService = taxonomyService;
+        this.scoringTraceSelector = scoringTraceSelector;
+        this.impactSelector = impactSelector;
     }
 
     /**
@@ -167,6 +173,17 @@ public class RequirementArchitectureViewService {
         //    only elements surviving the limit are used as endpoints.
         generateImpactRelations(elements, relationships);
 
+        // 7b. Run scoring trace selector — populates origin and scoringPath
+        //     on elements that are part of the hierarchical scoring trace.
+        List<RequirementElementView> traceEntries =
+                scoringTraceSelector.buildTrace(scores, anchors);
+        mergeTraceOrigins(elements, traceEntries);
+
+        // 7c. Run impact selector — marks the most valuable nodes for the
+        //     final impact presentation using composite scoring.
+        Set<String> crossCategoryCodes = collectCrossCategoryCodes(relationships);
+        impactSelector.selectForImpact(elements, scores, crossCategoryCodes);
+
         view.setIncludedElements(elements);
         view.setIncludedRelationships(relationships);
 
@@ -269,6 +286,7 @@ public class RequirementArchitectureViewService {
             element.setHopDistance(hopDistance);
             element.setAnchor(hopDistance == 0);
             element.setIncludedBecause(reason);
+            element.setOrigin(hopDistance == 0 ? NodeOrigin.DIRECT_SCORED : NodeOrigin.PROPAGATED);
 
             // Look up title and taxonomy sheet from the database
             Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(nodeCode);
@@ -276,8 +294,10 @@ public class RequirementArchitectureViewService {
                 TaxonomyNode node = nodeOpt.get();
                 element.setTitle(node.getNameEn());
                 element.setTaxonomySheet(node.getTaxonomyRoot());
+                element.setTaxonomyDepth(node.getLevel());
             }
 
+            element.setDirectLlmScore((int) Math.round(relevance * 100));
             element.setHierarchyPath(buildHierarchyPath(nodeCode, pathCache));
 
             elements.add(element);
@@ -313,6 +333,9 @@ public class RequirementArchitectureViewService {
             rv.setHopDistance(tr.getHopDistance());
             rv.setIncludedBecause(tr.getReason());
             rv.setRelationCategory(RequirementRelationshipView.CATEGORY_TRACE);
+            rv.setOrigin(RelationOrigin.PROPAGATED_TRACE);
+            rv.setConfidence(tr.getPropagatedRelevance());
+            rv.setDerivationReason("BFS propagation hop " + tr.getHopDistance());
             relationships.add(rv);
         }
 
@@ -345,6 +368,8 @@ public class RequirementArchitectureViewService {
         element.setHopDistance(0);
         element.setAnchor(false);
         element.setIncludedBecause("provisional relation endpoint");
+        element.setOrigin(NodeOrigin.SEED_CONTEXT);
+        element.setDirectLlmScore(scores.getOrDefault(nodeCode, 0));
         element.setTitle(nodeName);
 
         Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(nodeCode);
@@ -418,12 +443,15 @@ public class RequirementArchitectureViewService {
                 element.setHopDistance(isAnchor ? 0 : 1);
                 element.setAnchor(isAnchor);
                 element.setIncludedBecause("leaf-enrichment: top-scoring in " + root);
+                element.setOrigin(NodeOrigin.ENRICHED_LEAF);
+                element.setDirectLlmScore(leafScore);
 
                 Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(leafCode);
                 if (nodeOpt.isPresent()) {
                     TaxonomyNode node = nodeOpt.get();
                     element.setTitle(node.getNameEn());
                     element.setTaxonomySheet(node.getTaxonomyRoot());
+                    element.setTaxonomyDepth(node.getLevel());
                 } else {
                     element.setTaxonomySheet(root);
                 }
@@ -538,6 +566,10 @@ public class RequirementArchitectureViewService {
             impact.setIncludedBecause("impact: " + bestSrc.getNodeCode() + " → " + bestTgt.getNodeCode()
                     + " (derived from " + trace.getSourceCode() + " → " + trace.getTargetCode() + ")");
             impact.setRelationCategory(RequirementRelationshipView.CATEGORY_IMPACT);
+            impact.setOrigin(RelationOrigin.IMPACT_DERIVED);
+            impact.setConfidence(Math.min(bestSrc.getRelevance(), bestTgt.getRelevance()));
+            impact.setDerivationReason("Cross-category leaf-to-leaf: "
+                    + bestSrc.getNodeCode() + " → " + bestTgt.getNodeCode());
             impactRelations.add(impact);
         }
 
@@ -608,5 +640,51 @@ public class RequirementArchitectureViewService {
             }
             return sb.toString();
         });
+    }
+
+    /**
+     * Merges origin and scoring-path metadata from the scoring trace into the
+     * main element list. Existing elements are updated in place; trace-only
+     * entries that are not yet present in the list are not added (they only
+     * provide metadata enrichment for elements that survived propagation).
+     */
+    private void mergeTraceOrigins(List<RequirementElementView> elements,
+                                    List<RequirementElementView> traceEntries) {
+        Map<String, RequirementElementView> traceByCode = new LinkedHashMap<>();
+        for (RequirementElementView te : traceEntries) {
+            traceByCode.put(te.getNodeCode(), te);
+        }
+
+        for (RequirementElementView el : elements) {
+            RequirementElementView traceEntry = traceByCode.get(el.getNodeCode());
+            if (traceEntry == null) continue;
+
+            // Propagate scoring path if not already set
+            if (el.getScoringPath() == null && traceEntry.getScoringPath() != null) {
+                el.setScoringPath(traceEntry.getScoringPath());
+            }
+
+            // Upgrade origin from trace if the element doesn't already have a
+            // more specific origin (ENRICHED_LEAF should not be overridden).
+            if (el.getOrigin() == null || el.getOrigin() == NodeOrigin.PROPAGATED) {
+                el.setOrigin(traceEntry.getOrigin());
+            }
+        }
+    }
+
+    /**
+     * Collects node codes that participate in cross-category relationships.
+     */
+    private Set<String> collectCrossCategoryCodes(List<RequirementRelationshipView> relationships) {
+        Set<String> codes = new LinkedHashSet<>();
+        for (RequirementRelationshipView rel : relationships) {
+            String srcRoot = rootOf(rel.getSourceCode());
+            String tgtRoot = rootOf(rel.getTargetCode());
+            if (srcRoot != null && tgtRoot != null && !srcRoot.equals(tgtRoot)) {
+                codes.add(rel.getSourceCode());
+                codes.add(rel.getTargetCode());
+            }
+        }
+        return codes;
     }
 }

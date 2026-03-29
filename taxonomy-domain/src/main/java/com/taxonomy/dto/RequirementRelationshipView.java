@@ -1,5 +1,7 @@
 package com.taxonomy.dto;
 
+import com.taxonomy.model.SeedType;
+
 public class RequirementRelationshipView {
 
     /** Relation is included for scoring traceability (typically root-level propagation). */
@@ -16,6 +18,20 @@ public class RequirementRelationshipView {
     private int hopDistance;
     private String includedBecause;
     private String relationCategory = CATEGORY_TRACE;
+
+    // ── Phase 1.4 fields ────────────────────────────────────────────────────
+
+    /** Structured origin classification for this relation. */
+    private RelationOrigin origin;
+
+    /** Confidence score (0.0–1.0) for this relation. */
+    private double confidence;
+
+    /** Human-readable reason why this relation was derived. */
+    private String derivationReason;
+
+    /** Seed type if this relation originates from the seed CSV; {@code null} otherwise. */
+    private SeedType seedType;
 
     public RequirementRelationshipView() {}
 
@@ -42,4 +58,18 @@ public class RequirementRelationshipView {
 
     public String getRelationCategory() { return relationCategory; }
     public void setRelationCategory(String relationCategory) { this.relationCategory = relationCategory; }
+
+    // ── Phase 1.4 accessors ─────────────────────────────────────────────────
+
+    public RelationOrigin getOrigin() { return origin; }
+    public void setOrigin(RelationOrigin origin) { this.origin = origin; }
+
+    public double getConfidence() { return confidence; }
+    public void setConfidence(double confidence) { this.confidence = confidence; }
+
+    public String getDerivationReason() { return derivationReason; }
+    public void setDerivationReason(String derivationReason) { this.derivationReason = derivationReason; }
+
+    public SeedType getSeedType() { return seedType; }
+    public void setSeedType(SeedType seedType) { this.seedType = seedType; }
 }
