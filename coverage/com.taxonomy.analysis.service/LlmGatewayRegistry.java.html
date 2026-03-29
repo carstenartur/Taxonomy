@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LlmGatewayRegistry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmGatewayRegistry.java</span></div><h1>LlmGatewayRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import tools.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
+
+import com.taxonomy.preferences.PreferencesService;
+
+import java.util.EnumMap;
+import java.util.Map;
+
+/**
+ * Registry that creates and holds one {@link LlmGateway} per {@link LlmProvider}.
+ *
+ * &lt;p&gt;Each gateway instance has its own independent throttle queue, so providers
+ * with generous rate limits (e.g. paid OpenAI at 60 RPM) are not penalised by
+ * providers with strict limits (e.g. Gemini free tier at 5 RPM).
+ *
+ * &lt;p&gt;Gateways for {@link LlmProvider#LOCAL_ONNX} are not provided here because
+ * local embeddings do not use HTTP calls. {@code LlmService} handles that case directly.
+ */
+@Component
+public class LlmGatewayRegistry {
+
+<span class="fc" id="L30">    private static final Logger log = LoggerFactory.getLogger(LlmGatewayRegistry.class);</span>
+
+    private final Map&lt;LlmProvider, LlmGateway&gt; gateways;
+
+    @Autowired
+    public LlmGatewayRegistry(LlmProviderConfig providerConfig,
+                               RestTemplate restTemplate,
+                               ObjectMapper objectMapper,
+                               @Autowired(required = false) @Lazy PreferencesService preferencesService,
+                               @Autowired(required = false) SimpleClientHttpRequestFactory llmRequestFactory,
+<span class="fc" id="L40">                               @Autowired(required = false) LlmRecordReplayService recordReplayService) {</span>
+
+<span class="fc" id="L42">        LlmResponseParser responseParser = new LlmResponseParser(objectMapper);</span>
+
+<span class="fc" id="L44">        gateways = new EnumMap&lt;&gt;(LlmProvider.class);</span>
+
+        // Gemini: default 5 RPM (free tier)
+<span class="fc" id="L47">        gateways.put(LlmProvider.GEMINI, new GeminiGateway(</span>
+                providerConfig, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService));
+
+        // OpenAI: default 60 RPM (paid)
+<span class="fc" id="L52">        gateways.put(LlmProvider.OPENAI, new OpenAiCompatibleGateway(</span>
+                LlmProvider.OPENAI, LlmProviderConfig.OPENAI_URL, LlmProviderConfig.OPENAI_MODEL,
+                60, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService));
+
+        // DeepSeek: default 0 RPM (no throttle — generous limits)
+<span class="fc" id="L58">        gateways.put(LlmProvider.DEEPSEEK, new OpenAiCompatibleGateway(</span>
+                LlmProvider.DEEPSEEK, LlmProviderConfig.DEEPSEEK_URL, LlmProviderConfig.DEEPSEEK_MODEL,
+                0, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService));
+
+        // Qwen: default 0 RPM (no throttle)
+<span class="fc" id="L64">        gateways.put(LlmProvider.QWEN, new OpenAiCompatibleGateway(</span>
+                LlmProvider.QWEN, LlmProviderConfig.QWEN_URL, LlmProviderConfig.QWEN_MODEL,
+                0, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService));
+
+        // Llama: default 0 RPM (no throttle — self-hosted or generous API)
+<span class="fc" id="L70">        gateways.put(LlmProvider.LLAMA, new OpenAiCompatibleGateway(</span>
+                LlmProvider.LLAMA, LlmProviderConfig.LLAMA_URL, LlmProviderConfig.LLAMA_MODEL,
+                0, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService));
+
+        // Mistral: default 0 RPM (no throttle)
+<span class="fc" id="L76">        gateways.put(LlmProvider.MISTRAL, new OpenAiCompatibleGateway(</span>
+                LlmProvider.MISTRAL, LlmProviderConfig.MISTRAL_URL, LlmProviderConfig.MISTRAL_MODEL,
+                0, restTemplate, objectMapper, responseParser,
+                preferencesService, llmRequestFactory, recordReplayService));
+
+<span class="fc" id="L81">        log.info(&quot;LlmGatewayRegistry initialised with {} gateways&quot;, gateways.size());</span>
+<span class="fc" id="L82">    }</span>
+
+    /**
+     * Returns the gateway for the given provider.
+     *
+     * @param provider the LLM provider
+     * @return the corresponding gateway
+     * @throws IllegalArgumentException if no gateway exists for the provider
+     *         (e.g. {@link LlmProvider#LOCAL_ONNX})
+     */
+    public LlmGateway getGateway(LlmProvider provider) {
+<span class="fc" id="L93">        LlmGateway gw = gateways.get(provider);</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (gw == null) {</span>
+<span class="fc" id="L95">            throw new IllegalArgumentException(</span>
+                    &quot;No HTTP gateway registered for provider &quot; + provider
+                    + &quot;. LOCAL_ONNX uses local embeddings, not an HTTP gateway.&quot;);
+        }
+<span class="fc" id="L99">        return gw;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
