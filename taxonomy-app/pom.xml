@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.taxonomy</groupId>
         <artifactId>taxonomy</artifactId>
-        <version>1.1.3-SNAPSHOT</version>
+        <version>1.2.0</version>
     </parent>
     <artifactId>taxonomy-app</artifactId>
     <name>Taxonomy Application</name>
