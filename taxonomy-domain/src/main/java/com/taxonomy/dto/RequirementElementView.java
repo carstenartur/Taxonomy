@@ -12,6 +12,26 @@ public class RequirementElementView {
     /** Full hierarchy path from root to this node (e.g. "CP &gt; CP-1000 &gt; CP-1023"). */
     private String hierarchyPath;
 
+    // ── Phase 1.3 fields ────────────────────────────────────────────────────
+
+    /** Structured origin classification replacing free-text {@link #includedBecause}. */
+    private NodeOrigin origin;
+
+    /** Depth (level) of this node in the taxonomy tree (0 = root). */
+    private int taxonomyDepth;
+
+    /** Computed specificity value; higher means more concrete. */
+    private double specificityScore;
+
+    /** Human-readable scoring path, e.g. "CP(92%) > CP-1000(90%) > CP-1023(85%)". */
+    private String scoringPath;
+
+    /** Original LLM score (0–100); 0 when the node was only reached by propagation. */
+    private int directLlmScore;
+
+    /** Whether this node was selected for the final impact presentation. */
+    private boolean selectedForImpact;
+
     public RequirementElementView() {}
 
     public String getNodeCode() { return nodeCode; }
@@ -37,4 +57,24 @@ public class RequirementElementView {
 
     public String getHierarchyPath() { return hierarchyPath; }
     public void setHierarchyPath(String hierarchyPath) { this.hierarchyPath = hierarchyPath; }
+
+    // ── Phase 1.3 accessors ─────────────────────────────────────────────────
+
+    public NodeOrigin getOrigin() { return origin; }
+    public void setOrigin(NodeOrigin origin) { this.origin = origin; }
+
+    public int getTaxonomyDepth() { return taxonomyDepth; }
+    public void setTaxonomyDepth(int taxonomyDepth) { this.taxonomyDepth = taxonomyDepth; }
+
+    public double getSpecificityScore() { return specificityScore; }
+    public void setSpecificityScore(double specificityScore) { this.specificityScore = specificityScore; }
+
+    public String getScoringPath() { return scoringPath; }
+    public void setScoringPath(String scoringPath) { this.scoringPath = scoringPath; }
+
+    public int getDirectLlmScore() { return directLlmScore; }
+    public void setDirectLlmScore(int directLlmScore) { this.directLlmScore = directLlmScore; }
+
+    public boolean isSelectedForImpact() { return selectedForImpact; }
+    public void setSelectedForImpact(boolean selectedForImpact) { this.selectedForImpact = selectedForImpact; }
 }
