@@ -249,16 +249,81 @@ class DiagramProjectionServiceTest {
         assertTrue(result.layout().groupByLayer());
     }
 
+    @Test
+    void scaffoldingNodesExcludedWhenConcreteNodesExist() {
+        var view = new RequirementArchitectureView();
+        // CP-1000 is scaffolding (depth 1), CP-1023 is concrete (depth 3)
+        var scaffolding = createElement("CP-1000", "Capabilities", "CP", 0.9, false, 1);
+        var concrete = createElement("CP-1023", "Secure Messaging", "CP", 0.8, false, 3);
+        view.setIncludedElements(List.of(scaffolding, concrete));
+
+        DiagramModel result = service.project(view, "Test");
+
+        assertEquals(1, result.nodes().size());
+        assertEquals("CP-1023", result.nodes().get(0).id());
+    }
+
+    @Test
+    void scaffoldingNodeKeptWhenNoConcreteSiblingsExist() {
+        var view = new RequirementArchitectureView();
+        // Only scaffolding in this category — should be kept
+        var scaffolding = createElement("CP-1000", "Capabilities", "CP", 0.9, false, 1);
+        view.setIncludedElements(List.of(scaffolding));
+
+        DiagramModel result = service.project(view, "Test");
+
+        assertEquals(1, result.nodes().size());
+        assertEquals("CP-1000", result.nodes().get(0).id());
+    }
+
+    @Test
+    void rootNodeAtDepthZeroExcludedWhenConcreteNodesExist() {
+        var view = new RequirementArchitectureView();
+        var root = createElement("CP", "Capabilities", "CP", 0.9, false, 0);
+        var leaf = createElement("CP-1023", "Service", "CP", 0.8, false, 3);
+        view.setIncludedElements(List.of(root, leaf));
+
+        DiagramModel result = service.project(view, "Test");
+
+        assertEquals(1, result.nodes().size());
+        assertEquals("CP-1023", result.nodes().get(0).id());
+    }
+
+    @Test
+    void scaffoldingSuppressionWorksAcrossCategories() {
+        var view = new RequirementArchitectureView();
+        // Two categories: CP has scaffolding+concrete, CO has only scaffolding
+        var cpScaffolding = createElement("CP-1000", "Cap container", "CP", 0.9, false, 1);
+        var cpConcrete = createElement("CP-1023", "Messaging", "CP", 0.8, false, 3);
+        var coScaffolding = createElement("CO-1000", "Comms container", "CO", 0.7, false, 1);
+        view.setIncludedElements(List.of(cpScaffolding, cpConcrete, coScaffolding));
+
+        DiagramModel result = service.project(view, "Test");
+
+        // CP-1000 suppressed (concrete CP-1023 exists), CO-1000 kept (no concrete in CO)
+        var nodeIds = result.nodes().stream().map(DiagramNode::id).toList();
+        assertFalse(nodeIds.contains("CP-1000"), "CP-1000 scaffolding should be suppressed");
+        assertTrue(nodeIds.contains("CP-1023"), "CP-1023 concrete should be kept");
+        assertTrue(nodeIds.contains("CO-1000"), "CO-1000 should be kept (only node in CO)");
+    }
+
     // --- helper methods ---
 
     private RequirementElementView createElement(String code, String title,
                                                   String sheet, double relevance, boolean anchor) {
+        return createElement(code, title, sheet, relevance, anchor, 3);
+    }
+
+    private RequirementElementView createElement(String code, String title,
+                                                  String sheet, double relevance, boolean anchor,
+                                                  int depth) {
         var elem = new RequirementElementView();
         elem.setNodeCode(code);
         elem.setTitle(title);
         elem.setTaxonomySheet(sheet);
         elem.setRelevance(relevance);
         elem.setAnchor(anchor);
+        elem.setTaxonomyDepth(depth);
         return elem;
     }
 

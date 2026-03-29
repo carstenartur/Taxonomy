@@ -449,6 +449,11 @@ public class RequirementArchitectureViewService {
                 Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(leafCode);
                 if (nodeOpt.isPresent()) {
                     TaxonomyNode node = nodeOpt.get();
+                    // Skip taxonomy scaffolding: depth ≤ 1 nodes are structural
+                    // containers (e.g. CP-1000) and not concrete leaf elements
+                    if (node.getLevel() <= 1) {
+                        continue;
+                    }
                     element.setTitle(node.getNameEn());
                     element.setTaxonomySheet(node.getTaxonomyRoot());
                     element.setTaxonomyDepth(node.getLevel());

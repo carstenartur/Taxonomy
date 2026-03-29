@@ -70,10 +70,23 @@ public class DiagramProjectionService {
                     new DiagramLayout("LR", true));
         }
 
+        // Pre-compute which categories have concrete (depth > 1) elements
+        var categoriesWithConcreteNodes = new java.util.HashSet<String>();
+        for (RequirementElementView el : view.getIncludedElements()) {
+            if (el.getTaxonomyDepth() > 1 && el.getTaxonomySheet() != null) {
+                categoriesWithConcreteNodes.add(el.getTaxonomySheet());
+            }
+        }
+
         List<DiagramNode> nodes = new ArrayList<>();
         for (RequirementElementView el : view.getIncludedElements()) {
             // Include if: sufficient relevance, is anchor, or was selected for impact
             if (el.getRelevance() < MIN_RELEVANCE && !el.isAnchor() && !el.isSelectedForImpact()) {
+                continue;
+            }
+            // Suppress taxonomy scaffolding (depth ≤ 1) when concrete nodes exist
+            if (el.getTaxonomyDepth() <= 1
+                    && categoriesWithConcreteNodes.contains(el.getTaxonomySheet())) {
                 continue;
             }
             String rawType = el.getTaxonomySheet() != null ? el.getTaxonomySheet() : "Unknown";

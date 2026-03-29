@@ -495,4 +495,29 @@ class MermaidExportServiceTest {
         assertTrue(labels.showcaseLayerLabel("Communications Services").contains("Kommunikation"),
                 "German showcase label should contain abbreviated name");
     }
+
+    @Test
+    void showcaseSuppressesScaffoldingNodesWhenLeavesExist() {
+        // CP-1000 is a scaffolding container node; CP-1023 is concrete
+        var scaffolding = new DiagramNode("CP-1000", "Capabilities", "Capabilities", 0.9, true, 1);
+        var leaf = new DiagramNode("CP-1023", "Secure Messaging", "Capabilities", 0.85, true, 1);
+        var model = new DiagramModel("Test", List.of(scaffolding, leaf), List.of(),
+                new DiagramLayout("LR", true));
+
+        String result = service.exportShowcase(model);
+
+        assertTrue(result.contains("CP_1023"), "Concrete leaf should be present");
+        assertFalse(result.contains("CP_1000"), "Scaffolding CP-1000 should be suppressed");
+    }
+
+    @Test
+    void isScaffoldingIdRecognisesAllCategories() {
+        for (String cat : List.of("BP", "BR", "CP", "CI", "CO", "CR", "IP", "UA")) {
+            assertTrue(MermaidExportService.isScaffoldingId(cat + "-1000"),
+                    cat + "-1000 should be scaffolding");
+        }
+        assertFalse(MermaidExportService.isScaffoldingId("CP-1023"), "CP-1023 is not scaffolding");
+        assertFalse(MermaidExportService.isScaffoldingId("CP"), "Root code is not scaffolding (separate check)");
+        assertFalse(MermaidExportService.isScaffoldingId(null), "null is not scaffolding");
+    }
 }
