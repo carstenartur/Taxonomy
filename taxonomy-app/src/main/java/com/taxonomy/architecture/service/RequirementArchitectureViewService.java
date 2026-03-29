@@ -578,6 +578,41 @@ public class RequirementArchitectureViewService {
             log.info("Generated {} impact relation(s) from {} trace relation(s)",
                     impactRelations.size(), relationships.size() - impactRelations.size());
         }
+
+        // Phase 3.1: Rank all relationships so that cross-category leaf-to-leaf
+        // impact relations appear before root-level propagation relations.
+        rankRelationships(relationships);
+    }
+
+    /**
+     * Sorts relationships by priority:
+     * <ol>
+     *   <li>Priority 1: Cross-category leaf-to-leaf impact relations</li>
+     *   <li>Priority 2: Same-category leaf-to-leaf relations</li>
+     *   <li>Priority 3: Relations involving at least one leaf node</li>
+     *   <li>Priority 4: Root-level propagation relations</li>
+     * </ol>
+     * Within each priority tier, relations are sorted by confidence/relevance descending.
+     */
+    private void rankRelationships(List<RequirementRelationshipView> relationships) {
+        relationships.sort(Comparator
+                .comparingInt((RequirementRelationshipView r) -> relationPriority(r))
+                .thenComparing(Comparator.comparingDouble(RequirementRelationshipView::getConfidence).reversed())
+                .thenComparing(Comparator.comparingDouble(RequirementRelationshipView::getPropagatedRelevance).reversed()));
+    }
+
+    /**
+     * Returns a priority tier (lower = higher priority) for a relationship.
+     */
+    private static int relationPriority(RequirementRelationshipView rel) {
+        boolean srcIsLeaf = rel.getSourceCode() != null && rel.getSourceCode().contains("-");
+        boolean tgtIsLeaf = rel.getTargetCode() != null && rel.getTargetCode().contains("-");
+        boolean isCrossCategory = !Objects.equals(rootOf(rel.getSourceCode()), rootOf(rel.getTargetCode()));
+
+        if (srcIsLeaf && tgtIsLeaf && isCrossCategory) return 1; // Cross-category leaf-to-leaf
+        if (srcIsLeaf && tgtIsLeaf) return 2;                     // Same-category leaf-to-leaf
+        if (srcIsLeaf || tgtIsLeaf) return 3;                     // At least one leaf
+        return 4;                                                  // Root-level
     }
 
     /**
