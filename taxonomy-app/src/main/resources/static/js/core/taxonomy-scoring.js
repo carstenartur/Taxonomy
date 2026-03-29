@@ -637,6 +637,26 @@
     }
 
     // ── Architecture View (Impact Map) ──────────────────────────────────────
+
+    /** Returns a Bootstrap badge color class for a NodeOrigin or RelationOrigin enum name. */
+    function originBadgeColor(origin) {
+        if (!origin) return 'light';
+        switch (origin) {
+            case 'DIRECT_SCORED': return 'success';
+            case 'TRACE_INTERMEDIATE': return 'secondary';
+            case 'PROPAGATED': return 'info';
+            case 'SEED_CONTEXT': return 'warning';
+            case 'ENRICHED_LEAF': return 'primary';
+            case 'IMPACT_SELECTED': return 'danger';
+            case 'TAXONOMY_SEED': return 'warning';
+            case 'PROPAGATED_TRACE': return 'secondary';
+            case 'IMPACT_DERIVED': return 'danger';
+            case 'SUGGESTED_CANDIDATE': return 'info';
+            case 'LLM_SUPPORTED': return 'primary';
+            default: return 'light';
+        }
+    }
+
     function renderArchitectureView(view) {
         const panel = document.getElementById('architectureViewPanel');
         const content = document.getElementById('architectureViewContent');
@@ -828,24 +848,28 @@
 
             // Elements table
             if (hasElements) {
-                html += '<h6 class="mb-1 mt-2">Included Elements</h6>';
+                html += '<h6 class="mb-1 mt-2">' + t('archview.col.origin') + ' &amp; Elements</h6>';
                 html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
-                html += '<thead><tr><th>Code</th><th>Title</th><th>Path</th><th>Sheet</th><th>Relevance</th><th>Hops</th><th>Anchor</th><th>Reason</th></tr></thead><tbody>';
+                html += '<thead><tr><th>Code</th><th>Title</th><th>' + t('archview.col.scoring.path') + '</th><th>Sheet</th><th>Relevance</th><th>' + t('archview.col.llm.score') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.col.impact') + '</th></tr></thead><tbody>';
                 elements.forEach(e => {
-                    const rowClass = e.anchor ? 'table-success' : '';
+                    var rowClass = e.selectedForImpact ? 'table-warning' : (e.anchor ? 'table-success' : '');
                     const sheetCfg = LAYER_CONFIG[e.taxonomySheet];
                     const sheetLabel = sheetCfg ? sheetCfg.label : (e.taxonomySheet || '');
-                    const pathLabel = e.hierarchyPath || e.nodeCode;
+                    const pathLabel = e.scoringPath || e.hierarchyPath || e.nodeCode;
+                    const originKey = e.origin ? 'node.origin.' + e.origin.replace(/_/g, '.').toLowerCase() : '';
+                    const originLabel = originKey ? t(originKey) : (e.includedBecause || '');
+                    const originBadge = e.origin ? '<span class="badge bg-' + originBadgeColor(e.origin) + ' text-dark">' + escapeHtml(originLabel) + '</span>' : escapeHtml(e.includedBecause || '');
                     html += '<tr class="' + rowClass + '">' +
                         '<td>' + escapeHtml(e.nodeCode) + '</td>' +
                         '<td>' + escapeHtml(e.title || '') + '</td>' +
-                        '<td>' + escapeHtml(pathLabel) + '</td>' +
+                        '<td class="text-muted small">' + escapeHtml(pathLabel) + '</td>' +
                         '<td>' + escapeHtml(sheetLabel) + '</td>' +
                         '<td>' + (e.relevance * 100).toFixed(1) + '%</td>' +
-                        '<td>' + e.hopDistance + '</td>' +
-                        '<td>' + (e.anchor ? '★' : '') +
+                        '<td>' + (e.directLlmScore || 0) + '</td>' +
+                        '<td>' + originBadge + '</td>' +
+                        '<td>' + (e.selectedForImpact ? '🎯' : '') +
+                        (e.anchor ? ' ★' : '') +
                         (hotspotCodes.has(e.nodeCode) ? ' ⚠️' : '') + '</td>' +
-                        '<td>' + escapeHtml(e.includedBecause || '') + '</td>' +
                         '</tr>';
                 });
                 html += '</tbody></table></div>';
@@ -859,15 +883,18 @@
                 if (impactRels.length > 0) {
                     html += '<h6 class="mb-1">' + t('archview.impact.relations.title') + ' <span class="badge bg-primary">' + impactRels.length + '</span></h6>';
                     html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
-                    html += '<thead><tr><th>' + t('archview.impact.col.source') + '</th><th>\u2192</th><th>' + t('archview.impact.col.target') + '</th><th>' + t('archview.impact.col.type') + '</th><th>' + t('archview.impact.col.relevance') + '</th><th>' + t('archview.impact.col.derived') + '</th></tr></thead><tbody>';
+                    html += '<thead><tr><th>' + t('archview.impact.col.source') + '</th><th>\u2192</th><th>' + t('archview.impact.col.target') + '</th><th>' + t('archview.impact.col.type') + '</th><th>' + t('archview.impact.col.relevance') + '</th><th>' + t('archview.col.confidence') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.col.derivation') + '</th></tr></thead><tbody>';
                     impactRels.forEach(r => {
+                        var relOriginLabel = r.origin ? '<span class="badge bg-' + originBadgeColor(r.origin) + ' text-dark">' + escapeHtml(r.origin) + '</span>' : '';
                         html += '<tr class="table-info">' +
                             '<td>' + escapeHtml(r.sourceCode) + '</td>' +
                             '<td>\u2192</td>' +
                             '<td>' + escapeHtml(r.targetCode) + '</td>' +
                             '<td>' + escapeHtml(r.relationType) + '</td>' +
                             '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
-                            '<td>' + escapeHtml(r.includedBecause || '') + '</td>' +
+                            '<td>' + (r.confidence ? (r.confidence * 100).toFixed(0) + '%' : '') + '</td>' +
+                            '<td>' + relOriginLabel + '</td>' +
+                            '<td class="small text-muted">' + escapeHtml(r.derivationReason || r.includedBecause || '') + '</td>' +
                             '</tr>';
                     });
                     html += '</tbody></table></div>';
@@ -876,8 +903,9 @@
                 if (traceRels.length > 0) {
                     html += '<h6 class="mb-1">' + t('archview.trace.relations.title') + ' <span class="badge bg-secondary">' + traceRels.length + '</span></h6>';
                     html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
-                    html += '<thead><tr><th>' + t('archview.trace.col.source') + '</th><th>\u2192</th><th>' + t('archview.trace.col.target') + '</th><th>' + t('archview.trace.col.type') + '</th><th>' + t('archview.trace.col.relevance') + '</th><th>' + t('archview.trace.col.hops') + '</th><th>' + t('archview.trace.col.reason') + '</th></tr></thead><tbody>';
+                    html += '<thead><tr><th>' + t('archview.trace.col.source') + '</th><th>\u2192</th><th>' + t('archview.trace.col.target') + '</th><th>' + t('archview.trace.col.type') + '</th><th>' + t('archview.trace.col.relevance') + '</th><th>' + t('archview.trace.col.hops') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.trace.col.reason') + '</th></tr></thead><tbody>';
                     traceRels.forEach(r => {
+                        var traceOriginLabel = r.origin ? '<span class="badge bg-' + originBadgeColor(r.origin) + ' text-dark">' + escapeHtml(r.origin) + '</span>' : '';
                         html += '<tr>' +
                             '<td>' + escapeHtml(r.sourceCode) + '</td>' +
                             '<td>\u2192</td>' +
@@ -885,7 +913,8 @@
                             '<td>' + escapeHtml(r.relationType) + '</td>' +
                             '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
                             '<td>' + r.hopDistance + '</td>' +
-                            '<td>' + escapeHtml(r.includedBecause || '') + '</td>' +
+                            '<td>' + traceOriginLabel + '</td>' +
+                            '<td class="small text-muted">' + escapeHtml(r.derivationReason || r.includedBecause || '') + '</td>' +
                             '</tr>';
                     });
                     html += '</tbody></table></div>';

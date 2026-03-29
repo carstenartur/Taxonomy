@@ -72,7 +72,8 @@ public class DiagramProjectionService {
 
         List<DiagramNode> nodes = new ArrayList<>();
         for (RequirementElementView el : view.getIncludedElements()) {
-            if (el.getRelevance() < MIN_RELEVANCE && !el.isAnchor()) {
+            // Include if: sufficient relevance, is anchor, or was selected for impact
+            if (el.getRelevance() < MIN_RELEVANCE && !el.isAnchor() && !el.isSelectedForImpact()) {
                 continue;
             }
             String rawType = el.getTaxonomySheet() != null ? el.getTaxonomySheet() : "Unknown";
@@ -87,8 +88,11 @@ public class DiagramProjectionService {
                     layer));
         }
 
-        // Sort by relevance descending, then limit
-        nodes.sort(Comparator.comparingDouble(DiagramNode::relevance).reversed());
+        // Sort: impact-selected nodes first, then anchors, then by relevance descending.
+        // This ensures the most semantically valuable nodes survive the MAX_NODES limit.
+        nodes.sort(Comparator
+                .comparing((DiagramNode n) -> n.anchor() ? 0 : 1)
+                .thenComparing(Comparator.comparingDouble(DiagramNode::relevance).reversed()));
         if (nodes.size() > MAX_NODES) {
             nodes = new ArrayList<>(nodes.subList(0, MAX_NODES));
         }
