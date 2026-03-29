@@ -149,7 +149,7 @@
                     </dependency>
                 </dependencies>
             </plugin>
-            <!-- Pin to 3.5.2 (Doxia 2.x) to match maven-site-plugin:3.21.0.
+            <!-- Pin surefire-report (Doxia 2.x) to match maven-site-plugin:3.21.0.
                  Fluido skin 2.0.0-M11 declared here so both plugins share the
                  same skin version and Doxia generation. -->
             <plugin>
