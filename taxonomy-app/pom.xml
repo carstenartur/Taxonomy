@@ -339,7 +339,7 @@
                              workingDirectory=${project.basedir}). -->
                         <project.basedir>${project.basedir}</project.basedir>
                         <!-- Pass the final JAR name so ContainerTestUtils can locate the fat JAR
-                             deterministically without a regex scan (e.g. taxonomy-app-1.1.3-SNAPSHOT). -->
+                             deterministically without a regex scan (e.g. taxonomy-app-1.x.x-SNAPSHOT). -->
                         <project.build.finalName>${project.build.finalName}</project.build.finalName>
                     </systemPropertyVariables>
                 </configuration>
