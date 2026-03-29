@@ -1,2 +1,1 @@
-- #218: GUI-First Dokumentation & Feature-Vollständigkeit
-- #198: Abstraktionsebenen zur Reduktion der KI-Kontextlast
+- #254: Keycloak als alternative Authentifizierungsmethode
