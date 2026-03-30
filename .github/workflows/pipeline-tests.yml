@@ -42,6 +42,6 @@ jobs:
         run: mvn install -DskipTests -q
 
       - name: Run Pipeline Tests
-        run: mvn failsafe:integration-test failsafe:verify -DrunOnnxTests -Dit.test=LocalOnnxPipelineIT -pl taxonomy-app
+        run: mvn failsafe:integration-test failsafe:verify -DrunOnnxTests -Dit.test="LocalOnnxPipelineIT,OnnxSeleniumIT" -pl taxonomy-app -am
         env:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5

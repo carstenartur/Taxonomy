@@ -507,14 +507,19 @@
                         infoEl.classList.add('d-none');
                     }
                     if (badge) {
-                        if (!adminPasswordRequired || isAdminMode()) {
+                        if (status.limited) {
+                            badge.textContent = t('browse.ai.badge.limited', status.provider);
+                            badge.title = t('browse.ai.badge.limited.title', status.provider);
+                            badge.className = 'badge bg-warning text-dark ms-auto me-2 fs-6';
+                        } else if (!adminPasswordRequired || isAdminMode()) {
                             badge.textContent = t('browse.ai.badge.provider', status.provider);
                             badge.title = t('browse.ai.badge.available.title', status.provider);
+                            badge.className = 'badge bg-success ms-auto me-2 fs-6';
                         } else {
                             badge.textContent = t('browse.ai.badge.ready');
                             badge.title = t('browse.ai.badge.ready.title');
+                            badge.className = 'badge bg-success ms-auto me-2 fs-6';
                         }
-                        badge.className = 'badge bg-success ms-auto me-2 fs-6';
                     }
                 } else {
                     // Even when no cloud provider is available, allow LOCAL_ONNX and MANUAL
