@@ -661,7 +661,7 @@
      * Renders an elements table for either impact-selected or trace elements.
      * Shared between the Architecture Impact and Scoring Trace sections.
      */
-    function renderElementsTable(elems, hotspotCodes, hotspotReasons) {
+    function renderElementsTable(elems, hotspotCodes) {
         var tbl = '';
         tbl += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
         tbl += '<thead><tr><th>Code</th><th>Title</th><th>' + t('archview.col.scoring.path') + '</th><th>Sheet</th><th>Relevance</th><th>' + t('archview.col.llm.score') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.col.impact') + '</th></tr></thead><tbody>';
@@ -890,7 +890,7 @@
 
                 if (impactElements.length > 0) {
                     html += '<h6 class="mb-1 mt-2">Impact Elements</h6>';
-                    html += renderElementsTable(impactElements, hotspotCodes, hotspotReasons);
+                    html += renderElementsTable(impactElements, hotspotCodes);
                 }
 
                 var impactRels = relationships.filter(function(r) { return r.relationCategory === 'impact'; });
@@ -928,7 +928,7 @@
 
                 if (traceElements.length > 0) {
                     html += '<h6 class="mb-1 mt-2">Trace Elements</h6>';
-                    html += renderElementsTable(traceElements, hotspotCodes, hotspotReasons);
+                    html += renderElementsTable(traceElements, hotspotCodes);
                 }
 
                 if (traceRels.length > 0) {
