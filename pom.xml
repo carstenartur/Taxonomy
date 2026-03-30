@@ -63,13 +63,41 @@
         <java.version>17</java.version>
         <djl.version>0.36.0</djl.version>
         <excludedGroups>real-llm</excludedGroups>
+        <!-- Dependency versions (centralized to avoid repetition in child POMs) -->
+        <poi.version>5.5.1</poi.version>
+        <pdfbox.version>3.0.7</pdfbox.version>
+        <lucene.version>9.12.3</lucene.version>
+        <hibernate-search.version>8.3.0.Final</hibernate-search.version>
+        <hibernate-search-backend.version>8.2.2.Final</hibernate-search-backend.version>
+        <jgit.version>7.6.0.202603022253-r</jgit.version>
+        <springdoc.version>3.0.2</springdoc.version>
+        <!-- Named selenium-java.version (NOT selenium.version) to avoid overriding
+             Spring Boot's managed selenium.version property, which controls the
+             selenium-bom and all transitive Selenium artifact versions.  Overriding
+             it caused Testcontainers to pull a newer Chrome Docker image with
+             HTTPS-First Mode enabled by default (ERR_SSL_PROTOCOL_ERROR).
+             This property is referenced only by the selenium-java dependency in
+             taxonomy-app/pom.xml. -->
+        <selenium-java.version>4.41.0</selenium-java.version>
+        <archunit.version>1.4.1</archunit.version>
+        <flexmark.version>0.64.8</flexmark.version>
+        <xstream.version>1.4.21</xstream.version>
+        <testcontainers.version>2.0.4</testcontainers.version>
+        <!-- Plugin versions (centralized) -->
+        <cyclonedx.version>2.9.1</cyclonedx.version>
+        <maven-site-plugin.version>3.21.0</maven-site-plugin.version>
+        <maven-fluido-skin.version>2.0.0-M11</maven-fluido-skin.version>
+        <maven-surefire-report.version>3.5.5</maven-surefire-report.version>
+        <maven-project-info-reports.version>3.7.0</maven-project-info-reports.version>
+        <git-commit-id.version>9.0.2</git-commit-id.version>
+        <jacoco.version>0.8.14</jacoco.version>
     </properties>
     <dependencyManagement>
         <dependencies>
             <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-bom</artifactId>
-                <version>2.0.4</version>
+                <version>${testcontainers.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -90,7 +118,7 @@
             <plugin>
                 <groupId>org.cyclonedx</groupId>
                 <artifactId>cyclonedx-maven-plugin</artifactId>
-                <version>2.9.1</version>
+                <version>${cyclonedx.version}</version>
                 <executions>
                     <execution>
                         <phase>package</phase>
@@ -119,27 +147,43 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-site-plugin</artifactId>
-                <version>3.21.0</version>
+                <version>${maven-site-plugin.version}</version>
                 <dependencies>
                     <dependency>
                         <groupId>org.apache.maven.skins</groupId>
                         <artifactId>maven-fluido-skin</artifactId>
-                        <version>2.0.0-M11</version>
+                        <version>${maven-fluido-skin.version}</version>
                     </dependency>
                 </dependencies>
             </plugin>
-            <!-- Pin to 3.5.2 (Doxia 2.x) to match maven-site-plugin:3.21.0.
+            <!-- Pin surefire-report (Doxia 2.x) to match maven-site-plugin:3.21.0.
                  Fluido skin 2.0.0-M11 declared here so both plugins share the
                  same skin version and Doxia generation. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-report-plugin</artifactId>
-                <version>3.5.5</version>
+                <version>${maven-surefire-report.version}</version>
                 <dependencies>
                     <dependency>
                         <groupId>org.apache.maven.skins</groupId>
                         <artifactId>maven-fluido-skin</artifactId>
-                        <version>2.0.0-M11</version>
+                        <version>${maven-fluido-skin.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+            <!-- Pin project-info-reports to Doxia 2.x to match maven-site-plugin:3.21.0.
+                 Without this pin, Spring Boot 4.0.4 manages version 3.4.5 (Doxia 1.x),
+                 which reads description/url from the effective POM inheritance chain
+                 (spring-boot-starter-parent) instead of the project's own values. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-project-info-reports-plugin</artifactId>
+                <version>${maven-project-info-reports.version}</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.apache.maven.skins</groupId>
+                        <artifactId>maven-fluido-skin</artifactId>
+                        <version>${maven-fluido-skin.version}</version>
                     </dependency>
                 </dependencies>
             </plugin>
