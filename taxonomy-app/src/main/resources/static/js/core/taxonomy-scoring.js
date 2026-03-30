@@ -875,10 +875,11 @@
                 html += '</tbody></table></div>';
             }
 
-            // Relationships table — split into impact and trace
+            // Relationships table — split into impact, trace, and seed
             if (hasRelationships) {
                 var impactRels = relationships.filter(function(r) { return r.relationCategory === 'impact'; });
-                var traceRels = relationships.filter(function(r) { return r.relationCategory !== 'impact'; });
+                var traceRels = relationships.filter(function(r) { return r.relationCategory === 'trace'; });
+                var seedRels = relationships.filter(function(r) { return r.relationCategory === 'seed'; });
 
                 if (impactRels.length > 0) {
                     html += '<h6 class="mb-1">' + t('archview.impact.relations.title') + ' <span class="badge bg-primary">' + impactRels.length + '</span></h6>';
@@ -920,6 +921,26 @@
                             '</tr>';
                     });
                     html += '</tbody></table></div>';
+                }
+
+                if (seedRels.length > 0) {
+                    html += '<details class="mt-2"><summary class="small text-muted">' + t('archview.seed.relations.title') + ' <span class="badge bg-warning text-dark">' + seedRels.length + '</span></summary>';
+                    html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
+                    html += '<thead><tr><th>' + t('archview.trace.col.source') + '</th><th>\u2192</th><th>' + t('archview.trace.col.target') + '</th><th>' + t('archview.trace.col.type') + '</th><th>' + t('archview.trace.col.relevance') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.trace.col.reason') + '</th></tr></thead><tbody>';
+                    seedRels.forEach(r => {
+                        const seedOriginKey = r.origin ? 'relation.origin.' + r.origin.replace(/_/g, '.').toLowerCase() : '';
+                        const seedOriginLabel = seedOriginKey ? '<span class="badge bg-' + originBadgeColor(r.origin) + ' text-dark">' + escapeHtml(t(seedOriginKey)) + '</span>' : '';
+                        html += '<tr class="table-warning">' +
+                            '<td>' + escapeHtml(r.sourceCode) + '</td>' +
+                            '<td>\u2192</td>' +
+                            '<td>' + escapeHtml(r.targetCode) + '</td>' +
+                            '<td>' + escapeHtml(r.relationType) + '</td>' +
+                            '<td>' + (r.propagatedRelevance * 100).toFixed(1) + '%</td>' +
+                            '<td>' + seedOriginLabel + '</td>' +
+                            '<td class="small text-muted">' + escapeHtml(r.derivationReason || r.includedBecause || '') + '</td>' +
+                            '</tr>';
+                    });
+                    html += '</tbody></table></div></details>';
                 }
             }
 

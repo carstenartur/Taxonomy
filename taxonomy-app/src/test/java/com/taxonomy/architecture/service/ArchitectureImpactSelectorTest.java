@@ -178,6 +178,19 @@ class ArchitectureImpactSelectorTest {
         }
     }
 
+    @Test
+    void seedContextNodesPreserveOriginWhenSelected() {
+        RequirementElementView seedNode = createElement("CP-1023", "Communication Capabilities", "CP", 3, 85);
+        seedNode.setOrigin(NodeOrigin.SEED_CONTEXT);
+        List<RequirementElementView> elements = new ArrayList<>(List.of(seedNode));
+
+        selector.selectForImpact(elements, Map.of("CP-1023", 85), Set.of());
+
+        // SEED_CONTEXT should not be overridden to IMPACT_SELECTED
+        assertThat(seedNode.getOrigin()).isEqualTo(NodeOrigin.SEED_CONTEXT);
+        assertThat(seedNode.isSelectedForImpact()).isTrue();
+    }
+
     private static RequirementElementView createElement(String code, String title,
                                                          String sheet, int depth, int score) {
         RequirementElementView el = new RequirementElementView();
