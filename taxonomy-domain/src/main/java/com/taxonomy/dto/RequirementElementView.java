@@ -32,6 +32,12 @@ public class RequirementElementView {
     /** Whether this node was selected for the final impact presentation. */
     private boolean selectedForImpact;
 
+    /**
+     * Short human-readable sentence explaining why this node is present.
+     * Combines origin, score, and taxonomy context into a single inspectable string.
+     */
+    private String presenceReason;
+
     public RequirementElementView() {}
 
     public String getNodeCode() { return nodeCode; }
@@ -77,4 +83,7 @@ public class RequirementElementView {
 
     public boolean isSelectedForImpact() { return selectedForImpact; }
     public void setSelectedForImpact(boolean selectedForImpact) { this.selectedForImpact = selectedForImpact; }
+
+    public String getPresenceReason() { return presenceReason; }
+    public void setPresenceReason(String presenceReason) { this.presenceReason = presenceReason; }
 }

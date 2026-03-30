@@ -36,6 +36,12 @@ public class RequirementRelationshipView {
     /** Seed type if this relation originates from the seed CSV; {@code null} otherwise. */
     private SeedType seedType;
 
+    /**
+     * Short human-readable sentence explaining why this relation is present.
+     * Combines origin, endpoints, and derivation context.
+     */
+    private String presenceReason;
+
     public RequirementRelationshipView() {}
 
     public Long getRelationId() { return relationId; }
@@ -75,4 +81,7 @@ public class RequirementRelationshipView {
 
     public SeedType getSeedType() { return seedType; }
     public void setSeedType(SeedType seedType) { this.seedType = seedType; }
+
+    public String getPresenceReason() { return presenceReason; }
+    public void setPresenceReason(String presenceReason) { this.presenceReason = presenceReason; }
 }
