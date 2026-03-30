@@ -71,7 +71,11 @@
         <hibernate-search-backend.version>8.2.2.Final</hibernate-search-backend.version>
         <jgit.version>7.6.0.202603022253-r</jgit.version>
         <springdoc.version>3.0.2</springdoc.version>
-        <selenium.version>4.41.0</selenium.version>
+        <!-- Named selenium-java.version (NOT selenium.version) to avoid overriding
+             Spring Boot's managed selenium.version property, which controls the
+             selenium-bom and all transitive Selenium artifact versions. Overriding
+             it would change the Chrome Docker image Testcontainers pulls. -->
+        <selenium-java.version>4.41.0</selenium-java.version>
         <archunit.version>1.4.1</archunit.version>
         <flexmark.version>0.64.8</flexmark.version>
         <xstream.version>1.4.21</xstream.version>
