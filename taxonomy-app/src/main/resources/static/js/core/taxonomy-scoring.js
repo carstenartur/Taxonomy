@@ -657,6 +657,40 @@
         }
     }
 
+    /**
+     * Renders an elements table for either impact-selected or trace elements.
+     * Shared between the Architecture Impact and Scoring Trace sections.
+     */
+    function renderElementsTable(elems, hotspotCodes) {
+        var tbl = '';
+        tbl += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
+        tbl += '<thead><tr><th>Code</th><th>Title</th><th>' + t('archview.col.scoring.path') + '</th><th>Sheet</th><th>Relevance</th><th>' + t('archview.col.llm.score') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.col.impact') + '</th></tr></thead><tbody>';
+        elems.forEach(function(e) {
+            var rowClass = e.selectedForImpact ? 'table-warning' : (e.anchor ? 'table-success' : '');
+            var sheetCfg = LAYER_CONFIG[e.taxonomySheet];
+            var sheetLabel = sheetCfg ? sheetCfg.label : (e.taxonomySheet || '');
+            var pathLabel = e.scoringPath || e.hierarchyPath || e.nodeCode;
+            var originKey = e.origin ? 'node.origin.' + e.origin.replace(/_/g, '.').toLowerCase() : '';
+            var originLabel = originKey ? t(originKey) : (e.includedBecause || '');
+            var originBadge = e.origin ? '<span class="badge bg-' + originBadgeColor(e.origin) + ' text-dark">' + escapeHtml(originLabel) + '</span>' : escapeHtml(e.includedBecause || '');
+            tbl += '<tr class="' + rowClass + '"' +
+                (e.presenceReason ? ' title="' + escapeHtml(e.presenceReason) + '"' : '') + '>' +
+                '<td>' + escapeHtml(e.nodeCode) + '</td>' +
+                '<td>' + escapeHtml(e.title || '') + '</td>' +
+                '<td class="text-muted small">' + escapeHtml(pathLabel) + '</td>' +
+                '<td>' + escapeHtml(sheetLabel) + '</td>' +
+                '<td>' + (e.relevance * 100).toFixed(1) + '%</td>' +
+                '<td>' + (e.directLlmScore || 0) + '</td>' +
+                '<td>' + originBadge + '</td>' +
+                '<td>' + (e.selectedForImpact ? '🎯' : '') +
+                (e.anchor ? ' ★' : '') +
+                (hotspotCodes.has(e.nodeCode) ? ' ⚠️' : '') + '</td>' +
+                '</tr>';
+        });
+        tbl += '</tbody></table></div>';
+        return tbl;
+    }
+
     function renderArchitectureView(view) {
         const panel = document.getElementById('architectureViewPanel');
         const content = document.getElementById('architectureViewContent');
@@ -843,44 +877,23 @@
         const hasElements = elements.length > 0;
         const hasRelationships = relationships.length > 0;
         if (hasElements || hasRelationships) {
-            html += '<details class="impact-details" open>';
-            html += '<summary>📋 Detail: ' + elements.length + ' Elements, ' + relationships.length + ' Relationships</summary>';
 
-            // Elements table
-            if (hasElements) {
-                html += '<h6 class="mb-1 mt-2">' + t('archview.col.origin') + ' &amp; Elements</h6>';
-                html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
-                html += '<thead><tr><th>Code</th><th>Title</th><th>' + t('archview.col.scoring.path') + '</th><th>Sheet</th><th>Relevance</th><th>' + t('archview.col.llm.score') + '</th><th>' + t('archview.col.origin') + '</th><th>' + t('archview.col.impact') + '</th></tr></thead><tbody>';
-                elements.forEach(e => {
-                    const rowClass = e.selectedForImpact ? 'table-warning' : (e.anchor ? 'table-success' : '');
-                    const sheetCfg = LAYER_CONFIG[e.taxonomySheet];
-                    const sheetLabel = sheetCfg ? sheetCfg.label : (e.taxonomySheet || '');
-                    const pathLabel = e.scoringPath || e.hierarchyPath || e.nodeCode;
-                    const originKey = e.origin ? 'node.origin.' + e.origin.replace(/_/g, '.').toLowerCase() : '';
-                    const originLabel = originKey ? t(originKey) : (e.includedBecause || '');
-                    const originBadge = e.origin ? '<span class="badge bg-' + originBadgeColor(e.origin) + ' text-dark">' + escapeHtml(originLabel) + '</span>' : escapeHtml(e.includedBecause || '');
-                    html += '<tr class="' + rowClass + '">' +
-                        '<td>' + escapeHtml(e.nodeCode) + '</td>' +
-                        '<td>' + escapeHtml(e.title || '') + '</td>' +
-                        '<td class="text-muted small">' + escapeHtml(pathLabel) + '</td>' +
-                        '<td>' + escapeHtml(sheetLabel) + '</td>' +
-                        '<td>' + (e.relevance * 100).toFixed(1) + '%</td>' +
-                        '<td>' + (e.directLlmScore || 0) + '</td>' +
-                        '<td>' + originBadge + '</td>' +
-                        '<td>' + (e.selectedForImpact ? '🎯' : '') +
-                        (e.anchor ? ' ★' : '') +
-                        (hotspotCodes.has(e.nodeCode) ? ' ⚠️' : '') + '</td>' +
-                        '</tr>';
-                });
-                html += '</tbody></table></div>';
-            }
+            // Split elements into impact-selected and scoring trace
+            var impactElements = elements.filter(function(e) { return e.selectedForImpact; });
+            var traceElements = elements.filter(function(e) { return !e.selectedForImpact; });
 
-            // Relationships table — split into impact, trace, and seed
-            if (hasRelationships) {
+            // ── Architecture Impact section (always open) ──
+            if (impactElements.length > 0 || relationships.filter(function(r) { return r.relationCategory === 'impact'; }).length > 0) {
+                html += '<details class="impact-details" open>';
+                html += '<summary>🎯 Architecture Impact: ' + impactElements.length + ' Elements, ' +
+                    relationships.filter(function(r) { return r.relationCategory === 'impact'; }).length + ' Relations</summary>';
+
+                if (impactElements.length > 0) {
+                    html += '<h6 class="mb-1 mt-2">Impact Elements</h6>';
+                    html += renderElementsTable(impactElements, hotspotCodes);
+                }
+
                 var impactRels = relationships.filter(function(r) { return r.relationCategory === 'impact'; });
-                var traceRels = relationships.filter(function(r) { return r.relationCategory === 'trace'; });
-                var seedRels = relationships.filter(function(r) { return r.relationCategory === 'seed'; });
-
                 if (impactRels.length > 0) {
                     html += '<h6 class="mb-1">' + t('archview.impact.relations.title') + ' <span class="badge bg-primary">' + impactRels.length + '</span></h6>';
                     html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-2">';
@@ -900,6 +913,22 @@
                             '</tr>';
                     });
                     html += '</tbody></table></div>';
+                }
+                html += '</details>';
+            }
+
+            // ── Scoring Trace section (collapsed by default) ──
+            var traceRels = relationships.filter(function(r) { return r.relationCategory === 'trace'; });
+            var seedRels = relationships.filter(function(r) { return r.relationCategory === 'seed'; });
+
+            if (traceElements.length > 0 || traceRels.length > 0 || seedRels.length > 0) {
+                html += '<details class="impact-details mt-2">';
+                html += '<summary>🔍 Scoring Trace: ' + traceElements.length + ' Elements, ' +
+                    (traceRels.length + seedRels.length) + ' Relations</summary>';
+
+                if (traceElements.length > 0) {
+                    html += '<h6 class="mb-1 mt-2">Trace Elements</h6>';
+                    html += renderElementsTable(traceElements, hotspotCodes);
                 }
 
                 if (traceRels.length > 0) {
@@ -942,9 +971,9 @@
                     });
                     html += '</tbody></table></div></details>';
                 }
-            }
 
-            html += '</details>';
+                html += '</details>';
+            }
         }
 
         if (!html) {

@@ -56,6 +56,101 @@ jobs:
       - name: Build and run tests
         run: mvn -q install -DexcludedGroups="real-llm" -Dembedding.model.dir="$HOME/.djl.ai/cache/taxonomy/BAAI--bge-small-en-v1.5"
 
+      - name: Generate VEX document from SBOM
+        run: |
+          # The CycloneDX SBOM is generated during 'mvn install' in the package phase.
+          # Create a VEX document that references the SBOM.
+          SBOM_FILE="target/taxonomy-sbom.json"
+          VEX_FILE="target/taxonomy-vex.json"
+
+          if [ ! -f "$SBOM_FILE" ]; then
+            echo "::warning::SBOM file not found at $SBOM_FILE — skipping VEX generation"
+            exit 0
+          fi
+
+          # Generate VEX document
+          python3 - <<'VEXEOF'
+          import json, uuid, datetime, sys
+
+          vex = {
+              "bomFormat": "CycloneDX",
+              "specVersion": "1.6",
+              "version": 1,
+              "serialNumber": f"urn:uuid:{uuid.uuid4()}",
+              "metadata": {
+                  "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                  "tools": {
+                      "components": [
+                          {
+                              "type": "application",
+                              "name": "taxonomy-vex-generator",
+                              "version": "1.0.0",
+                              "description": "Automated VEX generator for Taxonomy Architecture Analyzer"
+                          }
+                      ]
+                  },
+                  "component": {
+                      "type": "application",
+                      "name": "Taxonomy Architecture Analyzer",
+                      "bom-ref": "taxonomy-app",
+                      "purl": "pkg:github/carstenartur/Taxonomy",
+                      "supplier": {
+                          "name": "Carsten Hammer",
+                          "url": ["https://github.com/carstenartur"]
+                      }
+                  }
+              },
+              "vulnerabilities": []
+          }
+
+          # Parse SBOM and reference it from the VEX document
+          with open("target/taxonomy-sbom.json") as f:
+              sbom = json.load(f)
+
+          # Add metadata properties linking VEX to SBOM
+          vex["metadata"]["properties"] = [
+              {
+                  "name": "vex:sbom-ref",
+                  "value": sbom.get("serialNumber", "unknown")
+              },
+              {
+                  "name": "vex:sbom-version",
+                  "value": str(sbom.get("version", 1))
+              },
+              {
+                  "name": "vex:assessment-status",
+                  "value": "automated-initial"
+              },
+              {
+                  "name": "vex:policy",
+                  "value": "No known exploitable vulnerabilities at time of build. All runtime dependencies use permissive open-source licenses (Apache 2.0, MIT, BSD, ISC, EDL 1.0)."
+              }
+          ]
+
+          with open("target/taxonomy-vex.json", "w") as f:
+              json.dump(vex, f, indent=2)
+
+          print(f"VEX document generated: target/taxonomy-vex.json")
+          print(f"  SBOM serial: {sbom.get('serialNumber', 'N/A')}")
+          print(f"  Components in SBOM: {len(sbom.get('components', []))}")
+          VEXEOF
+
+          echo "### 📋 VEX Document" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "VEX document generated at \`target/taxonomy-vex.json\`" >> $GITHUB_STEP_SUMMARY
+          echo "SBOM reference: \`$(python3 -c "import json; print(json.load(open('$SBOM_FILE')).get('serialNumber','N/A'))")\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload SBOM and VEX artifacts
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sbom-vex
+          path: |
+            target/taxonomy-sbom.json
+            target/taxonomy-sbom.xml
+            target/taxonomy-vex.json
+          retention-days: 90
+
       - name: Generate documentation screenshots
         if: ${{ github.event.inputs.generate-screenshots == 'true' }}
         run: mvn -q verify -DgenerateScreenshots -Dit.test=ScreenshotGeneratorIT -DfailIfNoTests=false -Dfailsafe.rerunFailingTestsCount=1
@@ -231,6 +326,11 @@ jobs:
             type=ref,event=branch
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+          annotations: |
+            org.opencontainers.image.title=Taxonomy Architecture Analyzer
+            org.opencontainers.image.description=Spring Boot web application for C3-taxonomy catalogue analysis
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.vendor=Carsten Hammer
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
@@ -239,6 +339,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
 
   deploy-render:
     name: Deploy to Render

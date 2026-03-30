@@ -185,6 +185,10 @@ public class RequirementArchitectureViewService {
         Set<String> crossCategoryCodes = collectCrossCategoryCodes(relationships);
         impactSelector.selectForImpact(elements, scores, crossCategoryCodes);
 
+        // 7d. Populate presenceReason on all elements and relations so each
+        //     is inspectable (taxonomy ID, name, score, origin, short reason).
+        populatePresenceReasons(elements, relationships);
+
         view.setIncludedElements(elements);
         view.setIncludedRelationships(relationships);
 
@@ -748,6 +752,48 @@ public class RequirementArchitectureViewService {
             }
         }
         return codes;
+    }
+
+    /**
+     * Populates the {@code presenceReason} field on every element and relation
+     * so that each is individually inspectable (taxonomy ID, name, score, origin,
+     * and a short sentence explaining why it is present in the view).
+     */
+    private void populatePresenceReasons(List<RequirementElementView> elements,
+                                          List<RequirementRelationshipView> relationships) {
+        for (RequirementElementView el : elements) {
+            if (el.getPresenceReason() != null) continue; // already set by impact selector
+            StringBuilder sb = new StringBuilder();
+            sb.append(el.getNodeCode());
+            if (el.getTitle() != null) sb.append(" (").append(el.getTitle()).append(")");
+            sb.append(": ");
+            if (el.getOrigin() != null) {
+                sb.append(el.getOrigin().name().toLowerCase().replace('_', ' '));
+            } else {
+                sb.append("included via propagation");
+            }
+            if (el.getDirectLlmScore() > 0) {
+                sb.append(", LLM score ").append(el.getDirectLlmScore());
+            }
+            if (el.getHopDistance() > 0) {
+                sb.append(", ").append(el.getHopDistance()).append(" hop(s)");
+            }
+            el.setPresenceReason(sb.toString());
+        }
+
+        for (RequirementRelationshipView rel : relationships) {
+            if (rel.getPresenceReason() != null) continue;
+            StringBuilder sb = new StringBuilder();
+            sb.append(rel.getSourceCode()).append(" → ").append(rel.getTargetCode());
+            sb.append(": ").append(rel.getRelationCategory());
+            if (rel.getOrigin() != null) {
+                sb.append(", ").append(rel.getOrigin().name().toLowerCase().replace('_', ' '));
+            }
+            if (rel.getConfidence() > 0) {
+                sb.append(String.format(", confidence %.0f%%", rel.getConfidence() * 100));
+            }
+            rel.setPresenceReason(sb.toString());
+        }
     }
 
     /**

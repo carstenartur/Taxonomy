@@ -28,14 +28,19 @@ public record DiagramSelectionConfig(
         int maxEdges
 ) {
 
-    /** Default configuration matching the current {@code DiagramProjectionService} behaviour. */
+    /**
+     * Default impact configuration: suppresses root/scaffolding nodes, collapses
+     * redundant parent–child pairs, and promotes intermediates with multiple
+     * comparable children to visual containers.  This keeps the final impact view
+     * free of taxonomy scaffolding and dominated by meaningful concrete nodes.
+     */
     public static DiagramSelectionConfig defaultImpact() {
         return new DiagramSelectionConfig(
                 true,   // suppressRootNodes
                 true,   // suppressScaffoldingNodes
-                false,  // collapseRedundantParentChild
+                true,   // collapseRedundantParentChild
                 false,  // leafOnlyMode
-                false,  // allowIntermediateAsClusters
+                true,   // allowIntermediateAsClusters
                 true,   // preferCrossCategoryRelations
                 0.35,   // minRelevance
                 25,     // maxNodes

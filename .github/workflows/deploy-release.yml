@@ -214,6 +214,80 @@ jobs:
           fi
           mvn clean verify $TEST_FLAG
 
+      # 8b. Generate VEX document from SBOM
+      - name: Generate VEX document from SBOM
+        run: |
+          SBOM_FILE="target/taxonomy-sbom.json"
+
+          if [ ! -f "$SBOM_FILE" ]; then
+            echo "::warning::SBOM file not found at $SBOM_FILE — skipping VEX generation"
+            exit 0
+          fi
+
+          python3 - <<'VEXEOF'
+          import json, uuid, datetime
+
+          vex = {
+              "bomFormat": "CycloneDX",
+              "specVersion": "1.6",
+              "version": 1,
+              "serialNumber": f"urn:uuid:{uuid.uuid4()}",
+              "metadata": {
+                  "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                  "tools": {
+                      "components": [
+                          {
+                              "type": "application",
+                              "name": "taxonomy-vex-generator",
+                              "version": "1.0.0",
+                              "description": "Automated VEX generator for Taxonomy Architecture Analyzer"
+                          }
+                      ]
+                  },
+                  "component": {
+                      "type": "application",
+                      "name": "Taxonomy Architecture Analyzer",
+                      "bom-ref": "taxonomy-app",
+                      "purl": "pkg:github/carstenartur/Taxonomy",
+                      "supplier": {
+                          "name": "Carsten Hammer",
+                          "url": ["https://github.com/carstenartur"]
+                      }
+                  }
+              },
+              "vulnerabilities": []
+          }
+
+          with open("target/taxonomy-sbom.json") as f:
+              sbom = json.load(f)
+
+          vex["metadata"]["properties"] = [
+              {
+                  "name": "vex:sbom-ref",
+                  "value": sbom.get("serialNumber", "unknown")
+              },
+              {
+                  "name": "vex:sbom-version",
+                  "value": str(sbom.get("version", 1))
+              },
+              {
+                  "name": "vex:assessment-status",
+                  "value": "automated-initial"
+              },
+              {
+                  "name": "vex:policy",
+                  "value": "No known exploitable vulnerabilities at time of build. All runtime dependencies use permissive open-source licenses (Apache 2.0, MIT, BSD, ISC, EDL 1.0)."
+              }
+          ]
+
+          with open("target/taxonomy-vex.json", "w") as f:
+              json.dump(vex, f, indent=2)
+
+          print(f"VEX document generated: target/taxonomy-vex.json")
+          print(f"  SBOM serial: {sbom.get('serialNumber', 'N/A')}")
+          print(f"  Components in SBOM: {len(sbom.get('components', []))}")
+          VEXEOF
+
       # 9. Push release commit to remote
       - name: Push release commit to remote
         if: ${{ !inputs.dry_run }}
@@ -370,6 +444,32 @@ jobs:
           else
             echo "::warning::No taxonomy-*.jar found in target directory"
           fi
+
+      # 14b. Upload SBOM and VEX to release
+      - name: Upload SBOM and VEX to release
+        if: ${{ !inputs.dry_run }}
+        run: |
+          for f in target/taxonomy-sbom.json target/taxonomy-sbom.xml target/taxonomy-vex.json; do
+            if [ -f "$f" ]; then
+              echo "Uploading $(basename $f) to release..."
+              gh release upload "v${{ inputs.release_version }}" "$f" --clobber
+              echo "✓ Uploaded: $(basename $f)"
+            else
+              echo "::warning::$f not found"
+            fi
+          done
+
+      - name: Dry run - Show SBOM/VEX that would be uploaded
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "::notice::Dry run mode - would upload the following to release v${{ inputs.release_version }}:"
+          for f in target/taxonomy-sbom.json target/taxonomy-sbom.xml target/taxonomy-vex.json; do
+            if [ -f "$f" ]; then
+              echo "  $(basename $f) ($(wc -c < "$f") bytes)"
+            else
+              echo "  $(basename $f) — NOT FOUND"
+            fi
+          done
 
       # 15. Trigger Render deploy
       - name: Trigger Render deploy

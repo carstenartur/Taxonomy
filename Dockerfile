@@ -17,6 +17,21 @@ RUN mvn -q -DskipTests package
 
 # ---- runtime stage ----
 FROM eclipse-temurin:21-jre
+# OCI Image Specification labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
+LABEL org.opencontainers.image.title="Taxonomy Architecture Analyzer" \
+      org.opencontainers.image.description="Spring Boot web application that loads a C3-taxonomy catalogue and provides full-text search, KNN vector search, architecture-overlay DSL editing, and LLM-assisted analysis." \
+      org.opencontainers.image.url="https://github.com/carstenartur/Taxonomy" \
+      org.opencontainers.image.source="https://github.com/carstenartur/Taxonomy" \
+      org.opencontainers.image.documentation="https://github.com/carstenartur/Taxonomy#readme" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="Carsten Hammer" \
+      org.opencontainers.image.base.name="eclipse-temurin:21-jre"
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
+LABEL org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.version="${VERSION}"
 WORKDIR /app
 COPY --from=build /workspace/taxonomy-app/target/taxonomy-app-*.jar app.jar
 RUN mkdir -p /app/data

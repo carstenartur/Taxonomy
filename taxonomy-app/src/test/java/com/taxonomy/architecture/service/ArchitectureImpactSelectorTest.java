@@ -191,6 +191,76 @@ class ArchitectureImpactSelectorTest {
         assertThat(seedNode.isSelectedForImpact()).isTrue();
     }
 
+    @Test
+    void redundantIntermediateWithSingleStrongChildIsSkipped() {
+        RequirementElementView intermediate = createElement("BP-1327", "Enable", "BP", 2, 80);
+        intermediate.setHierarchyPath("BP > BP-1000 > BP-1327");
+        RequirementElementView child = createElement("BP-1490", "Health Services", "BP", 3, 60);
+        child.setHierarchyPath("BP > BP-1000 > BP-1327 > BP-1490");
+        List<RequirementElementView> elements = new ArrayList<>(List.of(intermediate, child));
+        Map<String, Integer> scores = Map.of("BP-1327", 80, "BP-1490", 60);
+
+        boolean redundant = selector.isRedundantIntermediate(intermediate, scores, elements);
+
+        assertThat(redundant).isTrue();
+    }
+
+    @Test
+    void intermediateNotRedundantWhenChildScoreIsTooLow() {
+        RequirementElementView intermediate = createElement("BP-1327", "Enable", "BP", 2, 80);
+        intermediate.setHierarchyPath("BP > BP-1000 > BP-1327");
+        RequirementElementView child = createElement("BP-1490", "Health Services", "BP", 3, 10);
+        child.setHierarchyPath("BP > BP-1000 > BP-1327 > BP-1490");
+        List<RequirementElementView> elements = new ArrayList<>(List.of(intermediate, child));
+        Map<String, Integer> scores = Map.of("BP-1327", 80, "BP-1490", 10);
+
+        boolean redundant = selector.isRedundantIntermediate(intermediate, scores, elements);
+
+        assertThat(redundant).isFalse();
+    }
+
+    @Test
+    void intermediateNotRedundantWithMultipleStrongChildren() {
+        RequirementElementView intermediate = createElement("BP-1327", "Enable", "BP", 2, 80);
+        intermediate.setHierarchyPath("BP > BP-1000 > BP-1327");
+        RequirementElementView child1 = createElement("BP-1490", "Health", "BP", 3, 60);
+        child1.setHierarchyPath("BP > BP-1000 > BP-1327 > BP-1490");
+        RequirementElementView child2 = createElement("BP-1697", "Medical", "BP", 3, 55);
+        child2.setHierarchyPath("BP > BP-1000 > BP-1327 > BP-1697");
+        List<RequirementElementView> elements = new ArrayList<>(List.of(intermediate, child1, child2));
+        Map<String, Integer> scores = Map.of("BP-1327", 80, "BP-1490", 60, "BP-1697", 55);
+
+        boolean redundant = selector.isRedundantIntermediate(intermediate, scores, elements);
+
+        assertThat(redundant).isFalse();
+    }
+
+    @Test
+    void scaffoldingAtDepthOneNotTreatedAsRedundantIntermediate() {
+        RequirementElementView scaffolding = createElement("CP-1000", "Capabilities", "CP", 1, 90);
+        RequirementElementView leaf = createElement("CP-1023", "Service", "CP", 3, 60);
+        leaf.setHierarchyPath("CP > CP-1000 > CP-1023");
+        List<RequirementElementView> elements = new ArrayList<>(List.of(scaffolding, leaf));
+        Map<String, Integer> scores = Map.of("CP-1000", 90, "CP-1023", 60);
+
+        // Depth 1 should not be flagged as redundant intermediate (it's scaffolding)
+        boolean redundant = selector.isRedundantIntermediate(scaffolding, scores, elements);
+
+        assertThat(redundant).isFalse();
+    }
+
+    @Test
+    void selectedImpactNodesHavePresenceReason() {
+        RequirementElementView leaf = createElement("CP-1023", "Secure Messaging", "CP", 3, 85);
+        List<RequirementElementView> elements = new ArrayList<>(List.of(leaf));
+
+        selector.selectForImpact(elements, Map.of("CP-1023", 85), Set.of());
+
+        assertThat(leaf.getPresenceReason()).isNotNull();
+        assertThat(leaf.getPresenceReason()).contains("CP-1023");
+        assertThat(leaf.getPresenceReason()).contains("Secure Messaging");
+    }
+
     private static RequirementElementView createElement(String code, String title,
                                                          String sheet, int depth, int score) {
         RequirementElementView el = new RequirementElementView();
