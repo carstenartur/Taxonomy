@@ -92,24 +92,26 @@ import java.util.stream.Collectors;
 
 <span class="fc" id="L93">                RequirementElementView el = se.element();</span>
 <span class="fc bfc" id="L94" title="All 2 branches covered.">                if (isTaxonomyScaffolding(el, categoryElements)</span>
-<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                        || isGenericWeakNode(el, allScores, categoryElements)) {</span>
-<span class="nc" id="L96">                    continue;</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">                        || isGenericWeakNode(el, allScores, categoryElements)</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                        || isRedundantIntermediate(el, allScores, categoryElements)) {</span>
+<span class="fc" id="L97">                    continue;</span>
                 }
 
-<span class="fc" id="L99">                el.setSelectedForImpact(true);</span>
-<span class="fc bfc" id="L100" title="All 4 branches covered.">                if (el.getOrigin() == null || el.getOrigin() == NodeOrigin.PROPAGATED</span>
-<span class="pc bpc" id="L101" title="1 of 2 branches missed.">                        || el.getOrigin() == NodeOrigin.TRACE_INTERMEDIATE) {</span>
-<span class="fc" id="L102">                    el.setOrigin(NodeOrigin.IMPACT_SELECTED);</span>
+<span class="fc" id="L100">                el.setSelectedForImpact(true);</span>
+<span class="fc bfc" id="L101" title="All 4 branches covered.">                if (el.getOrigin() == null || el.getOrigin() == NodeOrigin.PROPAGATED</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">                        || el.getOrigin() == NodeOrigin.TRACE_INTERMEDIATE) {</span>
+<span class="fc" id="L103">                    el.setOrigin(NodeOrigin.IMPACT_SELECTED);</span>
                 }
-<span class="fc" id="L104">                el.setSpecificityScore(se.score());</span>
-<span class="fc" id="L105">                selected++;</span>
-<span class="fc" id="L106">            }</span>
+<span class="fc" id="L105">                el.setSpecificityScore(se.score());</span>
+<span class="fc" id="L106">                el.setPresenceReason(buildPresenceReason(el, se.score()));</span>
+<span class="fc" id="L107">                selected++;</span>
+<span class="fc" id="L108">            }</span>
 
-<span class="fc" id="L108">            log.debug(&quot;Impact selection for category {}: {} of {} selected&quot;,</span>
-<span class="fc" id="L109">                    category, selected, categoryElements.size());</span>
-<span class="fc" id="L110">        }</span>
+<span class="fc" id="L110">            log.debug(&quot;Impact selection for category {}: {} of {} selected&quot;,</span>
+<span class="fc" id="L111">                    category, selected, categoryElements.size());</span>
+<span class="fc" id="L112">        }</span>
 
-<span class="fc" id="L112">        return elements;</span>
+<span class="fc" id="L114">        return elements;</span>
     }
 
     /**
@@ -119,24 +121,24 @@ import java.util.stream.Collectors;
                               Map&lt;String, Integer&gt; allScores,
                               Set&lt;String&gt; crossCategoryCodes,
                               List&lt;RequirementElementView&gt; categoryElements) {
-<span class="fc" id="L122">        String code = element.getNodeCode();</span>
+<span class="fc" id="L124">        String code = element.getNodeCode();</span>
 
         // 1. LLM score component (normalised to 0–1)
-<span class="fc" id="L125">        double llmComponent = allScores.getOrDefault(code, 0) / 100.0;</span>
+<span class="fc" id="L127">        double llmComponent = allScores.getOrDefault(code, 0) / 100.0;</span>
 
         // 2. Specificity: deeper nodes score higher (normalised via depth / 5.0, capped at 1)
-<span class="fc" id="L128">        double specificityComponent = Math.min(element.getTaxonomyDepth() / 5.0, 1.0);</span>
+<span class="fc" id="L130">        double specificityComponent = Math.min(element.getTaxonomyDepth() / 5.0, 1.0);</span>
 
         // 3. Cross-category bonus: node participates in cross-category relations
-<span class="fc bfc" id="L131" title="All 2 branches covered.">        double crossCategoryComponent = crossCategoryCodes.contains(code) ? 1.0 : 0.0;</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        double crossCategoryComponent = crossCategoryCodes.contains(code) ? 1.0 : 0.0;</span>
 
         // 4. Leaf concreteness: has a dash (leaf code) vs. root code
-<span class="fc bfc" id="L134" title="All 2 branches covered.">        double leafComponent = code.contains(&quot;-&quot;) ? 1.0 : 0.2;</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        double leafComponent = code.contains(&quot;-&quot;) ? 1.0 : 0.2;</span>
 
         // 5. Human readability: longer, non-generic names are more readable
-<span class="fc" id="L137">        double readabilityComponent = computeReadability(element.getTitle());</span>
+<span class="fc" id="L139">        double readabilityComponent = computeReadability(element.getTitle());</span>
 
-<span class="fc" id="L139">        return (llmComponent * W_LLM_SCORE)</span>
+<span class="fc" id="L141">        return (llmComponent * W_LLM_SCORE)</span>
              + (specificityComponent * W_SPECIFICITY)
              + (crossCategoryComponent * W_CROSS_CATEGORY)
              + (leafComponent * W_LEAF_CONCRETENESS)
@@ -150,20 +152,20 @@ import java.util.stream.Collectors;
     boolean isGenericWeakNode(RequirementElementView node,
                               Map&lt;String, Integer&gt; allScores,
                               List&lt;RequirementElementView&gt; categoryElements) {
-<span class="fc bfc" id="L153" title="All 2 branches covered.">        if (node.getTaxonomyDepth() &gt; 1) return false;</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (node.getTaxonomyDepth() &gt; 1) return false;</span>
 
-<span class="fc" id="L155">        String name = node.getTitle();</span>
-<span class="pc bpc" id="L156" title="1 of 4 branches missed.">        if (name == null || !GENERIC_NAMES.contains(name.toLowerCase().trim())) {</span>
-<span class="fc" id="L157">            return false;</span>
+<span class="fc" id="L157">        String name = node.getTitle();</span>
+<span class="pc bpc" id="L158" title="1 of 4 branches missed.">        if (name == null || !GENERIC_NAMES.contains(name.toLowerCase().trim())) {</span>
+<span class="fc" id="L159">            return false;</span>
         }
 
-<span class="fc" id="L160">        int nodeScore = allScores.getOrDefault(node.getNodeCode(), 0);</span>
-<span class="fc" id="L161">        int halfScore = nodeScore / 2;</span>
+<span class="fc" id="L162">        int nodeScore = allScores.getOrDefault(node.getNodeCode(), 0);</span>
+<span class="fc" id="L163">        int halfScore = nodeScore / 2;</span>
 
         // Check if any deeper node in the same category has a score ≥ half of this node's score
-<span class="fc" id="L164">        return categoryElements.stream()</span>
-<span class="fc bfc" id="L165" title="All 2 branches covered.">                .filter(e -&gt; e.getTaxonomyDepth() &gt; node.getTaxonomyDepth())</span>
-<span class="pc bpc" id="L166" title="1 of 2 branches missed.">                .anyMatch(e -&gt; allScores.getOrDefault(e.getNodeCode(), 0) &gt;= halfScore);</span>
+<span class="fc" id="L166">        return categoryElements.stream()</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">                .filter(e -&gt; e.getTaxonomyDepth() &gt; node.getTaxonomyDepth())</span>
+<span class="pc bpc" id="L168" title="1 of 2 branches missed.">                .anyMatch(e -&gt; allScores.getOrDefault(e.getNodeCode(), 0) &gt;= halfScore);</span>
     }
 
     /**
@@ -178,20 +180,80 @@ import java.util.stream.Collectors;
      */
     boolean isTaxonomyScaffolding(RequirementElementView node,
                                   List&lt;RequirementElementView&gt; categoryElements) {
-<span class="fc bfc" id="L181" title="All 2 branches covered.">        if (node.getTaxonomyDepth() &gt; 1) return false;</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        if (node.getTaxonomyDepth() &gt; 1) return false;</span>
 
-<span class="fc" id="L183">        return categoryElements.stream()</span>
-<span class="fc bfc" id="L184" title="All 2 branches covered.">                .anyMatch(e -&gt; e.getTaxonomyDepth() &gt; 1);</span>
+<span class="fc" id="L185">        return categoryElements.stream()</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">                .anyMatch(e -&gt; e.getTaxonomyDepth() &gt; 1);</span>
+    }
+
+    /**
+     * Returns {@code true} if the node is an intermediate node that has exactly
+     * one strong child (≥&amp;nbsp;50&amp;nbsp;% of the parent's score) in the same category.
+     * Such intermediates add no information beyond the child and should be suppressed
+     * so the child can represent the area directly.
+     */
+    boolean isRedundantIntermediate(RequirementElementView node,
+                                    Map&lt;String, Integer&gt; allScores,
+                                    List&lt;RequirementElementView&gt; categoryElements) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (node.getTaxonomyDepth() &lt;= 1) return false; // handled by scaffolding check</span>
+
+<span class="fc" id="L200">        String nodeCode = node.getNodeCode();</span>
+<span class="fc" id="L201">        int nodeScore = allScores.getOrDefault(nodeCode, 0);</span>
+<span class="fc" id="L202">        int halfScore = Math.max(nodeScore / 2, 1);</span>
+
+        // Count children (deeper nodes whose hierarchyPath passes through this node)
+<span class="fc" id="L205">        List&lt;RequirementElementView&gt; strongChildren = categoryElements.stream()</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">                .filter(e -&gt; e.getTaxonomyDepth() &gt; node.getTaxonomyDepth())</span>
+<span class="fc" id="L207">                .filter(e -&gt; isChildOf(e, nodeCode))</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                .filter(e -&gt; allScores.getOrDefault(e.getNodeCode(), 0) &gt;= halfScore)</span>
+<span class="fc" id="L209">                .toList();</span>
+
+        // Suppress when exactly one strong child exists — the child alone represents the area
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        return strongChildren.size() == 1;</span>
+    }
+
+    /**
+     * Returns {@code true} if {@code candidate} appears to be a descendant of
+     * the node identified by {@code parentCode}, based on its hierarchy path.
+     */
+    private static boolean isChildOf(RequirementElementView candidate, String parentCode) {
+<span class="fc" id="L220">        String path = candidate.getHierarchyPath();</span>
+<span class="pc bpc" id="L221" title="1 of 4 branches missed.">        if (path != null &amp;&amp; path.contains(parentCode)) return true;</span>
+        // Fallback: code-prefix heuristic (e.g. &quot;BP-1490&quot; is a child of &quot;BP-1327&quot;
+        // when both share the same two-letter prefix) — not sufficient alone, but
+        // combined with the depth check it avoids false positives across categories.
+<span class="fc" id="L225">        return false;</span>
+    }
+
+    /**
+     * Builds a short human-readable reason why this node was selected for impact.
+     */
+    private static String buildPresenceReason(RequirementElementView el, double impactScore) {
+<span class="fc" id="L232">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L233">        sb.append(el.getNodeCode());</span>
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">        if (el.getTitle() != null) {</span>
+<span class="fc" id="L235">            sb.append(&quot; (&quot;).append(el.getTitle()).append(&quot;)&quot;);</span>
+        }
+<span class="fc" id="L237">        sb.append(&quot;: &quot;);</span>
+<span class="pc bpc" id="L238" title="1 of 2 branches missed.">        if (el.getOrigin() != null) {</span>
+<span class="fc" id="L239">            sb.append(el.getOrigin().name().toLowerCase().replace('_', ' '));</span>
+        }
+<span class="fc" id="L241">        sb.append(&quot;, score &quot;).append(el.getDirectLlmScore());</span>
+<span class="fc" id="L242">        sb.append(&quot;, impact &quot;).append(String.format(&quot;%.2f&quot;, impactScore));</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (el.getTaxonomyDepth() &gt; 0) {</span>
+<span class="fc" id="L244">            sb.append(&quot;, depth &quot;).append(el.getTaxonomyDepth());</span>
+        }
+<span class="fc" id="L246">        return sb.toString();</span>
     }
 
     private static double computeReadability(String title) {
-<span class="pc bpc" id="L188" title="2 of 4 branches missed.">        if (title == null || title.isBlank()) return 0.0;</span>
-<span class="fc" id="L189">        String lower = title.toLowerCase().trim();</span>
-<span class="fc bfc" id="L190" title="All 2 branches covered.">        if (GENERIC_NAMES.contains(lower)) return 0.2;</span>
+<span class="pc bpc" id="L250" title="2 of 4 branches missed.">        if (title == null || title.isBlank()) return 0.0;</span>
+<span class="fc" id="L251">        String lower = title.toLowerCase().trim();</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        if (GENERIC_NAMES.contains(lower)) return 0.2;</span>
         // Longer titles tend to be more descriptive
-<span class="fc" id="L192">        return Math.min(title.length() / 40.0, 1.0);</span>
+<span class="fc" id="L254">        return Math.min(title.length() / 40.0, 1.0);</span>
     }
 
-<span class="fc" id="L195">    private record ScoredElement(RequirementElementView element, double score) {}</span>
+<span class="fc" id="L257">    private record ScoredElement(RequirementElementView element, double score) {}</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
