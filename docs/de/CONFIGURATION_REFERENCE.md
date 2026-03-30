@@ -428,6 +428,7 @@ Zusätzlich zu Umgebungsvariablen können mehrere Einstellungen zur Laufzeit üb
 | `limits.max-business-text` | int | `5000` | Maximale Zeichen im Anforderungstext |
 | `limits.max-architecture-nodes` | int | `50` | Maximale Knoten in der Architekturansicht |
 | `limits.max-export-nodes` | int | `200` | Maximale Knoten beim Export |
+| `diagram.policy` | string | `defaultImpact` | Diagramm-Auswahlrichtlinie: `defaultImpact`, `leafOnly`, `clustering` oder `trace` |
 
 Siehe [Einstellungen](PREFERENCES.md) für die REST-API und den Audit-Trail.
 

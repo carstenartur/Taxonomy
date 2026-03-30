@@ -430,6 +430,7 @@ In addition to environment variables, several settings can be changed at runtime
 | `limits.max-business-text` | int | `5000` | Max characters in requirement text |
 | `limits.max-architecture-nodes` | int | `50` | Max nodes in architecture view |
 | `limits.max-export-nodes` | int | `200` | Max nodes in export |
+| `diagram.policy` | string | `defaultImpact` | Diagram selection policy: `defaultImpact`, `leafOnly`, `clustering`, or `trace` |
 
 See [Preferences](PREFERENCES.md) for the REST API and audit trail.
 
