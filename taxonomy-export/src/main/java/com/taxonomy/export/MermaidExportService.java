@@ -185,7 +185,10 @@ public class MermaidExportService {
         }
 
         appendStyleDefinitions(sb);
-        appendClassAssignments(sb, showcaseNodes, labels);
+        // Pass nodes in subgraph render order for deterministic class assignments
+        List<DiagramNode> renderOrder = sortedGroups.stream()
+                .flatMap(e -> e.getValue().stream()).toList();
+        appendClassAssignments(sb, renderOrder, labels);
 
         return sb.toString();
     }
