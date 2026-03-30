@@ -23,27 +23,25 @@ jobs:
           cache: 'maven'
 
       - name: Cache DJL embedding model
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
-          path: ~/.djl.ai/cache/taxonomy
-          key: embedding-model-bge-small-en-v1.5
+          path: ~/.djl.ai
+          key: djl-bge-small-v1-${{ runner.os }}
 
       - name: Download embedding model
         run: |
-          MODEL_DIR=~/.djl.ai/cache/taxonomy/BAAI--bge-small-en-v1.5
-          mkdir -p "$MODEL_DIR"
-          cd "$MODEL_DIR"
-          # Idempotent: skip files that already exist from the cache
-          [ -s model.onnx ] || curl -fsL -o model.onnx https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx
-          [ -s tokenizer.json ] || curl -fsL -o tokenizer.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json
-          [ -s tokenizer_config.json ] || curl -fsL -o tokenizer_config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json
-          [ -s special_tokens_map.json ] || curl -fsL -o special_tokens_map.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/special_tokens_map.json
-          [ -s config.json ] || curl -fsL -o config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json
-          # Write version marker for stale-cache detection
-          echo -n "https://huggingface.co/BAAI/bge-small-en-v1.5" > model.source
+          mkdir -p models/bge-small-en-v1.5
+          cd models/bge-small-en-v1.5
+          curl -fsL -o model.onnx https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx
+          curl -fsL -o tokenizer.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json
+          curl -fsL -o tokenizer_config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json
+          curl -fsL -o special_tokens_map.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/special_tokens_map.json
+          curl -fsL -o config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json
 
       - name: Build JAR
         run: mvn install -DskipTests -q
 
       - name: Run Pipeline Tests
-        run: mvn failsafe:integration-test failsafe:verify -Dit.test="LocalOnnxPipelineIT,OnnxSeleniumIT" -pl taxonomy-app -am -Dembedding.model.dir="$HOME/.djl.ai/cache/taxonomy/BAAI--bge-small-en-v1.5"
+        run: mvn failsafe:integration-test failsafe:verify -DrunOnnxTests -Dit.test="LocalOnnxPipelineIT,OnnxSeleniumIT" -pl taxonomy-app -am
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5

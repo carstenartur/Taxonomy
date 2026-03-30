@@ -254,57 +254,23 @@ public class LocalEmbeddingService {
     }
 
     /**
-     * Resolves the local cache directory for a HuggingFace model repository URL.
-     * The directory is derived deterministically from the repository URL so that all
-     * consumers — production code, Spring tests, and plain-Java tests — share a single
-     * cache location.
+     * Downloads the ONNX model files from a HuggingFace repository URL into a local
+     * cache directory under {@code ~/.djl.ai/cache/taxonomy/}.
      *
-     * <p>Example: {@code https://huggingface.co/BAAI/bge-small-en-v1.5}
-     * &rarr; {@code ~/.djl.ai/cache/taxonomy/BAAI--bge-small-en-v1.5/}
+     * <p>Downloads are skipped if the files already exist locally (idempotent).
      *
-     * @param hfRepoUrl HuggingFace repository URL
-     * @return absolute path to the local cache directory (created if absent)
-     * @throws java.io.IOException if the directory cannot be created
+     * @param hfRepoUrl e.g. {@code https://huggingface.co/BAAI/bge-small-en-v1.5}
+     * @return absolute path to the local model directory
      */
-    public static java.nio.file.Path resolveModelCacheDir(String hfRepoUrl) throws java.io.IOException {
+    private String downloadHuggingFaceModel(String hfRepoUrl) throws Exception {
+        // Derive a cache directory name from the repo URL
+        // https://huggingface.co/BAAI/bge-small-en-v1.5 → BAAI--bge-small-en-v1.5
         String repoId = hfRepoUrl
                 .replaceFirst("https?://huggingface\\.co/", "")
                 .replaceAll("[/\\\\]", "--");
         java.nio.file.Path cacheDir = java.nio.file.Path.of(
                 System.getProperty("user.home"), ".djl.ai", "cache", "taxonomy", repoId);
         java.nio.file.Files.createDirectories(cacheDir);
-        return cacheDir;
-    }
-
-    /**
-     * Downloads the ONNX model files from a HuggingFace repository URL into a local
-     * cache directory under {@code ~/.djl.ai/cache/taxonomy/}.
-     *
-     * <p>Downloads are skipped if the files already exist locally (idempotent).
-     * A {@code model.source} marker file records the origin URL so that a model-name
-     * change automatically invalidates the cache.
-     *
-     * @param hfRepoUrl e.g. {@code https://huggingface.co/BAAI/bge-small-en-v1.5}
-     * @return absolute path to the local model directory
-     */
-    private String downloadHuggingFaceModel(String hfRepoUrl) throws Exception {
-        java.nio.file.Path cacheDir = resolveModelCacheDir(hfRepoUrl);
-
-        // ── Version check: invalidate cache when the source URL changes ──────
-        java.nio.file.Path marker = cacheDir.resolve("model.source");
-        if (java.nio.file.Files.exists(marker)) {
-            String cached = java.nio.file.Files.readString(marker).strip();
-            if (!cached.equals(hfRepoUrl)) {
-                log.info("Model source changed ({} → {}); clearing stale cache in {}",
-                        cached, hfRepoUrl, cacheDir);
-                try (var files = java.nio.file.Files.list(cacheDir)) {
-                    files.forEach(p -> {
-                        try { java.nio.file.Files.deleteIfExists(p); }
-                        catch (java.io.IOException ignored) { /* best-effort */ }
-                    });
-                }
-            }
-        }
 
         String baseUrl = hfRepoUrl.endsWith("/")
                 ? hfRepoUrl.substring(0, hfRepoUrl.length() - 1) : hfRepoUrl;
@@ -350,9 +316,6 @@ public class LocalEmbeddingService {
             }
             log.info("Downloaded {} ({} bytes)", localName, java.nio.file.Files.size(localFile));
         }
-
-        // Write version marker so we can detect stale caches later
-        java.nio.file.Files.writeString(marker, hfRepoUrl);
 
         return cacheDir.toAbsolutePath().toString();
     }

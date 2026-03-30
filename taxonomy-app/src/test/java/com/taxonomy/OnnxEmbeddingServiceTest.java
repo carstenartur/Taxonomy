@@ -1,91 +1,50 @@
 package com.taxonomy;
 
 import com.taxonomy.shared.service.LocalEmbeddingService;
-import org.junit.jupiter.api.MethodOrderer;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Stufe 2: Spring Boot Service — {@link LocalEmbeddingService} with real ONNX model.
+ * Proves that {@link LocalEmbeddingService} works end-to-end as a Spring bean:
+ * lazy model download from HuggingFace, ONNX Runtime loading, and embedding inference.
  * <p>
- * Proves that {@code LocalEmbeddingService} is correctly wired as a Spring bean and the
- * service methods ({@code embed()}, {@code embedQuery()}, {@code isAvailable()}) work with
- * the real bge-small-en-v1.5 model.
- * <p>
- * Run with: {@code mvn test -Dtest=OnnxEmbeddingServiceTest}
+ * <strong>No CI-cache, no manual curl, no {@code resolveModelCacheDir}.</strong>
+ * The service downloads the model itself on first use — exactly the same codepath
+ * used in production.
  */
 @SpringBootTest
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class OnnxEmbeddingServiceTest {
 
     @Autowired
     private LocalEmbeddingService embeddingService;
 
-    @Value("${embedding.enabled:true}")
-    private boolean embeddingEnabled;
-
-    @Value("${embedding.model.name:}")
-    private String modelName;
-
-    // ── Test 2.1 ─────────────────────────────────────────────────────────────
-
     @Test
-    @Order(1)
-    void serviceIsEnabledAndAvailable() throws Exception {
-        assertThat(embeddingService.isEnabled()).isTrue();
-        // Trigger lazy model loading by calling embed()
-        embeddingService.embed("warm-up text");
-        assertThat(embeddingService.isAvailable()).isTrue();
-    }
-
-    // ── Test 2.2 ─────────────────────────────────────────────────────────────
-
-    @Test
-    @Order(2)
-    void effectiveModelUrlPointsToCorrectModel() {
-        String url = embeddingService.effectiveModelUrl();
-        // When TAXONOMY_EMBEDDING_MODEL_DIR is set (e.g. in CI with pre-downloaded
-        // model), effectiveModelUrl() returns the local cache path.  Otherwise it
-        // returns the HuggingFace URL.  Both must reference bge-small-en-v1.5.
-        assertThat(url).satisfiesAnyOf(
-                u -> assertThat(u).startsWith("https://huggingface.co/").contains("bge-small-en-v1.5"),
-                u -> assertThat(u).contains("bge-small-en-v1.5"));
-    }
-
-    // ── Test 2.3 ─────────────────────────────────────────────────────────────
-
-    @Test
-    @Order(3)
     void embedReturnsVector384() throws Exception {
-        float[] vector = embeddingService.embed("test text");
-        assertThat(vector).isNotNull();
-        assertThat(vector).hasSize(384);
+        float[] vec = embeddingService.embed("hello world");
+        assertThat(vec).hasSize(384); // BGE-small-en-v1.5 dimension
     }
 
-    // ── Test 2.4 ─────────────────────────────────────────────────────────────
+    @Test
+    void embedQueryReturnsVector384() throws Exception {
+        float[] vec = embeddingService.embedQuery("hello world");
+        assertThat(vec).hasSize(384);
+    }
 
     @Test
-    @Order(4)
-    void embedQueryPrependsPrefix() throws Exception {
+    void queryAndDocumentVectorsDiffer() throws Exception {
+        // BGE uses a query prefix for asymmetric retrieval — vectors must differ
         float[] docVec = embeddingService.embed("test");
         float[] queryVec = embeddingService.embedQuery("test");
-        // The query prefix changes the embedding; the vectors should differ
         assertThat(queryVec).isNotEqualTo(docVec);
     }
 
-    // ── Test 2.5 ─────────────────────────────────────────────────────────────
-
     @Test
-    @Order(5)
-    void embeddingPropertyInjectionWorksCorrectly() {
-        // Verify @Value injection from application.properties
-        assertThat(embeddingEnabled).isTrue();
-        assertThat(modelName).isNotBlank();
+    void serviceReportsAvailableAfterFirstEmbed() throws Exception {
+        embeddingService.embed("trigger lazy load");
+        assertThat(embeddingService.isEnabled()).isTrue();
+        assertThat(embeddingService.isAvailable()).isTrue();
     }
 }

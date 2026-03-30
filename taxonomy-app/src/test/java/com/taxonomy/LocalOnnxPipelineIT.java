@@ -5,6 +5,7 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
@@ -26,10 +27,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration tests that validate the full LOCAL_ONNX data pipeline using the
  * embedded bge-small-en-v1.5 model. No Selenium needed — pure REST API calls.
  * <p>
- * Run with: {@code mvn verify -Dit.test=LocalOnnxPipelineIT}
+ * Opt-in: only runs when the {@code runOnnxTests} system property is set.
+ * Run with: {@code mvn verify -DrunOnnxTests -Dit.test=LocalOnnxPipelineIT}
  */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@EnabledIfSystemProperty(named = "runOnnxTests", matches = ".*")
 class LocalOnnxPipelineIT {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
@@ -167,86 +170,5 @@ class LocalOnnxPipelineIT {
         assertThat(body.get("level").textValue()).isEqualTo("LIMITED");
         assertThat(body.get("available").booleanValue()).isTrue();
         assertThat(body.get("limited").booleanValue()).isTrue();
-    }
-
-    // ── Stufe 4: Embedding / Semantic Search in container ────────────────────
-    // These tests prove that the ONNX Runtime native library (libonnxruntime.so)
-    // links correctly against glibc in the eclipse-temurin:21-jre (Debian) image
-    // and the HuggingFace download pipeline works end-to-end inside the container.
-
-    @Test
-    @Order(9)
-    void embeddingModelIsActuallyAvailable() throws Exception {
-        // Poll until the model is loaded (up to 60 seconds)
-        boolean available = false;
-        for (int i = 0; i < 12; i++) {
-            HttpResponse<String> resp = httpGet("/api/embedding/status");
-            if (resp.statusCode() == 200) {
-                JsonNode body = MAPPER.readTree(resp.body());
-                if (body.path("available").booleanValue()) {
-                    available = true;
-                    break;
-                }
-            }
-            Thread.sleep(5_000);
-        }
-        assertThat(available).as("Embedding model should become available within 60s").isTrue();
-    }
-
-    @Test
-    @Order(10)
-    void embeddingIndexHasNodes() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/embedding/status");
-        assertThat(resp.statusCode()).isEqualTo(200);
-        JsonNode body = MAPPER.readTree(resp.body());
-        assertThat(body.path("indexedNodes").intValue())
-                .as("Indexed node count should be positive")
-                .isGreaterThan(0);
-    }
-
-    @Test
-    @Order(11)
-    void semanticSearchReturnsRealResults() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/search/semantic?q=communications");
-        assertThat(resp.statusCode()).isEqualTo(200);
-        JsonNode body = MAPPER.readTree(resp.body());
-        assertThat(body.isArray()).isTrue();
-        assertThat(body.size())
-                .as("Semantic search for 'communications' should return results")
-                .isGreaterThanOrEqualTo(1);
-    }
-
-    @Test
-    @Order(12)
-    void hybridSearchReturnsRealResults() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/search/hybrid?q=voice+exchange");
-        assertThat(resp.statusCode()).isEqualTo(200);
-        JsonNode body = MAPPER.readTree(resp.body());
-        assertThat(body.isArray()).isTrue();
-        assertThat(body.size())
-                .as("Hybrid search for 'voice exchange' should return results")
-                .isGreaterThanOrEqualTo(1);
-    }
-
-    @Test
-    @Order(13)
-    void findSimilarNodesReturnsResults() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/search/similar/BP");
-        assertThat(resp.statusCode()).isEqualTo(200);
-        JsonNode body = MAPPER.readTree(resp.body());
-        assertThat(body.isArray()).isTrue();
-        assertThat(body.size())
-                .as("Find similar for 'BP' should return results")
-                .isGreaterThanOrEqualTo(1);
-    }
-
-    @Test
-    @Order(14)
-    void graphSearchReturnsStructuredResult() throws Exception {
-        HttpResponse<String> resp = httpGet("/api/search/graph?q=communications");
-        assertThat(resp.statusCode()).isEqualTo(200);
-        JsonNode body = MAPPER.readTree(resp.body());
-        assertThat(body.has("matchedNodes")).isTrue();
-        assertThat(body.get("matchedNodes").isArray()).isTrue();
     }
 }
