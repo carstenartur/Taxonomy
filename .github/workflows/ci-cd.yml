@@ -54,7 +54,7 @@ jobs:
           echo -n "https://huggingface.co/BAAI/bge-small-en-v1.5" > model.source
 
       - name: Build and run tests
-        run: mvn -q install -DexcludedGroups="real-llm" "-Dembedding.model.dir=$HOME/.djl.ai/cache/taxonomy/BAAI--bge-small-en-v1.5"
+        run: mvn -q install -DexcludedGroups="real-llm" -Dembedding.model.dir="$HOME/.djl.ai/cache/taxonomy/BAAI--bge-small-en-v1.5"
 
       - name: Generate documentation screenshots
         if: ${{ github.event.inputs.generate-screenshots == 'true' }}

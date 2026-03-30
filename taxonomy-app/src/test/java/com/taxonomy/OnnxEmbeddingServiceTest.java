@@ -48,9 +48,14 @@ class OnnxEmbeddingServiceTest {
 
     @Test
     @Order(2)
-    void effectiveModelUrlPointsToHuggingFace() {
+    void effectiveModelUrlPointsToCorrectModel() {
         String url = embeddingService.effectiveModelUrl();
-        assertThat(url).startsWith("https://huggingface.co/");
+        // When TAXONOMY_EMBEDDING_MODEL_DIR is set (e.g. in CI with pre-downloaded
+        // model), effectiveModelUrl() returns the local cache path.  Otherwise it
+        // returns the HuggingFace URL.  Both must reference bge-small-en-v1.5.
+        assertThat(url).satisfiesAnyOf(
+                u -> assertThat(u).startsWith("https://huggingface.co/").contains("bge-small-en-v1.5"),
+                u -> assertThat(u).contains("bge-small-en-v1.5"));
     }
 
     // ── Test 2.3 ─────────────────────────────────────────────────────────────
