@@ -241,10 +241,11 @@ class ReadmeShowcaseTest {
                 .as("Diagram must contain impact (leaf-to-leaf) relations")
                 .isTrue();
 
-        // Must also retain trace relations for traceability
+        // Must also retain trace or seed-context relations for traceability
         assertThat(view.getIncludedRelationships().stream()
-                .anyMatch(r -> "trace".equals(r.getRelationCategory())))
-                .as("Architecture view must retain trace (root-level) relations")
+                .anyMatch(r -> "trace".equals(r.getRelationCategory())
+                        || "seed".equals(r.getRelationCategory())))
+                .as("Architecture view must retain trace or seed-context relations")
                 .isTrue();
 
         // Impact relations should connect leaf nodes (contain '-'), not just roots

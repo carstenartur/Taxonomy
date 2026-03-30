@@ -19,6 +19,7 @@ import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.RequirementElementView;
 import com.taxonomy.dto.RequirementRelationshipView;
 import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.model.SeedType;
 
 /**
  * Builds a {@link RequirementArchitectureView} from analysis scores and
@@ -288,6 +289,12 @@ public class RequirementArchitectureViewService {
             element.setIncludedBecause(reason);
             element.setOrigin(hopDistance == 0 ? NodeOrigin.DIRECT_SCORED : NodeOrigin.PROPAGATED);
 
+            // Refine origin: non-anchor root codes (no '-') reached through propagation
+            // are seed-context nodes rather than independently propagated results.
+            if (hopDistance > 0 && !nodeCode.contains("-")) {
+                element.setOrigin(NodeOrigin.SEED_CONTEXT);
+            }
+
             // Look up title and taxonomy sheet from the database
             Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(nodeCode);
             if (nodeOpt.isPresent()) {
@@ -332,10 +339,22 @@ public class RequirementArchitectureViewService {
             rv.setPropagatedRelevance(tr.getPropagatedRelevance());
             rv.setHopDistance(tr.getHopDistance());
             rv.setIncludedBecause(tr.getReason());
-            rv.setRelationCategory(RequirementRelationshipView.CATEGORY_TRACE);
-            rv.setOrigin(RelationOrigin.PROPAGATED_TRACE);
             rv.setConfidence(tr.getPropagatedRelevance());
-            rv.setDerivationReason("BFS propagation hop " + tr.getHopDistance());
+
+            // Detect seed-origin relations: both endpoints are root codes (no '-')
+            // indicating structural seed relations from the CSV.
+            boolean isSeedRelation = isSeedOriginRelation(rel);
+            if (isSeedRelation) {
+                rv.setRelationCategory(RequirementRelationshipView.CATEGORY_SEED);
+                rv.setOrigin(RelationOrigin.TAXONOMY_SEED);
+                rv.setSeedType(parseSeedType(rel.getProvenance()));
+                rv.setDerivationReason("Seed relation: " + rel.getSourceCode()
+                        + " → " + rel.getTargetCode());
+            } else {
+                rv.setRelationCategory(RequirementRelationshipView.CATEGORY_TRACE);
+                rv.setOrigin(RelationOrigin.PROPAGATED_TRACE);
+                rv.setDerivationReason("BFS propagation hop " + tr.getHopDistance());
+            }
             relationships.add(rv);
         }
 
@@ -595,7 +614,8 @@ public class RequirementArchitectureViewService {
      *   <li>Priority 1: Cross-category leaf-to-leaf impact relations</li>
      *   <li>Priority 2: Same-category leaf-to-leaf relations</li>
      *   <li>Priority 3: Relations involving at least one leaf node</li>
-     *   <li>Priority 4: Root-level propagation relations</li>
+     *   <li>Priority 4: Root-level propagation relations (non-seed)</li>
+     *   <li>Priority 5: Seed-origin root-to-root relations (structural context)</li>
      * </ol>
      * Within each priority tier, relations are sorted by confidence/relevance descending.
      */
@@ -613,11 +633,13 @@ public class RequirementArchitectureViewService {
         boolean srcIsLeaf = rel.getSourceCode() != null && rel.getSourceCode().contains("-");
         boolean tgtIsLeaf = rel.getTargetCode() != null && rel.getTargetCode().contains("-");
         boolean isCrossCategory = !Objects.equals(rootOf(rel.getSourceCode()), rootOf(rel.getTargetCode()));
+        boolean isSeed = RequirementRelationshipView.CATEGORY_SEED.equals(rel.getRelationCategory());
 
         if (srcIsLeaf && tgtIsLeaf && isCrossCategory) return 1; // Cross-category leaf-to-leaf
         if (srcIsLeaf && tgtIsLeaf) return 2;                     // Same-category leaf-to-leaf
         if (srcIsLeaf || tgtIsLeaf) return 3;                     // At least one leaf
-        return 4;                                                  // Root-level
+        if (isSeed) return 5;                                      // Seed-origin root-to-root
+        return 4;                                                  // Root-level propagation
     }
 
     /**
@@ -726,5 +748,30 @@ public class RequirementArchitectureViewService {
             }
         }
         return codes;
+    }
+
+    /**
+     * Returns {@code true} if the underlying relation is a seed-origin relation.
+     * Seed relations are characterised by both endpoints being root taxonomy codes
+     * (two-letter codes without a hyphen, e.g.&nbsp;CP&nbsp;→&nbsp;CR).
+     */
+    static boolean isSeedOriginRelation(TaxonomyRelationDto rel) {
+        String src = rel.getSourceCode();
+        String tgt = rel.getTargetCode();
+        return src != null && tgt != null
+                && !src.contains("-") && !tgt.contains("-");
+    }
+
+    /**
+     * Parses a {@link SeedType} from the relation provenance string.
+     * Falls back to {@link SeedType#TYPE_DEFAULT} when no specific type is
+     * recorded.
+     */
+    static SeedType parseSeedType(String provenance) {
+        if (provenance == null) return SeedType.TYPE_DEFAULT;
+        String upper = provenance.toUpperCase(Locale.ROOT);
+        if (upper.contains("FRAMEWORK")) return SeedType.FRAMEWORK_SEED;
+        if (upper.contains("SOURCE_DERIVED") || upper.contains("DERIVED")) return SeedType.SOURCE_DERIVED;
+        return SeedType.TYPE_DEFAULT;
     }
 }

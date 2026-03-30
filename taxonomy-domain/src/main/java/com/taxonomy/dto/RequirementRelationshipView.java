@@ -10,6 +10,9 @@ public class RequirementRelationshipView {
     /** Relation represents a concrete cross-category architecture impact (typically leaf-to-leaf). */
     public static final String CATEGORY_IMPACT = "impact";
 
+    /** Relation originates from the seed CSV and provides structural context (root-to-root). */
+    public static final String CATEGORY_SEED = "seed";
+
     private Long relationId;
     private String sourceCode;
     private String targetCode;
