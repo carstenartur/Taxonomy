@@ -277,5 +277,5 @@ docker build -t taxonomy-analyzer .
 docker run -p 8080:8080 taxonomy-analyzer
 ```
 
-The multi-stage `Dockerfile` uses `eclipse-temurin:17-jdk` for the build stage and
-`eclipse-temurin:17-jre` for the runtime stage. The final image is approximately 200 MB.
+The multi-stage `Dockerfile` uses `eclipse-temurin:21-jdk` for the build stage and
+`eclipse-temurin:21-jre` for the runtime stage. The final image is approximately 200 MB.

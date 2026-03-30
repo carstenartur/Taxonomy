@@ -28,7 +28,7 @@ This document provides operational procedures for running the Taxonomy Architect
 | **CPU** | 2 cores |
 | **RAM** | 512 MB (without embedding), 1 GB (with embedding) |
 | **Disk** | 500 MB (application + data) |
-| **Java** | 17+ (JRE) |
+| **Java** | 21+ (JRE) |
 
 ### Recommended (Production / 10+ Users)
 
@@ -364,7 +364,7 @@ server {
 | `OutOfMemoryError` | Insufficient heap | Increase `-Xmx` in `JAVA_OPTS` |
 | `Connection refused` (database) | Database not running | Check database service and `TAXONOMY_DATASOURCE_URL` |
 | Port already in use | Another process on 8080 | Change `PORT` environment variable |
-| `ClassNotFoundException` | Wrong Java version | Ensure Java 17+ |
+| `ClassNotFoundException` | Wrong Java version | Ensure Java 21+ |
 
 ### Slow Analysis
 

@@ -26,7 +26,7 @@ Dieses Dokument beschreibt die Positionierung des Taxonomy Architecture Analyzer
 | **Modulare Architektur** | 4 Maven-Module (domain, dsl, export, app); erweiterbar und austauschbar | ✅ |
 | **Datenportabilität** | Export in 5+ Formate (ArchiMate XML, Visio, Mermaid, JSON, Reports); JGit-Repository exportierbar | ✅ |
 | **EU-Datenresidenz** | Mistral AI (Frankreich/EU) oder LOCAL_ONNX für On-Premises-Betrieb konfigurierbar | ✅ |
-| **Standard-Technologien** | Java 17 (LTS), Spring Boot 4, Maven, Docker — breit verfügbare Kompetenzen | ✅ |
+| **Standard-Technologien** | Java 21 (LTS), Spring Boot 4, Maven, Docker — breit verfügbare Kompetenzen | ✅ |
 | **Keine Cloud-Abhängigkeit** | Vollständig on-premises deploybar; keine Cloud-Dienste erforderlich | ✅ |
 
 ---

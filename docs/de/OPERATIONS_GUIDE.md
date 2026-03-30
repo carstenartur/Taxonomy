@@ -28,7 +28,7 @@ Dieses Dokument beschreibt die betrieblichen Verfahren für den Betrieb des Taxo
 | **CPU** | 2 Kerne |
 | **RAM** | 512 MB (ohne Embedding), 1 GB (mit Embedding) |
 | **Festplatte** | 500 MB (Anwendung + Daten) |
-| **Java** | 17+ (JRE) |
+| **Java** | 21+ (JRE) |
 
 ### Empfohlen (Produktion / 10+ Benutzer)
 
@@ -364,7 +364,7 @@ server {
 | `OutOfMemoryError` | Unzureichender Heap-Speicher | `-Xmx` in `JAVA_OPTS` erhöhen |
 | `Connection refused` (Datenbank) | Datenbank läuft nicht | Datenbankdienst und `TAXONOMY_DATASOURCE_URL` prüfen |
 | Port bereits belegt | Ein anderer Prozess auf 8080 | Umgebungsvariable `PORT` ändern |
-| `ClassNotFoundException` | Falsche Java-Version | Java 17+ sicherstellen |
+| `ClassNotFoundException` | Falsche Java-Version | Java 21+ sicherstellen |
 
 ### Langsame Analyse
 

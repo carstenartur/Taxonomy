@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Spring Boot 4 / Java 17 web application. Taxonomy data loaded from an Excel workbook via Apache POI. Full-text and KNN search via Hibernate Search 8 + Lucene 9. LLM analysis via Google Gemini (default) or other configured provider. UI is a single Bootstrap 5 page rendered by Thymeleaf.
+Spring Boot 4 / Java 21 web application. Taxonomy data loaded from an Excel workbook via Apache POI. Full-text and KNN search via Hibernate Search 8 + Lucene 9. LLM analysis via Google Gemini (default) or other configured provider. UI is a single Bootstrap 5 page rendered by Thymeleaf.
 
 ## Build & Test
 

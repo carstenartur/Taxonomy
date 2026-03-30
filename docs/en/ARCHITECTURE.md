@@ -25,7 +25,7 @@ This document describes the architecture of the Taxonomy Architecture Analyzer �
 
 ## System Overview
 
-The application is a single Spring Boot 4 / Java 17 web application with the following main characteristics:
+The application is a single Spring Boot 4 / Java 21 web application with the following main characteristics:
 
 - **In-process HSQLDB** — taxonomy data (~2,500 nodes across 8 sheets from an Excel workbook) is loaded at startup into an embedded HSQLDB database. No external database is required by default.
 - **Multi-provider LLM integration** — business requirements can be analysed by any of six supported language model providers (Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral), or by a local offline model (`bge-small-en-v1.5` via DJL / ONNX Runtime) that requires no API key.

@@ -7,7 +7,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 /**
  * Integration tests for the Diagnostics endpoint running inside a real Docker
  * container. Uses the pre-built application JAR packaged into an
- * eclipse-temurin:17-jre container. Validates that the application
+ * eclipse-temurin:21-jre container. Validates that the application
  * starts correctly and the diagnostics and other API endpoints behave as
  * expected in a production-like setup.
  * <p>

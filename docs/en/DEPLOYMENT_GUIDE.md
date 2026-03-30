@@ -38,8 +38,8 @@ If you prefer to build from source, the repository includes a multi-stage `Docke
 
 | Stage | Base Image | Purpose |
 |---|---|---|
-| **build** | `eclipse-temurin:17-jdk` | Compiles the application with Maven |
-| **runtime** | `eclipse-temurin:17-jre` | Runs the application (glibc-based for ONNX Runtime compatibility) |
+| **build** | `eclipse-temurin:21-jdk` | Compiles the application with Maven |
+| **runtime** | `eclipse-temurin:21-jre` | Runs the application (glibc-based for ONNX Runtime compatibility) |
 
 ```bash
 # Build the image

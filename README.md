@@ -306,7 +306,7 @@ _Architecture impact view — swimlane layout groups elements by layer. The deta
 
 | Requirement | Notes |
 |---|---|
-| **Java 17+** | JDK for building, JRE for running |
+| **Java 21+** | JDK for building, JRE for running |
 | **Maven 3.9+** | Build only |
 | **LLM API key** _or_ `LLM_PROVIDER=LOCAL_ONNX` | Required for AI analysis; browsing and search work without it |
 
@@ -441,7 +441,7 @@ Taxonomy/
 ├── taxonomy-export/     # Export formats: ArchiMate, Visio, Mermaid, Diagram
 ├── taxonomy-app/        # Spring Boot application: REST API, services, persistence, UI
 ├── docs/                # Documentation and auto-generated screenshots
-└── pom.xml              # Parent POM (4 modules, Spring Boot 4, Java 17)
+└── pom.xml              # Parent POM (4 modules, Spring Boot 4, Java 21)
 ```
 
 ---
