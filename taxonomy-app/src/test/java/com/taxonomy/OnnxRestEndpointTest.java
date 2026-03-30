@@ -65,6 +65,7 @@ class OnnxRestEndpointTest {
 
     @Test
     void findSimilarReturnsArray() throws Exception {
+        // CO is one of the 8 taxonomy roots (BP, BR, CP, CI, CO, CR, IP, UA)
         mockMvc.perform(get("/api/search/similar/CO")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
