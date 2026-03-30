@@ -19,6 +19,19 @@ import java.util.stream.Collectors;
  * <p>The generated output is suitable for embedding in GitHub READMEs, Confluence pages,
  * and any Markdown renderer that supports Mermaid diagrams.</p>
  *
+ * <p><strong>Selection vs. Rendering:</strong> Node/edge selection and curation are
+ * handled by {@link DiagramSelectionPolicy} implementations <em>before</em> this
+ * renderer is called.  This service is responsible only for rendering the curated
+ * result.  The {@link #exportShowcase(DiagramModel, MermaidLabels)} method
+ * internally applies a {@link LeafOnlyDiagramSelectionPolicy} for backward
+ * compatibility.</p>
+ *
+ * <h3>Containment</h3>
+ * <p>Nodes flagged with {@link DiagramNode#container()}{@code == true} are rendered
+ * as nested Mermaid sub-graphs that visually contain their child nodes (identified
+ * by {@link DiagramNode#parentId()}).  This produces the "container with children
+ * inside" layout required for clustered impact diagrams.</p>
+ *
  * <h3>Internationalization</h3>
  * <p>All overloads accept an optional {@link MermaidLabels} parameter.
  * When provided, display labels (layer titles, relation edge labels, anchor/hotspot
@@ -55,6 +68,9 @@ public class MermaidExportService {
     /**
      * Exports a {@link DiagramModel} as a Mermaid flowchart string using the given localized labels.
      *
+     * <p>Container nodes ({@link DiagramNode#container()}) are rendered as nested
+     * sub-graphs whose children appear visually inside them.</p>
+     *
      * @param model  the neutral diagram model
      * @param labels locale-specific display labels
      * @return Mermaid-formatted diagram text
@@ -68,34 +84,7 @@ public class MermaidExportService {
         String direction = model.layout() != null ? model.layout().direction() : "LR";
         sb.append("flowchart ").append(direction).append('\n');
 
-        // Group nodes by layer for subgraph rendering
-        Map<String, List<DiagramNode>> grouped = model.nodes().stream()
-                .collect(Collectors.groupingBy(
-                        DiagramNode::type,
-                        LinkedHashMap::new,
-                        Collectors.toList()));
-
-        // Sort groups by layer order
-        List<Map.Entry<String, List<DiagramNode>>> sortedGroups = grouped.entrySet().stream()
-                .sorted(Comparator.comparingInt(e -> layerOrder(e.getKey())))
-                .toList();
-
-        // Render subgraphs
-        for (Map.Entry<String, List<DiagramNode>> entry : sortedGroups) {
-            String type = entry.getKey();
-            List<DiagramNode> nodes = entry.getValue();
-            String subId = sanitizeId(type);
-            String displayType = labels.layerLabel(type);
-
-            sb.append("    subgraph ").append(subId).append("[\"").append(escape(displayType)).append("\"]\n");
-            for (DiagramNode node : nodes) {
-                String nodeId = sanitizeId(node.id());
-                String label = node.id() + " " + node.label();
-                label += buildSuffix(node, labels);
-                sb.append("        ").append(nodeId).append("[\"").append(escape(label)).append("\"]\n");
-            }
-            sb.append("    end\n");
-        }
+        renderLayerSubgraphs(sb, model.nodes(), labels, false);
 
         // Render edges
         for (DiagramEdge edge : model.edges()) {
@@ -128,22 +117,10 @@ public class MermaidExportService {
      * Exports a {@link DiagramModel} optimized for README/showcase rendering
      * using the given localized labels.
      *
-     * <p>Differences from {@link #export(DiagramModel, MermaidLabels)}:
-     * <ul>
-     *   <li>Uses top-down (TD) layout for multi-layer readability</li>
-     *   <li>Suppresses taxonomy scaffolding — both root-level nodes (two-letter
-     *       codes like "CP") and first-level container nodes matching the
-     *       {@code XX-1000} pattern (e.g.&nbsp;"CP-1000") — when concrete leaf
-     *       nodes exist in the same layer.  Edges from suppressed nodes are
-     *       re-routed to the highest-relevance leaf node in that layer so
-     *       cross-layer relations remain visible.</li>
-     *   <li>Marks high-relevance nodes (≥ 80%) as hotspots with a visual marker</li>
-     *   <li>Uses display-friendly relation labels (e.g. "realizes" instead of "REALIZES")</li>
-     *   <li>Uses abbreviated subgraph titles with emoji for quick visual scanning</li>
-     *   <li>Uses multi-line node labels (name + metadata) for richer cards</li>
-     *   <li>Uses stadium shapes for anchor/hotspot nodes for visual emphasis</li>
-     *   <li>Limits edges to top N most relevant for cleaner diagrams</li>
-     * </ul>
+     * <p>Selection logic (root/scaffolding suppression, edge re-routing) is
+     * delegated to a {@link LeafOnlyDiagramSelectionPolicy}.  This method
+     * handles only rendering concerns (TD layout, stadium shapes, multi-line
+     * labels, abbreviated subgraph titles, etc.).</p>
      *
      * @param model  the neutral diagram model
      * @param labels locale-specific display labels
@@ -154,69 +131,11 @@ public class MermaidExportService {
             return "flowchart TD\n    empty[\"No data\"]\n";
         }
 
-        // ── Partition nodes into root-level/scaffolding and leaf-level per layer ──
-        // Root-level: two-letter codes without "-" (e.g. "CP")
-        // Scaffolding: first-level containers matching XX-1000 pattern (e.g. "CP-1000")
-        // Leaf-level: all other nodes with deeper semantic meaning
-        Map<String, List<DiagramNode>> leafByType = new LinkedHashMap<>();
-        Map<String, List<DiagramNode>> rootByType = new LinkedHashMap<>();
-        for (DiagramNode node : model.nodes()) {
-            if (!node.id().contains("-") || isScaffoldingId(node.id())) {
-                rootByType.computeIfAbsent(node.type(), k -> new ArrayList<>()).add(node);
-            } else {
-                leafByType.computeIfAbsent(node.type(), k -> new ArrayList<>()).add(node);
-            }
-        }
+        // Delegate selection to the leaf-only policy
+        DiagramModel curated = new LeafOnlyDiagramSelectionPolicy().apply(model);
 
-        // ── Build showcase node list: prefer leaf nodes, keep root only if no leaves ──
-        List<DiagramNode> showcaseNodes = new ArrayList<>();
-        Map<String, String> rootToLeafReroute = new LinkedHashMap<>();
-        Set<String> allTypes = new LinkedHashSet<>();
-        model.nodes().stream()
-                .sorted(Comparator.comparingInt(DiagramNode::layer))
-                .forEach(n -> allTypes.add(n.type()));
-
-        for (String type : allTypes) {
-            List<DiagramNode> leaves = leafByType.getOrDefault(type, List.of());
-            List<DiagramNode> roots = rootByType.getOrDefault(type, List.of());
-            if (!leaves.isEmpty()) {
-                showcaseNodes.addAll(leaves);
-                DiagramNode bestLeaf = leaves.stream()
-                        .max(Comparator.comparingDouble(DiagramNode::relevance))
-                        .orElse(leaves.get(0));
-                for (DiagramNode root : roots) {
-                    rootToLeafReroute.put(root.id(), bestLeaf.id());
-                }
-            } else {
-                showcaseNodes.addAll(roots);
-            }
-        }
-
-        Set<String> showcaseIds = showcaseNodes.stream()
-                .map(DiagramNode::id).collect(Collectors.toCollection(LinkedHashSet::new));
-
-        // ── Re-route, filter and limit edges ────────────────────────────────
-        List<DiagramEdge> showcaseEdges = new ArrayList<>();
-        Set<String> edgeSignatures = new LinkedHashSet<>();
-        for (DiagramEdge edge : model.edges()) {
-            String src = rootToLeafReroute.getOrDefault(edge.sourceId(), edge.sourceId());
-            String tgt = rootToLeafReroute.getOrDefault(edge.targetId(), edge.targetId());
-            if (!showcaseIds.contains(src) || !showcaseIds.contains(tgt)) continue;
-            if (src.equals(tgt)) continue;
-            String sig = src + "->" + tgt + ":" + edge.relationType();
-            if (edgeSignatures.add(sig)) {
-                showcaseEdges.add(new DiagramEdge(edge.id(), src, tgt,
-                        edge.relationType(), edge.relevance()));
-            }
-        }
-
-        // Limit edges to top N — prefer impact edges over trace edges, then by relevance
-        if (showcaseEdges.size() > MermaidLabels.SHOWCASE_MAX_EDGES) {
-            showcaseEdges.sort(Comparator
-                    .comparing((DiagramEdge e) -> "impact".equals(e.relationCategory()) ? 0 : 1)
-                    .thenComparing(Comparator.comparingDouble(DiagramEdge::relevance).reversed()));
-            showcaseEdges = new ArrayList<>(showcaseEdges.subList(0, MermaidLabels.SHOWCASE_MAX_EDGES));
-        }
+        List<DiagramNode> showcaseNodes = curated.nodes();
+        List<DiagramEdge> showcaseEdges = curated.edges();
 
         // ── Render ──────────────────────────────────────────────────────────
         StringBuilder sb = new StringBuilder();
@@ -269,6 +188,104 @@ public class MermaidExportService {
         appendClassAssignments(sb, showcaseNodes, labels);
 
         return sb.toString();
+    }
+
+    // ── Layer subgraph rendering with containment support ────────────────────
+
+    /**
+     * Renders nodes grouped by layer as Mermaid sub-graphs, with support for
+     * nested containment when nodes are flagged as containers.
+     */
+    private void renderLayerSubgraphs(StringBuilder sb, List<DiagramNode> allNodes,
+                                       MermaidLabels labels, boolean showcase) {
+        // Index: parentId → children
+        Map<String, List<DiagramNode>> childrenOf = new LinkedHashMap<>();
+        Set<String> childIds = new LinkedHashSet<>();
+        for (DiagramNode n : allNodes) {
+            if (n.parentId() != null) {
+                // Only link to parent if the parent is actually a container in the model
+                boolean parentIsContainer = allNodes.stream()
+                        .anyMatch(p -> p.id().equals(n.parentId()) && p.container());
+                if (parentIsContainer) {
+                    childrenOf.computeIfAbsent(n.parentId(), k -> new ArrayList<>()).add(n);
+                    childIds.add(n.id());
+                }
+            }
+        }
+
+        // Group top-level nodes (non-children) by type
+        Map<String, List<DiagramNode>> grouped = allNodes.stream()
+                .filter(n -> !childIds.contains(n.id()))
+                .collect(Collectors.groupingBy(
+                        DiagramNode::type, LinkedHashMap::new, Collectors.toList()));
+
+        List<Map.Entry<String, List<DiagramNode>>> sortedGroups = grouped.entrySet().stream()
+                .sorted(Comparator.comparingInt(e -> layerOrder(e.getKey())))
+                .toList();
+
+        for (Map.Entry<String, List<DiagramNode>> entry : sortedGroups) {
+            String type = entry.getKey();
+            List<DiagramNode> nodes = entry.getValue();
+            String subId = sanitizeId(type);
+            String displayType = showcase ? labels.showcaseLayerLabel(type) : labels.layerLabel(type);
+
+            sb.append("    subgraph ").append(subId)
+              .append("[\"").append(escape(displayType)).append("\"]\n");
+
+            for (DiagramNode node : nodes) {
+                if (node.container()) {
+                    // Render as nested sub-graph containing its children
+                    renderContainerSubgraph(sb, node, childrenOf, labels, showcase);
+                } else {
+                    renderNode(sb, node, labels, showcase, "        ");
+                }
+            }
+
+            sb.append("    end\n");
+        }
+    }
+
+    /**
+     * Renders a container node as a nested Mermaid sub-graph with its children inside.
+     */
+    private void renderContainerSubgraph(StringBuilder sb, DiagramNode container,
+                                          Map<String, List<DiagramNode>> childrenOf,
+                                          MermaidLabels labels, boolean showcase) {
+        String containerId = sanitizeId(container.id());
+        sb.append("        subgraph ").append(containerId)
+          .append("[\"").append(escape(container.label())).append("\"]\n");
+
+        List<DiagramNode> children = childrenOf.getOrDefault(container.id(), List.of());
+        for (DiagramNode child : children) {
+            renderNode(sb, child, labels, showcase, "            ");
+        }
+
+        sb.append("        end\n");
+    }
+
+    /**
+     * Renders a single non-container node with the appropriate shape and label.
+     */
+    private void renderNode(StringBuilder sb, DiagramNode node, MermaidLabels labels,
+                             boolean showcase, String indent) {
+        String nodeId = sanitizeId(node.id());
+        if (showcase) {
+            boolean isProminent = node.anchor() || node.relevance() >= MermaidLabels.HOTSPOT_THRESHOLD;
+            String nameLine = truncateLabel(node.label(), MermaidLabels.SHOWCASE_MAX_LABEL_LENGTH);
+            String metaLine = buildShowcaseMetaLine(node, labels);
+            String label = nameLine + "<br/>" + metaLine;
+            if (isProminent) {
+                sb.append(indent).append(nodeId)
+                  .append("([\"").append(escape(label)).append("\"])\n");
+            } else {
+                sb.append(indent).append(nodeId)
+                  .append("[\"").append(escape(label)).append("\"]\n");
+            }
+        } else {
+            String label = node.id() + " " + node.label();
+            label += buildSuffix(node, labels);
+            sb.append(indent).append(nodeId).append("[\"").append(escape(label)).append("\"]\n");
+        }
     }
 
     // ── Shared helpers ──────────────────────────────────────────────────────
@@ -335,6 +352,7 @@ public class MermaidExportService {
     private void appendClassAssignments(StringBuilder sb, List<DiagramNode> nodes,
                                          MermaidLabels labels) {
         for (DiagramNode node : nodes) {
+            if (node.container()) continue; // containers are sub-graphs, not styled nodes
             String cls = LAYER_STYLE.getOrDefault(node.type(), "");
             if (!cls.isEmpty()) {
                 sb.append("    class ").append(sanitizeId(node.id())).append(' ').append(cls).append('\n');

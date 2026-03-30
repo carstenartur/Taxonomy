@@ -11,13 +11,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Projects a {@link RequirementArchitectureView} into a neutral {@link DiagramModel}
  * suitable for rendering to various diagram formats (Visio, Mermaid, GraphViz, etc.).
+ *
+ * <p>The projection converts domain-level {@link RequirementElementView} /
+ * {@link RequirementRelationshipView} objects to the format-independent
+ * {@link DiagramModel}.  Selection and curation (filtering, suppression,
+ * containment) are delegated to a pluggable {@link DiagramSelectionPolicy}.</p>
  */
 public class DiagramProjectionService {
 
@@ -57,74 +61,75 @@ public class DiagramProjectionService {
             Map.entry("Communications Services", 6)
     );
 
+    private DiagramSelectionPolicy policy =
+            new ConfigurableDiagramSelectionPolicy(DiagramSelectionConfig.defaultImpact());
+
+    /** Replaces the active selection policy. */
+    public void setPolicy(DiagramSelectionPolicy policy) {
+        this.policy = policy;
+    }
+
+    /** Returns the active selection policy. */
+    public DiagramSelectionPolicy getPolicy() {
+        return policy;
+    }
+
     /**
-     * Converts a {@link RequirementArchitectureView} to a {@link DiagramModel}.
+     * Converts a {@link RequirementArchitectureView} to a {@link DiagramModel},
+     * applying the active {@link DiagramSelectionPolicy} to curate the result.
      *
      * @param view  the architecture view produced by analysis
      * @param title diagram title (typically the business text summary)
-     * @return a neutral diagram model
+     * @return a curated diagram model
      */
     public DiagramModel project(RequirementArchitectureView view, String title) {
+        DiagramModel raw = projectRaw(view, title);
+        DiagramModel curated = policy.apply(raw);
+        log.info("DiagramProjection: {} nodes, {} edges from architecture view",
+                curated.nodes().size(), curated.edges().size());
+        return curated;
+    }
+
+    /**
+     * Converts a {@link RequirementArchitectureView} to a raw (unfiltered)
+     * {@link DiagramModel}.  All elements and relationships are included;
+     * no selection or suppression is applied.
+     *
+     * @param view  the architecture view produced by analysis
+     * @param title diagram title
+     * @return a raw diagram model with all projected nodes and edges
+     */
+    DiagramModel projectRaw(RequirementArchitectureView view, String title) {
         if (view == null) {
             return new DiagramModel(title, List.of(), List.of(),
                     new DiagramLayout("LR", true));
         }
 
-        // First pass: collect elements that pass the inclusion filter so we can
-        // determine which categories have concrete (depth > 1) nodes *after*
-        // filtering.  Without this, a scaffolding node could be suppressed even
-        // when the only concrete nodes in its category are below MIN_RELEVANCE.
-        var categoriesWithConcreteNodes = new java.util.HashSet<String>();
-        for (RequirementElementView el : view.getIncludedElements()) {
-            if (el.getRelevance() < MIN_RELEVANCE && !el.isAnchor() && !el.isSelectedForImpact()) {
-                continue;
-            }
-            if (el.getTaxonomyDepth() > 1 && el.getTaxonomySheet() != null) {
-                categoriesWithConcreteNodes.add(el.getTaxonomySheet());
-            }
-        }
+        // Build a lookup for parentId resolution from hierarchy paths
+        Map<String, String> parentMap = buildParentMap(view.getIncludedElements());
 
         List<DiagramNode> nodes = new ArrayList<>();
         for (RequirementElementView el : view.getIncludedElements()) {
-            // Include if: sufficient relevance, is anchor, or was selected for impact
-            if (el.getRelevance() < MIN_RELEVANCE && !el.isAnchor() && !el.isSelectedForImpact()) {
-                continue;
-            }
-            // Suppress taxonomy scaffolding (depth ≤ 1) when concrete nodes exist
-            if (el.getTaxonomyDepth() <= 1
-                    && categoriesWithConcreteNodes.contains(el.getTaxonomySheet())) {
-                continue;
-            }
             String rawType = el.getTaxonomySheet() != null ? el.getTaxonomySheet() : "Unknown";
             String type = ROOT_CODE_TO_LAYER.getOrDefault(rawType, rawType);
             int layer = LAYER_MAP.getOrDefault(type, 0);
+            String parentId = parentMap.get(el.getNodeCode());
             nodes.add(new DiagramNode(
                     el.getNodeCode(),
                     el.getTitle() != null ? el.getTitle() : el.getNodeCode(),
                     type,
                     el.getRelevance(),
                     el.isAnchor(),
-                    layer));
+                    layer,
+                    el.getTaxonomyDepth(),
+                    el.isSelectedForImpact(),
+                    parentId,
+                    false));
         }
-
-        // Sort: anchors first, then by relevance descending — impact-selected nodes
-        // naturally rank high due to their composite scores from ArchitectureImpactSelector.
-        nodes.sort(Comparator
-                .comparing((DiagramNode n) -> n.anchor() ? 0 : 1)
-                .thenComparing(Comparator.comparingDouble(DiagramNode::relevance).reversed()));
-        if (nodes.size() > MAX_NODES) {
-            nodes = new ArrayList<>(nodes.subList(0, MAX_NODES));
-        }
-
-        // Build a set of included node IDs for filtering edges
-        var nodeIds = nodes.stream().map(DiagramNode::id).collect(java.util.stream.Collectors.toSet());
 
         List<DiagramEdge> edges = new ArrayList<>();
         int edgeIdx = 0;
         for (RequirementRelationshipView rel : view.getIncludedRelationships()) {
-            if (!nodeIds.contains(rel.getSourceCode()) || !nodeIds.contains(rel.getTargetCode())) {
-                continue;
-            }
             edges.add(new DiagramEdge(
                     "e" + (++edgeIdx),
                     rel.getSourceCode(),
@@ -132,22 +137,36 @@ public class DiagramProjectionService {
                     rel.getRelationType(),
                     rel.getPropagatedRelevance(),
                     rel.getRelationCategory()));
-            if (edges.size() >= MAX_EDGES) {
-                break;
-            }
         }
 
-        // Sort: impact relations first (more concrete), then by relevance descending
-        edges.sort(Comparator
-                .comparing((DiagramEdge e) -> "impact".equals(e.relationCategory()) ? 0 : 1)
-                .thenComparing(Comparator.comparingDouble(DiagramEdge::relevance).reversed()));
+        return new DiagramModel(title, nodes, edges, new DiagramLayout("LR", true));
+    }
 
-        log.info("DiagramProjection: {} nodes, {} edges from architecture view", nodes.size(), edges.size());
+    /**
+     * Builds a map from node code to its nearest ancestor code that is also
+     * present in the element list.  Uses the {@code hierarchyPath} field
+     * (format: "CP &gt; CP-1000 &gt; CP-1023") to resolve parent codes.
+     */
+    private Map<String, String> buildParentMap(List<RequirementElementView> elements) {
+        var codes = new java.util.HashSet<String>();
+        for (RequirementElementView el : elements) {
+            codes.add(el.getNodeCode());
+        }
 
-        return new DiagramModel(
-                title,
-                nodes,
-                edges,
-                new DiagramLayout("LR", true));
+        Map<String, String> parentMap = new java.util.LinkedHashMap<>();
+        for (RequirementElementView el : elements) {
+            String hp = el.getHierarchyPath();
+            if (hp == null || hp.isEmpty()) continue;
+            String[] parts = hp.split("\\s*>\\s*");
+            // Walk backwards from the element's position to find the nearest ancestor in the model
+            for (int i = parts.length - 2; i >= 0; i--) {
+                String candidate = parts[i].trim();
+                if (codes.contains(candidate)) {
+                    parentMap.put(el.getNodeCode(), candidate);
+                    break;
+                }
+            }
+        }
+        return parentMap;
     }
 }

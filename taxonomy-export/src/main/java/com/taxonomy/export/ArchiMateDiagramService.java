@@ -61,6 +61,11 @@ public class ArchiMateDiagramService {
     private List<ArchiMateElement> buildElements(List<DiagramNode> nodes) {
         List<ArchiMateElement> elements = new ArrayList<>();
         for (DiagramNode node : nodes) {
+            // Container-only nodes are visual grouping constructs — they must not
+            // leak into the ArchiMate model as real architecture elements.
+            if (node.container()) {
+                continue;
+            }
             elements.add(new ArchiMateElement(
                     node.id(),
                     node.label(),
@@ -87,6 +92,7 @@ public class ArchiMateDiagramService {
     private Map<String, List<String>> buildOrganizations(List<DiagramNode> nodes) {
         Map<String, List<String>> organizations = new LinkedHashMap<>();
         for (DiagramNode node : nodes) {
+            if (node.container()) continue; // grouping-only nodes are not architecture elements
             String type = node.type() != null ? node.type() : "Unknown";
             organizations.computeIfAbsent(type, k -> new ArrayList<>()).add(node.id());
         }
@@ -107,6 +113,7 @@ public class ArchiMateDiagramService {
             List<DiagramNode> layerNodes = entry.getValue();
             for (int i = 0; i < layerNodes.size(); i++) {
                 DiagramNode node = layerNodes.get(i);
+                if (node.container()) continue; // visual-only container — not an ArchiMate element
                 int x = MARGIN_X + layerIdx * H_GAP;
                 int y = MARGIN_Y + i * V_GAP;
                 int[] color = toColor(node.type());
