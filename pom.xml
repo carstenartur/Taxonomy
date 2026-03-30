@@ -73,8 +73,11 @@
         <springdoc.version>3.0.2</springdoc.version>
         <!-- Named selenium-java.version (NOT selenium.version) to avoid overriding
              Spring Boot's managed selenium.version property, which controls the
-             selenium-bom and all transitive Selenium artifact versions. Overriding
-             it would change the Chrome Docker image Testcontainers pulls. -->
+             selenium-bom and all transitive Selenium artifact versions.  Overriding
+             it caused Testcontainers to pull a newer Chrome Docker image with
+             HTTPS-First Mode enabled by default (ERR_SSL_PROTOCOL_ERROR).
+             This property is referenced only by the selenium-java dependency in
+             taxonomy-app/pom.xml. -->
         <selenium-java.version>4.41.0</selenium-java.version>
         <archunit.version>1.4.1</archunit.version>
         <flexmark.version>0.64.8</flexmark.version>
