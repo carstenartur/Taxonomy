@@ -5,7 +5,6 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,12 +18,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * service methods ({@code embed()}, {@code embedQuery()}, {@code isAvailable()}) work with
  * the real bge-small-en-v1.5 model.
  * <p>
- * Opt-in: only runs when the {@code runOnnxTests} system property is set.
- * Run with: {@code mvn test -DrunOnnxTests -Dtest=OnnxEmbeddingServiceTest}
+ * Run with: {@code mvn test -Dtest=OnnxEmbeddingServiceTest}
  */
 @SpringBootTest
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@EnabledIfSystemProperty(named = "runOnnxTests", matches = ".*")
 class OnnxEmbeddingServiceTest {
 
     @Autowired

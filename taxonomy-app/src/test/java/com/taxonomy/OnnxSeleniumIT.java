@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
@@ -36,13 +35,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * production-like image. This test proves that {@code libonnxruntime.so} links correctly
  * against glibc in the Debian-based Temurin image and that the full UI works end-to-end.
  * <p>
- * Opt-in: only runs when the {@code runOnnxTests} system property is set.
- * Run with: {@code mvn verify -DrunOnnxTests -Dit.test=OnnxSeleniumIT}
+ * Run with: {@code mvn verify -Dit.test=OnnxSeleniumIT}
  */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@EnabledIfSystemProperty(named = "runOnnxTests", matches = ".*")
 class OnnxSeleniumIT {
 
     private Network network;

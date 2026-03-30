@@ -11,8 +11,6 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
-
 import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -33,11 +31,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>
  * <strong>No Spring, no server, no HTTP.</strong>
  * <p>
- * Opt-in: only runs when the {@code runOnnxTests} system property is set.
- * Run with: {@code mvn test -DrunOnnxTests -Dtest=OnnxModelDirectTest}
+ * Run with: {@code mvn test -Dtest=OnnxModelDirectTest}
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@EnabledIfSystemProperty(named = "runOnnxTests", matches = ".*")
 class OnnxModelDirectTest {
 
     private static final String HF_REPO_URL = "https://huggingface.co/BAAI/bge-small-en-v1.5";

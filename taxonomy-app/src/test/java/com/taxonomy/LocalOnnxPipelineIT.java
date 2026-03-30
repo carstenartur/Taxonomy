@@ -5,7 +5,6 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
@@ -27,12 +26,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration tests that validate the full LOCAL_ONNX data pipeline using the
  * embedded bge-small-en-v1.5 model. No Selenium needed — pure REST API calls.
  * <p>
- * Opt-in: only runs when the {@code runOnnxTests} system property is set.
- * Run with: {@code mvn verify -DrunOnnxTests -Dit.test=LocalOnnxPipelineIT}
+ * Run with: {@code mvn verify -Dit.test=LocalOnnxPipelineIT}
  */
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@EnabledIfSystemProperty(named = "runOnnxTests", matches = ".*")
 class LocalOnnxPipelineIT {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();
