@@ -211,8 +211,8 @@ class OnnxSeleniumIT {
     @Test
     @Order(20)
     void semanticSearchViaUIReturnsResults() {
-        waitForEmbeddingsReady();
         navigateToAnalyzeTab();
+        waitForEmbeddingsReady();
 
         // Open search panel
         WebElement searchPanel = driver.findElement(By.id("searchPanel"));
@@ -252,8 +252,8 @@ class OnnxSeleniumIT {
         List<WebElement> items = driver.findElements(
                 By.cssSelector("#searchResultsArea .search-result-item"));
         if (items.isEmpty()) {
-            waitForEmbeddingsReady();
             navigateToAnalyzeTab();
+            waitForEmbeddingsReady();
             WebElement searchPanel = driver.findElement(By.id("searchPanel"));
             if (searchPanel.getAttribute("open") == null) {
                 searchPanel.findElement(By.tagName("summary")).click();
