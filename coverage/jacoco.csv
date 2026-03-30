@@ -196,7 +196,7 @@ Taxonomy Application,com.taxonomy.shared.config,RateLimitFilter.WindowCounter,25
 Taxonomy Application,com.taxonomy.shared.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0,4,0,2,0
 Taxonomy Application,com.taxonomy.shared.config,OpenApiConfig,0,257,0,0,0,36,0,2,0,2
 Taxonomy Application,com.taxonomy.shared.config,HibernateSearchAnalysisConfigurer,0,44,0,0,0,7,0,2,0,2
-Taxonomy Application,com.taxonomy.shared.config,ExportConfig,0,31,0,0,0,8,0,8,0,8
+Taxonomy Application,com.taxonomy.shared.config,ExportConfig,0,41,0,0,0,11,0,9,0,9
 Taxonomy Application,com.taxonomy.shared.config,RateLimitFilter,17,102,6,14,3,27,5,11,0,6
 Taxonomy Application,com.taxonomy.shared.config,WebMvcConfig,0,28,0,0,0,9,0,4,0,4
 Taxonomy Application,com.taxonomy.shared.config,TaxonomyHealthIndicator,1,73,1,1,0,15,1,2,0,2

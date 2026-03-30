@@ -2,7 +2,10 @@
 
 import com.taxonomy.export.ArchiMateDiagramService;
 import com.taxonomy.export.ArchiMateXmlExporter;
+import com.taxonomy.export.ConfigurableDiagramSelectionPolicy;
 import com.taxonomy.export.DiagramProjectionService;
+import com.taxonomy.export.DiagramSelectionConfig;
+import com.taxonomy.export.DiagramSelectionPolicy;
 import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.VisioDiagramService;
@@ -16,41 +19,48 @@ import org.springframework.context.annotation.Configuration;
  * wires its classes into the Spring application context.&lt;/p&gt;
  */
 @Configuration
-<span class="fc" id="L19">public class ExportConfig {</span>
+<span class="fc" id="L22">public class ExportConfig {</span>
 
     @Bean
     public ArchiMateDiagramService archiMateDiagramService() {
-<span class="fc" id="L23">        return new ArchiMateDiagramService();</span>
+<span class="fc" id="L26">        return new ArchiMateDiagramService();</span>
     }
 
     @Bean
     public ArchiMateXmlExporter archiMateXmlExporter() {
-<span class="fc" id="L28">        return new ArchiMateXmlExporter();</span>
+<span class="fc" id="L31">        return new ArchiMateXmlExporter();</span>
     }
 
     @Bean
-    public DiagramProjectionService diagramProjectionService() {
-<span class="fc" id="L33">        return new DiagramProjectionService();</span>
+    public DiagramSelectionPolicy diagramSelectionPolicy() {
+<span class="fc" id="L36">        return new ConfigurableDiagramSelectionPolicy(DiagramSelectionConfig.defaultImpact());</span>
+    }
+
+    @Bean
+    public DiagramProjectionService diagramProjectionService(DiagramSelectionPolicy policy) {
+<span class="fc" id="L41">        var service = new DiagramProjectionService();</span>
+<span class="fc" id="L42">        service.setPolicy(policy);</span>
+<span class="fc" id="L43">        return service;</span>
     }
 
     @Bean
     public MermaidExportService mermaidExportService() {
-<span class="fc" id="L38">        return new MermaidExportService();</span>
+<span class="fc" id="L48">        return new MermaidExportService();</span>
     }
 
     @Bean
     public StructurizrExportService structurizrExportService() {
-<span class="fc" id="L43">        return new StructurizrExportService();</span>
+<span class="fc" id="L53">        return new StructurizrExportService();</span>
     }
 
     @Bean
     public VisioDiagramService visioDiagramService() {
-<span class="fc" id="L48">        return new VisioDiagramService();</span>
+<span class="fc" id="L58">        return new VisioDiagramService();</span>
     }
 
     @Bean
     public VisioPackageBuilder visioPackageBuilder() {
-<span class="fc" id="L53">        return new VisioPackageBuilder();</span>
+<span class="fc" id="L63">        return new VisioPackageBuilder();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
