@@ -46,6 +46,9 @@ public class StructurizrExportService {
         int counter = 1;
 
         for (DiagramNode node : model.nodes()) {
+            // Container-only nodes are visual grouping constructs — skip them
+            // so that they do not become false architecture semantics in the export.
+            if (node.container()) continue;
             // Use node.id() to guarantee uniqueness; fall back to label for readability
             String id = sanitizeId(node.id(), counter++);
             // Ensure uniqueness even after sanitization

@@ -2,7 +2,10 @@ package com.taxonomy.shared.config;
 
 import com.taxonomy.export.ArchiMateDiagramService;
 import com.taxonomy.export.ArchiMateXmlExporter;
+import com.taxonomy.export.ConfigurableDiagramSelectionPolicy;
 import com.taxonomy.export.DiagramProjectionService;
+import com.taxonomy.export.DiagramSelectionConfig;
+import com.taxonomy.export.DiagramSelectionPolicy;
 import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.VisioDiagramService;
@@ -29,8 +32,15 @@ public class ExportConfig {
     }
 
     @Bean
-    public DiagramProjectionService diagramProjectionService() {
-        return new DiagramProjectionService();
+    public DiagramSelectionPolicy diagramSelectionPolicy() {
+        return new ConfigurableDiagramSelectionPolicy(DiagramSelectionConfig.defaultImpact());
+    }
+
+    @Bean
+    public DiagramProjectionService diagramProjectionService(DiagramSelectionPolicy policy) {
+        var service = new DiagramProjectionService();
+        service.setPolicy(policy);
+        return service;
     }
 
     @Bean
