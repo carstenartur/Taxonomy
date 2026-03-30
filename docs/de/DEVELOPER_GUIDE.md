@@ -180,7 +180,7 @@ mvn verify -DexcludedGroups=real-llm -Dit.test="Selenium*ContainerIT"
 
 **Architektur:** Jede externe Datenbank-Testklasse erbt von `AbstractDatabaseContainerIT` (REST-/Diagnosetests) oder `AbstractSeleniumContainerIT` (Selenium-UI-Tests). Die Basisklassen enthalten die gesamte Testlogik; datenbankspezifische Unterklassen umfassen ca. 30 Zeilen Konfiguration, die den Datenbank-Container und die JDBC-Umgebungsvariablen für den App-Container festlegen.
 
-**Funktionsweise:** Das Anwendungs-JAR wird einmal gebaut und in einem Docker-Container (`eclipse-temurin:17-jre`) ausgeführt. Ein Datenbank-Container (PostgreSQL, MSSQL oder Oracle) läuft im selben Docker-Netzwerk. Der App-Container erhält `SPRING_PROFILES_ACTIVE` (z. B. `mssql` oder `postgres`), um das datenbankspezifische Spring-Profil zu aktivieren, sowie Umgebungsvariablen wie `TAXONOMY_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` usw., um spezifische Verbindungseinstellungen zu überschreiben.
+**Funktionsweise:** Das Anwendungs-JAR wird einmal gebaut und in einem Docker-Container (`eclipse-temurin:21-jre`) ausgeführt. Ein Datenbank-Container (PostgreSQL, MSSQL oder Oracle) läuft im selben Docker-Netzwerk. Der App-Container erhält `SPRING_PROFILES_ACTIVE` (z. B. `mssql` oder `postgres`), um das datenbankspezifische Spring-Profil zu aktivieren, sowie Umgebungsvariablen wie `TAXONOMY_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` usw., um spezifische Verbindungseinstellungen zu überschreiben.
 
 Konventionen für Testdateinamen:
 

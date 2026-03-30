@@ -38,8 +38,8 @@ Wenn Sie lieber aus dem Quellcode bauen, enthält das Repository ein mehrstufige
 
 | Stufe | Base Image | Zweck |
 |---|---|---|
-| **build** | `eclipse-temurin:17-jdk` | Kompiliert die Anwendung mit Maven |
-| **runtime** | `eclipse-temurin:17-jre` | Führt die Anwendung aus (glibc-basiert für ONNX-Runtime-Kompatibilität) |
+| **build** | `eclipse-temurin:21-jdk` | Kompiliert die Anwendung mit Maven |
+| **runtime** | `eclipse-temurin:21-jre` | Führt die Anwendung aus (glibc-basiert für ONNX-Runtime-Kompatibilität) |
 
 ```bash
 # Build the image

@@ -63,7 +63,7 @@ Total: approximately 2,500 nodes across all roots.
 
 ## Technology Stack
 
-- **Spring Boot 4** / Java 17
+- **Spring Boot 4** / Java 21
 - **Apache POI** — Excel workbook loading
 - **Hibernate Search 8 + Lucene 9** — full-text and KNN search
 - **Thymeleaf** — server-side HTML rendering (single Bootstrap 5 page UI)

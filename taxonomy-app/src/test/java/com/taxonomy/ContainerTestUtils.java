@@ -34,7 +34,7 @@ final class ContainerTestUtils {
             "taxonomy-app-it", false)
             .withFileFromPath("app.jar", findApplicationJar())
             .withDockerfileFromBuilder(builder -> builder
-                    .from("eclipse-temurin:17-jre")
+                    .from("eclipse-temurin:21-jre")
                     .workDir("/app")
                     .copy("app.jar", "app.jar")
                     .expose(8080)

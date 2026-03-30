@@ -42,10 +42,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Extract current version from pom.xml
@@ -157,11 +157,11 @@ jobs:
           git checkout main
           echo "Checked out main branch"
 
-      # 3. Set up JDK 17
-      - name: Set up JDK 17
+      # 3. Set up JDK 21
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       # 4. Cache Maven dependencies

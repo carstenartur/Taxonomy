@@ -25,7 +25,7 @@ Generated PNG files are written to `docs/images/` and must be committed to the r
 
 ## How the test works
 
-- A `GenericContainer` runs the application JAR in an `eclipse-temurin:17-jre-alpine` Docker image.
+- A `GenericContainer` runs the application JAR in an `eclipse-temurin:21-jre-alpine` Docker image.
 - A `BrowserWebDriverContainer` runs headless Chrome (Selenium) in a sibling container on the same Docker network.
 - Both containers communicate over the shared `Network` using the alias `app` (i.e., `http://app:8080/`).
 - The app container is configured with `ADMIN_PASSWORD=testpassword123` so admin-only panels can be unlocked in tests.
