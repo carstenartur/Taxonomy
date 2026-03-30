@@ -81,10 +81,13 @@ public class PreferencesService {
     @Value(&quot;${taxonomy.limits.max-export-nodes:200}&quot;)
     private int defaultMaxExportNodes;
 
-<span class="fc" id="L84">    public PreferencesService(PreferencesGitRepository gitRepository, ObjectMapper objectMapper) {</span>
-<span class="fc" id="L85">        this.gitRepository = gitRepository;</span>
-<span class="fc" id="L86">        this.objectMapper = objectMapper;</span>
-<span class="fc" id="L87">    }</span>
+    @Value(&quot;${taxonomy.diagram.policy:defaultImpact}&quot;)
+    private String defaultDiagramPolicy;
+
+<span class="fc" id="L87">    public PreferencesService(PreferencesGitRepository gitRepository, ObjectMapper objectMapper) {</span>
+<span class="fc" id="L88">        this.gitRepository = gitRepository;</span>
+<span class="fc" id="L89">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L90">    }</span>
 
     /**
      * On startup: load preferences from the JGit repository, or initialise from defaults.
@@ -92,24 +95,24 @@ public class PreferencesService {
     @PostConstruct
     public void init() {
         try {
-<span class="fc" id="L95">            String json = gitRepository.readHead();</span>
-<span class="fc bfc" id="L96" title="All 2 branches covered.">            if (json != null) {</span>
+<span class="fc" id="L98">            String json = gitRepository.readHead();</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            if (json != null) {</span>
                 @SuppressWarnings(&quot;unchecked&quot;)
-<span class="fc" id="L98">                Map&lt;String, Object&gt; loaded = objectMapper.readValue(json, Map.class);</span>
-<span class="fc" id="L99">                cache.putAll(loaded);</span>
-<span class="fc" id="L100">                log.info(&quot;Preferences loaded from JGit repository ({} entries)&quot;, cache.size());</span>
-<span class="fc" id="L101">            } else {</span>
+<span class="fc" id="L101">                Map&lt;String, Object&gt; loaded = objectMapper.readValue(json, Map.class);</span>
+<span class="fc" id="L102">                cache.putAll(loaded);</span>
+<span class="fc" id="L103">                log.info(&quot;Preferences loaded from JGit repository ({} entries)&quot;, cache.size());</span>
+<span class="fc" id="L104">            } else {</span>
                 // No commits yet — initialise from property defaults and commit
-<span class="fc" id="L103">                cache.putAll(buildDefaults());</span>
-<span class="fc" id="L104">                String initialJson = objectMapper.writeValueAsString(cache);</span>
-<span class="fc" id="L105">                gitRepository.commit(initialJson, &quot;system&quot;, &quot;Initial preferences from application.properties&quot;);</span>
-<span class="fc" id="L106">                log.info(&quot;Preferences initialised from defaults and committed to JGit&quot;);</span>
+<span class="fc" id="L106">                cache.putAll(buildDefaults());</span>
+<span class="fc" id="L107">                String initialJson = objectMapper.writeValueAsString(cache);</span>
+<span class="fc" id="L108">                gitRepository.commit(initialJson, &quot;system&quot;, &quot;Initial preferences from application.properties&quot;);</span>
+<span class="fc" id="L109">                log.info(&quot;Preferences initialised from defaults and committed to JGit&quot;);</span>
             }
-<span class="nc" id="L108">        } catch (IOException e) {</span>
-<span class="nc" id="L109">            log.warn(&quot;Could not load preferences from JGit, using defaults: {}&quot;, e.getMessage());</span>
-<span class="nc" id="L110">            cache.putAll(buildDefaults());</span>
-<span class="fc" id="L111">        }</span>
-<span class="fc" id="L112">    }</span>
+<span class="nc" id="L111">        } catch (IOException e) {</span>
+<span class="nc" id="L112">            log.warn(&quot;Could not load preferences from JGit, using defaults: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L113">            cache.putAll(buildDefaults());</span>
+<span class="fc" id="L114">        }</span>
+<span class="fc" id="L115">    }</span>
 
     /**
      * Returns all current preferences. The {@code dsl.remote.token} value is masked.
@@ -117,9 +120,9 @@ public class PreferencesService {
      * @return an unmodifiable copy of the preferences map with the token masked
      */
     public Map&lt;String, Object&gt; getAll() {
-<span class="fc" id="L120">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;(cache);</span>
-<span class="fc" id="L121">        maskToken(result);</span>
-<span class="fc" id="L122">        return Collections.unmodifiableMap(result);</span>
+<span class="fc" id="L123">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;(cache);</span>
+<span class="fc" id="L124">        maskToken(result);</span>
+<span class="fc" id="L125">        return Collections.unmodifiableMap(result);</span>
     }
 
     /**
@@ -129,37 +132,37 @@ public class PreferencesService {
      * @return the value, or {@code null} if not set
      */
     public Object get(String key) {
-<span class="nc" id="L132">        return cache.get(key);</span>
+<span class="nc" id="L135">        return cache.get(key);</span>
     }
 
     /**
      * Returns the integer value for the given key, or the default if not present or not a number.
      */
     public int getInt(String key, int defaultValue) {
-<span class="fc" id="L139">        Object val = cache.get(key);</span>
-<span class="pc bpc" id="L140" title="1 of 2 branches missed.">        if (val instanceof Number n) return n.intValue();</span>
-<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (val instanceof String s) {</span>
-<span class="nc" id="L142">            try { return Integer.parseInt(s); } catch (NumberFormatException ignored) {}</span>
+<span class="fc" id="L142">        Object val = cache.get(key);</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">        if (val instanceof Number n) return n.intValue();</span>
+<span class="nc bnc" id="L144" title="All 2 branches missed.">        if (val instanceof String s) {</span>
+<span class="nc" id="L145">            try { return Integer.parseInt(s); } catch (NumberFormatException ignored) {}</span>
         }
-<span class="nc" id="L144">        return defaultValue;</span>
+<span class="nc" id="L147">        return defaultValue;</span>
     }
 
     /**
      * Returns the string value for the given key, or the default if not present.
      */
     public String getString(String key, String defaultValue) {
-<span class="fc" id="L151">        Object val = cache.get(key);</span>
-<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        return val != null ? String.valueOf(val) : defaultValue;</span>
+<span class="fc" id="L154">        Object val = cache.get(key);</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">        return val != null ? String.valueOf(val) : defaultValue;</span>
     }
 
     /**
      * Returns the boolean value for the given key, or the default if not present.
      */
     public boolean getBoolean(String key, boolean defaultValue) {
-<span class="fc" id="L159">        Object val = cache.get(key);</span>
-<span class="pc bpc" id="L160" title="1 of 2 branches missed.">        if (val instanceof Boolean b) return b;</span>
-<span class="nc bnc" id="L161" title="All 2 branches missed.">        if (val instanceof String s) return Boolean.parseBoolean(s);</span>
-<span class="nc" id="L162">        return defaultValue;</span>
+<span class="fc" id="L162">        Object val = cache.get(key);</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">        if (val instanceof Boolean b) return b;</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        if (val instanceof String s) return Boolean.parseBoolean(s);</span>
+<span class="nc" id="L165">        return defaultValue;</span>
     }
 
     /**
@@ -171,12 +174,12 @@ public class PreferencesService {
      * @throws IOException if the JGit commit fails
      */
     public void update(Map&lt;String, Object&gt; changes, String author) throws IOException {
-<span class="fc" id="L174">        cache.putAll(changes);</span>
-<span class="fc" id="L175">        String json = objectMapper.writeValueAsString(cache);</span>
-<span class="fc" id="L176">        String commitMsg = &quot;Preferences updated: &quot; + String.join(&quot;, &quot;, changes.keySet());</span>
-<span class="fc" id="L177">        gitRepository.commit(json, author, commitMsg);</span>
-<span class="fc" id="L178">        log.info(&quot;Preferences updated by '{}': {}&quot;, author, changes.keySet());</span>
-<span class="fc" id="L179">    }</span>
+<span class="fc" id="L177">        cache.putAll(changes);</span>
+<span class="fc" id="L178">        String json = objectMapper.writeValueAsString(cache);</span>
+<span class="fc" id="L179">        String commitMsg = &quot;Preferences updated: &quot; + String.join(&quot;, &quot;, changes.keySet());</span>
+<span class="fc" id="L180">        gitRepository.commit(json, author, commitMsg);</span>
+<span class="fc" id="L181">        log.info(&quot;Preferences updated by '{}': {}&quot;, author, changes.keySet());</span>
+<span class="fc" id="L182">    }</span>
 
     /**
      * Resets all preferences to their default values (from application.properties),
@@ -186,51 +189,53 @@ public class PreferencesService {
      * @throws IOException if the JGit commit fails
      */
     public void resetToDefaults(String author) throws IOException {
-<span class="fc" id="L189">        Map&lt;String, Object&gt; defaults = buildDefaults();</span>
-<span class="fc" id="L190">        cache.clear();</span>
-<span class="fc" id="L191">        cache.putAll(defaults);</span>
-<span class="fc" id="L192">        String json = objectMapper.writeValueAsString(cache);</span>
-<span class="fc" id="L193">        gitRepository.commit(json, author, &quot;Preferences reset to defaults&quot;);</span>
-<span class="fc" id="L194">        log.info(&quot;Preferences reset to defaults by '{}'&quot;, author);</span>
-<span class="fc" id="L195">    }</span>
+<span class="fc" id="L192">        Map&lt;String, Object&gt; defaults = buildDefaults();</span>
+<span class="fc" id="L193">        cache.clear();</span>
+<span class="fc" id="L194">        cache.putAll(defaults);</span>
+<span class="fc" id="L195">        String json = objectMapper.writeValueAsString(cache);</span>
+<span class="fc" id="L196">        gitRepository.commit(json, author, &quot;Preferences reset to defaults&quot;);</span>
+<span class="fc" id="L197">        log.info(&quot;Preferences reset to defaults by '{}'&quot;, author);</span>
+<span class="fc" id="L198">    }</span>
 
     /**
      * Returns the commit history of the preferences repository, newest first.
      */
     public List&lt;PreferencesCommit&gt; getHistory() throws IOException {
-<span class="fc" id="L201">        return gitRepository.getHistory();</span>
+<span class="fc" id="L204">        return gitRepository.getHistory();</span>
     }
 
     // ── Private helpers ────────────────────────────────────────────────────────
 
     private Map&lt;String, Object&gt; buildDefaults() {
-<span class="fc" id="L207">        Map&lt;String, Object&gt; defaults = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L210">        Map&lt;String, Object&gt; defaults = new LinkedHashMap&lt;&gt;();</span>
         // LLM Configuration
-<span class="fc" id="L209">        defaults.put(&quot;llm.rpm&quot;, defaultLlmRpm);</span>
-<span class="fc" id="L210">        defaults.put(&quot;llm.timeout.seconds&quot;, defaultLlmTimeoutSeconds);</span>
-<span class="fc" id="L211">        defaults.put(&quot;rate-limit.per-minute&quot;, defaultRateLimitPerMinute);</span>
-<span class="fc" id="L212">        defaults.put(&quot;analysis.min-relevance-score&quot;, defaultAnalysisMinScore);</span>
+<span class="fc" id="L212">        defaults.put(&quot;llm.rpm&quot;, defaultLlmRpm);</span>
+<span class="fc" id="L213">        defaults.put(&quot;llm.timeout.seconds&quot;, defaultLlmTimeoutSeconds);</span>
+<span class="fc" id="L214">        defaults.put(&quot;rate-limit.per-minute&quot;, defaultRateLimitPerMinute);</span>
+<span class="fc" id="L215">        defaults.put(&quot;analysis.min-relevance-score&quot;, defaultAnalysisMinScore);</span>
         // JGit / DSL Configuration
-<span class="fc" id="L214">        defaults.put(&quot;dsl.default-branch&quot;, defaultDslDefaultBranch);</span>
-<span class="fc" id="L215">        defaults.put(&quot;dsl.project-name&quot;, defaultDslProjectName);</span>
-<span class="fc" id="L216">        defaults.put(&quot;dsl.auto-save.interval-seconds&quot;, defaultDslAutoSaveInterval);</span>
-<span class="fc" id="L217">        defaults.put(&quot;dsl.remote.url&quot;, defaultDslRemoteUrl);</span>
-<span class="fc" id="L218">        defaults.put(&quot;dsl.remote.token&quot;, defaultDslRemoteToken);</span>
-<span class="fc" id="L219">        defaults.put(&quot;dsl.remote.push-on-commit&quot;, defaultDslRemotePushOnCommit);</span>
+<span class="fc" id="L217">        defaults.put(&quot;dsl.default-branch&quot;, defaultDslDefaultBranch);</span>
+<span class="fc" id="L218">        defaults.put(&quot;dsl.project-name&quot;, defaultDslProjectName);</span>
+<span class="fc" id="L219">        defaults.put(&quot;dsl.auto-save.interval-seconds&quot;, defaultDslAutoSaveInterval);</span>
+<span class="fc" id="L220">        defaults.put(&quot;dsl.remote.url&quot;, defaultDslRemoteUrl);</span>
+<span class="fc" id="L221">        defaults.put(&quot;dsl.remote.token&quot;, defaultDslRemoteToken);</span>
+<span class="fc" id="L222">        defaults.put(&quot;dsl.remote.push-on-commit&quot;, defaultDslRemotePushOnCommit);</span>
         // Size Limits
-<span class="fc" id="L221">        defaults.put(&quot;limits.max-business-text&quot;, defaultMaxBusinessText);</span>
-<span class="fc" id="L222">        defaults.put(&quot;limits.max-architecture-nodes&quot;, defaultMaxArchitectureNodes);</span>
-<span class="fc" id="L223">        defaults.put(&quot;limits.max-export-nodes&quot;, defaultMaxExportNodes);</span>
-<span class="fc" id="L224">        return defaults;</span>
+<span class="fc" id="L224">        defaults.put(&quot;limits.max-business-text&quot;, defaultMaxBusinessText);</span>
+<span class="fc" id="L225">        defaults.put(&quot;limits.max-architecture-nodes&quot;, defaultMaxArchitectureNodes);</span>
+<span class="fc" id="L226">        defaults.put(&quot;limits.max-export-nodes&quot;, defaultMaxExportNodes);</span>
+        // Diagram Configuration
+<span class="fc" id="L228">        defaults.put(&quot;diagram.policy&quot;, defaultDiagramPolicy);</span>
+<span class="fc" id="L229">        return defaults;</span>
     }
 
     private void maskToken(Map&lt;String, Object&gt; prefs) {
-<span class="fc" id="L228">        Object token = prefs.get(&quot;dsl.remote.token&quot;);</span>
-<span class="pc bpc" id="L229" title="1 of 4 branches missed.">        if (token instanceof String s &amp;&amp; !s.isEmpty()) {</span>
-<span class="fc" id="L230">            int showChars = Math.min(4, s.length());</span>
-<span class="fc" id="L231">            prefs.put(&quot;dsl.remote.token&quot;,</span>
-<span class="fc" id="L232">                    TOKEN_MASK_PREFIX + s.substring(s.length() - showChars));</span>
+<span class="fc" id="L233">        Object token = prefs.get(&quot;dsl.remote.token&quot;);</span>
+<span class="pc bpc" id="L234" title="1 of 4 branches missed.">        if (token instanceof String s &amp;&amp; !s.isEmpty()) {</span>
+<span class="fc" id="L235">            int showChars = Math.min(4, s.length());</span>
+<span class="fc" id="L236">            prefs.put(&quot;dsl.remote.token&quot;,</span>
+<span class="fc" id="L237">                    TOKEN_MASK_PREFIX + s.substring(s.length() - showChars));</span>
         }
-<span class="fc" id="L234">    }</span>
+<span class="fc" id="L239">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

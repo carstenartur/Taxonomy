@@ -10,6 +10,9 @@ import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
+import com.taxonomy.preferences.PreferencesService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -19,48 +22,73 @@ import org.springframework.context.annotation.Configuration;
  * wires its classes into the Spring application context.&lt;/p&gt;
  */
 @Configuration
-<span class="fc" id="L22">public class ExportConfig {</span>
+<span class="fc" id="L25">public class ExportConfig {</span>
+
+<span class="fc" id="L27">    private static final Logger log = LoggerFactory.getLogger(ExportConfig.class);</span>
 
     @Bean
     public ArchiMateDiagramService archiMateDiagramService() {
-<span class="fc" id="L26">        return new ArchiMateDiagramService();</span>
+<span class="fc" id="L31">        return new ArchiMateDiagramService();</span>
     }
 
     @Bean
     public ArchiMateXmlExporter archiMateXmlExporter() {
-<span class="fc" id="L31">        return new ArchiMateXmlExporter();</span>
+<span class="fc" id="L36">        return new ArchiMateXmlExporter();</span>
     }
 
     @Bean
-    public DiagramSelectionPolicy diagramSelectionPolicy() {
-<span class="fc" id="L36">        return new ConfigurableDiagramSelectionPolicy(DiagramSelectionConfig.defaultImpact());</span>
+    public DiagramSelectionPolicy diagramSelectionPolicy(PreferencesService preferencesService) {
+        // Delegating policy: reads the preference on each apply() call
+<span class="fc" id="L42">        return rawModel -&gt; resolvePolicy(preferencesService).apply(rawModel);</span>
     }
 
     @Bean
     public DiagramProjectionService diagramProjectionService(DiagramSelectionPolicy policy) {
-<span class="fc" id="L41">        var service = new DiagramProjectionService();</span>
-<span class="fc" id="L42">        service.setPolicy(policy);</span>
-<span class="fc" id="L43">        return service;</span>
+<span class="fc" id="L47">        var service = new DiagramProjectionService();</span>
+<span class="fc" id="L48">        service.setPolicy(policy);</span>
+<span class="fc" id="L49">        return service;</span>
     }
 
     @Bean
     public MermaidExportService mermaidExportService() {
-<span class="fc" id="L48">        return new MermaidExportService();</span>
+<span class="fc" id="L54">        return new MermaidExportService();</span>
     }
 
     @Bean
     public StructurizrExportService structurizrExportService() {
-<span class="fc" id="L53">        return new StructurizrExportService();</span>
+<span class="fc" id="L59">        return new StructurizrExportService();</span>
     }
 
     @Bean
     public VisioDiagramService visioDiagramService() {
-<span class="fc" id="L58">        return new VisioDiagramService();</span>
+<span class="fc" id="L64">        return new VisioDiagramService();</span>
     }
 
     @Bean
     public VisioPackageBuilder visioPackageBuilder() {
-<span class="fc" id="L63">        return new VisioPackageBuilder();</span>
+<span class="fc" id="L69">        return new VisioPackageBuilder();</span>
+    }
+
+    /**
+     * Resolves the active {@link DiagramSelectionPolicy} from the current
+     * {@code diagram.policy} preference value.
+     *
+     * @param prefs the preferences service providing the current setting
+     * @return the resolved policy (never {@code null}; defaults to {@code defaultImpact})
+     */
+    static DiagramSelectionPolicy resolvePolicy(PreferencesService prefs) {
+<span class="fc" id="L80">        String policyName = prefs.getString(&quot;diagram.policy&quot;, &quot;defaultImpact&quot;);</span>
+<span class="fc bfc" id="L81" title="All 5 branches covered.">        DiagramSelectionConfig config = switch (policyName) {</span>
+<span class="fc" id="L82">            case &quot;leafOnly&quot; -&gt; DiagramSelectionConfig.leafOnly();</span>
+<span class="fc" id="L83">            case &quot;clustering&quot; -&gt; DiagramSelectionConfig.clustering();</span>
+<span class="fc" id="L84">            case &quot;trace&quot; -&gt; DiagramSelectionConfig.trace();</span>
+<span class="fc" id="L85">            case &quot;defaultImpact&quot; -&gt; DiagramSelectionConfig.defaultImpact();</span>
+            default -&gt; {
+<span class="fc" id="L87">                log.warn(&quot;Unknown diagram.policy '{}', falling back to defaultImpact&quot;, policyName);</span>
+<span class="fc" id="L88">                yield DiagramSelectionConfig.defaultImpact();</span>
+            }
+        };
+<span class="fc" id="L91">        return new ConfigurableDiagramSelectionPolicy(config);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
