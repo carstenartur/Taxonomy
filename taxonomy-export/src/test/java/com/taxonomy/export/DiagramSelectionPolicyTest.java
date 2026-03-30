@@ -259,6 +259,19 @@ class DiagramSelectionPolicyTest {
             var result = policy.apply(model(nodes, edges));
             assertThat(result.edges().size()).isLessThanOrEqualTo(12);
         }
+
+        @Test
+        void intermediateNodeSuppressedWhenChildExists() {
+            // BP-1327 ("Enable") is an intermediate node — it is the parent of BP-1490
+            var intermediate = nodeWithParent("BP-1327", "Enable", "Business Processes",
+                    0.65, false, 2, 2, null);
+            var child = nodeWithParent("BP-1490", "Health Services", "Business Processes",
+                    0.58, false, 2, 3, "BP-1327");
+            var result = policy.apply(model(List.of(intermediate, child), List.of()));
+
+            // Intermediate suppressed, only the real leaf survives
+            assertThat(ids(result)).containsExactly("BP-1490");
+        }
     }
 
     // ── Clustering policy ───────────────────────────────────────────────
