@@ -77,6 +77,19 @@ jobs:
         run: |
           mvn surefire-report:report --no-transfer-progress -DskipTests -Daggregate=true
           mvn site --no-transfer-progress -DskipTests -DgenerateReports=false
+          # Inject build metadata so the report always differs from the previous deploy
+          sed -i "s|</body>|<!-- Build: ${{ github.sha }} $(date -u +%Y-%m-%dT%H:%M:%SZ) --></body>|" target/site/surefire-report.html
+
+      - name: Verify test report exists
+        if: always()
+        run: |
+          echo "=== Contents of target/site ==="
+          ls -la target/site/ || echo "WARNING: target/site does not exist!"
+          if [ ! -f target/site/surefire-report.html ]; then
+            echo "::error::surefire-report.html was not generated!"
+            exit 1
+          fi
+          echo "surefire-report.html size: $(wc -c < target/site/surefire-report.html) bytes"
 
       - name: Generate badge JSON files
         if: always()
@@ -149,7 +162,7 @@ jobs:
           keep_files: true
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
-          commit_message: 'Deploy Surefire test report'
+          commit_message: 'Deploy Surefire test report ${{ github.sha }}'
 
       - name: Deploy coverage report to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
