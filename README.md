@@ -65,12 +65,11 @@ flowchart TD
     subgraph Capabilities["🔵 Capabilities"]
         CP_1023(["Communication and Information System Ca…<br/>★ ⚠ 85%"])
     end
-    subgraph Business_Processes["🟢 Processes"]
-        BP_1327["Enable<br/>65%"]
-        BP_1490["Health Services<br/>58%"]
-    end
     subgraph Business_Roles["🟢 Roles"]
         BR["Business Roles<br/>61%"]
+    end
+    subgraph Business_Processes["🟢 Processes"]
+        BP_1490["Health Services<br/>58%"]
     end
     subgraph Core_Services["🟠 Core Services"]
         CR_1047(["Infrastructure Services<br/>★ 75%"])
@@ -79,12 +78,10 @@ flowchart TD
         CI["COI Services<br/>74%"]
     end
     subgraph User_Applications["🟣 Applications"]
-        UA_1179["Communication and Collaboration Applica…<br/>68%"]
         UA_1574["Unified Communication Applications<br/>62%"]
     end
     subgraph Communications_Services["🔴 Communications"]
         CO_1011(["Communications Access Services<br/>★ ⚠ 80%"])
-        CO_1063(["Transport Services<br/>★ 70%"])
         CO_1050["Transit Services<br/>55%"]
     end
     CP_1023 -->|realizes| CR_1047
@@ -109,16 +106,13 @@ flowchart TD
     classDef hotspot fill:#D32F2F,color:#fff,stroke:#B71C1C,stroke-width:3px
     class CP_1023 cap
     class CP_1023 hotspot
-    class BP_1327 proc
-    class BP_1490 proc
     class BR role
+    class BP_1490 proc
     class CR_1047 svc
     class CI svc
-    class UA_1179 app
     class UA_1574 app
     class CO_1011 comm
     class CO_1011 hotspot
-    class CO_1063 comm
     class CO_1050 comm
 ```
 
@@ -127,7 +121,7 @@ flowchart TD
 <details>
 <summary><strong>Scoring trace</strong> — how relevance narrows from root to leaf</summary>
 
-The LLM does **not** score leaf nodes in isolation. It first evaluates each root category (distributing a total relevance budget), then recursively narrows the score into child nodes at each taxonomy level. Every intermediate node receives a score and carries architectural meaning — the result is **hierarchical narrowing**, not isolated leaf matching. Each level's score forms a traceable chain: a leaf score of 85% under a 92% root means that child consumed most of its parent's budget.
+The LLM does **not** score leaf nodes in isolation. It first evaluates each root category (distributing a total relevance budget), then recursively narrows the score into child nodes at each taxonomy level. Every intermediate node receives a score and carries architectural meaning — the result is **hierarchical narrowing**, not isolated leaf matching.
 
 | Scoring Path | Score | Role |
 |---|---|---|

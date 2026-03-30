@@ -120,8 +120,16 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
         Map<String, List<DiagramNode>> leafByType = new LinkedHashMap<>();
         Map<String, List<DiagramNode>> nonLeafByType = new LinkedHashMap<>();
 
+        // Nodes that are referenced as parentId by another node in this model are
+        // intermediate nodes and must be treated as non-leaves, even if they are
+        // neither a root (e.g. "BP") nor a scaffolding node (e.g. "BP-1000").
+        Set<String> parentIds = nodes.stream()
+                .map(DiagramNode::parentId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
         for (DiagramNode n : nodes) {
-            if (isRootId(n.id()) || isScaffoldingId(n.id())) {
+            if (isRootId(n.id()) || isScaffoldingId(n.id()) || parentIds.contains(n.id())) {
                 nonLeafByType.computeIfAbsent(n.type(), k -> new ArrayList<>()).add(n);
             } else {
                 leafByType.computeIfAbsent(n.type(), k -> new ArrayList<>()).add(n);

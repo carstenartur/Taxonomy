@@ -10,6 +10,9 @@ import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
+import com.taxonomy.preferences.PreferencesService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -20,6 +23,8 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 public class ExportConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(ExportConfig.class);
 
     @Bean
     public ArchiMateDiagramService archiMateDiagramService() {
@@ -32,8 +37,9 @@ public class ExportConfig {
     }
 
     @Bean
-    public DiagramSelectionPolicy diagramSelectionPolicy() {
-        return new ConfigurableDiagramSelectionPolicy(DiagramSelectionConfig.defaultImpact());
+    public DiagramSelectionPolicy diagramSelectionPolicy(PreferencesService preferencesService) {
+        // Delegating policy: reads the preference on each apply() call
+        return rawModel -> resolvePolicy(preferencesService).apply(rawModel);
     }
 
     @Bean
@@ -61,5 +67,27 @@ public class ExportConfig {
     @Bean
     public VisioPackageBuilder visioPackageBuilder() {
         return new VisioPackageBuilder();
+    }
+
+    /**
+     * Resolves the active {@link DiagramSelectionPolicy} from the current
+     * {@code diagram.policy} preference value.
+     *
+     * @param prefs the preferences service providing the current setting
+     * @return the resolved policy (never {@code null}; defaults to {@code defaultImpact})
+     */
+    static DiagramSelectionPolicy resolvePolicy(PreferencesService prefs) {
+        String policyName = prefs.getString("diagram.policy", "defaultImpact");
+        DiagramSelectionConfig config = switch (policyName) {
+            case "leafOnly" -> DiagramSelectionConfig.leafOnly();
+            case "clustering" -> DiagramSelectionConfig.clustering();
+            case "trace" -> DiagramSelectionConfig.trace();
+            case "defaultImpact" -> DiagramSelectionConfig.defaultImpact();
+            default -> {
+                log.warn("Unknown diagram.policy '{}', falling back to defaultImpact", policyName);
+                yield DiagramSelectionConfig.defaultImpact();
+            }
+        };
+        return new ConfigurableDiagramSelectionPolicy(config);
     }
 }

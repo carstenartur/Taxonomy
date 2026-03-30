@@ -12,6 +12,7 @@ The Preferences system provides **runtime-configurable settings** for the Taxono
 - [LLM Configuration](#llm-configuration)
 - [DSL and Git Configuration](#dsl-and-git-configuration)
 - [Size Limits](#size-limits)
+- [Diagram Configuration](#diagram-configuration)
 - [Audit Trail](#audit-trail)
 - [Resetting to Defaults](#resetting-to-defaults)
 - [REST API Endpoints](#rest-api-endpoints)
@@ -45,6 +46,7 @@ The following table clarifies the scope for each setting category:
 | **LLM Configuration** | ☁️ System | Admin only | All analysis requests for all users |
 | **DSL and Git Configuration** | ☁️ System | Admin only | The shared DSL repository and all branches |
 | **Size Limits** | ☁️ System | Admin only | All users' analysis, export, and view operations |
+| **Diagram Configuration** | ☁️ System | Admin only | Architecture diagram rendering for all users |
 
 > **Note:** Per-user and per-workspace preferences are not currently supported. If a setting needs to be different for different users or teams, it must be configured at the environment-variable level using separate deployment instances (see [Configuration Reference](CONFIGURATION_REFERENCE.md)).
 
@@ -145,6 +147,23 @@ The `llm.timeout.seconds` setting dynamically updates the `RestTemplate` read ti
 | `limits.max-business-text` | int | `5000` | ☁️ System | Maximum characters in a business requirement text |
 | `limits.max-architecture-nodes` | int | `50` | ☁️ System | Maximum nodes displayed in the architecture view |
 | `limits.max-export-nodes` | int | `200` | ☁️ System | Maximum nodes included in an export operation |
+
+### Diagram Configuration
+
+| Key | Type | Default | Scope | Description |
+|---|---|---|---|---|
+| `diagram.policy` | string | `"defaultImpact"` | ☁️ System | Selection policy for architecture diagrams |
+
+The `diagram.policy` setting controls which nodes and edges are visible in architecture diagrams. Available values:
+
+| Value | Description | Use Case |
+|---|---|---|
+| `defaultImpact` | Relevant nodes with score-based filtering; roots and scaffolding suppressed | Day-to-day analysis |
+| `leafOnly` | Only deepest leaf nodes; intermediate parents suppressed; edges re-routed | Showcase / README diagrams |
+| `clustering` | Intermediate nodes become visual containers grouping their children | Grouped architecture views |
+| `trace` | Full hierarchy preserved; nothing suppressed | Audit and traceability |
+
+Changes take effect on the **next diagram export** — no application restart required.
 
 ---
 

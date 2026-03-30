@@ -12,6 +12,7 @@ Das Einstellungssystem bietet **zur Laufzeit konfigurierbare Optionen** für den
 - [LLM-Konfiguration](#llm-konfiguration)
 - [DSL- und Git-Konfiguration](#dsl--und-git-konfiguration)
 - [Größenbeschränkungen](#größenbeschränkungen)
+- [Diagramm-Konfiguration](#diagramm-konfiguration)
 - [Audit-Spur](#audit-spur)
 - [Auf Standardwerte zurücksetzen](#auf-standardwerte-zurücksetzen)
 - [REST-API-Endpunkte](#rest-api-endpunkte)
@@ -45,6 +46,7 @@ Die folgende Tabelle verdeutlicht den Geltungsbereich für jede Einstellungskate
 | **LLM-Konfiguration** | ☁️ System | Nur Admin | Alle Analyseanfragen für alle Benutzer |
 | **DSL- und Git-Konfiguration** | ☁️ System | Nur Admin | Das gemeinsame DSL-Repository und alle Branches |
 | **Größenbeschränkungen** | ☁️ System | Nur Admin | Analyse-, Export- und Ansichtsoperationen aller Benutzer |
+| **Diagramm-Konfiguration** | ☁️ System | Nur Admin | Architekturdiagramm-Darstellung für alle Benutzer |
 
 > **Hinweis:** Benutzerspezifische und arbeitsbereichsspezifische Einstellungen werden derzeit nicht unterstützt. Wenn eine Einstellung für verschiedene Benutzer oder Teams unterschiedlich sein soll, muss sie auf der Ebene der Umgebungsvariablen über separate Bereitstellungsinstanzen konfiguriert werden (siehe [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md)).
 
@@ -145,6 +147,23 @@ Die Einstellung `llm.timeout.seconds` aktualisiert dynamisch das Lese-Timeout de
 | `limits.max-business-text` | int | `5000` | ☁️ System | Maximale Zeichenanzahl in einem geschäftlichen Anforderungstext |
 | `limits.max-architecture-nodes` | int | `50` | ☁️ System | Maximale Anzahl angezeigter Knoten in der Architekturansicht |
 | `limits.max-export-nodes` | int | `200` | ☁️ System | Maximale Anzahl von Knoten in einem Export-Vorgang |
+
+### Diagramm-Konfiguration
+
+| Schlüssel | Typ | Standard | Geltungsbereich | Beschreibung |
+|---|---|---|---|---|
+| `diagram.policy` | string | `"defaultImpact"` | ☁️ System | Auswahlrichtlinie für Architekturdiagramme |
+
+Die Einstellung `diagram.policy` steuert, welche Knoten und Kanten in Architekturdiagrammen sichtbar sind. Verfügbare Werte:
+
+| Wert | Beschreibung | Anwendungsfall |
+|---|---|---|
+| `defaultImpact` | Relevante Knoten mit Score-basierter Filterung; Wurzel- und Gerüstknoten unterdrückt | Tägliche Analyse |
+| `leafOnly` | Nur tiefste Blattknoten; Zwischenknoten unterdrückt; Kanten umgeleitet | Showcase- / README-Diagramme |
+| `clustering` | Zwischenknoten werden zu visuellen Containern, die ihre Kinder gruppieren | Gruppierte Architekturansichten |
+| `trace` | Vollständige Hierarchie erhalten; nichts unterdrückt | Audit und Rückverfolgbarkeit |
+
+Änderungen werden beim **nächsten Diagrammexport** wirksam — kein Neustart der Anwendung erforderlich.
 
 ---
 

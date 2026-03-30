@@ -81,6 +81,9 @@ public class PreferencesService {
     @Value("${taxonomy.limits.max-export-nodes:200}")
     private int defaultMaxExportNodes;
 
+    @Value("${taxonomy.diagram.policy:defaultImpact}")
+    private String defaultDiagramPolicy;
+
     public PreferencesService(PreferencesGitRepository gitRepository, ObjectMapper objectMapper) {
         this.gitRepository = gitRepository;
         this.objectMapper = objectMapper;
@@ -221,6 +224,8 @@ public class PreferencesService {
         defaults.put("limits.max-business-text", defaultMaxBusinessText);
         defaults.put("limits.max-architecture-nodes", defaultMaxArchitectureNodes);
         defaults.put("limits.max-export-nodes", defaultMaxExportNodes);
+        // Diagram Configuration
+        defaults.put("diagram.policy", defaultDiagramPolicy);
         return defaults;
     }
 

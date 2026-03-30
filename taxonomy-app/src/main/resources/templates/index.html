@@ -1382,6 +1382,29 @@
                     </div>
                 </div>
 
+                <!-- Section 4: Diagram Configuration -->
+                <div class="card mb-3">
+                    <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                        <span th:text="#{preferences.section.diagram}">&#128202; Diagram Configuration</span>
+                        <span class="badge bg-info text-dark" th:text="#{preferences.scope.system}">&#9729;&#65039; System</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="pref-diagram-policy" class="form-label" th:text="#{preferences.diagram.policy}">Diagram Selection Policy</label>
+                                <select class="form-select" id="pref-diagram-policy"
+                                        data-pref-key="diagram.policy">
+                                    <option value="defaultImpact" th:text="#{preferences.diagram.policy.impact}">Impact (Default)</option>
+                                    <option value="leafOnly" th:text="#{preferences.diagram.policy.leafonly}">Leaf Only (Showcase)</option>
+                                    <option value="clustering" th:text="#{preferences.diagram.policy.clustering}">Clustering</option>
+                                    <option value="trace" th:text="#{preferences.diagram.policy.trace}">Trace (Full Hierarchy)</option>
+                                </select>
+                                <div class="form-text" th:text="#{preferences.diagram.policy.help}">Controls which nodes and edges appear in architecture diagrams.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- History section (collapsible) -->
                 <details id="prefHistorySection" class="mt-2">
                     <summary class="fw-semibold" style="cursor:pointer;" th:text="#{preferences.history.title}">&#128203; Preferences Change History</summary>

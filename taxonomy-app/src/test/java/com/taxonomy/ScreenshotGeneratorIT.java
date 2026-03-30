@@ -2842,4 +2842,21 @@ class ScreenshotGeneratorIT {
         injectHealthyStatusBadges();
         saveScreenshot("74-cherry-pick-after.png");
     }
+
+    // ── Screenshot 75: Diagram Policy Preference ────────────────────────────
+
+    @Test
+    @Order(75)
+    void capturePreferencesDiagramPolicy() throws IOException {
+        // Navigate to the Preferences tab (admin-only)
+        navigateToTab("preferences");
+
+        // The diagram policy <select> should be visible in the Diagram Configuration card
+        wait(10).until(ExpectedConditions.visibilityOfElementLocated(By.id("pref-diagram-policy")));
+
+        // Scroll to the diagram policy select so it's visible in the screenshot
+        WebElement policySelect = driver.findElement(By.id("pref-diagram-policy"));
+        js("arguments[0].scrollIntoView({behavior:'instant', block:'center'});", policySelect);
+        saveScreenshot("75-preferences-diagram-policy.png");
+    }
 }
