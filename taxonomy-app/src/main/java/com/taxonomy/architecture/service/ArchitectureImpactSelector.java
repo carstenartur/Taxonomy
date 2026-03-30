@@ -92,7 +92,8 @@ public class ArchitectureImpactSelector {
 
                 RequirementElementView el = se.element();
                 if (isTaxonomyScaffolding(el, categoryElements)
-                        || isGenericWeakNode(el, allScores, categoryElements)) {
+                        || isGenericWeakNode(el, allScores, categoryElements)
+                        || isRedundantIntermediate(el, allScores, categoryElements)) {
                     continue;
                 }
 
@@ -102,6 +103,7 @@ public class ArchitectureImpactSelector {
                     el.setOrigin(NodeOrigin.IMPACT_SELECTED);
                 }
                 el.setSpecificityScore(se.score());
+                el.setPresenceReason(buildPresenceReason(el, se.score()));
                 selected++;
             }
 
@@ -182,6 +184,66 @@ public class ArchitectureImpactSelector {
 
         return categoryElements.stream()
                 .anyMatch(e -> e.getTaxonomyDepth() > 1);
+    }
+
+    /**
+     * Returns {@code true} if the node is an intermediate node that has exactly
+     * one strong child (≥&nbsp;50&nbsp;% of the parent's score) in the same category.
+     * Such intermediates add no information beyond the child and should be suppressed
+     * so the child can represent the area directly.
+     */
+    boolean isRedundantIntermediate(RequirementElementView node,
+                                    Map<String, Integer> allScores,
+                                    List<RequirementElementView> categoryElements) {
+        if (node.getTaxonomyDepth() <= 1) return false; // handled by scaffolding check
+
+        String nodeCode = node.getNodeCode();
+        int nodeScore = allScores.getOrDefault(nodeCode, 0);
+        int halfScore = Math.max(nodeScore / 2, 1);
+
+        // Count children (deeper nodes whose hierarchyPath passes through this node)
+        List<RequirementElementView> strongChildren = categoryElements.stream()
+                .filter(e -> e.getTaxonomyDepth() > node.getTaxonomyDepth())
+                .filter(e -> isChildOf(e, nodeCode))
+                .filter(e -> allScores.getOrDefault(e.getNodeCode(), 0) >= halfScore)
+                .toList();
+
+        // Suppress when exactly one strong child exists — the child alone represents the area
+        return strongChildren.size() == 1;
+    }
+
+    /**
+     * Returns {@code true} if {@code candidate} appears to be a descendant of
+     * the node identified by {@code parentCode}, based on its hierarchy path.
+     */
+    private static boolean isChildOf(RequirementElementView candidate, String parentCode) {
+        String path = candidate.getHierarchyPath();
+        if (path != null && path.contains(parentCode)) return true;
+        // Fallback: code-prefix heuristic (e.g. "BP-1490" is a child of "BP-1327"
+        // when both share the same two-letter prefix) — not sufficient alone, but
+        // combined with the depth check it avoids false positives across categories.
+        return false;
+    }
+
+    /**
+     * Builds a short human-readable reason why this node was selected for impact.
+     */
+    private static String buildPresenceReason(RequirementElementView el, double impactScore) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(el.getNodeCode());
+        if (el.getTitle() != null) {
+            sb.append(" (").append(el.getTitle()).append(")");
+        }
+        sb.append(": ");
+        if (el.getOrigin() != null) {
+            sb.append(el.getOrigin().name().toLowerCase().replace('_', ' '));
+        }
+        sb.append(", score ").append(el.getDirectLlmScore());
+        sb.append(", impact ").append(String.format("%.2f", impactScore));
+        if (el.getTaxonomyDepth() > 0) {
+            sb.append(", depth ").append(el.getTaxonomyDepth());
+        }
+        return sb.toString();
     }
 
     private static double computeReadability(String title) {

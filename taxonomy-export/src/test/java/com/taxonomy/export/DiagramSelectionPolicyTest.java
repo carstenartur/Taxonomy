@@ -175,6 +175,33 @@ class DiagramSelectionPolicyTest {
             var result = policy.apply(model(List.of(n1, n2), List.of(trace, impact)));
             assertThat(result.edges().get(0).relationCategory()).isEqualTo("impact");
         }
+
+        @Test
+        void singleChildIntermediateCollapsedByDefault() {
+            var parent = nodeWithParent("BP-1327", "Enable", "Business Processes",
+                    0.8, false, 2, 2, null);
+            var child = nodeWithParent("BP-1490", "Health Services", "Business Processes",
+                    0.7, false, 2, 3, "BP-1327");
+            var result = policy.apply(model(List.of(parent, child), List.of()));
+            // Parent should be suppressed — child represents the area alone
+            assertThat(ids(result)).containsExactly("BP-1490");
+        }
+
+        @Test
+        void multiChildIntermediateBecomesContainerByDefault() {
+            var parent = nodeWithParent("BP-1327", "Enable", "Business Processes",
+                    0.8, false, 2, 2, null);
+            var child1 = nodeWithParent("BP-1490", "Health Services", "Business Processes",
+                    0.7, false, 2, 3, "BP-1327");
+            var child2 = nodeWithParent("BP-1697", "Medical Command", "Business Processes",
+                    0.6, false, 2, 3, "BP-1327");
+            var result = policy.apply(model(List.of(parent, child1, child2), List.of()));
+            // Parent should become a container, both children remain
+            assertThat(ids(result)).containsExactlyInAnyOrder("BP-1327", "BP-1490", "BP-1697");
+            assertThat(result.nodes().stream()
+                    .filter(n -> "BP-1327".equals(n.id())).findFirst().orElseThrow()
+                    .container()).isTrue();
+        }
     }
 
     // ── Leaf-only policy ────────────────────────────────────────────────
