@@ -5,21 +5,15 @@ import ai.djl.huggingface.translator.TextEmbeddingTranslatorFactory;
 import ai.djl.inference.Predictor;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ZooModel;
+import com.taxonomy.shared.service.LocalEmbeddingService;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
-import java.io.InputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.file.Files;
+
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -31,66 +25,26 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>
  * <strong>No Spring, no server, no HTTP.</strong>
  * <p>
+ * This test uses {@link LocalEmbeddingService#resolveModelCacheDir(String)} to share the
+ * same cache directory as the production code and all other test levels.  No duplicate
+ * download logic — the model is downloaded once and reused everywhere.
+ * <p>
  * Run with: {@code mvn test -Dtest=OnnxModelDirectTest}
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class OnnxModelDirectTest {
 
-    private static final String HF_REPO_URL = "https://huggingface.co/BAAI/bge-small-en-v1.5";
-    private static final String HF_RESOLVE_PATTERN = "%s/resolve/main/%s";
-    private static final String[] HF_MODEL_FILES = {"onnx/model.onnx", "tokenizer.json"};
-
-    private static final String SERVING_PROPERTIES_CONTENT =
-            "engine=OnnxRuntime\n"
-                    + "option.modelName=model\n"
-                    + "translatorFactory=ai.djl.huggingface.translator.TextEmbeddingTranslatorFactory\n"
-                    + "option.mapLocation=true\n"
-                    + "option.includeTokenTypes=true\n";
-
     private static ZooModel<String, float[]> model;
-    private static Path cacheDir;
 
     @BeforeAll
     static void loadModel() throws Exception {
-        // Download from HuggingFace (or use cache) — mirrors LocalEmbeddingService.loadModel()
-        cacheDir = Path.of(System.getProperty("user.home"),
-                ".djl.ai", "cache", "taxonomy", "BAAI--bge-small-en-v1.5");
-        Files.createDirectories(cacheDir);
+        // Resolve the shared cache directory (same path used by LocalEmbeddingService)
+        Path cacheDir = LocalEmbeddingService.resolveModelCacheDir(
+                LocalEmbeddingService.DEFAULT_MODEL_URL);
 
-        HttpClient httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(30))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
-
-        for (String relPath : HF_MODEL_FILES) {
-            String fileUrl = String.format(HF_RESOLVE_PATTERN, HF_REPO_URL, relPath);
-            String localName = relPath.contains("/")
-                    ? relPath.substring(relPath.lastIndexOf('/') + 1) : relPath;
-            Path localFile = cacheDir.resolve(localName);
-
-            if (Files.exists(localFile) && Files.size(localFile) > 0) {
-                continue;
-            }
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(fileUrl))
-                    .timeout(Duration.ofMinutes(5))
-                    .GET().build();
-            HttpResponse<InputStream> response = httpClient.send(
-                    request, HttpResponse.BodyHandlers.ofInputStream());
-            assertThat(response.statusCode()).as("Download " + fileUrl).isEqualTo(200);
-            try (InputStream in = response.body()) {
-                Files.copy(in, localFile, StandardCopyOption.REPLACE_EXISTING);
-            }
-        }
-
-        // Ensure serving.properties exists
-        Path servingProps = cacheDir.resolve("serving.properties");
-        if (!Files.exists(servingProps)
-                || !Files.readString(servingProps).contains("OnnxRuntime")) {
-            Files.writeString(servingProps, SERVING_PROPERTIES_CONTENT);
-        }
-
+        // Load the model from the cache — the model files are downloaded by CI or
+        // by LocalEmbeddingService on first use.  If missing, DJL's Criteria.loadModel()
+        // will throw immediately, giving a clear error message.
         model = Criteria.builder()
                 .setTypes(String.class, float[].class)
                 .optModelPath(cacheDir)
