@@ -413,7 +413,7 @@ class DiagramSelectionPolicyTest {
         @Test
         void customMinRelevance() {
             var config = new DiagramSelectionConfig(
-                    false, false, false, false, false, false, false,
+                    false, false, false, false, false, false,
                     0.7, 25, 40);
             var policy = new ConfigurableDiagramSelectionPolicy(config);
 
@@ -426,7 +426,7 @@ class DiagramSelectionPolicyTest {
         @Test
         void customMaxNodes() {
             var config = new DiagramSelectionConfig(
-                    false, false, false, false, false, false, false,
+                    false, false, false, false, false, false,
                     0.0, 3, 40);
             var policy = new ConfigurableDiagramSelectionPolicy(config);
 
@@ -457,10 +457,10 @@ class DiagramSelectionPolicyTest {
         void sameGeneralTypeCanBehaveDifferently() {
             // Two default-like policies with different relevance thresholds
             var strict = new ConfigurableDiagramSelectionPolicy(
-                    new DiagramSelectionConfig(true, true, false, false, false, false, true,
+                    new DiagramSelectionConfig(true, true, false, false, false, true,
                             0.7, 25, 40));
             var lenient = new ConfigurableDiagramSelectionPolicy(
-                    new DiagramSelectionConfig(true, true, false, false, false, false, true,
+                    new DiagramSelectionConfig(true, true, false, false, false, true,
                             0.1, 25, 40));
 
             var node = node("CP-1023", "Cap", "Capabilities", 0.5, false, 1, 3);

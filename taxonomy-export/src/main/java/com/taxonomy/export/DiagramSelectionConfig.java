@@ -11,7 +11,6 @@ package com.taxonomy.export;
  * @param collapseRedundantParentChild when an intermediate has exactly one strong child, suppress the intermediate and lift the child
  * @param leafOnlyMode                 only show the deepest (leaf) nodes; suppress all intermediate and root nodes
  * @param allowIntermediateAsClusters  retain intermediate nodes as visual containers when they group ≥ 2 strong children
- * @param showSeedContextNodes         include seed-context origin nodes in the output
  * @param preferCrossCategoryRelations prioritise cross-category (impact) edges over same-category (trace) edges
  * @param minRelevance                 minimum relevance threshold for node inclusion (0.0–1.0); anchors and impact-selected nodes bypass this
  * @param maxNodes                     maximum number of nodes in the curated model
@@ -23,7 +22,6 @@ public record DiagramSelectionConfig(
         boolean collapseRedundantParentChild,
         boolean leafOnlyMode,
         boolean allowIntermediateAsClusters,
-        boolean showSeedContextNodes,
         boolean preferCrossCategoryRelations,
         double minRelevance,
         int maxNodes,
@@ -38,7 +36,6 @@ public record DiagramSelectionConfig(
                 false,  // collapseRedundantParentChild
                 false,  // leafOnlyMode
                 false,  // allowIntermediateAsClusters
-                false,  // showSeedContextNodes
                 true,   // preferCrossCategoryRelations
                 0.35,   // minRelevance
                 25,     // maxNodes
@@ -54,7 +51,6 @@ public record DiagramSelectionConfig(
                 true,   // collapseRedundantParentChild
                 true,   // leafOnlyMode
                 false,  // allowIntermediateAsClusters
-                false,  // showSeedContextNodes
                 true,   // preferCrossCategoryRelations
                 0.0,    // minRelevance — keep all that survive the leaf filter
                 25,     // maxNodes
@@ -70,7 +66,6 @@ public record DiagramSelectionConfig(
                 true,   // collapseRedundantParentChild
                 false,  // leafOnlyMode
                 true,   // allowIntermediateAsClusters
-                false,  // showSeedContextNodes
                 true,   // preferCrossCategoryRelations
                 0.35,   // minRelevance
                 30,     // maxNodes — more room for cluster containers
@@ -86,7 +81,6 @@ public record DiagramSelectionConfig(
                 false,  // collapseRedundantParentChild
                 false,  // leafOnlyMode
                 false,  // allowIntermediateAsClusters
-                true,   // showSeedContextNodes
                 false,  // preferCrossCategoryRelations
                 0.0,    // minRelevance — show everything
                 50,     // maxNodes

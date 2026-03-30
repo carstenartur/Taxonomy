@@ -66,7 +66,7 @@ public class DiagramProjectionService {
 
     /** Replaces the active selection policy. */
     public void setPolicy(DiagramSelectionPolicy policy) {
-        this.policy = policy;
+        this.policy = java.util.Objects.requireNonNull(policy, "policy must not be null");
     }
 
     /** Returns the active selection policy. */

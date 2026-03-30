@@ -69,7 +69,7 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
 
         // ── 5. Leaf-only mode ───────────────────────────────────────────
         if (config.leafOnlyMode()) {
-            nodes = applyLeafOnly(nodes, edges);
+            nodes = applyLeafOnly(nodes);
             // Rebuild edges with re-routing
             edges = rerouteEdges(rawModel.edges(), nodes, rawModel.nodes());
         }
@@ -86,21 +86,7 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
 
         // ── 8. Limit nodes ──────────────────────────────────────────────
         if (nodes.size() > config.maxNodes()) {
-            // Keep containers even beyond the limit if their children are included
-            var limited = new ArrayList<>(nodes.subList(0, config.maxNodes()));
-            Set<String> limitedIds = limited.stream().map(DiagramNode::id).collect(Collectors.toSet());
-            // Re-add containers whose children made the cut
-            for (DiagramNode n : nodes) {
-                if (n.container() && !limitedIds.contains(n.id())) {
-                    boolean hasChild = limited.stream()
-                            .anyMatch(c -> n.id().equals(c.parentId()));
-                    if (hasChild) {
-                        limited.add(n);
-                        limitedIds.add(n.id());
-                    }
-                }
-            }
-            nodes = limited;
+            nodes = new ArrayList<>(nodes.subList(0, config.maxNodes()));
         }
 
         // ── 9. Filter edges by surviving nodes ──────────────────────────
@@ -130,8 +116,7 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
      * Keeps only leaf nodes per layer.  When a layer has only non-leaf nodes,
      * they are retained as fallback.
      */
-    private List<DiagramNode> applyLeafOnly(List<DiagramNode> nodes,
-                                             List<DiagramEdge> edges) {
+    private List<DiagramNode> applyLeafOnly(List<DiagramNode> nodes) {
         Map<String, List<DiagramNode>> leafByType = new LinkedHashMap<>();
         Map<String, List<DiagramNode>> nonLeafByType = new LinkedHashMap<>();
 
@@ -231,11 +216,14 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
             } else if (children.size() == 1 && config.collapseRedundantParentChild()) {
                 // Single child: suppress parent, lift child (child keeps its own identity)
                 collapsedParents.add(n.id());
-            } else {
+            } else if (children.size() >= 2) {
                 // Multiple children: mark as container
                 result.add(new DiagramNode(n.id(), n.label(), n.type(),
                         n.relevance(), n.anchor(), n.layer(),
                         n.depth(), n.selectedForImpact(), n.parentId(), true));
+            } else {
+                // Single child but collapse disabled — keep as normal node
+                result.add(n);
             }
         }
 

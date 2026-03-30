@@ -42,10 +42,17 @@ public class ArchiMateDiagramService {
      * Converts a {@link DiagramModel} to an {@link ArchiMateModel}.
      */
     public ArchiMateModel convert(DiagramModel model) {
+        // Collect non-container node IDs — container-only nodes are visual grouping
+        // constructs and must not appear as ArchiMate elements or relationship endpoints.
+        Set<String> elementIds = model.nodes().stream()
+                .filter(n -> !n.container())
+                .map(DiagramNode::id)
+                .collect(Collectors.toSet());
+
         List<ArchiMateElement> elements = buildElements(model.nodes());
-        List<ArchiMateRelationship> relationships = buildRelationships(model.edges());
+        List<ArchiMateRelationship> relationships = buildRelationships(model.edges(), elementIds);
         Map<String, List<String>> organizations = buildOrganizations(model.nodes());
-        ArchiMateView view = buildView(model);
+        ArchiMateView view = buildView(model, elementIds);
 
         log.info("ArchiMateDiagram: {} elements, {} relationships, {} view nodes",
                 elements.size(), relationships.size(), view.nodes().size());
@@ -75,9 +82,14 @@ public class ArchiMateDiagramService {
         return elements;
     }
 
-    private List<ArchiMateRelationship> buildRelationships(List<DiagramEdge> edges) {
+    private List<ArchiMateRelationship> buildRelationships(List<DiagramEdge> edges,
+                                                             Set<String> elementIds) {
         List<ArchiMateRelationship> relationships = new ArrayList<>();
         for (DiagramEdge edge : edges) {
+            // Skip edges that reference container-only nodes
+            if (!elementIds.contains(edge.sourceId()) || !elementIds.contains(edge.targetId())) {
+                continue;
+            }
             relationships.add(new ArchiMateRelationship(
                     edge.id(),
                     edge.sourceId(),
@@ -99,7 +111,7 @@ public class ArchiMateDiagramService {
         return organizations;
     }
 
-    private ArchiMateView buildView(DiagramModel model) {
+    private ArchiMateView buildView(DiagramModel model, Set<String> elementIds) {
         // Group nodes by layer for left-to-right layout
         Map<Integer, List<DiagramNode>> layerGroups = new LinkedHashMap<>();
         for (DiagramNode node : model.nodes()) {
@@ -130,8 +142,7 @@ public class ArchiMateDiagramService {
             layerIdx++;
         }
 
-        Set<String> nodeIdSet = model.nodes().stream()
-                .map(DiagramNode::id).collect(Collectors.toSet());
+        Set<String> nodeIdSet = elementIds;
         List<ArchiMateViewConnection> viewConnections = new ArrayList<>();
         for (DiagramEdge edge : model.edges()) {
             if (nodeIdSet.contains(edge.sourceId()) && nodeIdSet.contains(edge.targetId())) {
