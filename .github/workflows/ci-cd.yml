@@ -77,6 +77,9 @@ jobs:
         run: |
           mvn site --no-transfer-progress -DskipTests -DgenerateReports=false
           mvn surefire-report:report --no-transfer-progress -DskipTests -Daggregate=true
+          # Plugin 3.5.5 writes standalone reports to target/reports/surefire.html;
+          # copy into the site directory that gets deployed to GitHub Pages
+          cp target/reports/surefire.html target/site/surefire-report.html
           # Inject build metadata so the report always differs from the previous deploy
           sed -i "s|</body>|<!-- Build: ${{ github.sha }} $(date -u +%Y-%m-%dT%H:%M:%SZ) --></body>|" target/site/surefire-report.html
 
