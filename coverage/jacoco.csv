@@ -11,7 +11,7 @@ Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateObjDatabase.ByteArra
 Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateObjDatabase,76,244,5,11,25,55,9,12,5,8
 Taxonomy Application,com.taxonomy.relations.service,RelationValidationService.ValidationResult,0,35,0,0,0,10,0,6,0,6
 Taxonomy Application,com.taxonomy.relations.service,RelationQualityService,148,122,8,4,22,33,9,6,3,6
-Taxonomy Application,com.taxonomy.relations.service,GraphSearchService,252,148,18,4,52,33,19,6,8,6
+Taxonomy Application,com.taxonomy.relations.service,GraphSearchService,202,198,17,5,45,40,17,8,7,7
 Taxonomy Application,com.taxonomy.relations.service,RelationCandidateService,6,138,5,5,0,25,4,7,0,6
 Taxonomy Application,com.taxonomy.relations.service,RelationProposalService,200,342,13,12,34,76,14,11,3,9
 Taxonomy Application,com.taxonomy.relations.service,RelationTraversalService,36,88,4,10,7,23,4,8,1,4

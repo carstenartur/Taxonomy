@@ -83,17 +83,17 @@ public class GraphSearchService {
             // 2. Search TaxonomyRelation index by KNN with optional workspace filter
 <span class="fc" id="L84">            WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
             List&lt;TaxonomyRelation&gt; relationHits;
-<span class="pc bpc" id="L86" title="1 of 2 branches missed.">            if (ctx.workspaceId() != null) {</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            if (ctx.workspaceId() != null) {</span>
                 // Provisioned workspace — filter to workspace-owned + shared (null) relations
-<span class="nc" id="L88">                relationHits = session.search(TaxonomyRelation.class)</span>
-<span class="nc" id="L89">                        .where(f -&gt; f.bool()</span>
-<span class="nc" id="L90">                                .must(f.bool()</span>
-<span class="nc" id="L91">                                        .should(f.match().field(&quot;workspaceId&quot;).matching(ctx.workspaceId()))</span>
-<span class="nc" id="L92">                                        .should(f.not(f.exists().field(&quot;workspaceId&quot;)))</span>
+<span class="fc" id="L88">                relationHits = session.search(TaxonomyRelation.class)</span>
+<span class="fc" id="L89">                        .where(f -&gt; f.bool()</span>
+<span class="fc" id="L90">                                .must(f.bool()</span>
+<span class="fc" id="L91">                                        .should(f.match().field(&quot;workspaceId&quot;).matching(ctx.workspaceId()))</span>
+<span class="fc" id="L92">                                        .should(f.not(f.exists().field(&quot;workspaceId&quot;)))</span>
                                 )
-<span class="nc" id="L94">                                .must(f.knn(maxResults * 2).field(&quot;embedding&quot;).matching(queryVector))</span>
+<span class="fc" id="L94">                                .must(f.knn(maxResults * 2).field(&quot;embedding&quot;).matching(queryVector))</span>
                         )
-<span class="nc" id="L96">                        .fetchHits(maxResults * 2);</span>
+<span class="fc" id="L96">                        .fetchHits(maxResults * 2);</span>
             } else {
                 // SHARED context — no workspace filter, return all relations
 <span class="fc" id="L99">                relationHits = session.search(TaxonomyRelation.class)</span>
