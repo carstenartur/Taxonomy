@@ -447,11 +447,28 @@ public class RequirementArchitectureViewService {
             leafScoresByRoot.computeIfAbsent(rootPrefix, k -> new ArrayList<>()).add(entry);
         }
 
+        // Pre-compute which root layers have deep-leaf candidates (depth > 1)
+        Map<String, Boolean> rootHasDeepLeaf = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Map.Entry<String, Integer>>> rootEntry : leafScoresByRoot.entrySet()) {
+            String root = rootEntry.getKey();
+            boolean hasDeep = rootEntry.getValue().stream()
+                    .anyMatch(e -> {
+                        Optional<TaxonomyNode> opt = nodeRepository.findByCode(e.getKey());
+                        return opt.isPresent() && opt.get().getLevel() > 1;
+                    });
+            rootHasDeepLeaf.put(root, hasDeep);
+        }
+
+        LayerRepresentativeSelector layerSelector = new LayerRepresentativeSelector(nodeRepository);
+
         // For each root, pick the top-N leaf nodes by score
         for (Map.Entry<String, List<Map.Entry<String, Integer>>> rootEntry : leafScoresByRoot.entrySet()) {
             String root = rootEntry.getKey();
             List<Map.Entry<String, Integer>> candidates = rootEntry.getValue();
             candidates.sort(Comparator.<Map.Entry<String, Integer>, Integer>comparing(Map.Entry::getValue).reversed());
+
+            int rootScore = scores.getOrDefault(root, 0);
+            boolean hasDeepLeaf = rootHasDeepLeaf.getOrDefault(root, false);
 
             int added = 0;
             for (Map.Entry<String, Integer> candidate : candidates) {
@@ -472,9 +489,8 @@ public class RequirementArchitectureViewService {
                 Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(leafCode);
                 if (nodeOpt.isPresent()) {
                     TaxonomyNode node = nodeOpt.get();
-                    // Skip taxonomy scaffolding: depth ≤ 1 nodes are structural
-                    // containers (e.g. CP-1000) and not concrete leaf elements
-                    if (node.getLevel() <= 1) {
+                    // Use LayerRepresentativeSelector for the include decision
+                    if (!layerSelector.shouldInclude(node, rootScore, hasDeepLeaf)) {
                         continue;
                     }
                     element.setTitle(node.getNameEn());
@@ -563,9 +579,10 @@ public class RequirementArchitectureViewService {
             leafByRoot.computeIfAbsent(root, k -> new ArrayList<>()).add(el);
         }
 
-        // For each trace relation, try to derive a concrete impact relation
+        // For each trace relation, try to derive concrete impact relations
         List<RequirementRelationshipView> impactRelations = new ArrayList<>();
         Set<String> impactSignatures = new LinkedHashSet<>();
+        ImpactEndpointSelector endpointSelector = new ImpactEndpointSelector();
 
         for (RequirementRelationshipView trace : relationships) {
             String srcRoot = rootOf(trace.getSourceCode());
@@ -577,28 +594,32 @@ public class RequirementArchitectureViewService {
             List<RequirementElementView> tgtLeaves = leafByRoot.getOrDefault(tgtRoot, List.of());
             if (srcLeaves.isEmpty() || tgtLeaves.isEmpty()) continue;
 
-            // Pick the best leaf in each category (highest relevance, preferring deeper nodes)
-            RequirementElementView bestSrc = pickBestLeaf(srcLeaves);
-            RequirementElementView bestTgt = pickBestLeaf(tgtLeaves);
+            // Select ALL qualified endpoints in each category
+            List<RequirementElementView> srcEndpoints = endpointSelector.selectEndpoints(srcLeaves);
+            List<RequirementElementView> tgtEndpoints = endpointSelector.selectEndpoints(tgtLeaves);
 
-            String sig = bestSrc.getNodeCode() + "->" + bestTgt.getNodeCode() + ":" + trace.getRelationType();
-            if (!impactSignatures.add(sig)) continue;
+            for (RequirementElementView src : srcEndpoints) {
+                for (RequirementElementView tgt : tgtEndpoints) {
+                    String sig = src.getNodeCode() + "->" + tgt.getNodeCode() + ":" + trace.getRelationType();
+                    if (!impactSignatures.add(sig)) continue;
 
-            RequirementRelationshipView impact = new RequirementRelationshipView();
-            impact.setSourceCode(bestSrc.getNodeCode());
-            impact.setTargetCode(bestTgt.getNodeCode());
-            impact.setRelationType(trace.getRelationType());
-            impact.setPropagatedRelevance(
-                    Math.min(bestSrc.getRelevance(), bestTgt.getRelevance()));
-            impact.setHopDistance(0);
-            impact.setIncludedBecause("impact: " + bestSrc.getNodeCode() + " → " + bestTgt.getNodeCode()
-                    + " (derived from " + trace.getSourceCode() + " → " + trace.getTargetCode() + ")");
-            impact.setRelationCategory(RequirementRelationshipView.CATEGORY_IMPACT);
-            impact.setOrigin(RelationOrigin.IMPACT_DERIVED);
-            impact.setConfidence(Math.min(bestSrc.getRelevance(), bestTgt.getRelevance()));
-            impact.setDerivationReason("Cross-category leaf-to-leaf: "
-                    + bestSrc.getNodeCode() + " → " + bestTgt.getNodeCode());
-            impactRelations.add(impact);
+                    RequirementRelationshipView impact = new RequirementRelationshipView();
+                    impact.setSourceCode(src.getNodeCode());
+                    impact.setTargetCode(tgt.getNodeCode());
+                    impact.setRelationType(trace.getRelationType());
+                    impact.setPropagatedRelevance(
+                            Math.min(src.getRelevance(), tgt.getRelevance()));
+                    impact.setHopDistance(0);
+                    impact.setIncludedBecause("impact: " + src.getNodeCode() + " → " + tgt.getNodeCode()
+                            + " (derived from " + trace.getSourceCode() + " → " + trace.getTargetCode() + ")");
+                    impact.setRelationCategory(RequirementRelationshipView.CATEGORY_IMPACT);
+                    impact.setOrigin(RelationOrigin.IMPACT_DERIVED);
+                    impact.setConfidence(Math.min(src.getRelevance(), tgt.getRelevance()));
+                    impact.setDerivationReason("Cross-category leaf-to-leaf: "
+                            + src.getNodeCode() + " → " + tgt.getNodeCode());
+                    impactRelations.add(impact);
+                }
+            }
         }
 
         if (!impactRelations.isEmpty()) {
