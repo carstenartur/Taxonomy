@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -227,8 +228,8 @@ public class DslApiController {
     public ResponseEntity<Map<String, Object>> commitDsl(
             @RequestBody String dslText,
             @RequestParam(defaultValue = "draft") String branch,
-            @RequestParam(required = false) String author,
-            @RequestParam(required = false) String message) {
+            @RequestParam(required = false) String message,
+            Authentication authentication) {
 
         // Validate DSL text before committing
         var doc = parser.parse(dslText != null ? dslText : "");
@@ -246,10 +247,11 @@ public class DslApiController {
         // Commit to JGit repository — the single source of truth
         // All Git objects are stored in the database (git_packs table)
         // via HibernateRepository/HibernateObjDatabase
+        String author = authentication != null ? authentication.getName() : "system";
         String gitCommitId;
         try {
             gitCommitId = dslOps.commitDsl(branch, dslText,
-                    author != null ? author : "system",
+                    author,
                     message != null ? message : "DSL commit");
         } catch (IOException e) {
             log.error("JGit commit failed", e);
@@ -669,9 +671,10 @@ public class DslApiController {
     public ResponseEntity<Map<String, Object>> cherryPickResolve(
             @RequestParam String commitId,
             @RequestParam String targetBranch,
-            @RequestBody String resolvedContent) {
+            @RequestBody String resolvedContent,
+            Authentication authentication) {
         try {
-            String username = dslOps.resolveCurrentUsername();
+            String username = authentication != null ? authentication.getName() : "system";
             String newCommitId = dslOps.commitDsl(targetBranch, resolvedContent,
                     username, "Resolve cherry-pick conflict: " + commitId.substring(0, Math.min(7, commitId.length())));
 

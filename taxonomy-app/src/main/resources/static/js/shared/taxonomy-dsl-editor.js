@@ -183,12 +183,10 @@
     // ── Commit ──────────────────────────────────────────────────────
     function commitDsl() {
         var branch = branchSelect ? branchSelect.value : 'draft';
-        var author = authorInput ? authorInput.value.trim() : '';
         var message = messageInput ? messageInput.value.trim() : '';
         if (!message) { message = t('dsl.commit.default.message'); }
         showStatus(t('dsl.committing', branch), 'info');
         var url = '/api/dsl/commit?branch=' + encodeURIComponent(branch);
-        if (author) url += '&author=' + encodeURIComponent(author);
         if (message) url += '&message=' + encodeURIComponent(message);
         fetch(url, {
             method: 'POST',

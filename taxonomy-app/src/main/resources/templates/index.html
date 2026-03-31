@@ -982,8 +982,9 @@
                                     </div>
                                 </div>
                                 <div class="mb-2">
-                                    <label class="form-label small mb-1"><span th:text="#{dsl.commit.author}">Author</span> <small class="text-muted" th:text="#{dsl.commit.author.hint}">(optional)</small></label>
-                                    <input id="dslAuthorInput" type="text" class="form-control form-control-sm" th:placeholder="#{dsl.author.placeholder}" placeholder="user@example.com">
+                                    <label class="form-label small mb-1"><span th:text="#{dsl.commit.author}">Author</span></label>
+                                    <input id="dslAuthorInput" type="text" class="form-control form-control-sm" readonly
+                                           th:value="${#authentication != null ? #authentication.name : ''}">
                                 </div>
                                 <div class="mb-2">
                                     <label class="form-label small mb-1" th:text="#{dsl.commit.message}">Commit message</label>
