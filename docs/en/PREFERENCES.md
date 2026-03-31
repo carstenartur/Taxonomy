@@ -165,6 +165,8 @@ The `diagram.policy` setting controls which nodes and edges are visible in archi
 
 Changes take effect on the **next diagram export** — no application restart required.
 
+The active policy is also displayed as a **title and rule-badge legend** directly in the architecture view panel, so you can always see at a glance which settings produced the current diagram.
+
 ---
 
 ## Audit Trail

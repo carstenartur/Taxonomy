@@ -348,6 +348,7 @@
         var hotspotCodes = options.hotspotCodes || new Set();
         var hotspotReasons = options.hotspotReasons || {};
         var layerConfig = options.layerConfig || {};
+        var policyTitle = options.policyTitle || '';
 
         // Cap nodes for readability
         var cappedNodes = nodes.slice(0, IMPACT_MAX_NODES);
@@ -587,6 +588,12 @@
 
         // Legend
         var legendDiv = graphDiv.append('div').attr('class', 'impact-graph-legend');
+
+        if (policyTitle) {
+            legendDiv.append('div')
+                .attr('class', 'archview-title mb-1')
+                .text(policyTitle);
+        }
 
         var usedSheets = new Set(d3Nodes.map(function (n) { return n.sheet; }));
         usedSheets.forEach(function (sheet) {

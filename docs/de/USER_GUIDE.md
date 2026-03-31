@@ -423,6 +423,7 @@ Das Panel zeigt drei Bereiche:
 | Bereich | Inhalt |
 |---|---|
 | **Impact Summary Bar** | Eine kompakte KPI-Zeile: direkte Treffer, betroffene Elemente, Beziehungen, Schichten und Änderungs-Hotspots |
+| **Richtlinien-Titel & Legende** | Ein Titel, der die aktive Diagrammrichtlinie anzeigt (z. B. „Architektur-Wirkungsansicht"), sowie kleine Regel-Badges, die aktive Filter beschreiben (z. B. „Wurzelknoten unterdrückt"). Diese Anzeige aktualisiert sich automatisch, wenn die `diagram.policy`-Einstellung geändert wird. |
 | **Interaktiver Netzwerkgraph** | Ein interaktiver kräftebasierter Netzwerkgraph (Standardansicht), der alle betroffenen Elemente als verschiebbare Knoten zeigt, verbunden durch gerichtete Kanten. Umschalten auf „🏗️ Layer View" für die traditionelle Swimlane-Darstellung. |
 | **Detail-Tabellen** | Aufklappbare Tabellen mit allen Elementen und Beziehungen samt vollständigen Metadaten (über die 📋-Zusammenfassungszeile aufklappbar) |
 

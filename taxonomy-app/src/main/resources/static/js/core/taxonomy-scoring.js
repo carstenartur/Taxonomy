@@ -1080,7 +1080,8 @@
                 anchorCodes: new Set(anchors.map(function (a) { return a.nodeCode; })),
                 hotspotCodes: hotspotCodes,
                 hotspotReasons: hotspotReasons,
-                layerConfig: LAYER_CONFIG
+                layerConfig: LAYER_CONFIG,
+                policyTitle: view.viewTitle ? t(view.viewTitle) : ''
             });
         } else if (graphContainer && elements.length < MIN_NODES_FOR_GRAPH) {
             // Too few nodes for a meaningful graph — show swimlane view instead
