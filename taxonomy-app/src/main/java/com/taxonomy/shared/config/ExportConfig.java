@@ -6,6 +6,7 @@ import com.taxonomy.export.ConfigurableDiagramSelectionPolicy;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.DiagramSelectionConfig;
 import com.taxonomy.export.DiagramSelectionPolicy;
+import com.taxonomy.export.DiagramViewMetadata;
 import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.VisioDiagramService;
@@ -89,5 +90,22 @@ public class ExportConfig {
             }
         };
         return new ConfigurableDiagramSelectionPolicy(config);
+    }
+
+    /**
+     * Resolves human-readable view metadata for the active diagram policy.
+     *
+     * @param prefs the preferences service providing the current setting
+     * @return view metadata generated from the active policy configuration
+     */
+    public static DiagramViewMetadata resolveViewMetadata(PreferencesService prefs) {
+        String policyName = prefs.getString("diagram.policy", "defaultImpact");
+        DiagramSelectionConfig config = switch (policyName) {
+            case "leafOnly" -> DiagramSelectionConfig.leafOnly();
+            case "clustering" -> DiagramSelectionConfig.clustering();
+            case "trace" -> DiagramSelectionConfig.trace();
+            default -> DiagramSelectionConfig.defaultImpact();
+        };
+        return DiagramViewMetadata.fromConfig(config, policyName);
     }
 }

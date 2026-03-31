@@ -33,6 +33,13 @@ public class RequirementElementView {
     private boolean selectedForImpact;
 
     /**
+     * Nearest ancestor node code present in the same view (e.g. "CP-1000" for "CP-1023").
+     * {@code null} for top-level nodes without a parent in the view.
+     * Used by the display layer for containment/cluster rendering.
+     */
+    private String parentNodeCode;
+
+    /**
      * Short human-readable sentence explaining why this node is present.
      * Combines origin, score, and taxonomy context into a single inspectable string.
      */
@@ -83,6 +90,9 @@ public class RequirementElementView {
 
     public boolean isSelectedForImpact() { return selectedForImpact; }
     public void setSelectedForImpact(boolean selectedForImpact) { this.selectedForImpact = selectedForImpact; }
+
+    public String getParentNodeCode() { return parentNodeCode; }
+    public void setParentNodeCode(String parentNodeCode) { this.parentNodeCode = parentNodeCode; }
 
     public String getPresenceReason() { return presenceReason; }
     public void setPresenceReason(String presenceReason) { this.presenceReason = presenceReason; }

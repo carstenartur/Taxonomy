@@ -189,6 +189,10 @@ public class RequirementArchitectureViewService {
         //     is inspectable (taxonomy ID, name, score, origin, short reason).
         populatePresenceReasons(elements, relationships);
 
+        // 7e. Populate parentNodeCode from hierarchy paths so the display layer
+        //     can render containment/cluster groups without re-deriving ancestry.
+        populateParentNodeCodes(elements);
+
         view.setIncludedElements(elements);
         view.setIncludedRelationships(relationships);
 
@@ -840,5 +844,34 @@ public class RequirementArchitectureViewService {
         if (upper.contains("FRAMEWORK")) return SeedType.FRAMEWORK_SEED;
         if (upper.contains("SOURCE_DERIVED") || upper.contains("DERIVED")) return SeedType.SOURCE_DERIVED;
         return SeedType.TYPE_DEFAULT;
+    }
+
+    /**
+     * Populates the {@code parentNodeCode} field on each element by walking
+     * backwards through the {@code hierarchyPath} to find the nearest ancestor
+     * that is also present in the element list.
+     *
+     * <p>This is the same logic used by
+     * {@link com.taxonomy.export.DiagramProjectionService#buildParentMap} in the
+     * export layer, but applied here in the service layer so the display side
+     * gets parent information without depending on the export pipeline.</p>
+     */
+    private void populateParentNodeCodes(List<RequirementElementView> elements) {
+        Set<String> codes = new HashSet<>();
+        for (RequirementElementView el : elements) {
+            codes.add(el.getNodeCode());
+        }
+        for (RequirementElementView el : elements) {
+            String hp = el.getHierarchyPath();
+            if (hp == null || hp.isEmpty()) continue;
+            String[] parts = hp.split("\\s*>\\s*");
+            for (int i = parts.length - 2; i >= 0; i--) {
+                String candidate = parts[i].trim();
+                if (codes.contains(candidate)) {
+                    el.setParentNodeCode(candidate);
+                    break;
+                }
+            }
+        }
     }
 }

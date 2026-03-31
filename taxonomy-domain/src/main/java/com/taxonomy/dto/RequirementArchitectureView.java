@@ -15,6 +15,12 @@ public class RequirementArchitectureView {
     private int totalRelationships;
     private int maxHopDistance;
 
+    // ── View metadata (generated from the active diagram policy) ────────
+    private String viewTitle;
+    private String viewDescription;
+    private boolean containmentEnabled;
+    private List<String> activeRules = new ArrayList<>();
+
     public RequirementArchitectureView() {}
 
     public List<RequirementAnchor> getAnchors() { return anchors; }
@@ -40,4 +46,18 @@ public class RequirementArchitectureView {
 
     public int getMaxHopDistance() { return maxHopDistance; }
     public void setMaxHopDistance(int maxHopDistance) { this.maxHopDistance = maxHopDistance; }
+
+    // ── View metadata accessors ─────────────────────────────────────────
+
+    public String getViewTitle() { return viewTitle; }
+    public void setViewTitle(String viewTitle) { this.viewTitle = viewTitle; }
+
+    public String getViewDescription() { return viewDescription; }
+    public void setViewDescription(String viewDescription) { this.viewDescription = viewDescription; }
+
+    public boolean isContainmentEnabled() { return containmentEnabled; }
+    public void setContainmentEnabled(boolean containmentEnabled) { this.containmentEnabled = containmentEnabled; }
+
+    public List<String> getActiveRules() { return activeRules; }
+    public void setActiveRules(List<String> activeRules) { this.activeRules = activeRules; }
 }
