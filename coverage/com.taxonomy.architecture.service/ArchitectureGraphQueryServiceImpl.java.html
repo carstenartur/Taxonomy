@@ -20,6 +20,7 @@ import com.taxonomy.dto.ImpactElement;
 import com.taxonomy.dto.ImpactRelationship;
 import com.taxonomy.dto.RequirementImpactView;
 import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.pipeline.PipelineConstants;
 
 /**
  * Implementation of {@link ArchitectureGraphQueryService}.
@@ -30,7 +31,7 @@ import com.taxonomy.dto.TaxonomyRelationDto;
 @Service
 public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQueryService {
 
-<span class="fc" id="L33">    private static final Logger log = LoggerFactory.getLogger(ArchitectureGraphQueryServiceImpl.class);</span>
+<span class="fc" id="L34">    private static final Logger log = LoggerFactory.getLogger(ArchitectureGraphQueryServiceImpl.class);</span>
 
     /** Maximum allowed hops (clamped). */
     private static final int MAX_HOP_LIMIT = 5;
@@ -41,10 +42,10 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
     /** Per-hop decay factor. */
     static final double HOP_DECAY = 0.70;
 
-    /** Anchor threshold for requirement impact (same as architecture view). */
-    private static final int ANCHOR_THRESHOLD_HIGH = 70;
-    private static final int ANCHOR_THRESHOLD_LOW = 50;
-    private static final int MIN_ANCHORS = 3;
+    // Anchor thresholds from the shared pipeline constants.
+    private static final int ANCHOR_THRESHOLD_HIGH = PipelineConstants.ANCHOR_THRESHOLD_HIGH;
+    private static final int ANCHOR_THRESHOLD_LOW  = PipelineConstants.ANCHOR_THRESHOLD_LOW;
+    private static final int MIN_ANCHORS           = PipelineConstants.MIN_ANCHORS;
 
     /**
      * Propagation weights per relation type.
@@ -52,14 +53,14 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
      * REALIZES medium (capability-to-service),
      * USES weaker (app-to-service).
      */
-<span class="fc" id="L55">    static final Map&lt;String, Double&gt; TYPE_WEIGHTS = Map.of(</span>
-<span class="fc" id="L56">            &quot;SUPPORTS&quot;, 0.80,</span>
-<span class="fc" id="L57">            &quot;REALIZES&quot;, 0.75,</span>
-<span class="fc" id="L58">            &quot;USES&quot;, 0.60</span>
+<span class="fc" id="L56">    static final Map&lt;String, Double&gt; TYPE_WEIGHTS = Map.of(</span>
+<span class="fc" id="L57">            &quot;SUPPORTS&quot;, 0.80,</span>
+<span class="fc" id="L58">            &quot;REALIZES&quot;, 0.75,</span>
+<span class="fc" id="L59">            &quot;USES&quot;, 0.60</span>
     );
 
     /** Whitelisted relation types for traversal. */
-<span class="fc" id="L62">    private static final List&lt;RelationType&gt; WHITELISTED_TYPES = List.of(</span>
+<span class="fc" id="L63">    private static final List&lt;RelationType&gt; WHITELISTED_TYPES = List.of(</span>
             RelationType.SUPPORTS,
             RelationType.REALIZES,
             RelationType.USES
@@ -71,11 +72,11 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
 
     public ArchitectureGraphQueryServiceImpl(TaxonomyNodeRepository nodeRepository,
                                               TaxonomyRelationRepository relationRepository,
-<span class="fc" id="L74">                                              TaxonomyRelationService relationService) {</span>
-<span class="fc" id="L75">        this.nodeRepository = nodeRepository;</span>
-<span class="fc" id="L76">        this.relationRepository = relationRepository;</span>
-<span class="fc" id="L77">        this.relationService = relationService;</span>
-<span class="fc" id="L78">    }</span>
+<span class="fc" id="L75">                                              TaxonomyRelationService relationService) {</span>
+<span class="fc" id="L76">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L77">        this.relationRepository = relationRepository;</span>
+<span class="fc" id="L78">        this.relationService = relationService;</span>
+<span class="fc" id="L79">    }</span>
 
     // ── 1. Requirement Impact ──────────────────────────────────────────────
 
@@ -83,46 +84,46 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
     @Transactional(readOnly = true)
     public RequirementImpactView findImpactForRequirement(Map&lt;String, Integer&gt; scores,
                                                            String businessText, int maxHops) {
-<span class="fc" id="L86">        RequirementImpactView view = new RequirementImpactView();</span>
-<span class="fc" id="L87">        view.setBusinessText(businessText);</span>
-<span class="fc" id="L88">        int clampedHops = clampHops(maxHops);</span>
-<span class="fc" id="L89">        view.setMaxHops(clampedHops);</span>
+<span class="fc" id="L87">        RequirementImpactView view = new RequirementImpactView();</span>
+<span class="fc" id="L88">        view.setBusinessText(businessText);</span>
+<span class="fc" id="L89">        int clampedHops = clampHops(maxHops);</span>
+<span class="fc" id="L90">        view.setMaxHops(clampedHops);</span>
 
-<span class="fc bfc" id="L91" title="All 4 branches covered.">        if (scores == null || scores.isEmpty()) {</span>
-<span class="fc" id="L92">            view.getNotes().add(&quot;No scores provided; impact analysis cannot be performed.&quot;);</span>
-<span class="fc" id="L93">            return view;</span>
+<span class="fc bfc" id="L92" title="All 4 branches covered.">        if (scores == null || scores.isEmpty()) {</span>
+<span class="fc" id="L93">            view.getNotes().add(&quot;No scores provided; impact analysis cannot be performed.&quot;);</span>
+<span class="fc" id="L94">            return view;</span>
         }
 
         // Select anchors using the same logic as RequirementArchitectureViewService
-<span class="fc" id="L97">        List&lt;Map.Entry&lt;String, Integer&gt;&gt; anchors = selectAnchors(scores);</span>
-<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        if (anchors.isEmpty()) {</span>
-<span class="nc" id="L99">            view.getNotes().add(&quot;No nodes met the anchor threshold; impact view is empty.&quot;);</span>
-<span class="nc" id="L100">            return view;</span>
+<span class="fc" id="L98">        List&lt;Map.Entry&lt;String, Integer&gt;&gt; anchors = selectAnchors(scores);</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        if (anchors.isEmpty()) {</span>
+<span class="nc" id="L100">            view.getNotes().add(&quot;No nodes met the anchor threshold; impact view is empty.&quot;);</span>
+<span class="nc" id="L101">            return view;</span>
         }
 
         // Build anchor relevance map
-<span class="fc" id="L104">        Map&lt;String, Double&gt; anchorRelevances = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L105" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : anchors) {</span>
-<span class="fc" id="L106">            anchorRelevances.put(entry.getKey(), entry.getValue() / 100.0);</span>
-<span class="fc" id="L107">        }</span>
+<span class="fc" id="L105">        Map&lt;String, Double&gt; anchorRelevances = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : anchors) {</span>
+<span class="fc" id="L107">            anchorRelevances.put(entry.getKey(), entry.getValue() / 100.0);</span>
+<span class="fc" id="L108">        }</span>
 
         // BFS traversal from anchors
-<span class="fc" id="L110">        TraversalResult traversal = bfsTraversal(anchorRelevances, clampedHops, Direction.BOTH);</span>
+<span class="fc" id="L111">        TraversalResult traversal = bfsTraversal(anchorRelevances, clampedHops, Direction.BOTH);</span>
 
         // Convert to view elements
-<span class="fc" id="L113">        view.setImpactedElements(toImpactElements(traversal));</span>
-<span class="fc" id="L114">        view.setTraversedRelationships(traversal.relationships);</span>
-<span class="fc" id="L115">        view.setTotalElements(view.getImpactedElements().size());</span>
-<span class="fc" id="L116">        view.setTotalRelationships(view.getTraversedRelationships().size());</span>
+<span class="fc" id="L114">        view.setImpactedElements(toImpactElements(traversal));</span>
+<span class="fc" id="L115">        view.setTraversedRelationships(traversal.relationships);</span>
+<span class="fc" id="L116">        view.setTotalElements(view.getImpactedElements().size());</span>
+<span class="fc" id="L117">        view.setTotalRelationships(view.getTraversedRelationships().size());</span>
 
-<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        if (view.getImpactedElements().isEmpty()) {</span>
-<span class="nc" id="L119">            view.getNotes().add(&quot;Anchors were found but no connected elements via accepted relations.&quot;);</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">        if (view.getImpactedElements().isEmpty()) {</span>
+<span class="nc" id="L120">            view.getNotes().add(&quot;Anchors were found but no connected elements via accepted relations.&quot;);</span>
         }
 
-<span class="fc" id="L122">        log.info(&quot;Requirement impact: {} anchors, {} elements, {} relationships (maxHops={})&quot;,</span>
-<span class="fc" id="L123">                anchors.size(), view.getTotalElements(), view.getTotalRelationships(), clampedHops);</span>
+<span class="fc" id="L123">        log.info(&quot;Requirement impact: {} anchors, {} elements, {} relationships (maxHops={})&quot;,</span>
+<span class="fc" id="L124">                anchors.size(), view.getTotalElements(), view.getTotalRelationships(), clampedHops);</span>
 
-<span class="fc" id="L125">        return view;</span>
+<span class="fc" id="L126">        return view;</span>
     }
 
     // ── 2. Upstream / Downstream ───────────────────────────────────────────
@@ -130,49 +131,49 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
     @Override
     @Transactional(readOnly = true)
     public GraphNeighborhoodView findUpstream(String nodeCode, int maxHops) {
-<span class="fc" id="L133">        return findNeighborhood(nodeCode, maxHops, Direction.UPSTREAM);</span>
+<span class="fc" id="L134">        return findNeighborhood(nodeCode, maxHops, Direction.UPSTREAM);</span>
     }
 
     @Override
     @Transactional(readOnly = true)
     public GraphNeighborhoodView findDownstream(String nodeCode, int maxHops) {
-<span class="fc" id="L139">        return findNeighborhood(nodeCode, maxHops, Direction.DOWNSTREAM);</span>
+<span class="fc" id="L140">        return findNeighborhood(nodeCode, maxHops, Direction.DOWNSTREAM);</span>
     }
 
     private GraphNeighborhoodView findNeighborhood(String nodeCode, int maxHops, Direction direction) {
-<span class="fc" id="L143">        GraphNeighborhoodView view = new GraphNeighborhoodView();</span>
-<span class="fc" id="L144">        view.setOriginNodeCode(nodeCode);</span>
-<span class="fc" id="L145">        view.setDirection(direction.name());</span>
-<span class="fc" id="L146">        int clampedHops = clampHops(maxHops);</span>
-<span class="fc" id="L147">        view.setMaxHops(clampedHops);</span>
+<span class="fc" id="L144">        GraphNeighborhoodView view = new GraphNeighborhoodView();</span>
+<span class="fc" id="L145">        view.setOriginNodeCode(nodeCode);</span>
+<span class="fc" id="L146">        view.setDirection(direction.name());</span>
+<span class="fc" id="L147">        int clampedHops = clampHops(maxHops);</span>
+<span class="fc" id="L148">        view.setMaxHops(clampedHops);</span>
 
-<span class="fc" id="L149">        Optional&lt;TaxonomyNode&gt; originOpt = nodeRepository.findByCode(nodeCode);</span>
-<span class="fc bfc" id="L150" title="All 2 branches covered.">        if (originOpt.isEmpty()) {</span>
-<span class="fc" id="L151">            view.getNotes().add(&quot;Node not found: &quot; + nodeCode);</span>
-<span class="fc" id="L152">            return view;</span>
+<span class="fc" id="L150">        Optional&lt;TaxonomyNode&gt; originOpt = nodeRepository.findByCode(nodeCode);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (originOpt.isEmpty()) {</span>
+<span class="fc" id="L152">            view.getNotes().add(&quot;Node not found: &quot; + nodeCode);</span>
+<span class="fc" id="L153">            return view;</span>
         }
 
-<span class="fc" id="L155">        Map&lt;String, Double&gt; startMap = Map.of(nodeCode, 1.0);</span>
-<span class="fc" id="L156">        TraversalResult traversal = bfsTraversal(startMap, clampedHops, direction);</span>
+<span class="fc" id="L156">        Map&lt;String, Double&gt; startMap = Map.of(nodeCode, 1.0);</span>
+<span class="fc" id="L157">        TraversalResult traversal = bfsTraversal(startMap, clampedHops, direction);</span>
 
         // Remove the origin node from results
-<span class="fc" id="L159">        List&lt;ImpactElement&gt; neighbors = toImpactElements(traversal).stream()</span>
-<span class="fc bfc" id="L160" title="All 2 branches covered.">                .filter(e -&gt; !e.getNodeCode().equals(nodeCode))</span>
-<span class="fc" id="L161">                .collect(Collectors.toList());</span>
+<span class="fc" id="L160">        List&lt;ImpactElement&gt; neighbors = toImpactElements(traversal).stream()</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">                .filter(e -&gt; !e.getNodeCode().equals(nodeCode))</span>
+<span class="fc" id="L162">                .collect(Collectors.toList());</span>
 
-<span class="fc" id="L163">        view.setNeighbors(neighbors);</span>
-<span class="fc" id="L164">        view.setTraversedRelationships(traversal.relationships);</span>
-<span class="fc" id="L165">        view.setTotalNeighbors(neighbors.size());</span>
-<span class="fc" id="L166">        view.setTotalRelationships(traversal.relationships.size());</span>
+<span class="fc" id="L164">        view.setNeighbors(neighbors);</span>
+<span class="fc" id="L165">        view.setTraversedRelationships(traversal.relationships);</span>
+<span class="fc" id="L166">        view.setTotalNeighbors(neighbors.size());</span>
+<span class="fc" id="L167">        view.setTotalRelationships(traversal.relationships.size());</span>
 
-<span class="fc bfc" id="L168" title="All 2 branches covered.">        if (neighbors.isEmpty()) {</span>
-<span class="fc" id="L169">            view.getNotes().add(&quot;No &quot; + direction.name().toLowerCase() + &quot; neighbors found for &quot; + nodeCode);</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">        if (neighbors.isEmpty()) {</span>
+<span class="fc" id="L170">            view.getNotes().add(&quot;No &quot; + direction.name().toLowerCase() + &quot; neighbors found for &quot; + nodeCode);</span>
         }
 
-<span class="fc" id="L172">        log.info(&quot;{} query for {}: {} neighbors, {} relationships (maxHops={})&quot;,</span>
-<span class="fc" id="L173">                direction, nodeCode, neighbors.size(), traversal.relationships.size(), clampedHops);</span>
+<span class="fc" id="L173">        log.info(&quot;{} query for {}: {} neighbors, {} relationships (maxHops={})&quot;,</span>
+<span class="fc" id="L174">                direction, nodeCode, neighbors.size(), traversal.relationships.size(), clampedHops);</span>
 
-<span class="fc" id="L175">        return view;</span>
+<span class="fc" id="L176">        return view;</span>
     }
 
     // ── 3. Failure / Change Impact ─────────────────────────────────────────
@@ -180,52 +181,52 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
     @Override
     @Transactional(readOnly = true)
     public ChangeImpactView findFailureImpact(String nodeCode, int maxHops) {
-<span class="fc" id="L183">        ChangeImpactView view = new ChangeImpactView();</span>
-<span class="fc" id="L184">        view.setFailedNodeCode(nodeCode);</span>
-<span class="fc" id="L185">        int clampedHops = clampHops(maxHops);</span>
-<span class="fc" id="L186">        view.setMaxHops(clampedHops);</span>
+<span class="fc" id="L184">        ChangeImpactView view = new ChangeImpactView();</span>
+<span class="fc" id="L185">        view.setFailedNodeCode(nodeCode);</span>
+<span class="fc" id="L186">        int clampedHops = clampHops(maxHops);</span>
+<span class="fc" id="L187">        view.setMaxHops(clampedHops);</span>
 
-<span class="fc" id="L188">        Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
-<span class="fc bfc" id="L189" title="All 2 branches covered.">        if (nodeOpt.isEmpty()) {</span>
-<span class="fc" id="L190">            view.getNotes().add(&quot;Node not found: &quot; + nodeCode);</span>
-<span class="fc" id="L191">            return view;</span>
+<span class="fc" id="L189">        Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        if (nodeOpt.isEmpty()) {</span>
+<span class="fc" id="L191">            view.getNotes().add(&quot;Node not found: &quot; + nodeCode);</span>
+<span class="fc" id="L192">            return view;</span>
         }
 
         // Failure propagates through both directions (anything connected is at risk)
-<span class="fc" id="L195">        Map&lt;String, Double&gt; startMap = Map.of(nodeCode, 1.0);</span>
-<span class="fc" id="L196">        TraversalResult traversal = bfsTraversal(startMap, clampedHops, Direction.BOTH);</span>
+<span class="fc" id="L196">        Map&lt;String, Double&gt; startMap = Map.of(nodeCode, 1.0);</span>
+<span class="fc" id="L197">        TraversalResult traversal = bfsTraversal(startMap, clampedHops, Direction.BOTH);</span>
 
-<span class="fc" id="L198">        List&lt;ImpactElement&gt; allAffected = toImpactElements(traversal).stream()</span>
-<span class="fc bfc" id="L199" title="All 2 branches covered.">                .filter(e -&gt; !e.getNodeCode().equals(nodeCode))</span>
-<span class="fc" id="L200">                .collect(Collectors.toList());</span>
+<span class="fc" id="L199">        List&lt;ImpactElement&gt; allAffected = toImpactElements(traversal).stream()</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">                .filter(e -&gt; !e.getNodeCode().equals(nodeCode))</span>
+<span class="fc" id="L201">                .collect(Collectors.toList());</span>
 
         // Split into directly affected (hop 1) and indirectly affected (hop 2+)
-<span class="fc" id="L203">        List&lt;ImpactElement&gt; direct = allAffected.stream()</span>
-<span class="fc bfc" id="L204" title="All 2 branches covered.">                .filter(e -&gt; e.getHopDistance() == 1)</span>
-<span class="fc" id="L205">                .collect(Collectors.toList());</span>
-<span class="fc" id="L206">        List&lt;ImpactElement&gt; indirect = allAffected.stream()</span>
-<span class="fc bfc" id="L207" title="All 2 branches covered.">                .filter(e -&gt; e.getHopDistance() &gt; 1)</span>
-<span class="fc" id="L208">                .collect(Collectors.toList());</span>
+<span class="fc" id="L204">        List&lt;ImpactElement&gt; direct = allAffected.stream()</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">                .filter(e -&gt; e.getHopDistance() == 1)</span>
+<span class="fc" id="L206">                .collect(Collectors.toList());</span>
+<span class="fc" id="L207">        List&lt;ImpactElement&gt; indirect = allAffected.stream()</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">                .filter(e -&gt; e.getHopDistance() &gt; 1)</span>
+<span class="fc" id="L209">                .collect(Collectors.toList());</span>
 
-<span class="fc" id="L210">        view.setDirectlyAffected(direct);</span>
-<span class="fc" id="L211">        view.setIndirectlyAffected(indirect);</span>
-<span class="fc" id="L212">        view.setTraversedRelationships(traversal.relationships);</span>
-<span class="fc" id="L213">        view.setTotalAffected(allAffected.size());</span>
-<span class="fc" id="L214">        view.setTotalRelationships(traversal.relationships.size());</span>
+<span class="fc" id="L211">        view.setDirectlyAffected(direct);</span>
+<span class="fc" id="L212">        view.setIndirectlyAffected(indirect);</span>
+<span class="fc" id="L213">        view.setTraversedRelationships(traversal.relationships);</span>
+<span class="fc" id="L214">        view.setTotalAffected(allAffected.size());</span>
+<span class="fc" id="L215">        view.setTotalRelationships(traversal.relationships.size());</span>
 
-<span class="fc bfc" id="L216" title="All 2 branches covered.">        if (allAffected.isEmpty()) {</span>
-<span class="fc" id="L217">            view.getNotes().add(&quot;No connected elements found for &quot; + nodeCode);</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (allAffected.isEmpty()) {</span>
+<span class="fc" id="L218">            view.getNotes().add(&quot;No connected elements found for &quot; + nodeCode);</span>
         }
 
-<span class="fc" id="L220">        log.info(&quot;Failure impact for {}: {} direct, {} indirect, {} relationships (maxHops={})&quot;,</span>
-<span class="fc" id="L221">                nodeCode, direct.size(), indirect.size(), traversal.relationships.size(), clampedHops);</span>
+<span class="fc" id="L221">        log.info(&quot;Failure impact for {}: {} direct, {} indirect, {} relationships (maxHops={})&quot;,</span>
+<span class="fc" id="L222">                nodeCode, direct.size(), indirect.size(), traversal.relationships.size(), clampedHops);</span>
 
-<span class="fc" id="L223">        return view;</span>
+<span class="fc" id="L224">        return view;</span>
     }
 
     // ── Internal Traversal Engine ──────────────────────────────────────────
 
-<span class="fc" id="L228">    private enum Direction { UPSTREAM, DOWNSTREAM, BOTH }</span>
+<span class="fc" id="L229">    private enum Direction { UPSTREAM, DOWNSTREAM, BOTH }</span>
 
     /**
      * Intermediate result from BFS traversal.
@@ -237,12 +238,12 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
         final List&lt;ImpactRelationship&gt; relationships;
 
         TraversalResult(Map&lt;String, Double&gt; relevanceMap, Map&lt;String, Integer&gt; hopMap,
-<span class="fc" id="L240">                        Map&lt;String, String&gt; reasonMap, List&lt;ImpactRelationship&gt; relationships) {</span>
-<span class="fc" id="L241">            this.relevanceMap = relevanceMap;</span>
-<span class="fc" id="L242">            this.hopMap = hopMap;</span>
-<span class="fc" id="L243">            this.reasonMap = reasonMap;</span>
-<span class="fc" id="L244">            this.relationships = relationships;</span>
-<span class="fc" id="L245">        }</span>
+<span class="fc" id="L241">                        Map&lt;String, String&gt; reasonMap, List&lt;ImpactRelationship&gt; relationships) {</span>
+<span class="fc" id="L242">            this.relevanceMap = relevanceMap;</span>
+<span class="fc" id="L243">            this.hopMap = hopMap;</span>
+<span class="fc" id="L244">            this.reasonMap = reasonMap;</span>
+<span class="fc" id="L245">            this.relationships = relationships;</span>
+<span class="fc" id="L246">        }</span>
     }
 
     /**
@@ -250,214 +251,214 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
      */
     private TraversalResult bfsTraversal(Map&lt;String, Double&gt; startRelevances,
                                           int maxHops, Direction direction) {
-<span class="fc" id="L253">        Map&lt;String, Double&gt; relevanceMap = new LinkedHashMap&lt;&gt;(startRelevances);</span>
-<span class="fc" id="L254">        Map&lt;String, Integer&gt; hopMap = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L255">        Map&lt;String, String&gt; reasonMap = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L256">        List&lt;ImpactRelationship&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L254">        Map&lt;String, Double&gt; relevanceMap = new LinkedHashMap&lt;&gt;(startRelevances);</span>
+<span class="fc" id="L255">        Map&lt;String, Integer&gt; hopMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L256">        Map&lt;String, String&gt; reasonMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L257">        List&lt;ImpactRelationship&gt; relationships = new ArrayList&lt;&gt;();</span>
 
         // Initialize start nodes
-<span class="fc bfc" id="L259" title="All 2 branches covered.">        for (Map.Entry&lt;String, Double&gt; entry : startRelevances.entrySet()) {</span>
-<span class="fc" id="L260">            hopMap.put(entry.getKey(), 0);</span>
-<span class="fc" id="L261">            reasonMap.put(entry.getKey(), &quot;origin&quot;);</span>
-<span class="fc" id="L262">        }</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        for (Map.Entry&lt;String, Double&gt; entry : startRelevances.entrySet()) {</span>
+<span class="fc" id="L261">            hopMap.put(entry.getKey(), 0);</span>
+<span class="fc" id="L262">            reasonMap.put(entry.getKey(), &quot;origin&quot;);</span>
+<span class="fc" id="L263">        }</span>
 
-<span class="fc" id="L264">        Set&lt;String&gt; currentFrontier = new LinkedHashSet&lt;&gt;(startRelevances.keySet());</span>
-<span class="fc" id="L265">        Set&lt;Long&gt; visitedRelationIds = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L265">        Set&lt;String&gt; currentFrontier = new LinkedHashSet&lt;&gt;(startRelevances.keySet());</span>
+<span class="fc" id="L266">        Set&lt;Long&gt; visitedRelationIds = new HashSet&lt;&gt;();</span>
 
-<span class="fc bfc" id="L267" title="All 2 branches covered.">        for (int hop = 1; hop &lt;= maxHops; hop++) {</span>
-<span class="fc" id="L268">            Set&lt;String&gt; nextFrontier = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">        for (int hop = 1; hop &lt;= maxHops; hop++) {</span>
+<span class="fc" id="L269">            Set&lt;String&gt; nextFrontier = new LinkedHashSet&lt;&gt;();</span>
 
-<span class="fc bfc" id="L270" title="All 2 branches covered.">            for (String nodeCode : currentFrontier) {</span>
-<span class="fc" id="L271">                double sourceRelevance = relevanceMap.getOrDefault(nodeCode, 0.0);</span>
-<span class="pc bpc" id="L272" title="1 of 2 branches missed.">                if (sourceRelevance &lt; MIN_RELEVANCE) continue;</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">            for (String nodeCode : currentFrontier) {</span>
+<span class="fc" id="L272">                double sourceRelevance = relevanceMap.getOrDefault(nodeCode, 0.0);</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">                if (sourceRelevance &lt; MIN_RELEVANCE) continue;</span>
 
-<span class="fc" id="L274">                List&lt;TaxonomyRelationDto&gt; relations = getDirectedRelations(nodeCode, direction);</span>
+<span class="fc" id="L275">                List&lt;TaxonomyRelationDto&gt; relations = getDirectedRelations(nodeCode, direction);</span>
 
-<span class="fc bfc" id="L276" title="All 2 branches covered.">                for (TaxonomyRelationDto rel : relations) {</span>
-<span class="fc" id="L277">                    String targetCode = determineTarget(rel, nodeCode, direction);</span>
-<span class="pc bpc" id="L278" title="1 of 2 branches missed.">                    if (targetCode == null) continue;</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">                for (TaxonomyRelationDto rel : relations) {</span>
+<span class="fc" id="L278">                    String targetCode = determineTarget(rel, nodeCode, direction);</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">                    if (targetCode == null) continue;</span>
 
-<span class="fc" id="L280">                    Double typeWeight = TYPE_WEIGHTS.get(rel.getRelationType());</span>
-<span class="pc bpc" id="L281" title="1 of 2 branches missed.">                    if (typeWeight == null) continue;</span>
+<span class="fc" id="L281">                    Double typeWeight = TYPE_WEIGHTS.get(rel.getRelationType());</span>
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">                    if (typeWeight == null) continue;</span>
 
-<span class="fc" id="L283">                    double propagated = sourceRelevance * typeWeight;</span>
-<span class="fc bfc" id="L284" title="All 2 branches covered.">                    if (hop &gt; 1) {</span>
-<span class="fc" id="L285">                        propagated *= HOP_DECAY;</span>
+<span class="fc" id="L284">                    double propagated = sourceRelevance * typeWeight;</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">                    if (hop &gt; 1) {</span>
+<span class="fc" id="L286">                        propagated *= HOP_DECAY;</span>
                     }
 
-<span class="pc bpc" id="L288" title="1 of 2 branches missed.">                    if (propagated &lt; MIN_RELEVANCE) continue;</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">                    if (propagated &lt; MIN_RELEVANCE) continue;</span>
 
-<span class="fc" id="L290">                    double existing = relevanceMap.getOrDefault(targetCode, 0.0);</span>
-<span class="fc bfc" id="L291" title="All 2 branches covered.">                    if (propagated &gt; existing) {</span>
-<span class="fc" id="L292">                        relevanceMap.put(targetCode, propagated);</span>
-<span class="fc" id="L293">                        hopMap.put(targetCode, hop);</span>
-<span class="fc" id="L294">                        reasonMap.put(targetCode,</span>
-<span class="fc" id="L295">                                &quot;propagated via &quot; + rel.getRelationType() + &quot; from &quot; + nodeCode);</span>
-<span class="fc" id="L296">                        nextFrontier.add(targetCode);</span>
+<span class="fc" id="L291">                    double existing = relevanceMap.getOrDefault(targetCode, 0.0);</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">                    if (propagated &gt; existing) {</span>
+<span class="fc" id="L293">                        relevanceMap.put(targetCode, propagated);</span>
+<span class="fc" id="L294">                        hopMap.put(targetCode, hop);</span>
+<span class="fc" id="L295">                        reasonMap.put(targetCode,</span>
+<span class="fc" id="L296">                                &quot;propagated via &quot; + rel.getRelationType() + &quot; from &quot; + nodeCode);</span>
+<span class="fc" id="L297">                        nextFrontier.add(targetCode);</span>
                     }
 
                     // Record traversed relationship (deduplicate by relation ID)
-<span class="pc bpc" id="L300" title="1 of 4 branches missed.">                    if (rel.getId() != null &amp;&amp; visitedRelationIds.add(rel.getId())) {</span>
-<span class="fc" id="L301">                        ImpactRelationship ir = new ImpactRelationship();</span>
-<span class="fc" id="L302">                        ir.setRelationId(rel.getId());</span>
-<span class="fc" id="L303">                        ir.setSourceCode(rel.getSourceCode());</span>
-<span class="fc" id="L304">                        ir.setTargetCode(rel.getTargetCode());</span>
-<span class="fc" id="L305">                        ir.setRelationType(rel.getRelationType());</span>
-<span class="fc" id="L306">                        ir.setPropagatedRelevance(propagated);</span>
-<span class="fc" id="L307">                        ir.setHopDistance(hop);</span>
-<span class="fc" id="L308">                        relationships.add(ir);</span>
+<span class="pc bpc" id="L301" title="1 of 4 branches missed.">                    if (rel.getId() != null &amp;&amp; visitedRelationIds.add(rel.getId())) {</span>
+<span class="fc" id="L302">                        ImpactRelationship ir = new ImpactRelationship();</span>
+<span class="fc" id="L303">                        ir.setRelationId(rel.getId());</span>
+<span class="fc" id="L304">                        ir.setSourceCode(rel.getSourceCode());</span>
+<span class="fc" id="L305">                        ir.setTargetCode(rel.getTargetCode());</span>
+<span class="fc" id="L306">                        ir.setRelationType(rel.getRelationType());</span>
+<span class="fc" id="L307">                        ir.setPropagatedRelevance(propagated);</span>
+<span class="fc" id="L308">                        ir.setHopDistance(hop);</span>
+<span class="fc" id="L309">                        relationships.add(ir);</span>
                     }
-<span class="fc" id="L310">                }</span>
-<span class="fc" id="L311">            }</span>
+<span class="fc" id="L311">                }</span>
+<span class="fc" id="L312">            }</span>
 
-<span class="fc" id="L313">            currentFrontier = nextFrontier;</span>
-<span class="fc bfc" id="L314" title="All 2 branches covered.">            if (currentFrontier.isEmpty()) break;</span>
+<span class="fc" id="L314">            currentFrontier = nextFrontier;</span>
+<span class="fc bfc" id="L315" title="All 2 branches covered.">            if (currentFrontier.isEmpty()) break;</span>
         }
 
-<span class="fc" id="L317">        return new TraversalResult(relevanceMap, hopMap, reasonMap, relationships);</span>
+<span class="fc" id="L318">        return new TraversalResult(relevanceMap, hopMap, reasonMap, relationships);</span>
     }
 
     /**
      * Gets relations for a node in the specified direction.
      */
     private List&lt;TaxonomyRelationDto&gt; getDirectedRelations(String nodeCode, Direction direction) {
-<span class="fc" id="L324">        List&lt;TaxonomyRelationDto&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L325">        List&lt;TaxonomyRelationDto&gt; result = new ArrayList&lt;&gt;();</span>
 
-<span class="fc bfc" id="L326" title="All 4 branches covered.">        if (direction == Direction.DOWNSTREAM || direction == Direction.BOTH) {</span>
+<span class="fc bfc" id="L327" title="All 4 branches covered.">        if (direction == Direction.DOWNSTREAM || direction == Direction.BOTH) {</span>
             // Outgoing: this node is the source
-<span class="fc" id="L328">            List&lt;TaxonomyRelation&gt; outgoing =</span>
-<span class="fc" id="L329">                    relationRepository.findBySourceNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);</span>
-<span class="fc bfc" id="L330" title="All 2 branches covered.">            for (TaxonomyRelation r : outgoing) {</span>
-<span class="fc" id="L331">                result.add(relationService.toDto(r));</span>
-<span class="fc" id="L332">            }</span>
+<span class="fc" id="L329">            List&lt;TaxonomyRelation&gt; outgoing =</span>
+<span class="fc" id="L330">                    relationRepository.findBySourceNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);</span>
+<span class="fc bfc" id="L331" title="All 2 branches covered.">            for (TaxonomyRelation r : outgoing) {</span>
+<span class="fc" id="L332">                result.add(relationService.toDto(r));</span>
+<span class="fc" id="L333">            }</span>
         }
 
-<span class="fc bfc" id="L335" title="All 4 branches covered.">        if (direction == Direction.UPSTREAM || direction == Direction.BOTH) {</span>
+<span class="fc bfc" id="L336" title="All 4 branches covered.">        if (direction == Direction.UPSTREAM || direction == Direction.BOTH) {</span>
             // Incoming: this node is the target
-<span class="fc" id="L337">            List&lt;TaxonomyRelation&gt; incoming =</span>
-<span class="fc" id="L338">                    relationRepository.findByTargetNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);</span>
-<span class="fc bfc" id="L339" title="All 2 branches covered.">            for (TaxonomyRelation r : incoming) {</span>
-<span class="fc" id="L340">                result.add(relationService.toDto(r));</span>
-<span class="fc" id="L341">            }</span>
+<span class="fc" id="L338">            List&lt;TaxonomyRelation&gt; incoming =</span>
+<span class="fc" id="L339">                    relationRepository.findByTargetNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);</span>
+<span class="fc bfc" id="L340" title="All 2 branches covered.">            for (TaxonomyRelation r : incoming) {</span>
+<span class="fc" id="L341">                result.add(relationService.toDto(r));</span>
+<span class="fc" id="L342">            }</span>
         }
 
         // Also add bidirectional relations traversed in the opposite direction
-<span class="fc bfc" id="L345" title="All 4 branches covered.">        if (direction == Direction.DOWNSTREAM || direction == Direction.BOTH) {</span>
-<span class="fc" id="L346">            List&lt;TaxonomyRelation&gt; incomingBidir =</span>
-<span class="fc" id="L347">                    relationRepository.findByTargetNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);</span>
-<span class="fc bfc" id="L348" title="All 2 branches covered.">            for (TaxonomyRelation r : incomingBidir) {</span>
-<span class="pc bpc" id="L349" title="1 of 2 branches missed.">                if (r.isBidirectional()) {</span>
-<span class="nc" id="L350">                    result.add(relationService.toDto(r));</span>
+<span class="fc bfc" id="L346" title="All 4 branches covered.">        if (direction == Direction.DOWNSTREAM || direction == Direction.BOTH) {</span>
+<span class="fc" id="L347">            List&lt;TaxonomyRelation&gt; incomingBidir =</span>
+<span class="fc" id="L348">                    relationRepository.findByTargetNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">            for (TaxonomyRelation r : incomingBidir) {</span>
+<span class="pc bpc" id="L350" title="1 of 2 branches missed.">                if (r.isBidirectional()) {</span>
+<span class="nc" id="L351">                    result.add(relationService.toDto(r));</span>
                 }
-<span class="fc" id="L352">            }</span>
+<span class="fc" id="L353">            }</span>
         }
 
-<span class="fc bfc" id="L355" title="All 4 branches covered.">        if (direction == Direction.UPSTREAM || direction == Direction.BOTH) {</span>
-<span class="fc" id="L356">            List&lt;TaxonomyRelation&gt; outgoingBidir =</span>
-<span class="fc" id="L357">                    relationRepository.findBySourceNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);</span>
-<span class="fc bfc" id="L358" title="All 2 branches covered.">            for (TaxonomyRelation r : outgoingBidir) {</span>
-<span class="pc bpc" id="L359" title="1 of 2 branches missed.">                if (r.isBidirectional()) {</span>
-<span class="nc" id="L360">                    result.add(relationService.toDto(r));</span>
+<span class="fc bfc" id="L356" title="All 4 branches covered.">        if (direction == Direction.UPSTREAM || direction == Direction.BOTH) {</span>
+<span class="fc" id="L357">            List&lt;TaxonomyRelation&gt; outgoingBidir =</span>
+<span class="fc" id="L358">                    relationRepository.findBySourceNodeCodeAndRelationTypeIn(nodeCode, WHITELISTED_TYPES);</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">            for (TaxonomyRelation r : outgoingBidir) {</span>
+<span class="pc bpc" id="L360" title="1 of 2 branches missed.">                if (r.isBidirectional()) {</span>
+<span class="nc" id="L361">                    result.add(relationService.toDto(r));</span>
                 }
-<span class="fc" id="L362">            }</span>
+<span class="fc" id="L363">            }</span>
         }
 
-<span class="fc" id="L365">        return result;</span>
+<span class="fc" id="L366">        return result;</span>
     }
 
     /**
      * Determines the traversal target given a relation and direction.
      */
     private String determineTarget(TaxonomyRelationDto rel, String nodeCode, Direction direction) {
-<span class="fc bfc" id="L372" title="All 3 branches covered.">        switch (direction) {</span>
+<span class="fc bfc" id="L373" title="All 3 branches covered.">        switch (direction) {</span>
             case DOWNSTREAM:
                 // Follow outgoing edges: source → target
-<span class="pc bpc" id="L375" title="1 of 2 branches missed.">                if (rel.getSourceCode().equals(nodeCode)) {</span>
-<span class="fc" id="L376">                    return rel.getTargetCode();</span>
+<span class="pc bpc" id="L376" title="1 of 2 branches missed.">                if (rel.getSourceCode().equals(nodeCode)) {</span>
+<span class="fc" id="L377">                    return rel.getTargetCode();</span>
                 }
                 // Bidirectional incoming can be traversed in reverse
-<span class="nc bnc" id="L379" title="All 4 branches missed.">                if (rel.getTargetCode().equals(nodeCode) &amp;&amp; rel.isBidirectional()) {</span>
-<span class="nc" id="L380">                    return rel.getSourceCode();</span>
+<span class="nc bnc" id="L380" title="All 4 branches missed.">                if (rel.getTargetCode().equals(nodeCode) &amp;&amp; rel.isBidirectional()) {</span>
+<span class="nc" id="L381">                    return rel.getSourceCode();</span>
                 }
-<span class="nc" id="L382">                return null;</span>
+<span class="nc" id="L383">                return null;</span>
 
             case UPSTREAM:
                 // Follow incoming edges: target ← source
-<span class="pc bpc" id="L386" title="1 of 2 branches missed.">                if (rel.getTargetCode().equals(nodeCode)) {</span>
-<span class="fc" id="L387">                    return rel.getSourceCode();</span>
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">                if (rel.getTargetCode().equals(nodeCode)) {</span>
+<span class="fc" id="L388">                    return rel.getSourceCode();</span>
                 }
                 // Bidirectional outgoing can be traversed in reverse
-<span class="nc bnc" id="L390" title="All 4 branches missed.">                if (rel.getSourceCode().equals(nodeCode) &amp;&amp; rel.isBidirectional()) {</span>
-<span class="nc" id="L391">                    return rel.getTargetCode();</span>
+<span class="nc bnc" id="L391" title="All 4 branches missed.">                if (rel.getSourceCode().equals(nodeCode) &amp;&amp; rel.isBidirectional()) {</span>
+<span class="nc" id="L392">                    return rel.getTargetCode();</span>
                 }
-<span class="nc" id="L393">                return null;</span>
+<span class="nc" id="L394">                return null;</span>
 
             case BOTH:
             default:
-<span class="fc bfc" id="L397" title="All 2 branches covered.">                if (rel.getSourceCode().equals(nodeCode)) {</span>
-<span class="fc" id="L398">                    return rel.getTargetCode();</span>
+<span class="fc bfc" id="L398" title="All 2 branches covered.">                if (rel.getSourceCode().equals(nodeCode)) {</span>
+<span class="fc" id="L399">                    return rel.getTargetCode();</span>
                 }
-<span class="pc bpc" id="L400" title="1 of 2 branches missed.">                if (rel.getTargetCode().equals(nodeCode)) {</span>
-<span class="fc" id="L401">                    return rel.getSourceCode();</span>
+<span class="pc bpc" id="L401" title="1 of 2 branches missed.">                if (rel.getTargetCode().equals(nodeCode)) {</span>
+<span class="fc" id="L402">                    return rel.getSourceCode();</span>
                 }
-<span class="nc" id="L403">                return null;</span>
+<span class="nc" id="L404">                return null;</span>
         }
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
     private List&lt;ImpactElement&gt; toImpactElements(TraversalResult traversal) {
-<span class="fc" id="L410">        List&lt;ImpactElement&gt; elements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L411">        List&lt;ImpactElement&gt; elements = new ArrayList&lt;&gt;();</span>
 
-<span class="fc bfc" id="L412" title="All 2 branches covered.">        for (Map.Entry&lt;String, Double&gt; entry : traversal.relevanceMap.entrySet()) {</span>
-<span class="fc" id="L413">            String code = entry.getKey();</span>
-<span class="fc" id="L414">            ImpactElement el = new ImpactElement();</span>
-<span class="fc" id="L415">            el.setNodeCode(code);</span>
-<span class="fc" id="L416">            el.setRelevance(entry.getValue());</span>
-<span class="fc" id="L417">            el.setHopDistance(traversal.hopMap.getOrDefault(code, 0));</span>
-<span class="fc" id="L418">            el.setIncludedBecause(traversal.reasonMap.getOrDefault(code, &quot;unknown&quot;));</span>
+<span class="fc bfc" id="L413" title="All 2 branches covered.">        for (Map.Entry&lt;String, Double&gt; entry : traversal.relevanceMap.entrySet()) {</span>
+<span class="fc" id="L414">            String code = entry.getKey();</span>
+<span class="fc" id="L415">            ImpactElement el = new ImpactElement();</span>
+<span class="fc" id="L416">            el.setNodeCode(code);</span>
+<span class="fc" id="L417">            el.setRelevance(entry.getValue());</span>
+<span class="fc" id="L418">            el.setHopDistance(traversal.hopMap.getOrDefault(code, 0));</span>
+<span class="fc" id="L419">            el.setIncludedBecause(traversal.reasonMap.getOrDefault(code, &quot;unknown&quot;));</span>
 
             // Lookup title and taxonomy sheet
-<span class="fc" id="L421">            nodeRepository.findByCode(code).ifPresent(node -&gt; {</span>
-<span class="fc" id="L422">                el.setTitle(node.getNameEn());</span>
-<span class="fc" id="L423">                el.setTaxonomySheet(node.getTaxonomyRoot());</span>
-<span class="fc" id="L424">            });</span>
+<span class="fc" id="L422">            nodeRepository.findByCode(code).ifPresent(node -&gt; {</span>
+<span class="fc" id="L423">                el.setTitle(node.getNameEn());</span>
+<span class="fc" id="L424">                el.setTaxonomySheet(node.getTaxonomyRoot());</span>
+<span class="fc" id="L425">            });</span>
 
-<span class="fc" id="L426">            elements.add(el);</span>
-<span class="fc" id="L427">        }</span>
+<span class="fc" id="L427">            elements.add(el);</span>
+<span class="fc" id="L428">        }</span>
 
         // Sort by relevance descending
-<span class="fc" id="L430">        elements.sort(Comparator.comparingDouble(ImpactElement::getRelevance).reversed());</span>
+<span class="fc" id="L431">        elements.sort(Comparator.comparingDouble(ImpactElement::getRelevance).reversed());</span>
 
-<span class="fc" id="L432">        return elements;</span>
+<span class="fc" id="L433">        return elements;</span>
     }
 
     private List&lt;Map.Entry&lt;String, Integer&gt;&gt; selectAnchors(Map&lt;String, Integer&gt; scores) {
         // Sort by score descending
-<span class="fc" id="L437">        List&lt;Map.Entry&lt;String, Integer&gt;&gt; sorted = scores.entrySet().stream()</span>
-<span class="fc" id="L438">                .sorted(Map.Entry.&lt;String, Integer&gt;comparingByValue().reversed())</span>
-<span class="fc" id="L439">                .collect(Collectors.toList());</span>
+<span class="fc" id="L438">        List&lt;Map.Entry&lt;String, Integer&gt;&gt; sorted = scores.entrySet().stream()</span>
+<span class="fc" id="L439">                .sorted(Map.Entry.&lt;String, Integer&gt;comparingByValue().reversed())</span>
+<span class="fc" id="L440">                .collect(Collectors.toList());</span>
 
         // Prefer all nodes above HIGH threshold
-<span class="fc" id="L442">        List&lt;Map.Entry&lt;String, Integer&gt;&gt; highAnchors = sorted.stream()</span>
-<span class="pc bpc" id="L443" title="1 of 2 branches missed.">                .filter(e -&gt; e.getValue() &gt;= ANCHOR_THRESHOLD_HIGH)</span>
-<span class="fc" id="L444">                .collect(Collectors.toList());</span>
+<span class="fc" id="L443">        List&lt;Map.Entry&lt;String, Integer&gt;&gt; highAnchors = sorted.stream()</span>
+<span class="pc bpc" id="L444" title="1 of 2 branches missed.">                .filter(e -&gt; e.getValue() &gt;= ANCHOR_THRESHOLD_HIGH)</span>
+<span class="fc" id="L445">                .collect(Collectors.toList());</span>
 
-<span class="pc bpc" id="L446" title="1 of 2 branches missed.">        if (highAnchors.size() &gt;= MIN_ANCHORS) {</span>
-<span class="nc" id="L447">            return highAnchors;</span>
+<span class="pc bpc" id="L447" title="1 of 2 branches missed.">        if (highAnchors.size() &gt;= MIN_ANCHORS) {</span>
+<span class="nc" id="L448">            return highAnchors;</span>
         }
 
         // Fallback: top-N above LOW threshold
-<span class="fc" id="L451">        List&lt;Map.Entry&lt;String, Integer&gt;&gt; lowAnchors = sorted.stream()</span>
-<span class="pc bpc" id="L452" title="1 of 2 branches missed.">                .filter(e -&gt; e.getValue() &gt;= ANCHOR_THRESHOLD_LOW)</span>
-<span class="fc" id="L453">                .limit(MIN_ANCHORS)</span>
-<span class="fc" id="L454">                .collect(Collectors.toList());</span>
+<span class="fc" id="L452">        List&lt;Map.Entry&lt;String, Integer&gt;&gt; lowAnchors = sorted.stream()</span>
+<span class="pc bpc" id="L453" title="1 of 2 branches missed.">                .filter(e -&gt; e.getValue() &gt;= ANCHOR_THRESHOLD_LOW)</span>
+<span class="fc" id="L454">                .limit(MIN_ANCHORS)</span>
+<span class="fc" id="L455">                .collect(Collectors.toList());</span>
 
-<span class="fc" id="L456">        return lowAnchors;</span>
+<span class="fc" id="L457">        return lowAnchors;</span>
     }
 
     private int clampHops(int maxHops) {
-<span class="fc" id="L460">        return Math.max(1, Math.min(maxHops, MAX_HOP_LIMIT));</span>
+<span class="fc" id="L461">        return Math.max(1, Math.min(maxHops, MAX_HOP_LIMIT));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

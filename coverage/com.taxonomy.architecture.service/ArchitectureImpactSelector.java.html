@@ -51,7 +51,7 @@ import java.util.stream.Collectors;
 
     /**
      * Selects the most impactful nodes from the full element list and marks
-     * them with {@link NodeOrigin#IMPACT_SELECTED}.
+     * them with {@link NodeOrigin#IMPACT_PROMOTED}.
      *
      * @param elements           all elements from the architecture view
      * @param allScores          full LLM score map (nodeCode → 0–100)
@@ -100,7 +100,7 @@ import java.util.stream.Collectors;
 <span class="fc" id="L100">                el.setSelectedForImpact(true);</span>
 <span class="fc bfc" id="L101" title="All 4 branches covered.">                if (el.getOrigin() == null || el.getOrigin() == NodeOrigin.PROPAGATED</span>
 <span class="pc bpc" id="L102" title="1 of 2 branches missed.">                        || el.getOrigin() == NodeOrigin.TRACE_INTERMEDIATE) {</span>
-<span class="fc" id="L103">                    el.setOrigin(NodeOrigin.IMPACT_SELECTED);</span>
+<span class="fc" id="L103">                    el.setOrigin(NodeOrigin.IMPACT_PROMOTED);</span>
                 }
 <span class="fc" id="L105">                el.setSpecificityScore(se.score());</span>
 <span class="fc" id="L106">                el.setPresenceReason(buildPresenceReason(el, se.score()));</span>

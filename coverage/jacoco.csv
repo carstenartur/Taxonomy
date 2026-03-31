@@ -155,7 +155,7 @@ Taxonomy Application,com.taxonomy.architecture.service,ArchitectureImpactSelecto
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureImpactSelector,3,512,9,59,0,86,9,42,0,17
 Taxonomy Application,com.taxonomy.architecture.service,ScoringTraceSelector,7,200,3,17,2,45,2,12,0,4
 Taxonomy Application,com.taxonomy.architecture.service,DerivedMetadataService,42,164,3,17,9,39,5,11,2,4
-Taxonomy Application,com.taxonomy.architecture.service,RequirementArchitectureViewService,232,1924,57,209,54,398,52,112,3,28
+Taxonomy Application,com.taxonomy.architecture.service,RequirementArchitectureViewService,229,1918,57,209,53,396,52,112,3,28
 Taxonomy Application,com.taxonomy.architecture.service,ImpactEndpointSelector,2,134,3,21,0,29,3,12,0,3
 Taxonomy Application,com.taxonomy.architecture.service,ImpactEndpointSelector.new Record() {...},0,9,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService.PatternStep,0,20,0,0,0,2,0,2,0,2
