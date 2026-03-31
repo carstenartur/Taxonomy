@@ -223,7 +223,9 @@ DSL-Dokumente werden mit JGit versioniert, wobei alle Git-Objekte in der Datenba
 
 Eine vorläufige Beziehung, die während der LLM-Analyse generiert wird. Im Gegensatz zu [Beziehungsvorschlägen](#beziehungsvorschlag) (die auf Abruf generiert werden) werden Hypothesen automatisch als Teil der Analyse-Pipeline erstellt.
 
-Hypothesen durchlaufen einen Lebenszyklus: **PENDING** → **ACCEPTED** (erstellt eine bestätigte `TaxonomyRelation`), **REJECTED** (verworfen) oder **APPLIED** (nur für die aktuelle Sitzung angewendet, ohne Persistierung).
+Hypothesen durchlaufen einen Lebenszyklus: **PROVISIONAL** → **ACCEPTED** (erstellt eine bestätigte `TaxonomyRelation`) oder **REJECTED** (verworfen). Ein transienter `appliedInCurrentAnalysis`-Flag ermöglicht die Anwendung einer Hypothese nur für die aktuelle Sitzung, ohne sie als TaxonomyRelation zu persistieren.
+
+Eine detaillierte Beschreibung der vollständigen Entscheidungspipeline finden Sie unter [Entscheidungspipeline](DECISION_PIPELINE.md).
 
 ---
 

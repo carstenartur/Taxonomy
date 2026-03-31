@@ -223,7 +223,9 @@ DSL documents are version-controlled using JGit with all Git objects stored in t
 
 A provisional relation generated during LLM analysis. Unlike [Relation Proposals](#relation-proposal) (which are generated on demand), hypotheses are created automatically as part of the analysis pipeline.
 
-Hypotheses follow a lifecycle: **PENDING** → **ACCEPTED** (creates a confirmed `TaxonomyRelation`), **REJECTED** (discarded), or **APPLIED** (applied for the current session only, without persisting).
+Hypotheses follow a lifecycle: **PROVISIONAL** → **ACCEPTED** (creates a confirmed `TaxonomyRelation`) or **REJECTED** (discarded). A transient `appliedInCurrentAnalysis` flag allows applying a hypothesis for the current session only, without persisting it as a TaxonomyRelation.
+
+For a detailed description of the full decision pipeline, see [Decision Pipeline](DECISION_PIPELINE.md).
 
 ---
 

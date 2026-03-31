@@ -141,6 +141,11 @@ flowchart TD
    - `VisioDiagramService` → Visio `.vsdx`
    - `MermaidExportService` → Mermaid-Flussdiagramm (`.md`)
 
+> 📖 Für eine detaillierte Dokumentation aller Pipeline-Schritte,
+> Konstanten, des Propagierungsalgorithmus, der Wirkungsauswahl-Formel,
+> des Beziehungslebenszyklus und des Persistenzmodells siehe
+> **[Entscheidungspipeline](DECISION_PIPELINE.md)**.
+
 ---
 
 ## Modularchitektur

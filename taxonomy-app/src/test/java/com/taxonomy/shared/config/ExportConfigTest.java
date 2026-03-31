@@ -68,7 +68,7 @@ class ExportConfigTest {
     void viewMetadataResolvedForDefaultImpact() {
         when(prefs.getString("diagram.policy", "defaultImpact")).thenReturn("defaultImpact");
         DiagramViewMetadata meta = ExportConfig.resolveViewMetadata(prefs);
-        assertThat(meta.viewTitle()).isEqualTo("Architecture Impact View");
+        assertThat(meta.viewTitle()).isEqualTo("archview.policy.title.defaultImpact");
         assertThat(meta.policyKey()).isEqualTo("defaultImpact");
         assertThat(meta.containmentEnabled()).isTrue();
     }
@@ -77,7 +77,7 @@ class ExportConfigTest {
     void viewMetadataResolvedForClustering() {
         when(prefs.getString("diagram.policy", "defaultImpact")).thenReturn("clustering");
         DiagramViewMetadata meta = ExportConfig.resolveViewMetadata(prefs);
-        assertThat(meta.viewTitle()).isEqualTo("Clustered Impact View");
+        assertThat(meta.viewTitle()).isEqualTo("archview.policy.title.clustering");
         assertThat(meta.policyKey()).isEqualTo("clustering");
     }
 
@@ -85,7 +85,7 @@ class ExportConfigTest {
     void viewMetadataResolvedForTrace() {
         when(prefs.getString("diagram.policy", "defaultImpact")).thenReturn("trace");
         DiagramViewMetadata meta = ExportConfig.resolveViewMetadata(prefs);
-        assertThat(meta.viewTitle()).isEqualTo("Scoring Trace");
+        assertThat(meta.viewTitle()).isEqualTo("archview.policy.title.trace");
         assertThat(meta.containmentEnabled()).isFalse();
     }
 }

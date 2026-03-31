@@ -742,14 +742,14 @@
         // ── View title + legend (generated from the active policy) ──
         if (view.viewTitle) {
             html += '<div class="archview-header mb-2">';
-            html += '<h6 class="archview-title mb-1">' + escapeHtml(view.viewTitle) + '</h6>';
+            html += '<h6 class="archview-title mb-1">' + escapeHtml(t(view.viewTitle)) + '</h6>';
             if (view.viewDescription) {
-                html += '<p class="archview-description text-muted small mb-1">' + escapeHtml(view.viewDescription) + '</p>';
+                html += '<p class="archview-description text-muted small mb-1">' + escapeHtml(t(view.viewDescription)) + '</p>';
             }
             if (view.activeRules && view.activeRules.length > 0) {
                 html += '<div class="archview-legend small">';
                 view.activeRules.forEach(function (rule) {
-                    html += '<span class="badge bg-light text-dark border me-1 mb-1">' + escapeHtml(rule) + '</span>';
+                    html += '<span class="badge bg-light text-dark border me-1 mb-1">' + escapeHtml(t(rule)) + '</span>';
                 });
                 html += '</div>';
             }
@@ -815,10 +815,10 @@
 
         // ── Part 1: Impact Summary Bar ──
         html += '<div class="impact-summary-bar">';
-        html += '<span class="impact-kpi">🎯 ' + anchors.length + ' direct matches</span>';
-        html += '<span class="impact-kpi">📦 ' + elements.length + ' affected elements</span>';
-        html += '<span class="impact-kpi">🔗 ' + relationships.length + ' relations</span>';
-        html += '<span class="impact-kpi">🏗️ ' + sortedSheets.length + ' layers</span>';
+        html += '<span class="impact-kpi">🎯 ' + anchors.length + ' ' + t('archview.kpi.direct.matches') + '</span>';
+        html += '<span class="impact-kpi">📦 ' + elements.length + ' ' + t('archview.kpi.affected.elements') + '</span>';
+        html += '<span class="impact-kpi">🔗 ' + relationships.length + ' ' + t('archview.kpi.relations') + '</span>';
+        html += '<span class="impact-kpi">🏗️ ' + sortedSheets.length + ' ' + t('archview.kpi.layers') + '</span>';
         if (hotspotCodes.size > 0) {
             // Show concrete hotspot element names, not just a count
             var hotspotNames = [];
@@ -951,11 +951,11 @@
             // ── Architecture Impact section (always open) ──
             if (impactElements.length > 0 || relationships.filter(function(r) { return r.relationCategory === 'impact'; }).length > 0) {
                 html += '<details class="impact-details" open>';
-                html += '<summary>🎯 Architecture Impact: ' + impactElements.length + ' Elements, ' +
-                    relationships.filter(function(r) { return r.relationCategory === 'impact'; }).length + ' Relations</summary>';
+                html += '<summary>🎯 ' + t('archview.section.impact') + ': ' + impactElements.length + ' ' + t('archview.section.elements') + ', ' +
+                    relationships.filter(function(r) { return r.relationCategory === 'impact'; }).length + ' ' + t('archview.section.relations') + '</summary>';
 
                 if (impactElements.length > 0) {
-                    html += '<h6 class="mb-1 mt-2">Impact Elements</h6>';
+                    html += '<h6 class="mb-1 mt-2">' + t('archview.impact.elements.title') + '</h6>';
                     html += renderElementsTable(impactElements, hotspotCodes);
                 }
 
@@ -989,11 +989,11 @@
 
             if (traceElements.length > 0 || traceRels.length > 0 || seedRels.length > 0) {
                 html += '<details class="impact-details mt-2">';
-                html += '<summary>🔍 Scoring Trace: ' + traceElements.length + ' Elements, ' +
-                    (traceRels.length + seedRels.length) + ' Relations</summary>';
+                html += '<summary>🔍 ' + t('archview.section.trace') + ': ' + traceElements.length + ' ' + t('archview.section.elements') + ', ' +
+                    (traceRels.length + seedRels.length) + ' ' + t('archview.section.relations') + '</summary>';
 
                 if (traceElements.length > 0) {
-                    html += '<h6 class="mb-1 mt-2">Trace Elements</h6>';
+                    html += '<h6 class="mb-1 mt-2">' + t('archview.trace.elements.title') + '</h6>';
                     html += renderElementsTable(traceElements, hotspotCodes);
                 }
 
