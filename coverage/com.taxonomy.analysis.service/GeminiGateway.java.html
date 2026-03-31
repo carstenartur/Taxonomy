@@ -7,10 +7,12 @@ import org.springframework.http.*;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import com.taxonomy.preferences.PreferencesService;
 
+import java.net.SocketTimeoutException;
 import java.util.*;
 
 /**
@@ -25,7 +27,7 @@ import java.util.*;
  */
 public class GeminiGateway implements LlmGateway {
 
-<span class="fc" id="L28">    private static final Logger log = LoggerFactory.getLogger(GeminiGateway.class);</span>
+<span class="fc" id="L30">    private static final Logger log = LoggerFactory.getLogger(GeminiGateway.class);</span>
 
     /** Buffer added to the sleep duration in the RPM throttle (ms). */
     private static final long THROTTLE_BUFFER_MS = 50L;
@@ -42,7 +44,7 @@ public class GeminiGateway implements LlmGateway {
     private final LlmRecordReplayService recordReplayService;
 
     /** Sliding-window timestamps for per-gateway RPM throttling. */
-<span class="fc" id="L45">    private final ArrayDeque&lt;Long&gt; callTimestamps = new ArrayDeque&lt;&gt;();</span>
+<span class="fc" id="L47">    private final ArrayDeque&lt;Long&gt; callTimestamps = new ArrayDeque&lt;&gt;();</span>
 
     public GeminiGateway(LlmProviderConfig providerConfig,
                          RestTemplate restTemplate,
@@ -50,99 +52,137 @@ public class GeminiGateway implements LlmGateway {
                          LlmResponseParser responseParser,
                          PreferencesService preferencesService,
                          SimpleClientHttpRequestFactory llmRequestFactory,
-<span class="fc" id="L53">                         LlmRecordReplayService recordReplayService) {</span>
-<span class="fc" id="L54">        this.providerConfig = providerConfig;</span>
-<span class="fc" id="L55">        this.restTemplate = restTemplate;</span>
-<span class="fc" id="L56">        this.objectMapper = objectMapper;</span>
-<span class="fc" id="L57">        this.responseParser = responseParser;</span>
-<span class="fc" id="L58">        this.preferencesService = preferencesService;</span>
-<span class="fc" id="L59">        this.llmRequestFactory = llmRequestFactory;</span>
-<span class="fc" id="L60">        this.recordReplayService = recordReplayService;</span>
-<span class="fc" id="L61">    }</span>
+<span class="fc" id="L55">                         LlmRecordReplayService recordReplayService) {</span>
+<span class="fc" id="L56">        this.providerConfig = providerConfig;</span>
+<span class="fc" id="L57">        this.restTemplate = restTemplate;</span>
+<span class="fc" id="L58">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L59">        this.responseParser = responseParser;</span>
+<span class="fc" id="L60">        this.preferencesService = preferencesService;</span>
+<span class="fc" id="L61">        this.llmRequestFactory = llmRequestFactory;</span>
+<span class="fc" id="L62">        this.recordReplayService = recordReplayService;</span>
+<span class="fc" id="L63">    }</span>
 
     @Override
     public String providerName() {
-<span class="fc" id="L65">        return &quot;GEMINI&quot;;</span>
+<span class="fc" id="L67">        return &quot;GEMINI&quot;;</span>
     }
 
     @Override
     public String extractResponseText(String rawResponseBody) {
-<span class="fc" id="L70">        return responseParser.extractGeminiText(rawResponseBody);</span>
+<span class="fc" id="L72">        return responseParser.extractGeminiText(rawResponseBody);</span>
     }
 
     @Override
     public String sendHttpRequest(String prompt, String apiKey) {
         // REPLAY: return a previously recorded response — skips throttle and real API call.
-<span class="pc bpc" id="L76" title="1 of 4 branches missed.">        if (recordReplayService != null &amp;&amp; recordReplayService.isReplayMode()) {</span>
-<span class="fc" id="L77">            Optional&lt;String&gt; recorded = recordReplayService.replay(prompt);</span>
-<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (recorded.isPresent()) return recorded.get();</span>
-<span class="pc bpc" id="L79" title="1 of 2 branches missed.">            if (!recordReplayService.isFallbackLive()) {</span>
-<span class="fc" id="L80">                log.warn(&quot;No LLM recording found for prompt hash — no fallback configured&quot;);</span>
-<span class="fc" id="L81">                return null;</span>
+<span class="pc bpc" id="L78" title="1 of 4 branches missed.">        if (recordReplayService != null &amp;&amp; recordReplayService.isReplayMode()) {</span>
+<span class="fc" id="L79">            Optional&lt;String&gt; recorded = recordReplayService.replay(prompt);</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (recorded.isPresent()) return recorded.get();</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            if (!recordReplayService.isFallbackLive()) {</span>
+<span class="fc" id="L82">                log.warn(&quot;No LLM recording found for prompt hash — no fallback configured&quot;);</span>
+<span class="fc" id="L83">                return null;</span>
             }
-<span class="nc" id="L83">            log.warn(&quot;No LLM recording found for prompt hash — falling back to live API&quot;);</span>
+<span class="nc" id="L85">            log.warn(&quot;No LLM recording found for prompt hash — falling back to live API&quot;);</span>
         }
 
         // Real API path — throttle to respect RPM rate limits
-<span class="fc" id="L87">        throttle();</span>
-<span class="fc" id="L88">        applyCurrentTimeout();</span>
+<span class="fc" id="L89">        throttle();</span>
+<span class="fc" id="L90">        applyCurrentTimeout();</span>
 
-<span class="fc" id="L90">        Map&lt;String, Object&gt; body    = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L91">        Map&lt;String, Object&gt; content = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L92">        Map&lt;String, Object&gt; part    = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc" id="L93">        part.put(&quot;text&quot;, prompt);</span>
-<span class="fc" id="L94">        content.put(&quot;parts&quot;, List.of(part));</span>
-<span class="fc" id="L95">        body.put(&quot;contents&quot;, List.of(content));</span>
+<span class="fc" id="L92">        Map&lt;String, Object&gt; body    = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L93">        Map&lt;String, Object&gt; content = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L94">        Map&lt;String, Object&gt; part    = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L95">        part.put(&quot;text&quot;, prompt);</span>
+<span class="fc" id="L96">        content.put(&quot;parts&quot;, List.of(part));</span>
+<span class="fc" id="L97">        body.put(&quot;contents&quot;, List.of(content));</span>
 
-<span class="fc" id="L97">        HttpHeaders headers = new HttpHeaders();</span>
-<span class="fc" id="L98">        headers.setContentType(MediaType.APPLICATION_JSON);</span>
+<span class="fc" id="L99">        HttpHeaders headers = new HttpHeaders();</span>
+<span class="fc" id="L100">        headers.setContentType(MediaType.APPLICATION_JSON);</span>
         try {
-<span class="fc" id="L100">            HttpEntity&lt;String&gt; entity = new HttpEntity&lt;&gt;(objectMapper.writeValueAsString(body), headers);</span>
+<span class="fc" id="L102">            HttpEntity&lt;String&gt; entity = new HttpEntity&lt;&gt;(objectMapper.writeValueAsString(body), headers);</span>
 
-            ResponseEntity&lt;String&gt; response;
-            try {
-<span class="fc" id="L104">                response = restTemplate.exchange(</span>
-<span class="fc" id="L105">                        providerConfig.getGeminiUrl() + apiKey, HttpMethod.POST, entity, String.class);</span>
-<span class="fc" id="L106">            } catch (HttpClientErrorException e) {</span>
-<span class="pc bpc" id="L107" title="1 of 2 branches missed.">                if (e.getStatusCode().value() == 429) {</span>
-<span class="fc" id="L108">                    throw new LlmRateLimitException(</span>
-<span class="fc" id="L109">                            &quot;Gemini rate limit (HTTP 429): &quot; + e.getResponseBodyAsString(), e);</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">            int maxRetries = preferencesService != null</span>
+<span class="pc" id="L105">                    ? preferencesService.getInt(&quot;llm.retry.max&quot;, 2) : 2;</span>
+<span class="fc" id="L106">            int attempt = 0;</span>
+            while (true) {
+                ResponseEntity&lt;String&gt; response;
+                try {
+<span class="fc" id="L110">                    response = restTemplate.exchange(</span>
+<span class="fc" id="L111">                            providerConfig.getGeminiUrl() + apiKey, HttpMethod.POST, entity, String.class);</span>
+<span class="fc" id="L112">                } catch (HttpClientErrorException e) {</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">                    if (e.getStatusCode().value() == 429) {</span>
+<span class="fc" id="L114">                        throw new LlmRateLimitException(</span>
+<span class="fc" id="L115">                                &quot;Gemini rate limit (HTTP 429): &quot; + e.getResponseBodyAsString(), e);</span>
+                    }
+<span class="nc" id="L117">                    throw new RuntimeException(&quot;Gemini API error &quot; + e.getStatusCode() + &quot;: &quot; +</span>
+<span class="nc" id="L118">                            e.getResponseBodyAsString(), e);</span>
+<span class="fc" id="L119">                } catch (HttpServerErrorException e) {</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                    if (attempt &lt; maxRetries) {</span>
+<span class="fc" id="L121">                        attempt++;</span>
+<span class="fc" id="L122">                        long backoffMs = 1000L * (1L &lt;&lt; (attempt - 1));</span>
+<span class="fc" id="L123">                        log.warn(&quot;Gemini API server error {} — retry {}/{} after {}ms&quot;,</span>
+<span class="fc" id="L124">                                e.getStatusCode(), attempt, maxRetries, backoffMs);</span>
+                        try {
+<span class="fc" id="L126">                            Thread.sleep(backoffMs);</span>
+<span class="nc" id="L127">                        } catch (InterruptedException ie) {</span>
+<span class="nc" id="L128">                            Thread.currentThread().interrupt();</span>
+<span class="fc" id="L129">                        }</span>
+<span class="fc" id="L130">                        continue;</span>
+                    }
+<span class="fc" id="L132">                    throw new RuntimeException(&quot;Gemini API server error &quot; + e.getStatusCode() + &quot;: &quot; +</span>
+<span class="fc" id="L133">                            e.getResponseBodyAsString(), e);</span>
+<span class="fc" id="L134">                } catch (ResourceAccessException e) {</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">                    if (e.getCause() instanceof SocketTimeoutException) {</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">                        int timeoutSeconds = preferencesService != null</span>
+<span class="pc" id="L137">                                ? preferencesService.getInt(&quot;llm.timeout.seconds&quot;, 60) : 60;</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                        if (attempt &lt; maxRetries) {</span>
+<span class="fc" id="L139">                            attempt++;</span>
+<span class="fc" id="L140">                            long backoffMs = 1000L * (1L &lt;&lt; (attempt - 1));</span>
+<span class="fc" id="L141">                            log.warn(&quot;Gemini API read timeout after {}s — retry {}/{} after {}ms&quot;,</span>
+<span class="fc" id="L142">                                    timeoutSeconds, attempt, maxRetries, backoffMs);</span>
+                            try {
+<span class="fc" id="L144">                                Thread.sleep(backoffMs);</span>
+<span class="nc" id="L145">                            } catch (InterruptedException ie) {</span>
+<span class="nc" id="L146">                                Thread.currentThread().interrupt();</span>
+<span class="fc" id="L147">                            }</span>
+<span class="fc" id="L148">                            continue;</span>
+                        }
+<span class="fc" id="L150">                        throw new LlmTimeoutException(</span>
+                                &quot;Gemini API call timed out after &quot; + timeoutSeconds + &quot;s. &quot;
+                                + &quot;You can increase the timeout in Preferences → llm.timeout.seconds.&quot;, e);
+                    }
+<span class="nc" id="L154">                    throw e;</span>
+<span class="fc" id="L155">                }</span>
+
+<span class="fc" id="L157">                String responseBody = response.getBody();</span>
+
+<span class="pc bpc" id="L159" title="1 of 4 branches missed.">                if (responseBody != null &amp;&amp; responseBody.contains(&quot;RESOURCE_EXHAUSTED&quot;)) {</span>
+<span class="fc" id="L160">                    throw new LlmRateLimitException(&quot;Gemini quota exhausted: &quot; + responseBody);</span>
                 }
-<span class="nc" id="L111">                throw new RuntimeException(&quot;Gemini API error &quot; + e.getStatusCode() + &quot;: &quot; +</span>
-<span class="nc" id="L112">                        e.getResponseBodyAsString(), e);</span>
-<span class="nc" id="L113">            } catch (HttpServerErrorException e) {</span>
-<span class="nc" id="L114">                throw new RuntimeException(&quot;Gemini API server error &quot; + e.getStatusCode() + &quot;: &quot; +</span>
-<span class="nc" id="L115">                        e.getResponseBodyAsString(), e);</span>
-<span class="fc" id="L116">            }</span>
-
-<span class="fc" id="L118">            String responseBody = response.getBody();</span>
-
-<span class="pc bpc" id="L120" title="1 of 4 branches missed.">            if (responseBody != null &amp;&amp; responseBody.contains(&quot;RESOURCE_EXHAUSTED&quot;)) {</span>
-<span class="fc" id="L121">                throw new LlmRateLimitException(&quot;Gemini quota exhausted: &quot; + responseBody);</span>
-            }
-<span class="pc bpc" id="L123" title="2 of 4 branches missed.">            if (responseBody != null &amp;&amp; responseBody.contains(&quot;\&quot;error\&quot;&quot;)) {</span>
-<span class="nc" id="L124">                log.error(&quot;Gemini API returned error in body: {}&quot;, responseBody);</span>
-<span class="nc" id="L125">                return null;</span>
-            }
-
-<span class="pc bpc" id="L128" title="2 of 4 branches missed.">            if (response.getStatusCode().is2xxSuccessful() &amp;&amp; responseBody != null) {</span>
-<span class="fc" id="L129">                log.info(&quot;LLM Response [GEMINI] — raw response (first 500 chars): {}&quot;,</span>
-<span class="fc" id="L130">                        responseBody.substring(0, Math.min(responseBody.length(), 500)));</span>
-
-                // RECORD: persist prompt + response for future replay.
-<span class="pc bpc" id="L133" title="1 of 4 branches missed.">                if (recordReplayService != null &amp;&amp; recordReplayService.isRecordMode()) {</span>
-<span class="fc" id="L134">                    recordReplayService.record(prompt, responseBody, &quot;GEMINI&quot;, null);</span>
+<span class="pc bpc" id="L162" title="2 of 4 branches missed.">                if (responseBody != null &amp;&amp; responseBody.contains(&quot;\&quot;error\&quot;&quot;)) {</span>
+<span class="nc" id="L163">                    log.error(&quot;Gemini API returned error in body: {}&quot;, responseBody);</span>
+<span class="nc" id="L164">                    return null;</span>
                 }
 
-<span class="fc" id="L137">                return responseBody;</span>
+<span class="pc bpc" id="L167" title="2 of 4 branches missed.">                if (response.getStatusCode().is2xxSuccessful() &amp;&amp; responseBody != null) {</span>
+<span class="fc" id="L168">                    log.info(&quot;LLM Response [GEMINI] — raw response (first 500 chars): {}&quot;,</span>
+<span class="fc" id="L169">                            responseBody.substring(0, Math.min(responseBody.length(), 500)));</span>
+
+                    // RECORD: persist prompt + response for future replay.
+<span class="pc bpc" id="L172" title="1 of 4 branches missed.">                    if (recordReplayService != null &amp;&amp; recordReplayService.isRecordMode()) {</span>
+<span class="fc" id="L173">                        recordReplayService.record(prompt, responseBody, &quot;GEMINI&quot;, null);</span>
+                    }
+
+<span class="fc" id="L176">                    return responseBody;</span>
+                }
+<span class="nc" id="L178">                log.error(&quot;Gemini API returned status {}&quot;, response.getStatusCode());</span>
+<span class="nc" id="L179">                return null;</span>
             }
-<span class="nc" id="L139">            log.error(&quot;Gemini API returned status {}&quot;, response.getStatusCode());</span>
-<span class="nc" id="L140">            return null;</span>
-<span class="fc" id="L141">        } catch (LlmRateLimitException e) {</span>
-<span class="fc" id="L142">            throw e;</span>
-<span class="nc" id="L143">        } catch (Exception e) {</span>
-<span class="nc" id="L144">            log.error(&quot;Error calling Gemini API&quot;, e);</span>
-<span class="nc" id="L145">            return null;</span>
+<span class="fc" id="L181">        } catch (LlmRateLimitException | LlmTimeoutException e) {</span>
+<span class="fc" id="L182">            throw e;</span>
+<span class="fc" id="L183">        } catch (Exception e) {</span>
+<span class="fc" id="L184">            log.error(&quot;Error calling Gemini API&quot;, e);</span>
+<span class="fc" id="L185">            return null;</span>
         }
     }
 
@@ -153,38 +193,38 @@ public class GeminiGateway implements LlmGateway {
      * {@code llm.rpm} preference (default {@value DEFAULT_RPM} for Gemini free tier).
      */
     synchronized void throttle() {
-<span class="fc bfc" id="L156" title="All 2 branches covered.">        if (preferencesService == null) return;</span>
-<span class="fc" id="L157">        int rpm = preferencesService.getInt(&quot;llm.rpm&quot;, DEFAULT_RPM);</span>
-<span class="fc bfc" id="L158" title="All 2 branches covered.">        if (rpm &lt;= 0) return;</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        if (preferencesService == null) return;</span>
+<span class="fc" id="L197">        int rpm = preferencesService.getInt(&quot;llm.rpm&quot;, DEFAULT_RPM);</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (rpm &lt;= 0) return;</span>
 
-<span class="fc" id="L160">        long now = System.currentTimeMillis();</span>
-<span class="fc" id="L161">        long windowStart = now - 60_000L;</span>
+<span class="fc" id="L200">        long now = System.currentTimeMillis();</span>
+<span class="fc" id="L201">        long windowStart = now - 60_000L;</span>
 
-<span class="pc bpc" id="L163" title="3 of 4 branches missed.">        while (!callTimestamps.isEmpty() &amp;&amp; callTimestamps.peekFirst() &lt; windowStart) {</span>
-<span class="nc" id="L164">            callTimestamps.pollFirst();</span>
+<span class="pc bpc" id="L203" title="3 of 4 branches missed.">        while (!callTimestamps.isEmpty() &amp;&amp; callTimestamps.peekFirst() &lt; windowStart) {</span>
+<span class="nc" id="L204">            callTimestamps.pollFirst();</span>
         }
 
-<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        if (callTimestamps.size() &gt;= rpm) {</span>
-<span class="nc" id="L168">            long oldest = callTimestamps.peekFirst();</span>
-<span class="nc" id="L169">            long sleepMs = oldest + 60_000L - System.currentTimeMillis() + THROTTLE_BUFFER_MS;</span>
-<span class="nc bnc" id="L170" title="All 2 branches missed.">            if (sleepMs &gt; 0) {</span>
-<span class="nc" id="L171">                log.debug(&quot;Gemini RPM throttle: sleeping {}ms (rpm={}, calls in window={})&quot;,</span>
-<span class="nc" id="L172">                        sleepMs, rpm, callTimestamps.size());</span>
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">        if (callTimestamps.size() &gt;= rpm) {</span>
+<span class="nc" id="L208">            long oldest = callTimestamps.peekFirst();</span>
+<span class="nc" id="L209">            long sleepMs = oldest + 60_000L - System.currentTimeMillis() + THROTTLE_BUFFER_MS;</span>
+<span class="nc bnc" id="L210" title="All 2 branches missed.">            if (sleepMs &gt; 0) {</span>
+<span class="nc" id="L211">                log.debug(&quot;Gemini RPM throttle: sleeping {}ms (rpm={}, calls in window={})&quot;,</span>
+<span class="nc" id="L212">                        sleepMs, rpm, callTimestamps.size());</span>
                 try {
-<span class="nc" id="L174">                    Thread.sleep(sleepMs);</span>
-<span class="nc" id="L175">                } catch (InterruptedException e) {</span>
-<span class="nc" id="L176">                    Thread.currentThread().interrupt();</span>
-<span class="nc" id="L177">                }</span>
+<span class="nc" id="L214">                    Thread.sleep(sleepMs);</span>
+<span class="nc" id="L215">                } catch (InterruptedException e) {</span>
+<span class="nc" id="L216">                    Thread.currentThread().interrupt();</span>
+<span class="nc" id="L217">                }</span>
             }
         }
 
-<span class="fc" id="L181">        callTimestamps.addLast(System.currentTimeMillis());</span>
-<span class="fc" id="L182">    }</span>
+<span class="fc" id="L221">        callTimestamps.addLast(System.currentTimeMillis());</span>
+<span class="fc" id="L222">    }</span>
 
     private void applyCurrentTimeout() {
-<span class="pc bpc" id="L185" title="2 of 4 branches missed.">        if (preferencesService == null || llmRequestFactory == null) return;</span>
-<span class="fc" id="L186">        int timeoutSeconds = preferencesService.getInt(&quot;llm.timeout.seconds&quot;, 30);</span>
-<span class="fc" id="L187">        llmRequestFactory.setReadTimeout(timeoutSeconds * 1000);</span>
-<span class="fc" id="L188">    }</span>
+<span class="pc bpc" id="L225" title="2 of 4 branches missed.">        if (preferencesService == null || llmRequestFactory == null) return;</span>
+<span class="fc" id="L226">        int timeoutSeconds = preferencesService.getInt(&quot;llm.timeout.seconds&quot;, 60);</span>
+<span class="fc" id="L227">        llmRequestFactory.setReadTimeout(timeoutSeconds * 1000);</span>
+<span class="fc" id="L228">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

@@ -479,27 +479,39 @@ public class LlmService {
             String businessText, List&lt;TaxonomyNode&gt; nodes, int parentScore) {
         try {
 <span class="fc" id="L481">            return callLlmPropagatingDetailed(businessText, nodes, parentScore);</span>
-<span class="nc" id="L482">        } catch (Exception e) {</span>
-<span class="nc" id="L483">            log.error(&quot;Error in detailed LLM call&quot;, e);</span>
+<span class="nc" id="L482">        } catch (LlmTimeoutException e) {</span>
+<span class="nc" id="L483">            log.warn(&quot;LLM API call timed out: {}&quot;, e.getMessage());</span>
 <span class="nc" id="L484">            LlmCallDetail detail = new LlmCallDetail();</span>
 <span class="nc" id="L485">            detail.setScores(responseParser.zeroScores(nodes));</span>
 <span class="nc" id="L486">            detail.setProvider(getActiveProviderName());</span>
 <span class="nc" id="L487">            detail.setPrompt(&quot;&quot;);</span>
 <span class="nc" id="L488">            detail.setRawResponse(&quot;&quot;);</span>
 <span class="nc" id="L489">            detail.setDurationMs(0);</span>
-<span class="nc" id="L490">            String errorMsg = &quot;LLM call failed: &quot; + e.getMessage();</span>
+<span class="nc" id="L490">            String errorMsg = e.getMessage();</span>
 <span class="nc" id="L491">            detail.setError(errorMsg);</span>
 <span class="nc" id="L492">            recordFailure(errorMsg);</span>
 <span class="nc" id="L493">            return detail;</span>
+<span class="nc" id="L494">        } catch (Exception e) {</span>
+<span class="nc" id="L495">            log.error(&quot;Error in detailed LLM call&quot;, e);</span>
+<span class="nc" id="L496">            LlmCallDetail detail = new LlmCallDetail();</span>
+<span class="nc" id="L497">            detail.setScores(responseParser.zeroScores(nodes));</span>
+<span class="nc" id="L498">            detail.setProvider(getActiveProviderName());</span>
+<span class="nc" id="L499">            detail.setPrompt(&quot;&quot;);</span>
+<span class="nc" id="L500">            detail.setRawResponse(&quot;&quot;);</span>
+<span class="nc" id="L501">            detail.setDurationMs(0);</span>
+<span class="nc" id="L502">            String errorMsg = &quot;LLM call failed: &quot; + e.getMessage();</span>
+<span class="nc" id="L503">            detail.setError(errorMsg);</span>
+<span class="nc" id="L504">            recordFailure(errorMsg);</span>
+<span class="nc" id="L505">            return detail;</span>
         }
     }
 
     private Map&lt;String, Integer&gt; callLlm(String businessText, List&lt;TaxonomyNode&gt; nodes, int parentScore) {
         try {
-<span class="nc" id="L499">            return callLlmPropagating(businessText, nodes, parentScore);</span>
-<span class="nc" id="L500">        } catch (Exception e) {</span>
-<span class="nc" id="L501">            log.error(&quot;Error calling LLM API&quot;, e);</span>
-<span class="nc" id="L502">            return responseParser.zeroScores(nodes);</span>
+<span class="nc" id="L511">            return callLlmPropagating(businessText, nodes, parentScore);</span>
+<span class="nc" id="L512">        } catch (Exception e) {</span>
+<span class="nc" id="L513">            log.error(&quot;Error calling LLM API&quot;, e);</span>
+<span class="nc" id="L514">            return responseParser.zeroScores(nodes);</span>
         }
     }
 
@@ -509,63 +521,63 @@ public class LlmService {
      */
     private ScoreParseResult callLlmResult(String businessText, List&lt;TaxonomyNode&gt; nodes, int parentScore) {
         try {
-<span class="nc bnc" id="L512" title="All 2 branches missed.">            if (providerConfig.isMockMode()) {</span>
-<span class="nc" id="L513">                log.info(&quot;MOCK — returning hardcoded scores for {} nodes&quot;, nodes.size());</span>
-<span class="nc" id="L514">                return buildMockScores(nodes, parentScore);</span>
+<span class="nc bnc" id="L524" title="All 2 branches missed.">            if (providerConfig.isMockMode()) {</span>
+<span class="nc" id="L525">                log.info(&quot;MOCK — returning hardcoded scores for {} nodes&quot;, nodes.size());</span>
+<span class="nc" id="L526">                return buildMockScores(nodes, parentScore);</span>
             }
 
-<span class="nc" id="L517">            LlmProvider provider = getActiveProvider();</span>
+<span class="nc" id="L529">            LlmProvider provider = getActiveProvider();</span>
 
-<span class="nc bnc" id="L519" title="All 2 branches missed.">            if (provider == LlmProvider.LOCAL_ONNX) {</span>
-<span class="nc bnc" id="L520" title="All 2 branches missed.">                if (!localEmbeddingService.isAvailable()) {</span>
-<span class="nc" id="L521">                    log.warn(&quot;⚠️ LOCAL_ONNX embedding model is not available; returning empty scores&quot;);</span>
-<span class="nc" id="L522">                    recordFailure(&quot;LOCAL_ONNX embedding model is not available&quot;);</span>
-<span class="nc" id="L523">                    return ScoreParseResult.empty(nodes);</span>
+<span class="nc bnc" id="L531" title="All 2 branches missed.">            if (provider == LlmProvider.LOCAL_ONNX) {</span>
+<span class="nc bnc" id="L532" title="All 2 branches missed.">                if (!localEmbeddingService.isAvailable()) {</span>
+<span class="nc" id="L533">                    log.warn(&quot;⚠️ LOCAL_ONNX embedding model is not available; returning empty scores&quot;);</span>
+<span class="nc" id="L534">                    recordFailure(&quot;LOCAL_ONNX embedding model is not available&quot;);</span>
+<span class="nc" id="L535">                    return ScoreParseResult.empty(nodes);</span>
                 }
-<span class="nc" id="L525">                log.info(&quot;LOCAL_ONNX — computing cosine-similarity scores for {} nodes&quot;, nodes.size());</span>
-<span class="nc" id="L526">                Map&lt;String, Integer&gt; scores = normalizeToParent(</span>
-<span class="nc" id="L527">                        localEmbeddingService.scoreNodes(businessText, nodes), parentScore);</span>
-<span class="nc" id="L528">                recordSuccess();</span>
-<span class="nc" id="L529">                return new ScoreParseResult(scores, Map.of());</span>
+<span class="nc" id="L537">                log.info(&quot;LOCAL_ONNX — computing cosine-similarity scores for {} nodes&quot;, nodes.size());</span>
+<span class="nc" id="L538">                Map&lt;String, Integer&gt; scores = normalizeToParent(</span>
+<span class="nc" id="L539">                        localEmbeddingService.scoreNodes(businessText, nodes), parentScore);</span>
+<span class="nc" id="L540">                recordSuccess();</span>
+<span class="nc" id="L541">                return new ScoreParseResult(scores, Map.of());</span>
             }
 
-<span class="nc" id="L532">            String apiKey = getApiKey(provider);</span>
-<span class="nc bnc" id="L533" title="All 6 branches missed.">            if ((apiKey == null || apiKey.isBlank()) &amp;&amp; !isReplayActive()) {</span>
-<span class="nc" id="L534">                log.warn(&quot;⚠️ LLM analysis skipped: No API key configured for provider {}. &quot;</span>
+<span class="nc" id="L544">            String apiKey = getApiKey(provider);</span>
+<span class="nc bnc" id="L545" title="All 6 branches missed.">            if ((apiKey == null || apiKey.isBlank()) &amp;&amp; !isReplayActive()) {</span>
+<span class="nc" id="L546">                log.warn(&quot;⚠️ LLM analysis skipped: No API key configured for provider {}. &quot;</span>
                         + &quot;Set environment variable {}_API_KEY to enable AI analysis.&quot;,
-<span class="nc" id="L536">                        provider, provider.name());</span>
-<span class="nc" id="L537">                return ScoreParseResult.empty(nodes);</span>
+<span class="nc" id="L548">                        provider, provider.name());</span>
+<span class="nc" id="L549">                return ScoreParseResult.empty(nodes);</span>
             }
 
-<span class="nc" id="L540">            String nodeList = buildNodeListWithContext(nodes);</span>
-<span class="nc bnc" id="L541" title="All 2 branches missed.">            String taxonomyCode = nodes.isEmpty() ? &quot;default&quot; : nodes.get(0).getTaxonomyRoot();</span>
-<span class="nc" id="L542">            String expectedKeys = String.join(&quot;, &quot;, nodes.stream().map(TaxonomyNode::getCode).toList());</span>
-<span class="nc" id="L543">            String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore, expectedKeys);</span>
+<span class="nc" id="L552">            String nodeList = buildNodeListWithContext(nodes);</span>
+<span class="nc bnc" id="L553" title="All 2 branches missed.">            String taxonomyCode = nodes.isEmpty() ? &quot;default&quot; : nodes.get(0).getTaxonomyRoot();</span>
+<span class="nc" id="L554">            String expectedKeys = String.join(&quot;, &quot;, nodes.stream().map(TaxonomyNode::getCode).toList());</span>
+<span class="nc" id="L555">            String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore, expectedKeys);</span>
 
-<span class="nc" id="L545">            log.info(&quot;LLM Request [{}] — sending prompt for {} nodes: {}&quot;,</span>
-<span class="nc" id="L546">                    provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));</span>
-<span class="nc" id="L547">            log.debug(&quot;Full LLM prompt:\n{}&quot;, prompt);</span>
+<span class="nc" id="L557">            log.info(&quot;LLM Request [{}] — sending prompt for {} nodes: {}&quot;,</span>
+<span class="nc" id="L558">                    provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));</span>
+<span class="nc" id="L559">            log.debug(&quot;Full LLM prompt:\n{}&quot;, prompt);</span>
 
             String rawText;
-<span class="nc" id="L550">            LlmGateway gateway = gatewayRegistry.getGateway(provider);</span>
-<span class="nc" id="L551">            String body = gateway.sendHttpRequest(prompt, apiKey);</span>
-<span class="nc bnc" id="L552" title="All 2 branches missed.">            rawText = body != null ? gateway.extractResponseText(body) : null;</span>
+<span class="nc" id="L562">            LlmGateway gateway = gatewayRegistry.getGateway(provider);</span>
+<span class="nc" id="L563">            String body = gateway.sendHttpRequest(prompt, apiKey);</span>
+<span class="nc bnc" id="L564" title="All 2 branches missed.">            rawText = body != null ? gateway.extractResponseText(body) : null;</span>
 
-<span class="nc bnc" id="L554" title="All 2 branches missed.">            if (rawText == null) {</span>
-<span class="nc" id="L555">                return ScoreParseResult.empty(nodes);</span>
+<span class="nc bnc" id="L566" title="All 2 branches missed.">            if (rawText == null) {</span>
+<span class="nc" id="L567">                return ScoreParseResult.empty(nodes);</span>
             }
             try {
-<span class="nc" id="L558">                ScoreParseResult result = responseParser.parseScoreParseResult(rawText, nodes, parentScore);</span>
-<span class="nc" id="L559">                recordSuccess();</span>
-<span class="nc" id="L560">                return result;</span>
-<span class="nc" id="L561">            } catch (Exception e) {</span>
-<span class="nc" id="L562">                log.error(&quot;Failed to parse LLM response in callLlmResult&quot;, e);</span>
-<span class="nc" id="L563">                recordFailure(e.getMessage());</span>
-<span class="nc" id="L564">                return ScoreParseResult.empty(nodes);</span>
+<span class="nc" id="L570">                ScoreParseResult result = responseParser.parseScoreParseResult(rawText, nodes, parentScore);</span>
+<span class="nc" id="L571">                recordSuccess();</span>
+<span class="nc" id="L572">                return result;</span>
+<span class="nc" id="L573">            } catch (Exception e) {</span>
+<span class="nc" id="L574">                log.error(&quot;Failed to parse LLM response in callLlmResult&quot;, e);</span>
+<span class="nc" id="L575">                recordFailure(e.getMessage());</span>
+<span class="nc" id="L576">                return ScoreParseResult.empty(nodes);</span>
             }
-<span class="nc" id="L566">        } catch (Exception e) {</span>
-<span class="nc" id="L567">            log.error(&quot;Error calling LLM API&quot;, e);</span>
-<span class="nc" id="L568">            return ScoreParseResult.empty(nodes);</span>
+<span class="nc" id="L578">        } catch (Exception e) {</span>
+<span class="nc" id="L579">            log.error(&quot;Error calling LLM API&quot;, e);</span>
+<span class="nc" id="L580">            return ScoreParseResult.empty(nodes);</span>
         }
     }
 
@@ -573,54 +585,54 @@ public class LlmService {
      * Like {@link #callLlm} but propagates {@link LlmRateLimitException} instead of swallowing it.
      */
     private Map&lt;String, Integer&gt; callLlmPropagating(String businessText, List&lt;TaxonomyNode&gt; nodes, int parentScore) {
-<span class="fc bfc" id="L576" title="All 2 branches covered.">        if (providerConfig.isMockMode()) {</span>
-<span class="fc" id="L577">            log.info(&quot;MOCK — returning hardcoded scores for {} nodes&quot;, nodes.size());</span>
-<span class="fc" id="L578">            return buildMockScores(nodes, parentScore).scores();</span>
+<span class="fc bfc" id="L588" title="All 2 branches covered.">        if (providerConfig.isMockMode()) {</span>
+<span class="fc" id="L589">            log.info(&quot;MOCK — returning hardcoded scores for {} nodes&quot;, nodes.size());</span>
+<span class="fc" id="L590">            return buildMockScores(nodes, parentScore).scores();</span>
         }
 
-<span class="fc" id="L581">        LlmProvider provider = getActiveProvider();</span>
+<span class="fc" id="L593">        LlmProvider provider = getActiveProvider();</span>
 
-<span class="fc bfc" id="L583" title="All 2 branches covered.">        if (provider == LlmProvider.LOCAL_ONNX) {</span>
-<span class="pc bpc" id="L584" title="1 of 2 branches missed.">            if (!localEmbeddingService.isAvailable()) {</span>
-<span class="fc" id="L585">                log.warn(&quot;⚠️ LOCAL_ONNX embedding model is not available; returning zero scores&quot;);</span>
-<span class="fc" id="L586">                recordFailure(&quot;LOCAL_ONNX embedding model is not available&quot;);</span>
-<span class="fc" id="L587">                return responseParser.zeroScores(nodes);</span>
+<span class="fc bfc" id="L595" title="All 2 branches covered.">        if (provider == LlmProvider.LOCAL_ONNX) {</span>
+<span class="pc bpc" id="L596" title="1 of 2 branches missed.">            if (!localEmbeddingService.isAvailable()) {</span>
+<span class="fc" id="L597">                log.warn(&quot;⚠️ LOCAL_ONNX embedding model is not available; returning zero scores&quot;);</span>
+<span class="fc" id="L598">                recordFailure(&quot;LOCAL_ONNX embedding model is not available&quot;);</span>
+<span class="fc" id="L599">                return responseParser.zeroScores(nodes);</span>
             }
-<span class="nc" id="L589">            log.info(&quot;LOCAL_ONNX — computing cosine-similarity scores for {} nodes&quot;, nodes.size());</span>
-<span class="nc" id="L590">            Map&lt;String, Integer&gt; scores = normalizeToParent(</span>
-<span class="nc" id="L591">                    localEmbeddingService.scoreNodes(businessText, nodes), parentScore);</span>
-<span class="nc" id="L592">            recordSuccess();</span>
-<span class="nc" id="L593">            return scores;</span>
+<span class="nc" id="L601">            log.info(&quot;LOCAL_ONNX — computing cosine-similarity scores for {} nodes&quot;, nodes.size());</span>
+<span class="nc" id="L602">            Map&lt;String, Integer&gt; scores = normalizeToParent(</span>
+<span class="nc" id="L603">                    localEmbeddingService.scoreNodes(businessText, nodes), parentScore);</span>
+<span class="nc" id="L604">            recordSuccess();</span>
+<span class="nc" id="L605">            return scores;</span>
         }
 
-<span class="fc" id="L596">        String apiKey = getApiKey(provider);</span>
+<span class="fc" id="L608">        String apiKey = getApiKey(provider);</span>
 
-<span class="pc bpc" id="L598" title="3 of 6 branches missed.">        if ((apiKey == null || apiKey.isBlank()) &amp;&amp; !isReplayActive()) {</span>
-<span class="fc" id="L599">            log.warn(&quot;⚠️ LLM analysis skipped: No API key configured for provider {}. &quot;</span>
+<span class="pc bpc" id="L610" title="3 of 6 branches missed.">        if ((apiKey == null || apiKey.isBlank()) &amp;&amp; !isReplayActive()) {</span>
+<span class="fc" id="L611">            log.warn(&quot;⚠️ LLM analysis skipped: No API key configured for provider {}. &quot;</span>
                     + &quot;Set environment variable {}_API_KEY to enable AI analysis.&quot;,
-<span class="fc" id="L601">                    provider, provider.name());</span>
-<span class="fc" id="L602">            return responseParser.zeroScores(nodes);</span>
+<span class="fc" id="L613">                    provider, provider.name());</span>
+<span class="fc" id="L614">            return responseParser.zeroScores(nodes);</span>
         }
 
-<span class="nc" id="L605">        String nodeList = buildNodeListWithContext(nodes);</span>
-<span class="nc bnc" id="L606" title="All 2 branches missed.">        String taxonomyCode = nodes.isEmpty() ? &quot;default&quot; : nodes.get(0).getTaxonomyRoot();</span>
-<span class="nc" id="L607">        String expectedKeys = String.join(&quot;, &quot;, nodes.stream().map(TaxonomyNode::getCode).toList());</span>
-<span class="nc" id="L608">        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore, expectedKeys);</span>
+<span class="nc" id="L617">        String nodeList = buildNodeListWithContext(nodes);</span>
+<span class="nc bnc" id="L618" title="All 2 branches missed.">        String taxonomyCode = nodes.isEmpty() ? &quot;default&quot; : nodes.get(0).getTaxonomyRoot();</span>
+<span class="nc" id="L619">        String expectedKeys = String.join(&quot;, &quot;, nodes.stream().map(TaxonomyNode::getCode).toList());</span>
+<span class="nc" id="L620">        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore, expectedKeys);</span>
 
-<span class="nc" id="L610">        log.info(&quot;LLM Request [{}] — sending prompt for {} nodes: {}&quot;,</span>
-<span class="nc" id="L611">                provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));</span>
-<span class="nc" id="L612">        log.debug(&quot;Full LLM prompt:\n{}&quot;, prompt);</span>
+<span class="nc" id="L622">        log.info(&quot;LLM Request [{}] — sending prompt for {} nodes: {}&quot;,</span>
+<span class="nc" id="L623">                provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));</span>
+<span class="nc" id="L624">        log.debug(&quot;Full LLM prompt:\n{}&quot;, prompt);</span>
 
-<span class="nc" id="L614">        LlmGateway gateway = gatewayRegistry.getGateway(provider);</span>
-<span class="nc" id="L615">        String apiResponseBody = gateway.sendHttpRequest(prompt, apiKey);</span>
-<span class="nc bnc" id="L616" title="All 2 branches missed.">        if (apiResponseBody == null) return responseParser.zeroScores(nodes);</span>
-<span class="nc" id="L617">        String rawText = gateway.extractResponseText(apiResponseBody);</span>
-<span class="nc bnc" id="L618" title="All 2 branches missed.">        if (rawText == null) return responseParser.zeroScores(nodes);</span>
+<span class="nc" id="L626">        LlmGateway gateway = gatewayRegistry.getGateway(provider);</span>
+<span class="nc" id="L627">        String apiResponseBody = gateway.sendHttpRequest(prompt, apiKey);</span>
+<span class="nc bnc" id="L628" title="All 2 branches missed.">        if (apiResponseBody == null) return responseParser.zeroScores(nodes);</span>
+<span class="nc" id="L629">        String rawText = gateway.extractResponseText(apiResponseBody);</span>
+<span class="nc bnc" id="L630" title="All 2 branches missed.">        if (rawText == null) return responseParser.zeroScores(nodes);</span>
         try {
-<span class="nc" id="L620">            return responseParser.parseScoreParseResult(rawText, nodes, parentScore).scores();</span>
-<span class="nc" id="L621">        } catch (Exception e) {</span>
-<span class="nc" id="L622">            log.error(&quot;Failed to parse LLM response in callLlmPropagating&quot;, e);</span>
-<span class="nc" id="L623">            return responseParser.zeroScores(nodes);</span>
+<span class="nc" id="L632">            return responseParser.parseScoreParseResult(rawText, nodes, parentScore).scores();</span>
+<span class="nc" id="L633">        } catch (Exception e) {</span>
+<span class="nc" id="L634">            log.error(&quot;Failed to parse LLM response in callLlmPropagating&quot;, e);</span>
+<span class="nc" id="L635">            return responseParser.zeroScores(nodes);</span>
         }
     }
 
@@ -630,111 +642,122 @@ public class LlmService {
      */
     private LlmCallDetail callLlmPropagatingDetailed(
             String businessText, List&lt;TaxonomyNode&gt; nodes, int parentScore) {
-<span class="fc" id="L633">        LlmCallDetail detail = new LlmCallDetail();</span>
-<span class="fc" id="L634">        detail.setProvider(getActiveProviderName());</span>
+<span class="fc" id="L645">        LlmCallDetail detail = new LlmCallDetail();</span>
+<span class="fc" id="L646">        detail.setProvider(getActiveProviderName());</span>
 
         // ── Mock path ─────────────────────────────────────────────────────────
-<span class="pc bpc" id="L637" title="1 of 2 branches missed.">        if (providerConfig.isMockMode()) {</span>
-<span class="nc" id="L638">            log.info(&quot;MOCK — returning hardcoded scores for {} nodes&quot;, nodes.size());</span>
-<span class="nc" id="L639">            ScoreParseResult mock = buildMockScores(nodes, parentScore);</span>
-<span class="nc" id="L640">            detail.setScores(mock.scores());</span>
-<span class="nc" id="L641">            detail.setReasons(mock.reasons());</span>
-<span class="nc" id="L642">            detail.setPrompt(&quot;(mock mode – no prompt sent)&quot;);</span>
-<span class="nc" id="L643">            detail.setRawResponse(&quot;(hardcoded mock scores)&quot;);</span>
-<span class="nc" id="L644">            detail.setDurationMs(0);</span>
-<span class="nc" id="L645">            return detail;</span>
+<span class="pc bpc" id="L649" title="1 of 2 branches missed.">        if (providerConfig.isMockMode()) {</span>
+<span class="nc" id="L650">            log.info(&quot;MOCK — returning hardcoded scores for {} nodes&quot;, nodes.size());</span>
+<span class="nc" id="L651">            ScoreParseResult mock = buildMockScores(nodes, parentScore);</span>
+<span class="nc" id="L652">            detail.setScores(mock.scores());</span>
+<span class="nc" id="L653">            detail.setReasons(mock.reasons());</span>
+<span class="nc" id="L654">            detail.setPrompt(&quot;(mock mode – no prompt sent)&quot;);</span>
+<span class="nc" id="L655">            detail.setRawResponse(&quot;(hardcoded mock scores)&quot;);</span>
+<span class="nc" id="L656">            detail.setDurationMs(0);</span>
+<span class="nc" id="L657">            return detail;</span>
         }
 
-<span class="fc" id="L648">        LlmProvider provider = getActiveProvider();</span>
+<span class="fc" id="L660">        LlmProvider provider = getActiveProvider();</span>
 
         // ── Local embedding path ──────────────────────────────────────────────
-<span class="pc bpc" id="L651" title="1 of 2 branches missed.">        if (provider == LlmProvider.LOCAL_ONNX) {</span>
-<span class="nc bnc" id="L652" title="All 2 branches missed.">            if (!localEmbeddingService.isAvailable()) {</span>
-<span class="nc" id="L653">                String errorMsg = &quot;LOCAL_ONNX embedding model is not available. &quot;</span>
+<span class="pc bpc" id="L663" title="1 of 2 branches missed.">        if (provider == LlmProvider.LOCAL_ONNX) {</span>
+<span class="nc bnc" id="L664" title="All 2 branches missed.">            if (!localEmbeddingService.isAvailable()) {</span>
+<span class="nc" id="L665">                String errorMsg = &quot;LOCAL_ONNX embedding model is not available. &quot;</span>
                         + &quot;Semantic scoring is disabled.&quot;;
-<span class="nc" id="L655">                detail.setError(errorMsg);</span>
-<span class="nc" id="L656">                detail.setScores(responseParser.zeroScores(nodes));</span>
-<span class="nc" id="L657">                detail.setPrompt(&quot;(local embedding – no prompt sent)&quot;);</span>
-<span class="nc" id="L658">                detail.setRawResponse(&quot;&quot;);</span>
-<span class="nc" id="L659">                detail.setDurationMs(0);</span>
-<span class="nc" id="L660">                recordFailure(errorMsg);</span>
-<span class="nc" id="L661">                return detail;</span>
+<span class="nc" id="L667">                detail.setError(errorMsg);</span>
+<span class="nc" id="L668">                detail.setScores(responseParser.zeroScores(nodes));</span>
+<span class="nc" id="L669">                detail.setPrompt(&quot;(local embedding – no prompt sent)&quot;);</span>
+<span class="nc" id="L670">                detail.setRawResponse(&quot;&quot;);</span>
+<span class="nc" id="L671">                detail.setDurationMs(0);</span>
+<span class="nc" id="L672">                recordFailure(errorMsg);</span>
+<span class="nc" id="L673">                return detail;</span>
             }
-<span class="nc" id="L663">            long start = System.currentTimeMillis();</span>
-<span class="nc" id="L664">            Map&lt;String, Integer&gt; scores = normalizeToParent(</span>
-<span class="nc" id="L665">                    localEmbeddingService.scoreNodes(businessText, nodes), parentScore);</span>
-<span class="nc" id="L666">            detail.setDurationMs(System.currentTimeMillis() - start);</span>
-<span class="nc" id="L667">            detail.setScores(scores);</span>
-<span class="nc" id="L668">            detail.setPrompt(&quot;(local embedding – no prompt sent)&quot;);</span>
-<span class="nc" id="L669">            detail.setRawResponse(&quot;(cosine similarity scores computed via bge-small-en-v1.5)&quot;);</span>
-<span class="nc" id="L670">            recordSuccess();</span>
-<span class="nc" id="L671">            return detail;</span>
+<span class="nc" id="L675">            long start = System.currentTimeMillis();</span>
+<span class="nc" id="L676">            Map&lt;String, Integer&gt; scores = normalizeToParent(</span>
+<span class="nc" id="L677">                    localEmbeddingService.scoreNodes(businessText, nodes), parentScore);</span>
+<span class="nc" id="L678">            detail.setDurationMs(System.currentTimeMillis() - start);</span>
+<span class="nc" id="L679">            detail.setScores(scores);</span>
+<span class="nc" id="L680">            detail.setPrompt(&quot;(local embedding – no prompt sent)&quot;);</span>
+<span class="nc" id="L681">            detail.setRawResponse(&quot;(cosine similarity scores computed via bge-small-en-v1.5)&quot;);</span>
+<span class="nc" id="L682">            recordSuccess();</span>
+<span class="nc" id="L683">            return detail;</span>
         }
 
         // ── API-based path ────────────────────────────────────────────────────
-<span class="fc" id="L675">        String apiKey = getApiKey(provider);</span>
+<span class="fc" id="L687">        String apiKey = getApiKey(provider);</span>
 
-<span class="pc bpc" id="L677" title="3 of 6 branches missed.">        if ((apiKey == null || apiKey.isBlank()) &amp;&amp; !isReplayActive()) {</span>
-<span class="fc" id="L678">            String errorMsg = &quot;No API key configured for provider &quot; + provider</span>
-<span class="fc" id="L679">                    + &quot;. Set environment variable &quot; + provider.name() + &quot;_API_KEY.&quot;;</span>
-<span class="fc" id="L680">            log.warn(&quot;⚠️ LLM analysis skipped: {}&quot;, errorMsg);</span>
-<span class="fc" id="L681">            detail.setScores(responseParser.zeroScores(nodes));</span>
-<span class="fc" id="L682">            detail.setPrompt(&quot;&quot;);</span>
-<span class="fc" id="L683">            detail.setRawResponse(&quot;&quot;);</span>
-<span class="fc" id="L684">            detail.setDurationMs(0);</span>
-<span class="fc" id="L685">            detail.setError(errorMsg);</span>
-<span class="fc" id="L686">            recordFailure(errorMsg);</span>
-<span class="fc" id="L687">            return detail;</span>
+<span class="pc bpc" id="L689" title="3 of 6 branches missed.">        if ((apiKey == null || apiKey.isBlank()) &amp;&amp; !isReplayActive()) {</span>
+<span class="fc" id="L690">            String errorMsg = &quot;No API key configured for provider &quot; + provider</span>
+<span class="fc" id="L691">                    + &quot;. Set environment variable &quot; + provider.name() + &quot;_API_KEY.&quot;;</span>
+<span class="fc" id="L692">            log.warn(&quot;⚠️ LLM analysis skipped: {}&quot;, errorMsg);</span>
+<span class="fc" id="L693">            detail.setScores(responseParser.zeroScores(nodes));</span>
+<span class="fc" id="L694">            detail.setPrompt(&quot;&quot;);</span>
+<span class="fc" id="L695">            detail.setRawResponse(&quot;&quot;);</span>
+<span class="fc" id="L696">            detail.setDurationMs(0);</span>
+<span class="fc" id="L697">            detail.setError(errorMsg);</span>
+<span class="fc" id="L698">            recordFailure(errorMsg);</span>
+<span class="fc" id="L699">            return detail;</span>
         }
 
-<span class="nc" id="L690">        String nodeList = buildNodeListWithContext(nodes);</span>
-<span class="nc bnc" id="L691" title="All 2 branches missed.">        String taxonomyCode = nodes.isEmpty() ? &quot;default&quot; : nodes.get(0).getTaxonomyRoot();</span>
-<span class="nc" id="L692">        String expectedKeys = String.join(&quot;, &quot;, nodes.stream().map(TaxonomyNode::getCode).toList());</span>
-<span class="nc" id="L693">        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore, expectedKeys);</span>
-<span class="nc" id="L694">        detail.setPrompt(prompt);</span>
+<span class="nc" id="L702">        String nodeList = buildNodeListWithContext(nodes);</span>
+<span class="nc bnc" id="L703" title="All 2 branches missed.">        String taxonomyCode = nodes.isEmpty() ? &quot;default&quot; : nodes.get(0).getTaxonomyRoot();</span>
+<span class="nc" id="L704">        String expectedKeys = String.join(&quot;, &quot;, nodes.stream().map(TaxonomyNode::getCode).toList());</span>
+<span class="nc" id="L705">        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore, expectedKeys);</span>
+<span class="nc" id="L706">        detail.setPrompt(prompt);</span>
 
-<span class="nc" id="L696">        log.info(&quot;LLM Request [{}] — sending prompt for {} nodes: {}&quot;,</span>
-<span class="nc" id="L697">                provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));</span>
-<span class="nc" id="L698">        log.debug(&quot;Full LLM prompt:\n{}&quot;, prompt);</span>
+<span class="nc" id="L708">        log.info(&quot;LLM Request [{}] — sending prompt for {} nodes: {}&quot;,</span>
+<span class="nc" id="L709">                provider, nodes.size(), nodeList.substring(0, Math.min(nodeList.length(), 200)));</span>
+<span class="nc" id="L710">        log.debug(&quot;Full LLM prompt:\n{}&quot;, prompt);</span>
 
-<span class="nc" id="L700">        long start = System.currentTimeMillis();</span>
-<span class="nc" id="L701">        LlmGateway gateway = gatewayRegistry.getGateway(provider);</span>
-<span class="nc" id="L702">        String apiResponseBody = gateway.sendHttpRequest(prompt, apiKey);</span>
-<span class="nc" id="L703">        detail.setDurationMs(System.currentTimeMillis() - start);</span>
+<span class="nc" id="L712">        long start = System.currentTimeMillis();</span>
+<span class="nc" id="L713">        LlmGateway gateway = gatewayRegistry.getGateway(provider);</span>
+        String apiResponseBody;
+        try {
+<span class="nc" id="L716">            apiResponseBody = gateway.sendHttpRequest(prompt, apiKey);</span>
+<span class="nc" id="L717">        } catch (LlmTimeoutException e) {</span>
+<span class="nc" id="L718">            detail.setDurationMs(System.currentTimeMillis() - start);</span>
+<span class="nc" id="L719">            String errorMsg = e.getMessage();</span>
+<span class="nc" id="L720">            detail.setScores(responseParser.zeroScores(nodes));</span>
+<span class="nc" id="L721">            detail.setRawResponse(&quot;&quot;);</span>
+<span class="nc" id="L722">            detail.setError(errorMsg);</span>
+<span class="nc" id="L723">            recordFailure(errorMsg);</span>
+<span class="nc" id="L724">            return detail;</span>
+<span class="nc" id="L725">        }</span>
+<span class="nc" id="L726">        detail.setDurationMs(System.currentTimeMillis() - start);</span>
 
-<span class="nc bnc" id="L705" title="All 2 branches missed.">        if (apiResponseBody == null) {</span>
-<span class="nc" id="L706">            String errorMsg = &quot;LLM API call returned no response (possible network error or invalid key).&quot;;</span>
-<span class="nc" id="L707">            detail.setScores(responseParser.zeroScores(nodes));</span>
-<span class="nc" id="L708">            detail.setRawResponse(&quot;&quot;);</span>
-<span class="nc" id="L709">            detail.setError(errorMsg);</span>
-<span class="nc" id="L710">            recordFailure(errorMsg);</span>
-<span class="nc" id="L711">            return detail;</span>
+<span class="nc bnc" id="L728" title="All 2 branches missed.">        if (apiResponseBody == null) {</span>
+<span class="nc" id="L729">            String errorMsg = &quot;LLM API call returned no response (possible network error or invalid key).&quot;;</span>
+<span class="nc" id="L730">            detail.setScores(responseParser.zeroScores(nodes));</span>
+<span class="nc" id="L731">            detail.setRawResponse(&quot;&quot;);</span>
+<span class="nc" id="L732">            detail.setError(errorMsg);</span>
+<span class="nc" id="L733">            recordFailure(errorMsg);</span>
+<span class="nc" id="L734">            return detail;</span>
         }
 
-<span class="nc" id="L714">        String rawText = gateway.extractResponseText(apiResponseBody);</span>
-<span class="nc bnc" id="L715" title="All 2 branches missed.">        detail.setRawResponse(rawText != null ? rawText : &quot;&quot;);</span>
+<span class="nc" id="L737">        String rawText = gateway.extractResponseText(apiResponseBody);</span>
+<span class="nc bnc" id="L738" title="All 2 branches missed.">        detail.setRawResponse(rawText != null ? rawText : &quot;&quot;);</span>
 
-<span class="nc bnc" id="L717" title="All 2 branches missed.">        if (rawText != null) {</span>
+<span class="nc bnc" id="L740" title="All 2 branches missed.">        if (rawText != null) {</span>
             try {
-<span class="nc" id="L719">                ScoreParseResult parsed = responseParser.parseScoreParseResult(rawText, nodes, parentScore);</span>
-<span class="nc" id="L720">                detail.setScores(parsed.scores());</span>
-<span class="nc" id="L721">                detail.setReasons(parsed.reasons());</span>
-<span class="nc" id="L722">                detail.setDiscrepancy(parsed.discrepancy());</span>
-<span class="nc" id="L723">                recordSuccess();</span>
-<span class="nc" id="L724">            } catch (Exception e) {</span>
-<span class="nc" id="L725">                log.error(&quot;Failed to parse scores in detailed LLM call&quot;, e);</span>
-<span class="nc" id="L726">                detail.setScores(responseParser.zeroScores(nodes));</span>
-<span class="nc" id="L727">                String errorMsg = &quot;Failed to parse LLM response: &quot; + e.getMessage();</span>
-<span class="nc" id="L728">                detail.setError(errorMsg);</span>
-<span class="nc" id="L729">                recordFailure(errorMsg);</span>
-<span class="nc" id="L730">            }</span>
+<span class="nc" id="L742">                ScoreParseResult parsed = responseParser.parseScoreParseResult(rawText, nodes, parentScore);</span>
+<span class="nc" id="L743">                detail.setScores(parsed.scores());</span>
+<span class="nc" id="L744">                detail.setReasons(parsed.reasons());</span>
+<span class="nc" id="L745">                detail.setDiscrepancy(parsed.discrepancy());</span>
+<span class="nc" id="L746">                recordSuccess();</span>
+<span class="nc" id="L747">            } catch (Exception e) {</span>
+<span class="nc" id="L748">                log.error(&quot;Failed to parse scores in detailed LLM call&quot;, e);</span>
+<span class="nc" id="L749">                detail.setScores(responseParser.zeroScores(nodes));</span>
+<span class="nc" id="L750">                String errorMsg = &quot;Failed to parse LLM response: &quot; + e.getMessage();</span>
+<span class="nc" id="L751">                detail.setError(errorMsg);</span>
+<span class="nc" id="L752">                recordFailure(errorMsg);</span>
+<span class="nc" id="L753">            }</span>
         } else {
-<span class="nc" id="L732">            detail.setScores(responseParser.zeroScores(nodes));</span>
-<span class="nc" id="L733">            String errorMsg = &quot;LLM response contained no usable text.&quot;;</span>
-<span class="nc" id="L734">            detail.setError(errorMsg);</span>
-<span class="nc" id="L735">            recordFailure(errorMsg);</span>
+<span class="nc" id="L755">            detail.setScores(responseParser.zeroScores(nodes));</span>
+<span class="nc" id="L756">            String errorMsg = &quot;LLM response contained no usable text.&quot;;</span>
+<span class="nc" id="L757">            detail.setError(errorMsg);</span>
+<span class="nc" id="L758">            recordFailure(errorMsg);</span>
         }
-<span class="nc" id="L737">        return detail;</span>
+<span class="nc" id="L760">        return detail;</span>
     }
 
     // ── Score normalization (public API) ─────────────────────────────────────
@@ -748,7 +771,7 @@ public class LlmService {
      * @param target the target sum (e.g. parent node's score, or 100 for root-level nodes)
      */
     public Map&lt;String, Integer&gt; normalizeToParent(Map&lt;String, Integer&gt; scores, int target) {
-<span class="fc" id="L751">        return responseParser.normalizeToParent(scores, target);</span>
+<span class="fc" id="L774">        return responseParser.normalizeToParent(scores, target);</span>
     }
 
     /**
@@ -757,25 +780,25 @@ public class LlmService {
      * Preserved for backward compatibility.
      */
     public Map&lt;String, Integer&gt; normalizeToHundred(Map&lt;String, Integer&gt; scores) {
-<span class="fc" id="L760">        return responseParser.normalizeToHundred(scores);</span>
+<span class="fc" id="L783">        return responseParser.normalizeToHundred(scores);</span>
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private String getApiKey(LlmProvider provider) {
-<span class="fc" id="L766">        return providerConfig.getApiKey(provider);</span>
+<span class="fc" id="L789">        return providerConfig.getApiKey(provider);</span>
     }
 
     private String buildNodeList(List&lt;TaxonomyNode&gt; nodes) {
-<span class="nc" id="L770">        StringBuilder sb = new StringBuilder();</span>
-<span class="nc bnc" id="L771" title="All 2 branches missed.">        for (TaxonomyNode n : nodes) {</span>
-<span class="nc" id="L772">            sb.append(n.getCode()).append(&quot;: &quot;).append(n.getName());</span>
-<span class="nc bnc" id="L773" title="All 4 branches missed.">            if (n.getDescription() != null &amp;&amp; !n.getDescription().isBlank()) {</span>
-<span class="nc" id="L774">                sb.append(&quot; - &quot;).append(n.getDescription());</span>
+<span class="nc" id="L793">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L794" title="All 2 branches missed.">        for (TaxonomyNode n : nodes) {</span>
+<span class="nc" id="L795">            sb.append(n.getCode()).append(&quot;: &quot;).append(n.getName());</span>
+<span class="nc bnc" id="L796" title="All 4 branches missed.">            if (n.getDescription() != null &amp;&amp; !n.getDescription().isBlank()) {</span>
+<span class="nc" id="L797">                sb.append(&quot; - &quot;).append(n.getDescription());</span>
             }
-<span class="nc" id="L776">            sb.append(&quot;\n&quot;);</span>
-<span class="nc" id="L777">        }</span>
-<span class="nc" id="L778">        return sb.toString();</span>
+<span class="nc" id="L799">            sb.append(&quot;\n&quot;);</span>
+<span class="nc" id="L800">        }</span>
+<span class="nc" id="L801">        return sb.toString();</span>
     }
 
     /**
@@ -789,40 +812,40 @@ public class LlmService {
      * nodes) receive the same plain formatting as {@link #buildNodeList} without any ancestor header.
      */
     private String buildNodeListWithContext(List&lt;TaxonomyNode&gt; nodes) {
-<span class="nc bnc" id="L792" title="All 2 branches missed.">        if (nodes.isEmpty()) {</span>
-<span class="nc" id="L793">            return &quot;&quot;;</span>
+<span class="nc bnc" id="L815" title="All 2 branches missed.">        if (nodes.isEmpty()) {</span>
+<span class="nc" id="L816">            return &quot;&quot;;</span>
         }
-<span class="nc" id="L795">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc" id="L818">        StringBuilder sb = new StringBuilder();</span>
 
         // Use the first node's parent as the shared context anchor
-<span class="nc" id="L798">        String parentCode = nodes.get(0).getParentCode();</span>
-<span class="nc bnc" id="L799" title="All 4 branches missed.">        if (parentCode != null &amp;&amp; !parentCode.isBlank()) {</span>
-<span class="nc" id="L800">            List&lt;TaxonomyNode&gt; ancestors = taxonomyService.getPathToRoot(parentCode);</span>
-<span class="nc bnc" id="L801" title="All 2 branches missed.">            if (!ancestors.isEmpty()) {</span>
-<span class="nc" id="L802">                sb.append(&quot;Parent hierarchy (for context — do NOT score these):\n&quot;);</span>
-<span class="nc bnc" id="L803" title="All 2 branches missed.">                for (TaxonomyNode ancestor : ancestors) {</span>
-<span class="nc" id="L804">                    sb.append(&quot;  &quot;).append(ancestor.getCode()).append(&quot;: &quot;).append(ancestor.getName());</span>
-<span class="nc bnc" id="L805" title="All 4 branches missed.">                    if (ancestor.getDescription() != null &amp;&amp; !ancestor.getDescription().isBlank()) {</span>
-<span class="nc" id="L806">                        sb.append(&quot; - &quot;).append(ancestor.getDescription());</span>
+<span class="nc" id="L821">        String parentCode = nodes.get(0).getParentCode();</span>
+<span class="nc bnc" id="L822" title="All 4 branches missed.">        if (parentCode != null &amp;&amp; !parentCode.isBlank()) {</span>
+<span class="nc" id="L823">            List&lt;TaxonomyNode&gt; ancestors = taxonomyService.getPathToRoot(parentCode);</span>
+<span class="nc bnc" id="L824" title="All 2 branches missed.">            if (!ancestors.isEmpty()) {</span>
+<span class="nc" id="L825">                sb.append(&quot;Parent hierarchy (for context — do NOT score these):\n&quot;);</span>
+<span class="nc bnc" id="L826" title="All 2 branches missed.">                for (TaxonomyNode ancestor : ancestors) {</span>
+<span class="nc" id="L827">                    sb.append(&quot;  &quot;).append(ancestor.getCode()).append(&quot;: &quot;).append(ancestor.getName());</span>
+<span class="nc bnc" id="L828" title="All 4 branches missed.">                    if (ancestor.getDescription() != null &amp;&amp; !ancestor.getDescription().isBlank()) {</span>
+<span class="nc" id="L829">                        sb.append(&quot; - &quot;).append(ancestor.getDescription());</span>
                     }
-<span class="nc" id="L808">                    sb.append(&quot;\n&quot;);</span>
-<span class="nc" id="L809">                }</span>
-<span class="nc" id="L810">                sb.append(&quot;\nNodes to evaluate:\n&quot;);</span>
+<span class="nc" id="L831">                    sb.append(&quot;\n&quot;);</span>
+<span class="nc" id="L832">                }</span>
+<span class="nc" id="L833">                sb.append(&quot;\nNodes to evaluate:\n&quot;);</span>
             }
         }
 
-<span class="nc bnc" id="L814" title="All 2 branches missed.">        for (TaxonomyNode n : nodes) {</span>
-<span class="nc" id="L815">            sb.append(n.getCode()).append(&quot;: &quot;).append(n.getName());</span>
-<span class="nc bnc" id="L816" title="All 4 branches missed.">            if (n.getDescription() != null &amp;&amp; !n.getDescription().isBlank()) {</span>
-<span class="nc" id="L817">                sb.append(&quot; - &quot;).append(n.getDescription());</span>
+<span class="nc bnc" id="L837" title="All 2 branches missed.">        for (TaxonomyNode n : nodes) {</span>
+<span class="nc" id="L838">            sb.append(n.getCode()).append(&quot;: &quot;).append(n.getName());</span>
+<span class="nc bnc" id="L839" title="All 4 branches missed.">            if (n.getDescription() != null &amp;&amp; !n.getDescription().isBlank()) {</span>
+<span class="nc" id="L840">                sb.append(&quot; - &quot;).append(n.getDescription());</span>
             }
-<span class="nc" id="L819">            sb.append(&quot;\n&quot;);</span>
-<span class="nc" id="L820">        }</span>
-<span class="nc" id="L821">        return sb.toString();</span>
+<span class="nc" id="L842">            sb.append(&quot;\n&quot;);</span>
+<span class="nc" id="L843">        }</span>
+<span class="nc" id="L844">        return sb.toString();</span>
     }
 
     private String buildPrompt(String businessText, String nodeList) {
-<span class="nc" id="L825">        return &quot;You are an expert in C3 taxonomy classification. &quot; +</span>
+<span class="nc" id="L848">        return &quot;You are an expert in C3 taxonomy classification. &quot; +</span>
                 &quot;Given the following taxonomy categories and a business requirement, &quot; +
                 &quot;estimate the percentage match (0-100) for each category.\n\n&quot; +
                 &quot;Business Requirement: &quot; + businessText + &quot;\n\n&quot; +
@@ -835,48 +858,48 @@ public class LlmService {
     // ── Diagnostics helpers ───────────────────────────────────────────────────
 
     private synchronized void recordSuccess() {
-<span class="fc" id="L838">        totalCalls.incrementAndGet();</span>
-<span class="fc" id="L839">        successfulCalls.incrementAndGet();</span>
-<span class="fc" id="L840">        lastCallTime = Instant.now();</span>
-<span class="fc" id="L841">        lastCallSuccess = true;</span>
-<span class="fc" id="L842">        lastError = null;</span>
-<span class="fc" id="L843">    }</span>
+<span class="fc" id="L861">        totalCalls.incrementAndGet();</span>
+<span class="fc" id="L862">        successfulCalls.incrementAndGet();</span>
+<span class="fc" id="L863">        lastCallTime = Instant.now();</span>
+<span class="fc" id="L864">        lastCallSuccess = true;</span>
+<span class="fc" id="L865">        lastError = null;</span>
+<span class="fc" id="L866">    }</span>
 
     private synchronized void recordFailure(String error) {
-<span class="fc" id="L846">        totalCalls.incrementAndGet();</span>
-<span class="fc" id="L847">        failedCalls.incrementAndGet();</span>
-<span class="fc" id="L848">        lastCallTime = Instant.now();</span>
-<span class="fc" id="L849">        lastCallSuccess = false;</span>
-<span class="fc" id="L850">        lastError = error;</span>
-<span class="fc" id="L851">    }</span>
+<span class="fc" id="L869">        totalCalls.incrementAndGet();</span>
+<span class="fc" id="L870">        failedCalls.incrementAndGet();</span>
+<span class="fc" id="L871">        lastCallTime = Instant.now();</span>
+<span class="fc" id="L872">        lastCallSuccess = false;</span>
+<span class="fc" id="L873">        lastError = error;</span>
+<span class="fc" id="L874">    }</span>
 
     /**
      * Returns a snapshot of diagnostics information for the {@code /api/diagnostics} endpoint.
      */
     public Map&lt;String, Object&gt; getDiagnostics() {
-<span class="fc" id="L857">        LlmProvider provider = getActiveProvider();</span>
-<span class="fc" id="L858">        String apiKey = getApiKey(provider);</span>
-<span class="pc bpc" id="L859" title="2 of 4 branches missed.">        boolean hasRealKey = provider != LlmProvider.LOCAL_ONNX</span>
-<span class="pc bpc" id="L860" title="1 of 2 branches missed.">                &amp;&amp; apiKey != null &amp;&amp; !apiKey.isBlank();</span>
-<span class="pc bpc" id="L861" title="2 of 4 branches missed.">        boolean apiKeyConfigured = providerConfig.isMockMode() || hasRealKey;</span>
-<span class="pc bpc" id="L862" title="1 of 2 branches missed.">        String apiKeyPrefix = hasRealKey</span>
-<span class="nc bnc" id="L863" title="All 2 branches missed.">                ? (apiKey.length() &gt; 4 ? apiKey.substring(0, 4) + &quot;****&quot; : &quot;****&quot;)</span>
-<span class="fc" id="L864">                : null;</span>
+<span class="fc" id="L880">        LlmProvider provider = getActiveProvider();</span>
+<span class="fc" id="L881">        String apiKey = getApiKey(provider);</span>
+<span class="pc bpc" id="L882" title="2 of 4 branches missed.">        boolean hasRealKey = provider != LlmProvider.LOCAL_ONNX</span>
+<span class="pc bpc" id="L883" title="1 of 2 branches missed.">                &amp;&amp; apiKey != null &amp;&amp; !apiKey.isBlank();</span>
+<span class="pc bpc" id="L884" title="2 of 4 branches missed.">        boolean apiKeyConfigured = providerConfig.isMockMode() || hasRealKey;</span>
+<span class="pc bpc" id="L885" title="1 of 2 branches missed.">        String apiKeyPrefix = hasRealKey</span>
+<span class="nc bnc" id="L886" title="All 2 branches missed.">                ? (apiKey.length() &gt; 4 ? apiKey.substring(0, 4) + &quot;****&quot; : &quot;****&quot;)</span>
+<span class="fc" id="L887">                : null;</span>
 
-<span class="fc" id="L866">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="pc bpc" id="L867" title="1 of 2 branches missed.">        result.put(&quot;provider&quot;,        providerConfig.isMockMode() ? &quot;Mock&quot; : getActiveProviderName());</span>
-<span class="fc" id="L868">        result.put(&quot;apiKeyConfigured&quot;, apiKeyConfigured);</span>
-<span class="fc" id="L869">        result.put(&quot;apiKeyPrefix&quot;,     apiKeyPrefix);</span>
-<span class="pc bpc" id="L870" title="1 of 2 branches missed.">        result.put(&quot;localModel&quot;,       provider == LlmProvider.LOCAL_ONNX</span>
-<span class="pc" id="L871">                ? LocalEmbeddingService.DEFAULT_MODEL_URL : null);</span>
-<span class="pc bpc" id="L872" title="1 of 2 branches missed.">        result.put(&quot;lastCallTime&quot;,     lastCallTime != null ? lastCallTime.toString() : null);</span>
-<span class="fc" id="L873">        result.put(&quot;lastCallSuccess&quot;,  lastCallSuccess);</span>
-<span class="fc" id="L874">        result.put(&quot;lastError&quot;,        lastError);</span>
-<span class="fc" id="L875">        result.put(&quot;totalCalls&quot;,       totalCalls.get());</span>
-<span class="fc" id="L876">        result.put(&quot;successfulCalls&quot;,  successfulCalls.get());</span>
-<span class="fc" id="L877">        result.put(&quot;failedCalls&quot;,      failedCalls.get());</span>
-<span class="fc" id="L878">        result.put(&quot;serverTime&quot;,       Instant.now().toString());</span>
-<span class="fc" id="L879">        return result;</span>
+<span class="fc" id="L889">        Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L890" title="1 of 2 branches missed.">        result.put(&quot;provider&quot;,        providerConfig.isMockMode() ? &quot;Mock&quot; : getActiveProviderName());</span>
+<span class="fc" id="L891">        result.put(&quot;apiKeyConfigured&quot;, apiKeyConfigured);</span>
+<span class="fc" id="L892">        result.put(&quot;apiKeyPrefix&quot;,     apiKeyPrefix);</span>
+<span class="pc bpc" id="L893" title="1 of 2 branches missed.">        result.put(&quot;localModel&quot;,       provider == LlmProvider.LOCAL_ONNX</span>
+<span class="pc" id="L894">                ? LocalEmbeddingService.DEFAULT_MODEL_URL : null);</span>
+<span class="pc bpc" id="L895" title="1 of 2 branches missed.">        result.put(&quot;lastCallTime&quot;,     lastCallTime != null ? lastCallTime.toString() : null);</span>
+<span class="fc" id="L896">        result.put(&quot;lastCallSuccess&quot;,  lastCallSuccess);</span>
+<span class="fc" id="L897">        result.put(&quot;lastError&quot;,        lastError);</span>
+<span class="fc" id="L898">        result.put(&quot;totalCalls&quot;,       totalCalls.get());</span>
+<span class="fc" id="L899">        result.put(&quot;successfulCalls&quot;,  successfulCalls.get());</span>
+<span class="fc" id="L900">        result.put(&quot;failedCalls&quot;,      failedCalls.get());</span>
+<span class="fc" id="L901">        result.put(&quot;serverTime&quot;,       Instant.now().toString());</span>
+<span class="fc" id="L902">        return result;</span>
     }
 
     /**
@@ -896,77 +919,77 @@ public class LlmService {
                                              List&lt;TaxonomyNode&gt; pathNodes,
                                              Map&lt;String, Integer&gt; allScores,
                                              Map&lt;String, String&gt; allReasons) {
-<span class="nc bnc" id="L899" title="All 2 branches missed.">        if (providerConfig.isMockMode()) {</span>
-<span class="nc" id="L900">            recordSuccess();</span>
-<span class="nc" id="L901">            return &quot;Node &quot; + leafCode + &quot; is relevant because it supports the requirement to &quot;</span>
-<span class="nc" id="L902">                    + businessText.toLowerCase()</span>
+<span class="nc bnc" id="L922" title="All 2 branches missed.">        if (providerConfig.isMockMode()) {</span>
+<span class="nc" id="L923">            recordSuccess();</span>
+<span class="nc" id="L924">            return &quot;Node &quot; + leafCode + &quot; is relevant because it supports the requirement to &quot;</span>
+<span class="nc" id="L925">                    + businessText.toLowerCase()</span>
                     + &quot;. The node's position within the taxonomy hierarchy indicates a direct &quot;
                     + &quot;contribution to the required capability.&quot;;
         }
 
-<span class="nc" id="L907">        LlmProvider provider = getActiveProvider();</span>
+<span class="nc" id="L930">        LlmProvider provider = getActiveProvider();</span>
 
-<span class="nc bnc" id="L909" title="All 2 branches missed.">        if (provider == LlmProvider.LOCAL_ONNX) {</span>
-<span class="nc" id="L910">            return &quot;Leaf justification is not available for the LOCAL_ONNX provider &quot;</span>
+<span class="nc bnc" id="L932" title="All 2 branches missed.">        if (provider == LlmProvider.LOCAL_ONNX) {</span>
+<span class="nc" id="L933">            return &quot;Leaf justification is not available for the LOCAL_ONNX provider &quot;</span>
                     + &quot;(cosine-similarity scores do not produce textual reasons).&quot;;
         }
 
-<span class="nc" id="L914">        String apiKey = getApiKey(provider);</span>
-<span class="nc bnc" id="L915" title="All 4 branches missed.">        if (apiKey == null || apiKey.isBlank()) {</span>
-<span class="nc" id="L916">            return &quot;Leaf justification unavailable: no API key configured for provider &quot; + provider + &quot;.&quot;;</span>
+<span class="nc" id="L937">        String apiKey = getApiKey(provider);</span>
+<span class="nc bnc" id="L938" title="All 4 branches missed.">        if (apiKey == null || apiKey.isBlank()) {</span>
+<span class="nc" id="L939">            return &quot;Leaf justification unavailable: no API key configured for provider &quot; + provider + &quot;.&quot;;</span>
         }
 
         // Build the path description
-<span class="nc" id="L920">        StringBuilder pathDesc = new StringBuilder();</span>
-<span class="nc bnc" id="L921" title="All 2 branches missed.">        for (TaxonomyNode n : pathNodes) {</span>
-<span class="nc" id="L922">            pathDesc.append(&quot;  &quot;).append(n.getCode()).append(&quot;: &quot;).append(n.getName());</span>
-<span class="nc" id="L923">            int score = allScores.getOrDefault(n.getCode(), 0);</span>
-<span class="nc" id="L924">            pathDesc.append(&quot; [&quot;).append(score).append(&quot;%]&quot;);</span>
-<span class="nc" id="L925">            String reason = allReasons.get(n.getCode());</span>
-<span class="nc bnc" id="L926" title="All 4 branches missed.">            if (reason != null &amp;&amp; !reason.isBlank()) {</span>
-<span class="nc" id="L927">                pathDesc.append(&quot; — &quot;).append(reason);</span>
+<span class="nc" id="L943">        StringBuilder pathDesc = new StringBuilder();</span>
+<span class="nc bnc" id="L944" title="All 2 branches missed.">        for (TaxonomyNode n : pathNodes) {</span>
+<span class="nc" id="L945">            pathDesc.append(&quot;  &quot;).append(n.getCode()).append(&quot;: &quot;).append(n.getName());</span>
+<span class="nc" id="L946">            int score = allScores.getOrDefault(n.getCode(), 0);</span>
+<span class="nc" id="L947">            pathDesc.append(&quot; [&quot;).append(score).append(&quot;%]&quot;);</span>
+<span class="nc" id="L948">            String reason = allReasons.get(n.getCode());</span>
+<span class="nc bnc" id="L949" title="All 4 branches missed.">            if (reason != null &amp;&amp; !reason.isBlank()) {</span>
+<span class="nc" id="L950">                pathDesc.append(&quot; — &quot;).append(reason);</span>
             }
-<span class="nc" id="L929">            pathDesc.append(&quot;\n&quot;);</span>
-<span class="nc" id="L930">        }</span>
+<span class="nc" id="L952">            pathDesc.append(&quot;\n&quot;);</span>
+<span class="nc" id="L953">        }</span>
 
         // Collect cross-references: other nodes with high scores (&gt;= 50) not on the current path
-<span class="nc" id="L933">        Set&lt;String&gt; pathCodes = new HashSet&lt;&gt;();</span>
-<span class="nc bnc" id="L934" title="All 2 branches missed.">        for (TaxonomyNode n : pathNodes) pathCodes.add(n.getCode());</span>
+<span class="nc" id="L956">        Set&lt;String&gt; pathCodes = new HashSet&lt;&gt;();</span>
+<span class="nc bnc" id="L957" title="All 2 branches missed.">        for (TaxonomyNode n : pathNodes) pathCodes.add(n.getCode());</span>
 
-<span class="nc" id="L936">        StringBuilder crossRefs = new StringBuilder();</span>
-<span class="nc" id="L937">        allScores.entrySet().stream()</span>
-<span class="nc bnc" id="L938" title="All 4 branches missed.">                .filter(e -&gt; e.getValue() &gt;= MIN_CROSS_REFERENCE_SCORE &amp;&amp; !pathCodes.contains(e.getKey()))</span>
-<span class="nc" id="L939">                .sorted(Map.Entry.&lt;String, Integer&gt;comparingByValue().reversed())</span>
-<span class="nc" id="L940">                .limit(MAX_CROSS_REFERENCES)</span>
-<span class="nc" id="L941">                .forEach(e -&gt; {</span>
-<span class="nc" id="L942">                    crossRefs.append(&quot;  &quot;).append(e.getKey()).append(&quot;: &quot;).append(e.getValue()).append(&quot;%&quot;);</span>
-<span class="nc" id="L943">                    String reason = allReasons.get(e.getKey());</span>
-<span class="nc bnc" id="L944" title="All 4 branches missed.">                    if (reason != null &amp;&amp; !reason.isBlank()) {</span>
-<span class="nc" id="L945">                        crossRefs.append(&quot; — &quot;).append(reason);</span>
+<span class="nc" id="L959">        StringBuilder crossRefs = new StringBuilder();</span>
+<span class="nc" id="L960">        allScores.entrySet().stream()</span>
+<span class="nc bnc" id="L961" title="All 4 branches missed.">                .filter(e -&gt; e.getValue() &gt;= MIN_CROSS_REFERENCE_SCORE &amp;&amp; !pathCodes.contains(e.getKey()))</span>
+<span class="nc" id="L962">                .sorted(Map.Entry.&lt;String, Integer&gt;comparingByValue().reversed())</span>
+<span class="nc" id="L963">                .limit(MAX_CROSS_REFERENCES)</span>
+<span class="nc" id="L964">                .forEach(e -&gt; {</span>
+<span class="nc" id="L965">                    crossRefs.append(&quot;  &quot;).append(e.getKey()).append(&quot;: &quot;).append(e.getValue()).append(&quot;%&quot;);</span>
+<span class="nc" id="L966">                    String reason = allReasons.get(e.getKey());</span>
+<span class="nc bnc" id="L967" title="All 4 branches missed.">                    if (reason != null &amp;&amp; !reason.isBlank()) {</span>
+<span class="nc" id="L968">                        crossRefs.append(&quot; — &quot;).append(reason);</span>
                     }
-<span class="nc" id="L947">                    crossRefs.append(&quot;\n&quot;);</span>
-<span class="nc" id="L948">                });</span>
+<span class="nc" id="L970">                    crossRefs.append(&quot;\n&quot;);</span>
+<span class="nc" id="L971">                });</span>
 
-<span class="nc" id="L950">        String prompt = promptTemplateService.renderLeafJustificationPrompt(</span>
-<span class="nc" id="L951">                businessText, leafCode, pathDesc.toString(),</span>
-<span class="nc bnc" id="L952" title="All 2 branches missed.">                crossRefs.length() &gt; 0 ? crossRefs.toString() : &quot;  (none)&quot;);</span>
+<span class="nc" id="L973">        String prompt = promptTemplateService.renderLeafJustificationPrompt(</span>
+<span class="nc" id="L974">                businessText, leafCode, pathDesc.toString(),</span>
+<span class="nc bnc" id="L975" title="All 2 branches missed.">                crossRefs.length() &gt; 0 ? crossRefs.toString() : &quot;  (none)&quot;);</span>
 
-<span class="nc" id="L954">        log.info(&quot;Generating leaf justification for node {} via {}&quot;, leafCode, provider);</span>
-<span class="nc" id="L955">        log.debug(&quot;Leaf justification prompt:\n{}&quot;, prompt);</span>
+<span class="nc" id="L977">        log.info(&quot;Generating leaf justification for node {} via {}&quot;, leafCode, provider);</span>
+<span class="nc" id="L978">        log.debug(&quot;Leaf justification prompt:\n{}&quot;, prompt);</span>
 
         try {
-<span class="nc" id="L958">            LlmGateway gateway = gatewayRegistry.getGateway(provider);</span>
-<span class="nc" id="L959">            String body = gateway.sendHttpRequest(prompt, apiKey);</span>
-<span class="nc bnc" id="L960" title="All 2 branches missed.">            String rawText = body != null ? gateway.extractResponseText(body) : null;</span>
-<span class="nc bnc" id="L961" title="All 4 branches missed.">            if (rawText == null || rawText.isBlank()) {</span>
-<span class="nc" id="L962">                return &quot;The LLM did not return a justification. Please try again.&quot;;</span>
+<span class="nc" id="L981">            LlmGateway gateway = gatewayRegistry.getGateway(provider);</span>
+<span class="nc" id="L982">            String body = gateway.sendHttpRequest(prompt, apiKey);</span>
+<span class="nc bnc" id="L983" title="All 2 branches missed.">            String rawText = body != null ? gateway.extractResponseText(body) : null;</span>
+<span class="nc bnc" id="L984" title="All 4 branches missed.">            if (rawText == null || rawText.isBlank()) {</span>
+<span class="nc" id="L985">                return &quot;The LLM did not return a justification. Please try again.&quot;;</span>
             }
-<span class="nc" id="L964">            recordSuccess();</span>
-<span class="nc" id="L965">            return rawText.trim();</span>
-<span class="nc" id="L966">        } catch (Exception e) {</span>
-<span class="nc" id="L967">            log.error(&quot;Failed to generate leaf justification for {}&quot;, leafCode, e);</span>
-<span class="nc" id="L968">            recordFailure(e.getMessage());</span>
-<span class="nc" id="L969">            return &quot;Error generating justification: &quot; + e.getMessage();</span>
+<span class="nc" id="L987">            recordSuccess();</span>
+<span class="nc" id="L988">            return rawText.trim();</span>
+<span class="nc" id="L989">        } catch (Exception e) {</span>
+<span class="nc" id="L990">            log.error(&quot;Failed to generate leaf justification for {}&quot;, leafCode, e);</span>
+<span class="nc" id="L991">            recordFailure(e.getMessage());</span>
+<span class="nc" id="L992">            return &quot;Error generating justification: &quot; + e.getMessage();</span>
         }
     }
 
@@ -980,34 +1003,38 @@ public class LlmService {
      * @return the raw text response, or {@code null} if the LLM is unavailable or the call failed
      */
     public String callLlmRaw(String prompt) {
-<span class="nc bnc" id="L983" title="All 2 branches missed.">        if (providerConfig.isMockMode()) {</span>
-<span class="nc" id="L984">            recordSuccess();</span>
-<span class="nc" id="L985">            return &quot;[]&quot;; // Return empty JSON array for mock mode</span>
+<span class="nc bnc" id="L1006" title="All 2 branches missed.">        if (providerConfig.isMockMode()) {</span>
+<span class="nc" id="L1007">            recordSuccess();</span>
+<span class="nc" id="L1008">            return &quot;[]&quot;; // Return empty JSON array for mock mode</span>
         }
 
-<span class="nc" id="L988">        LlmProvider provider = getActiveProvider();</span>
-<span class="nc bnc" id="L989" title="All 2 branches missed.">        if (provider == LlmProvider.LOCAL_ONNX) {</span>
-<span class="nc" id="L990">            log.warn(&quot;callLlmRaw is not supported for LOCAL_ONNX provider&quot;);</span>
-<span class="nc" id="L991">            return null;</span>
+<span class="nc" id="L1011">        LlmProvider provider = getActiveProvider();</span>
+<span class="nc bnc" id="L1012" title="All 2 branches missed.">        if (provider == LlmProvider.LOCAL_ONNX) {</span>
+<span class="nc" id="L1013">            log.warn(&quot;callLlmRaw is not supported for LOCAL_ONNX provider&quot;);</span>
+<span class="nc" id="L1014">            return null;</span>
         }
 
-<span class="nc" id="L994">        String apiKey = getApiKey(provider);</span>
-<span class="nc bnc" id="L995" title="All 6 branches missed.">        if ((apiKey == null || apiKey.isBlank()) &amp;&amp; !isReplayActive()) {</span>
-<span class="nc" id="L996">            log.warn(&quot;No API key for provider {} — cannot call LLM&quot;, provider);</span>
-<span class="nc" id="L997">            return null;</span>
+<span class="nc" id="L1017">        String apiKey = getApiKey(provider);</span>
+<span class="nc bnc" id="L1018" title="All 6 branches missed.">        if ((apiKey == null || apiKey.isBlank()) &amp;&amp; !isReplayActive()) {</span>
+<span class="nc" id="L1019">            log.warn(&quot;No API key for provider {} — cannot call LLM&quot;, provider);</span>
+<span class="nc" id="L1020">            return null;</span>
         }
 
         try {
-<span class="nc" id="L1001">            LlmGateway gateway = gatewayRegistry.getGateway(provider);</span>
-<span class="nc" id="L1002">            String body = gateway.sendHttpRequest(prompt, apiKey);</span>
-<span class="nc bnc" id="L1003" title="All 2 branches missed.">            return body != null ? gateway.extractResponseText(body) : null;</span>
-<span class="nc" id="L1004">        } catch (LlmRateLimitException e) {</span>
-<span class="nc" id="L1005">            recordFailure(e.getMessage());</span>
-<span class="nc" id="L1006">            throw e;</span>
-<span class="nc" id="L1007">        } catch (Exception e) {</span>
-<span class="nc" id="L1008">            log.error(&quot;Failed to call LLM raw&quot;, e);</span>
-<span class="nc" id="L1009">            recordFailure(e.getMessage());</span>
-<span class="nc" id="L1010">            return null;</span>
+<span class="nc" id="L1024">            LlmGateway gateway = gatewayRegistry.getGateway(provider);</span>
+<span class="nc" id="L1025">            String body = gateway.sendHttpRequest(prompt, apiKey);</span>
+<span class="nc bnc" id="L1026" title="All 2 branches missed.">            return body != null ? gateway.extractResponseText(body) : null;</span>
+<span class="nc" id="L1027">        } catch (LlmRateLimitException e) {</span>
+<span class="nc" id="L1028">            recordFailure(e.getMessage());</span>
+<span class="nc" id="L1029">            throw e;</span>
+<span class="nc" id="L1030">        } catch (LlmTimeoutException e) {</span>
+<span class="nc" id="L1031">            log.warn(&quot;LLM API call timed out: {}&quot;, e.getMessage());</span>
+<span class="nc" id="L1032">            recordFailure(e.getMessage());</span>
+<span class="nc" id="L1033">            throw e;</span>
+<span class="nc" id="L1034">        } catch (Exception e) {</span>
+<span class="nc" id="L1035">            log.error(&quot;Failed to call LLM raw&quot;, e);</span>
+<span class="nc" id="L1036">            recordFailure(e.getMessage());</span>
+<span class="nc" id="L1037">            return null;</span>
         }
     }
 }
