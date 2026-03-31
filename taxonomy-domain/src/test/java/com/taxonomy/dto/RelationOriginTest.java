@@ -55,24 +55,26 @@ class RelationOriginTest {
     @EnumSource(RelationOrigin.class)
     void categoryIsOneOfThreeValues(RelationOrigin origin) {
         String cat = origin.category();
-        assertTrue("seed".equals(cat) || "trace".equals(cat) || "impact".equals(cat),
+        assertTrue(RequirementRelationshipView.CATEGORY_SEED.equals(cat)
+                        || RequirementRelationshipView.CATEGORY_TRACE.equals(cat)
+                        || RequirementRelationshipView.CATEGORY_IMPACT.equals(cat),
                 "category must be seed, trace, or impact but was: " + cat);
     }
 
     @Test
     void seedOriginHasSeedCategory() {
-        assertEquals("seed", RelationOrigin.TAXONOMY_SEED.category());
+        assertEquals(RequirementRelationshipView.CATEGORY_SEED, RelationOrigin.TAXONOMY_SEED.category());
     }
 
     @Test
     void traceOriginHasTraceCategory() {
-        assertEquals("trace", RelationOrigin.PROPAGATED_TRACE.category());
+        assertEquals(RequirementRelationshipView.CATEGORY_TRACE, RelationOrigin.PROPAGATED_TRACE.category());
     }
 
     @Test
     void impactOriginsHaveImpactCategory() {
-        assertEquals("impact", RelationOrigin.IMPACT_DERIVED.category());
-        assertEquals("impact", RelationOrigin.SUGGESTED_CANDIDATE.category());
-        assertEquals("impact", RelationOrigin.LLM_SUPPORTED.category());
+        assertEquals(RequirementRelationshipView.CATEGORY_IMPACT, RelationOrigin.IMPACT_DERIVED.category());
+        assertEquals(RequirementRelationshipView.CATEGORY_IMPACT, RelationOrigin.SUGGESTED_CANDIDATE.category());
+        assertEquals(RequirementRelationshipView.CATEGORY_IMPACT, RelationOrigin.LLM_SUPPORTED.category());
     }
 }

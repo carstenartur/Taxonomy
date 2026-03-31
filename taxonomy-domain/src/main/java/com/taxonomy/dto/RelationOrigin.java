@@ -17,19 +17,19 @@ package com.taxonomy.dto;
 public enum RelationOrigin {
 
     /** Loaded from the seed CSV (TYPE_DEFAULT, FRAMEWORK_SEED, or SOURCE_DERIVED). */
-    TAXONOMY_SEED("relation.origin.taxonomy.seed", "seed"),
+    TAXONOMY_SEED("relation.origin.taxonomy.seed", RequirementRelationshipView.CATEGORY_SEED),
 
     /** Discovered through BFS traversal during relevance propagation. */
-    PROPAGATED_TRACE("relation.origin.propagated.trace", "trace"),
+    PROPAGATED_TRACE("relation.origin.propagated.trace", RequirementRelationshipView.CATEGORY_TRACE),
 
     /** Derived as a cross-category leaf-to-leaf impact relation. */
-    IMPACT_DERIVED("relation.origin.impact.derived", "impact"),
+    IMPACT_DERIVED("relation.origin.impact.derived", RequirementRelationshipView.CATEGORY_IMPACT),
 
     /** Proposed by gap analysis or embedding-based similarity. */
-    SUGGESTED_CANDIDATE("relation.origin.suggested.candidate", "impact"),
+    SUGGESTED_CANDIDATE("relation.origin.suggested.candidate", RequirementRelationshipView.CATEGORY_IMPACT),
 
     /** Supported or confirmed by LLM inference. */
-    LLM_SUPPORTED("relation.origin.llm.supported", "impact");
+    LLM_SUPPORTED("relation.origin.llm.supported", RequirementRelationshipView.CATEGORY_IMPACT);
 
     private final String messageKey;
     private final String category;

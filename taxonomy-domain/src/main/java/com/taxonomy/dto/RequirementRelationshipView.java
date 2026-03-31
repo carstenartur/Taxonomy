@@ -65,22 +65,34 @@ public class RequirementRelationshipView {
     public String getIncludedBecause() { return includedBecause; }
     public void setIncludedBecause(String includedBecause) { this.includedBecause = includedBecause; }
 
-    public String getRelationCategory() { return relationCategory; }
+    /**
+     * Returns the coarse display category.  When a structured
+     * {@link #getOrigin() origin} is set, the category is derived from
+     * it — the stored string is only used as a fallback for views
+     * that were built before origin tracking was introduced.
+     */
+    public String getRelationCategory() {
+        return origin != null ? origin.category() : relationCategory;
+    }
+
+    /**
+     * @deprecated Use {@link #setOrigin(RelationOrigin)} instead.
+     *             Setting the category directly may drift from the
+     *             structured origin.
+     */
+    @Deprecated
     public void setRelationCategory(String relationCategory) { this.relationCategory = relationCategory; }
 
     // ── Phase 1.4 accessors ─────────────────────────────────────────────────
 
     public RelationOrigin getOrigin() { return origin; }
     /**
-     * Sets the structured origin and automatically syncs the legacy
-     * {@link #getRelationCategory() relationCategory} string so that
-     * both fields are always consistent.
+     * Sets the structured origin.  {@link #getRelationCategory()} will
+     * automatically derive the coarse category from this value, so
+     * callers do not need to set the category separately.
      */
     public void setOrigin(RelationOrigin origin) {
         this.origin = origin;
-        if (origin != null) {
-            this.relationCategory = origin.category();
-        }
     }
 
     public double getConfidence() { return confidence; }

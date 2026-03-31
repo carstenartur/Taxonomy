@@ -46,6 +46,7 @@ class RequirementRelationshipViewFieldsTest {
         assertEquals(SeedType.FRAMEWORK_SEED, view.getSeedType());
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     void existingFieldsStillWork() {
         RequirementRelationshipView view = new RequirementRelationshipView();
