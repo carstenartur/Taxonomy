@@ -357,31 +357,39 @@ bekannte Root-zu-Root-Taxonomie-Beziehungen.
 | `PROPAGATED` | Via BFS-Beziehungstraversal erreicht |
 | `SEED_CONTEXT` | Root-Code via Propagierung erreicht |
 | `ENRICHED_LEAF` | Als konkreter Blattknoten nachträglich hinzugefügt |
-| `IMPACT_SELECTED` | Für finale Wirkungsdarstellung durch Kompositbewertung ausgewählt |
+| `IMPACT_PROMOTED` | Herkunft von schwächerer Provenienz während Impact-Auswahl hochgestuft |
 
 ---
 
 ## Beziehungs-Herkünfte
 
-| Herkunft | Bedeutung |
-|----------|-----------|
-| `TAXONOMY_SEED` | Aus Seed-CSV geladen; Root-zu-Root |
-| `PROPAGATED_TRACE` | Durch BFS-Traversal entdeckt |
-| `IMPACT_DERIVED` | Kategorieübergreifende Blatt-zu-Blatt-Ableitung |
-| `SUGGESTED_CANDIDATE` | Durch Lückenanalyse oder Embedding-Ähnlichkeit vorgeschlagen |
-| `LLM_SUPPORTED` | ⚠️ Durch LLM-Inferenz bestätigt (derzeit nicht gesetzt) |
+Jede Beziehung trägt ein `RelationOrigin`-Enum, das ihre Provenienz
+dokumentiert. Die Herkunft bestimmt auch die grobe **Anzeigekategorie**
+(über `RelationOrigin.category()`):
+
+| Herkunft | Kategorie | Bedeutung |
+|----------|-----------|-----------|
+| `TAXONOMY_SEED` | `seed` | Aus Seed-CSV geladen; Root-zu-Root |
+| `PROPAGATED_TRACE` | `trace` | Durch BFS-Traversal entdeckt |
+| `IMPACT_DERIVED` | `impact` | Kategorieübergreifende Blatt-zu-Blatt-Ableitung |
+| `SUGGESTED_CANDIDATE` | `impact` | Durch Lückenanalyse oder Embedding-Ähnlichkeit vorgeschlagen |
+| `LLM_SUPPORTED` | `impact` | ⚠️ Durch LLM-Inferenz bestätigt (derzeit nicht gesetzt) |
 
 ---
 
 ## Konstantenreferenz
 
+Pipeline-weite Anker- und Anreicherungsschwellen sind zentralisiert in
+`PipelineConstants` (taxonomy-domain Modul). Serviceklassen delegieren
+an diese Konstanten, sodass es genau eine Wahrheitsquelle gibt.
+
 | Konstante | Wert | Ort | Zweck |
 |-----------|------|-----|-------|
-| `ANCHOR_THRESHOLD_HIGH` | 70 | RequirementArchitectureViewService | Primäre Ankerschwelle |
-| `ANCHOR_THRESHOLD_LOW` | 50 | RequirementArchitectureViewService | Rückfall-Ankerschwelle |
-| `MIN_ANCHORS` | 3 | RequirementArchitectureViewService | Minimum vor Rückfall |
-| `MAX_LEAF_ENRICHMENT` | 3 | RequirementArchitectureViewService | Max Anreicherungs-Blätter pro Root |
-| `LEAF_ENRICHMENT_MIN_SCORE` | 5 | RequirementArchitectureViewService | Min-Score für Blattanreicherung |
+| `ANCHOR_THRESHOLD_HIGH` | 70 | PipelineConstants | Primäre Ankerschwelle |
+| `ANCHOR_THRESHOLD_LOW` | 50 | PipelineConstants | Rückfall-Ankerschwelle |
+| `MIN_ANCHORS` | 3 | PipelineConstants | Minimum vor Rückfall |
+| `MAX_LEAF_ENRICHMENT` | 3 | PipelineConstants | Max Anreicherungs-Blätter pro Root |
+| `LEAF_ENRICHMENT_MIN_SCORE` | 5 | PipelineConstants | Min-Score für Blattanreicherung |
 | `MAX_HOPS` | 2 | RelevancePropagationService | BFS-Sprunglimit |
 | `MIN_RELEVANCE` | 0,35 | RelevancePropagationService | Propagierungsschwelle |
 | `HOP_DECAY` | 0,70 | RelevancePropagationService | Sprung-Dämpfung |
