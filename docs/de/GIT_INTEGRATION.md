@@ -517,10 +517,14 @@ Die Benutzeroberfläche pollt `/api/git/state` alle 10 Sekunden, um einen Status
 Beziehungen, die während der LLM-Analyse generiert werden, werden als **Hypothesen** gespeichert — vorläufige Beziehungen, die eine menschliche Überprüfung erfordern, bevor sie dauerhaft werden:
 
 ```
-PENDING  →  ACCEPTED  (erstellt TaxonomyRelation)
-         →  REJECTED  (als abgelehnt markiert)
-         →  APPLIED   (nur für die Sitzung, nicht persistiert)
+PROVISIONAL  →  ACCEPTED  (erstellt TaxonomyRelation)
+             →  REJECTED  (als abgelehnt markiert)
 ```
+
+Das Flag `appliedInCurrentAnalysis` ermöglicht die Anwendung einer Hypothese
+nur für die aktuelle Sitzung, ohne eine permanente `TaxonomyRelation` zu
+erstellen. Es handelt sich um ein transientes Flag, nicht um einen
+Lebenszyklus-Status.
 
 Die Hypothesen-API (`/api/dsl/hypotheses`) ermöglicht das Abfragen, Akzeptieren und Ablehnen von Hypothesen, wobei für jede unterstützende Nachweise verfügbar sind.
 

@@ -530,7 +530,7 @@ In the Propose Relations Modal:
 1. Confirm or note the **Node Code** displayed at the top.
 2. Use the **Relation Type** dropdown to select the type of relation you want the AI to propose (e.g., REALIZES, SUPPORTS, DEPENDS_ON).
 3. Click **Generate Proposals**.
-4. The system will search for candidate nodes and create PENDING proposals. Close the modal when the operation completes.
+4. The system will search for candidate nodes and create PROVISIONAL proposals. Close the modal when the operation completes.
 
 ### Reviewing Proposals (Pending / All / Accepted / Rejected Filters)
 
@@ -564,7 +564,7 @@ Once accepted, the proposal displays a green **Accepted** badge. The accepted re
 
 ![Accepted proposal](../images/36-proposal-accepted.png)
 
-After each accept or reject action, an **Undo toast notification** appears in the bottom-right corner for 8 seconds. Click **↩️ Undo** to revert the proposal back to PENDING status (and, if it was accepted, delete the created relation).
+After each accept or reject action, an **Undo toast notification** appears in the bottom-right corner for 8 seconds. Click **↩️ Undo** to revert the proposal back to PROVISIONAL status (and, if it was accepted, delete the created relation).
 
 ### Bulk Actions
 

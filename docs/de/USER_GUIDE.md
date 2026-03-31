@@ -526,7 +526,7 @@ Im Modal „Relationen vorschlagen":
 1. Bestätigen oder notieren Sie den oben angezeigten **Node Code**.
 2. Verwenden Sie das Dropdown-Menü **Relation Type**, um den Typ der Relation auszuwählen, den die KI vorschlagen soll (z. B. REALIZES, SUPPORTS, DEPENDS_ON).
 3. Klicken Sie auf **Generate Proposals**.
-4. Das System sucht nach Kandidaten-Knoten und erstellt PENDING-Vorschläge. Schließen Sie das Modal, wenn der Vorgang abgeschlossen ist.
+4. Das System sucht nach Kandidaten-Knoten und erstellt PROVISIONAL-Vorschläge. Schließen Sie das Modal, wenn der Vorgang abgeschlossen ist.
 
 ### Überprüfung von Vorschlägen (Filter: Pending / All / Accepted / Rejected)
 
@@ -560,7 +560,7 @@ Nach der Annahme zeigt der Vorschlag ein grünes **Accepted**-Badge an. Die akze
 
 ![Akzeptierter Vorschlag](../images/36-proposal-accepted.png)
 
-Nach jeder Annahme- oder Ablehnungsaktion erscheint eine **Rückgängig-Toast-Benachrichtigung** in der unteren rechten Ecke für 8 Sekunden. Klicken Sie auf **↩️ Undo**, um den Vorschlag auf den Status PENDING zurückzusetzen (und, falls er akzeptiert wurde, die erstellte Relation zu löschen).
+Nach jeder Annahme- oder Ablehnungsaktion erscheint eine **Rückgängig-Toast-Benachrichtigung** in der unteren rechten Ecke für 8 Sekunden. Klicken Sie auf **↩️ Undo**, um den Vorschlag auf den Status PROVISIONAL zurückzusetzen (und, falls er akzeptiert wurde, die erstellte Relation zu löschen).
 
 ### Massenaktionen
 
