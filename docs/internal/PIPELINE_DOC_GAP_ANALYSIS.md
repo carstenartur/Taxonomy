@@ -54,9 +54,11 @@ weights. Three relation categories (impact, trace, seed) clearly distinguished.
 **Resolution:** Fully documented in `DECISION_PIPELINE.md` § Relation Lifecycle
 with ASCII state diagram. States: PROVISIONAL → ACCEPTED (creates TaxonomyRelation,
 Git commit to `accepted` branch) or REJECTED (DB update only). `appliedInCurrentAnalysis`
-documented as transient session-only flag. `PROPOSED` status documented as reserved
-for relation-proposal feature. Terminology fixed in USER_GUIDE (en/de) and
-GIT_INTEGRATION (en/de): PENDING → PROVISIONAL.
+documented as a persisted flag that controls whether a hypothesis is treated as
+applied/active in the current analysis view. `PROPOSED` status documented as reserved
+for relation-proposal feature. Terminology clarified in USER_GUIDE (en/de) and
+GIT_INTEGRATION (en/de): relation hypotheses use PROVISIONAL/ACCEPTED/REJECTED;
+relation proposals continue to use PENDING status.
 
 ### 2.6 Seed Relations — ✅ Resolved
 
@@ -92,8 +94,8 @@ in `PipelineConstants` and listed in Constants Reference.
 
 | Term (was) | Fix applied | Where |
 |---|---|---|
-| "PENDING" hypothesis status | Changed to PROVISIONAL | `CONCEPTS.md`, `USER_GUIDE.md`, `GIT_INTEGRATION.md` (en + de) |
-| "APPLIED" as lifecycle status | Removed; documented `appliedInCurrentAnalysis` as transient flag | `GIT_INTEGRATION.md` (en + de), `DECISION_PIPELINE.md` |
+| "PENDING" hypothesis status | Changed to PROVISIONAL (hypotheses only; proposals keep PENDING) | `CONCEPTS.md`, `GIT_INTEGRATION.md` (en + de) |
+| "APPLIED" as lifecycle status | Removed; documented `appliedInCurrentAnalysis` as a persisted flag (not a lifecycle status) | `GIT_INTEGRATION.md` (en + de), `DECISION_PIPELINE.md` |
 | "IMPACT_SELECTED" node origin | Renamed to `IMPACT_PROMOTED` in code and docs | `NodeOrigin.java`, `DECISION_PIPELINE.md` |
 | "7-step pipeline" without detail | Clarified as 7 high-level steps with 11 internal Phase 3 steps | `ARCHITECTURE.md` (en + de) |
 

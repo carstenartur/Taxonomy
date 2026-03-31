@@ -521,9 +521,11 @@ PROVISIONAL  →  ACCEPTED  (creates TaxonomyRelation)
              →  REJECTED  (marked as rejected)
 ```
 
-The `appliedInCurrentAnalysis` flag allows applying a hypothesis for the
-current session only, without creating a permanent `TaxonomyRelation`.
-This is a transient flag, not a lifecycle status.
+The `appliedInCurrentAnalysis` flag controls applying a hypothesis in the
+current analysis without creating a permanent `TaxonomyRelation` or
+accepted-branch commit. The flag itself is persisted on the
+`RelationHypothesis` entity for auditing and reuse, but it is not a
+lifecycle status like PROVISIONAL/ACCEPTED/REJECTED.
 
 The Hypotheses API (`/api/dsl/hypotheses`) allows querying, accepting, and rejecting hypotheses, with supporting evidence available for each.
 
