@@ -691,6 +691,40 @@
         return tbl;
     }
 
+    /**
+     * Renders a single swimlane node (used by both flat and containment rendering).
+     */
+    function renderSwimNode(el, hotspotCodes, hotspotReasons) {
+        var pct = (el.relevance * 100).toFixed(0);
+        var nodeClasses = 'impact-node';
+        if (el.anchor) nodeClasses += ' impact-node-anchor';
+        if (hotspotCodes.has(el.nodeCode)) nodeClasses += ' impact-node-hotspot';
+        var opacity = 0.6 + (el.relevance * 0.4);
+        var titleParts = el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '');
+        if (hotspotCodes.has(el.nodeCode)) {
+            titleParts += ' | ⚠️ hotspot: ' + (hotspotReasons[el.nodeCode] || t('analyze.hotspot.risk'));
+        }
+        var h = '<span class="' + nodeClasses + '" style="opacity:' + opacity.toFixed(2) + '"' +
+            ' title="' + escapeHtml(titleParts) + '">';
+        if (el.title) {
+            h += '<strong>' + escapeHtml(el.title.substring(0, 40)) + '</strong>';
+            h += ' <span class="impact-node-code">' + escapeHtml(el.nodeCode) + '</span>';
+        } else {
+            h += escapeHtml(el.nodeCode);
+        }
+        if (el.anchor) {
+            h += ' <span class="impact-badge">★ ' + pct + '%</span>';
+        } else {
+            h += ' <span class="impact-badge">' + pct + '%</span>';
+        }
+        if (hotspotCodes.has(el.nodeCode)) {
+            h += ' <span class="impact-badge impact-badge-hotspot">⚠️ ' +
+                escapeHtml((hotspotReasons[el.nodeCode] || 'hotspot').substring(0, 40)) + '</span>';
+        }
+        h += '</span>';
+        return h;
+    }
+
     function renderArchitectureView(view) {
         const panel = document.getElementById('architectureViewPanel');
         const content = document.getElementById('architectureViewContent');
@@ -704,6 +738,23 @@
         }
 
         let html = '';
+
+        // ── View title + legend (generated from the active policy) ──
+        if (view.viewTitle) {
+            html += '<div class="archview-header mb-2">';
+            html += '<h6 class="archview-title mb-1">' + escapeHtml(t(view.viewTitle)) + '</h6>';
+            if (view.viewDescription) {
+                html += '<p class="archview-description text-muted small mb-1">' + escapeHtml(t(view.viewDescription)) + '</p>';
+            }
+            if (view.activeRules && view.activeRules.length > 0) {
+                html += '<div class="archview-legend small">';
+                view.activeRules.forEach(function (rule) {
+                    html += '<span class="badge bg-light text-dark border me-1 mb-1">' + escapeHtml(t(rule)) + '</span>';
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+        }
 
         // Notes
         if (view.notes && view.notes.length > 0) {
@@ -764,10 +815,10 @@
 
         // ── Part 1: Impact Summary Bar ──
         html += '<div class="impact-summary-bar">';
-        html += '<span class="impact-kpi">🎯 ' + anchors.length + ' direct matches</span>';
-        html += '<span class="impact-kpi">📦 ' + elements.length + ' affected elements</span>';
-        html += '<span class="impact-kpi">🔗 ' + relationships.length + ' relations</span>';
-        html += '<span class="impact-kpi">🏗️ ' + sortedSheets.length + ' layers</span>';
+        html += '<span class="impact-kpi">🎯 ' + anchors.length + ' ' + t('archview.kpi.direct.matches') + '</span>';
+        html += '<span class="impact-kpi">📦 ' + elements.length + ' ' + t('archview.kpi.affected.elements') + '</span>';
+        html += '<span class="impact-kpi">🔗 ' + relationships.length + ' ' + t('archview.kpi.relations') + '</span>';
+        html += '<span class="impact-kpi">🏗️ ' + sortedSheets.length + ' ' + t('archview.kpi.layers') + '</span>';
         if (hotspotCodes.size > 0) {
             // Show concrete hotspot element names, not just a count
             var hotspotNames = [];
@@ -807,6 +858,29 @@
             // Swimlane fallback (hidden by default)
             html += '<div id="impactSwimView" style="display:none;">';
             html += '<div class="impact-map">';
+
+            // ── Containment: build parent→children map ──
+            var parentChildren = {};
+            var childCodes = {};
+            var suppressedParents = {};
+            if (view.containmentEnabled) {
+                elements.forEach(function (el) {
+                    if (el.parentNodeCode && elByCode[el.parentNodeCode]) {
+                        if (!parentChildren[el.parentNodeCode]) parentChildren[el.parentNodeCode] = [];
+                        parentChildren[el.parentNodeCode].push(el);
+                        childCodes[el.nodeCode] = true;
+                    }
+                });
+                // Single-child parents → suppress parent, lift child
+                Object.keys(parentChildren).forEach(function (parentCode) {
+                    if (parentChildren[parentCode].length === 1) {
+                        suppressedParents[parentCode] = true;
+                        delete childCodes[parentChildren[parentCode][0].nodeCode];
+                        delete parentChildren[parentCode];
+                    }
+                });
+            }
+
             for (let i = 0; i < sortedSheets.length; i++) {
                 const sheet = sortedSheets[i];
                 const cfg = LAYER_CONFIG[sheet] || { order: 99, cls: '', icon: '⬜', label: sheet };
@@ -839,33 +913,25 @@
                     return b.relevance - a.relevance;
                 });
                 layerElements.forEach(el => {
-                    const pct = (el.relevance * 100).toFixed(0);
-                    let nodeClasses = 'impact-node';
-                    if (el.anchor) nodeClasses += ' impact-node-anchor';
-                    if (hotspotCodes.has(el.nodeCode)) nodeClasses += ' impact-node-hotspot';
-                    const opacity = 0.6 + (el.relevance * 0.4);
-                    let titleParts = el.nodeCode + ' ' + (el.title || '') + ' — ' + (el.includedBecause || '');
-                    if (hotspotCodes.has(el.nodeCode)) {
-                        titleParts += ' | ⚠️ hotspot: ' + (hotspotReasons[el.nodeCode] || t('analyze.hotspot.risk'));
+                    // Skip suppressed single-child parents
+                    if (suppressedParents[el.nodeCode]) return;
+                    // Skip children rendered inside their container
+                    if (childCodes[el.nodeCode]) return;
+
+                    // Multi-child parent → render as container with children inside
+                    if (parentChildren[el.nodeCode] && parentChildren[el.nodeCode].length >= 2) {
+                        html += '<div class="impact-container">';
+                        html += '<div class="impact-container-label">' + escapeHtml(el.title || el.nodeCode) +
+                            ' <span class="impact-node-code">' + escapeHtml(el.nodeCode) + '</span></div>';
+                        html += '<div class="impact-container-children">';
+                        parentChildren[el.nodeCode].forEach(function (child) {
+                            html += renderSwimNode(child, hotspotCodes, hotspotReasons);
+                        });
+                        html += '</div></div>';
+                        return;
                     }
-                    html += '<span class="' + nodeClasses + '" style="opacity:' + opacity.toFixed(2) + '"' +
-                        ' title="' + escapeHtml(titleParts) + '">';
-                    if (el.title) {
-                        html += '<strong>' + escapeHtml(el.title.substring(0, 40)) + '</strong>';
-                        html += ' <span class="impact-node-code">' + escapeHtml(el.nodeCode) + '</span>';
-                    } else {
-                        html += escapeHtml(el.nodeCode);
-                    }
-                    if (el.anchor) {
-                        html += ' <span class="impact-badge">★ ' + pct + '%</span>';
-                    } else {
-                        html += ' <span class="impact-badge">' + pct + '%</span>';
-                    }
-                    if (hotspotCodes.has(el.nodeCode)) {
-                        html += ' <span class="impact-badge impact-badge-hotspot">⚠️ ' +
-                            escapeHtml((hotspotReasons[el.nodeCode] || 'hotspot').substring(0, 40)) + '</span>';
-                    }
-                    html += '</span>';
+
+                    html += renderSwimNode(el, hotspotCodes, hotspotReasons);
                 });
                 html += '</div></div>';
             }
@@ -885,11 +951,11 @@
             // ── Architecture Impact section (always open) ──
             if (impactElements.length > 0 || relationships.filter(function(r) { return r.relationCategory === 'impact'; }).length > 0) {
                 html += '<details class="impact-details" open>';
-                html += '<summary>🎯 Architecture Impact: ' + impactElements.length + ' Elements, ' +
-                    relationships.filter(function(r) { return r.relationCategory === 'impact'; }).length + ' Relations</summary>';
+                html += '<summary>🎯 ' + t('archview.section.impact') + ': ' + impactElements.length + ' ' + t('archview.section.elements') + ', ' +
+                    relationships.filter(function(r) { return r.relationCategory === 'impact'; }).length + ' ' + t('archview.section.relations') + '</summary>';
 
                 if (impactElements.length > 0) {
-                    html += '<h6 class="mb-1 mt-2">Impact Elements</h6>';
+                    html += '<h6 class="mb-1 mt-2">' + t('archview.impact.elements.title') + '</h6>';
                     html += renderElementsTable(impactElements, hotspotCodes);
                 }
 
@@ -923,11 +989,11 @@
 
             if (traceElements.length > 0 || traceRels.length > 0 || seedRels.length > 0) {
                 html += '<details class="impact-details mt-2">';
-                html += '<summary>🔍 Scoring Trace: ' + traceElements.length + ' Elements, ' +
-                    (traceRels.length + seedRels.length) + ' Relations</summary>';
+                html += '<summary>🔍 ' + t('archview.section.trace') + ': ' + traceElements.length + ' ' + t('archview.section.elements') + ', ' +
+                    (traceRels.length + seedRels.length) + ' ' + t('archview.section.relations') + '</summary>';
 
                 if (traceElements.length > 0) {
-                    html += '<h6 class="mb-1 mt-2">Trace Elements</h6>';
+                    html += '<h6 class="mb-1 mt-2">' + t('archview.trace.elements.title') + '</h6>';
                     html += renderElementsTable(traceElements, hotspotCodes);
                 }
 

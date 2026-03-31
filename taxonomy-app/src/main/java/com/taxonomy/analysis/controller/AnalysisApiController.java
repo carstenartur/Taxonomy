@@ -11,6 +11,9 @@ import com.taxonomy.analysis.service.AnalysisEventCallback;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.analysis.service.AnalysisRelationGenerator;
+import com.taxonomy.export.DiagramViewMetadata;
+import com.taxonomy.preferences.PreferencesService;
+import com.taxonomy.shared.config.ExportConfig;
 import com.taxonomy.versioning.service.HypothesisService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.architecture.service.RequirementArchitectureViewService;
@@ -47,6 +50,7 @@ public class AnalysisApiController {
     private final RepositoryStateService repositoryStateService;
     private final WorkspaceResolver workspaceResolver;
     private final org.springframework.context.MessageSource messageSource;
+    private final PreferencesService preferencesService;
 
     public AnalysisApiController(TaxonomyService taxonomyService,
                                   LlmService llmService,
@@ -57,7 +61,8 @@ public class AnalysisApiController {
                                   HypothesisService hypothesisService,
                                   RepositoryStateService repositoryStateService,
                                   WorkspaceResolver workspaceResolver,
-                                  org.springframework.context.MessageSource messageSource) {
+                                  org.springframework.context.MessageSource messageSource,
+                                  PreferencesService preferencesService) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.analysisExecutor = analysisExecutor;
@@ -68,6 +73,7 @@ public class AnalysisApiController {
         this.repositoryStateService = repositoryStateService;
         this.workspaceResolver = workspaceResolver;
         this.messageSource = messageSource;
+        this.preferencesService = preferencesService;
     }
 
     @Operation(summary = "Analyze business requirement", description = "Analyzes a business requirement against the taxonomy using the configured LLM provider. Optionally includes an architecture view.", tags = {"Analysis"})
@@ -109,10 +115,17 @@ public class AnalysisApiController {
             }
 
             if (request.isIncludeArchitectureView() && result.getScores() != null) {
-                result.setArchitectureView(
-                        architectureViewService.build(result.getScores(), request.getBusinessText(),
-                                request.getMaxArchitectureNodes(),
-                                result.getProvisionalRelations()));
+                RequirementArchitectureView archView = architectureViewService.build(
+                        result.getScores(), request.getBusinessText(),
+                        request.getMaxArchitectureNodes(),
+                        result.getProvisionalRelations());
+                // Populate view metadata from the active diagram policy
+                DiagramViewMetadata meta = ExportConfig.resolveViewMetadata(preferencesService);
+                archView.setViewTitle(meta.viewTitle());
+                archView.setViewDescription(meta.viewDescription());
+                archView.setContainmentEnabled(meta.containmentEnabled());
+                archView.setActiveRules(meta.activeRules());
+                result.setArchitectureView(archView);
             }
 
             result.setViewContext(repositoryStateService.getViewContext(

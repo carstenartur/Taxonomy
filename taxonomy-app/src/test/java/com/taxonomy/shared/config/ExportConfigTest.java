@@ -3,6 +3,7 @@ package com.taxonomy.shared.config;
 import com.taxonomy.export.ConfigurableDiagramSelectionPolicy;
 import com.taxonomy.export.DiagramSelectionConfig;
 import com.taxonomy.export.DiagramSelectionPolicy;
+import com.taxonomy.export.DiagramViewMetadata;
 import com.taxonomy.preferences.PreferencesService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -59,5 +60,32 @@ class ExportConfigTest {
         DiagramSelectionPolicy policy = ExportConfig.resolvePolicy(prefs);
         var config = ((ConfigurableDiagramSelectionPolicy) policy).config();
         assertThat(config).isEqualTo(DiagramSelectionConfig.defaultImpact());
+    }
+
+    // ── View metadata tests ─────────────────────────────────────────────
+
+    @Test
+    void viewMetadataResolvedForDefaultImpact() {
+        when(prefs.getString("diagram.policy", "defaultImpact")).thenReturn("defaultImpact");
+        DiagramViewMetadata meta = ExportConfig.resolveViewMetadata(prefs);
+        assertThat(meta.viewTitle()).isEqualTo("archview.policy.title.defaultImpact");
+        assertThat(meta.policyKey()).isEqualTo("defaultImpact");
+        assertThat(meta.containmentEnabled()).isTrue();
+    }
+
+    @Test
+    void viewMetadataResolvedForClustering() {
+        when(prefs.getString("diagram.policy", "defaultImpact")).thenReturn("clustering");
+        DiagramViewMetadata meta = ExportConfig.resolveViewMetadata(prefs);
+        assertThat(meta.viewTitle()).isEqualTo("archview.policy.title.clustering");
+        assertThat(meta.policyKey()).isEqualTo("clustering");
+    }
+
+    @Test
+    void viewMetadataResolvedForTrace() {
+        when(prefs.getString("diagram.policy", "defaultImpact")).thenReturn("trace");
+        DiagramViewMetadata meta = ExportConfig.resolveViewMetadata(prefs);
+        assertThat(meta.viewTitle()).isEqualTo("archview.policy.title.trace");
+        assertThat(meta.containmentEnabled()).isFalse();
     }
 }

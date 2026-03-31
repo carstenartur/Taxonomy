@@ -3,7 +3,10 @@ package com.taxonomy.architecture.service;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.dto.*;
 import com.taxonomy.export.DiagramProjectionService;
+import com.taxonomy.export.DiagramViewMetadata;
 import com.taxonomy.export.MermaidExportService;
+import com.taxonomy.preferences.PreferencesService;
+import com.taxonomy.shared.config.ExportConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -45,6 +48,7 @@ public class ArchitectureReportService {
     private final DiagramProjectionService diagramProjectionService;
     private final MermaidExportService mermaidExportService;
     private final RelationProposalService proposalService;
+    private final PreferencesService preferencesService;
 
     public ArchitectureReportService(RequirementArchitectureViewService architectureViewService,
                                       ArchitectureGapService gapService,
@@ -52,7 +56,8 @@ public class ArchitectureReportService {
                                       ArchitectureRecommendationService recommendationService,
                                       DiagramProjectionService diagramProjectionService,
                                       MermaidExportService mermaidExportService,
-                                      RelationProposalService proposalService) {
+                                      RelationProposalService proposalService,
+                                      PreferencesService preferencesService) {
         this.architectureViewService = architectureViewService;
         this.gapService = gapService;
         this.patternService = patternService;
@@ -60,6 +65,7 @@ public class ArchitectureReportService {
         this.diagramProjectionService = diagramProjectionService;
         this.mermaidExportService = mermaidExportService;
         this.proposalService = proposalService;
+        this.preferencesService = preferencesService;
     }
 
     /**
@@ -84,6 +90,11 @@ public class ArchitectureReportService {
         // 1. Architecture View
         RequirementArchitectureView archView = architectureViewService.build(
                 safeScores, businessText, 20);
+        DiagramViewMetadata meta = ExportConfig.resolveViewMetadata(preferencesService);
+        archView.setViewTitle(meta.viewTitle());
+        archView.setViewDescription(meta.viewDescription());
+        archView.setContainmentEnabled(meta.containmentEnabled());
+        archView.setActiveRules(meta.activeRules());
         report.setArchitectureView(archView);
 
         // 2. Gap Analysis
