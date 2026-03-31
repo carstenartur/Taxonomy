@@ -154,8 +154,8 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
     }
 
     /**
-     * Re-routes edges from suppressed nodes to the best leaf in the same layer,
-     * deduplicating afterwards.
+     * Re-routes edges from suppressed nodes to surviving nodes in the same layer,
+     * distributing load across multiple survivors when available.
      */
     private List<DiagramEdge> rerouteEdges(List<DiagramEdge> originalEdges,
                                             List<DiagramNode> survivingNodes,
@@ -163,17 +163,17 @@ public class ConfigurableDiagramSelectionPolicy implements DiagramSelectionPolic
         Set<String> survivorIds = survivingNodes.stream()
                 .map(DiagramNode::id).collect(Collectors.toSet());
 
-        // Build reroute map: suppressed node → best surviving leaf in same layer
+        // Build reroute map using the load-balancing strategy
         Map<String, String> reroute = new LinkedHashMap<>();
         Map<String, List<DiagramNode>> survivorsByType = survivingNodes.stream()
                 .collect(Collectors.groupingBy(DiagramNode::type));
+        EdgeRerouteStrategy strategy = new EdgeRerouteStrategy();
 
         for (DiagramNode orig : allOriginalNodes) {
             if (!survivorIds.contains(orig.id())) {
                 List<DiagramNode> sameType = survivorsByType.getOrDefault(orig.type(), List.of());
-                sameType.stream()
-                        .max(Comparator.comparingDouble(DiagramNode::relevance))
-                        .ifPresent(best -> reroute.put(orig.id(), best.id()));
+                strategy.selectTarget(orig, sameType)
+                        .ifPresent(target -> reroute.put(orig.id(), target));
             }
         }
 
