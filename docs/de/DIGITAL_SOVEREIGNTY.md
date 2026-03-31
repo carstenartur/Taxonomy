@@ -57,7 +57,7 @@ Der Taxonomy Architecture Analyzer ist mit der Zielarchitektur der Deutschen Ver
 | DVC-Anforderung | Taxonomy-Umsetzung | Status |
 |---|---|---|
 | **Container-basiertes Deployment** | Docker-Image vorhanden; Kubernetes-fähig (Dockerfile im Repository) | ✅ |
-| **Mandantenfähigkeit** | Workspace-Isolation über Benutzertrennung (siehe [Workspace Design](../internal/WORKSPACE_DESIGN.md)) | ✅ |
+| **Mandantenfähigkeit** | Workspace-Isolation über Benutzertrennung (siehe [Repository-Topologie](REPOSITORY_TOPOLOGY.md)) | ✅ |
 | **Föderale Nachnutzung** | Open Source (MIT); konfigurierbar für verschiedene Behördenkontexte | ✅ |
 | **Standardisierte Schnittstellen** | REST API mit OpenAPI/Swagger-Dokumentation | ✅ |
 | **Datensouveränität** | On-Premises-Betrieb + Air-Gapped-Modus möglich | ✅ |

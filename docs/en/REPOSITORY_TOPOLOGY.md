@@ -179,23 +179,80 @@ standard user interface.
 ## Architecture
 
 ```
-SystemRepository (Entity)
-  ├── repositoryId: UUID
-  ├── topologyMode: INTERNAL_SHARED | EXTERNAL_CANONICAL
-  ├── defaultBranch: "draft"
-  ├── externalUrl: URL for EXTERNAL_CANONICAL mode
-  ├── externalAuthToken: optional authentication token for EXTERNAL_CANONICAL
-  ├── lastFetchAt / lastPushAt: sync timestamps
-  ├── lastFetchCommit: SHA of last fetched remote HEAD
-  └── primaryRepo: true
+SystemRepository (JPA Entity — table: system_repository)
+  ├── id: Long (auto-generated primary key)
+  ├── repositoryId: String (unique, not null)
+  ├── displayName: String
+  ├── topologyMode: RepositoryTopologyMode (INTERNAL_SHARED | EXTERNAL_CANONICAL, not null)
+  ├── defaultBranch: String (default "draft", not null)
+  ├── externalUrl: String (URL for EXTERNAL_CANONICAL mode)
+  ├── externalAuthToken: String (authentication token for EXTERNAL_CANONICAL)
+  ├── lastFetchAt: Instant (timestamp of last fetch from external remote)
+  ├── lastPushAt: Instant (timestamp of last push to external remote)
+  ├── lastFetchCommit: String (SHA of last fetched remote HEAD)
+  ├── primaryRepo: boolean (default true, not null)
+  └── createdAt: Instant (not null)
 
-UserWorkspace (Entity)
-  ├── provisioningStatus: NOT_PROVISIONED | PROVISIONING | READY | FAILED
-  ├── topologyMode: mirrors SystemRepository
-  ├── sourceRepositoryId: links to SystemRepository
-  ├── baseCommit / currentCommit: Git SHAs
-  ├── syncTargetBranch: configurable sync target
-  └── provisionedAt / provisioningError: audit data
+UserWorkspace (JPA Entity — table: user_workspace)
+  ├── id: Long (auto-generated primary key)
+  ├── workspaceId: String (unique, not null)
+  ├── username: String (not null)
+  ├── displayName: String
+  ├── currentBranch: String (default "draft", not null)
+  ├── baseBranch: String (default "draft")
+  ├── shared: boolean (default false, not null)
+  ├── createdAt: Instant (not null)
+  ├── lastAccessedAt: Instant
+  ├── provisioningStatus: WorkspaceProvisioningStatus (NOT_PROVISIONED | PROVISIONING | READY | FAILED, default READY, not null)
+  ├── topologyMode: RepositoryTopologyMode (mirrors SystemRepository, default INTERNAL_SHARED, not null)
+  ├── sourceRepositoryId: String (links to SystemRepository.repositoryId)
+  ├── baseCommit: String (Git SHA at provisioning time)
+  ├── currentCommit: String (Git SHA of current HEAD)
+  ├── syncTargetBranch: String (configurable sync target)
+  ├── provisionedAt: Instant
+  ├── provisioningError: String
+  ├── description: String (max 500 chars)
+  ├── archived: boolean (default false, not null)
+  └── isDefault: boolean (default false, not null)
+
+SyncState (JPA Entity — table: sync_state)
+  ├── id: Long (auto-generated primary key)
+  ├── username: String (not null)
+  ├── workspaceId: String (not null)
+  ├── lastSyncedCommitId: String
+  ├── lastSyncTimestamp: Instant
+  ├── lastPublishedCommitId: String
+  ├── lastPublishTimestamp: Instant
+  ├── syncStatus: String (default "UP_TO_DATE", not null)
+  ├── unpublishedCommitCount: int (default 0, not null)
+  ├── createdAt: Instant (not null)
+  └── updatedAt: Instant
+
+WorkspaceProjection (JPA Entity — table: workspace_projection)
+  ├── id: Long (auto-generated primary key)
+  ├── username: String (not null)
+  ├── workspaceId: String (not null)
+  ├── projectionCommitId: String
+  ├── projectionBranch: String
+  ├── projectionTimestamp: Instant
+  ├── indexCommitId: String
+  ├── indexTimestamp: Instant
+  ├── stale: boolean (default false, not null)
+  ├── createdAt: Instant (not null)
+  └── updatedAt: Instant
+
+ContextHistoryRecord (JPA Entity — table: context_history_record)
+  ├── id: Long (auto-generated primary key)
+  ├── username: String (not null)
+  ├── fromContextId: String
+  ├── toContextId: String
+  ├── fromBranch: String
+  ├── toBranch: String
+  ├── fromCommitId: String
+  ├── toCommitId: String
+  ├── reason: String
+  ├── originContextId: String
+  └── createdAt: Instant (not null)
 
 DslGitRepositoryFactory
   ├── getSystemRepository() → shared system repo ("taxonomy-dsl")
@@ -222,7 +279,8 @@ ExternalGitSyncService
   ├── fetchFromExternal() → JGit Transport.fetch() from remote
   ├── pushToExternal(branch) → JGit Transport.push() to remote
   ├── fullSync(username) → fetch + merge into shared branch
-  └── getStatus() → external sync configuration and timestamps
+  └── getStatus() → returns ExternalSyncStatus (externalEnabled, externalUrl,
+                     lastFetchAt, lastPushAt, lastFetchCommit)
 
 SystemRepositoryService
   ├── @PostConstruct → ensures primary repo exists
@@ -230,10 +288,41 @@ SystemRepositoryService
   └── getSharedBranch() → configurable branch name
 
 WorkspaceManager
+  ├── activeWorkspaces: ConcurrentMap<String, UserWorkspaceState>  (keyed by workspaceId)
+  ├── activeWorkspaceByUser: ConcurrentMap<String, String>         (username → workspaceId)
   ├── getOrCreateWorkspace() → in-memory state (unchanged)
-  ├── findUserWorkspace() → persistent entity lookup
+  ├── findActiveWorkspace(username) → looks up active workspace via activeWorkspaceByUser
+  ├── findUserWorkspace(username) → legacy single-workspace persistent entity lookup
   └── provisionWorkspaceRepository() → creates per-workspace repo (factory) or branch (legacy)
+
+WorkspaceContextResolver
+  Context resolution uses a two-step lookup:
+  1. workspaceManager.findActiveWorkspace(username) → multi-workspace aware lookup
+  2. If null: workspaceManager.findUserWorkspace(username) → legacy fallback
+  If neither returns a provisioned workspace, falls back to WorkspaceContext.SHARED.
 ```
+
+## Data Isolation Model
+
+Three entities carry workspace-scoped data via two JPA columns:
+
+| Entity | workspace_id column | owner_username column |
+|--------|--------------------|-----------------------|
+| `TaxonomyRelation` | ✅ (indexed) | ✅ (indexed) |
+| `RelationHypothesis` | ✅ | ✅ |
+| `RelationProposal` | ✅ | ✅ |
+
+**OR-null query pattern:** Queries for workspace-scoped data use an OR-null filter so that
+shared (workspace-neutral) records are always visible alongside workspace-private records:
+
+```sql
+WHERE (workspace_id = :workspaceId OR workspace_id IS NULL)
+  AND (owner_username = :username  OR owner_username IS NULL)
+```
+
+This means rows without a `workspace_id` (created before the multi-workspace feature, or
+intentionally shared) remain visible in every workspace context.
+
 ---
 
 ## Related Documentation

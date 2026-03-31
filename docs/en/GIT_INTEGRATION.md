@@ -612,6 +612,11 @@ The following endpoints are intended for programmatic integration and automation
 | `POST` | `/api/workspace/publish?userBranch=X` | Merge user branch into shared branch (push) |
 | `GET` | `/api/workspace/sync-state` | Get sync status (UP_TO_DATE, BEHIND, AHEAD, DIVERGED) |
 | `POST` | `/api/workspace/resolve-diverged?strategy=X&userBranch=Y` | Resolve diverged state (strategies: MERGE, KEEP_MINE, TAKE_SHARED) |
+| `POST` | `/api/workspace/external/fetch` | Fetch all branches from external remote (EXTERNAL_CANONICAL only) |
+| `POST` | `/api/workspace/external/push?branch=X` | Push shared branch to external remote (EXTERNAL_CANONICAL only) |
+| `POST` | `/api/workspace/external/full-sync` | Fetch from external remote and merge into shared branch (EXTERNAL_CANONICAL only) |
+| `GET` | `/api/workspace/external/status` | Get external sync configuration and timestamps |
+| `PUT` | `/api/workspace/external/configure?externalUrl=X&topologyMode=Y` | Set external URL and topology mode (admin only) |
 
 See [API Reference](API_REFERENCE.md) for full request/response schemas.
 

@@ -57,7 +57,7 @@ The Taxonomy Architecture Analyzer is compatible with the target architecture of
 | DVC Requirement | Taxonomy Implementation | Status |
 |---|---|---|
 | **Container-Based Deployment** | Docker image available; Kubernetes-ready (Dockerfile in repository) | ✅ |
-| **Multi-Tenancy** | per user repository (see [Workspace Design](../internal/WORKSPACE_DESIGN.md)) | ✅  |
+| **Multi-Tenancy** | per user repository (see [Repository Topology](REPOSITORY_TOPOLOGY.md)) | ✅  |
 | **Federal Reuse** | Open Source (MIT); configurable for various agency contexts | ✅ |
 | **Standardized Interfaces** | REST API with OpenAPI/Swagger documentation | ✅ |
 | **Data Sovereignty** | On-premises operation + air-gapped mode possible | ✅ |

@@ -613,6 +613,11 @@ Die folgenden Endpunkte sind für die programmatische Integration und Automatisi
 | `POST` | `/api/workspace/publish?userBranch=X` | Benutzer-Branch in gemeinsamen Branch zusammenführen (Push) |
 | `GET` | `/api/workspace/sync-state` | Synchronisationsstatus abrufen (UP_TO_DATE, BEHIND, AHEAD, DIVERGED) |
 | `POST` | `/api/workspace/resolve-diverged?strategy=X&userBranch=Y` | Divergierten Zustand auflösen (Strategien: MERGE, KEEP_MINE, TAKE_SHARED) |
+| `POST` | `/api/workspace/external/fetch` | Alle Branches vom externen Remote abrufen (nur EXTERNAL_CANONICAL) |
+| `POST` | `/api/workspace/external/push?branch=X` | Shared-Branch zum externen Remote pushen (nur EXTERNAL_CANONICAL) |
+| `POST` | `/api/workspace/external/full-sync` | Vom externen Remote abrufen und in Shared-Branch zusammenführen (nur EXTERNAL_CANONICAL) |
+| `GET` | `/api/workspace/external/status` | Externe Sync-Konfiguration und Zeitstempel abrufen |
+| `PUT` | `/api/workspace/external/configure?externalUrl=X&topologyMode=Y` | Externe URL und Topologiemodus setzen (nur Admins) |
 
 Siehe [API-Referenz](API_REFERENCE.md) für vollständige Anfrage-/Antwortschemata.
 
