@@ -382,4 +382,4 @@ All repo-aware methods also provide backward-compatible overloads without the `c
 - **Keycloak OIDC** — Replace form-login with JWT-based auth; workspace ownership from token claims
 - **Per-user projection tables** — Currently logical isolation; future: physical table-per-user or discriminator column
 - **Workspace TTL** — Automatic eviction of inactive workspaces
-- **Conflict resolution UI** — Visual merge conflict resolution in the browser
+- **Conflict resolution UI** — Visual merge conflict resolution in the browser (partially implemented: `taxonomy-merge-resolution.js` provides merge/cherry-pick/sync conflict modals)
