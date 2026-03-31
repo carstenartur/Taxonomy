@@ -26,8 +26,15 @@ public enum NodeOrigin {
     /** Added as a concrete leaf during post-propagation enrichment. */
     ENRICHED_LEAF("node.origin.enriched.leaf"),
 
-    /** Selected for the final architecture impact presentation. */
-    IMPACT_SELECTED("node.origin.impact.selected");
+    /**
+     * Origin was promoted from a weaker provenance (e.g. {@code PROPAGATED} or
+     * {@code TRACE_INTERMEDIATE}) because the node was selected for the impact
+     * presentation.  Nodes whose original origin is already strong
+     * ({@code DIRECT_SCORED}, {@code SEED_CONTEXT}, {@code ENRICHED_LEAF})
+     * keep their original origin when selected for impact — only the
+     * {@code selectedForImpact} flag is set on those nodes.
+     */
+    IMPACT_PROMOTED("node.origin.impact.promoted");
 
     private final String messageKey;
 

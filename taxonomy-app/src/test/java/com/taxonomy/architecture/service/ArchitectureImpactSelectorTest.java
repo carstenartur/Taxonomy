@@ -112,7 +112,7 @@ class ArchitectureImpactSelectorTest {
 
         selector.selectForImpact(elements, Map.of("CP-1023", 85), Set.of());
 
-        assertThat(leaf.getOrigin()).isEqualTo(NodeOrigin.IMPACT_SELECTED);
+        assertThat(leaf.getOrigin()).isEqualTo(NodeOrigin.IMPACT_PROMOTED);
     }
 
     @Test
@@ -123,7 +123,7 @@ class ArchitectureImpactSelectorTest {
 
         selector.selectForImpact(elements, Map.of("CP-1023", 85), Set.of());
 
-        // DIRECT_SCORED should not be downgraded to IMPACT_SELECTED
+        // DIRECT_SCORED should not be downgraded to IMPACT_PROMOTED
         assertThat(leaf.getOrigin()).isEqualTo(NodeOrigin.DIRECT_SCORED);
     }
 
@@ -186,7 +186,7 @@ class ArchitectureImpactSelectorTest {
 
         selector.selectForImpact(elements, Map.of("CP-1023", 85), Set.of());
 
-        // SEED_CONTEXT should not be overridden to IMPACT_SELECTED
+        // SEED_CONTEXT should not be overridden to IMPACT_PROMOTED
         assertThat(seedNode.getOrigin()).isEqualTo(NodeOrigin.SEED_CONTEXT);
         assertThat(seedNode.isSelectedForImpact()).isTrue();
     }

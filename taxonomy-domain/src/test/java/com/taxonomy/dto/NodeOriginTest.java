@@ -26,7 +26,7 @@ class NodeOriginTest {
         assertNotNull(NodeOrigin.valueOf("PROPAGATED"));
         assertNotNull(NodeOrigin.valueOf("SEED_CONTEXT"));
         assertNotNull(NodeOrigin.valueOf("ENRICHED_LEAF"));
-        assertNotNull(NodeOrigin.valueOf("IMPACT_SELECTED"));
+        assertNotNull(NodeOrigin.valueOf("IMPACT_PROMOTED"));
     }
 
     @Test
