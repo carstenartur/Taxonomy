@@ -1042,6 +1042,57 @@
 .impact-swimlane.layer-comm .impact-swimlane-title { color: #E74C3C; }
 .impact-swimlane.layer-comm .impact-node { background: #E74C3C; }
 
+/* ── View header (title + legend from active policy) ──────────────── */
+.archview-header {
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 8px;
+}
+
+.archview-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #003580;
+    margin: 0;
+}
+
+.archview-description {
+    font-size: 0.78rem;
+    line-height: 1.3;
+}
+
+.archview-legend {
+    line-height: 1.8;
+}
+
+/* ── Containment / cluster rendering in swimlane ─────────────────── */
+.impact-container {
+    border: 2px dashed rgba(255,255,255,0.5);
+    border-radius: 8px;
+    padding: 6px 8px 4px;
+    margin: 2px 0;
+    display: inline-block;
+    vertical-align: top;
+}
+
+.impact-container-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: rgba(255,255,255,0.8);
+    margin-bottom: 4px;
+    padding: 0 2px;
+}
+
+.impact-container-label .impact-node-code {
+    font-size: 0.65rem;
+    opacity: 0.7;
+}
+
+.impact-container-children {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
 /* Detail tables inside architecture view */
 .impact-details summary {
     cursor: pointer;
@@ -1317,6 +1368,18 @@
 
 [data-bs-theme="dark"] .impact-swimlane {
     border-color: #444;
+}
+
+[data-bs-theme="dark"] .archview-header {
+    border-color: #444;
+}
+
+[data-bs-theme="dark"] .archview-title {
+    color: #6ea8fe;
+}
+
+[data-bs-theme="dark"] .impact-container {
+    border-color: rgba(255,255,255,0.25);
 }
 
 [data-bs-theme="dark"] .impact-edge-label {
