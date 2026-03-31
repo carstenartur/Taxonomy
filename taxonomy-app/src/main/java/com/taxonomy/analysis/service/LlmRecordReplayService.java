@@ -40,8 +40,10 @@ import java.util.stream.Stream;
  * <h3>Storage layout</h3>
  * <pre>
  *   src/test/resources/llm-recordings/
- *     manifest.json          — index of all recordings
- *     sha256-&lt;hex&gt;.json — individual recording files
+ *     sha256-&lt;hex&gt;.json — individual recording files (committed, immutable)
+ *
+ *   &lt;temp dir&gt;/llm-recordings-manifest&lt;N&gt;/
+ *     manifest.json          — runtime index (mutable, NOT committed)
  * </pre>
  */
 @Service
@@ -50,6 +52,7 @@ public class LlmRecordReplayService {
     private static final Logger log = LoggerFactory.getLogger(LlmRecordReplayService.class);
 
     private final Path recordingsDir;
+    private final Path manifestDir;
     private final ObjectMapper mapper;
 
     private final boolean replayMode;
@@ -80,6 +83,21 @@ public class LlmRecordReplayService {
             this.recordingsDir = Path.of(configuredDir);
         } else {
             this.recordingsDir = detectRecordingsDir();
+        }
+
+        // Manifest is a mutable runtime artifact — keep it out of the source tree.
+        // When a specific dir is configured (e.g. in tests), use that dir for the
+        // manifest too so tests can locate it via tempDir.resolve("manifest.json").
+        // In production (no configuredDir), write to a fresh temp directory so that
+        // src/test/resources/ is never modified during a test run.
+        if (configuredDir != null && !configuredDir.isBlank()) {
+            this.manifestDir = this.recordingsDir;
+        } else {
+            try {
+                this.manifestDir = Files.createTempDirectory("llm-recordings-manifest");
+            } catch (IOException e) {
+                throw new IllegalStateException("Cannot create temp directory for LLM recording manifest", e);
+            }
         }
 
         this.mapper = JsonMapper.builder().build();
@@ -168,7 +186,7 @@ public class LlmRecordReplayService {
     public void pruneUnused() {
         if (!pruneMode && !pruneDeleteMode) return;
 
-        Path manifestFile = recordingsDir.resolve("manifest.json");
+        Path manifestFile = manifestDir.resolve("manifest.json");
         if (!Files.exists(manifestFile)) return;
 
         try {
@@ -223,7 +241,7 @@ public class LlmRecordReplayService {
     // ── Manifest management ───────────────────────────────────────────────────
 
     private void updateManifest(String hash, String now) {
-        Path manifestFile = recordingsDir.resolve("manifest.json");
+        Path manifestFile = manifestDir.resolve("manifest.json");
         ManifestData manifest;
         try {
             if (Files.exists(manifestFile)) {
@@ -245,7 +263,7 @@ public class LlmRecordReplayService {
     }
 
     private void updateManifestLastUsed(String hash) {
-        Path manifestFile = recordingsDir.resolve("manifest.json");
+        Path manifestFile = manifestDir.resolve("manifest.json");
         if (!Files.exists(manifestFile)) return;
 
         try {
