@@ -1,135 +1,127 @@
 # Decision Pipeline — Documentation Gap Analysis
 
-This document identifies gaps in the existing documentation for the analysis
-and architecture-view decision pipeline, measured against the actual behaviour
-implemented in the codebase as of 2026-03-31.
+This document tracked gaps in the existing documentation for the analysis
+and architecture-view decision pipeline. All gaps identified below have
+been **resolved** through the creation of `docs/en/DECISION_PIPELINE.md`,
+terminology fixes across the documentation, and code simplifications.
+
+**Status as of 2026-03-31: ✅ All 10 gaps resolved.**
 
 ---
 
-## 1. What Is Already Documented
+## 1. What Is Documented
 
-| Topic | Where | Quality |
-|-------|-------|---------|
-| High-level pipeline overview (7-step flowchart) | `docs/en/ARCHITECTURE.md` § Architecture View Generation Pipeline | Correct but very shallow — omits constants, suppression logic, and the impact/trace/seed distinction |
-| Concept definitions (score, anchor, view, hypothesis) | `docs/en/CONCEPTS.md` | Brief glossary entries; no algorithm detail |
-| Relation hypothesis lifecycle concept | `docs/en/CONCEPTS.md` § Relation Hypothesis | Mentions PENDING/ACCEPTED/REJECTED but uses wrong status name (PENDING vs actual PROVISIONAL) |
-| Export format list | `docs/en/ARCHITECTURE.md` § Export Formats | Lists formats but does not describe selection policies or container-node semantics |
-| Relation seed overview | `docs/en/RELATION_SEEDS.md` | Describes CSV format; does not explain how seeds flow into analysis results |
+| Topic | Where | Status |
+|-------|-------|--------|
+| High-level pipeline overview (7 high-level steps; 11 internal Phase 3 steps) | `docs/en/ARCHITECTURE.md` § Architecture View Generation Pipeline + `docs/en/DECISION_PIPELINE.md` § Phase 3 | ✅ Correct — high-level overview links to detailed reference |
+| Concept definitions (score, anchor, view, hypothesis) | `docs/en/CONCEPTS.md` | ✅ Correct — uses PROVISIONAL terminology |
+| Relation hypothesis lifecycle | `docs/en/CONCEPTS.md` § Relation Hypothesis + `docs/en/DECISION_PIPELINE.md` § Relation Lifecycle | ✅ Correct — PROVISIONAL → ACCEPTED \| REJECTED |
+| Export format list and selection policies | `docs/en/ARCHITECTURE.md` § Export Formats + `docs/en/DECISION_PIPELINE.md` § Phase 4 + `docs/en/PREFERENCES.md` | ✅ Complete — 4 policies, 11-step curation, container semantics |
+| Relation seed overview | `docs/en/RELATION_SEEDS.md` + `docs/en/DECISION_PIPELINE.md` § Seed Relations | ✅ Complete — CSV format and architecture view integration |
 
 ---
 
-## 2. Identified Gaps
+## 2. Resolved Gaps
 
-### 2.1 LLM Scoring Phase
+### 2.1 LLM Scoring Phase — ✅ Resolved
 
-**Gap:** No documentation describes _when_ the LLM is called, how budget
-propagation works (parent score = budget for children), what the priority
-order of roots is, or how partial results are handled when rate-limited.
+**Resolution:** Fully documented in `DECISION_PIPELINE.md` § Phase 1 — LLM Scoring.
+Covers: budget-propagation pattern, root priority order (BP, CP, CR, CO, CI, UA, BR, IP),
+recursive descent, skip-on-zero, rate-limit handling (→ PARTIAL status).
 
-**Impact:** Developers cannot reason about cost, latency, or partial-failure
-behaviour without reading `LlmService.java`.
+### 2.2 Anchor Selection — ✅ Resolved
 
-### 2.2 Anchor Selection
+**Resolution:** Fully documented in `DECISION_PIPELINE.md` § Step 1: Anchor Selection.
+Covers: primary threshold (≥ 70), fallback (top-3 with score ≥ 50), relevance = directScore / 100.
+Constants centralised in `PipelineConstants`.
 
-**Gap:** The thresholds (70 primary, 50 fallback, min 3) are mentioned in
-`ARCHITECTURE.md` but the fallback mechanism (top-3-by-score when < 3
-high anchors) is undocumented.
+### 2.3 Relevance Propagation Constants — ✅ Resolved
 
-### 2.3 Relevance Propagation Constants
+**Resolution:** Fully documented in `DECISION_PIPELINE.md` § Step 2: Relevance Propagation.
+All constants documented: MAX_HOPS=2, MIN_RELEVANCE=0.35, HOP_DECAY=0.70,
+per-type weights (REALIZES 0.80, SUPPORTS 0.75, FULFILLS 0.70, USES 0.65, DEPENDS_ON 0.60).
+Constants Reference table lists all values with their source locations.
 
-**Gap:** `CONCEPTS.md` mentions propagation exists but does not document:
-- Algorithm: BFS with hop frontier
-- `MAX_HOPS = 2`
-- `MIN_RELEVANCE = 0.35`
-- `HOP_DECAY = 0.70`
-- Per-type weights (REALIZES 0.80, SUPPORTS 0.75, FULFILLS 0.70, USES 0.65, DEPENDS_ON 0.60)
+### 2.4 Impact Selection vs Trace — ✅ Resolved
 
-### 2.4 Impact Selection vs Trace
+**Resolution:** Fully documented in `DECISION_PIPELINE.md` § Step 10: Impact Selection
+and § Trace vs Impact vs Export. Composite impact score formula documented with all 5
+weights. Three relation categories (impact, trace, seed) clearly distinguished.
+`RelationOrigin.category()` auto-derives the display category from origin.
 
-**Gap:** No existing doc explains the three relation categories
-(`impact`, `trace`, `seed`) or the composite impact score formula
-(LLM 30%, specificity 25%, cross-category 20%, leaf 15%, readability 10%).
+### 2.5 Relation Lifecycle — ✅ Resolved
 
-The distinction between "selected for impact" and "scoring trace" is
-undocumented.
+**Resolution:** Fully documented in `DECISION_PIPELINE.md` § Relation Lifecycle
+with ASCII state diagram. States: PROVISIONAL → ACCEPTED (creates TaxonomyRelation,
+Git commit to `accepted` branch) or REJECTED (DB update only). `appliedInCurrentAnalysis`
+documented as a persisted flag that controls whether a hypothesis is treated as
+applied/active in the current analysis view. `PROPOSED` status documented as reserved
+for relation-proposal feature. Terminology clarified in USER_GUIDE (en/de) and
+GIT_INTEGRATION (en/de): relation hypotheses use PROVISIONAL/ACCEPTED/REJECTED;
+relation proposals continue to use PENDING status.
 
-### 2.5 Relation Lifecycle
+### 2.6 Seed Relations — ✅ Resolved
 
-**Gap:** The hypothesis lifecycle is oversimplified in `CONCEPTS.md`.
-The actual states are `PROVISIONAL → ACCEPTED | REJECTED`, plus
-a transient `appliedInCurrentAnalysis` flag. The status `PROPOSED` exists
-in the enum but is not set by the current analysis pipeline
-(it is reserved for relation proposals, a separate feature).
+**Resolution:** Fully documented in `DECISION_PIPELINE.md` § Seed Relations.
+Covers: how seeds provide the BFS relation graph, classification as CATEGORY_SEED
+with origin TAXONOMY_SEED, UI rendering in collapsed section, seed types
+(TYPE_DEFAULT, FRAMEWORK_SEED, SOURCE_DERIVED), priority tier 5 ranking.
 
-No document describes what happens on accept (TaxonomyRelation created,
-DSL committed to `accepted` branch) or reject (DB update only, no Git commit).
+### 2.7 Persistence Model — ✅ Resolved
 
-### 2.6 Seed Relations
+**Resolution:** Fully documented in `DECISION_PIPELINE.md` § Persistence Model.
+Complete table: taxonomy_node/taxonomy_relation (HSQLDB), relation_hypothesis/
+relation_evidence (HSQLDB), git_packs/git_reflog (JGit), SavedAnalysis (not
+server-persisted), architecture views and diagram models (per-request only).
+JGit repository architecture documented (system vs workspace, draft/accepted branches).
 
-**Gap:** `RELATION_SEEDS.md` describes the CSV format but not how seeds
-propagate into the architecture view. The classification of root-to-root
-relations as `TAXONOMY_SEED` / `CATEGORY_SEED` and their rendering as
-collapsed "Seed Context" in the UI is undocumented.
+### 2.8 Export / Diagram Policy — ✅ Resolved
 
-### 2.7 Persistence Model
+**Resolution:** Fully documented in `DECISION_PIPELINE.md` § Phase 4 — Diagram
+Projection and Export. All 4 presets (defaultImpact, leafOnly, clustering, trace)
+with exact config values. 11-step curation pipeline documented. Container-node
+semantics per exporter (Mermaid subgraph, ArchiMate/Structurizr excluded, Visio group).
+`PREFERENCES.md` documents runtime diagram.policy setting.
 
-**Gap:** No document explains what is stored where:
-- `taxonomy_node`, `taxonomy_relation` tables (HSQLDB) — catalog data
-- `relation_hypothesis`, `relation_evidence` tables — provisional relations
-- `git_packs`, `git_reflog` tables — JGit repository objects
-- `SavedAnalysis` — JSON DTO, NOT persisted server-side (client downloads)
+### 2.9 Leaf Enrichment — ✅ Resolved
 
-### 2.8 Export / Diagram Policy
+**Resolution:** Fully documented in `DECISION_PIPELINE.md` § Step 4: Leaf Enrichment.
+Rule: up to 3 leaf nodes per root with score ≥ 5, origin ENRICHED_LEAF.
+Constants (MAX_LEAF_ENRICHMENT=3, LEAF_ENRICHMENT_MIN_SCORE=5) centralised
+in `PipelineConstants` and listed in Constants Reference.
 
-**Gap:** The four diagram selection configs (`defaultImpact`, `leafOnly`,
-`clustering`, `trace`) and the 11-step curation pipeline in
-`ConfigurableDiagramSelectionPolicy.apply()` are undocumented.
+### 2.10 Terminology Inconsistencies — ✅ Resolved
 
-Container-node semantics (Mermaid renders as subgraphs; ArchiMate and
-Structurizr skip entirely) are undocumented.
-
-### 2.9 Leaf Enrichment
-
-**Gap:** The post-propagation leaf enrichment step (top 3 leaf nodes per
-root with score ≥ 5, marked as `ENRICHED_LEAF`) is not documented anywhere.
-
-### 2.10 Terminology Inconsistencies
-
-| Term in docs | Actual code | Fix needed |
+| Term (was) | Fix applied | Where |
 |---|---|---|
-| "PENDING" hypothesis status | `HypothesisStatus.PROVISIONAL` | Yes — use PROVISIONAL |
-| "relation lifecycle: PENDING → ACCEPTED/REJECTED/APPLIED" | Actual: PROVISIONAL → ACCEPTED \| REJECTED; `appliedInCurrentAnalysis` is a transient flag, not a status | Yes |
-| "Architecture View Generation Pipeline" (7 steps) | Actual pipeline has 11+ internal steps | Expand |
+| "PENDING" hypothesis status | Changed to PROVISIONAL (hypotheses only; proposals keep PENDING) | `CONCEPTS.md`, `GIT_INTEGRATION.md` (en + de) |
+| "APPLIED" as lifecycle status | Removed; documented `appliedInCurrentAnalysis` as a persisted flag (not a lifecycle status) | `GIT_INTEGRATION.md` (en + de), `DECISION_PIPELINE.md` |
+| "IMPACT_SELECTED" node origin | Renamed to `IMPACT_PROMOTED` in code and docs | `NodeOrigin.java`, `DECISION_PIPELINE.md` |
+| "7-step pipeline" without detail | Clarified as 7 high-level steps with 11 internal Phase 3 steps | `ARCHITECTURE.md` (en + de) |
 
 ---
 
-## 3. Recommendations
-
-1. ~~**Create `docs/en/DECISION_PIPELINE.md`**~~ — **Done.** Detailed technical
-   reference for the full pipeline from LLM scoring through diagram export.
-2. ~~**Fix terminology in `CONCEPTS.md`**~~ — **Done.** Corrected PENDING → PROVISIONAL.
-3. ~~**Do not expand `ARCHITECTURE.md`**~~ — **Done.** It serves as a high-level
-   overview with links to the detailed pipeline doc.
-4. ~~**Mirror to `docs/de/`**~~ — **Done.**
-
----
-
-## 4. Scope of Current Changes
-
-This PR delivers items 1, 2, and 4. Item 3 (cross-reference from
-`ARCHITECTURE.md`) is included as a minimal link addition.
-
----
-
-## 5. Simplifications Applied (Post–Gap Analysis)
+## 3. Simplifications Applied
 
 The following refactoring addressed root causes of conceptual drift
-identified by the gap analysis, making several documentation gaps
-unnecessary:
+identified by the gap analysis:
 
 | Change | What it resolves |
 |--------|-----------------|
-| **`PipelineConstants`** — centralised anchor/enrichment thresholds | Gap 2.2, 2.3: scattered duplicate constants now have one source of truth |
-| **`RelationOrigin.category()`** — each origin derives its display category | Gap 2.4, 2.6: `relationCategory` string no longer maintained independently; origin is the single source of truth |
+| **`PipelineConstants`** — centralised anchor/enrichment thresholds | Gaps 2.2, 2.3: scattered duplicate constants now have one source of truth |
+| **`RelationOrigin.category()`** — each origin derives its display category | Gaps 2.4, 2.6: `relationCategory` string no longer maintained independently; origin is the single source of truth |
 | **`setOrigin()` auto-syncs category** — `RequirementRelationshipView` keeps both fields consistent automatically | Gap 2.4: eliminates "seed vs trace vs impact" confusion in the code |
 | **`IMPACT_SELECTED` → `IMPACT_PROMOTED`** — renamed to clarify semantics | Gap 2.10: the old name was confused with the `selectedForImpact` boolean; the new name makes the distinction self-explanatory |
+
+---
+
+## 4. Remaining Known Limitations
+
+These are **not documentation gaps** but known architectural limitations
+documented in `DECISION_PIPELINE.md` § Known Limitations and Incomplete Areas:
+
+1. `PROPOSED` status unused by analysis pipeline (reserved for relation-proposal feature)
+2. `LLM_SUPPORTED` origin unused (reserved for future LLM-based confirmation)
+3. `SavedAnalysis` not server-persisted (client-side storage only)
+4. Budget propagation not strictly enforced (LLM may over/under-count)
+5. Single-provider scoring (no ensemble/cross-validation)

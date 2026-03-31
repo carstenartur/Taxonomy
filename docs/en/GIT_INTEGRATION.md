@@ -517,10 +517,15 @@ The UI polls `/api/git/state` every 10 seconds to display a status indicator whe
 Relations generated during LLM analysis are stored as **hypotheses** — provisional relations that require human review before becoming permanent:
 
 ```
-PENDING  →  ACCEPTED  (creates TaxonomyRelation)
-         →  REJECTED  (marked as rejected)
-         →  APPLIED   (session-only, not persisted)
+PROVISIONAL  →  ACCEPTED  (creates TaxonomyRelation)
+             →  REJECTED  (marked as rejected)
 ```
+
+The `appliedInCurrentAnalysis` flag controls applying a hypothesis in the
+current analysis without creating a permanent `TaxonomyRelation` or
+accepted-branch commit. The flag itself is persisted on the
+`RelationHypothesis` entity for auditing and reuse, but it is not a
+lifecycle status like PROVISIONAL/ACCEPTED/REJECTED.
 
 The Hypotheses API (`/api/dsl/hypotheses`) allows querying, accepting, and rejecting hypotheses, with supporting evidence available for each.
 

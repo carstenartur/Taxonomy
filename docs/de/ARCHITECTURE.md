@@ -134,8 +134,8 @@ flowchart TD
 2. **LLM-Analyse** — `LlmService` sendet die Anforderung an den konfigurierten Anbieter; die Antwort enthält eine Bewertungskarte (Taxonomie-Knotencode → Übereinstimmungsprozentsatz, 0–100).
 3. **Ankerauswahl** — `RequirementArchitectureViewService` wählt Knoten mit Bewertung ≥ 70 als primäre Anker. Wenn weniger als drei Anker gefunden werden, fällt der Schwellenwert auf Bewertung ≥ 50 zurück (Top 3).
 4. **Relevanzpropagation** — `RelevancePropagationService` folgt den Taxonomiebeziehungen von den Ankerknoten und weist verbundenen Knoten abgeleitete Bewertungen zu, wodurch ein gewichteter Elementgraph entsteht.
-5. **Element- und Beziehungsaufbau** — Architekturelemente und deren Beziehungen werden aus dem propagierten Graphen zusammengestellt, unter Berücksichtigung der Taxonomiehierarchie.
-6. **Diagrammprojektion** — `DiagramProjectionService` konvertiert das Architekturmodell in eine neutrale Darstellung, die von mehreren Exportern gerendert werden kann.
+5. **Element- und Beziehungsaufbau** — Architekturelemente und deren Beziehungen werden aus dem propagierten Graphen zusammengestellt, unter Berücksichtigung der Taxonomiehierarchie. Dieser übergeordnete Schritt umfasst intern Blattanreicherung, Impact-Relationen-Generierung, Scoring-Trace-Konstruktion, Impact-Auswahl und mehr (insgesamt 11 Schritte; siehe [Entscheidungspipeline](DECISION_PIPELINE.md) § Phase 3).
+6. **Diagrammprojektion** — `DiagramProjectionService` konvertiert das Architekturmodell in eine neutrale Darstellung, die von mehreren Exportern gerendert werden kann. Eine konfigurierbare `DiagramSelectionPolicy` kuratiert das Diagramm (Root-Unterdrückung, Clustering, Knoten-/Kantenlimits).
 7. **Export** — Das projizierte Modell wird in das gewählte Format exportiert:
    - `ArchiMateDiagramService` → ArchiMate 3.x XML (`.archimate` / `.xml`)
    - `VisioDiagramService` → Visio `.vsdx`

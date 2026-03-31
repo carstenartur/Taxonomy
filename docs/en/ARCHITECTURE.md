@@ -134,8 +134,8 @@ flowchart TD
 2. **LLM analysis** — `LlmService` sends the requirement to the configured provider; the response contains a score map (taxonomy node code → match percentage, 0–100).
 3. **Anchor selection** — `RequirementArchitectureViewService` selects nodes with score ≥ 70 as primary anchors. If fewer than three anchors are found, the threshold falls back to score ≥ 50 (top 3).
 4. **Relevance propagation** — `RelevancePropagationService` follows taxonomy relations from the anchor nodes and assigns derived scores to connected nodes, building a weighted element graph.
-5. **Element and relationship building** — architecture elements and their relationships are assembled from the propagated graph, respecting the taxonomy hierarchy.
-6. **Diagram projection** — `DiagramProjectionService` converts the architecture model into a neutral representation that can be rendered by multiple exporters.
+5. **Element and relationship building** — architecture elements and their relationships are assembled from the propagated graph, respecting the taxonomy hierarchy. This high-level step internally encompasses leaf enrichment, impact relation generation, scoring trace construction, impact selection, and more (11 steps total; see [Decision Pipeline](DECISION_PIPELINE.md) § Phase 3).
+6. **Diagram projection** — `DiagramProjectionService` converts the architecture model into a neutral representation that can be rendered by multiple exporters. A configurable `DiagramSelectionPolicy` curates the diagram (root suppression, clustering, node/edge limits).
 7. **Export** — the projected model is exported to the chosen format:
    - `ArchiMateDiagramService` → ArchiMate 3.x XML (`.archimate` / `.xml`)
    - `VisioDiagramService` → Visio `.vsdx`
