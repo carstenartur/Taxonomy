@@ -105,12 +105,12 @@ root with score ≥ 5, marked as `ENRICHED_LEAF`) is not documented anywhere.
 
 ## 3. Recommendations
 
-1. **Create `docs/en/DECISION_PIPELINE.md`** — detailed technical reference for
-   the full pipeline from LLM scoring through diagram export.
-2. **Fix terminology in `CONCEPTS.md`** — correct PENDING → PROVISIONAL.
-3. **Do not expand `ARCHITECTURE.md`** — it serves as a high-level overview;
-   link to the new detailed pipeline doc instead.
-4. **Mirror to `docs/de/`** — maintain the German translation.
+1. ~~**Create `docs/en/DECISION_PIPELINE.md`**~~ — **Done.** Detailed technical
+   reference for the full pipeline from LLM scoring through diagram export.
+2. ~~**Fix terminology in `CONCEPTS.md`**~~ — **Done.** Corrected PENDING → PROVISIONAL.
+3. ~~**Do not expand `ARCHITECTURE.md`**~~ — **Done.** It serves as a high-level
+   overview with links to the detailed pipeline doc.
+4. ~~**Mirror to `docs/de/`**~~ — **Done.**
 
 ---
 
@@ -118,3 +118,18 @@ root with score ≥ 5, marked as `ENRICHED_LEAF`) is not documented anywhere.
 
 This PR delivers items 1, 2, and 4. Item 3 (cross-reference from
 `ARCHITECTURE.md`) is included as a minimal link addition.
+
+---
+
+## 5. Simplifications Applied (Post–Gap Analysis)
+
+The following refactoring addressed root causes of conceptual drift
+identified by the gap analysis, making several documentation gaps
+unnecessary:
+
+| Change | What it resolves |
+|--------|-----------------|
+| **`PipelineConstants`** — centralised anchor/enrichment thresholds | Gap 2.2, 2.3: scattered duplicate constants now have one source of truth |
+| **`RelationOrigin.category()`** — each origin derives its display category | Gap 2.4, 2.6: `relationCategory` string no longer maintained independently; origin is the single source of truth |
+| **`setOrigin()` auto-syncs category** — `RequirementRelationshipView` keeps both fields consistent automatically | Gap 2.4: eliminates "seed vs trace vs impact" confusion in the code |
+| **`IMPACT_SELECTED` → `IMPACT_PROMOTED`** — renamed to clarify semantics | Gap 2.10: the old name was confused with the `selectedForImpact` boolean; the new name makes the distinction self-explanatory |

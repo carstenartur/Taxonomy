@@ -647,7 +647,7 @@
             case 'PROPAGATED': return 'info';
             case 'SEED_CONTEXT': return 'warning';
             case 'ENRICHED_LEAF': return 'primary';
-            case 'IMPACT_SELECTED': return 'danger';
+            case 'IMPACT_PROMOTED': return 'danger';
             case 'TAXONOMY_SEED': return 'warning';
             case 'PROPAGATED_TRACE': return 'secondary';
             case 'IMPACT_DERIVED': return 'danger';

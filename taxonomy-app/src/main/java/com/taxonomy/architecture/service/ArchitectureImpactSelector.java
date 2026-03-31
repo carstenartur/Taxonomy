@@ -51,7 +51,7 @@ public class ArchitectureImpactSelector {
 
     /**
      * Selects the most impactful nodes from the full element list and marks
-     * them with {@link NodeOrigin#IMPACT_SELECTED}.
+     * them with {@link NodeOrigin#IMPACT_PROMOTED}.
      *
      * @param elements           all elements from the architecture view
      * @param allScores          full LLM score map (nodeCode → 0–100)
@@ -100,7 +100,7 @@ public class ArchitectureImpactSelector {
                 el.setSelectedForImpact(true);
                 if (el.getOrigin() == null || el.getOrigin() == NodeOrigin.PROPAGATED
                         || el.getOrigin() == NodeOrigin.TRACE_INTERMEDIATE) {
-                    el.setOrigin(NodeOrigin.IMPACT_SELECTED);
+                    el.setOrigin(NodeOrigin.IMPACT_PROMOTED);
                 }
                 el.setSpecificityScore(se.score());
                 el.setPresenceReason(buildPresenceReason(el, se.score()));

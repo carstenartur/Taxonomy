@@ -50,4 +50,31 @@ class RelationOriginTest {
                 .count();
         assertEquals(RelationOrigin.values().length, distinctKeys);
     }
+
+    @ParameterizedTest
+    @EnumSource(RelationOrigin.class)
+    void categoryIsOneOfThreeValues(RelationOrigin origin) {
+        String cat = origin.category();
+        assertTrue(RequirementRelationshipView.CATEGORY_SEED.equals(cat)
+                        || RequirementRelationshipView.CATEGORY_TRACE.equals(cat)
+                        || RequirementRelationshipView.CATEGORY_IMPACT.equals(cat),
+                "category must be seed, trace, or impact but was: " + cat);
+    }
+
+    @Test
+    void seedOriginHasSeedCategory() {
+        assertEquals(RequirementRelationshipView.CATEGORY_SEED, RelationOrigin.TAXONOMY_SEED.category());
+    }
+
+    @Test
+    void traceOriginHasTraceCategory() {
+        assertEquals(RequirementRelationshipView.CATEGORY_TRACE, RelationOrigin.PROPAGATED_TRACE.category());
+    }
+
+    @Test
+    void impactOriginsHaveImpactCategory() {
+        assertEquals(RequirementRelationshipView.CATEGORY_IMPACT, RelationOrigin.IMPACT_DERIVED.category());
+        assertEquals(RequirementRelationshipView.CATEGORY_IMPACT, RelationOrigin.SUGGESTED_CANDIDATE.category());
+        assertEquals(RequirementRelationshipView.CATEGORY_IMPACT, RelationOrigin.LLM_SUPPORTED.category());
+    }
 }

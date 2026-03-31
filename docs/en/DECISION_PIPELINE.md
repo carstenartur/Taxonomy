@@ -282,7 +282,9 @@ nodes for the final impact presentation using a composite score:
   - **Taxonomy scaffolding:** depth ≤ 1 when deeper nodes exist in category
   - **Generic weak nodes:** depth ≤ 1 with generic name and a descendant ≥ 50% of score
   - **Redundant intermediates:** depth > 1 with exactly 1 strong child (≥ 50% of score)
-- Selected nodes receive origin `IMPACT_SELECTED`.
+- Selected nodes receive origin `IMPACT_PROMOTED` (if their previous origin
+  was `PROPAGATED` or `TRACE_INTERMEDIATE`; stronger origins such as
+  `DIRECT_SCORED` or `SEED_CONTEXT` are preserved).
 
 ### Step 11: Presence Reasons and Parent Codes
 
@@ -509,36 +511,46 @@ how it entered the view:
 | `PROPAGATED` | Reached via BFS relation traversal | Element building |
 | `SEED_CONTEXT` | Root code reached via propagation (not a leaf) | Element building |
 | `ENRICHED_LEAF` | Added as a concrete leaf during post-propagation enrichment | Leaf enrichment |
-| `IMPACT_SELECTED` | Selected for final impact presentation by composite scoring | Impact selection |
+| `IMPACT_PROMOTED` | Origin upgraded from weaker provenance during impact selection | Impact selection |
 
 **Origin upgrade path:** During impact selection, nodes with origin
 `null`, `PROPAGATED`, or `TRACE_INTERMEDIATE` may be upgraded to
-`IMPACT_SELECTED`. Origins `SEED_CONTEXT` and `ENRICHED_LEAF` are
-preserved (not overwritten).
+`IMPACT_PROMOTED`. Origins `SEED_CONTEXT` and `ENRICHED_LEAF` are
+preserved (not overwritten). The boolean `selectedForImpact` flag is
+set on _all_ impact-selected nodes regardless of origin.
 
 ---
 
 ## Relation Origins
 
-| Origin | Meaning | Set by |
-|--------|---------|--------|
-| `TAXONOMY_SEED` | Loaded from seed CSV; root-to-root | Relationship building |
-| `PROPAGATED_TRACE` | Discovered through BFS traversal | Relationship building |
-| `IMPACT_DERIVED` | Cross-category leaf-to-leaf derivation | Impact relation generation |
-| `SUGGESTED_CANDIDATE` | Proposed by gap analysis or embedding similarity | ⚠️ Relation proposal feature |
-| `LLM_SUPPORTED` | Confirmed by LLM inference | ⚠️ Not currently set by analysis pipeline |
+Each relation carries a `RelationOrigin` enum that records its provenance.
+The origin also determines the coarse **display category** (via
+`RelationOrigin.category()`), so the UI no longer needs to track category
+independently:
+
+| Origin | Category | Meaning | Set by |
+|--------|----------|---------|--------|
+| `TAXONOMY_SEED` | `seed` | Loaded from seed CSV; root-to-root | Relationship building |
+| `PROPAGATED_TRACE` | `trace` | Discovered through BFS traversal | Relationship building |
+| `IMPACT_DERIVED` | `impact` | Cross-category leaf-to-leaf derivation | Impact relation generation |
+| `SUGGESTED_CANDIDATE` | `impact` | Proposed by gap analysis or embedding similarity | ⚠️ Relation proposal feature |
+| `LLM_SUPPORTED` | `impact` | Confirmed by LLM inference | ⚠️ Not currently set by analysis pipeline |
 
 ---
 
 ## Constants Reference
 
+Pipeline-wide anchor and enrichment thresholds are centralised in
+`PipelineConstants` (taxonomy-domain module). Service classes delegate
+to these constants so that there is exactly one source of truth.
+
 | Constant | Value | Location | Purpose |
 |----------|-------|----------|---------|
-| `ANCHOR_THRESHOLD_HIGH` | 70 | RequirementArchitectureViewService | Primary anchor selection threshold |
-| `ANCHOR_THRESHOLD_LOW` | 50 | RequirementArchitectureViewService | Fallback anchor threshold |
-| `MIN_ANCHORS` | 3 | RequirementArchitectureViewService | Minimum anchors before fallback |
-| `MAX_LEAF_ENRICHMENT` | 3 | RequirementArchitectureViewService | Max enrichment leaves per root |
-| `LEAF_ENRICHMENT_MIN_SCORE` | 5 | RequirementArchitectureViewService | Min score for leaf enrichment |
+| `ANCHOR_THRESHOLD_HIGH` | 70 | PipelineConstants | Primary anchor selection threshold |
+| `ANCHOR_THRESHOLD_LOW` | 50 | PipelineConstants | Fallback anchor threshold |
+| `MIN_ANCHORS` | 3 | PipelineConstants | Minimum anchors before fallback |
+| `MAX_LEAF_ENRICHMENT` | 3 | PipelineConstants | Max enrichment leaves per root |
+| `LEAF_ENRICHMENT_MIN_SCORE` | 5 | PipelineConstants | Min score for leaf enrichment |
 | `MAX_HOPS` | 2 | RelevancePropagationService | BFS hop limit |
 | `MIN_RELEVANCE` | 0.35 | RelevancePropagationService | Propagation floor |
 | `HOP_DECAY` | 0.70 | RelevancePropagationService | Per-hop decay multiplier |
