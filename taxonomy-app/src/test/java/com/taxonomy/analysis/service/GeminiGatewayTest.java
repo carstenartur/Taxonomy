@@ -9,8 +9,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.*;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.SocketTimeoutException;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -152,6 +155,90 @@ class GeminiGatewayTest {
             gateway.sendHttpRequest("prompt", "key");
 
             verify(replayService).record(eq("prompt"), eq(responseBody), eq("GEMINI"), isNull());
+        }
+
+        @SuppressWarnings("unchecked")
+        @Test
+        void socketTimeout_withNoRetries_throwsLlmTimeoutException() {
+            when(replayService.isReplayMode()).thenReturn(false);
+            when(preferencesService.getInt(eq("llm.rpm"), anyInt())).thenReturn(0);
+            when(preferencesService.getInt(eq("llm.retry.max"), anyInt())).thenReturn(0);
+            when(preferencesService.getInt(eq("llm.timeout.seconds"), anyInt())).thenReturn(60);
+
+            ResourceAccessException timeoutEx =
+                    new ResourceAccessException("Read timed out", new SocketTimeoutException("Read timed out"));
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                    .thenThrow(timeoutEx);
+
+            assertThatThrownBy(() -> gateway.sendHttpRequest("prompt", "key"))
+                    .isInstanceOf(LlmTimeoutException.class)
+                    .hasMessageContaining("60s")
+                    .hasMessageContaining("llm.timeout.seconds");
+        }
+
+        @SuppressWarnings("unchecked")
+        @Test
+        void socketTimeout_withRetries_retriesBeforeThrowingLlmTimeoutException() {
+            when(replayService.isReplayMode()).thenReturn(false);
+            when(preferencesService.getInt(eq("llm.rpm"), anyInt())).thenReturn(0);
+            when(preferencesService.getInt(eq("llm.retry.max"), anyInt())).thenReturn(1);
+            when(preferencesService.getInt(eq("llm.timeout.seconds"), anyInt())).thenReturn(60);
+
+            ResourceAccessException timeoutEx =
+                    new ResourceAccessException("Read timed out", new SocketTimeoutException("Read timed out"));
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                    .thenThrow(timeoutEx);
+
+            assertThatThrownBy(() -> gateway.sendHttpRequest("prompt", "key"))
+                    .isInstanceOf(LlmTimeoutException.class);
+
+            // Should have been called 2 times: 1 initial + 1 retry
+            verify(restTemplate, times(2))
+                    .exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class));
+        }
+
+        @SuppressWarnings("unchecked")
+        @Test
+        void socketTimeout_succeeds_onRetry() {
+            when(replayService.isReplayMode()).thenReturn(false);
+            when(preferencesService.getInt(eq("llm.rpm"), anyInt())).thenReturn(0);
+            when(preferencesService.getInt(eq("llm.retry.max"), anyInt())).thenReturn(1);
+            when(preferencesService.getInt(eq("llm.timeout.seconds"), anyInt())).thenReturn(60);
+
+            ResourceAccessException timeoutEx =
+                    new ResourceAccessException("Read timed out", new SocketTimeoutException("Read timed out"));
+            String responseBody = "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]}}]}";
+            ResponseEntity<String> successResponse = new ResponseEntity<>(responseBody, HttpStatus.OK);
+
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                    .thenThrow(timeoutEx)
+                    .thenReturn(successResponse);
+
+            String result = gateway.sendHttpRequest("prompt", "key");
+
+            assertThat(result).isEqualTo(responseBody);
+            verify(restTemplate, times(2))
+                    .exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class));
+        }
+
+        @SuppressWarnings("unchecked")
+        @Test
+        void serverError_withRetries_retriesBeforeReturningNull() {
+            when(replayService.isReplayMode()).thenReturn(false);
+            when(preferencesService.getInt(eq("llm.rpm"), anyInt())).thenReturn(0);
+            when(preferencesService.getInt(eq("llm.retry.max"), anyInt())).thenReturn(1);
+
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                    .thenThrow(HttpServerErrorException.create(
+                            HttpStatus.INTERNAL_SERVER_ERROR, "Internal Server Error",
+                            HttpHeaders.EMPTY, "error".getBytes(), null));
+
+            String result = gateway.sendHttpRequest("prompt", "key");
+
+            assertThat(result).isNull();
+            // Should have been called 2 times: 1 initial + 1 retry
+            verify(restTemplate, times(2))
+                    .exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class));
         }
     }
 

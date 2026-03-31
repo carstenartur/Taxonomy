@@ -479,6 +479,18 @@ public class LlmService {
             String businessText, List<TaxonomyNode> nodes, int parentScore) {
         try {
             return callLlmPropagatingDetailed(businessText, nodes, parentScore);
+        } catch (LlmTimeoutException e) {
+            log.warn("LLM API call timed out: {}", e.getMessage());
+            LlmCallDetail detail = new LlmCallDetail();
+            detail.setScores(responseParser.zeroScores(nodes));
+            detail.setProvider(getActiveProviderName());
+            detail.setPrompt("");
+            detail.setRawResponse("");
+            detail.setDurationMs(0);
+            String errorMsg = e.getMessage();
+            detail.setError(errorMsg);
+            recordFailure(errorMsg);
+            return detail;
         } catch (Exception e) {
             log.error("Error in detailed LLM call", e);
             LlmCallDetail detail = new LlmCallDetail();
@@ -699,7 +711,18 @@ public class LlmService {
 
         long start = System.currentTimeMillis();
         LlmGateway gateway = gatewayRegistry.getGateway(provider);
-        String apiResponseBody = gateway.sendHttpRequest(prompt, apiKey);
+        String apiResponseBody;
+        try {
+            apiResponseBody = gateway.sendHttpRequest(prompt, apiKey);
+        } catch (LlmTimeoutException e) {
+            detail.setDurationMs(System.currentTimeMillis() - start);
+            String errorMsg = e.getMessage();
+            detail.setScores(responseParser.zeroScores(nodes));
+            detail.setRawResponse("");
+            detail.setError(errorMsg);
+            recordFailure(errorMsg);
+            return detail;
+        }
         detail.setDurationMs(System.currentTimeMillis() - start);
 
         if (apiResponseBody == null) {
@@ -1002,6 +1025,10 @@ public class LlmService {
             String body = gateway.sendHttpRequest(prompt, apiKey);
             return body != null ? gateway.extractResponseText(body) : null;
         } catch (LlmRateLimitException e) {
+            recordFailure(e.getMessage());
+            throw e;
+        } catch (LlmTimeoutException e) {
+            log.warn("LLM API call timed out: {}", e.getMessage());
             recordFailure(e.getMessage());
             throw e;
         } catch (Exception e) {
