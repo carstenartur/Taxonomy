@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ImpactEndpointSelector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">ImpactEndpointSelector.java</span></div><h1>ImpactEndpointSelector.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.dto.RequirementElementView;
+
+import java.util.*;
+
+/**
+ * Selects all qualified impact endpoints from a list of leaf nodes in the same
+ * taxonomy category, rather than picking only the single &quot;best&quot; leaf.
+ *
+ * &lt;p&gt;A leaf qualifies as an impact endpoint when its composite score
+ * (relevance × 0.5 + normalised depth × 0.3 + impact-selection bonus × 0.2)
+ * exceeds the qualification threshold, or when it is an anchor, or when it was
+ * explicitly marked as selected-for-impact by the {@link ArchitectureImpactSelector}.
+ */
+<span class="fc" id="L16">class ImpactEndpointSelector {</span>
+
+    /** Minimum composite score for automatic qualification. */
+    static final double QUALIFICATION_THRESHOLD = 0.35;
+
+    /** Maximum depth used for normalisation. */
+    private static final double MAX_DEPTH = 5.0;
+
+    /**
+     * Returns all qualified impact endpoints from the provided leaves.
+     * The result is ordered by composite score descending.
+     *
+     * @param leaves non-empty list of leaf elements from the same taxonomy category
+     * @return list of qualified endpoints (never empty — at least the best leaf is always included)
+     */
+    List&lt;RequirementElementView&gt; selectEndpoints(List&lt;RequirementElementView&gt; leaves) {
+<span class="fc bfc" id="L32" title="All 4 branches covered.">        if (leaves == null || leaves.isEmpty()) {</span>
+<span class="fc" id="L33">            return List.of();</span>
+        }
+
+<span class="fc" id="L36">        record Scored(RequirementElementView element, double score) {}</span>
+
+<span class="fc" id="L38">        List&lt;Scored&gt; scored = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        for (RequirementElementView leaf : leaves) {</span>
+<span class="fc" id="L40">            double relevanceComponent = leaf.getRelevance() * 0.5;</span>
+<span class="fc" id="L41">            double depthComponent = Math.min(pathDepth(leaf.getHierarchyPath()) / MAX_DEPTH, 1.0) * 0.3;</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            double impactBonus = leaf.isSelectedForImpact() ? 0.2 : 0.0;</span>
+<span class="fc" id="L43">            double compositeScore = relevanceComponent + depthComponent + impactBonus;</span>
+<span class="fc" id="L44">            scored.add(new Scored(leaf, compositeScore));</span>
+<span class="fc" id="L45">        }</span>
+
+<span class="fc" id="L47">        scored.sort(Comparator.comparingDouble(Scored::score).reversed());</span>
+
+<span class="fc" id="L49">        List&lt;RequirementElementView&gt; qualified = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        for (Scored s : scored) {</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            if (s.score() &gt;= QUALIFICATION_THRESHOLD</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">                    || s.element().isAnchor()</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">                    || s.element().isSelectedForImpact()) {</span>
+<span class="fc" id="L54">                qualified.add(s.element());</span>
+            }
+<span class="fc" id="L56">        }</span>
+
+        // Guarantee at least the best leaf is always included
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (qualified.isEmpty()) {</span>
+<span class="fc" id="L60">            qualified.add(scored.get(0).element());</span>
+        }
+
+<span class="fc" id="L63">        return qualified;</span>
+    }
+
+    /**
+     * Returns the depth of a hierarchy path by counting path segments.
+     */
+    private static int pathDepth(String path) {
+<span class="pc bpc" id="L70" title="2 of 4 branches missed.">        if (path == null || path.isEmpty()) return 0;</span>
+<span class="fc" id="L71">        int count = 1;</span>
+<span class="fc" id="L72">        int idx = 0;</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        while ((idx = path.indexOf(&quot; &gt; &quot;, idx)) &gt;= 0) {</span>
+<span class="fc" id="L74">            count++;</span>
+<span class="fc" id="L75">            idx += 3;</span>
+        }
+<span class="fc" id="L77">        return count;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>

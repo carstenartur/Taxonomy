@@ -150,11 +150,14 @@ Taxonomy Application,com.taxonomy.architecture.service,ArchitectureGraphQuerySer
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureGraphQueryServiceImpl.Direction,0,21,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureSummaryService,67,270,9,9,7,57,11,12,3,11
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService,25,491,12,42,4,92,11,22,0,6
+Taxonomy Application,com.taxonomy.architecture.service,LayerRepresentativeSelector,0,25,0,8,0,8,0,6,0,2
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureImpactSelector.ScoredElement,0,9,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureImpactSelector,3,512,9,59,0,86,9,42,0,17
 Taxonomy Application,com.taxonomy.architecture.service,ScoringTraceSelector,7,200,3,17,2,45,2,12,0,4
 Taxonomy Application,com.taxonomy.architecture.service,DerivedMetadataService,42,164,3,17,9,39,5,11,2,4
-Taxonomy Application,com.taxonomy.architecture.service,RequirementArchitectureViewService,189,1791,49,195,41,378,45,106,0,29
+Taxonomy Application,com.taxonomy.architecture.service,RequirementArchitectureViewService,231,1855,55,199,54,382,50,107,3,27
+Taxonomy Application,com.taxonomy.architecture.service,ImpactEndpointSelector,2,134,3,21,0,29,3,12,0,3
+Taxonomy Application,com.taxonomy.architecture.service,ImpactEndpointSelector.new Record() {...},0,9,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.architecture.service,ArchitecturePatternService.PatternStep,0,20,0,0,0,2,0,2,0,2
 Taxonomy Application,com.taxonomy.architecture.service,ExplanationTraceService,65,391,23,27,8,72,21,13,1,8
 Taxonomy Application,com.taxonomy.architecture.service,ArchitectureGraphQueryServiceImpl,62,961,23,84,13,197,19,55,0,20

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LayerRepresentativeSelector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">LayerRepresentativeSelector.java</span></div><h1>LayerRepresentativeSelector.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.dto.RequirementElementView;
+
+import java.util.*;
+
+/**
+ * Selects the best node representative for a taxonomy layer during leaf enrichment.
+ *
+ * &lt;p&gt;The selection strategy follows a priority order:
+ * &lt;ol&gt;
+ *   &lt;li&gt;Prefer leaves with depth &amp;gt; 1 (concrete elements).&lt;/li&gt;
+ *   &lt;li&gt;If no concrete leaves are available and the root code scores highly enough,
+ *       fall back to the best Level-1 intermediate node as a representative.&lt;/li&gt;
+ *   &lt;li&gt;If no intermediates exist either, the layer remains without enrichment.&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;p&gt;This prevents root-code-only layers (e.g. CI, BR) from becoming isolated
+ * islands in the diagram: the intermediate node has a dash in its code, so
+ * {@code generateImpactRelations()} can create cross-category edges for it.
+ */
+class LayerRepresentativeSelector {
+
+    private final TaxonomyNodeRepository nodeRepository;
+
+<span class="fc" id="L28">    LayerRepresentativeSelector(TaxonomyNodeRepository nodeRepository) {</span>
+<span class="fc" id="L29">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L30">    }</span>
+
+    /**
+     * Decides whether a candidate node should be accepted for leaf enrichment.
+     *
+     * @param node     the resolved taxonomy node
+     * @param rootScore the LLM score for the root code of this layer (0–100)
+     * @param hasDeepLeafInLayer {@code true} if at least one depth &amp;gt; 1 candidate
+     *                           exists in the same root layer
+     * @return {@code true} if the candidate should be included
+     */
+    boolean shouldInclude(TaxonomyNode node, int rootScore, boolean hasDeepLeafInLayer) {
+        // Always accept deep leaves (depth &gt; 1)
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (node.getLevel() &gt; 1) {</span>
+<span class="fc" id="L44">            return true;</span>
+        }
+
+        // Accept level-1 intermediates as fallback when no deep leaves exist
+        // and the root layer has a meaningful score
+<span class="fc bfc" id="L49" title="All 6 branches covered.">        if (node.getLevel() == 1 &amp;&amp; !hasDeepLeafInLayer</span>
+                &amp;&amp; rootScore &gt;= RequirementArchitectureViewService.ANCHOR_THRESHOLD_LOW) {
+<span class="fc" id="L51">            return true;</span>
+        }
+
+        // Skip scaffolding by default
+<span class="fc" id="L55">        return false;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.14.202510111229</span></div></body></html>
