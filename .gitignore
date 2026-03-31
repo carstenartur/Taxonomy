@@ -3,3 +3,6 @@ target/
 taxonomy-app/codemirror-build/node_modules/
 taxonomy-app/codemirror-build/package-lock.json
 
+# LLM recording manifest is a runtime artifact, not a source file
+**/llm-recordings/manifest.json
+
