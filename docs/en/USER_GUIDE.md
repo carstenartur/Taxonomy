@@ -427,6 +427,7 @@ The panel shows three areas:
 | Area | Contents |
 |---|---|
 | **Impact Summary Bar** | A compact KPI row: direct matches, affected elements, relations, layers, and change hotspots |
+| **Policy Title & Legend** | A title showing the active diagram policy (e.g. "Architecture Impact View") and small rule-badges describing active filters (e.g. "Root nodes suppressed"). This updates automatically when you switch the `diagram.policy` preference. |
 | **Interactive Network Graph** | An interactive force-directed network graph (default view) showing all impacted elements as draggable nodes connected by directed edges. Toggle to "🏗️ Layer View" for the traditional swimlane layout. |
 | **Detail Tables** | Collapsible tables listing all elements and relationships with full metadata (expand via the 📋 summary line) |
 

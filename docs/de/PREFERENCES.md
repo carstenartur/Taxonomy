@@ -165,6 +165,8 @@ Die Einstellung `diagram.policy` steuert, welche Knoten und Kanten in Architektu
 
 Änderungen werden beim **nächsten Diagrammexport** wirksam — kein Neustart der Anwendung erforderlich.
 
+Die aktive Richtlinie wird außerdem als **Titel und Regel-Badge-Legende** direkt im Architekturansicht-Panel angezeigt, sodass auf einen Blick erkennbar ist, welche Einstellungen das aktuelle Diagramm erzeugt haben.
+
 ---
 
 ## Audit-Spur
