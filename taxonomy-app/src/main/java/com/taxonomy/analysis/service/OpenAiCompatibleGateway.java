@@ -7,10 +7,12 @@ import org.springframework.http.*;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import com.taxonomy.preferences.PreferencesService;
 
+import java.net.SocketTimeoutException;
 import java.util.*;
 
 /**
@@ -110,35 +112,73 @@ public class OpenAiCompatibleGateway implements LlmGateway {
         try {
             HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
 
-            ResponseEntity<String> response;
-            try {
-                response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
-            } catch (HttpClientErrorException e) {
-                if (e.getStatusCode().value() == 429) {
-                    throw new LlmRateLimitException(
-                            provider + " rate limit (HTTP 429): " + e.getResponseBodyAsString(), e);
+            int maxRetries = preferencesService != null
+                    ? preferencesService.getInt("llm.retry.max", 2) : 2;
+            int attempt = 0;
+            while (true) {
+                ResponseEntity<String> response;
+                try {
+                    response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+                } catch (HttpClientErrorException e) {
+                    if (e.getStatusCode().value() == 429) {
+                        throw new LlmRateLimitException(
+                                provider + " rate limit (HTTP 429): " + e.getResponseBodyAsString(), e);
+                    }
+                    throw new RuntimeException(provider + " API error " + e.getStatusCode() + ": " +
+                            e.getResponseBodyAsString(), e);
+                } catch (HttpServerErrorException e) {
+                    if (attempt < maxRetries) {
+                        attempt++;
+                        long backoffMs = 1000L * (1L << (attempt - 1));
+                        log.warn("{} API server error {} — retry {}/{} after {}ms",
+                                provider, e.getStatusCode(), attempt, maxRetries, backoffMs);
+                        try {
+                            Thread.sleep(backoffMs);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                        }
+                        continue;
+                    }
+                    throw new RuntimeException(provider + " API server error " + e.getStatusCode() + ": " +
+                            e.getResponseBodyAsString(), e);
+                } catch (ResourceAccessException e) {
+                    if (e.getCause() instanceof SocketTimeoutException) {
+                        int timeoutSeconds = preferencesService != null
+                                ? preferencesService.getInt("llm.timeout.seconds", 60) : 60;
+                        if (attempt < maxRetries) {
+                            attempt++;
+                            long backoffMs = 1000L * (1L << (attempt - 1));
+                            log.warn("{} API read timeout after {}s — retry {}/{} after {}ms",
+                                    provider, timeoutSeconds, attempt, maxRetries, backoffMs);
+                            try {
+                                Thread.sleep(backoffMs);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                            }
+                            continue;
+                        }
+                        throw new LlmTimeoutException(
+                                provider + " API call timed out after " + timeoutSeconds + "s. "
+                                + "You can increase the timeout in Preferences → llm.timeout.seconds.", e);
+                    }
+                    throw e;
                 }
-                throw new RuntimeException(provider + " API error " + e.getStatusCode() + ": " +
-                        e.getResponseBodyAsString(), e);
-            } catch (HttpServerErrorException e) {
-                throw new RuntimeException(provider + " API server error " + e.getStatusCode() + ": " +
-                        e.getResponseBodyAsString(), e);
-            }
 
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                log.info("LLM Response [{}] — raw response (first 500 chars): {}",
-                        provider, response.getBody().substring(0, Math.min(response.getBody().length(), 500)));
+                if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                    log.info("LLM Response [{}] — raw response (first 500 chars): {}",
+                            provider, response.getBody().substring(0, Math.min(response.getBody().length(), 500)));
 
-                // RECORD: persist prompt + response for future replay.
-                if (recordReplayService != null && recordReplayService.isRecordMode()) {
-                    recordReplayService.record(prompt, response.getBody(), provider.name(), null);
+                    // RECORD: persist prompt + response for future replay.
+                    if (recordReplayService != null && recordReplayService.isRecordMode()) {
+                        recordReplayService.record(prompt, response.getBody(), provider.name(), null);
+                    }
+
+                    return response.getBody();
                 }
-
-                return response.getBody();
+                log.error("{} API returned status {}", provider, response.getStatusCode());
+                return null;
             }
-            log.error("{} API returned status {}", provider, response.getStatusCode());
-            return null;
-        } catch (LlmRateLimitException e) {
+        } catch (LlmRateLimitException | LlmTimeoutException e) {
             throw e;
         } catch (Exception e) {
             log.error("Error calling {} API", provider, e);
@@ -187,7 +227,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
 
     private void applyCurrentTimeout() {
         if (preferencesService == null || llmRequestFactory == null) return;
-        int timeoutSeconds = preferencesService.getInt("llm.timeout.seconds", 30);
+        int timeoutSeconds = preferencesService.getInt("llm.timeout.seconds", 60);
         llmRequestFactory.setReadTimeout(timeoutSeconds * 1000);
     }
 }
