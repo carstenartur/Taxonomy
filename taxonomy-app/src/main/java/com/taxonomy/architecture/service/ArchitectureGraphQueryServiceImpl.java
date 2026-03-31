@@ -20,6 +20,7 @@ import com.taxonomy.dto.ImpactElement;
 import com.taxonomy.dto.ImpactRelationship;
 import com.taxonomy.dto.RequirementImpactView;
 import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.pipeline.PipelineConstants;
 
 /**
  * Implementation of {@link ArchitectureGraphQueryService}.
@@ -41,10 +42,10 @@ public class ArchitectureGraphQueryServiceImpl implements ArchitectureGraphQuery
     /** Per-hop decay factor. */
     static final double HOP_DECAY = 0.70;
 
-    /** Anchor threshold for requirement impact (same as architecture view). */
-    private static final int ANCHOR_THRESHOLD_HIGH = 70;
-    private static final int ANCHOR_THRESHOLD_LOW = 50;
-    private static final int MIN_ANCHORS = 3;
+    // Anchor thresholds from the shared pipeline constants.
+    private static final int ANCHOR_THRESHOLD_HIGH = PipelineConstants.ANCHOR_THRESHOLD_HIGH;
+    private static final int ANCHOR_THRESHOLD_LOW  = PipelineConstants.ANCHOR_THRESHOLD_LOW;
+    private static final int MIN_ANCHORS           = PipelineConstants.MIN_ANCHORS;
 
     /**
      * Propagation weights per relation type.

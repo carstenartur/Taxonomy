@@ -20,6 +20,7 @@ import com.taxonomy.dto.RequirementElementView;
 import com.taxonomy.dto.RequirementRelationshipView;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.SeedType;
+import com.taxonomy.pipeline.PipelineConstants;
 
 /**
  * Builds a {@link RequirementArchitectureView} from analysis scores and
@@ -35,20 +36,12 @@ public class RequirementArchitectureViewService {
 
     private static final Logger log = LoggerFactory.getLogger(RequirementArchitectureViewService.class);
 
-    /** Minimum score to be automatically selected as an anchor. */
-    static final int ANCHOR_THRESHOLD_HIGH = 70;
-
-    /** Fallback threshold when fewer than MIN_ANCHORS have score >= ANCHOR_THRESHOLD_HIGH. */
-    static final int ANCHOR_THRESHOLD_LOW = 50;
-
-    /** Minimum number of anchors to try to select when using fallback threshold. */
-    static final int MIN_ANCHORS = 3;
-
-    /** Maximum number of top-scoring leaf nodes to add per taxonomy root during enrichment. */
-    static final int MAX_LEAF_ENRICHMENT = 3;
-
-    /** Minimum score for a leaf node to be included in the enrichment (absolute, 0-100). */
-    static final int LEAF_ENRICHMENT_MIN_SCORE = 5;
+    // Delegate to PipelineConstants — kept as short aliases for readability.
+    static final int ANCHOR_THRESHOLD_HIGH     = PipelineConstants.ANCHOR_THRESHOLD_HIGH;
+    static final int ANCHOR_THRESHOLD_LOW      = PipelineConstants.ANCHOR_THRESHOLD_LOW;
+    static final int MIN_ANCHORS               = PipelineConstants.MIN_ANCHORS;
+    static final int MAX_LEAF_ENRICHMENT       = PipelineConstants.MAX_LEAF_ENRICHMENT;
+    static final int LEAF_ENRICHMENT_MIN_SCORE = PipelineConstants.LEAF_ENRICHMENT_MIN_SCORE;
 
     private final RelevancePropagationService propagationService;
     private final TaxonomyNodeRepository nodeRepository;
@@ -353,14 +346,12 @@ public class RequirementArchitectureViewService {
             // indicating structural seed relations from the CSV.
             boolean isSeedRelation = isSeedOriginRelation(rel);
             if (isSeedRelation) {
-                rv.setRelationCategory(RequirementRelationshipView.CATEGORY_SEED);
-                rv.setOrigin(RelationOrigin.TAXONOMY_SEED);
+                rv.setOrigin(RelationOrigin.TAXONOMY_SEED); // also sets relationCategory
                 rv.setSeedType(parseSeedType(rel.getProvenance()));
                 rv.setDerivationReason("Seed relation: " + rel.getSourceCode()
                         + " → " + rel.getTargetCode());
             } else {
-                rv.setRelationCategory(RequirementRelationshipView.CATEGORY_TRACE);
-                rv.setOrigin(RelationOrigin.PROPAGATED_TRACE);
+                rv.setOrigin(RelationOrigin.PROPAGATED_TRACE); // also sets relationCategory
                 rv.setDerivationReason("BFS propagation hop " + tr.getHopDistance());
             }
             relationships.add(rv);
@@ -616,8 +607,7 @@ public class RequirementArchitectureViewService {
                     impact.setHopDistance(0);
                     impact.setIncludedBecause("impact: " + src.getNodeCode() + " → " + tgt.getNodeCode()
                             + " (derived from " + trace.getSourceCode() + " → " + trace.getTargetCode() + ")");
-                    impact.setRelationCategory(RequirementRelationshipView.CATEGORY_IMPACT);
-                    impact.setOrigin(RelationOrigin.IMPACT_DERIVED);
+                    impact.setOrigin(RelationOrigin.IMPACT_DERIVED); // also sets relationCategory
                     impact.setConfidence(Math.min(src.getRelevance(), tgt.getRelevance()));
                     impact.setDerivationReason("Cross-category leaf-to-leaf: "
                             + src.getNodeCode() + " → " + tgt.getNodeCode());

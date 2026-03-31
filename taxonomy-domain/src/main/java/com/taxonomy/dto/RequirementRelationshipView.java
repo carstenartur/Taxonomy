@@ -71,7 +71,17 @@ public class RequirementRelationshipView {
     // ── Phase 1.4 accessors ─────────────────────────────────────────────────
 
     public RelationOrigin getOrigin() { return origin; }
-    public void setOrigin(RelationOrigin origin) { this.origin = origin; }
+    /**
+     * Sets the structured origin and automatically syncs the legacy
+     * {@link #getRelationCategory() relationCategory} string so that
+     * both fields are always consistent.
+     */
+    public void setOrigin(RelationOrigin origin) {
+        this.origin = origin;
+        if (origin != null) {
+            this.relationCategory = origin.category();
+        }
+    }
 
     public double getConfidence() { return confidence; }
     public void setConfidence(double confidence) { this.confidence = confidence; }

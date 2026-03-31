@@ -58,4 +58,24 @@ class RequirementRelationshipViewFieldsTest {
         view.setRelationId(42L);
         assertEquals(42L, view.getRelationId());
     }
+
+    @Test
+    void setOriginAutoSyncsRelationCategory() {
+        RequirementRelationshipView view = new RequirementRelationshipView();
+
+        view.setOrigin(RelationOrigin.TAXONOMY_SEED);
+        assertEquals(RequirementRelationshipView.CATEGORY_SEED, view.getRelationCategory());
+
+        view.setOrigin(RelationOrigin.PROPAGATED_TRACE);
+        assertEquals(RequirementRelationshipView.CATEGORY_TRACE, view.getRelationCategory());
+
+        view.setOrigin(RelationOrigin.IMPACT_DERIVED);
+        assertEquals(RequirementRelationshipView.CATEGORY_IMPACT, view.getRelationCategory());
+
+        view.setOrigin(RelationOrigin.SUGGESTED_CANDIDATE);
+        assertEquals(RequirementRelationshipView.CATEGORY_IMPACT, view.getRelationCategory());
+
+        view.setOrigin(RelationOrigin.LLM_SUPPORTED);
+        assertEquals(RequirementRelationshipView.CATEGORY_IMPACT, view.getRelationCategory());
+    }
 }
