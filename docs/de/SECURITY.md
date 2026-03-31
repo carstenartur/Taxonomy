@@ -440,7 +440,7 @@ Die SBOM listet alle direkten und transitiven Abhängigkeiten mit:
 
 ## Arbeitsbereich-Zugriffsrechte
 
-Wenn die Multi-Benutzer-Arbeitsbereichisolierung aktiviert ist (siehe [Arbeitsbereich-Design](../internal/WORKSPACE_DESIGN.md)), gilt die folgende Zugriffskontrollmatrix für Arbeitsbereichoperationen:
+Wenn die Multi-Benutzer-Arbeitsbereichisolierung aktiviert ist (siehe [Repository-Topologie](REPOSITORY_TOPOLOGY.md)), gilt die folgende Zugriffskontrollmatrix für Arbeitsbereichoperationen:
 
 | Aktion | USER | ARCHITECT | ADMIN | Arbeitsbereich-Eigentümer |
 |---|:---:|:---:|:---:|:---:|

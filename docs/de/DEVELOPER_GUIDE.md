@@ -526,7 +526,7 @@ Die Produkt-UI unterstützt sowohl Deutsch als auch Englisch. Der aktuelle i18n-
 | Neue GUI-Funktion | `USER_GUIDE.md`, `FEATURE_MATRIX.md`, Screenshot via `ScreenshotGeneratorIT` |
 | Neuer REST-Endpunkt | `API_REFERENCE.md`, `CURL_EXAMPLES.md` |
 | Neuer DSL-Block/Property | `CONCEPTS.md`, `GIT_INTEGRATION.md`, `DEVELOPER_GUIDE.md` |
-| Workspace-Modell-Änderung | `WORKSPACE_VERSIONING.md`, `CONCEPTS.md`, internes `WORKSPACE_DESIGN.md` |
+| Workspace-Modell-Änderung | `WORKSPACE_VERSIONING.md`, `CONCEPTS.md`, `REPOSITORY_TOPOLOGY.md` |
 | Neue Konfigurationsvariable | `CONFIGURATION_REFERENCE.md`, `DEPLOYMENT_GUIDE.md` |
 | Neues Hilfe-Dokument | In `HelpController.DOC_METADATA` registrieren, `help.toc.*` i18n-Keys hinzufügen, `docs/en/` und `docs/de/` Dateien erstellen |
 | Jede i18n-sichtbare Änderung | Sowohl `messages.properties` als auch `messages_de.properties` |

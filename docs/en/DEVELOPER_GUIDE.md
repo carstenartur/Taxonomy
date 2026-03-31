@@ -562,7 +562,7 @@ The product UI supports both German and English. The current i18n mechanism uses
 | New GUI feature | `USER_GUIDE.md`, `FEATURE_MATRIX.md`, screenshot via `ScreenshotGeneratorIT` |
 | New REST endpoint | `API_REFERENCE.md`, `CURL_EXAMPLES.md` |
 | New DSL block/property | `CONCEPTS.md`, `GIT_INTEGRATION.md`, `DEVELOPER_GUIDE.md` |
-| Workspace model change | `WORKSPACE_VERSIONING.md`, `CONCEPTS.md`, internal `WORKSPACE_DESIGN.md` |
+| Workspace model change | `WORKSPACE_VERSIONING.md`, `CONCEPTS.md`, `REPOSITORY_TOPOLOGY.md` |
 | New config variable | `CONFIGURATION_REFERENCE.md`, `DEPLOYMENT_GUIDE.md` |
 | New help document | Register in `HelpController.DOC_METADATA`, add `help.toc.*` i18n keys, create `docs/en/` and `docs/de/` files |
 | Any i18n-visible change | Both `messages.properties` and `messages_de.properties` |
