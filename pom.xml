@@ -88,7 +88,7 @@
         <maven-site-plugin.version>3.21.0</maven-site-plugin.version>
         <maven-fluido-skin.version>2.0.0-M11</maven-fluido-skin.version>
         <maven-surefire-report.version>3.5.5</maven-surefire-report.version>
-        <maven-project-info-reports.version>3.7.0</maven-project-info-reports.version>
+        <maven-project-info-reports.version>3.9.0</maven-project-info-reports.version>
         <git-commit-id.version>9.0.2</git-commit-id.version>
         <jacoco.version>0.8.14</jacoco.version>
     </properties>
