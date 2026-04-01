@@ -331,12 +331,11 @@ class DslApiControllerTest {
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(dsl)
                         .param("branch", "draft")
-                        .param("author", "test-user")
                         .param("message", "initial commit"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.commitId").isNotEmpty())
                 .andExpect(jsonPath("$.branch").value("draft"))
-                .andExpect(jsonPath("$.author").value("test-user"))
+                .andExpect(jsonPath("$.author").value("user"))
                 .andExpect(jsonPath("$.valid").value(true));
     }
 
