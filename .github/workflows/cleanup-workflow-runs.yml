@@ -28,7 +28,6 @@ on:
 
 permissions:
   actions: write  # Required to delete workflow runs
-  contents: read  # Required to read workflow and run data via gh api
 
 jobs:
   cleanup:
@@ -111,6 +110,10 @@ jobs:
 
             # Delete (or dry-run log)
             if [ "${DRY_RUN}" = "true" ]; then
+              if [ "$(( TOTAL_DELETED + WF_DELETED ))" -ge "${MAX_DELETIONS}" ]; then
+                echo "  ⚠️ Reached maximum deletions (${MAX_DELETIONS}), stopping. Will continue in next run."
+                break
+              fi
               echo "  🔍 [DRY RUN] Would delete run ${RUN_ID} (${RUN_CREATED})"
               WF_DELETED=$((WF_DELETED + 1))
             else
