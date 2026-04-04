@@ -2,19 +2,19 @@ name: Cleanup Old Workflow Runs
 
 on:
   schedule:
-    - cron: '0 3 * * *'  # Run daily at 03:00 UTC
+    - cron: '0 * * * *'  # Run hourly
   workflow_dispatch:
     inputs:
       retain_days:
         description: 'Delete runs older than this many days'
         required: false
         type: number
-        default: 30
+        default: '30'
       keep_minimum_runs:
         description: 'Always keep at least this many recent runs per workflow'
         required: false
         type: number
-        default: 5
+        default: '5'
       dry_run:
         description: 'Dry run — log what would be deleted without actually deleting'
         required: false
@@ -24,7 +24,7 @@ on:
         description: 'Maximum number of runs to delete per execution (prevents rate limiting)'
         required: false
         type: number
-        default: 300
+        default: '500'
 
 permissions:
   actions: write  # Required to delete workflow runs
@@ -38,10 +38,10 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         REPO: ${{ github.repository }}
-        RETAIN_DAYS: ${{ inputs.retain_days != null && inputs.retain_days != '' ? inputs.retain_days : '30' }}
-        KEEP_MINIMUM_RUNS: ${{ inputs.keep_minimum_runs != null && inputs.keep_minimum_runs != '' ? inputs.keep_minimum_runs : '5' }}
-        DRY_RUN: ${{ inputs.dry_run != null && inputs.dry_run != '' ? inputs.dry_run : 'false' }}
-        MAX_DELETIONS: ${{ inputs.max_deletions != null && inputs.max_deletions != '' ? inputs.max_deletions : '300' }}
+        RETAIN_DAYS: ${{ inputs.retain_days || '30' }}
+        KEEP_MINIMUM_RUNS: ${{ inputs.keep_minimum_runs || '5' }}
+        DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        MAX_DELETIONS: ${{ inputs.max_deletions || '500' }}
       run: |
         set -euo pipefail
         # Strip any decimal suffix (e.g., 30.0 → 30)
