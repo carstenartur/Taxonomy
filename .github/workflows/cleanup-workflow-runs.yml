@@ -38,10 +38,10 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         REPO: ${{ github.repository }}
-        RETAIN_DAYS: ${{ inputs.retain_days || '30' }}
-        KEEP_MINIMUM_RUNS: ${{ inputs.keep_minimum_runs || '5' }}
-        DRY_RUN: ${{ inputs.dry_run || 'false' }}
-        MAX_DELETIONS: ${{ inputs.max_deletions || '100' }}
+        RETAIN_DAYS: ${{ inputs.retain_days != null && inputs.retain_days != '' ? inputs.retain_days : '30' }}
+        KEEP_MINIMUM_RUNS: ${{ inputs.keep_minimum_runs != null && inputs.keep_minimum_runs != '' ? inputs.keep_minimum_runs : '5' }}
+        DRY_RUN: ${{ inputs.dry_run != null && inputs.dry_run != '' ? inputs.dry_run : 'false' }}
+        MAX_DELETIONS: ${{ inputs.max_deletions != null && inputs.max_deletions != '' ? inputs.max_deletions : '100' }}
       run: |
         set -euo pipefail
         # Strip any decimal suffix (e.g., 30.0 → 30)
