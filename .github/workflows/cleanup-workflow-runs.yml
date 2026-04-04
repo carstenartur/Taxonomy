@@ -2,19 +2,19 @@ name: Cleanup Old Workflow Runs
 
 on:
   schedule:
-    - cron: '0 * * * *'  # Run hourly at the top of the hour (UTC)
+    - cron: '0 3 * * *'  # Run daily at 03:00 UTC
   workflow_dispatch:
     inputs:
       retain_days:
         description: 'Delete runs older than this many days'
         required: false
         type: number
-        default: '30'
+        default: 30
       keep_minimum_runs:
         description: 'Always keep at least this many recent runs per workflow'
         required: false
         type: number
-        default: '5'
+        default: 5
       dry_run:
         description: 'Dry run — log what would be deleted without actually deleting'
         required: false
@@ -41,7 +41,7 @@ jobs:
         RETAIN_DAYS: ${{ inputs.retain_days != null && inputs.retain_days != '' ? inputs.retain_days : '30' }}
         KEEP_MINIMUM_RUNS: ${{ inputs.keep_minimum_runs != null && inputs.keep_minimum_runs != '' ? inputs.keep_minimum_runs : '5' }}
         DRY_RUN: ${{ inputs.dry_run != null && inputs.dry_run != '' ? inputs.dry_run : 'false' }}
-        MAX_DELETIONS: ${{ inputs.max_deletions != null && inputs.max_deletions != '' ? inputs.max_deletions : '100' }}
+        MAX_DELETIONS: ${{ inputs.max_deletions != null && inputs.max_deletions != '' ? inputs.max_deletions : '300' }}
       run: |
         set -euo pipefail
         # Strip any decimal suffix (e.g., 30.0 → 30)
@@ -110,7 +110,12 @@ jobs:
 
             # Delete (or dry-run log)
             if [ "${DRY_RUN}" = "true" ]; then
+              if [ "$(( TOTAL_DELETED + WF_DELETED ))" -ge "${MAX_DELETIONS}" ]; then
+                echo "  ⚠️ Reached maximum deletions (${MAX_DELETIONS}), stopping. Will continue in next run."
+                break
+              fi
               echo "  🔍 [DRY RUN] Would delete run ${RUN_ID} (${RUN_CREATED})"
+              WF_DELETED=$((WF_DELETED + 1))
             else
               if [ "$(( TOTAL_DELETED + WF_DELETED ))" -ge "${MAX_DELETIONS}" ]; then
                 echo "  ⚠️ Reached maximum deletions (${MAX_DELETIONS}), stopping. Will continue in next run."
@@ -122,8 +127,8 @@ jobs:
                 break
               fi
               sleep 1
+              WF_DELETED=$((WF_DELETED + 1))
             fi
-            WF_DELETED=$((WF_DELETED + 1))
           done <<< "${RUNS}"
 
           echo "  Summary: deleted=${WF_DELETED}  retained=${WF_RETAINED}"
