@@ -70,10 +70,11 @@ jobs:
           echo ""
           echo "▶ Processing workflow: ${WF_NAME} (id=${WF_ID})"
 
-          # Collect completed run IDs and their created_at timestamps,
-          # newest first (API default ordering is newest-first by created_at)
+          # Collect completed run IDs and their created_at timestamps from all pages,
+          # newest first within each page (API default ordering is newest-first by created_at)
           RUNS=$(gh api \
             "repos/${REPO}/actions/workflows/${WF_ID}/runs?status=completed&per_page=100" \
+            --paginate \
             --jq '.workflow_runs[] | "\(.id)\t\(.created_at)"' || echo "")
 
           # Sanitize workflow name for markdown table (escape pipe characters)
