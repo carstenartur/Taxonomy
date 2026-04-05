@@ -9,7 +9,7 @@ on:
         description: 'Delete runs older than this many days'
         required: false
         type: number
-        default: '30'
+        default: '10'
       keep_minimum_runs:
         description: 'Always keep at least this many recent runs per workflow'
         required: false
