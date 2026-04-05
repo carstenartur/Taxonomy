@@ -26,6 +26,11 @@ on:
         type: number
         default: '500'
 
+env:
+  DEFAULT_RETAIN_DAYS: '10'
+  DEFAULT_KEEP_MINIMUM_RUNS: '5'
+  DEFAULT_MAX_DELETIONS: '500'
+
 permissions:
   actions: write  # Required to delete workflow runs
 
@@ -38,10 +43,10 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         REPO: ${{ github.repository }}
-        RETAIN_DAYS: ${{ inputs.retain_days || '30' }}
-        KEEP_MINIMUM_RUNS: ${{ inputs.keep_minimum_runs || '5' }}
+        RETAIN_DAYS: ${{ inputs.retain_days || env.DEFAULT_RETAIN_DAYS }}
+        KEEP_MINIMUM_RUNS: ${{ inputs.keep_minimum_runs || env.DEFAULT_KEEP_MINIMUM_RUNS }}
         DRY_RUN: ${{ inputs.dry_run || 'false' }}
-        MAX_DELETIONS: ${{ inputs.max_deletions || '500' }}
+        MAX_DELETIONS: ${{ inputs.max_deletions || env.DEFAULT_MAX_DELETIONS }}
       run: |
         set -euo pipefail
         # Strip any decimal suffix (e.g., 30.0 → 30)
