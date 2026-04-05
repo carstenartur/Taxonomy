@@ -1,1 +1,1 @@
-- #254: Keycloak als alternative Authentifizierungsmethode
+- #306: Upgrade the Taxonomy project from Java 17 to Java 21
