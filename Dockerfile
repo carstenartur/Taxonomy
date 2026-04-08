@@ -1,7 +1,6 @@
 # ---- build stage ----
-FROM eclipse-temurin:21-jdk AS build
+FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
-RUN apt-get update && apt-get install -y --no-install-recommends maven && rm -rf /var/lib/apt/lists/*
 COPY pom.xml .
 COPY taxonomy-domain/pom.xml taxonomy-domain/pom.xml
 COPY taxonomy-dsl/pom.xml taxonomy-dsl/pom.xml
