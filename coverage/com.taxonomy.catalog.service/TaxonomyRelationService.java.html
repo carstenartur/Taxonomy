@@ -34,8 +34,8 @@ public class TaxonomyRelationService {
     @Transactional(readOnly = true)
     public List&lt;TaxonomyRelationDto&gt; getRelationsForNode(String code, @Nullable String workspaceId) {
         List&lt;TaxonomyRelation&gt; relations;
-<span class="pc bpc" id="L37" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
-<span class="nc" id="L38">            relations = relationRepository.findByWorkspaceAndNodeCode(workspaceId, code);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (workspaceId != null) {</span>
+<span class="fc" id="L38">            relations = relationRepository.findByWorkspaceAndNodeCode(workspaceId, code);</span>
         } else {
 <span class="fc" id="L40">            relations = relationRepository.findBySourceNodeCodeOrTargetNodeCode(code, code);</span>
         }
@@ -49,8 +49,8 @@ public class TaxonomyRelationService {
     @Transactional(readOnly = true)
     public List&lt;TaxonomyRelationDto&gt; getRelationsByType(RelationType type, @Nullable String workspaceId) {
         List&lt;TaxonomyRelation&gt; relations;
-<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
-<span class="nc" id="L53">            relations = relationRepository.findByWorkspaceAndRelationType(workspaceId, type);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (workspaceId != null) {</span>
+<span class="fc" id="L53">            relations = relationRepository.findByWorkspaceAndRelationType(workspaceId, type);</span>
         } else {
 <span class="fc" id="L55">            relations = relationRepository.findByRelationType(type);</span>
         }
@@ -64,8 +64,8 @@ public class TaxonomyRelationService {
     @Transactional(readOnly = true)
     public List&lt;TaxonomyRelationDto&gt; getAllRelations(@Nullable String workspaceId) {
         List&lt;TaxonomyRelation&gt; relations;
-<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
-<span class="nc" id="L68">            relations = relationRepository.findByWorkspaceIdIsNullOrWorkspaceId(workspaceId);</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if (workspaceId != null) {</span>
+<span class="fc" id="L68">            relations = relationRepository.findByWorkspaceIdIsNullOrWorkspaceId(workspaceId);</span>
         } else {
 <span class="fc" id="L70">            relations = relationRepository.findAll();</span>
         }
@@ -108,8 +108,8 @@ public class TaxonomyRelationService {
 
         // Programmatic duplicate check (covers NULL workspace_id in unique constraint)
         List&lt;TaxonomyRelation&gt; existing;
-<span class="pc bpc" id="L111" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
-<span class="nc" id="L112">            existing = relationRepository.findByWorkspaceAndSourceTargetType(</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (workspaceId != null) {</span>
+<span class="fc" id="L112">            existing = relationRepository.findByWorkspaceAndSourceTargetType(</span>
                     workspaceId, sourceCode, targetCode, type);
         } else {
 <span class="fc" id="L115">            existing = relationRepository.findBySourceNodeCodeAndTargetNodeCodeAndRelationType(</span>
@@ -158,10 +158,10 @@ public class TaxonomyRelationService {
      */
     @Transactional
     public void deleteRelation(Long id, @Nullable String workspaceId) {
-<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
-<span class="nc" id="L162">            TaxonomyRelation relation = relationRepository.findById(id).orElse(null);</span>
-<span class="nc bnc" id="L163" title="All 4 branches missed.">            if (relation != null &amp;&amp; relation.getWorkspaceId() != null</span>
-<span class="nc bnc" id="L164" title="All 2 branches missed.">                    &amp;&amp; !workspaceId.equals(relation.getWorkspaceId())) {</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (workspaceId != null) {</span>
+<span class="fc" id="L162">            TaxonomyRelation relation = relationRepository.findById(id).orElse(null);</span>
+<span class="pc bpc" id="L163" title="2 of 4 branches missed.">            if (relation != null &amp;&amp; relation.getWorkspaceId() != null</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">                    &amp;&amp; !workspaceId.equals(relation.getWorkspaceId())) {</span>
 <span class="nc" id="L165">                throw new IllegalArgumentException(</span>
 <span class="nc" id="L166">                        &quot;Relation &quot; + id + &quot; belongs to workspace '&quot; + relation.getWorkspaceId()</span>
                                 + &quot;', not '&quot; + workspaceId + &quot;'&quot;);
@@ -209,8 +209,8 @@ public class TaxonomyRelationService {
 
     @Transactional(readOnly = true)
     public long countRelations(@Nullable String workspaceId) {
-<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
-<span class="nc" id="L213">            return relationRepository.countByWorkspaceIdIsNullOrWorkspaceId(workspaceId);</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        if (workspaceId != null) {</span>
+<span class="fc" id="L213">            return relationRepository.countByWorkspaceIdIsNullOrWorkspaceId(workspaceId);</span>
         }
 <span class="fc" id="L215">        return relationRepository.count();</span>
     }
