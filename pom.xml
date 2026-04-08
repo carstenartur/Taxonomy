@@ -89,7 +89,7 @@
         <maven-fluido-skin.version>2.1.0</maven-fluido-skin.version>
         <maven-surefire-report.version>3.5.5</maven-surefire-report.version>
         <maven-project-info-reports.version>3.9.0</maven-project-info-reports.version>
-        <git-commit-id.version>9.1.0</git-commit-id.version>
+        <git-commit-id.version>10.0.0</git-commit-id.version>
         <jacoco.version>0.8.14</jacoco.version>
     </properties>
     <dependencyManagement>
