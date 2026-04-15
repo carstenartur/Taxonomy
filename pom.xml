@@ -70,7 +70,7 @@
         <hibernate-search.version>8.3.0.Final</hibernate-search.version>
         <hibernate-search-backend.version>8.3.0.Final</hibernate-search-backend.version>
         <jgit.version>7.6.0.202603022253-r</jgit.version>
-        <springdoc.version>3.0.2</springdoc.version>
+        <springdoc.version>3.0.3</springdoc.version>
         <!-- Named selenium-java.version (NOT selenium.version) to avoid overriding
              Spring Boot's managed selenium.version property, which controls the
              selenium-bom and all transitive Selenium artifact versions.  Overriding
