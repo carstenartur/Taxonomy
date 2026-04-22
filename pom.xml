@@ -79,7 +79,7 @@
              This property is referenced only by the selenium-java dependency in
              taxonomy-app/pom.xml. -->
         <selenium-java.version>4.43.0</selenium-java.version>
-        <archunit.version>1.4.1</archunit.version>
+        <archunit.version>1.4.2</archunit.version>
         <flexmark.version>0.64.8</flexmark.version>
         <xstream.version>1.4.21</xstream.version>
         <testcontainers.version>2.0.5</testcontainers.version>
