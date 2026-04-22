@@ -82,7 +82,7 @@
         <archunit.version>1.4.1</archunit.version>
         <flexmark.version>0.64.8</flexmark.version>
         <xstream.version>1.4.21</xstream.version>
-        <testcontainers.version>2.0.4</testcontainers.version>
+        <testcontainers.version>2.0.5</testcontainers.version>
         <!-- Plugin versions (centralized) -->
         <cyclonedx.version>2.9.1</cyclonedx.version>
         <maven-site-plugin.version>3.21.0</maven-site-plugin.version>
