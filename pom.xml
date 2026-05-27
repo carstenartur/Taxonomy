@@ -85,7 +85,7 @@
         <testcontainers.version>2.0.5</testcontainers.version>
         <!-- Plugin versions (centralized) -->
         <cyclonedx.version>2.9.1</cyclonedx.version>
-        <maven-site-plugin.version>3.21.0</maven-site-plugin.version>
+        <maven-site-plugin.version>3.22.0</maven-site-plugin.version>
         <maven-fluido-skin.version>2.1.0</maven-fluido-skin.version>
         <maven-surefire-report.version>3.5.5</maven-surefire-report.version>
         <maven-project-info-reports.version>3.9.0</maven-project-info-reports.version>
