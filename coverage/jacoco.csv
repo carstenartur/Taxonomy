@@ -8,10 +8,10 @@ Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateRepository,8,36,0,0,
 Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateRepository.Builder,5,10,0,0,1,3,1,1,1,1
 Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateRefDatabase,0,23,0,0,0,8,0,3,0,3
 Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateObjDatabase.ByteArrayReadableChannel,15,48,1,1,4,10,5,5,4,5
-Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateObjDatabase,76,244,5,11,25,55,9,12,5,8
+Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateObjDatabase,69,251,4,12,24,56,8,13,5,8
 Taxonomy Application,com.taxonomy.relations.service,RelationValidationService.ValidationResult,0,35,0,0,0,10,0,6,0,6
 Taxonomy Application,com.taxonomy.relations.service,RelationQualityService,148,122,8,4,22,33,9,6,3,6
-Taxonomy Application,com.taxonomy.relations.service,GraphSearchService,202,198,17,5,45,40,17,8,7,7
+Taxonomy Application,com.taxonomy.relations.service,GraphSearchService,252,148,18,4,52,33,19,6,8,6
 Taxonomy Application,com.taxonomy.relations.service,RelationCandidateService,6,138,5,5,0,25,4,7,0,6
 Taxonomy Application,com.taxonomy.relations.service,RelationProposalService,200,342,13,12,34,76,14,11,3,9
 Taxonomy Application,com.taxonomy.relations.service,RelationTraversalService,36,88,4,10,7,23,4,8,1,4
@@ -121,7 +121,7 @@ Taxonomy Application,com.taxonomy.versioning.service,HypothesisService,33,626,12
 Taxonomy Application,com.taxonomy.versioning.service,SelectiveTransferService,78,401,21,21,12,90,18,18,3,12
 Taxonomy Application,com.taxonomy.versioning.service,ContextCompareService,104,298,5,17,21,63,5,16,0,10
 Taxonomy Application,com.taxonomy.versioning.service,DslOperationsFacade,76,222,3,7,14,46,13,33,10,31
-Taxonomy Application,com.taxonomy.versioning.service,RepositoryStateService,127,344,3,27,18,84,3,33,0,21
+Taxonomy Application,com.taxonomy.versioning.service,RepositoryStateService,99,372,3,27,15,87,3,33,0,21
 Taxonomy Application,com.taxonomy.versioning.service,ConflictDetectionService.MergePreview,0,27,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.versioning.service,ContextHistoryService,54,100,1,1,20,28,1,6,0,6
 Taxonomy Application,com.taxonomy.versioning.service,ContextNavigationService,16,424,5,15,4,98,5,23,0,18
@@ -135,7 +135,7 @@ Taxonomy Application,com.taxonomy.workspace.service,SystemRepositoryService,6,78
 Taxonomy Application,com.taxonomy.workspace.service,WorkspaceResolver,2,26,3,3,1,8,3,3,0,3
 Taxonomy Application,com.taxonomy.workspace.service,UserWorkspaceState,5,122,1,3,1,37,1,21,0,20
 Taxonomy Application,com.taxonomy.workspace.service,ExternalGitSyncService.ExternalSyncStatus,0,18,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.workspace.service,WorkspaceManager,423,765,48,40,84,198,39,41,9,27
+Taxonomy Application,com.taxonomy.workspace.service,WorkspaceManager,439,749,49,39,89,193,41,39,10,26
 Taxonomy Application,com.taxonomy.workspace.service,SyncIntegrationService,141,645,25,35,42,157,19,30,0,18
 Taxonomy Application,com.taxonomy.workspace.service,RepositoryStateGuard.OperationCheck,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.workspace.service,SyncIntegrationService.DivergedStrategy,0,21,0,0,0,4,0,1,0,1
