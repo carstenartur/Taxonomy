@@ -67,7 +67,7 @@
         <poi.version>5.5.1</poi.version>
         <pdfbox.version>3.0.7</pdfbox.version>
         <lucene.version>9.12.3</lucene.version>
-        <hibernate-search.version>8.3.1.Final</hibernate-search.version>
+        <hibernate-search.version>8.4.0.Final</hibernate-search.version>
         <hibernate-search-backend.version>8.4.0.Final</hibernate-search-backend.version>
         <jgit.version>7.6.0.202603022253-r</jgit.version>
         <springdoc.version>3.0.3</springdoc.version>
