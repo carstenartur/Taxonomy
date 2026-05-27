@@ -567,7 +567,7 @@ public class WorkspaceManager {
 
     private void ensurePersistentWorkspace(String username) {
         try {
-<span class="pc bpc" id="L570" title="1 of 2 branches missed.">            if (!workspaceRepository.existsByUsername(username)) {</span>
+<span class="fc bfc" id="L570" title="All 2 branches covered.">            if (!workspaceRepository.existsByUsername(username)) {</span>
 <span class="fc" id="L571">                UserWorkspace ws = new UserWorkspace();</span>
 <span class="fc" id="L572">                ws.setWorkspaceId(UUID.randomUUID().toString());</span>
 <span class="fc" id="L573">                ws.setUsername(username);</span>
@@ -584,11 +584,11 @@ public class WorkspaceManager {
 <span class="fc" id="L584">                workspaceRepository.save(ws);</span>
 <span class="fc" id="L585">                log.debug(&quot;Created persistent workspace for user '{}'&quot;, username);</span>
 <span class="fc" id="L586">            } else {</span>
-<span class="nc" id="L587">                workspaceRepository.findByUsernameAndSharedFalse(username)</span>
-<span class="nc" id="L588">                        .ifPresent(ws -&gt; {</span>
-<span class="nc" id="L589">                            ws.setLastAccessedAt(Instant.now());</span>
-<span class="nc" id="L590">                            workspaceRepository.save(ws);</span>
-<span class="nc" id="L591">                        });</span>
+<span class="fc" id="L587">                workspaceRepository.findByUsernameAndSharedFalse(username)</span>
+<span class="fc" id="L588">                        .ifPresent(ws -&gt; {</span>
+<span class="fc" id="L589">                            ws.setLastAccessedAt(Instant.now());</span>
+<span class="fc" id="L590">                            workspaceRepository.save(ws);</span>
+<span class="fc" id="L591">                        });</span>
             }
 <span class="fc" id="L593">        } catch (Exception e) {</span>
             // Non-fatal: workspace state works in-memory even if persistence fails

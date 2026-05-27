@@ -255,9 +255,9 @@ public class HypothesisService {
     public List&lt;RelationHypothesis&gt; findByStatus(HypothesisStatus status) {
 <span class="fc" id="L256">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
 <span class="pc bpc" id="L257" title="1 of 2 branches missed.">        if (ctx.workspaceId() != null) {</span>
-<span class="nc" id="L258">            return hypothesisRepository.findByStatusAndWorkspace(status, ctx.workspaceId());</span>
+<span class="fc" id="L258">            return hypothesisRepository.findByStatusAndWorkspace(status, ctx.workspaceId());</span>
         }
-<span class="fc" id="L260">        return hypothesisRepository.findByStatus(status);</span>
+<span class="nc" id="L260">        return hypothesisRepository.findByStatus(status);</span>
     }
 
     /**
@@ -267,9 +267,9 @@ public class HypothesisService {
     public List&lt;RelationHypothesis&gt; findAll() {
 <span class="fc" id="L268">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
 <span class="pc bpc" id="L269" title="1 of 2 branches missed.">        if (ctx.workspaceId() != null) {</span>
-<span class="nc" id="L270">            return hypothesisRepository.findByWorkspaceIdIsNullOrWorkspaceId(ctx.workspaceId());</span>
+<span class="fc" id="L270">            return hypothesisRepository.findByWorkspaceIdIsNullOrWorkspaceId(ctx.workspaceId());</span>
         }
-<span class="fc" id="L272">        return hypothesisRepository.findAll();</span>
+<span class="nc" id="L272">        return hypothesisRepository.findAll();</span>
     }
 
     /**
