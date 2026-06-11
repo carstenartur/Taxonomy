@@ -30,8 +30,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 <span class="fc" id="L30">        Logger rootLogger = loggerContext.getLogger(Logger.ROOT_LOGGER_NAME);</span>
 
         // Guard against duplicate appenders on Spring context refresh (e.g. in tests)
-<span class="pc bpc" id="L33" title="1 of 2 branches missed.">        if (rootLogger.getAppender(APPENDER_NAME) != null) {</span>
-<span class="nc" id="L34">            return;</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (rootLogger.getAppender(APPENDER_NAME) != null) {</span>
+<span class="fc" id="L34">            return;</span>
         }
 
 <span class="fc" id="L37">        var appender = new AppenderBase&lt;ILoggingEvent&gt;() {</span>

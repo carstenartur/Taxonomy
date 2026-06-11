@@ -44,7 +44,7 @@ Taxonomy Application,com.taxonomy.workspace.controller,WorkspaceController,571,5
 Taxonomy Application,com.taxonomy.workspace.controller,ExternalSyncController,111,152,1,5,27,38,1,8,0,6
 Taxonomy Application,com.taxonomy.catalog.service,PropagationResult.TraversedRelation,0,27,0,0,0,10,0,5,0,5
 Taxonomy Application,com.taxonomy.catalog.service,SearchService,11,186,2,2,4,37,2,6,0,6
-Taxonomy Application,com.taxonomy.catalog.service,TaxonomyRelationService,97,342,14,16,15,74,12,22,2,17
+Taxonomy Application,com.taxonomy.catalog.service,TaxonomyRelationService,106,333,15,15,16,73,13,21,2,17
 Taxonomy Application,com.taxonomy.catalog.service,DeterministicNodeScorer,0,37,0,2,0,7,0,3,0,2
 Taxonomy Application,com.taxonomy.catalog.service,HierarchyScoreDistributor,15,377,7,29,3,77,7,17,0,6
 Taxonomy Application,com.taxonomy.catalog.service,IndependentScoring,4,38,0,2,2,6,2,3,2,2
@@ -185,7 +185,7 @@ Taxonomy Application,com.taxonomy.relations.model,RelationEvidence,55,32,1,1,16,
 Taxonomy Application,com.taxonomy.relations.model,RelationProposal,8,89,1,1,2,27,3,24,2,24
 Taxonomy Application,com.taxonomy.shared.model,FloatArrayConverter,0,68,0,8,0,13,0,7,0,3
 Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService.LogEntry,0,15,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService,63,41,19,1,16,12,11,2,1,2
+Taxonomy Application,com.taxonomy.shared.service,LogRingBufferService,62,42,18,2,15,13,10,3,1,2
 Taxonomy Application,com.taxonomy.shared.service,HealthSummaryService,0,200,0,10,0,36,0,7,0,2
 Taxonomy Application,com.taxonomy.shared.service,PromptTemplateService,46,342,6,20,13,75,6,26,1,18
 Taxonomy Application,com.taxonomy.shared.service,PromptTemplateService.PromptCategory,0,27,0,0,0,5,0,1,0,1
@@ -219,8 +219,8 @@ Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser.new TypeRef
 Taxonomy Application,com.taxonomy.analysis.service,LlmService,1610,828,168,56,339,188,114,35,13,24
 Taxonomy Application,com.taxonomy.analysis.service,GeminiGateway,97,391,20,32,22,92,18,15,0,7
 Taxonomy Application,com.taxonomy.analysis.service,LlmGatewayRegistry,0,147,0,2,0,16,0,4,0,3
-Taxonomy Application,com.taxonomy.analysis.service,LlmRecordReplayService.ManifestEntry,0,3,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,LlmRecordingEntry,0,24,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.analysis.service,LlmRecordReplayService.ManifestEntry,0,3,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,LlmProvider,0,45,0,0,0,8,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.service,AnalysisFacade,0,25,0,0,0,7,0,3,0,3
 Taxonomy Application,com.taxonomy.analysis.service,LlmResponseParser,10,556,4,50,3,105,4,36,0,13
