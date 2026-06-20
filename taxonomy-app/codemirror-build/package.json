@@ -16,6 +16,6 @@
     "@codemirror/view": "^6.0.0",
     "@codemirror/merge": "^6.6.1",
     "@lezer/highlight": "^1.0.0",
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.28.1"
   }
 }
