@@ -1,1 +1,1 @@
-- #306: Upgrade the Taxonomy project from Java 17 to Java 21
+No closed issues found since v1.2.1
