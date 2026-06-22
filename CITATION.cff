@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+title: "Taxonomy Architecture Analyzer"
+type: software
+authors:
+  - family-names: Hammer
+    given-names: Carsten
+    alias: carstenartur
+repository-code: "https://github.com/carstenartur/Taxonomy"
+url: "https://github.com/carstenartur/Taxonomy"
+license: MIT
+version: "1.2.2"
+date-released: "2026-06-22"
+abstract: >-
+  Taxonomy Architecture Analyzer is a Spring Boot web application for mapping
+  requirements to architecture taxonomies, producing AI-assisted hierarchical
+  scoring traces, architecture impact views, graph relations, and exportable
+  architecture artefacts.
+keywords:
+  - architecture-analysis
+  - enterprise-architecture
+  - taxonomy
+  - knowledge-graph
+  - architecture-decision-support
+  - spring-boot
+  - java

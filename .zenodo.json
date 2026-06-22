@@ -1,0 +1,34 @@
+{
+  "title": "Taxonomy Architecture Analyzer",
+  "upload_type": "software",
+  "publication_date": "2026-06-22",
+  "creators": [
+    {
+      "name": "Hammer, Carsten",
+      "affiliation": "Independent researcher and software developer"
+    }
+  ],
+  "description": "Taxonomy Architecture Analyzer is a research-oriented architecture analysis tool. It maps plain-language requirements to a layered architecture taxonomy, produces hierarchical scoring traces, builds architecture impact views, supports graph and relation exploration, and exports results to formats such as ArchiMate, Visio, Mermaid, JSON, Markdown, HTML, and DOCX.",
+  "access_right": "open",
+  "license": "MIT",
+  "keywords": [
+    "enterprise architecture",
+    "architecture analysis",
+    "taxonomy",
+    "knowledge graph",
+    "LLM-assisted software engineering",
+    "decision support",
+    "architecture DSL",
+    "reproducible research"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/carstenartur/Taxonomy",
+      "relation": "isSupplementTo",
+      "scheme": "url",
+      "resource_type": "software"
+    }
+  ],
+  "communities": [],
+  "notes": "The Zenodo archive captures a release of the source code, metadata, citation instructions, and research documentation. Reproducibility instructions are provided in docs/research/reproducibility.md."
+}
