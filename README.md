@@ -5,7 +5,7 @@
 [![Tests](https://img.shields.io/endpoint?url=https://carstenartur.github.io/Taxonomy/tests/badge.json)](https://carstenartur.github.io/Taxonomy/tests/surefire-report.html)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SBOM](https://img.shields.io/badge/SBOM-CycloneDX-informational?logo=owasp&style=flat)](https://github.com/carstenartur/Taxonomy/dependency-graph/sbom)
-[![GitHub release](https://img.shields.io/github/v/release/carstenartur/Taxonomy?style=flat-square)](https://github.com/carstenartur/Taxonomy/releases/tag/v1.2.0)
+[![GitHub release](https://img.shields.io/github/v/release/carstenartur/Taxonomy?style=flat-square)](https://github.com/carstenartur/Taxonomy/releases/tag/v1.2.2)
 
 **Turn a business requirement into a validated architecture view — in one step.**
 
@@ -442,6 +442,7 @@ Taxonomy/
 | **[Developer Guide](docs/en/DEVELOPER_GUIDE.md)** | Module architecture, testing, extending the system |
 | **[Workspace Versioning](docs/en/WORKSPACE_VERSIONING.md)** | Context bar, variants, sync, merge, cherry-pick |
 | **[AI Providers](docs/en/AI_PROVIDERS.md)** | Supported LLM providers and configuration |
+| **[Research Overview](RESEARCH.md)** | Research questions, contributions, evaluation, and reproducibility entry point |
 
 <details>
 <summary><strong>All documentation</strong> — configuration, operations, integrations, and more</summary>
@@ -469,6 +470,9 @@ Taxonomy/
 | **[AI Transparency](docs/en/AI_TRANSPARENCY.md)** | AI/LLM usage transparency documentation |
 | **[Data Protection](docs/en/DATA_PROTECTION.md)** | GDPR and data protection compliance |
 | **[Knowledge Conservation](docs/en/USE_CASE_WISSENSKONSERVIERUNG.md)** | Use case: architecture knowledge preservation |
+| **[Architecture Contributions](docs/research/architecture-contributions.md)** | Research contribution summary for architecture analysis |
+| **[Evaluation](docs/research/evaluation.md)** | Evaluation goals, baselines, metrics, and study design |
+| **[Reproducibility](docs/research/reproducibility.md)** | Build, run, archive, and reproduce research artefacts |
 
 </details>
 
@@ -491,6 +495,23 @@ See also: [Security](docs/en/SECURITY.md), [Data Protection](docs/en/DATA_PROTEC
 - 📋 **SBOM** — CycloneDX Software Bill of Materials generated at build time
 - 🏛️ **Open Source** — MIT license, full source code, no vendor lock-in
 - 🔐 **SSO/OIDC** — Keycloak integration for government identity providers (see [Keycloak & SSO Setup](docs/en/KEYCLOAK_SETUP.md))
+
+## Research, citation, and archival metadata
+
+The repository contains research and archival metadata for Zenodo publication and scholarly reuse:
+
+| File | Purpose |
+|---|---|
+| [`CITATION.cff`](CITATION.cff) | Machine-readable citation metadata used by GitHub and citation tools |
+| [`CITATION.md`](CITATION.md) | Human-readable citation guidance and BibTeX template |
+| [`codemeta.json`](codemeta.json) | CodeMeta software metadata for indexing and research catalogues |
+| [`.zenodo.json`](.zenodo.json) | Zenodo deposition metadata for release archiving |
+| [`RESEARCH.md`](RESEARCH.md) | Research overview, research questions, and contribution summary |
+| [`docs/research/architecture-contributions.md`](docs/research/architecture-contributions.md) | Architecture-analysis contributions and limitations |
+| [`docs/research/evaluation.md`](docs/research/evaluation.md) | Suggested evaluation design, baselines, and metrics |
+| [`docs/research/reproducibility.md`](docs/research/reproducibility.md) | Reproducibility instructions for release-based research use |
+
+When a Zenodo DOI is minted for a release, cite the DOI for stable archival reference and use the GitHub repository for the active development version.
 
 ## Contributing
 
