@@ -6,9 +6,8 @@
   "codeRepository": "https://github.com/carstenartur/Taxonomy",
   "issueTracker": "https://github.com/carstenartur/Taxonomy/issues",
   "license": "https://spdx.org/licenses/MIT",
-  "version": "1.2.2",
+  "version": "1.2.3-SNAPSHOT",
   "dateCreated": "2026-01-01",
-  "datePublished": "2026-06-22",
   "programmingLanguage": [
     "Java",
     "JavaScript",
