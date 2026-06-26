@@ -8,17 +8,23 @@
       "affiliation": "Independent researcher and software developer"
     }
   ],
-  "description": "Taxonomy Architecture Analyzer is a research-oriented architecture analysis tool. It maps plain-language requirements to a layered architecture taxonomy, produces hierarchical scoring traces, builds architecture impact views, supports graph and relation exploration, and exports results to formats such as ArchiMate, Visio, Mermaid, JSON, Markdown, HTML, and DOCX.",
+  "description": "Taxonomy Architecture Analyzer is an open-source, AI-assisted enterprise architecture and knowledge graph platform for deriving, analysing and versioning architecture models from requirements, regulations, documents and architecture taxonomies. It combines hierarchical LLM-assisted scoring, explainable architecture mapping, relation discovery, source provenance, a Git-backed architecture DSL, and export formats such as ArchiMate, Visio, Mermaid, JSON, Markdown, HTML and DOCX. The project is intended for research and experimentation in enterprise architecture management, requirements engineering, regulatory architecture mapping, architecture decision support, and reproducible AI-assisted software engineering workflows.",
   "access_right": "open",
   "license": "MIT",
   "keywords": [
     "enterprise architecture",
     "architecture analysis",
-    "taxonomy",
     "knowledge graph",
+    "requirements engineering",
+    "regulatory mapping",
     "LLM-assisted software engineering",
-    "decision support",
+    "explainable AI",
+    "architecture decision support",
     "architecture DSL",
+    "Git-based versioning",
+    "ArchiMate",
+    "TOGAF",
+    "software architecture",
     "reproducible research"
   ],
   "related_identifiers": [
