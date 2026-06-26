@@ -31,5 +31,6 @@
   ],
   "communities": [],
   "notes": "The Zenodo archive captures a release of the source code, metadata, citation instructions, and research documentation. Reproducibility instructions are provided in docs/research/reproducibility.md.",
-  "version": "1.2.3-SNAPSHOT"
+  "version": "1.2.3",
+  "publication_date": "2026-06-26"
 }
