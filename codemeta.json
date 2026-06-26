@@ -30,12 +30,14 @@
   ],
   "author": {
     "@type": "Person",
+    "@id": "https://orcid.org/0009-0005-1047-6381",
     "givenName": "Carsten",
     "familyName": "Hammer",
     "url": "https://github.com/carstenartur"
   },
   "maintainer": {
     "@type": "Person",
+    "@id": "https://orcid.org/0009-0005-1047-6381",
     "givenName": "Carsten",
     "familyName": "Hammer",
     "url": "https://github.com/carstenartur"
