@@ -158,22 +158,24 @@ collect_release_artifacts() {
   done
 
   echo "Release artifacts:"
-  find target/release-artifacts -type f -maxdepth 1 -print | sort
+  find target/release-artifacts -maxdepth 1 -type f -print | sort
 }
 
 push_release_commit_to_main() {
   local commit_sha=$1
   local temp_branch="release-temp-${RELEASE_VERSION}"
-  local temp_pushed=false
 
-  trap '[[ $temp_pushed == true ]] && git push origin ":refs/heads/'"${temp_branch}"'" || true' RETURN
   git push origin ":refs/heads/${temp_branch}" || true
   git push origin "${commit_sha}:refs/heads/${temp_branch}"
-  temp_pushed=true
 
-  gh api "repos/${GITHUB_REPOSITORY}/git/refs/heads/main" \
-    --method PATCH \
-    -f sha="$commit_sha"
+  if gh api "repos/${GITHUB_REPOSITORY}/git/refs/heads/main" \
+      --method PATCH \
+      -f sha="$commit_sha"; then
+    git push origin ":refs/heads/${temp_branch}" || true
+  else
+    git push origin ":refs/heads/${temp_branch}" || true
+    return 1
+  fi
 }
 
 create_tag_ref() {
