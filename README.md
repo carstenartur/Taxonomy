@@ -6,6 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SBOM](https://img.shields.io/badge/SBOM-CycloneDX-informational?logo=owasp&style=flat)](https://github.com/carstenartur/Taxonomy/dependency-graph/sbom)
 [![GitHub release](https://img.shields.io/github/v/release/carstenartur/Taxonomy?style=flat-square)](https://github.com/carstenartur/Taxonomy/releases/tag/v1.2.2)
+[![DOI](https://zenodo.org/badge/1172765819.svg)](https://zenodo.org/badge/latestdoi/1172765819)
 
 **Turn a business requirement into a validated architecture view — in one step.**
 
