@@ -4,7 +4,7 @@ If you use **Taxonomy Architecture Analyzer** in research, teaching, public-sect
 
 ## Preferred citation
 
-Carsten Hammer. **Taxonomy Architecture Analyzer**. Version 1.2.2. 2026. Software. GitHub repository: https://github.com/carstenartur/Taxonomy
+Carsten Hammer. **Taxonomy Architecture Analyzer**. Version 1.2.4-SNAPSHOT. 2026. Software. GitHub repository: https://github.com/carstenartur/Taxonomy
 
 When a Zenodo DOI is minted for a release, prefer the Zenodo citation shown on the release page and keep the GitHub repository URL as the code source.
 
@@ -13,14 +13,18 @@ When a Zenodo DOI is minted for a release, prefer the Zenodo citation shown on t
 ```bibtex
 @software{hammer_taxonomy_2026,
   author       = {Hammer, Carsten},
+  orcid        = {https://orcid.org/0009-0005-1047-6381},
   title        = {Taxonomy Architecture Analyzer},
-  version      = {1.2.2},
-  date         = {2026-06-22},
+  version      = {1.2.4-SNAPSHOT},
   publisher    = {GitHub and Zenodo},
   url          = {https://github.com/carstenartur/Taxonomy},
   license      = {MIT}
 }
 ```
+
+## Author identifier
+
+Carsten Hammer's ORCID iD is [https://orcid.org/0009-0005-1047-6381](https://orcid.org/0009-0005-1047-6381).
 
 ## What to cite
 
