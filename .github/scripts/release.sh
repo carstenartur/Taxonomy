@@ -80,6 +80,19 @@ if release_mode and not has_date_released:
 if not release_mode and has_date_released:
     raise SystemExit('CITATION.cff still contains date-released for a development snapshot')
 
+citation_md = Path('CITATION.md').read_text(encoding='utf-8')
+preferred = re.search(r'Taxonomy Architecture Analyzer\*\*\. Version ([^.]+(?:\.[^.]+){1,2}(?:-SNAPSHOT)?)\.', citation_md)
+bibtex = re.search(r'^\s*version\s+= \{([^}]+)\},$', citation_md, flags=re.MULTILINE)
+if not preferred or preferred.group(1) != expected:
+    raise SystemExit(f'CITATION.md preferred citation version does not match {expected!r}')
+if not bibtex or bibtex.group(1) != expected:
+    raise SystemExit(f'CITATION.md BibTeX version does not match {expected!r}')
+has_bibtex_date = bool(re.search(r'^\s*date\s+= \{[^}]+\},$', citation_md, flags=re.MULTILINE))
+if release_mode and not has_bibtex_date:
+    raise SystemExit('CITATION.md BibTeX release date is missing')
+if not release_mode and has_bibtex_date:
+    raise SystemExit('CITATION.md still contains a BibTeX release date for a development snapshot')
+
 with open('.zenodo.json', encoding='utf-8') as handle:
     zenodo = json.load(handle)
 if zenodo.get('version') != expected:
@@ -245,7 +258,7 @@ if [[ "$STATE" == "new" ]]; then
   python3 "$METADATA_HELPER" "$RELEASE_VERSION" --release
   verify_metadata "$RELEASE_VERSION" true
   ensure_no_snapshot_poms
-  git add pom.xml */pom.xml CITATION.cff .zenodo.json codemeta.json
+  git add pom.xml */pom.xml CITATION.cff CITATION.md .zenodo.json codemeta.json
   git commit -m "Release version $RELEASE_VERSION"
 else
   git checkout --detach "$TAG_NAME"
@@ -314,7 +327,7 @@ verify_metadata "$NEXT_VERSION" false
 
 NEXT_BRANCH="release/prepare-next-${NEXT_VERSION}"
 git switch -C "$NEXT_BRANCH"
-git add pom.xml */pom.xml CITATION.cff .zenodo.json codemeta.json
+git add pom.xml */pom.xml CITATION.cff CITATION.md .zenodo.json codemeta.json
 if git diff --cached --quiet; then
   echo "No next-development version changes to commit"
 else
@@ -335,6 +348,7 @@ Automated follow-up after release ${RELEASE_VERSION}.
 ## Changes
 - Bump all Maven modules to ${NEXT_VERSION}
 - Update CITATION.cff to ${NEXT_VERSION}
+- Update CITATION.md to ${NEXT_VERSION}
 - Update .zenodo.json to ${NEXT_VERSION}
 - Update codemeta.json to ${NEXT_VERSION}
 - Remove release-only date metadata from the development snapshot
