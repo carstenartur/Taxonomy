@@ -13,7 +13,7 @@ For step-by-step instructions, follow the link in the **Task page** column.
 |---|---|---|---|---|
 | Add a new LLM provider | `taxonomy-app` | `analysis/service/LlmService.java` | `mvn test -pl taxonomy-app` | [add-llm-provider](tasks/add-llm-provider.md) |
 | Add a new export format | `taxonomy-export`, `taxonomy-app` | `export/` + `ExportApiController.java` | `mvn test -pl taxonomy-export` | [add-export-format](tasks/add-export-format.md) |
-| Add a new relation type | `taxonomy-domain`, `taxonomy-app` | `model/RelationType.java` | `mvn test` | [add-relation-type](tasks/add-relation-type.md) |
+| Add a new relation type | `taxonomy-domain`, `taxonomy-app` | `model/RelationType.java` | `mvn test -pl taxonomy-domain` + `mvn test -pl taxonomy-app` | [add-relation-type](tasks/add-relation-type.md) |
 | Add an architecture view step | `taxonomy-app` | `architecture/service/RequirementArchitectureViewService.java` | `mvn test -pl taxonomy-app` | [add-architecture-view-step](tasks/add-architecture-view-step.md) |
 | Add a document import mapping | `taxonomy-app` | `provenance/service/DocumentAnalysisService.java` | `mvn test -pl taxonomy-app` | [add-document-import-mapping](tasks/add-document-import-mapping.md) |
 | Add a workspace operation | `taxonomy-app` | `workspace/service/WorkspaceManager.java` | `mvn test -pl taxonomy-app` | [add-workspace-operation](tasks/add-workspace-operation.md) |

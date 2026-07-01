@@ -48,13 +48,13 @@ selected changes to another user's workspace.
 
 | Endpoint | Controller |
 |---|---|
-| `GET /api/workspace` | `WorkspaceController` |
-| `POST /api/workspace` | `WorkspaceController` |
-| `DELETE /api/workspace/{name}` | `WorkspaceController` |
-| `POST /api/workspace/{name}/operation` | `WorkspaceController` (new pattern) |
+| `GET /api/workspace/list` | `WorkspaceController` |
+| `POST /api/workspace/create` | `WorkspaceController` |
+| `DELETE /api/workspace/{id}` | `WorkspaceController` |
+| `POST /api/workspace/{id}/<operation>` | `WorkspaceController` (existing pattern) |
 
 New workspace operations typically follow the pattern
-`POST /api/workspace/{name}/<operation-name>`.
+`POST /api/workspace/{id}/<operation-name>`.
 
 ---
 
