@@ -2,10 +2,16 @@
 
 This guide is intended for developers contributing to the Taxonomy Architecture Analyzer.
 
+> **New to the codebase?**
+> Start with the [task-oriented entry point](../dev/00-start-here.md)
+> to find the smallest safe change area for your specific task.
+> The present document is the **deep architecture reference**.
+
 ---
 
 ## Table of Contents
 
+- [Task-Oriented Guide (docs/dev/)](#task-oriented-guide)
 - [Quick Start](#quick-start)
 - [Module Architecture](#module-architecture)
 - [Module Responsibilities](#module-responsibilities)
@@ -20,6 +26,31 @@ This guide is intended for developers contributing to the Taxonomy Architecture 
 - [Common Pitfalls](#common-pitfalls)
 - [Architecture Conventions](#architecture-conventions)
 - [Definition of Done — User-Facing Features](#definition-of-done--user-facing-features)
+
+---
+
+## Task-Oriented Guide
+
+The `docs/dev/` directory provides a task-first map for developers who need to
+modify one specific part of the system without reading the full architecture reference.
+
+| File | Purpose |
+|---|---|
+| [`docs/dev/00-start-here.md`](../dev/00-start-here.md) | How to approach a single-task change |
+| [`docs/dev/01-change-map.md`](../dev/01-change-map.md) | Table mapping tasks to packages, entry points, and tests |
+| [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md) | Maven commands and test classes by change type |
+| [`docs/dev/tasks/add-llm-provider.md`](../dev/tasks/add-llm-provider.md) | Add a new LLM provider |
+| [`docs/dev/tasks/add-export-format.md`](../dev/tasks/add-export-format.md) | Add a new export format |
+| [`docs/dev/tasks/add-relation-type.md`](../dev/tasks/add-relation-type.md) | Add a new relation type |
+| [`docs/dev/tasks/add-architecture-view-step.md`](../dev/tasks/add-architecture-view-step.md) | Add an architecture view pipeline step |
+| [`docs/dev/tasks/add-document-import-mapping.md`](../dev/tasks/add-document-import-mapping.md) | Add a document import mapping |
+| [`docs/dev/tasks/add-workspace-operation.md`](../dev/tasks/add-workspace-operation.md) | Add a workspace operation |
+| [`docs/dev/tasks/add-ui-panel.md`](../dev/tasks/add-ui-panel.md) | Add a UI panel |
+| [`docs/dev/tasks/add-dsl-property.md`](../dev/tasks/add-dsl-property.md) | Add a DSL property or block type |
+
+> The `docs/dev/` directory is the **task-oriented entry point**.
+> The sections below remain the **deep reference** for modules, conventions, pitfalls,
+> and architectural decisions.
 
 ---
 
