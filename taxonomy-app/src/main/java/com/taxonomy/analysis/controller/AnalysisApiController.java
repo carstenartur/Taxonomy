@@ -3,22 +3,17 @@ package com.taxonomy.analysis.controller;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.dto.AnalysisRequest;
 import com.taxonomy.dto.AnalysisResult;
-import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementResult;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase;
+import com.taxonomy.analysis.usecase.UnknownAnalysisProviderException;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.analysis.service.AnalysisEventCallback;
 import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmService;
-import com.taxonomy.analysis.service.AnalysisRelationGenerator;
-import com.taxonomy.export.DiagramViewMetadata;
-import com.taxonomy.preferences.PreferencesService;
-import com.taxonomy.shared.config.ExportConfig;
-import com.taxonomy.versioning.service.HypothesisService;
-import com.taxonomy.versioning.service.RepositoryStateService;
-import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import com.taxonomy.catalog.service.TaxonomyService;
-import com.taxonomy.workspace.service.WorkspaceResolver;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -44,36 +39,21 @@ public class AnalysisApiController {
     private final LlmService llmService;
     private final ExecutorService analysisExecutor;
     private final ObjectMapper objectMapper;
-    private final RequirementArchitectureViewService architectureViewService;
-    private final AnalysisRelationGenerator analysisRelationGenerator;
-    private final HypothesisService hypothesisService;
-    private final RepositoryStateService repositoryStateService;
-    private final WorkspaceResolver workspaceResolver;
+    private final AnalyzeRequirementUseCase analyzeRequirementUseCase;
     private final org.springframework.context.MessageSource messageSource;
-    private final PreferencesService preferencesService;
 
     public AnalysisApiController(TaxonomyService taxonomyService,
                                   LlmService llmService,
                                   ExecutorService analysisExecutor,
                                   ObjectMapper objectMapper,
-                                  RequirementArchitectureViewService architectureViewService,
-                                  AnalysisRelationGenerator analysisRelationGenerator,
-                                  HypothesisService hypothesisService,
-                                  RepositoryStateService repositoryStateService,
-                                  WorkspaceResolver workspaceResolver,
-                                  org.springframework.context.MessageSource messageSource,
-                                  PreferencesService preferencesService) {
+                                  AnalyzeRequirementUseCase analyzeRequirementUseCase,
+                                  org.springframework.context.MessageSource messageSource) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.analysisExecutor = analysisExecutor;
         this.objectMapper = objectMapper;
-        this.architectureViewService = architectureViewService;
-        this.analysisRelationGenerator = analysisRelationGenerator;
-        this.hypothesisService = hypothesisService;
-        this.repositoryStateService = repositoryStateService;
-        this.workspaceResolver = workspaceResolver;
+        this.analyzeRequirementUseCase = analyzeRequirementUseCase;
         this.messageSource = messageSource;
-        this.preferencesService = preferencesService;
     }
 
     @Operation(summary = "Analyze business requirement", description = "Analyzes a business requirement against the taxonomy using the configured LLM provider. Optionally includes an architecture view.", tags = {"Analysis"})
@@ -86,56 +66,21 @@ public class AnalysisApiController {
         if (request.getBusinessText() == null || request.getBusinessText().isBlank()) {
             return ResponseEntity.badRequest().build();
         }
-
-        if (request.getProvider() != null && !request.getProvider().isBlank()) {
-            try {
-                llmService.setRequestProvider(
-                        LlmProvider.valueOf(request.getProvider().toUpperCase()));
-            } catch (IllegalArgumentException e) {
-                @SuppressWarnings("unchecked")
-                ResponseEntity<AnalysisResult> badProvider = (ResponseEntity<AnalysisResult>)
-                        (ResponseEntity<?>) ResponseEntity.badRequest().body(Map.of(
-                                "error", "Unknown provider: " + request.getProvider(),
-                                "validProviders", java.util.Arrays.toString(LlmProvider.values())));
-                return badProvider;
-            }
-        }
         try {
-            AnalysisResult result = llmService.analyzeWithBudget(request.getBusinessText());
-
-            // Generate provisional relation hypotheses from scored nodes
-            if (result.getScores() != null) {
-                result.setProvisionalRelations(
-                        analysisRelationGenerator.generate(result.getScores()));
-
-                // Persist hypotheses to database for later accept/reject via API
-                if (!result.getProvisionalRelations().isEmpty()) {
-                    hypothesisService.persistFromAnalysis(result.getProvisionalRelations(), null);
-                }
-            }
-
-            if (request.isIncludeArchitectureView() && result.getScores() != null) {
-                RequirementArchitectureView archView = architectureViewService.build(
-                        result.getScores(), request.getBusinessText(),
-                        request.getMaxArchitectureNodes(),
-                        result.getProvisionalRelations());
-                // Populate view metadata from the active diagram policy
-                DiagramViewMetadata meta = ExportConfig.resolveViewMetadata(preferencesService);
-                archView.setViewTitle(meta.viewTitle());
-                archView.setViewDescription(meta.viewDescription());
-                archView.setContainmentEnabled(meta.containmentEnabled());
-                archView.setActiveRules(meta.activeRules());
-                result.setArchitectureView(archView);
-            }
-
-            result.setViewContext(repositoryStateService.getViewContext(
-                    workspaceResolver.resolveCurrentUsername(),
-                    repositoryStateService.resolveWorkspaceBranch(
-                            workspaceResolver.resolveCurrentUsername())));
-
-            return ResponseEntity.ok(result);
-        } finally {
-            llmService.clearRequestProvider();
+            AnalyzeRequirementResult result = analyzeRequirementUseCase.analyze(
+                    new AnalyzeRequirementCommand(
+                            request.getBusinessText(),
+                            request.isIncludeArchitectureView(),
+                            request.getMaxArchitectureNodes(),
+                            request.getProvider()));
+            return ResponseEntity.ok(result.analysisResult());
+        } catch (UnknownAnalysisProviderException e) {
+            @SuppressWarnings("unchecked")
+            ResponseEntity<AnalysisResult> badProvider = (ResponseEntity<AnalysisResult>)
+                    (ResponseEntity<?>) ResponseEntity.badRequest().body(Map.of(
+                            "error", "Unknown provider: " + e.getProvider(),
+                            "validProviders", e.getValidProviders()));
+            return badProvider;
         }
     }
 
