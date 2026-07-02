@@ -13,6 +13,7 @@ import com.taxonomy.versioning.service.HypothesisService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.springframework.stereotype.Service;
+import java.util.Locale;
 
 @Service
 public class AnalyzeRequirementUseCase {
@@ -60,7 +61,7 @@ public class AnalyzeRequirementUseCase {
             return;
         }
         try {
-            llmService.setRequestProvider(LlmProvider.valueOf(provider.toUpperCase()));
+            llmService.setRequestProvider(LlmProvider.valueOf(provider.toUpperCase(Locale.ROOT)));
         } catch (IllegalArgumentException e) {
             throw new UnknownAnalysisProviderException(provider);
         }
