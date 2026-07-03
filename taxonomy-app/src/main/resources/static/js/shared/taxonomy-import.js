@@ -10,8 +10,7 @@
      * Load available import profiles from the server.
      */
     function loadProfiles() {
-        fetch('/api/import/profiles')
-            .then(function (res) { return res.json(); })
+        ImportApi.loadProfiles()
             .then(function (profiles) {
                 profilesCache = profiles;
                 var select = document.getElementById('importProfileSelect');
@@ -73,11 +72,7 @@
 
         setImportStatus(t('import.previewing'), 'info');
 
-        fetch('/api/import/preview/' + encodeURIComponent(profileId), {
-            method: 'POST',
-            body: formData
-        })
-        .then(function (res) { return res.json(); })
+        ImportApi.preview(profileId, formData)
         .then(function (result) {
             renderResult(result, true);
         })
@@ -102,11 +97,7 @@
 
         setImportStatus(t('import.importing'), 'info');
 
-        fetch('/api/import/' + encodeURIComponent(profileId) + '?branch=' + encodeURIComponent(branchValue), {
-            method: 'POST',
-            body: formData
-        })
-        .then(function (res) { return res.json(); })
+        ImportApi.execute(profileId, branchValue, formData)
         .then(function (response) {
             var result = response.result || response;
             renderResult(result, false);

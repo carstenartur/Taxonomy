@@ -716,28 +716,24 @@
 
     // ── API calls ─────────────────────────────────────────────────────────────
 
-    function fetchGraphData(endpoint, label, callback) {
-        fetch(endpoint)
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
+    function fetchGraphData(apiPromise, label, callback) {
+        apiPromise
             .then(callback)
             .catch(function (err) { showGraphError(t('graph.query.failed', label, err.message)); });
     }
 
     function fetchUpstream(nodeCode, maxHops, callback) {
-        fetchGraphData('/api/graph/node/' + encodeURIComponent(nodeCode) + '/upstream?maxHops=' + maxHops,
+        fetchGraphData(AnalysisApi.graphUpstream(nodeCode, maxHops),
             t('graph.label.upstream'), callback);
     }
 
     function fetchDownstream(nodeCode, maxHops, callback) {
-        fetchGraphData('/api/graph/node/' + encodeURIComponent(nodeCode) + '/downstream?maxHops=' + maxHops,
+        fetchGraphData(AnalysisApi.graphDownstream(nodeCode, maxHops),
             t('graph.label.downstream'), callback);
     }
 
     function fetchFailureImpact(nodeCode, maxHops, callback) {
-        fetchGraphData('/api/graph/node/' + encodeURIComponent(nodeCode) + '/failure-impact?maxHops=' + maxHops,
+        fetchGraphData(AnalysisApi.graphFailureImpact(nodeCode, maxHops),
             t('graph.label.failure'), callback);
     }
 
@@ -971,11 +967,7 @@
                     '<div class="spinner-border spinner-border-sm me-1" role="status"></div> ' +
                     'Loading APQC hierarchy&hellip;</div>';
             }
-            fetch('/api/graph/apqc-hierarchy')
-                .then(function (r) {
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.json();
-                })
+            AnalysisApi.apqcHierarchy()
                 .then(function (data) {
                     if (!content) return;
                     if (!data || data.length === 0) {
