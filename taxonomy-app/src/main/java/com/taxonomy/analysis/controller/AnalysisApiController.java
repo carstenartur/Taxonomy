@@ -3,20 +3,20 @@ package com.taxonomy.analysis.controller;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.dto.AnalysisRequest;
 import com.taxonomy.dto.AnalysisResult;
-import com.taxonomy.dto.TaxonomyDiscrepancy;
-import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementResult;
 import com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase;
+import com.taxonomy.analysis.usecase.StreamRequirementAnalysisCommand;
+import com.taxonomy.analysis.usecase.StreamRequirementAnalysisUseCase;
 import com.taxonomy.analysis.usecase.UnknownAnalysisProviderException;
 import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.analysis.service.AnalysisEventCallback;
-import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -40,6 +40,8 @@ public class AnalysisApiController {
     private final ExecutorService analysisExecutor;
     private final ObjectMapper objectMapper;
     private final AnalyzeRequirementUseCase analyzeRequirementUseCase;
+    private final StreamRequirementAnalysisUseCase streamRequirementAnalysisUseCase;
+    private final AnalysisSseEventMapper analysisSseEventMapper;
     private final org.springframework.context.MessageSource messageSource;
 
     public AnalysisApiController(TaxonomyService taxonomyService,
@@ -47,12 +49,16 @@ public class AnalysisApiController {
                                   ExecutorService analysisExecutor,
                                   ObjectMapper objectMapper,
                                   AnalyzeRequirementUseCase analyzeRequirementUseCase,
+                                  StreamRequirementAnalysisUseCase streamRequirementAnalysisUseCase,
+                                  AnalysisSseEventMapper analysisSseEventMapper,
                                   org.springframework.context.MessageSource messageSource) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
         this.analysisExecutor = analysisExecutor;
         this.objectMapper = objectMapper;
         this.analyzeRequirementUseCase = analyzeRequirementUseCase;
+        this.streamRequirementAnalysisUseCase = streamRequirementAnalysisUseCase;
+        this.analysisSseEventMapper = analysisSseEventMapper;
         this.messageSource = messageSource;
     }
 
@@ -125,100 +131,27 @@ public class AnalysisApiController {
             return emitter;
         }
 
-        LlmProvider resolvedProvider = null;
-        if (provider != null && !provider.isBlank()) {
-            try {
-                resolvedProvider = LlmProvider.valueOf(provider.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                try {
-                    emitter.send(SseEmitter.event()
-                            .name("error")
-                            .data(objectMapper.writeValueAsString(Map.of(
-                                    "status", "ERROR",
-                                    "errorMessage", "Unknown provider: " + provider))));
-                } catch (Exception ignored) {
-                    // client already disconnected
-                }
-                emitter.complete();
-                return emitter;
-            }
-        }
+        StreamRequirementAnalysisCommand command = new StreamRequirementAnalysisCommand(
+                businessText,
+                provider,
+                LocaleContextHolder.getLocale());
 
-        final LlmProvider providerOverride = resolvedProvider;
         analysisExecutor.execute(() -> {
-            if (providerOverride != null) {
-                llmService.setRequestProvider(providerOverride);
-            }
             try {
-                llmService.analyzeStreaming(businessText, new AnalysisEventCallback() {
-
-                    @Override
-                    public void onPhase(String message, int progressPercent) {
-                        sendEvent(emitter, "phase",
-                                Map.of("message", message, "progress", progressPercent));
-                    }
-
-                    @Override
-                    public void onScores(Map<String, Integer> newScores, Map<String, String> reasons,
-                                         String description, LlmCallDetail detail) {
-                        Map<String, Object> payload = new LinkedHashMap<>();
-                        payload.put("scores", newScores);
-                        payload.put("reasons", reasons != null ? reasons : Map.of());
-                        payload.put("description", description);
-                        payload.put("message", description);
-                        if (detail != null) {
-                            payload.put("prompt", detail.getPrompt() != null ? detail.getPrompt() : "");
-                            payload.put("rawResponse", detail.getRawResponse() != null ? detail.getRawResponse() : "");
-                            payload.put("provider", detail.getProvider() != null ? detail.getProvider() : "");
-                            payload.put("durationMs", detail.getDurationMs());
-                            if (detail.getError() != null) {
-                                payload.put("error", detail.getError());
-                            }
-                        }
-                        sendEvent(emitter, "scores", payload);
-                    }
-
-                    @Override
-                    public void onExpanding(String parentCode, List<String> childCodes) {
-                        sendEvent(emitter, "expanding",
-                                Map.of("parentCode", parentCode, "childCodes", childCodes));
-                    }
-
-                    @Override
-                    public void onComplete(String status, Map<String, Integer> allScores,
-                                           List<String> warnings,
-                                           List<TaxonomyDiscrepancy> discrepancies) {
-                        int matched = (int) allScores.values().stream()
-                                .filter(v -> v > 0).count();
-                        Map<String, Object> payload = new LinkedHashMap<>();
-                        payload.put("status", status);
-                        payload.put("totalScores", allScores);
-                        payload.put("totalMatched", matched);
-                        payload.put("warnings", warnings);
-                        payload.put("discrepancies", discrepancies);
-                        sendEvent(emitter, "complete", payload);
-                        emitter.complete();
-                    }
-
-                    @Override
-                    public void onError(String status, String errorMessage,
-                                        Map<String, Integer> partialScores,
-                                        List<String> warnings,
-                                        List<TaxonomyDiscrepancy> discrepancies) {
-                        Map<String, Object> payload = new LinkedHashMap<>();
-                        payload.put("status", status);
-                        payload.put("errorMessage", errorMessage);
-                        payload.put("partialScores", partialScores);
-                        payload.put("warnings", warnings);
-                        payload.put("discrepancies", discrepancies);
-                        sendEvent(emitter, "error", payload);
+                streamRequirementAnalysisUseCase.stream(command, event -> {
+                    AnalysisSseEventMapper.MappedEvent mappedEvent = analysisSseEventMapper.map(event);
+                    sendEvent(emitter, mappedEvent.name(), mappedEvent.payload());
+                    if (event instanceof AnalysisStreamEvent.Complete || event instanceof AnalysisStreamEvent.Error) {
                         emitter.complete();
                     }
                 });
+            } catch (UnknownAnalysisProviderException e) {
+                sendEvent(emitter, "error", Map.of(
+                        "status", "ERROR",
+                        "errorMessage", "Unknown provider: " + e.getProvider()));
+                emitter.complete();
             } catch (Exception e) {
                 emitter.completeWithError(e);
-            } finally {
-                llmService.clearRequestProvider();
             }
         });
 
