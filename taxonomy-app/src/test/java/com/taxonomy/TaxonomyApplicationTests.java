@@ -14,9 +14,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.security.test.context.support.WithMockUser;
 
 @SpringBootTest
@@ -261,10 +263,22 @@ class TaxonomyApplicationTests {
 
     @Test
     void analyzeStreamEndpointReturnsEventStreamForValidText() throws Exception {
-        // In CI no API key is set, so scores default to zero but the stream must complete
-        mockMvc.perform(get("/api/analyze-stream")
+        // In CI no API key is set, so scores default to zero but the stream must complete.
+        // Use the async-dispatch pattern so MockMvc waits for the SseEmitter background
+        // thread to finish before reading the response (avoids ConcurrentModificationException
+        // in MockHttpServletResponse when the response is inspected while SSE events are
+        // still being written by the executor thread).
+        MvcResult mvcResult = mockMvc.perform(get("/api/analyze-stream")
                         .param("businessText", "Manage satellite communications for deployed forces")
                         .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        // Block until the emitter.complete() call from the background thread propagates
+        // the async result back to the mock request (up to 10 s).
+        mvcResult.getAsyncResult(10_000);
+
+        mockMvc.perform(asyncDispatch(mvcResult))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM_VALUE));
     }
