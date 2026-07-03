@@ -19,20 +19,19 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.MessageSource;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import tools.jackson.databind.ObjectMapper;
 
-import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -41,6 +40,9 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
 class AnalysisApiControllerTest {
@@ -62,6 +64,7 @@ class AnalysisApiControllerTest {
 
     private ExecutorService analysisExecutor;
     private AnalysisApiController controller;
+    private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
@@ -104,6 +107,7 @@ class AnalysisApiControllerTest {
                 streamRequirementAnalysisUseCase,
                 new AnalysisSseEventMapper(),
                 messageSource);
+        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
         lenient().when(taxonomyService.isInitialized()).thenReturn(true);
     }
 
@@ -156,11 +160,14 @@ class AnalysisApiControllerTest {
 
     @Test
     void analyzeStreamRejectsBlankBusinessTextBeforeDelegation() throws Exception {
-        SseEmitter emitter = controller.analyzeStream(" ", null);
-
-        assertThat(bufferedOutput(emitter)).contains("event:error")
-                .contains("{\"status\":\"ERROR\",\"errorMessage\":\"businessText must not be blank\"}");
-        assertThat(isComplete(emitter)).isTrue();
+        mockMvc.perform(get("/api/analyze-stream")
+                        .param("businessText", " ")
+                        .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM_VALUE))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event:error")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "{\"status\":\"ERROR\",\"errorMessage\":\"businessText must not be blank\"}")));
         verifyNoInteractions(streamRequirementAnalysisUseCase);
     }
 
@@ -200,7 +207,7 @@ class AnalysisApiControllerTest {
             org.springframework.context.i18n.LocaleContextHolder.setLocale(previousLocale);
         }
 
-        assertThat(isComplete(emitter)).isTrue();
+        assertThat(emitter.getTimeout()).isEqualTo(120_000L);
 
         ArgumentCaptor<StreamRequirementAnalysisCommand> commandCaptor =
                 ArgumentCaptor.forClass(StreamRequirementAnalysisCommand.class);
@@ -216,31 +223,14 @@ class AnalysisApiControllerTest {
             throw new UnknownAnalysisProviderException("nope");
         }).when(streamRequirementAnalysisUseCase).stream(any(), any());
 
-        SseEmitter emitter = controller.analyzeStream("Need secure voice comms", "nope");
-
-        assertThat(bufferedOutput(emitter)).contains("event:error")
-                .contains("\"status\":\"ERROR\"")
-                .contains("\"errorMessage\":\"Unknown provider: nope\"");
-        assertThat(isComplete(emitter)).isTrue();
-    }
-
-    private String bufferedOutput(SseEmitter emitter) throws Exception {
-        return earlySendAttempts(emitter).stream()
-                .map(ResponseBodyEmitter.DataWithMediaType::getData)
-                .map(String::valueOf)
-                .collect(Collectors.joining());
-    }
-
-    @SuppressWarnings("unchecked")
-    private Set<ResponseBodyEmitter.DataWithMediaType> earlySendAttempts(SseEmitter emitter) throws Exception {
-        Field field = ResponseBodyEmitter.class.getDeclaredField("earlySendAttempts");
-        field.setAccessible(true);
-        return (Set<ResponseBodyEmitter.DataWithMediaType>) field.get(emitter);
-    }
-
-    private boolean isComplete(SseEmitter emitter) throws Exception {
-        Field field = ResponseBodyEmitter.class.getDeclaredField("complete");
-        field.setAccessible(true);
-        return (boolean) field.get(emitter);
+        mockMvc.perform(get("/api/analyze-stream")
+                        .param("businessText", "Need secure voice comms")
+                        .param("provider", "nope")
+                        .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM_VALUE))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event:error")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"status\":\"ERROR\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("\"errorMessage\":\"Unknown provider: nope\"")));
     }
 }
