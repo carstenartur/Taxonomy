@@ -95,7 +95,7 @@ public class DslApiController {
         CanonicalArchitectureModel model = dslOps.buildCanonicalModel();
         String username = workspaceResolver.resolveCurrentUsername();
         WorkspaceContext workspaceContext = resolveWorkspaceContext(username);
-        String branch = dslOps.resolveWorkspaceBranch(username);
+        String branch = dslOps.resolveWorkspaceBranch(workspaceContext.username());
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("elements", model.getElements());
         result.put("relations", model.getRelations());
@@ -103,7 +103,7 @@ public class DslApiController {
         result.put("mappings", model.getMappings());
         result.put("views", model.getViews());
         result.put("evidence", model.getEvidence());
-        result.put("viewContext", dslOps.getViewContext(username, branch, workspaceContext));
+        result.put("viewContext", dslOps.getViewContext(workspaceContext.username(), branch, workspaceContext));
         return ResponseEntity.ok(result);
     }
 
@@ -302,7 +302,7 @@ public class DslApiController {
                 entry.put("documentId", dslOps.findDocumentIdByCommitId(c.commitId()).orElse(null));
                 history.add(entry);
             }
-            ViewContext viewContext = dslOps.getViewContext(username, branch, workspaceContext);
+            ViewContext viewContext = dslOps.getViewContext(workspaceContext.username(), branch, workspaceContext);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("currentBranch", branch);
             result.put("headCommit", viewContext.basedOnCommit());
@@ -750,7 +750,7 @@ public class DslApiController {
         try {
             String username = workspaceResolver.resolveCurrentUsername();
             WorkspaceContext workspaceContext = resolveWorkspaceContext(username);
-            String dslText = dslOps.getDslAtHead(branch);
+            String dslText = dslOps.getDslAtHead(branch, workspaceContext);
             if (dslText == null) {
                 Map<String, Object> error = new LinkedHashMap<>();
                 error.put("error", "Branch '" + branch + "' not found or empty");
@@ -760,7 +760,7 @@ public class DslApiController {
             result.put("branch", branch);
             result.put("dslText", dslText);
             result.put("length", dslText.length());
-            result.put("viewContext", dslOps.getViewContext(username, branch, workspaceContext));
+            result.put("viewContext", dslOps.getViewContext(workspaceContext.username(), branch, workspaceContext));
             return ResponseEntity.ok(result);
         } catch (IOException e) {
             Map<String, Object> error = new LinkedHashMap<>();

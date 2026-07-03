@@ -257,6 +257,13 @@ public class DslOperationsFacade {
     }
 
     /**
+     * Read DSL text from the HEAD of a branch using an explicit workspace context.
+     */
+    public String getDslAtHead(String branch, WorkspaceContext workspaceContext) throws IOException {
+        return resolveRepository(workspaceContext).getDslAtHead(branch);
+    }
+
+    /**
      * Read DSL text from a specific commit.
      */
     public String getDslAtCommit(String commitId) throws Exception {

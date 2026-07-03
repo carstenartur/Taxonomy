@@ -132,4 +132,30 @@ class AnalyzeRequirementUseCaseTest {
         verifyNoInteractions(analysisRelationGenerator, architectureViewService, hypothesisService,
                 repositoryStateService, preferencesService);
     }
+
+    @Test
+    void analyzeUsesWorkspaceContextUsernameForBranchResolutionWhenSharedFallback() {
+        // When workspaceContext falls back to SHARED, command.username() is the authenticated user
+        // but branch and viewContext must be resolved via workspaceContext.username() ("system"),
+        // not via command.username() ("alice"), to keep repository scope consistent.
+        AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(
+                "Need secure voice comms", false, 20, null,
+                "alice", WorkspaceContext.SHARED);
+        AnalysisResult analysisResult = new AnalysisResult();
+        analysisResult.setScores(Map.of("CP", 80));
+        ViewContext viewContext = new ViewContext(null, "draft", null, true, false, false);
+
+        when(llmService.analyzeWithBudget(command.businessText())).thenReturn(analysisResult);
+        when(analysisRelationGenerator.generate(analysisResult.getScores())).thenReturn(List.of());
+        // Branch must be resolved from workspaceContext.username() = "system", not "alice"
+        when(repositoryStateService.resolveWorkspaceBranch("system")).thenReturn("draft");
+        when(repositoryStateService.getViewContext("system", "draft", WorkspaceContext.SHARED)).thenReturn(viewContext);
+
+        AnalyzeRequirementResult result = useCase.analyze(command);
+
+        assertThat(result.analysisResult().getViewContext()).isSameAs(viewContext);
+        verify(repositoryStateService).resolveWorkspaceBranch("system");
+        verify(repositoryStateService).getViewContext("system", "draft", WorkspaceContext.SHARED);
+        verify(llmService).clearRequestProvider();
+    }
 }
