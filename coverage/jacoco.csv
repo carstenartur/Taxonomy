@@ -26,8 +26,9 @@ Taxonomy Application,com.taxonomy.provenance.model,RequirementSourceLink,12,59,0
 Taxonomy Application,com.taxonomy,TaxonomyApplication,8,0,0,0,3,0,2,0,2,0
 Taxonomy Application,com.taxonomy,AppConfig,0,57,0,0,0,16,0,5,0,5
 Taxonomy Application,com.taxonomy.search.controller,SearchApiController,37,112,10,18,5,26,10,12,0,8
-Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController,286,222,32,16,68,63,23,9,1,7
-Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController.new AnalysisEventCallback() {...},59,158,7,7,12,29,9,5,2,5
+Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController,248,262,29,17,55,74,21,11,1,8
+Taxonomy Application,com.taxonomy.analysis.controller,AnalysisSseEventMapper,25,233,7,17,4,39,7,9,0,4
+Taxonomy Application,com.taxonomy.analysis.controller,AnalysisSseEventMapper.MappedEvent,0,9,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.architecture.model,ArchitectureCommitIndex,8,79,1,1,2,24,3,22,2,22
 Taxonomy Application,com.taxonomy.architecture.model,ArchitectureDslDocument,8,58,1,1,2,18,3,16,2,16
 Taxonomy Application,com.taxonomy.preferences.storage,PreferencesCommit,0,15,0,0,0,1,0,1,0,1
@@ -92,7 +93,15 @@ Taxonomy Application,com.taxonomy.catalog.service.importer,ExternalParser.Parsed
 Taxonomy Application,com.taxonomy.catalog.service.importer,UafXmlParser,153,239,45,33,34,67,34,15,1,9
 Taxonomy Application,com.taxonomy.analysis.usecase,AnalyzeRequirementUseCase,1,155,3,9,1,46,3,9,0,6
 Taxonomy Application,com.taxonomy.analysis.usecase,AnalyzeRequirementCommand,0,15,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.analysis.usecase,AnalysisStreamEvent.Phase,0,9,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.usecase,AnalyzeRequirementResult,0,6,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.analysis.usecase,StreamRequirementAnalysisUseCase.new AnalysisEventCallback() {...},0,58,0,0,0,11,0,6,0,6
+Taxonomy Application,com.taxonomy.analysis.usecase,AnalysisStreamEvent.Complete,0,15,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.analysis.usecase,AnalysisStreamEvent.Error,0,18,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.analysis.usecase,StreamRequirementAnalysisUseCase,1,59,2,4,1,20,2,5,0,4
+Taxonomy Application,com.taxonomy.analysis.usecase,AnalysisStreamEvent.Expanding,0,9,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.analysis.usecase,AnalysisStreamEvent.Scores,0,15,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.analysis.usecase,StreamRequirementAnalysisCommand,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.usecase,UnknownAnalysisProviderException,0,14,0,0,0,5,0,3,0,3
 Taxonomy Application,com.taxonomy.relations.service,RelationValidationService.ValidationResult,0,35,0,0,0,10,0,6,0,6
 Taxonomy Application,com.taxonomy.relations.service,RelationQualityService,148,122,8,4,22,33,9,6,3,6
