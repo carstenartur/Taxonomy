@@ -69,7 +69,11 @@ public class DslOperationsFacade {
     }
 
     private DslGitRepository resolveRepository() {
-        return repositoryFactory.resolveRepository(resolveContext());
+        return resolveRepository(resolveContext());
+    }
+
+    private DslGitRepository resolveRepository(WorkspaceContext workspaceContext) {
+        return repositoryFactory.resolveRepository(workspaceContext);
     }
 
     /**
@@ -157,6 +161,10 @@ public class DslOperationsFacade {
      */
     public List<DslCommit> getDslHistory(String branch) throws IOException {
         return resolveRepository().getDslHistory(branch);
+    }
+
+    public List<DslCommit> getDslHistory(String branch, WorkspaceContext workspaceContext) throws IOException {
+        return resolveRepository(workspaceContext).getDslHistory(branch);
     }
 
     /**
@@ -300,6 +308,10 @@ public class DslOperationsFacade {
     public ViewContext getViewContext(String branch) {
         return repositoryStateService.getViewContext(
                 workspaceResolver.resolveCurrentUsername(), branch, resolveContext());
+    }
+
+    public ViewContext getViewContext(String username, String branch, WorkspaceContext workspaceContext) {
+        return repositoryStateService.getViewContext(username, branch, workspaceContext);
     }
 
     /**

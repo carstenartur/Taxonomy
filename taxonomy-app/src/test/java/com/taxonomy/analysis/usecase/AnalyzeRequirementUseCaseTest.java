@@ -11,7 +11,7 @@ import com.taxonomy.dto.ViewContext;
 import com.taxonomy.preferences.PreferencesService;
 import com.taxonomy.versioning.service.HypothesisService;
 import com.taxonomy.versioning.service.RepositoryStateService;
-import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -49,9 +49,6 @@ class AnalyzeRequirementUseCaseTest {
     private RepositoryStateService repositoryStateService;
 
     @Mock
-    private WorkspaceResolver workspaceResolver;
-
-    @Mock
     private PreferencesService preferencesService;
 
     @InjectMocks
@@ -60,7 +57,8 @@ class AnalyzeRequirementUseCaseTest {
     @Test
     void analyzeCoordinatesScoringPersistenceArchitectureMetadataAndViewContext() {
         AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(
-                "Need secure voice comms", true, 7, "gemini");
+                "Need secure voice comms", true, 7, "gemini",
+                "alice", new WorkspaceContext("alice", "alice-ws", "draft"));
         AnalysisResult analysisResult = new AnalysisResult();
         analysisResult.setScores(Map.of("CP", 80, "CR", 70));
 
@@ -78,9 +76,8 @@ class AnalyzeRequirementUseCaseTest {
                 command.maxArchitectureNodes(),
                 provisionalRelations)).thenReturn(architectureView);
         when(preferencesService.getString("diagram.policy", "defaultImpact")).thenReturn("trace");
-        when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
         when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
-        when(repositoryStateService.getViewContext("alice", "draft")).thenReturn(viewContext);
+        when(repositoryStateService.getViewContext("alice", "draft", command.workspaceContext())).thenReturn(viewContext);
 
         AnalyzeRequirementResult result = useCase.analyze(command);
 
@@ -100,16 +97,17 @@ class AnalyzeRequirementUseCaseTest {
 
     @Test
     void analyzeSkipsPersistenceAndArchitectureViewWhenNotApplicable() {
-        AnalyzeRequirementCommand command = new AnalyzeRequirementCommand("Need secure voice comms", false, 20, null);
+        AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(
+                "Need secure voice comms", false, 20, null,
+                "alice", new WorkspaceContext("alice", "alice-ws", "draft"));
         AnalysisResult analysisResult = new AnalysisResult();
         analysisResult.setScores(Map.of("CP", 80));
         ViewContext viewContext = new ViewContext("abc123", "draft", Instant.now(), true, false, false);
 
         when(llmService.analyzeWithBudget(command.businessText())).thenReturn(analysisResult);
         when(analysisRelationGenerator.generate(analysisResult.getScores())).thenReturn(List.of());
-        when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
         when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
-        when(repositoryStateService.getViewContext("alice", "draft")).thenReturn(viewContext);
+        when(repositoryStateService.getViewContext("alice", "draft", command.workspaceContext())).thenReturn(viewContext);
 
         AnalyzeRequirementResult result = useCase.analyze(command);
 
@@ -122,7 +120,9 @@ class AnalyzeRequirementUseCaseTest {
 
     @Test
     void analyzeClearsProviderOverrideWhenProviderIsUnknown() {
-        AnalyzeRequirementCommand command = new AnalyzeRequirementCommand("Need secure voice comms", false, 20, "unknown");
+        AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(
+                "Need secure voice comms", false, 20, "unknown",
+                "alice", WorkspaceContext.SHARED);
 
         assertThatThrownBy(() -> useCase.analyze(command))
                 .isInstanceOf(UnknownAnalysisProviderException.class)
@@ -130,6 +130,6 @@ class AnalyzeRequirementUseCaseTest {
 
         verify(llmService).clearRequestProvider();
         verifyNoInteractions(analysisRelationGenerator, architectureViewService, hypothesisService,
-                repositoryStateService, workspaceResolver, preferencesService);
+                repositoryStateService, preferencesService);
     }
 }

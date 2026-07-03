@@ -21,7 +21,9 @@ import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.versioning.service.ConflictDetectionService;
 import com.taxonomy.versioning.service.DslOperationsFacade;
 import com.taxonomy.versioning.service.HypothesisService;
+import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -57,6 +59,7 @@ public class DslApiController {
     private final DslOperationsFacade dslOps;
     private final HypothesisService hypothesisService;
     private final WorkspaceResolver workspaceResolver;
+    private final RepositoryStateService repositoryStateService;
 
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
@@ -66,10 +69,12 @@ public class DslApiController {
 
     public DslApiController(DslOperationsFacade dslOps,
                             HypothesisService hypothesisService,
-                            WorkspaceResolver workspaceResolver) {
+                            WorkspaceResolver workspaceResolver,
+                            RepositoryStateService repositoryStateService) {
         this.dslOps = dslOps;
         this.hypothesisService = hypothesisService;
         this.workspaceResolver = workspaceResolver;
+        this.repositoryStateService = repositoryStateService;
     }
 
     // ── Export & current state ────────────────────────────────────────
@@ -89,6 +94,7 @@ public class DslApiController {
     public ResponseEntity<Map<String, Object>> getCurrentArchitecture() {
         CanonicalArchitectureModel model = dslOps.buildCanonicalModel();
         String username = workspaceResolver.resolveCurrentUsername();
+        WorkspaceContext workspaceContext = resolveWorkspaceContext(username);
         String branch = dslOps.resolveWorkspaceBranch(username);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("elements", model.getElements());
@@ -97,7 +103,7 @@ public class DslApiController {
         result.put("mappings", model.getMappings());
         result.put("views", model.getViews());
         result.put("evidence", model.getEvidence());
-        result.put("viewContext", dslOps.getViewContext(branch));
+        result.put("viewContext", dslOps.getViewContext(username, branch, workspaceContext));
         return ResponseEntity.ok(result);
     }
 
@@ -281,7 +287,9 @@ public class DslApiController {
             @RequestParam(defaultValue = "draft") String branch) {
 
         try {
-            List<DslCommit> gitHistory = dslOps.getDslHistory(branch);
+            String username = workspaceResolver.resolveCurrentUsername();
+            WorkspaceContext workspaceContext = resolveWorkspaceContext(username);
+            List<DslCommit> gitHistory = dslOps.getDslHistory(branch, workspaceContext);
             List<Map<String, Object>> history = new ArrayList<>();
             for (DslCommit c : gitHistory) {
                 Map<String, Object> entry = new LinkedHashMap<>();
@@ -294,7 +302,7 @@ public class DslApiController {
                 entry.put("documentId", dslOps.findDocumentIdByCommitId(c.commitId()).orElse(null));
                 history.add(entry);
             }
-            ViewContext viewContext = dslOps.getViewContext(branch);
+            ViewContext viewContext = dslOps.getViewContext(username, branch, workspaceContext);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("currentBranch", branch);
             result.put("headCommit", viewContext.basedOnCommit());
@@ -740,6 +748,8 @@ public class DslApiController {
     public ResponseEntity<Map<String, Object>> getGitHead(
             @RequestParam(defaultValue = "draft") String branch) {
         try {
+            String username = workspaceResolver.resolveCurrentUsername();
+            WorkspaceContext workspaceContext = resolveWorkspaceContext(username);
             String dslText = dslOps.getDslAtHead(branch);
             if (dslText == null) {
                 Map<String, Object> error = new LinkedHashMap<>();
@@ -750,7 +760,7 @@ public class DslApiController {
             result.put("branch", branch);
             result.put("dslText", dslText);
             result.put("length", dslText.length());
-            result.put("viewContext", dslOps.getViewContext(branch));
+            result.put("viewContext", dslOps.getViewContext(username, branch, workspaceContext));
             return ResponseEntity.ok(result);
         } catch (IOException e) {
             Map<String, Object> error = new LinkedHashMap<>();
@@ -777,6 +787,15 @@ public class DslApiController {
             Map<String, Object> error = new LinkedHashMap<>();
             error.put("error", "Git read failed: " + e.getMessage());
             return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    private WorkspaceContext resolveWorkspaceContext(String username) {
+        try {
+            repositoryStateService.ensureWorkspaceState(username);
+            return workspaceResolver.resolveCurrentContext();
+        } catch (Exception e) {
+            return WorkspaceContext.SHARED;
         }
     }
 
