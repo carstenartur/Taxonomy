@@ -11,7 +11,9 @@ one of the `static/js/api/` modules.
 ## Rationale
 
 * Centralised error handling and status checking.
-* CSRF header injection in one place.
+* CSRF header injection for new API-module code in one place (legacy feature
+  modules that have not yet been migrated still rely on the global `fetch()`
+  wrapper in `index.html`; both mechanisms can coexist safely).
 * Endpoint URLs are declared once; feature modules only call named functions.
 * Easier to find, review, and update API surface when endpoint paths change.
 
@@ -44,11 +46,12 @@ This ordering is enforced in `index.html`.
 | `getJson(url)` | HTTP GET → parsed JSON |
 | `sendJson(url, body[, method])` | HTTP POST/PUT/DELETE with JSON body → parsed JSON |
 | `sendFormData(url, formData[, method])` | HTTP POST with `FormData` body → parsed JSON |
-| `deleteJson(url)` | HTTP DELETE → parsed JSON |
+| `deleteJson(url)` | HTTP DELETE → parsed JSON, or `null` on 204 No Content |
 
 All helpers:
 * throw an `Error` if the HTTP status is not OK (`!res.ok`)
-* throw an `Error` if the response body is not valid JSON
+* throw an `Error` if the response body cannot be parsed as JSON (except on
+  204 No Content, which resolves to `null` without attempting to parse)
 * inject the Spring Security CSRF header automatically when
   `<meta name="_csrf">` and `<meta name="_csrf_header">` are present
 

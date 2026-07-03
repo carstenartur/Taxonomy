@@ -33,6 +33,9 @@ window.TaxonomyApiClient = (function () {
     }
 
     function parseJson(res) {
+        if (res.status === 204) {
+            return null;
+        }
         return res.json().catch(function () {
             throw new Error('Invalid JSON response from server');
         });
@@ -88,9 +91,10 @@ window.TaxonomyApiClient = (function () {
     }
 
     /**
-     * HTTP DELETE – returns a Promise resolving to the parsed JSON body.
+     * HTTP DELETE – returns a Promise resolving to the parsed JSON body,
+     * or {@code null} when the server responds with 204 No Content.
      * @param {string} url
-     * @returns {Promise<any>}
+     * @returns {Promise<any|null>}
      */
     function deleteJson(url) {
         return fetch(url, {
