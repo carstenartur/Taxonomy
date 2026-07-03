@@ -21,6 +21,8 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -73,5 +75,25 @@ class DslApiControllerContextBoundaryTest {
         verify(repositoryStateService).ensureWorkspaceState("alice");
         verify(dslOperationsFacade).getDslHistory("draft", workspaceContext);
         verify(dslOperationsFacade).getViewContext("alice", "draft", workspaceContext);
+    }
+
+    @Test
+    void getHistoryFallsBackToSharedContextWhenWorkspaceProvisioningFails() throws Exception {
+        ViewContext viewContext = new ViewContext("shared123", "draft", Instant.parse("2026-01-01T00:00:00Z"),
+                true, false, false);
+
+        when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
+        when(dslOperationsFacade.getDslHistory("draft", WorkspaceContext.SHARED)).thenReturn(List.of());
+        when(dslOperationsFacade.getViewContext("alice", "draft", WorkspaceContext.SHARED)).thenReturn(viewContext);
+        doThrow(new IllegalStateException("boom")).when(repositoryStateService).ensureWorkspaceState("alice");
+
+        ResponseEntity<Map<String, Object>> response = controller.getHistory("draft");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsEntry("headCommit", "shared123");
+
+        verify(workspaceResolver, never()).resolveCurrentContext();
+        verify(dslOperationsFacade).getDslHistory("draft", WorkspaceContext.SHARED);
+        verify(dslOperationsFacade).getViewContext("alice", "draft", WorkspaceContext.SHARED);
     }
 }

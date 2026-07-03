@@ -16,6 +16,8 @@ import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -37,6 +39,8 @@ import java.util.concurrent.ExecutorService;
 @RequestMapping("/api")
 @Tag(name = "Analysis")
 public class AnalysisApiController {
+
+    private static final Logger log = LoggerFactory.getLogger(AnalysisApiController.class);
 
     private final TaxonomyService taxonomyService;
     private final LlmService llmService;
@@ -188,6 +192,8 @@ public class AnalysisApiController {
             repositoryStateService.ensureWorkspaceState(username);
             return workspaceResolver.resolveCurrentContext();
         } catch (Exception e) {
+            log.warn("Falling back to shared workspace context for user '{}' due to: {}",
+                    username, e.toString(), e);
             return WorkspaceContext.SHARED;
         }
     }

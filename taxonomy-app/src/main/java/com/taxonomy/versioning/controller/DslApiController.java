@@ -795,6 +795,8 @@ public class DslApiController {
             repositoryStateService.ensureWorkspaceState(username);
             return workspaceResolver.resolveCurrentContext();
         } catch (Exception e) {
+            log.warn("Falling back to shared workspace context for user '{}' due to: {}",
+                    username, e.toString(), e);
             return WorkspaceContext.SHARED;
         }
     }
