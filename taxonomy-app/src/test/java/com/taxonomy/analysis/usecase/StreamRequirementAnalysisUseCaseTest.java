@@ -7,6 +7,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.i18n.LocaleContextHolder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +42,7 @@ class StreamRequirementAnalysisUseCaseTest {
         detail.setDurationMs(42L);
 
         doAnswer(invocation -> {
+            assertThat(LocaleContextHolder.getLocale()).isEqualTo(Locale.GERMAN);
             com.taxonomy.analysis.service.AnalysisEventCallback callback = invocation.getArgument(1);
             callback.onPhase("Working", 12);
             callback.onScores(Map.of("CP", 80), Map.of("CP", "reason"), "Capabilities scored 80/100", detail);
@@ -50,8 +52,14 @@ class StreamRequirementAnalysisUseCaseTest {
         }).when(llmService).analyzeStreaming(eq(command.businessText()), any());
 
         List<AnalysisStreamEvent> events = new ArrayList<>();
-
-        useCase.stream(command, events::add);
+        Locale previousLocale = LocaleContextHolder.getLocale();
+        LocaleContextHolder.setLocale(Locale.ENGLISH);
+        try {
+            useCase.stream(command, events::add);
+            assertThat(LocaleContextHolder.getLocale()).isEqualTo(Locale.ENGLISH);
+        } finally {
+            LocaleContextHolder.setLocale(previousLocale);
+        }
 
         assertThat(events).hasSize(4);
         assertThat(events.get(0)).isEqualTo(new AnalysisStreamEvent.Phase("Working", 12));

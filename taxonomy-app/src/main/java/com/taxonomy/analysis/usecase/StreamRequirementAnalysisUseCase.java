@@ -5,6 +5,7 @@ import com.taxonomy.analysis.service.LlmProvider;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.dto.LlmCallDetail;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -21,7 +22,9 @@ public class StreamRequirementAnalysisUseCase {
     }
 
     public void stream(StreamRequirementAnalysisCommand command, AnalysisStreamEventHandler handler) {
+        Locale previousLocale = LocaleContextHolder.getLocale();
         try {
+            applyRequestLocale(command.requestLocale());
             applyProviderOverride(command.provider());
             llmService.analyzeStreaming(command.businessText(), new AnalysisEventCallback() {
                 @Override
@@ -57,7 +60,19 @@ public class StreamRequirementAnalysisUseCase {
                 }
             });
         } finally {
-            llmService.clearRequestProvider();
+            try {
+                llmService.clearRequestProvider();
+            } finally {
+                LocaleContextHolder.setLocale(previousLocale);
+            }
+        }
+    }
+
+    private void applyRequestLocale(Locale requestLocale) {
+        if (requestLocale != null) {
+            LocaleContextHolder.setLocale(requestLocale);
+        } else {
+            LocaleContextHolder.resetLocaleContext();
         }
     }
 
