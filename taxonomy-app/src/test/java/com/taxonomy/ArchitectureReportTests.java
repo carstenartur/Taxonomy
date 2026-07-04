@@ -1,5 +1,7 @@
 package com.taxonomy;
 
+import com.taxonomy.architecture.report.ReportRenderContext;
+import com.taxonomy.architecture.report.ReportRendererRegistry;
 import com.taxonomy.dto.*;
 import com.taxonomy.architecture.service.ArchitectureReportService;
 import com.taxonomy.architecture.service.ExplanationTraceService;
@@ -31,6 +33,7 @@ class ArchitectureReportTests {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ArchitectureReportService reportService;
+    @Autowired private ReportRendererRegistry reportRendererRegistry;
     @Autowired private ExplanationTraceService traceService;
 
     // ── Report Service Tests ──────────────────────────────────────────────────
@@ -125,6 +128,54 @@ class ArchitectureReportTests {
         // DOCX files start with PK (ZIP magic bytes)
         assertThat(docx[0]).isEqualTo((byte) 0x50);
         assertThat(docx[1]).isEqualTo((byte) 0x4B);
+    }
+
+    @Test
+    void markdownRendererExtensionMatchesLegacyOutput() {
+        ArchitectureReport report = reportService.generateReport(
+                Map.of("CP-1010", 90), "test requirement", 50);
+
+        String legacyMarkdown = reportService.renderMarkdown(report);
+        String extensionMarkdown = reportRendererRegistry.getRequired("markdown")
+                .render(ReportRenderContext.of(report))
+                .utf8();
+
+        assertThat(extensionMarkdown).isEqualTo(legacyMarkdown);
+    }
+
+    @Test
+    void htmlRendererExtensionMatchesLegacyOutput() {
+        ArchitectureReport report = reportService.generateReport(
+                Map.of("CP-1010", 90), "test requirement", 50);
+
+        String legacyHtml = reportService.renderHtml(report);
+        String extensionHtml = reportRendererRegistry.getRequired("html")
+                .render(ReportRenderContext.of(report))
+                .utf8();
+
+        assertThat(extensionHtml).isEqualTo(legacyHtml);
+    }
+
+    @Test
+    void docxRendererExtensionSmokeTest() {
+        ArchitectureReport report = reportService.generateReport(
+                Map.of("CP-1010", 90), "test requirement", 50);
+
+        byte[] docx = reportRendererRegistry.getRequired("docx")
+                .render(ReportRenderContext.of(report))
+                .bytes();
+
+        assertThat(docx).isNotNull();
+        assertThat(docx.length).isGreaterThan(0);
+        assertThat(docx[0]).isEqualTo((byte) 0x50);
+        assertThat(docx[1]).isEqualTo((byte) 0x4B);
+    }
+
+    @Test
+    void reportRendererRegistryListsKnownFormats() {
+        assertThat(reportRendererRegistry.listDescriptors())
+                .extracting(descriptor -> descriptor.id())
+                .contains("markdown", "html", "docx", "json");
     }
 
     @Test
