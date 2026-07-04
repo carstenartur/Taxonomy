@@ -37,6 +37,20 @@ application starts in **browser-only mode** (all analysis scores = 0, Analyze bu
 Setting `LLM_PROVIDER=LOCAL_ONNX` explicitly activates offline semantic scoring — no API
 key or internet connection is required (after the first model download).
 
+### Adding a New LLM Provider
+
+Providers are described via the `LlmProviderExtension` SPI (see `docs/dev/07-extension-points.md`
+for the full extension-point documentation).  To add a new provider:
+
+1. Add a new constant to `LlmProvider` enum.
+2. Create a Spring `@Component` implementing `LlmProviderExtension` with the matching
+   `descriptor().providerId()`.
+3. Register a gateway in `LlmGatewayRegistry` (use `OpenAiCompatibleGateway` for
+   OpenAI-compatible APIs).
+4. Add API key injection in `LlmProviderConfig` and wire it into `getApiKey(...)` and
+   `getAvailableProviders()`.
+5. Add the new `LLM_PROVIDER` enum value and API key variable to this table.
+
 ---
 
 ## Local Embedding Model

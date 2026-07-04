@@ -35,6 +35,17 @@ Der erste Treffer gewinnt. Wenn **kein Schlüssel** gesetzt ist und `LLM_PROVIDE
 
 Die explizite Einstellung `LLM_PROVIDER=LOCAL_ONNX` aktiviert die Offline-Semantikbewertung — kein API-Schlüssel oder Internetverbindung erforderlich (nach dem ersten Modell-Download).
 
+### Neuen LLM-Anbieter hinzufügen
+
+Anbieter werden über die `LlmProviderExtension`-SPI beschrieben (siehe `docs/dev/07-extension-points.md`
+für die vollständige Erweiterungspunkt-Dokumentation). Um einen neuen Anbieter hinzuzufügen:
+
+1. Neue Konstante zur `LlmProvider`-Enum hinzufügen.
+2. Spring-`@Component` erstellen, das `LlmProviderExtension` mit passendem `descriptor().providerId()` implementiert.
+3. Gateway in `LlmGatewayRegistry` registrieren (für OpenAI-kompatible APIs `OpenAiCompatibleGateway` verwenden).
+4. API-Schlüssel-Injection in `LlmProviderConfig` ergänzen und in `getApiKey(...)` sowie `getAvailableProviders()` verdrahten.
+5. Neuen `LLM_PROVIDER`-Enum-Wert und API-Schlüssel-Variable in dieser Tabelle ergänzen.
+
 ---
 
 ## Lokales Embedding-Modell
