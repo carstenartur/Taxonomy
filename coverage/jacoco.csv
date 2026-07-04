@@ -207,7 +207,7 @@ Taxonomy Application,com.taxonomy.versioning.model,ContextHistoryRecord,7,73,0,0
 Taxonomy Application,com.taxonomy.dsl.export,DslMaterializeService.MaterializeResult,0,21,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.dsl.export,TaxDslExportService,0,133,0,6,0,32,0,6,0,3
 Taxonomy Application,com.taxonomy.dsl.export,DslMaterializeService,250,416,29,25,45,88,21,14,1,7
-Taxonomy Application,com.taxonomy.export.controller,ExportApiController,100,265,17,25,21,54,15,15,2,7
+Taxonomy Application,com.taxonomy.export.controller,ExportApiController,198,272,23,25,41,56,19,16,3,8
 Taxonomy Application,com.taxonomy.security.config,KeycloakSecurityConfig,122,0,0,0,30,0,13,0,13,0
 Taxonomy Application,com.taxonomy.security.config,AuthorizationRulesConfigurer,19,461,1,1,1,28,1,2,0,2
 Taxonomy Application,com.taxonomy.security.config,LoginRateLimitFilter.FailureTracker,37,64,3,7,10,14,5,5,2,3
@@ -216,7 +216,15 @@ Taxonomy Application,com.taxonomy.security.config,SecurityAuditListener,50,0,2,0
 Taxonomy Application,com.taxonomy.security.config,ActuatorSecurityFilter,45,24,11,3,12,8,6,3,0,2
 Taxonomy Application,com.taxonomy.security.config,SecurityDataInitializer,0,99,2,2,0,24,2,5,0,5
 Taxonomy Application,com.taxonomy.security.config,SecurityConfig,0,71,0,0,0,20,0,9,0,9
-Taxonomy Application,com.taxonomy.export.service,ExportFacade,38,104,1,1,8,27,5,7,4,7
+Taxonomy Application,com.taxonomy.export.service,ExportFormatExtensionRegistry,0,88,0,6,0,21,0,11,0,8
+Taxonomy Application,com.taxonomy.export.service,ExportFormatDescriptor,0,18,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.export.service,MermaidExportExtension,0,55,1,3,0,12,1,6,0,5
+Taxonomy Application,com.taxonomy.export.service,ExportContext,2,25,1,1,0,5,1,2,0,2
+Taxonomy Application,com.taxonomy.export.service,ExportResult,0,29,0,0,0,6,0,3,0,3
+Taxonomy Application,com.taxonomy.export.service,VisioExportExtension,21,21,0,0,4,6,1,3,1,3
+Taxonomy Application,com.taxonomy.export.service,StructurizrExportExtension,0,31,0,0,0,7,0,4,0,4
+Taxonomy Application,com.taxonomy.export.service,ArchiMateExportExtension,0,35,0,0,0,8,0,4,0,4
+Taxonomy Application,com.taxonomy.export.service,ExportFacade,42,104,1,1,9,27,6,7,5,7
 Taxonomy Application,com.taxonomy.workspace.model,UserWorkspace,13,151,0,0,5,64,4,37,4,37
 Taxonomy Application,com.taxonomy.workspace.model,RepositoryTopologyMode,0,15,0,0,0,3,0,1,0,1
 Taxonomy Application,com.taxonomy.workspace.model,SystemRepository,26,67,0,0,12,28,7,18,7,18

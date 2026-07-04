@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExportFormatExtensionRegistry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export.service</a> &gt; <span class="el_source">ExportFormatExtensionRegistry.java</span></div><h1>ExportFormatExtensionRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.export.service;
+
+import org.springframework.stereotype.Service;
+
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Registry for export format extensions.
+ *
+ * &lt;p&gt;All Spring beans implementing {@link ExportFormatExtension} are collected here
+ * automatically.  Use {@link #getRequired(String)} or {@link #findByFormatId(String)}
+ * to look up a format, and {@link #listDescriptors()} to enumerate available formats.
+ */
+@Service
+public class ExportFormatExtensionRegistry {
+
+    private final Map&lt;String, ExportFormatExtension&gt; byFormatId;
+
+<span class="fc" id="L24">    public ExportFormatExtensionRegistry(List&lt;ExportFormatExtension&gt; extensions) {</span>
+<span class="fc" id="L25">        Map&lt;String, ExportFormatExtension&gt; map = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L26">        extensions.stream()</span>
+<span class="fc" id="L27">                .sorted(Comparator.comparing(ext -&gt; ext.descriptor().id()))</span>
+<span class="fc" id="L28">                .forEach(extension -&gt; {</span>
+<span class="fc" id="L29">                    String key = normalize(extension.descriptor().id());</span>
+<span class="fc" id="L30">                    ExportFormatExtension previous = map.putIfAbsent(key, extension);</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">                    if (previous != null) {</span>
+<span class="fc" id="L32">                        throw new IllegalStateException(</span>
+                                &quot;Duplicate export format ID: &quot; + key);
+                    }
+<span class="fc" id="L35">                });</span>
+<span class="fc" id="L36">        this.byFormatId = Map.copyOf(map);</span>
+<span class="fc" id="L37">    }</span>
+
+    /**
+     * Returns the extension for the given format ID.
+     *
+     * @throws IllegalArgumentException if no extension is registered for the given ID
+     */
+    public ExportFormatExtension getRequired(String formatId) {
+<span class="fc" id="L45">        return findByFormatId(formatId)</span>
+<span class="fc" id="L46">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Unknown export format: &quot; + formatId));
+    }
+
+    /**
+     * Returns the extension for the given format ID, or empty if not found.
+     */
+    public Optional&lt;ExportFormatExtension&gt; findByFormatId(String formatId) {
+<span class="fc bfc" id="L54" title="All 4 branches covered.">        if (formatId == null || formatId.isBlank()) {</span>
+<span class="fc" id="L55">            return Optional.empty();</span>
+        }
+<span class="fc" id="L57">        return Optional.ofNullable(byFormatId.get(normalize(formatId)));</span>
+    }
+
+    /**
+     * Lists the descriptors of all registered export formats, sorted by format ID.
+     */
+    public List&lt;ExportFormatDescriptor&gt; listDescriptors() {
+<span class="fc" id="L64">        return byFormatId.values().stream()</span>
+<span class="fc" id="L65">                .map(ExportFormatExtension::descriptor)</span>
+<span class="fc" id="L66">                .toList();</span>
+    }
+
+    private String normalize(String formatId) {
+<span class="fc" id="L70">        return formatId.trim().toLowerCase(Locale.ROOT);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
