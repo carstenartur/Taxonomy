@@ -26,7 +26,12 @@ class FrameworkImportServiceTest {
     @BeforeEach
     void setUp() {
         materializeService = mock(DslMaterializeService.class);
-        service = new FrameworkImportService(materializeService);
+        ImportProfileRegistry registry = new ImportProfileRegistry(List.of(
+                new UafImportProfileExtension(materializeService),
+                new ApqcCsvImportProfileExtension(materializeService),
+                new ApqcExcelImportProfileExtension(materializeService),
+                new C4ImportProfileExtension(materializeService)));
+        service = new FrameworkImportService(registry);
     }
 
     @Test
