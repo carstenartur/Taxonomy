@@ -62,7 +62,7 @@ public class ArchitectureViewPipeline {
         ArchitecturePipelineStep firstEnabledStep = enabledSteps.stream()
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(
-                        "Architecture pipeline must enable %s as its first step"
+                        "Architecture pipeline requires at least one enabled step, specifically %s as the first step"
                                 .formatted(AnchorSelectionStep.STEP_ID)));
         if (!AnchorSelectionStep.STEP_ID.equals(firstEnabledStep.id())) {
             throw new IllegalStateException(
