@@ -44,7 +44,10 @@ modules.
 6. Update the current UI entry points. Relation types are currently hard-coded in
    `taxonomy-app/src/main/resources/templates/index.html` and used by
    `taxonomy-app/src/main/resources/static/js/relations/taxonomy-relations.js`.
-   There is currently no `/api/relations/types` endpoint to centralize this.
+   There is currently no `/api/relations/types` endpoint to centralize this. A
+   future descriptor-based UI would first need a core-backed registry or API to
+   expose relation metadata consistently, but that refactoring is separate from
+   the semantic rules described here.
 7. Review seed/import paths that persist or generate relation types, including:
    - `taxonomy-app/src/main/resources/data/relations.csv`
    - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/RelationSeedParser.java`
@@ -166,7 +169,9 @@ Descriptor-only DSL metadata should stay **non-semantic**:
 
 Within DSL documents themselves, the current safe escape hatch is still `x-*`
 extension attributes. They are preserved round-trip and intentionally left
-outside strict validation.
+outside strict validation. Those `x-*` values are document content, not SPI
+descriptors: they extend a specific DSL document, while a descriptor would
+describe shared editor or UI metadata for the whole system.
 
 ### DSL invariants that should remain hard-coded and tested
 
