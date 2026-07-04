@@ -6,6 +6,10 @@ Add a new property to an existing DSL block type (e.g., add `priority` to the
 `requirement` block) or add an entirely new DSL block type (e.g., a new `decision`
 block) to the Architecture DSL.
 
+> Start with the stable extension anchor in
+> [`docs/dev/07-extension-points.md#dsl-grammar-and-property-additions`](../07-extension-points.md#dsl-grammar-and-property-additions).
+> Use this page for the end-to-end file/test/doc checklist.
+
 ---
 
 ## Primary entry points

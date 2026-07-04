@@ -5,6 +5,10 @@
 Add a new output format (e.g., CSV, JSON-LD, BPMN, OWL/RDF) that users can
 download from the export panel.
 
+> Start with the stable extension anchor in
+> [`docs/dev/07-extension-points.md#export-formats`](../07-extension-points.md#export-formats).
+> Use this page for the end-to-end file/test/doc checklist.
+
 ---
 
 ## Preferred approach: ExportFormatExtension (recommended)
@@ -33,7 +37,7 @@ existing services or endpoints.
    URL is also required, add it to `ExportApiController` using
    `ExportFormatExtensionRegistry` — no changes to existing endpoint methods.
 
-See [`docs/dev/07-extension-points.md`](../07-extension-points.md#exportformatextension)
+See [`docs/dev/07-extension-points.md`](../07-extension-points.md#export-formats)
 for the full SPI contract.
 
 ---

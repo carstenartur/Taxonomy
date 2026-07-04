@@ -12,6 +12,7 @@ This guide is intended for developers contributing to the Taxonomy Architecture 
 ## Table of Contents
 
 - [Task-Oriented Guide (docs/dev/)](#task-oriented-guide)
+- [Extension Points](#extension-points)
 - [Quick Start](#quick-start)
 - [Module Architecture](#module-architecture)
 - [Module Responsibilities](#module-responsibilities)
@@ -39,6 +40,7 @@ modify one specific part of the system without reading the full architecture ref
 |---|---|
 | [`docs/dev/00-start-here.md`](../dev/00-start-here.md) | How to approach a single-task change |
 | [`docs/dev/01-change-map.md`](../dev/01-change-map.md) | Table mapping tasks to packages, entry points, and tests |
+| [`docs/dev/07-extension-points.md`](../dev/07-extension-points.md) | Stable extension anchors for common feature additions |
 | [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md) | Maven commands and test classes by change type |
 | [`docs/dev/tasks/add-llm-provider.md`](../dev/tasks/add-llm-provider.md) | Add a new LLM provider |
 | [`docs/dev/tasks/add-export-format.md`](../dev/tasks/add-export-format.md) | Add a new export format |
@@ -52,6 +54,24 @@ modify one specific part of the system without reading the full architecture ref
 > The `docs/dev/` directory is the **task-oriented entry point**.
 > The sections below remain the **deep reference** for modules, conventions, pitfalls,
 > and architectural decisions.
+
+---
+
+## Extension Points
+
+Before adding a provider, exporter, relation type, pipeline step, or DSL
+surface area, check the dedicated extension guide first:
+
+- [`docs/dev/07-extension-points.md`](../dev/07-extension-points.md)
+
+It distinguishes between:
+
+- **explicit SPIs** (registries/interfaces already exist), and
+- **implicit but documented anchors** (the current codebase has a stable facade,
+  service, or file boundary, but not a registry).
+
+Use the extension guide to find the smallest safe starting point before reading
+the deeper architecture sections below.
 
 ---
 
@@ -240,22 +260,34 @@ Test file naming conventions:
 
 ## Adding a New Export Format
 
-1. Add the exporter class to `taxonomy-export/src/main/java/com/taxonomy/export/`.
-2. Register it as a Spring bean in `taxonomy-app/src/main/java/com/taxonomy/config/ExportConfig.java`.
-3. Add a controller endpoint in `ApiController` or create a new controller.
-4. Add tests in `taxonomy-app/src/test/`.
+Use the stable extension point documented in
+[`docs/dev/07-extension-points.md#export-formats`](../dev/07-extension-points.md#export-formats).
+
+The current preferred path is:
+
+1. Add the framework-free exporter class to `taxonomy-export/src/main/java/com/taxonomy/export/`.
+2. Register the exporter as a Spring bean in
+   `taxonomy-app/src/main/java/com/taxonomy/shared/config/ExportConfig.java`.
+3. Add a Spring `@Component` adapter implementing `ExportFormatExtension`.
+4. Reuse the generic endpoint `POST /api/diagram/export/{formatId}` unless a
+   truly custom URL is needed.
+5. Add or extend exporter, adapter, and registry tests.
 
 ---
 
 ## Adding a New LLM Provider
 
-The `LlmService` supports multiple LLM providers. To add a new one:
+Use the stable extension point documented in
+[`docs/dev/07-extension-points.md#llm-providers`](../dev/07-extension-points.md#llm-providers).
 
-1. Add the API key property to `application.properties` (e.g., `newprovider.api.key=${NEW_PROVIDER_API_KEY:}`).
-2. Add the provider name to the auto-detection logic in `LlmService`.
-3. Implement the HTTP call in `LlmService` following the pattern of existing providers.
-4. Update `LlmResponseParser` if the response format differs.
-5. Document the new provider in `CONFIGURATION_REFERENCE.md`.
+The current preferred path is:
+
+1. Add a new constant to `LlmProvider`.
+2. Create a Spring `@Component` implementing `LlmProviderExtension`.
+3. Register the HTTP gateway in `LlmGatewayRegistry`.
+4. Add configuration and availability wiring in `LlmProviderConfig`.
+5. Update `LlmResponseParser` only if the provider's response schema differs.
+6. Document the new provider in `CONFIGURATION_REFERENCE.md` and `AI_PROVIDERS.md`.
 
 ---
 

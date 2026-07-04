@@ -5,6 +5,10 @@
 Integrate a new language-model API (e.g., Anthropic Claude, Cohere, Mistral-hosted)
 so that users can select it in the analysis panel alongside the existing providers.
 
+> Start with the stable extension anchor in
+> [`docs/dev/07-extension-points.md#llm-providers`](../07-extension-points.md#llm-providers).
+> Use this page for the end-to-end file/test/doc checklist.
+
 ---
 
 ## Primary entry points
