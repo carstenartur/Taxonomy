@@ -48,7 +48,7 @@ layer (`ImportApiController`) and `ImportProfileRegistry`.  The REST API shape
 
 > **Frontend note:** UI modules should use the import API client functions in
 > `js/api/import-api.js` (`ImportApi.loadProfiles()`, `ImportApi.preview()`,
-> `ImportApi.importFile()`) rather than constructing `/api/import/…` paths
+> `ImportApi.execute()`) rather than constructing `/api/import/…` paths
 > directly.  This ensures API changes propagate to all callers consistently.
 
 ### Add a new import profile

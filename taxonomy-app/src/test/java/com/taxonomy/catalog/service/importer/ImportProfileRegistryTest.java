@@ -8,10 +8,12 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link ImportProfileRegistry} and the bundled extension adapters.
@@ -109,5 +111,26 @@ class ImportProfileRegistryTest {
                 new UafImportProfileExtension(ms))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Duplicate import profile ID");
+    }
+
+    @Test
+    void nullDescriptorThrowsClearError() {
+        ImportProfileExtension extension = mock(ImportProfileExtension.class);
+        when(extension.descriptor()).thenReturn(null);
+
+        assertThatThrownBy(() -> new ImportProfileRegistry(List.of(extension)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("returned a null descriptor");
+    }
+
+    @Test
+    void blankProfileIdThrowsClearError() {
+        ImportProfileExtension extension = mock(ImportProfileExtension.class);
+        when(extension.descriptor()).thenReturn(new ImportProfileDescriptor(
+                "   ", "Broken", Set.of(), Set.of(), "xml"));
+
+        assertThatThrownBy(() -> new ImportProfileRegistry(List.of(extension)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("must declare a non-blank profile ID");
     }
 }

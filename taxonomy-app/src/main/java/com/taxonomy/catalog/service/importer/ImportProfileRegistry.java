@@ -24,13 +24,15 @@ public class ImportProfileRegistry {
     public ImportProfileRegistry(List<ImportProfileExtension> extensions) {
         Map<String, ImportProfileExtension> map = new LinkedHashMap<>();
         extensions.stream()
-                .sorted(Comparator.comparing(ext -> ext.descriptor().profileId()))
-                .forEach(extension -> {
-                    String key = normalize(extension.descriptor().profileId());
-                    ImportProfileExtension previous = map.putIfAbsent(key, extension);
+                .map(this::validatedRegistration)
+                .sorted(Comparator.comparing(Registration::normalizedProfileId))
+                .forEach(registration -> {
+                    ImportProfileExtension previous = map.putIfAbsent(
+                            registration.normalizedProfileId(),
+                            registration.extension());
                     if (previous != null) {
                         throw new IllegalStateException(
-                                "Duplicate import profile ID: " + key);
+                                "Duplicate import profile ID: " + registration.normalizedProfileId());
                     }
                 });
         this.byProfileId = Map.copyOf(map);
@@ -68,5 +70,24 @@ public class ImportProfileRegistry {
 
     private String normalize(String profileId) {
         return profileId.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private Registration validatedRegistration(ImportProfileExtension extension) {
+        ImportProfileDescriptor descriptor = extension.descriptor();
+        if (descriptor == null) {
+            throw new IllegalStateException(
+                    "Import profile extension %s returned a null descriptor"
+                            .formatted(extension.getClass().getName()));
+        }
+        String profileId = descriptor.profileId();
+        if (profileId == null || profileId.isBlank()) {
+            throw new IllegalStateException(
+                    "Import profile extension %s must declare a non-blank profile ID"
+                            .formatted(extension.getClass().getName()));
+        }
+        return new Registration(normalize(profileId), extension);
+    }
+
+    private record Registration(String normalizedProfileId, ImportProfileExtension extension) {
     }
 }
