@@ -3,6 +3,7 @@ package com.taxonomy.architecture.controller;
 import com.taxonomy.architecture.report.ReportFormatDescriptor;
 import com.taxonomy.architecture.report.ReportRenderContext;
 import com.taxonomy.architecture.report.ReportRenderResult;
+import com.taxonomy.architecture.report.ReportRendererExtension;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
 import com.taxonomy.dto.ArchitectureReport;
 import com.taxonomy.architecture.service.ArchitectureReportService;
@@ -70,8 +71,9 @@ public class ReportApiController {
 
         ArchitectureReport report = reportService.generateReport(
                 request.scores(), request.businessText(), request.minScore());
-        ReportFormatDescriptor format = reportRendererRegistry.getRequired("markdown").descriptor();
-        ReportRenderResult rendered = reportRendererRegistry.getRequired("markdown")
+        ReportRendererExtension renderer = reportRendererRegistry.getRequired("markdown");
+        ReportFormatDescriptor format = renderer.descriptor();
+        ReportRenderResult rendered = renderer
                 .render(ReportRenderContext.of(report));
 
         return ResponseEntity.ok()
@@ -93,8 +95,9 @@ public class ReportApiController {
 
         ArchitectureReport report = reportService.generateReport(
                 request.scores(), request.businessText(), request.minScore());
-        ReportFormatDescriptor format = reportRendererRegistry.getRequired("html").descriptor();
-        ReportRenderResult rendered = reportRendererRegistry.getRequired("html")
+        ReportRendererExtension renderer = reportRendererRegistry.getRequired("html");
+        ReportFormatDescriptor format = renderer.descriptor();
+        ReportRenderResult rendered = renderer
                 .render(ReportRenderContext.of(report));
 
         return ResponseEntity.ok()
@@ -116,8 +119,9 @@ public class ReportApiController {
 
         ArchitectureReport report = reportService.generateReport(
                 request.scores(), request.businessText(), request.minScore());
-        ReportFormatDescriptor format = reportRendererRegistry.getRequired("docx").descriptor();
-        ReportRenderResult rendered = reportRendererRegistry.getRequired("docx")
+        ReportRendererExtension renderer = reportRendererRegistry.getRequired("docx");
+        ReportFormatDescriptor format = renderer.descriptor();
+        ReportRenderResult rendered = renderer
                 .render(ReportRenderContext.of(report));
 
         return ResponseEntity.ok()

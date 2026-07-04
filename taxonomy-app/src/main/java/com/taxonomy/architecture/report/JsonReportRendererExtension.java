@@ -2,6 +2,7 @@ package com.taxonomy.architecture.report;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -15,7 +16,12 @@ public class JsonReportRendererExtension implements ReportRendererExtension {
             false
     );
 
-    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    private final ObjectMapper objectMapper;
+
+    public JsonReportRendererExtension(ObjectProvider<ObjectMapper> objectMapperProvider) {
+        this.objectMapper = objectMapperProvider.getIfAvailable(
+                () -> new ObjectMapper().findAndRegisterModules());
+    }
 
     @Override
     public ReportFormatDescriptor descriptor() {
