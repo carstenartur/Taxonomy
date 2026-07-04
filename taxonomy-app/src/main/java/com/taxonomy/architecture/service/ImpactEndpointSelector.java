@@ -13,7 +13,7 @@ import java.util.*;
  * exceeds the qualification threshold, or when it is an anchor, or when it was
  * explicitly marked as selected-for-impact by the {@link ArchitectureImpactSelector}.
  */
-class ImpactEndpointSelector {
+public class ImpactEndpointSelector {
 
     /** Minimum composite score for automatic qualification. */
     static final double QUALIFICATION_THRESHOLD = 0.35;
@@ -28,7 +28,7 @@ class ImpactEndpointSelector {
      * @param leaves non-empty list of leaf elements from the same taxonomy category
      * @return list of qualified endpoints (never empty — at least the best leaf is always included)
      */
-    List<RequirementElementView> selectEndpoints(List<RequirementElementView> leaves) {
+    public List<RequirementElementView> selectEndpoints(List<RequirementElementView> leaves) {
         if (leaves == null || leaves.isEmpty()) {
             return List.of();
         }

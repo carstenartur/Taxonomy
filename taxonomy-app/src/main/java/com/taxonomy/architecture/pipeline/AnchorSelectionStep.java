@@ -1,0 +1,76 @@
+package com.taxonomy.architecture.pipeline;
+
+import com.taxonomy.dto.RequirementAnchor;
+import com.taxonomy.pipeline.PipelineConstants;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Selects anchor nodes from the LLM score map according to the two-tier
+ * threshold rules.
+ *
+ * <ol>
+ *   <li>All nodes with score ≥ {@link PipelineConstants#ANCHOR_THRESHOLD_HIGH} are anchors.</li>
+ *   <li>If fewer than {@link PipelineConstants#MIN_ANCHORS} qualify, fall back to the
+ *       top-{@code MIN_ANCHORS} nodes with score ≥ {@link PipelineConstants#ANCHOR_THRESHOLD_LOW}.</li>
+ * </ol>
+ *
+ * <p>This step is a pure function with no external dependencies and can be
+ * unit-tested without a Spring context.
+ */
+public class AnchorSelectionStep {
+
+    private static final int ANCHOR_THRESHOLD_HIGH = PipelineConstants.ANCHOR_THRESHOLD_HIGH;
+    private static final int ANCHOR_THRESHOLD_LOW  = PipelineConstants.ANCHOR_THRESHOLD_LOW;
+    private static final int MIN_ANCHORS           = PipelineConstants.MIN_ANCHORS;
+
+    /**
+     * Selects anchors and stores them in {@code ctx.anchors}.
+     */
+    public void execute(ArchitectureViewContext ctx) {
+        ctx.setAnchors(select(ctx.getScores()));
+    }
+
+    /**
+     * Selects anchors from the given score map.
+     * Package-private for direct unit testing.
+     */
+    List<RequirementAnchor> select(Map<String, Integer> scores) {
+        List<RequirementAnchor> highAnchors = new ArrayList<>();
+
+        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+            if (entry.getValue() >= ANCHOR_THRESHOLD_HIGH) {
+                highAnchors.add(new RequirementAnchor(
+                        entry.getKey(), entry.getValue(), "high direct match"));
+            }
+        }
+
+        if (highAnchors.size() >= MIN_ANCHORS) {
+            highAnchors.sort(Comparator.comparingInt(RequirementAnchor::getDirectScore).reversed());
+            return highAnchors;
+        }
+
+        // Fallback: collect top-MIN_ANCHORS with score >= ANCHOR_THRESHOLD_LOW
+        List<Map.Entry<String, Integer>> candidates = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+            if (entry.getValue() >= ANCHOR_THRESHOLD_LOW) {
+                candidates.add(entry);
+            }
+        }
+        candidates.sort(
+                Comparator.<Map.Entry<String, Integer>, Integer>comparing(Map.Entry::getValue)
+                          .reversed());
+
+        List<RequirementAnchor> anchors = new ArrayList<>();
+        for (int i = 0; i < Math.min(MIN_ANCHORS, candidates.size()); i++) {
+            Map.Entry<String, Integer> entry = candidates.get(i);
+            anchors.add(new RequirementAnchor(
+                    entry.getKey(), entry.getValue(), "top candidate (fallback)"));
+        }
+
+        return anchors;
+    }
+}
