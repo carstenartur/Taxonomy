@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -60,18 +59,18 @@ public class ArchitectureViewPipeline {
         RequirementArchitectureView view = ctx.getView();
         List<ArchitecturePipelineStep> enabledSteps = registry.getEnabledSteps();
 
-        ArchitecturePipelineStep anchorSelectionStep = enabledSteps.stream()
+        ArchitecturePipelineStep firstEnabledStep = enabledSteps.stream()
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException(
                         "Architecture pipeline must enable %s as its first step"
                                 .formatted(AnchorSelectionStep.STEP_ID)));
-        if (!Objects.equals(anchorSelectionStep.id(), AnchorSelectionStep.STEP_ID)) {
+        if (!AnchorSelectionStep.STEP_ID.equals(firstEnabledStep.id())) {
             throw new IllegalStateException(
                     "Architecture pipeline must execute %s first, but found %s"
-                            .formatted(AnchorSelectionStep.STEP_ID, anchorSelectionStep.id()));
+                            .formatted(AnchorSelectionStep.STEP_ID, firstEnabledStep.id()));
         }
 
-        anchorSelectionStep.apply(ctx);
+        firstEnabledStep.apply(ctx);
         view.setAnchors(ctx.getAnchors());
         if (ctx.getAnchors().isEmpty()) {
             view.getNotes().add(
