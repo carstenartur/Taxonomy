@@ -11,6 +11,9 @@ import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AnalysisRequest;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,6 +65,12 @@ class AnalysisApiControllerTest {
     @Mock
     private MessageSource messageSource;
 
+    @Mock
+    private RepositoryStateService repositoryStateService;
+
+    @Mock
+    private WorkspaceResolver workspaceResolver;
+
     private ExecutorService analysisExecutor;
     private AnalysisApiController controller;
     private MockMvc mockMvc;
@@ -106,9 +115,14 @@ class AnalysisApiControllerTest {
                 analyzeRequirementUseCase,
                 streamRequirementAnalysisUseCase,
                 new AnalysisSseEventMapper(),
+                repositoryStateService,
+                workspaceResolver,
                 messageSource);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
         lenient().when(taxonomyService.isInitialized()).thenReturn(true);
+        lenient().when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
+        lenient().when(workspaceResolver.resolveCurrentContext())
+                .thenReturn(new WorkspaceContext("alice", "alice-ws", "draft"));
     }
 
     @Test
@@ -138,7 +152,13 @@ class AnalysisApiControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isSameAs(analysisResult);
-        verify(analyzeRequirementUseCase).analyze(any());
+
+        ArgumentCaptor<com.taxonomy.analysis.usecase.AnalyzeRequirementCommand> commandCaptor =
+                ArgumentCaptor.forClass(com.taxonomy.analysis.usecase.AnalyzeRequirementCommand.class);
+        verify(analyzeRequirementUseCase).analyze(commandCaptor.capture());
+        assertThat(commandCaptor.getValue().username()).isEqualTo("alice");
+        assertThat(commandCaptor.getValue().workspaceContext())
+                .isEqualTo(new WorkspaceContext("alice", "alice-ws", "draft"));
     }
 
     @Test

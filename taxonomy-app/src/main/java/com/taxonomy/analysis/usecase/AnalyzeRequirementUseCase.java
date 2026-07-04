@@ -11,7 +11,6 @@ import com.taxonomy.preferences.PreferencesService;
 import com.taxonomy.shared.config.ExportConfig;
 import com.taxonomy.versioning.service.HypothesisService;
 import com.taxonomy.versioning.service.RepositoryStateService;
-import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.springframework.stereotype.Service;
 import java.util.Locale;
 
@@ -23,7 +22,6 @@ public class AnalyzeRequirementUseCase {
     private final AnalysisRelationGenerator analysisRelationGenerator;
     private final HypothesisService hypothesisService;
     private final RepositoryStateService repositoryStateService;
-    private final WorkspaceResolver workspaceResolver;
     private final PreferencesService preferencesService;
 
     public AnalyzeRequirementUseCase(LlmService llmService,
@@ -31,14 +29,12 @@ public class AnalyzeRequirementUseCase {
                                      AnalysisRelationGenerator analysisRelationGenerator,
                                      HypothesisService hypothesisService,
                                      RepositoryStateService repositoryStateService,
-                                     WorkspaceResolver workspaceResolver,
                                      PreferencesService preferencesService) {
         this.llmService = llmService;
         this.architectureViewService = architectureViewService;
         this.analysisRelationGenerator = analysisRelationGenerator;
         this.hypothesisService = hypothesisService;
         this.repositoryStateService = repositoryStateService;
-        this.workspaceResolver = workspaceResolver;
         this.preferencesService = preferencesService;
     }
 
@@ -49,7 +45,7 @@ public class AnalyzeRequirementUseCase {
             AnalysisResult result = llmService.analyzeWithBudget(command.businessText());
             enrichWithRelationHypotheses(result);
             enrichWithArchitectureView(command, result);
-            populateViewContext(result);
+            populateViewContext(command, result);
             return new AnalyzeRequirementResult(result);
         } finally {
             llmService.clearRequestProvider();
@@ -94,10 +90,12 @@ public class AnalyzeRequirementUseCase {
         result.setArchitectureView(archView);
     }
 
-    private void populateViewContext(AnalysisResult result) {
-        String username = workspaceResolver.resolveCurrentUsername();
+    private void populateViewContext(AnalyzeRequirementCommand command, AnalysisResult result) {
+        String effectiveUsername = command.workspaceContext().username();
+        String branch = repositoryStateService.resolveWorkspaceBranch(effectiveUsername);
         result.setViewContext(repositoryStateService.getViewContext(
-                username,
-                repositoryStateService.resolveWorkspaceBranch(username)));
+                effectiveUsername,
+                branch,
+                command.workspaceContext()));
     }
 }

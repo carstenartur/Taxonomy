@@ -13,6 +13,11 @@ import com.taxonomy.analysis.usecase.UnknownAnalysisProviderException;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -35,6 +40,8 @@ import java.util.concurrent.ExecutorService;
 @Tag(name = "Analysis")
 public class AnalysisApiController {
 
+    private static final Logger log = LoggerFactory.getLogger(AnalysisApiController.class);
+
     private final TaxonomyService taxonomyService;
     private final LlmService llmService;
     private final ExecutorService analysisExecutor;
@@ -42,6 +49,8 @@ public class AnalysisApiController {
     private final AnalyzeRequirementUseCase analyzeRequirementUseCase;
     private final StreamRequirementAnalysisUseCase streamRequirementAnalysisUseCase;
     private final AnalysisSseEventMapper analysisSseEventMapper;
+    private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
     private final org.springframework.context.MessageSource messageSource;
 
     public AnalysisApiController(TaxonomyService taxonomyService,
@@ -51,6 +60,8 @@ public class AnalysisApiController {
                                   AnalyzeRequirementUseCase analyzeRequirementUseCase,
                                   StreamRequirementAnalysisUseCase streamRequirementAnalysisUseCase,
                                   AnalysisSseEventMapper analysisSseEventMapper,
+                                  RepositoryStateService repositoryStateService,
+                                  WorkspaceResolver workspaceResolver,
                                   org.springframework.context.MessageSource messageSource) {
         this.taxonomyService = taxonomyService;
         this.llmService = llmService;
@@ -59,6 +70,8 @@ public class AnalysisApiController {
         this.analyzeRequirementUseCase = analyzeRequirementUseCase;
         this.streamRequirementAnalysisUseCase = streamRequirementAnalysisUseCase;
         this.analysisSseEventMapper = analysisSseEventMapper;
+        this.repositoryStateService = repositoryStateService;
+        this.workspaceResolver = workspaceResolver;
         this.messageSource = messageSource;
     }
 
@@ -73,12 +86,15 @@ public class AnalysisApiController {
             return ResponseEntity.badRequest().build();
         }
         try {
+            String username = workspaceResolver.resolveCurrentUsername();
             AnalyzeRequirementResult result = analyzeRequirementUseCase.analyze(
                     new AnalyzeRequirementCommand(
                             request.getBusinessText(),
                             request.isIncludeArchitectureView(),
                             request.getMaxArchitectureNodes(),
-                            request.getProvider()));
+                            request.getProvider(),
+                            username,
+                            resolveWorkspaceContext(username)));
             return ResponseEntity.ok(result.analysisResult());
         } catch (UnknownAnalysisProviderException e) {
             @SuppressWarnings("unchecked")
@@ -168,6 +184,17 @@ public class AnalysisApiController {
             emitter.complete();
         } catch (Exception e) {
             emitter.completeWithError(e);
+        }
+    }
+
+    private WorkspaceContext resolveWorkspaceContext(String username) {
+        try {
+            repositoryStateService.ensureWorkspaceState(username);
+            return workspaceResolver.resolveCurrentContext();
+        } catch (Exception e) {
+            log.warn("Falling back to shared workspace context for user '{}' due to: {}",
+                    username, e.toString(), e);
+            return WorkspaceContext.SHARED;
         }
     }
 

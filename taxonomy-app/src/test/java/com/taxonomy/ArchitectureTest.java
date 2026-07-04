@@ -1,9 +1,16 @@
 package com.taxonomy;
 
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
+import org.springframework.stereotype.Service;
+
+import java.util.Set;
 
 import static com.tngtech.archunit.base.DescribedPredicate.alwaysTrue;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage;
@@ -19,6 +26,35 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
  */
 @AnalyzeClasses(packages = "com.taxonomy", importOptions = ImportOption.DoNotIncludeTests.class)
 class ArchitectureTest {
+
+    /**
+     * Temporary exceptions to the "service classes must not resolve request context implicitly" rule.
+     *
+     * <p>Each class still calls {@code resolveCurrentContext()} and/or
+     * {@code resolveCurrentUsername()} internally and therefore remains on the
+     * documented migration allowlist in {@code docs/dev/05-workspace-git-context.md}.
+     */
+    private static final Set<String> IMPLICIT_WORKSPACE_RESOLUTION_ALLOWLIST = Set.of(
+            "com.taxonomy.catalog.service.CatalogFacade",
+            "com.taxonomy.dsl.export.DslMaterializeService",
+            "com.taxonomy.relations.service.GraphSearchService",
+            "com.taxonomy.relations.service.RelationProposalService",
+            "com.taxonomy.versioning.service.DslOperationsFacade",
+            "com.taxonomy.versioning.service.HypothesisService",
+            "com.taxonomy.versioning.service.SelectiveTransferService"
+    );
+
+    private static DescribedPredicate<JavaClass> serviceClassesOutsideImplicitWorkspaceAllowlist() {
+        return new DescribedPredicate<>("service classes outside the implicit workspace allowlist") {
+            @Override
+            public boolean test(JavaClass input) {
+                return input.isAnnotatedWith(Service.class)
+                        && !WorkspaceResolver.class.getName().equals(input.getName())
+                        && !WorkspaceContextResolver.class.getName().equals(input.getName())
+                        && !IMPLICIT_WORKSPACE_RESOLUTION_ALLOWLIST.contains(input.getName());
+            }
+        };
+    }
 
     /**
      * No circular dependencies between the main domain packages.
@@ -103,4 +139,17 @@ class ArchitectureTest {
             .should().dependOnClassesThat()
             .resideInAPackage("com.taxonomy.analysis..")
             .because("versioning is a lower-level domain; analysis depends on it, not vice versa");
+
+    @ArchTest
+    static final ArchRule servicesShouldNotResolveCurrentUsernameImplicitly = noClasses()
+            .that(serviceClassesOutsideImplicitWorkspaceAllowlist())
+            .should().callMethod(WorkspaceResolver.class, "resolveCurrentUsername")
+            .because("request boundaries should resolve usernames once and pass them explicitly");
+
+    @ArchTest
+    static final ArchRule servicesShouldNotResolveCurrentWorkspaceContextImplicitly = noClasses()
+            .that(serviceClassesOutsideImplicitWorkspaceAllowlist())
+            .should().callMethod(WorkspaceResolver.class, "resolveCurrentContext")
+            .orShould().callMethod(WorkspaceContextResolver.class, "resolveCurrentContext")
+            .because("request boundaries should resolve WorkspaceContext once and pass it explicitly");
 }
