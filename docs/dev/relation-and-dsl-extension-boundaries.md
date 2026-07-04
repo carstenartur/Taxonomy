@@ -47,7 +47,7 @@ modules.
    There is currently no `/api/relations/types` endpoint to centralize this. A
    future descriptor-based UI would first need a core-backed registry or API to
    expose relation metadata consistently, but that refactoring is separate from
-   the semantic rules described here.
+   the question of which relation semantics must remain core code.
 7. Review seed/import paths that persist or generate relation types, including:
    - `taxonomy-app/src/main/resources/data/relations.csv`
    - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/RelationSeedParser.java`
@@ -213,7 +213,10 @@ materializes, it must remain core.
 ## 3. Boundary rule for future SPI work
 
 A relation or DSL descriptor is a good candidate for the internal extension SPI
-only when all of the following are true:
+only when all of the following are true. In this repository, an SPI descriptor
+means the serializable metadata record returned by a `TaxonomyExtension`
+implementation, following the patterns documented in
+`docs/dev/07-extension-points.md`:
 
 - the value is descriptive rather than behavioral
 - changing it does not require parser/validator/matrix changes
