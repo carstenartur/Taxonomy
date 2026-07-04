@@ -1,5 +1,7 @@
 # Extension Points
 
+Related developer note: [Relation and DSL Extension Boundaries](relation-and-dsl-extension-boundaries.md)
+
 ## ExportFormatExtension
 
 Diagram export formats (Mermaid, ArchiMate, Visio, Structurizr, and any future
