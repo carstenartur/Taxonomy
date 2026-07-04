@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ImportInput.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.service.importer</a> &gt; <span class="el_source">ImportInput.java</span></div><h1>ImportInput.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.service.importer;
+
+import java.io.InputStream;
+
+/**
+ * Encapsulates the input data required for a framework import operation.
+ *
+ * @param inputStream the uploaded file content
+ * @param branch      target branch for materialization; may be {@code null} for preview-only calls
+ */
+<span class="fc" id="L11">public record ImportInput(InputStream inputStream, String branch) {</span>
+
+    /**
+     * Convenience factory for preview calls where no branch is needed.
+     */
+    public static ImportInput forPreview(InputStream inputStream) {
+<span class="fc" id="L17">        return new ImportInput(inputStream, null);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
