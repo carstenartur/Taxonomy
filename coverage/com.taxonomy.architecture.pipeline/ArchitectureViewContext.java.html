@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureViewContext.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.pipeline</a> &gt; <span class="el_source">ArchitectureViewContext.java</span></div><h1>ArchitectureViewContext.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.pipeline;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.PropagationResult;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.RelationHypothesisDto;
+import com.taxonomy.dto.RequirementAnchor;
+import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.dto.RequirementElementView;
+import com.taxonomy.dto.RequirementRelationshipView;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Carries all intermediate state through each step of the
+ * {@link ArchitectureViewPipeline}.
+ *
+ * &lt;p&gt;Created once per {@code build()} invocation and mutated in place by each
+ * pipeline step. Only the final {@link #getView()} result is returned to the caller.
+ */
+public class ArchitectureViewContext {
+
+    // --- Inputs (immutable after construction) -------------------------
+
+    private final Map&lt;String, Integer&gt; scores;
+    private final String businessText;
+    private final int maxArchitectureNodes;
+
+    /**
+     * May be {@code null} when no provisional relations are provided.
+     * Steps may augment (never replace) this list.
+     */
+    private List&lt;RelationHypothesisDto&gt; provisionalRelations;
+
+    // --- Pipeline state (built up step by step) ------------------------
+
+<span class="fc" id="L41">    private List&lt;RequirementAnchor&gt; anchors = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L42">    private Map&lt;String, Double&gt; anchorRelevances = new LinkedHashMap&lt;&gt;();</span>
+    private PropagationResult propagation;
+<span class="fc" id="L44">    private final Map&lt;String, String&gt; pathCache = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L45">    private List&lt;RequirementElementView&gt; elements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L46">    private List&lt;RequirementRelationshipView&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L47">    private boolean usedProvisional = false;</span>
+
+    // --- Output --------------------------------------------------------
+
+<span class="fc" id="L51">    private final RequirementArchitectureView view = new RequirementArchitectureView();</span>
+
+    // --- Construction --------------------------------------------------
+
+    public ArchitectureViewContext(Map&lt;String, Integer&gt; scores,
+                                   String businessText,
+                                   int maxArchitectureNodes,
+<span class="fc" id="L58">                                   List&lt;RelationHypothesisDto&gt; provisionalRelations) {</span>
+<span class="fc" id="L59">        this.scores = scores;</span>
+<span class="fc" id="L60">        this.businessText = businessText;</span>
+<span class="fc" id="L61">        this.maxArchitectureNodes = maxArchitectureNodes;</span>
+<span class="fc" id="L62">        this.provisionalRelations = provisionalRelations;</span>
+<span class="fc" id="L63">    }</span>
+
+    // --- Utility -------------------------------------------------------
+
+    /**
+     * Builds (and caches) a hierarchy-path string for the given node code,
+     * e.g. {@code &quot;CP &gt; CP-1000 &gt; CP-1023&quot;}, using the real taxonomy parent chain.
+     *
+     * @param nodeCode        taxonomy node code to resolve
+     * @param taxonomyService service used to look up the path-to-root
+     * @return the path string, or the code itself when no path is found
+     */
+    public String buildHierarchyPath(String nodeCode, TaxonomyService taxonomyService) {
+<span class="fc" id="L76">        return pathCache.computeIfAbsent(nodeCode, code -&gt; {</span>
+<span class="fc" id="L77">            List&lt;TaxonomyNode&gt; path = taxonomyService.getPathToRoot(code);</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (path.isEmpty()) {</span>
+<span class="fc" id="L79">                return code;</span>
+            }
+<span class="fc" id="L81">            StringBuilder sb = new StringBuilder();</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            for (int i = 0; i &lt; path.size(); i++) {</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                if (i &gt; 0) sb.append(&quot; &gt; &quot;);</span>
+<span class="fc" id="L84">                sb.append(path.get(i).getCode());</span>
+            }
+<span class="fc" id="L86">            return sb.toString();</span>
+        });
+    }
+
+    // --- Getters / setters ---------------------------------------------
+
+<span class="fc" id="L92">    public Map&lt;String, Integer&gt; getScores() { return scores; }</span>
+
+<span class="nc" id="L94">    public String getBusinessText() { return businessText; }</span>
+
+<span class="fc" id="L96">    public int getMaxArchitectureNodes() { return maxArchitectureNodes; }</span>
+
+<span class="fc" id="L98">    public List&lt;RelationHypothesisDto&gt; getProvisionalRelations() { return provisionalRelations; }</span>
+
+    public void setProvisionalRelations(List&lt;RelationHypothesisDto&gt; provisionalRelations) {
+<span class="nc" id="L101">        this.provisionalRelations = provisionalRelations;</span>
+<span class="nc" id="L102">    }</span>
+
+<span class="fc" id="L104">    public List&lt;RequirementAnchor&gt; getAnchors() { return anchors; }</span>
+
+<span class="fc" id="L106">    public void setAnchors(List&lt;RequirementAnchor&gt; anchors) { this.anchors = anchors; }</span>
+
+<span class="nc" id="L108">    public Map&lt;String, Double&gt; getAnchorRelevances() { return anchorRelevances; }</span>
+
+    public void setAnchorRelevances(Map&lt;String, Double&gt; anchorRelevances) {
+<span class="fc" id="L111">        this.anchorRelevances = anchorRelevances;</span>
+<span class="fc" id="L112">    }</span>
+
+<span class="fc" id="L114">    public PropagationResult getPropagation() { return propagation; }</span>
+
+<span class="fc" id="L116">    public void setPropagation(PropagationResult propagation) { this.propagation = propagation; }</span>
+
+<span class="nc" id="L118">    public Map&lt;String, String&gt; getPathCache() { return pathCache; }</span>
+
+<span class="fc" id="L120">    public List&lt;RequirementElementView&gt; getElements() { return elements; }</span>
+
+<span class="fc" id="L122">    public void setElements(List&lt;RequirementElementView&gt; elements) { this.elements = elements; }</span>
+
+<span class="fc" id="L124">    public List&lt;RequirementRelationshipView&gt; getRelationships() { return relationships; }</span>
+
+    public void setRelationships(List&lt;RequirementRelationshipView&gt; relationships) {
+<span class="fc" id="L127">        this.relationships = relationships;</span>
+<span class="fc" id="L128">    }</span>
+
+<span class="fc" id="L130">    public boolean isUsedProvisional() { return usedProvisional; }</span>
+
+<span class="fc" id="L132">    public void setUsedProvisional(boolean usedProvisional) { this.usedProvisional = usedProvisional; }</span>
+
+<span class="fc" id="L134">    public RequirementArchitectureView getView() { return view; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

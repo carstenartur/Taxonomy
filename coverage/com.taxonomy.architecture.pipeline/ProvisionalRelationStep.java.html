@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ProvisionalRelationStep.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.pipeline</a> &gt; <span class="el_source">ProvisionalRelationStep.java</span></div><h1>ProvisionalRelationStep.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.pipeline;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.NodeOrigin;
+import com.taxonomy.dto.RelationHypothesisDto;
+import com.taxonomy.dto.RequirementElementView;
+import com.taxonomy.dto.RequirementRelationshipView;
+import com.taxonomy.dto.RelationOrigin;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Injects provisional (AI-suggested) relation hypotheses as virtual edges
+ * when no confirmed relations exist.
+ *
+ * &lt;p&gt;When the relationship list is empty but provisional relations are available,
+ * this step adds the hypothesis endpoints to the element list (if not already present)
+ * and creates corresponding {@link RequirementRelationshipView} entries marked as
+ * {@code provisional (AI-suggested, not yet confirmed)}.
+ *
+ * &lt;p&gt;This ensures the architecture view is immediately useful even before any
+ * confirmed taxonomy relations have been saved.
+ */
+@Service
+public class ProvisionalRelationStep {
+
+    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyService taxonomyService;
+
+    public ProvisionalRelationStep(TaxonomyNodeRepository nodeRepository,
+<span class="fc" id="L37">                                   TaxonomyService taxonomyService) {</span>
+<span class="fc" id="L38">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L39">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L40">    }</span>
+
+    public void execute(ArchitectureViewContext ctx) {
+<span class="fc" id="L43">        List&lt;RequirementRelationshipView&gt; relationships = ctx.getRelationships();</span>
+<span class="fc" id="L44">        List&lt;RelationHypothesisDto&gt; provisionalRelations = ctx.getProvisionalRelations();</span>
+
+<span class="fc bfc" id="L46" title="All 4 branches covered.">        if (!relationships.isEmpty()</span>
+                || provisionalRelations == null
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">                || provisionalRelations.isEmpty()) {</span>
+<span class="fc" id="L49">            return;</span>
+        }
+
+<span class="fc" id="L52">        List&lt;RequirementElementView&gt; elements = ctx.getElements();</span>
+<span class="fc" id="L53">        Set&lt;String&gt; includedCodes = elements.stream()</span>
+<span class="fc" id="L54">                .map(RequirementElementView::getNodeCode)</span>
+<span class="fc" id="L55">                .collect(Collectors.toSet());</span>
+
+<span class="fc" id="L57">        boolean addedProvisional = false;</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (RelationHypothesisDto hyp : provisionalRelations) {</span>
+<span class="fc bfc" id="L59" title="All 4 branches covered.">            if (!hasText(hyp.getSourceCode()) || !hasText(hyp.getTargetCode())) {</span>
+<span class="fc" id="L60">                continue;</span>
+            }
+
+<span class="fc" id="L63">            ensureElement(elements, includedCodes, hyp.getSourceCode(), hyp.getSourceName(),</span>
+<span class="fc" id="L64">                    ctx.getScores(), ctx);</span>
+<span class="fc" id="L65">            ensureElement(elements, includedCodes, hyp.getTargetCode(), hyp.getTargetName(),</span>
+<span class="fc" id="L66">                    ctx.getScores(), ctx);</span>
+
+<span class="fc" id="L68">            RequirementRelationshipView rv = new RequirementRelationshipView();</span>
+<span class="fc" id="L69">            rv.setSourceCode(hyp.getSourceCode());</span>
+<span class="fc" id="L70">            rv.setTargetCode(hyp.getTargetCode());</span>
+<span class="fc" id="L71">            rv.setRelationType(hyp.getRelationType());</span>
+<span class="fc" id="L72">            rv.setPropagatedRelevance(hyp.getConfidence());</span>
+<span class="fc" id="L73">            rv.setHopDistance(0);</span>
+<span class="fc" id="L74">            rv.setIncludedBecause(&quot;provisional (AI-suggested, not yet confirmed)&quot;);</span>
+<span class="fc" id="L75">            relationships.add(rv);</span>
+<span class="fc" id="L76">            addedProvisional = true;</span>
+<span class="fc" id="L77">        }</span>
+
+<span class="fc" id="L79">        ctx.setUsedProvisional(addedProvisional);</span>
+<span class="fc" id="L80">    }</span>
+
+    private void ensureElement(List&lt;RequirementElementView&gt; elements,
+                                Set&lt;String&gt; includedCodes,
+                                String nodeCode, String nodeName,
+                                java.util.Map&lt;String, Integer&gt; scores,
+                                ArchitectureViewContext ctx) {
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (includedCodes.contains(nodeCode)) {</span>
+<span class="fc" id="L88">            return;</span>
+        }
+<span class="fc" id="L90">        RequirementElementView element = new RequirementElementView();</span>
+<span class="fc" id="L91">        element.setNodeCode(nodeCode);</span>
+<span class="fc" id="L92">        element.setRelevance(scores.getOrDefault(nodeCode, 0) / 100.0);</span>
+<span class="fc" id="L93">        element.setHopDistance(0);</span>
+<span class="fc" id="L94">        element.setAnchor(false);</span>
+<span class="fc" id="L95">        element.setIncludedBecause(&quot;provisional relation endpoint&quot;);</span>
+<span class="fc" id="L96">        element.setOrigin(NodeOrigin.SEED_CONTEXT);</span>
+<span class="fc" id="L97">        element.setDirectLlmScore(scores.getOrDefault(nodeCode, 0));</span>
+<span class="fc" id="L98">        element.setTitle(nodeName);</span>
+
+<span class="fc" id="L100">        Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (nodeOpt.isPresent()) {</span>
+<span class="nc" id="L102">            TaxonomyNode node = nodeOpt.get();</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">            if (element.getTitle() == null) {</span>
+<span class="nc" id="L104">                element.setTitle(node.getNameEn());</span>
+            }
+<span class="nc" id="L106">            element.setTaxonomySheet(node.getTaxonomyRoot());</span>
+        }
+
+<span class="fc" id="L109">        element.setHierarchyPath(ctx.buildHierarchyPath(nodeCode, taxonomyService));</span>
+
+<span class="fc" id="L111">        elements.add(element);</span>
+<span class="fc" id="L112">        includedCodes.add(nodeCode);</span>
+<span class="fc" id="L113">    }</span>
+
+    private static boolean hasText(String value) {
+<span class="fc bfc" id="L116" title="All 4 branches covered.">        return value != null &amp;&amp; !value.isBlank();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

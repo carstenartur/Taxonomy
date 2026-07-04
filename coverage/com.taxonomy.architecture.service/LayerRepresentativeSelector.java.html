@@ -2,7 +2,7 @@
 
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
-import com.taxonomy.dto.RequirementElementView;
+import com.taxonomy.pipeline.PipelineConstants;
 
 import java.util.*;
 
@@ -21,11 +21,11 @@ import java.util.*;
  * islands in the diagram: the intermediate node has a dash in its code, so
  * {@code generateImpactRelations()} can create cross-category edges for it.
  */
-class LayerRepresentativeSelector {
+public class LayerRepresentativeSelector {
 
     private final TaxonomyNodeRepository nodeRepository;
 
-<span class="fc" id="L28">    LayerRepresentativeSelector(TaxonomyNodeRepository nodeRepository) {</span>
+<span class="fc" id="L28">    public LayerRepresentativeSelector(TaxonomyNodeRepository nodeRepository) {</span>
 <span class="fc" id="L29">        this.nodeRepository = nodeRepository;</span>
 <span class="fc" id="L30">    }</span>
 
@@ -38,7 +38,7 @@ class LayerRepresentativeSelector {
      *                           exists in the same root layer
      * @return {@code true} if the candidate should be included
      */
-    boolean shouldInclude(TaxonomyNode node, int rootScore, boolean hasDeepLeafInLayer) {
+    public boolean shouldInclude(TaxonomyNode node, int rootScore, boolean hasDeepLeafInLayer) {
         // Always accept deep leaves (depth &gt; 1)
 <span class="fc bfc" id="L43" title="All 2 branches covered.">        if (node.getLevel() &gt; 1) {</span>
 <span class="fc" id="L44">            return true;</span>
@@ -47,7 +47,7 @@ class LayerRepresentativeSelector {
         // Accept level-1 intermediates as fallback when no deep leaves exist
         // and the root layer has a meaningful score
 <span class="fc bfc" id="L49" title="All 6 branches covered.">        if (node.getLevel() == 1 &amp;&amp; !hasDeepLeafInLayer</span>
-                &amp;&amp; rootScore &gt;= RequirementArchitectureViewService.ANCHOR_THRESHOLD_LOW) {
+                &amp;&amp; rootScore &gt;= PipelineConstants.ANCHOR_THRESHOLD_LOW) {
 <span class="fc" id="L51">            return true;</span>
         }
 
