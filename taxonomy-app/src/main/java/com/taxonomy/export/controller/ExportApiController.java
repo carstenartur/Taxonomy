@@ -23,11 +23,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api")
 @Tag(name = "Export")
 public class ExportApiController {
+
+    private static final Logger log = LoggerFactory.getLogger(ExportApiController.class);
 
     private final ExportFacade exportFacade;
     private final ExportFormatExtensionRegistry exportFormatRegistry;
@@ -180,6 +184,7 @@ public class ExportApiController {
 
             return ResponseEntity.ok().headers(headers).body(result.bytes());
         } catch (UncheckedIOException e) {
+            log.error("Export failed for format '{}': {}", formatId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
