@@ -25,6 +25,14 @@ Taxonomy Application,com.taxonomy.provenance.model,SourceFragment,36,46,0,0,10,1
 Taxonomy Application,com.taxonomy.provenance.model,RequirementSourceLink,12,59,0,0,3,19,3,15,3,15
 Taxonomy Application,com.taxonomy,TaxonomyApplication,8,0,0,0,3,0,2,0,2,0
 Taxonomy Application,com.taxonomy,AppConfig,0,57,0,0,0,16,0,5,0,5
+Taxonomy Application,com.taxonomy.architecture.report,JsonReportRendererExtension,16,26,0,0,3,6,1,4,1,4
+Taxonomy Application,com.taxonomy.architecture.report,ReportRendererRegistry,8,80,2,4,1,20,3,8,1,7
+Taxonomy Application,com.taxonomy.architecture.report,ReportRenderContext,2,25,1,1,0,5,1,2,0,2
+Taxonomy Application,com.taxonomy.architecture.report,HtmlReportRendererExtension,0,31,0,0,0,7,0,4,0,4
+Taxonomy Application,com.taxonomy.architecture.report,DocxReportRendererExtension,0,27,0,0,0,6,0,4,0,4
+Taxonomy Application,com.taxonomy.architecture.report,MarkdownReportRendererExtension,0,31,0,0,0,7,0,4,0,4
+Taxonomy Application,com.taxonomy.architecture.report,ReportRenderResult,0,29,0,0,0,6,0,3,0,3
+Taxonomy Application,com.taxonomy.architecture.report,ReportFormatDescriptor,0,18,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.search.controller,SearchApiController,37,112,10,18,5,26,10,12,0,8
 Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController,269,288,29,17,59,81,21,13,1,10
 Taxonomy Application,com.taxonomy.analysis.controller,AnalysisSseEventMapper,25,233,7,17,4,39,7,9,0,4
@@ -144,7 +152,7 @@ Taxonomy Application,com.taxonomy.architecture.controller,ReportApiController.Re
 Taxonomy Application,com.taxonomy.architecture.controller,GraphQueryApiController,0,122,2,8,0,28,2,10,0,7
 Taxonomy Application,com.taxonomy.architecture.controller,GapAnalysisApiController,0,32,0,2,0,10,0,4,0,3
 Taxonomy Application,com.taxonomy.architecture.controller,PatternDetectionApiController.PatternDetectionRequest,0,9,0,0,0,1,0,1,0,1
-Taxonomy Application,com.taxonomy.architecture.controller,ReportApiController,9,174,6,10,3,36,6,7,0,5
+Taxonomy Application,com.taxonomy.architecture.controller,ReportApiController,9,209,6,10,3,49,6,7,0,5
 Taxonomy Application,com.taxonomy.architecture.controller,ExplanationTraceApiController.ExplainRequest,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.workspace.controller,WorkspaceController,571,583,34,18,123,131,32,29,9,26
 Taxonomy Application,com.taxonomy.workspace.controller,ExternalSyncController,111,152,1,5,27,38,1,8,0,6

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReportRendererRegistry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.report</a> &gt; <span class="el_source">ReportRendererRegistry.java</span></div><h1>ReportRendererRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.report;
+
+import org.springframework.stereotype.Service;
+
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Registry for report renderer extensions.
+ */
+@Service
+public class ReportRendererRegistry {
+
+    private final Map&lt;String, ReportRendererExtension&gt; byFormatId;
+
+<span class="fc" id="L20">    public ReportRendererRegistry(List&lt;ReportRendererExtension&gt; extensions) {</span>
+<span class="fc" id="L21">        Map&lt;String, ReportRendererExtension&gt; map = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L22">        extensions.stream()</span>
+<span class="fc" id="L23">                .sorted(Comparator.comparing(ext -&gt; ext.descriptor().id()))</span>
+<span class="fc" id="L24">                .forEach(extension -&gt; {</span>
+<span class="fc" id="L25">                    String key = normalize(extension.descriptor().id());</span>
+<span class="fc" id="L26">                    ReportRendererExtension previous = map.putIfAbsent(key, extension);</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">                    if (previous != null) {</span>
+<span class="fc" id="L28">                        throw new IllegalStateException(&quot;Duplicate report renderer format ID: &quot; + key);</span>
+                    }
+<span class="fc" id="L30">                });</span>
+<span class="fc" id="L31">        this.byFormatId = Map.copyOf(map);</span>
+<span class="fc" id="L32">    }</span>
+
+    public ReportRendererExtension getRequired(String formatId) {
+<span class="fc" id="L35">        return findByFormatId(formatId)</span>
+<span class="pc" id="L36">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Unknown report format: &quot; + formatId));</span>
+    }
+
+    public Optional&lt;ReportRendererExtension&gt; findByFormatId(String formatId) {
+<span class="pc bpc" id="L40" title="2 of 4 branches missed.">        if (formatId == null || formatId.isBlank()) {</span>
+<span class="nc" id="L41">            return Optional.empty();</span>
+        }
+<span class="fc" id="L43">        return Optional.ofNullable(byFormatId.get(normalize(formatId)));</span>
+    }
+
+    public List&lt;ReportFormatDescriptor&gt; listDescriptors() {
+<span class="fc" id="L47">        return byFormatId.values().stream()</span>
+<span class="fc" id="L48">                .map(ReportRendererExtension::descriptor)</span>
+<span class="fc" id="L49">                .toList();</span>
+    }
+
+    private String normalize(String formatId) {
+<span class="fc" id="L53">        return formatId.trim().toLowerCase(Locale.ROOT);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
