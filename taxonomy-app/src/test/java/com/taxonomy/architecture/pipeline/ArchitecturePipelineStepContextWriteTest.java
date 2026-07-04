@@ -108,7 +108,7 @@ class ArchitecturePipelineStepContextWriteTest {
     // ── descriptor is derived from interface methods ──────────────────────────
 
     @Test
-    void descriptorIsAutoDeriverdFromInterfaceMethods() {
+    void descriptorIsAutoDerivedFromInterfaceMethods() {
         ArchitecturePipelineStep step = new ArchitecturePipelineStep() {
             @Override public String id()    { return "my-step"; }
             @Override public int order()    { return 42; }
