@@ -2,7 +2,7 @@ package com.taxonomy.architecture.service;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
-import com.taxonomy.dto.RequirementElementView;
+import com.taxonomy.pipeline.PipelineConstants;
 
 import java.util.*;
 
@@ -21,11 +21,11 @@ import java.util.*;
  * islands in the diagram: the intermediate node has a dash in its code, so
  * {@code generateImpactRelations()} can create cross-category edges for it.
  */
-class LayerRepresentativeSelector {
+public class LayerRepresentativeSelector {
 
     private final TaxonomyNodeRepository nodeRepository;
 
-    LayerRepresentativeSelector(TaxonomyNodeRepository nodeRepository) {
+    public LayerRepresentativeSelector(TaxonomyNodeRepository nodeRepository) {
         this.nodeRepository = nodeRepository;
     }
 
@@ -38,7 +38,7 @@ class LayerRepresentativeSelector {
      *                           exists in the same root layer
      * @return {@code true} if the candidate should be included
      */
-    boolean shouldInclude(TaxonomyNode node, int rootScore, boolean hasDeepLeafInLayer) {
+    public boolean shouldInclude(TaxonomyNode node, int rootScore, boolean hasDeepLeafInLayer) {
         // Always accept deep leaves (depth > 1)
         if (node.getLevel() > 1) {
             return true;
@@ -47,7 +47,7 @@ class LayerRepresentativeSelector {
         // Accept level-1 intermediates as fallback when no deep leaves exist
         // and the root layer has a meaningful score
         if (node.getLevel() == 1 && !hasDeepLeafInLayer
-                && rootScore >= RequirementArchitectureViewService.ANCHOR_THRESHOLD_LOW) {
+                && rootScore >= PipelineConstants.ANCHOR_THRESHOLD_LOW) {
             return true;
         }
 

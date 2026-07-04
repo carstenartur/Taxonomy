@@ -16,3 +16,7 @@ The UI consists of 33 JavaScript modules across a single-page Bootstrap 5
 application. For module inventory and API data requirements, see the
 [UI_GAP_ANALYSIS.md](../en/UI_GAP_ANALYSIS.md) or the source
 code in `src/main/resources/static/js/`.
+
+For a maintainability-oriented overview of each feature area — backend packages,
+frontend modules, extension points, and cognitive load — see the
+[Maintainability Matrix](MAINTAINABILITY_MATRIX.md).
