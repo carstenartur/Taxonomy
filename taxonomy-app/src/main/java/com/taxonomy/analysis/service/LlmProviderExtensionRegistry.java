@@ -1,0 +1,93 @@
+package com.taxonomy.analysis.service;
+
+import org.springframework.stereotype.Service;
+
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Registry for LLM provider extensions.
+ *
+ * <p>All Spring beans implementing {@link LlmProviderExtension} are collected here
+ * automatically.  Use {@link #getRequired(LlmProvider)} or {@link #findById(String)}
+ * to look up a provider, and {@link #listDescriptors()} to enumerate available providers.
+ */
+@Service
+public class LlmProviderExtensionRegistry {
+
+    private final Map<String, LlmProviderExtension> byProviderId;
+
+    public LlmProviderExtensionRegistry(List<LlmProviderExtension> extensions) {
+        Map<String, LlmProviderExtension> map = new LinkedHashMap<>();
+        extensions.stream()
+                .map(this::validatedRegistration)
+                .sorted(Comparator.comparing(Registration::normalizedProviderId))
+                .forEach(registration -> {
+                    LlmProviderExtension previous = map.putIfAbsent(
+                            registration.normalizedProviderId(),
+                            registration.extension());
+                    if (previous != null) {
+                        throw new IllegalStateException(
+                                "Duplicate LLM provider ID: " + registration.normalizedProviderId());
+                    }
+                });
+        this.byProviderId = Map.copyOf(map);
+    }
+
+    /**
+     * Returns the extension for the given provider.
+     *
+     * @throws IllegalArgumentException if no extension is registered for the provider
+     */
+    public LlmProviderExtension getRequired(LlmProvider provider) {
+        return findById(provider.name())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No LlmProviderExtension registered for provider: " + provider));
+    }
+
+    /**
+     * Returns the extension for the given provider ID string, or empty if not found.
+     */
+    public Optional<LlmProviderExtension> findById(String providerId) {
+        if (providerId == null || providerId.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(byProviderId.get(normalize(providerId)));
+    }
+
+    /**
+     * Lists the descriptors of all registered LLM providers.
+     */
+    public List<LlmProviderDescriptor> listDescriptors() {
+        return byProviderId.values().stream()
+                .map(LlmProviderExtension::descriptor)
+                .toList();
+    }
+
+    private String normalize(String providerId) {
+        return providerId.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private Registration validatedRegistration(LlmProviderExtension extension) {
+        LlmProviderDescriptor descriptor = extension.descriptor();
+        if (descriptor == null) {
+            throw new IllegalStateException(
+                    "LLM provider extension %s returned a null descriptor"
+                            .formatted(extension.getClass().getName()));
+        }
+        String providerId = descriptor.providerId();
+        if (providerId == null || providerId.isBlank()) {
+            throw new IllegalStateException(
+                    "LLM provider extension %s must declare a non-blank provider ID"
+                            .formatted(extension.getClass().getName()));
+        }
+        return new Registration(normalize(providerId), extension);
+    }
+
+    private record Registration(String normalizedProviderId, LlmProviderExtension extension) {
+    }
+}

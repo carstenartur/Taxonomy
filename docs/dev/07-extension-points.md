@@ -62,3 +62,51 @@ layer (`ImportApiController`) and `ImportProfileRegistry`.  The REST API shape
 4. The new profile is automatically registered in `ImportProfileRegistry` and
    exposed by `GET /api/import/profiles` without any changes to existing
    profile implementations.
+
+---
+
+## LlmProviderExtension
+
+LLM providers are described via `LlmProviderExtension` implementations in
+`taxonomy-app`:
+
+- `descriptor()` returns a serializable `LlmProviderDescriptor`
+  (provider ID, display name, capability flags, required configuration properties)
+- `provider()` returns the corresponding `LlmProvider` enum constant
+
+The `LlmProviderDescriptor` captures:
+
+| Field | Type | Description |
+|---|---|---|
+| `providerId` | `String` | Matches `LlmProvider.name()` (e.g. `"GEMINI"`) |
+| `providerName` | `String` | Human-readable name (e.g. `"Gemini"`) |
+| `requiresApiKey` | `boolean` | `true` for cloud providers; `false` for `LOCAL_ONNX` |
+| `supportsStreaming` | `boolean` | `true` if streaming responses are supported |
+| `supportsStructuredOutput` | `boolean` | `true` if JSON-schema structured output is supported |
+| `supportsLocalExecution` | `boolean` | `true` for `LOCAL_ONNX`; `false` for all cloud providers |
+| `configurationProperties` | `List<String>` | Spring property keys required (e.g. `["gemini.api.key"]`) |
+
+The registry is `LlmProviderExtensionRegistry`, which supports:
+
+- lookup by `LlmProvider` enum (`getRequired(LlmProvider.GEMINI)`)
+- lookup by provider ID string (`findById("gemini")`, case-insensitive)
+- listing all registered descriptors (`listDescriptors()`)
+
+The actual HTTP communication continues to use `LlmGateway` and `LlmGatewayRegistry`.
+`LlmProviderExtension` is the metadata/descriptor layer; it does not replace the gateway.
+
+### Add a new LLM provider
+
+1. Add a new constant to the `LlmProvider` enum.
+2. Create a Spring `@Component` implementing `LlmProviderExtension`.
+3. Return a `LlmProviderDescriptor` with a `providerId` matching the enum constant name.
+4. Implement `provider()` returning the new enum constant.
+5. Register a gateway in `LlmGatewayRegistry` for the new constant
+   (typically a new `OpenAiCompatibleGateway` instance if the provider is OpenAI-compatible).
+6. Add API key injection in `LlmProviderConfig` and wire it into `getApiKey(...)` and
+   `getAvailableProviders()`.
+7. Add a unit test asserting that `LlmProviderExtensionRegistry.getRequired(NEW_PROVIDER)`
+   returns an extension whose `descriptor().providerId()` matches the enum name.
+
+The new provider is automatically listed by `LlmProviderExtensionRegistry.listDescriptors()`
+without any changes to existing provider implementations.
