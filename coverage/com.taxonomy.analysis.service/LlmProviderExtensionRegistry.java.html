@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>LlmProviderExtensionRegistry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmProviderExtensionRegistry.java</span></div><h1>LlmProviderExtensionRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import org.springframework.stereotype.Service;
+
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Registry for LLM provider extensions.
+ *
+ * &lt;p&gt;All Spring beans implementing {@link LlmProviderExtension} are collected here
+ * automatically.  Use {@link #getRequired(LlmProvider)} or {@link #findById(String)}
+ * to look up a provider, and {@link #listDescriptors()} to enumerate available providers.
+ */
+@Service
+public class LlmProviderExtensionRegistry {
+
+    private final Map&lt;String, LlmProviderExtension&gt; byProviderId;
+
+<span class="fc" id="L24">    public LlmProviderExtensionRegistry(List&lt;LlmProviderExtension&gt; extensions) {</span>
+<span class="fc" id="L25">        Map&lt;String, LlmProviderExtension&gt; map = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L26">        extensions.stream()</span>
+<span class="fc" id="L27">                .map(this::validatedRegistration)</span>
+<span class="fc" id="L28">                .sorted(Comparator.comparing(Registration::normalizedProviderId))</span>
+<span class="fc" id="L29">                .forEach(registration -&gt; {</span>
+<span class="fc" id="L30">                    LlmProviderExtension previous = map.putIfAbsent(</span>
+<span class="fc" id="L31">                            registration.normalizedProviderId(),</span>
+<span class="fc" id="L32">                            registration.extension());</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">                    if (previous != null) {</span>
+<span class="fc" id="L34">                        throw new IllegalStateException(</span>
+<span class="fc" id="L35">                                &quot;Duplicate LLM provider ID: &quot; + registration.normalizedProviderId());</span>
+                    }
+<span class="fc" id="L37">                });</span>
+<span class="fc" id="L38">        this.byProviderId = Map.copyOf(map);</span>
+<span class="fc" id="L39">    }</span>
+
+    /**
+     * Returns the extension for the given provider.
+     *
+     * @throws IllegalArgumentException if {@code provider} is null or no extension is registered for it
+     */
+    public LlmProviderExtension getRequired(LlmProvider provider) {
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        if (provider == null) {</span>
+<span class="fc" id="L48">            throw new IllegalArgumentException(&quot;provider must not be null&quot;);</span>
+        }
+<span class="fc" id="L50">        return findById(provider.name())</span>
+<span class="pc" id="L51">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;No LlmProviderExtension registered for provider: &quot; + provider));
+    }
+
+    /**
+     * Returns the extension for the given provider ID string, or empty if not found.
+     */
+    public Optional&lt;LlmProviderExtension&gt; findById(String providerId) {
+<span class="fc bfc" id="L59" title="All 4 branches covered.">        if (providerId == null || providerId.isBlank()) {</span>
+<span class="fc" id="L60">            return Optional.empty();</span>
+        }
+<span class="fc" id="L62">        return Optional.ofNullable(byProviderId.get(normalize(providerId)));</span>
+    }
+
+    /**
+     * Lists the descriptors of all registered LLM providers, sorted by provider ID.
+     */
+    public List&lt;LlmProviderDescriptor&gt; listDescriptors() {
+<span class="fc" id="L69">        return byProviderId.values().stream()</span>
+<span class="fc" id="L70">                .map(LlmProviderExtension::descriptor)</span>
+<span class="fc" id="L71">                .sorted(Comparator.comparing(LlmProviderDescriptor::providerId))</span>
+<span class="fc" id="L72">                .toList();</span>
+    }
+
+    private String normalize(String providerId) {
+<span class="fc" id="L76">        return providerId.trim().toUpperCase(Locale.ROOT);</span>
+    }
+
+    private Registration validatedRegistration(LlmProviderExtension extension) {
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (extension == null) {</span>
+<span class="nc" id="L81">            throw new IllegalStateException(&quot;A null LlmProviderExtension was passed to the registry&quot;);</span>
+        }
+<span class="fc" id="L83">        LlmProviderDescriptor descriptor = extension.descriptor();</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        if (descriptor == null) {</span>
+<span class="nc" id="L85">            throw new IllegalStateException(</span>
+                    &quot;LLM provider extension %s returned a null descriptor&quot;
+<span class="nc" id="L87">                            .formatted(extension.getClass().getName()));</span>
+        }
+<span class="fc" id="L89">        String providerId = descriptor.providerId();</span>
+<span class="pc bpc" id="L90" title="2 of 4 branches missed.">        if (providerId == null || providerId.isBlank()) {</span>
+<span class="nc" id="L91">            throw new IllegalStateException(</span>
+                    &quot;LLM provider extension %s must declare a non-blank provider ID&quot;
+<span class="nc" id="L93">                            .formatted(extension.getClass().getName()));</span>
+        }
+<span class="fc" id="L95">        LlmProvider provider = extension.provider();</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (provider == null) {</span>
+<span class="nc" id="L97">            throw new IllegalStateException(</span>
+                    &quot;LLM provider extension %s returned a null provider&quot;
+<span class="nc" id="L99">                            .formatted(extension.getClass().getName()));</span>
+        }
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (!provider.name().equals(providerId)) {</span>
+<span class="nc" id="L102">            throw new IllegalStateException(</span>
+                    &quot;LLM provider extension %s has mismatched providerId '%s' and provider().name() '%s'&quot;
+<span class="nc" id="L104">                            .formatted(extension.getClass().getName(), providerId, provider.name()));</span>
+        }
+<span class="fc" id="L106">        return new Registration(normalize(providerId), extension);</span>
+    }
+
+<span class="fc" id="L109">    private record Registration(String normalizedProviderId, LlmProviderExtension extension) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
