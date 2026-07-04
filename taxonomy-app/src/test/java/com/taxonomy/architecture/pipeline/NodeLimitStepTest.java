@@ -27,7 +27,7 @@ class NodeLimitStepTest {
         addElements(ctx, "BP", "CP", "CR");
         addRelationship(ctx, "BP", "CP");
 
-        step.execute(ctx);
+        step.apply(ctx);
 
         assertThat(ctx.getElements()).hasSize(3);
         assertThat(ctx.getRelationships()).hasSize(1);
@@ -39,7 +39,7 @@ class NodeLimitStepTest {
         ArchitectureViewContext ctx = buildContext(5);
         addElements(ctx, "BP", "CP");
 
-        step.execute(ctx);
+        step.apply(ctx);
 
         assertThat(ctx.getElements()).hasSize(2);
         assertThat(ctx.getView().getNotes()).isEmpty();
@@ -50,7 +50,7 @@ class NodeLimitStepTest {
         ArchitectureViewContext ctx = buildContext(3);
         addElements(ctx, "BP", "CP", "CR");
 
-        step.execute(ctx);
+        step.apply(ctx);
 
         assertThat(ctx.getElements()).hasSize(3);
         assertThat(ctx.getView().getNotes()).isEmpty();
@@ -63,7 +63,7 @@ class NodeLimitStepTest {
         ArchitectureViewContext ctx = buildContext(2);
         addElements(ctx, "BP", "CP", "CR");
 
-        step.execute(ctx);
+        step.apply(ctx);
 
         assertThat(ctx.getElements()).hasSize(2);
         assertThat(ctx.getElements()).extracting(RequirementElementView::getNodeCode)
@@ -78,7 +78,7 @@ class NodeLimitStepTest {
         addRelationship(ctx, "BP", "CR"); // removed (CR is truncated)
         addRelationship(ctx, "CP", "CR"); // removed (CR is truncated)
 
-        step.execute(ctx);
+        step.apply(ctx);
 
         assertThat(ctx.getRelationships()).hasSize(1);
         assertThat(ctx.getRelationships().get(0).getSourceCode()).isEqualTo("BP");
@@ -90,7 +90,7 @@ class NodeLimitStepTest {
         ArchitectureViewContext ctx = buildContext(2);
         addElements(ctx, "BP", "CP", "CR");
 
-        step.execute(ctx);
+        step.apply(ctx);
 
         assertThat(ctx.getView().getNotes())
                 .anyMatch(n -> n.contains("limited to 2 elements"));
@@ -104,7 +104,7 @@ class NodeLimitStepTest {
         addRelationship(ctx, "CP", "CR");
         addRelationship(ctx, "BP", "CI"); // removed (CI is 4th)
 
-        step.execute(ctx);
+        step.apply(ctx);
 
         assertThat(ctx.getRelationships()).hasSize(2);
     }

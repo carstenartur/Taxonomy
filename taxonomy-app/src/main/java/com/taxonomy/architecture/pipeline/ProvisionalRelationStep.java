@@ -26,9 +26,16 @@ import java.util.stream.Collectors;
  *
  * <p>This ensures the architecture view is immediately useful even before any
  * confirmed taxonomy relations have been saved.
+ *
+ * <p><b>Safe extension point</b> — this step may be replaced or augmented
+ * to change how provisional relations are injected, provided the context
+ * element and relationship lists remain in a consistent state on exit.
  */
 @Service
-public class ProvisionalRelationStep {
+public class ProvisionalRelationStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = "provisional-relation";
 
     private final TaxonomyNodeRepository nodeRepository;
     private final TaxonomyService taxonomyService;
@@ -39,7 +46,14 @@ public class ProvisionalRelationStep {
         this.taxonomyService = taxonomyService;
     }
 
-    public void execute(ArchitectureViewContext ctx) {
+    @Override
+    public String id() { return STEP_ID; }
+
+    @Override
+    public int order() { return 600; }
+
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
         List<RequirementRelationshipView> relationships = ctx.getRelationships();
         List<RelationHypothesisDto> provisionalRelations = ctx.getProvisionalRelations();
 

@@ -5,6 +5,7 @@ import com.taxonomy.dto.RelationOrigin;
 import com.taxonomy.dto.RequirementRelationshipView;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.SeedType;
+import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -21,13 +22,32 @@ import java.util.Set;
  * {@link #parseSeedType}, which classify and tag each relation.
  *
  * <p>This step is a pure function with no Spring or repository dependencies.
+ *
+ * <p><b>Core invariant</b> — this step must run after element-build and before
+ * provisional-relation. Do not disable it.
  */
-public class RelationshipBuildStep {
+@Service
+public class RelationshipBuildStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = "relationship-build";
+
+    @Override
+    public String id() { return STEP_ID; }
+
+    @Override
+    public int order() { return 500; }
+
+    @Override
+    public ArchitecturePipelineStepDescriptor descriptor() {
+        return new ArchitecturePipelineStepDescriptor(id(), order(), enabledByDefault(), true);
+    }
 
     /**
      * Builds relationships from the propagation result and stores them in the context.
      */
-    public void execute(ArchitectureViewContext ctx) {
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
         ctx.setRelationships(build(ctx.getPropagation()));
     }
 

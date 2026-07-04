@@ -31,9 +31,16 @@ import java.util.Set;
  *
  * <p>After generating impact relations, the full relationship list is ranked so
  * that cross-category leaf-to-leaf relations appear before root-level ones.
+ *
+ * <p><b>Safe extension point</b> — this step may be replaced or augmented to
+ * change how cross-category impact relations are derived, provided the overall
+ * relationship list remains valid on exit.
  */
 @Service
-public class ImpactRelationStep {
+public class ImpactRelationStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = "impact-relation";
 
     private static final Logger log = LoggerFactory.getLogger(ImpactRelationStep.class);
 
@@ -43,7 +50,14 @@ public class ImpactRelationStep {
         this.nodeRepository = nodeRepository;
     }
 
-    public void execute(ArchitectureViewContext ctx) {
+    @Override
+    public String id() { return STEP_ID; }
+
+    @Override
+    public int order() { return 800; }
+
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
         generateImpactRelations(ctx.getElements(), ctx.getRelationships());
         emitImpactHypotheses(ctx.getRelationships(), ctx.getProvisionalRelations());
     }

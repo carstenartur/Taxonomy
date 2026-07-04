@@ -18,9 +18,15 @@ import java.util.LinkedHashMap;
  * {@code origin} on elements that are already present in the view.
  * Trace entries that are not yet in the element list are not added — they only
  * provide metadata enrichment for elements that survived propagation.
+ *
+ * <p><b>Safe extension point</b> — this step may be replaced or augmented to
+ * change how scoring-path metadata is populated.
  */
 @Service
-public class ScoringTraceStep {
+public class ScoringTraceStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = "scoring-trace";
 
     private final ScoringTraceSelector scoringTraceSelector;
 
@@ -28,7 +34,14 @@ public class ScoringTraceStep {
         this.scoringTraceSelector = scoringTraceSelector;
     }
 
-    public void execute(ArchitectureViewContext ctx) {
+    @Override
+    public String id() { return STEP_ID; }
+
+    @Override
+    public int order() { return 900; }
+
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
         List<RequirementElementView> traceEntries =
                 scoringTraceSelector.buildTrace(ctx.getScores(), ctx.getAnchors());
         mergeTraceOrigins(ctx.getElements(), traceEntries);

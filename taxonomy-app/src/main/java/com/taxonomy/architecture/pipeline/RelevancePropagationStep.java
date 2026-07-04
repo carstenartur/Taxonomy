@@ -13,9 +13,16 @@ import java.util.Map;
  * <p>Converts anchor scores (0–100) to relevance values (0.0–1.0) and
  * delegates to {@link RelevancePropagationService}. The result is stored
  * in the pipeline context.
+ *
+ * <p><b>Core invariant</b> — this step must run after anchor-selection and before
+ * element-build. The propagation result is consumed by subsequent steps.
+ * Do not disable it.
  */
 @Service
-public class RelevancePropagationStep {
+public class RelevancePropagationStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = "relevance-propagation";
 
     private final RelevancePropagationService propagationService;
 
@@ -23,7 +30,19 @@ public class RelevancePropagationStep {
         this.propagationService = propagationService;
     }
 
-    public void execute(ArchitectureViewContext ctx) {
+    @Override
+    public String id() { return STEP_ID; }
+
+    @Override
+    public int order() { return 200; }
+
+    @Override
+    public ArchitecturePipelineStepDescriptor descriptor() {
+        return new ArchitecturePipelineStepDescriptor(id(), order(), enabledByDefault(), true);
+    }
+
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
         Map<String, Double> anchorRelevances = new LinkedHashMap<>();
         for (RequirementAnchor anchor : ctx.getAnchors()) {
             anchorRelevances.put(anchor.getNodeCode(), anchor.getDirectScore() / 100.0);

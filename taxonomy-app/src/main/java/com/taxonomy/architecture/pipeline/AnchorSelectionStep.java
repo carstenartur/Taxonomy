@@ -2,6 +2,7 @@ package com.taxonomy.architecture.pipeline;
 
 import com.taxonomy.dto.RequirementAnchor;
 import com.taxonomy.pipeline.PipelineConstants;
+import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -20,17 +21,36 @@ import java.util.Map;
  *
  * <p>This step is a pure function with no external dependencies and can be
  * unit-tested without a Spring context.
+ *
+ * <p><b>Core invariant</b> — this step must run first and its result determines whether
+ * the pipeline continues at all. Do not disable or reorder it.
  */
-public class AnchorSelectionStep {
+@Service
+public class AnchorSelectionStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = "anchor-selection";
 
     private static final int ANCHOR_THRESHOLD_HIGH = PipelineConstants.ANCHOR_THRESHOLD_HIGH;
     private static final int ANCHOR_THRESHOLD_LOW  = PipelineConstants.ANCHOR_THRESHOLD_LOW;
     private static final int MIN_ANCHORS           = PipelineConstants.MIN_ANCHORS;
 
+    @Override
+    public String id() { return STEP_ID; }
+
+    @Override
+    public int order() { return 100; }
+
+    @Override
+    public ArchitecturePipelineStepDescriptor descriptor() {
+        return new ArchitecturePipelineStepDescriptor(id(), order(), enabledByDefault(), true);
+    }
+
     /**
      * Selects anchors and stores them in {@code ctx.anchors}.
      */
-    public void execute(ArchitectureViewContext ctx) {
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
         ctx.setAnchors(select(ctx.getScores()));
     }
 

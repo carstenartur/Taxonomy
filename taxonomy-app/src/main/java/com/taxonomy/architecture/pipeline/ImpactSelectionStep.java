@@ -15,9 +15,16 @@ import java.util.Set;
  * <p>Delegates the per-element scoring and selection to
  * {@link ArchitectureImpactSelector}, after first collecting the set of node codes
  * that participate in cross-category relationships (used as a bonus factor).
+ *
+ * <p><b>Safe extension point</b> — this step may be replaced or augmented to
+ * change the impact-selection strategy, provided the {@code selectedForImpact}
+ * flag is populated correctly on elements.
  */
 @Service
-public class ImpactSelectionStep {
+public class ImpactSelectionStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = "impact-selection";
 
     private final ArchitectureImpactSelector impactSelector;
 
@@ -25,7 +32,14 @@ public class ImpactSelectionStep {
         this.impactSelector = impactSelector;
     }
 
-    public void execute(ArchitectureViewContext ctx) {
+    @Override
+    public String id() { return STEP_ID; }
+
+    @Override
+    public int order() { return 1000; }
+
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
         Set<String> crossCategoryCodes = collectCrossCategoryCodes(ctx.getRelationships());
         impactSelector.selectForImpact(ctx.getElements(), ctx.getScores(), crossCategoryCodes);
     }
