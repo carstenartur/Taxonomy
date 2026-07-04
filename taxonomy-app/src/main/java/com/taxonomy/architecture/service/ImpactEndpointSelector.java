@@ -25,8 +25,9 @@ public class ImpactEndpointSelector {
      * Returns all qualified impact endpoints from the provided leaves.
      * The result is ordered by composite score descending.
      *
-     * @param leaves non-empty list of leaf elements from the same taxonomy category
-     * @return list of qualified endpoints (never empty — at least the best leaf is always included)
+     * @param leaves list of leaf elements from the same taxonomy category
+     * @return list of qualified endpoints; empty when input is null or empty,
+     * otherwise never empty (at least the best leaf is always included)
      */
     public List<RequirementElementView> selectEndpoints(List<RequirementElementView> leaves) {
         if (leaves == null || leaves.isEmpty()) {

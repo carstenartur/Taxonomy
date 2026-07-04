@@ -286,7 +286,9 @@ class ArchitectureTest {
                     "com.taxonomy.provenance..",
                     "com.taxonomy.preferences..",
                     "com.taxonomy.security..",
-                    "com.taxonomy.shared..")
+                    "com.taxonomy.shared..",
+                    "com.taxonomy.export.service..",
+                    "com.taxonomy.export.controller..")
             .because("taxonomy-dsl framework-free packages must not depend on taxonomy-app packages");
 
     /**
@@ -315,6 +317,8 @@ class ArchitectureTest {
                     "com.taxonomy.provenance..",
                     "com.taxonomy.preferences..",
                     "com.taxonomy.security..",
-                    "com.taxonomy.shared..")
+                    "com.taxonomy.shared..",
+                    "com.taxonomy.export.service..",
+                    "com.taxonomy.export.controller..")
             .because("taxonomy-export framework-free packages must not depend on taxonomy-app packages");
 }

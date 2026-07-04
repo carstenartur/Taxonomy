@@ -54,7 +54,12 @@ public class ProvisionalRelationStep {
                 .map(RequirementElementView::getNodeCode)
                 .collect(Collectors.toSet());
 
+        boolean addedProvisional = false;
         for (RelationHypothesisDto hyp : provisionalRelations) {
+            if (!hasText(hyp.getSourceCode()) || !hasText(hyp.getTargetCode())) {
+                continue;
+            }
+
             ensureElement(elements, includedCodes, hyp.getSourceCode(), hyp.getSourceName(),
                     ctx.getScores(), ctx);
             ensureElement(elements, includedCodes, hyp.getTargetCode(), hyp.getTargetName(),
@@ -68,9 +73,10 @@ public class ProvisionalRelationStep {
             rv.setHopDistance(0);
             rv.setIncludedBecause("provisional (AI-suggested, not yet confirmed)");
             relationships.add(rv);
+            addedProvisional = true;
         }
 
-        ctx.setUsedProvisional(true);
+        ctx.setUsedProvisional(addedProvisional);
     }
 
     private void ensureElement(List<RequirementElementView> elements,
@@ -104,5 +110,9 @@ public class ProvisionalRelationStep {
 
         elements.add(element);
         includedCodes.add(nodeCode);
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 }
