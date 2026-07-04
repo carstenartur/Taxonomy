@@ -4,7 +4,7 @@
 
 Diagram export formats (Mermaid, ArchiMate, Visio, Structurizr, and any future
 format) are pluggable via `ExportFormatExtension` implementations in
-`taxonomy-app/com.taxonomy.export.service`:
+`taxonomy-app/src/main/java/com/taxonomy/export/service`:
 
 - `descriptor()` returns a serializable `ExportFormatDescriptor`
   (format ID, display name, file extension, HTTP content type, binary flag)
@@ -30,13 +30,15 @@ The registry is `ExportFormatExtensionRegistry`, which supports:
 ### Add a new export format
 
 1. Create a Spring `@Component` implementing `ExportFormatExtension` in
-   `taxonomy-app/com.taxonomy.export.service`.
+   `taxonomy-app/src/main/java/com/taxonomy/export/service`.
 2. Provide a unique `descriptor().id()` (lowercase, e.g. `"bpmn"`).
 3. Implement `export(ExportContext context)` using `context.diagram()` and
    optionally `context.options()`.
 4. The new format is automatically registered in `ExportFormatExtensionRegistry`
    without any changes to existing format implementations.
-5. If the format also needs a dedicated REST endpoint, add it to
+5. The generic endpoint `POST /api/diagram/export/{formatId}` automatically routes
+   requests to the new format — no changes to `ExportApiController` are required.
+   If a format-specific endpoint with a custom URL is also needed, add it to
    `ExportApiController` via `ExportFormatExtensionRegistry`.
 
 > **Note:** The exporter logic (the format-specific conversion) should remain in

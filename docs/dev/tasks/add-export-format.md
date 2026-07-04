@@ -10,8 +10,9 @@ download from the export panel.
 ## Preferred approach: ExportFormatExtension (recommended)
 
 New export formats should implement the `ExportFormatExtension` SPI.  This is
-the stable extension point that requires no changes to existing services or
-endpoints.
+the stable extension point — adding a new `@Component` is sufficient to serve
+the format via `POST /api/diagram/export/{formatId}` without any changes to
+existing services or endpoints.
 
 ### Steps
 
@@ -27,7 +28,9 @@ endpoints.
    implementing `ExportFormatExtension`.
 4. The new format is automatically registered in `ExportFormatExtensionRegistry`
    and can be retrieved via `getRequired("<format-id>")`.
-5. If a dedicated REST endpoint is needed, add it to `ExportApiController` using
+5. The generic endpoint `POST /api/diagram/export/{formatId}` routes requests to
+   the new format automatically.  If a format-specific endpoint with a distinct
+   URL is also required, add it to `ExportApiController` using
    `ExportFormatExtensionRegistry` — no changes to existing endpoint methods.
 
 See [`docs/dev/07-extension-points.md`](../07-extension-points.md#exportformatextension)
