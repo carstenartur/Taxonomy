@@ -76,7 +76,7 @@ public interface ArchitecturePipelineStep extends TaxonomyExtension {
 
     @Override
     default String description() {
-        return "Architecture pipeline step";
+        return "Architecture pipeline step: " + id();
     }
 
     @Override
