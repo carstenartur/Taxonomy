@@ -1,6 +1,7 @@
 package com.taxonomy.export.service;
 
 import com.taxonomy.shared.extension.TaxonomyExtension;
+import com.taxonomy.shared.extension.ExtensionKind;
 
 /**
  * Extension SPI for diagram export formats.
@@ -39,6 +40,27 @@ import com.taxonomy.shared.extension.TaxonomyExtension;
  * @see ExportFormatExtensionRegistry
  */
 public interface ExportFormatExtension extends TaxonomyExtension {
+
+    @Override
+    default String id() {
+        return descriptor().id();
+    }
+
+    @Override
+    default String displayName() {
+        return descriptor().displayName();
+    }
+
+    @Override
+    default String description() {
+        ExportFormatDescriptor descriptor = descriptor();
+        return "Exports diagrams as %s".formatted(descriptor.displayName());
+    }
+
+    @Override
+    default ExtensionKind kind() {
+        return ExtensionKind.EXPORT_FORMAT;
+    }
 
     /**
      * Returns the static descriptor for this export format.

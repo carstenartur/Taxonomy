@@ -1,5 +1,6 @@
 package com.taxonomy.architecture.pipeline;
 
+import com.taxonomy.shared.extension.ExtensionKind;
 import com.taxonomy.shared.extension.TaxonomyExtension;
 
 /**
@@ -67,6 +68,21 @@ public interface ArchitecturePipelineStep extends TaxonomyExtension {
      * Must be unique across all registered steps.
      */
     String id();
+
+    @Override
+    default String displayName() {
+        return id();
+    }
+
+    @Override
+    default String description() {
+        return "Architecture pipeline step: " + id();
+    }
+
+    @Override
+    default ExtensionKind kind() {
+        return ExtensionKind.ARCHITECTURE_PIPELINE_STEP;
+    }
 
     /**
      * Returns the numeric order value. Steps are executed in ascending order.
