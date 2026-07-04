@@ -14,13 +14,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Read-only REST API for registered extension descriptors.
  *
  * <p>Endpoints:
  * <ul>
- *   <li>{@code GET /api/extensions} — List all registered extensions grouped by kind</li>
+ *   <li>{@code GET /api/extensions} — List all registered extensions ordered by kind (enum order) then by ID</li>
  *   <li>{@code GET /api/extensions/{kind}} — List extensions for a specific kind</li>
  * </ul>
  *
@@ -73,7 +74,7 @@ public class ExtensionApiController {
             @Parameter(description = "Extension kind, e.g. EXPORT_FORMAT") @PathVariable String kind) {
         ExtensionKind extensionKind;
         try {
-            extensionKind = ExtensionKind.valueOf(kind.toUpperCase());
+            extensionKind = ExtensionKind.valueOf(kind.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }
