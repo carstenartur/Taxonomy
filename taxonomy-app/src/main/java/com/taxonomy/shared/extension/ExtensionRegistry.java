@@ -40,8 +40,14 @@ public class ExtensionRegistry {
                             registration.extension());
                     if (previous != null) {
                         throw new IllegalStateException(
-                                "Duplicate extension ID '%s' for kind %s"
-                                        .formatted(registration.extension().id(), registration.kind()));
+                                "Duplicate extension ID for kind %s: normalized ID '%s' conflicts between %s (id='%s') and %s (id='%s')"
+                                        .formatted(
+                                                registration.kind(),
+                                                registration.normalizedId(),
+                                                previous.getClass().getName(),
+                                                previous.id(),
+                                                registration.extension().getClass().getName(),
+                                                registration.extension().id()));
                     }
                 });
 
@@ -70,6 +76,8 @@ public class ExtensionRegistry {
         }
         return byKind.getOrDefault(kind, Map.of()).values().stream()
                 .map(TaxonomyExtension::extensionDescriptor)
+                .sorted(Comparator.comparing((ExtensionDescriptor descriptor) -> normalize(descriptor.id()))
+                        .thenComparing(ExtensionDescriptor::id))
                 .toList();
     }
 

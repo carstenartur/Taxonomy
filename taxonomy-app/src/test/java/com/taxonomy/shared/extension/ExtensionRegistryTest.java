@@ -42,13 +42,36 @@ class ExtensionRegistryTest {
 
     @Test
     void duplicateIdsAreValidatedPerKind() {
+        StubExtension first = new StubExtension("mermaid", "Mermaid", "", ExtensionKind.EXPORT_FORMAT);
+        AlternativeStubExtension second = new AlternativeStubExtension(
+                "MERMAID",
+                "Mermaid 2",
+                "",
+                ExtensionKind.EXPORT_FORMAT
+        );
         assertThatThrownBy(() -> new ExtensionRegistry(List.of(
-                new StubExtension("mermaid", "Mermaid", "", ExtensionKind.EXPORT_FORMAT),
-                new StubExtension("MERMAID", "Mermaid 2", "", ExtensionKind.EXPORT_FORMAT)
+                first,
+                second
         )))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Duplicate extension ID")
-                .hasMessageContaining("EXPORT_FORMAT");
+                .hasMessageContaining("EXPORT_FORMAT")
+                .hasMessageContaining("normalized ID 'mermaid'")
+                .hasMessageContaining(first.getClass().getName())
+                .hasMessageContaining(second.getClass().getName());
+    }
+
+    @Test
+    void listByKindReturnsDescriptorsSortedById() {
+        ExtensionRegistry registry = new ExtensionRegistry(List.of(
+                new StubExtension("zeta", "Zeta", "", ExtensionKind.EXPORT_FORMAT),
+                new StubExtension("alpha", "Alpha", "", ExtensionKind.EXPORT_FORMAT),
+                new StubExtension("Beta", "Beta", "", ExtensionKind.EXPORT_FORMAT)
+        ));
+
+        assertThat(registry.listByKind(ExtensionKind.EXPORT_FORMAT))
+                .extracting(ExtensionDescriptor::id)
+                .containsExactly("alpha", "Beta", "zeta");
     }
 
     @Test
@@ -66,6 +89,14 @@ class ExtensionRegistryTest {
     }
 
     private record StubExtension(
+            String id,
+            String displayName,
+            String description,
+            ExtensionKind kind
+    ) implements TaxonomyExtension {
+    }
+
+    private record AlternativeStubExtension(
             String id,
             String displayName,
             String description,
