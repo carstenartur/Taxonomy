@@ -5,6 +5,7 @@ import com.taxonomy.dto.RelationOrigin;
 import com.taxonomy.dto.RequirementRelationshipView;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.SeedType;
+import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -21,66 +22,85 @@ import java.util.Set;
  * {@link #parseSeedType}, which classify and tag each relation.
  *
  * &lt;p&gt;This step is a pure function with no Spring or repository dependencies.
+ *
+ * &lt;p&gt;&lt;b&gt;Core invariant&lt;/b&gt; — this step must run after element-build and before
+ * provisional-relation. Do not disable it.
  */
-<span class="fc" id="L25">public class RelationshipBuildStep {</span>
+@Service
+<span class="fc" id="L30">public class RelationshipBuildStep implements ArchitecturePipelineStep {</span>
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = &quot;relationship-build&quot;;
+
+    @Override
+<span class="fc" id="L36">    public String id() { return STEP_ID; }</span>
+
+    @Override
+<span class="fc" id="L39">    public int order() { return 500; }</span>
+
+    @Override
+    public ArchitecturePipelineStepDescriptor descriptor() {
+<span class="nc" id="L43">        return new ArchitecturePipelineStepDescriptor(id(), order(), enabledByDefault(), true);</span>
+    }
 
     /**
      * Builds relationships from the propagation result and stores them in the context.
      */
-    public void execute(ArchitectureViewContext ctx) {
-<span class="fc" id="L31">        ctx.setRelationships(build(ctx.getPropagation()));</span>
-<span class="fc" id="L32">    }</span>
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
+<span class="fc" id="L51">        ctx.setRelationships(build(ctx.getPropagation()));</span>
+<span class="fc" id="L52">    }</span>
 
     /**
      * Builds the relationship list from a propagation result.
      * Package-private for unit testing.
      */
     List&lt;RequirementRelationshipView&gt; build(PropagationResult propagation) {
-<span class="fc" id="L39">        List&lt;RequirementRelationshipView&gt; relationships = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L40">        Set&lt;String&gt; includedNodeCodes = propagation.getRelevanceMap().keySet();</span>
+<span class="fc" id="L59">        List&lt;RequirementRelationshipView&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L60">        Set&lt;String&gt; includedNodeCodes = propagation.getRelevanceMap().keySet();</span>
 
-<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (PropagationResult.TraversedRelation tr : propagation.getTraversedRelations()) {</span>
-<span class="fc" id="L43">            TaxonomyRelationDto rel = tr.getRelation();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        for (PropagationResult.TraversedRelation tr : propagation.getTraversedRelations()) {</span>
+<span class="fc" id="L63">            TaxonomyRelationDto rel = tr.getRelation();</span>
 
-<span class="fc bfc" id="L45" title="All 2 branches covered.">            if (!includedNodeCodes.contains(rel.getSourceCode()) ||</span>
-<span class="pc bpc" id="L46" title="1 of 2 branches missed.">                    !includedNodeCodes.contains(rel.getTargetCode())) {</span>
-<span class="nc" id="L47">                continue;</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            if (!includedNodeCodes.contains(rel.getSourceCode()) ||</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">                    !includedNodeCodes.contains(rel.getTargetCode())) {</span>
+<span class="nc" id="L67">                continue;</span>
             }
 
-<span class="fc" id="L50">            RequirementRelationshipView rv = new RequirementRelationshipView();</span>
-<span class="fc" id="L51">            rv.setRelationId(rel.getId());</span>
-<span class="fc" id="L52">            rv.setSourceCode(rel.getSourceCode());</span>
-<span class="fc" id="L53">            rv.setTargetCode(rel.getTargetCode());</span>
-<span class="fc" id="L54">            rv.setRelationType(rel.getRelationType());</span>
-<span class="fc" id="L55">            rv.setPropagatedRelevance(tr.getPropagatedRelevance());</span>
-<span class="fc" id="L56">            rv.setHopDistance(tr.getHopDistance());</span>
-<span class="fc" id="L57">            rv.setIncludedBecause(tr.getReason());</span>
-<span class="fc" id="L58">            rv.setConfidence(tr.getPropagatedRelevance());</span>
+<span class="fc" id="L70">            RequirementRelationshipView rv = new RequirementRelationshipView();</span>
+<span class="fc" id="L71">            rv.setRelationId(rel.getId());</span>
+<span class="fc" id="L72">            rv.setSourceCode(rel.getSourceCode());</span>
+<span class="fc" id="L73">            rv.setTargetCode(rel.getTargetCode());</span>
+<span class="fc" id="L74">            rv.setRelationType(rel.getRelationType());</span>
+<span class="fc" id="L75">            rv.setPropagatedRelevance(tr.getPropagatedRelevance());</span>
+<span class="fc" id="L76">            rv.setHopDistance(tr.getHopDistance());</span>
+<span class="fc" id="L77">            rv.setIncludedBecause(tr.getReason());</span>
+<span class="fc" id="L78">            rv.setConfidence(tr.getPropagatedRelevance());</span>
 
-<span class="fc" id="L60">            boolean isSeedRelation = isSeedOriginRelation(rel);</span>
-<span class="pc bpc" id="L61" title="1 of 2 branches missed.">            if (isSeedRelation) {</span>
-<span class="fc" id="L62">                rv.setOrigin(RelationOrigin.TAXONOMY_SEED);</span>
-<span class="fc" id="L63">                rv.setSeedType(parseSeedType(rel.getProvenance()));</span>
-<span class="fc" id="L64">                rv.setDerivationReason(&quot;Seed relation: &quot; + rel.getSourceCode()</span>
-<span class="fc" id="L65">                        + &quot; → &quot; + rel.getTargetCode());</span>
+<span class="fc" id="L80">            boolean isSeedRelation = isSeedOriginRelation(rel);</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">            if (isSeedRelation) {</span>
+<span class="fc" id="L82">                rv.setOrigin(RelationOrigin.TAXONOMY_SEED);</span>
+<span class="fc" id="L83">                rv.setSeedType(parseSeedType(rel.getProvenance()));</span>
+<span class="fc" id="L84">                rv.setDerivationReason(&quot;Seed relation: &quot; + rel.getSourceCode()</span>
+<span class="fc" id="L85">                        + &quot; → &quot; + rel.getTargetCode());</span>
             } else {
-<span class="nc" id="L67">                rv.setOrigin(RelationOrigin.PROPAGATED_TRACE);</span>
-<span class="nc" id="L68">                rv.setDerivationReason(&quot;BFS propagation hop &quot; + tr.getHopDistance());</span>
+<span class="nc" id="L87">                rv.setOrigin(RelationOrigin.PROPAGATED_TRACE);</span>
+<span class="nc" id="L88">                rv.setDerivationReason(&quot;BFS propagation hop &quot; + tr.getHopDistance());</span>
             }
-<span class="fc" id="L70">            relationships.add(rv);</span>
-<span class="fc" id="L71">        }</span>
+<span class="fc" id="L90">            relationships.add(rv);</span>
+<span class="fc" id="L91">        }</span>
 
         // Deduplicate by relationId, keeping the entry with highest propagatedRelevance
-<span class="fc" id="L74">        Map&lt;Long, RequirementRelationshipView&gt; deduped = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L75" title="All 2 branches covered.">        for (RequirementRelationshipView rv : relationships) {</span>
-<span class="fc" id="L76">            Long key = rv.getRelationId();</span>
-<span class="fc" id="L77">            RequirementRelationshipView existing = deduped.get(key);</span>
-<span class="pc bpc" id="L78" title="1 of 4 branches missed.">            if (existing == null || rv.getPropagatedRelevance() &gt; existing.getPropagatedRelevance()) {</span>
-<span class="fc" id="L79">                deduped.put(key, rv);</span>
+<span class="fc" id="L94">        Map&lt;Long, RequirementRelationshipView&gt; deduped = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        for (RequirementRelationshipView rv : relationships) {</span>
+<span class="fc" id="L96">            Long key = rv.getRelationId();</span>
+<span class="fc" id="L97">            RequirementRelationshipView existing = deduped.get(key);</span>
+<span class="pc bpc" id="L98" title="1 of 4 branches missed.">            if (existing == null || rv.getPropagatedRelevance() &gt; existing.getPropagatedRelevance()) {</span>
+<span class="fc" id="L99">                deduped.put(key, rv);</span>
             }
-<span class="fc" id="L81">        }</span>
+<span class="fc" id="L101">        }</span>
 
-<span class="fc" id="L83">        return new ArrayList&lt;&gt;(deduped.values());</span>
+<span class="fc" id="L103">        return new ArrayList&lt;&gt;(deduped.values());</span>
     }
 
     /**
@@ -90,10 +110,10 @@ import java.util.Set;
      * (two-letter codes without a hyphen, e.g. CP&amp;nbsp;→&amp;nbsp;CR).
      */
     public static boolean isSeedOriginRelation(TaxonomyRelationDto rel) {
-<span class="fc" id="L93">        String src = rel.getSourceCode();</span>
-<span class="fc" id="L94">        String tgt = rel.getTargetCode();</span>
-<span class="fc bfc" id="L95" title="All 4 branches covered.">        return src != null &amp;&amp; tgt != null</span>
-<span class="fc bfc" id="L96" title="All 4 branches covered.">                &amp;&amp; !src.contains(&quot;-&quot;) &amp;&amp; !tgt.contains(&quot;-&quot;);</span>
+<span class="fc" id="L113">        String src = rel.getSourceCode();</span>
+<span class="fc" id="L114">        String tgt = rel.getTargetCode();</span>
+<span class="fc bfc" id="L115" title="All 4 branches covered.">        return src != null &amp;&amp; tgt != null</span>
+<span class="fc bfc" id="L116" title="All 4 branches covered.">                &amp;&amp; !src.contains(&quot;-&quot;) &amp;&amp; !tgt.contains(&quot;-&quot;);</span>
     }
 
     /**
@@ -101,11 +121,11 @@ import java.util.Set;
      * Falls back to {@link SeedType#TYPE_DEFAULT} when no specific type is recorded.
      */
     public static SeedType parseSeedType(String provenance) {
-<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (provenance == null) return SeedType.TYPE_DEFAULT;</span>
-<span class="fc" id="L105">        String upper = provenance.toUpperCase(Locale.ROOT);</span>
-<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (upper.contains(&quot;FRAMEWORK&quot;)) return SeedType.FRAMEWORK_SEED;</span>
-<span class="fc bfc" id="L107" title="All 4 branches covered.">        if (upper.contains(&quot;SOURCE_DERIVED&quot;) || upper.contains(&quot;DERIVED&quot;)) return SeedType.SOURCE_DERIVED;</span>
-<span class="fc" id="L108">        return SeedType.TYPE_DEFAULT;</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (provenance == null) return SeedType.TYPE_DEFAULT;</span>
+<span class="fc" id="L125">        String upper = provenance.toUpperCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (upper.contains(&quot;FRAMEWORK&quot;)) return SeedType.FRAMEWORK_SEED;</span>
+<span class="fc bfc" id="L127" title="All 4 branches covered.">        if (upper.contains(&quot;SOURCE_DERIVED&quot;) || upper.contains(&quot;DERIVED&quot;)) return SeedType.SOURCE_DERIVED;</span>
+<span class="fc" id="L128">        return SeedType.TYPE_DEFAULT;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

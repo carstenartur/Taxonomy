@@ -15,42 +15,56 @@ import java.util.Set;
  * &lt;p&gt;Delegates the per-element scoring and selection to
  * {@link ArchitectureImpactSelector}, after first collecting the set of node codes
  * that participate in cross-category relationships (used as a bonus factor).
+ *
+ * &lt;p&gt;&lt;b&gt;Safe extension point&lt;/b&gt; — this step may be replaced or augmented to
+ * change the impact-selection strategy, provided the {@code selectedForImpact}
+ * flag is populated correctly on elements.
  */
 @Service
-public class ImpactSelectionStep {
+public class ImpactSelectionStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = &quot;impact-selection&quot;;
 
     private final ArchitectureImpactSelector impactSelector;
 
-<span class="fc" id="L24">    public ImpactSelectionStep(ArchitectureImpactSelector impactSelector) {</span>
-<span class="fc" id="L25">        this.impactSelector = impactSelector;</span>
-<span class="fc" id="L26">    }</span>
+<span class="fc" id="L31">    public ImpactSelectionStep(ArchitectureImpactSelector impactSelector) {</span>
+<span class="fc" id="L32">        this.impactSelector = impactSelector;</span>
+<span class="fc" id="L33">    }</span>
 
-    public void execute(ArchitectureViewContext ctx) {
-<span class="fc" id="L29">        Set&lt;String&gt; crossCategoryCodes = collectCrossCategoryCodes(ctx.getRelationships());</span>
-<span class="fc" id="L30">        impactSelector.selectForImpact(ctx.getElements(), ctx.getScores(), crossCategoryCodes);</span>
-<span class="fc" id="L31">    }</span>
+    @Override
+<span class="fc" id="L36">    public String id() { return STEP_ID; }</span>
+
+    @Override
+<span class="fc" id="L39">    public int order() { return 1000; }</span>
+
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
+<span class="fc" id="L43">        Set&lt;String&gt; crossCategoryCodes = collectCrossCategoryCodes(ctx.getRelationships());</span>
+<span class="fc" id="L44">        impactSelector.selectForImpact(ctx.getElements(), ctx.getScores(), crossCategoryCodes);</span>
+<span class="fc" id="L45">    }</span>
 
     /**
      * Collects node codes that participate in cross-category relationships.
      */
     private static Set&lt;String&gt; collectCrossCategoryCodes(
             List&lt;RequirementRelationshipView&gt; relationships) {
-<span class="fc" id="L38">        Set&lt;String&gt; codes = new LinkedHashSet&lt;&gt;();</span>
-<span class="fc bfc" id="L39" title="All 2 branches covered.">        for (RequirementRelationshipView rel : relationships) {</span>
-<span class="fc" id="L40">            String srcRoot = rootOf(rel.getSourceCode());</span>
-<span class="fc" id="L41">            String tgtRoot = rootOf(rel.getTargetCode());</span>
-<span class="pc bpc" id="L42" title="3 of 6 branches missed.">            if (srcRoot != null &amp;&amp; tgtRoot != null &amp;&amp; !srcRoot.equals(tgtRoot)) {</span>
-<span class="fc" id="L43">                codes.add(rel.getSourceCode());</span>
-<span class="fc" id="L44">                codes.add(rel.getTargetCode());</span>
+<span class="fc" id="L52">        Set&lt;String&gt; codes = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        for (RequirementRelationshipView rel : relationships) {</span>
+<span class="fc" id="L54">            String srcRoot = rootOf(rel.getSourceCode());</span>
+<span class="fc" id="L55">            String tgtRoot = rootOf(rel.getTargetCode());</span>
+<span class="pc bpc" id="L56" title="3 of 6 branches missed.">            if (srcRoot != null &amp;&amp; tgtRoot != null &amp;&amp; !srcRoot.equals(tgtRoot)) {</span>
+<span class="fc" id="L57">                codes.add(rel.getSourceCode());</span>
+<span class="fc" id="L58">                codes.add(rel.getTargetCode());</span>
             }
-<span class="fc" id="L46">        }</span>
-<span class="fc" id="L47">        return codes;</span>
+<span class="fc" id="L60">        }</span>
+<span class="fc" id="L61">        return codes;</span>
     }
 
     private static String rootOf(String code) {
-<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if (code == null) return null;</span>
-<span class="fc" id="L52">        int dash = code.indexOf('-');</span>
-<span class="fc bfc" id="L53" title="All 2 branches covered.">        return dash &gt;= 0 ? code.substring(0, dash) : code;</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (code == null) return null;</span>
+<span class="fc" id="L66">        int dash = code.indexOf('-');</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        return dash &gt;= 0 ? code.substring(0, dash) : code;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

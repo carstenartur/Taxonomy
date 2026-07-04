@@ -32,11 +32,18 @@ import java.util.stream.Collectors;
  * (codes with a dash, e.g. &quot;CO-1063&quot;) that are not already included.
  * The number of additions per root is capped at
  * {@link PipelineConstants#MAX_LEAF_ENRICHMENT}.
+ *
+ * &lt;p&gt;&lt;b&gt;Safe extension point&lt;/b&gt; — this step may be replaced or augmented
+ * without affecting downstream invariants, as long as the context element
+ * list remains sorted anchors-first by relevance on exit.
  */
 @Service
-public class LeafEnrichmentStep {
+public class LeafEnrichmentStep implements ArchitecturePipelineStep {
 
-<span class="fc" id="L39">    private static final Logger log = LoggerFactory.getLogger(LeafEnrichmentStep.class);</span>
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = &quot;leaf-enrichment&quot;;
+
+<span class="fc" id="L46">    private static final Logger log = LoggerFactory.getLogger(LeafEnrichmentStep.class);</span>
 
     private static final int MAX_LEAF_ENRICHMENT       = PipelineConstants.MAX_LEAF_ENRICHMENT;
     private static final int LEAF_ENRICHMENT_MIN_SCORE = PipelineConstants.LEAF_ENRICHMENT_MIN_SCORE;
@@ -46,108 +53,115 @@ public class LeafEnrichmentStep {
     private final TaxonomyService taxonomyService;
 
     public LeafEnrichmentStep(TaxonomyNodeRepository nodeRepository,
-<span class="fc" id="L49">                               TaxonomyService taxonomyService) {</span>
-<span class="fc" id="L50">        this.nodeRepository = nodeRepository;</span>
-<span class="fc" id="L51">        this.taxonomyService = taxonomyService;</span>
-<span class="fc" id="L52">    }</span>
+<span class="fc" id="L56">                               TaxonomyService taxonomyService) {</span>
+<span class="fc" id="L57">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L58">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L59">    }</span>
 
-    public void execute(ArchitectureViewContext ctx) {
-<span class="fc" id="L55">        List&lt;RequirementElementView&gt; elements = ctx.getElements();</span>
-<span class="fc" id="L56">        Map&lt;String, Integer&gt; scores = ctx.getScores();</span>
+    @Override
+<span class="fc" id="L62">    public String id() { return STEP_ID; }</span>
 
-<span class="fc" id="L58">        Set&lt;String&gt; includedCodes = elements.stream()</span>
-<span class="fc" id="L59">                .map(RequirementElementView::getNodeCode)</span>
-<span class="fc" id="L60">                .collect(Collectors.toCollection(HashSet::new));</span>
+    @Override
+<span class="fc" id="L65">    public int order() { return 400; }</span>
 
-<span class="fc" id="L62">        Set&lt;String&gt; representedRoots = elements.stream()</span>
-<span class="fc" id="L63">                .map(RequirementElementView::getTaxonomySheet)</span>
-<span class="fc" id="L64">                .filter(Objects::nonNull)</span>
-<span class="fc" id="L65">                .collect(Collectors.toSet());</span>
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
+<span class="fc" id="L69">        List&lt;RequirementElementView&gt; elements = ctx.getElements();</span>
+<span class="fc" id="L70">        Map&lt;String, Integer&gt; scores = ctx.getScores();</span>
+
+<span class="fc" id="L72">        Set&lt;String&gt; includedCodes = elements.stream()</span>
+<span class="fc" id="L73">                .map(RequirementElementView::getNodeCode)</span>
+<span class="fc" id="L74">                .collect(Collectors.toCollection(HashSet::new));</span>
+
+<span class="fc" id="L76">        Set&lt;String&gt; representedRoots = elements.stream()</span>
+<span class="fc" id="L77">                .map(RequirementElementView::getTaxonomySheet)</span>
+<span class="fc" id="L78">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L79">                .collect(Collectors.toSet());</span>
 
         // Group leaf-level scores by their taxonomy root
-<span class="fc" id="L68">        Map&lt;String, List&lt;Map.Entry&lt;String, Integer&gt;&gt;&gt; leafScoresByRoot = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
-<span class="fc" id="L70">            String code = entry.getKey();</span>
-<span class="fc" id="L71">            int score = entry.getValue();</span>
-<span class="pc bpc" id="L72" title="1 of 2 branches missed.">            if (score &lt; LEAF_ENRICHMENT_MIN_SCORE) continue;</span>
-<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (includedCodes.contains(code)) continue;</span>
-<span class="fc bfc" id="L74" title="All 2 branches covered.">            if (!code.contains(&quot;-&quot;)) continue;</span>
+<span class="fc" id="L82">        Map&lt;String, List&lt;Map.Entry&lt;String, Integer&gt;&gt;&gt; leafScoresByRoot = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
+<span class="fc" id="L84">            String code = entry.getKey();</span>
+<span class="fc" id="L85">            int score = entry.getValue();</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">            if (score &lt; LEAF_ENRICHMENT_MIN_SCORE) continue;</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            if (includedCodes.contains(code)) continue;</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">            if (!code.contains(&quot;-&quot;)) continue;</span>
 
-<span class="fc" id="L76">            String rootPrefix = code.substring(0, code.indexOf('-'));</span>
-<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (!representedRoots.contains(rootPrefix)) continue;</span>
+<span class="fc" id="L90">            String rootPrefix = code.substring(0, code.indexOf('-'));</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">            if (!representedRoots.contains(rootPrefix)) continue;</span>
 
-<span class="fc" id="L79">            leafScoresByRoot.computeIfAbsent(rootPrefix, k -&gt; new ArrayList&lt;&gt;()).add(entry);</span>
-<span class="fc" id="L80">        }</span>
+<span class="fc" id="L93">            leafScoresByRoot.computeIfAbsent(rootPrefix, k -&gt; new ArrayList&lt;&gt;()).add(entry);</span>
+<span class="fc" id="L94">        }</span>
 
         // Pre-compute which root layers have deep-leaf candidates (depth &gt; 1)
-<span class="fc" id="L83">        Map&lt;String, Boolean&gt; rootHasDeepLeaf = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L84" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;Map.Entry&lt;String, Integer&gt;&gt;&gt; rootEntry : leafScoresByRoot.entrySet()) {</span>
-<span class="fc" id="L85">            String root = rootEntry.getKey();</span>
-<span class="fc" id="L86">            boolean hasDeep = rootEntry.getValue().stream()</span>
-<span class="fc" id="L87">                    .anyMatch(e -&gt; {</span>
-<span class="fc" id="L88">                        Optional&lt;TaxonomyNode&gt; opt = nodeRepository.findByCode(e.getKey());</span>
-<span class="pc bpc" id="L89" title="1 of 4 branches missed.">                        return opt.isPresent() &amp;&amp; opt.get().getLevel() &gt; 1;</span>
+<span class="fc" id="L97">        Map&lt;String, Boolean&gt; rootHasDeepLeaf = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;Map.Entry&lt;String, Integer&gt;&gt;&gt; rootEntry : leafScoresByRoot.entrySet()) {</span>
+<span class="fc" id="L99">            String root = rootEntry.getKey();</span>
+<span class="fc" id="L100">            boolean hasDeep = rootEntry.getValue().stream()</span>
+<span class="fc" id="L101">                    .anyMatch(e -&gt; {</span>
+<span class="fc" id="L102">                        Optional&lt;TaxonomyNode&gt; opt = nodeRepository.findByCode(e.getKey());</span>
+<span class="pc bpc" id="L103" title="1 of 4 branches missed.">                        return opt.isPresent() &amp;&amp; opt.get().getLevel() &gt; 1;</span>
                     });
-<span class="fc" id="L91">            rootHasDeepLeaf.put(root, hasDeep);</span>
-<span class="fc" id="L92">        }</span>
+<span class="fc" id="L105">            rootHasDeepLeaf.put(root, hasDeep);</span>
+<span class="fc" id="L106">        }</span>
 
-<span class="fc" id="L94">        LayerRepresentativeSelector layerSelector = new LayerRepresentativeSelector(nodeRepository);</span>
+<span class="fc" id="L108">        LayerRepresentativeSelector layerSelector = new LayerRepresentativeSelector(nodeRepository);</span>
 
-<span class="fc bfc" id="L96" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;Map.Entry&lt;String, Integer&gt;&gt;&gt; rootEntry : leafScoresByRoot.entrySet()) {</span>
-<span class="fc" id="L97">            String root = rootEntry.getKey();</span>
-<span class="fc" id="L98">            List&lt;Map.Entry&lt;String, Integer&gt;&gt; candidates = rootEntry.getValue();</span>
-<span class="fc" id="L99">            candidates.sort(</span>
-<span class="fc" id="L100">                    Comparator.&lt;Map.Entry&lt;String, Integer&gt;, Integer&gt;comparing(Map.Entry::getValue)</span>
-<span class="fc" id="L101">                              .reversed());</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;Map.Entry&lt;String, Integer&gt;&gt;&gt; rootEntry : leafScoresByRoot.entrySet()) {</span>
+<span class="fc" id="L111">            String root = rootEntry.getKey();</span>
+<span class="fc" id="L112">            List&lt;Map.Entry&lt;String, Integer&gt;&gt; candidates = rootEntry.getValue();</span>
+<span class="fc" id="L113">            candidates.sort(</span>
+<span class="fc" id="L114">                    Comparator.&lt;Map.Entry&lt;String, Integer&gt;, Integer&gt;comparing(Map.Entry::getValue)</span>
+<span class="fc" id="L115">                              .reversed());</span>
 
-<span class="fc" id="L103">            int rootScore = scores.getOrDefault(root, 0);</span>
-<span class="fc" id="L104">            boolean hasDeepLeaf = rootHasDeepLeaf.getOrDefault(root, false);</span>
+<span class="fc" id="L117">            int rootScore = scores.getOrDefault(root, 0);</span>
+<span class="fc" id="L118">            boolean hasDeepLeaf = rootHasDeepLeaf.getOrDefault(root, false);</span>
 
-<span class="fc" id="L106">            int added = 0;</span>
-<span class="fc bfc" id="L107" title="All 2 branches covered.">            for (Map.Entry&lt;String, Integer&gt; candidate : candidates) {</span>
-<span class="pc bpc" id="L108" title="1 of 2 branches missed.">                if (added &gt;= MAX_LEAF_ENRICHMENT) break;</span>
-<span class="fc" id="L109">                String leafCode = candidate.getKey();</span>
-<span class="fc" id="L110">                int leafScore = candidate.getValue();</span>
+<span class="fc" id="L120">            int added = 0;</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            for (Map.Entry&lt;String, Integer&gt; candidate : candidates) {</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">                if (added &gt;= MAX_LEAF_ENRICHMENT) break;</span>
+<span class="fc" id="L123">                String leafCode = candidate.getKey();</span>
+<span class="fc" id="L124">                int leafScore = candidate.getValue();</span>
 
-<span class="fc" id="L112">                RequirementElementView element = new RequirementElementView();</span>
-<span class="fc" id="L113">                element.setNodeCode(leafCode);</span>
-<span class="fc" id="L114">                element.setRelevance(leafScore / 100.0);</span>
-<span class="pc bpc" id="L115" title="1 of 2 branches missed.">                boolean isAnchor = leafScore &gt;= ANCHOR_THRESHOLD_HIGH;</span>
-<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                element.setHopDistance(isAnchor ? 0 : 1);</span>
-<span class="fc" id="L117">                element.setAnchor(isAnchor);</span>
-<span class="fc" id="L118">                element.setIncludedBecause(&quot;leaf-enrichment: top-scoring in &quot; + root);</span>
-<span class="fc" id="L119">                element.setOrigin(NodeOrigin.ENRICHED_LEAF);</span>
-<span class="fc" id="L120">                element.setDirectLlmScore(leafScore);</span>
+<span class="fc" id="L126">                RequirementElementView element = new RequirementElementView();</span>
+<span class="fc" id="L127">                element.setNodeCode(leafCode);</span>
+<span class="fc" id="L128">                element.setRelevance(leafScore / 100.0);</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                boolean isAnchor = leafScore &gt;= ANCHOR_THRESHOLD_HIGH;</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">                element.setHopDistance(isAnchor ? 0 : 1);</span>
+<span class="fc" id="L131">                element.setAnchor(isAnchor);</span>
+<span class="fc" id="L132">                element.setIncludedBecause(&quot;leaf-enrichment: top-scoring in &quot; + root);</span>
+<span class="fc" id="L133">                element.setOrigin(NodeOrigin.ENRICHED_LEAF);</span>
+<span class="fc" id="L134">                element.setDirectLlmScore(leafScore);</span>
 
-<span class="fc" id="L122">                Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(leafCode);</span>
-<span class="pc bpc" id="L123" title="1 of 2 branches missed.">                if (nodeOpt.isPresent()) {</span>
-<span class="fc" id="L124">                    TaxonomyNode node = nodeOpt.get();</span>
-<span class="fc bfc" id="L125" title="All 2 branches covered.">                    if (!layerSelector.shouldInclude(node, rootScore, hasDeepLeaf)) {</span>
-<span class="fc" id="L126">                        continue;</span>
+<span class="fc" id="L136">                Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(leafCode);</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">                if (nodeOpt.isPresent()) {</span>
+<span class="fc" id="L138">                    TaxonomyNode node = nodeOpt.get();</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                    if (!layerSelector.shouldInclude(node, rootScore, hasDeepLeaf)) {</span>
+<span class="fc" id="L140">                        continue;</span>
                     }
-<span class="fc" id="L128">                    element.setTitle(node.getNameEn());</span>
-<span class="fc" id="L129">                    element.setTaxonomySheet(node.getTaxonomyRoot());</span>
-<span class="fc" id="L130">                    element.setTaxonomyDepth(node.getLevel());</span>
-<span class="fc" id="L131">                } else {</span>
-<span class="nc" id="L132">                    element.setTaxonomySheet(root);</span>
+<span class="fc" id="L142">                    element.setTitle(node.getNameEn());</span>
+<span class="fc" id="L143">                    element.setTaxonomySheet(node.getTaxonomyRoot());</span>
+<span class="fc" id="L144">                    element.setTaxonomyDepth(node.getLevel());</span>
+<span class="fc" id="L145">                } else {</span>
+<span class="nc" id="L146">                    element.setTaxonomySheet(root);</span>
                 }
 
-<span class="fc" id="L135">                element.setHierarchyPath(ctx.buildHierarchyPath(leafCode, taxonomyService));</span>
+<span class="fc" id="L149">                element.setHierarchyPath(ctx.buildHierarchyPath(leafCode, taxonomyService));</span>
 
-<span class="fc" id="L137">                elements.add(element);</span>
-<span class="fc" id="L138">                includedCodes.add(leafCode);</span>
-<span class="fc" id="L139">                added++;</span>
-<span class="fc" id="L140">            }</span>
+<span class="fc" id="L151">                elements.add(element);</span>
+<span class="fc" id="L152">                includedCodes.add(leafCode);</span>
+<span class="fc" id="L153">                added++;</span>
+<span class="fc" id="L154">            }</span>
 
-<span class="pc bpc" id="L142" title="1 of 2 branches missed.">            if (added &gt; 0) {</span>
-<span class="fc" id="L143">                log.debug(&quot;Enriched layer {} with {} leaf node(s)&quot;, root, added);</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">            if (added &gt; 0) {</span>
+<span class="fc" id="L157">                log.debug(&quot;Enriched layer {} with {} leaf node(s)&quot;, root, added);</span>
             }
-<span class="fc" id="L145">        }</span>
+<span class="fc" id="L159">        }</span>
 
         // Re-sort: anchors first, then by relevance descending
-<span class="fc" id="L148">        elements.sort(Comparator</span>
-<span class="fc" id="L149">                .comparing(RequirementElementView::isAnchor).reversed()</span>
-<span class="fc" id="L150">                .thenComparing(Comparator.comparingDouble(RequirementElementView::getRelevance).reversed()));</span>
-<span class="fc" id="L151">    }</span>
+<span class="fc" id="L162">        elements.sort(Comparator</span>
+<span class="fc" id="L163">                .comparing(RequirementElementView::isAnchor).reversed()</span>
+<span class="fc" id="L164">                .thenComparing(Comparator.comparingDouble(RequirementElementView::getRelevance).reversed()));</span>
+<span class="fc" id="L165">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

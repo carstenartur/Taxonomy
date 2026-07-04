@@ -18,21 +18,34 @@ import java.util.LinkedHashMap;
  * {@code origin} on elements that are already present in the view.
  * Trace entries that are not yet in the element list are not added — they only
  * provide metadata enrichment for elements that survived propagation.
+ *
+ * &lt;p&gt;&lt;b&gt;Safe extension point&lt;/b&gt; — this step may be replaced or augmented to
+ * change how scoring-path metadata is populated.
  */
 @Service
-public class ScoringTraceStep {
+public class ScoringTraceStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = &quot;scoring-trace&quot;;
 
     private final ScoringTraceSelector scoringTraceSelector;
 
-<span class="fc" id="L27">    public ScoringTraceStep(ScoringTraceSelector scoringTraceSelector) {</span>
-<span class="fc" id="L28">        this.scoringTraceSelector = scoringTraceSelector;</span>
-<span class="fc" id="L29">    }</span>
-
-    public void execute(ArchitectureViewContext ctx) {
-<span class="fc" id="L32">        List&lt;RequirementElementView&gt; traceEntries =</span>
-<span class="fc" id="L33">                scoringTraceSelector.buildTrace(ctx.getScores(), ctx.getAnchors());</span>
-<span class="fc" id="L34">        mergeTraceOrigins(ctx.getElements(), traceEntries);</span>
+<span class="fc" id="L33">    public ScoringTraceStep(ScoringTraceSelector scoringTraceSelector) {</span>
+<span class="fc" id="L34">        this.scoringTraceSelector = scoringTraceSelector;</span>
 <span class="fc" id="L35">    }</span>
+
+    @Override
+<span class="fc" id="L38">    public String id() { return STEP_ID; }</span>
+
+    @Override
+<span class="fc" id="L41">    public int order() { return 900; }</span>
+
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
+<span class="fc" id="L45">        List&lt;RequirementElementView&gt; traceEntries =</span>
+<span class="fc" id="L46">                scoringTraceSelector.buildTrace(ctx.getScores(), ctx.getAnchors());</span>
+<span class="fc" id="L47">        mergeTraceOrigins(ctx.getElements(), traceEntries);</span>
+<span class="fc" id="L48">    }</span>
 
     /**
      * Updates {@code scoringPath} and {@code origin} in the main element list
@@ -40,26 +53,26 @@ public class ScoringTraceStep {
      */
     private static void mergeTraceOrigins(List&lt;RequirementElementView&gt; elements,
                                            List&lt;RequirementElementView&gt; traceEntries) {
-<span class="fc" id="L43">        Map&lt;String, RequirementElementView&gt; traceByCode = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L44" title="All 2 branches covered.">        for (RequirementElementView te : traceEntries) {</span>
-<span class="fc" id="L45">            traceByCode.put(te.getNodeCode(), te);</span>
-<span class="fc" id="L46">        }</span>
+<span class="fc" id="L56">        Map&lt;String, RequirementElementView&gt; traceByCode = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        for (RequirementElementView te : traceEntries) {</span>
+<span class="fc" id="L58">            traceByCode.put(te.getNodeCode(), te);</span>
+<span class="fc" id="L59">        }</span>
 
-<span class="fc bfc" id="L48" title="All 2 branches covered.">        for (RequirementElementView el : elements) {</span>
-<span class="fc" id="L49">            RequirementElementView traceEntry = traceByCode.get(el.getNodeCode());</span>
-<span class="fc bfc" id="L50" title="All 2 branches covered.">            if (traceEntry == null) continue;</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        for (RequirementElementView el : elements) {</span>
+<span class="fc" id="L62">            RequirementElementView traceEntry = traceByCode.get(el.getNodeCode());</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            if (traceEntry == null) continue;</span>
 
             // Propagate scoring path if not already set
-<span class="pc bpc" id="L53" title="1 of 4 branches missed.">            if (el.getScoringPath() == null &amp;&amp; traceEntry.getScoringPath() != null) {</span>
-<span class="fc" id="L54">                el.setScoringPath(traceEntry.getScoringPath());</span>
+<span class="pc bpc" id="L66" title="1 of 4 branches missed.">            if (el.getScoringPath() == null &amp;&amp; traceEntry.getScoringPath() != null) {</span>
+<span class="fc" id="L67">                el.setScoringPath(traceEntry.getScoringPath());</span>
             }
 
             // Upgrade origin from trace if the element does not already have a more
             // specific origin (ENRICHED_LEAF should not be overridden).
-<span class="pc bpc" id="L59" title="2 of 4 branches missed.">            if (el.getOrigin() == null || el.getOrigin() == NodeOrigin.PROPAGATED) {</span>
-<span class="nc" id="L60">                el.setOrigin(traceEntry.getOrigin());</span>
+<span class="pc bpc" id="L72" title="2 of 4 branches missed.">            if (el.getOrigin() == null || el.getOrigin() == NodeOrigin.PROPAGATED) {</span>
+<span class="nc" id="L73">                el.setOrigin(traceEntry.getOrigin());</span>
             }
-<span class="fc" id="L62">        }</span>
-<span class="fc" id="L63">    }</span>
+<span class="fc" id="L75">        }</span>
+<span class="fc" id="L76">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -13,23 +13,42 @@ import java.util.Map;
  * &lt;p&gt;Converts anchor scores (0–100) to relevance values (0.0–1.0) and
  * delegates to {@link RelevancePropagationService}. The result is stored
  * in the pipeline context.
+ *
+ * &lt;p&gt;&lt;b&gt;Core invariant&lt;/b&gt; — this step must run after anchor-selection and before
+ * element-build. The propagation result is consumed by subsequent steps.
+ * Do not disable it.
  */
 @Service
-public class RelevancePropagationStep {
+public class RelevancePropagationStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = &quot;relevance-propagation&quot;;
 
     private final RelevancePropagationService propagationService;
 
-<span class="fc" id="L22">    public RelevancePropagationStep(RelevancePropagationService propagationService) {</span>
-<span class="fc" id="L23">        this.propagationService = propagationService;</span>
-<span class="fc" id="L24">    }</span>
+<span class="fc" id="L29">    public RelevancePropagationStep(RelevancePropagationService propagationService) {</span>
+<span class="fc" id="L30">        this.propagationService = propagationService;</span>
+<span class="fc" id="L31">    }</span>
 
-    public void execute(ArchitectureViewContext ctx) {
-<span class="fc" id="L27">        Map&lt;String, Double&gt; anchorRelevances = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L28" title="All 2 branches covered.">        for (RequirementAnchor anchor : ctx.getAnchors()) {</span>
-<span class="fc" id="L29">            anchorRelevances.put(anchor.getNodeCode(), anchor.getDirectScore() / 100.0);</span>
-<span class="fc" id="L30">        }</span>
-<span class="fc" id="L31">        ctx.setAnchorRelevances(anchorRelevances);</span>
-<span class="fc" id="L32">        ctx.setPropagation(propagationService.propagate(anchorRelevances));</span>
-<span class="fc" id="L33">    }</span>
+    @Override
+<span class="fc" id="L34">    public String id() { return STEP_ID; }</span>
+
+    @Override
+<span class="fc" id="L37">    public int order() { return 200; }</span>
+
+    @Override
+    public ArchitecturePipelineStepDescriptor descriptor() {
+<span class="nc" id="L41">        return new ArchitecturePipelineStepDescriptor(id(), order(), enabledByDefault(), true);</span>
+    }
+
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
+<span class="fc" id="L46">        Map&lt;String, Double&gt; anchorRelevances = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        for (RequirementAnchor anchor : ctx.getAnchors()) {</span>
+<span class="fc" id="L48">            anchorRelevances.put(anchor.getNodeCode(), anchor.getDirectScore() / 100.0);</span>
+<span class="fc" id="L49">        }</span>
+<span class="fc" id="L50">        ctx.setAnchorRelevances(anchorRelevances);</span>
+<span class="fc" id="L51">        ctx.setPropagation(propagationService.propagate(anchorRelevances));</span>
+<span class="fc" id="L52">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
