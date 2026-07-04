@@ -27,7 +27,7 @@ class ProvisionalRelationStepTest {
                 0,
                 List.of(nullSource, blankTarget));
 
-        step.execute(ctx);
+        step.apply(ctx);
 
         assertThat(ctx.getElements()).isEmpty();
         assertThat(ctx.getRelationships()).isEmpty();
@@ -46,7 +46,7 @@ class ProvisionalRelationStepTest {
         when(taxonomyService.getPathToRoot("BP")).thenReturn(List.of());
         when(taxonomyService.getPathToRoot("CP")).thenReturn(List.of());
 
-        step.execute(ctx);
+        step.apply(ctx);
 
         assertThat(ctx.getElements()).hasSize(2);
         assertThat(ctx.getRelationships()).hasSize(1);

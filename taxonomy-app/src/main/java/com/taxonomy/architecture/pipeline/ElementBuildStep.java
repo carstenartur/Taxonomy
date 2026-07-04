@@ -21,9 +21,15 @@ import java.util.Optional;
  * <p>Each node in the propagation result is looked up in the taxonomy to
  * populate its title, taxonomy sheet, depth, and hierarchy path. Elements
  * are sorted anchors-first, then by relevance descending.
+ *
+ * <p><b>Core invariant</b> — this step must run after relevance-propagation and
+ * before leaf-enrichment. Do not disable it.
  */
 @Service
-public class ElementBuildStep {
+public class ElementBuildStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = "element-build";
 
     private final TaxonomyNodeRepository nodeRepository;
     private final TaxonomyService taxonomyService;
@@ -34,7 +40,19 @@ public class ElementBuildStep {
         this.taxonomyService = taxonomyService;
     }
 
-    public void execute(ArchitectureViewContext ctx) {
+    @Override
+    public String id() { return STEP_ID; }
+
+    @Override
+    public int order() { return 300; }
+
+    @Override
+    public ArchitecturePipelineStepDescriptor descriptor() {
+        return new ArchitecturePipelineStepDescriptor(id(), order(), enabledByDefault(), true);
+    }
+
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
         PropagationResult propagation = ctx.getPropagation();
         List<RequirementElementView> elements = new ArrayList<>();
 

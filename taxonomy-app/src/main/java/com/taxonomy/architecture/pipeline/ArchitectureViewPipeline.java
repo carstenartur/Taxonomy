@@ -16,100 +16,73 @@ import java.util.Set;
  * Orchestrates all architecture-view pipeline steps and produces the final
  * {@link RequirementArchitectureView}.
  *
- * <p>Deterministic step order:
+ * <p>Steps are discovered from the {@link ArchitecturePipelineStepRegistry} and
+ * executed in ascending {@link ArchitecturePipelineStep#order()} order.  Only
+ * steps where {@link ArchitecturePipelineStep#enabledByDefault()} returns
+ * {@code true} are run.
+ *
+ * <p>Deterministic default step order:
  * <ol>
- *   <li>{@link AnchorSelectionStep} — select anchor nodes from LLM scores</li>
- *   <li>{@link RelevancePropagationStep} — propagate relevance through relations</li>
- *   <li>{@link ElementBuildStep} — build initial element list from propagation</li>
- *   <li>{@link LeafEnrichmentStep} — add top-scoring concrete leaf nodes</li>
- *   <li>{@link RelationshipBuildStep} — build relationships from propagation traversal</li>
- *   <li>{@link ProvisionalRelationStep} — inject AI-suggested virtual edges if needed</li>
- *   <li>{@link NodeLimitStep} — truncate to max node count if requested</li>
- *   <li>{@link ImpactRelationStep} — derive cross-category impact relations</li>
- *   <li>{@link ScoringTraceStep} — merge scoring-trace origin metadata</li>
- *   <li>{@link ImpactSelectionStep} — mark most valuable nodes for impact display</li>
+ *   <li>100 {@link AnchorSelectionStep} — select anchor nodes from LLM scores</li>
+ *   <li>200 {@link RelevancePropagationStep} — propagate relevance through relations</li>
+ *   <li>300 {@link ElementBuildStep} — build initial element list from propagation</li>
+ *   <li>400 {@link LeafEnrichmentStep} — add top-scoring concrete leaf nodes</li>
+ *   <li>500 {@link RelationshipBuildStep} — build relationships from propagation traversal</li>
+ *   <li>600 {@link ProvisionalRelationStep} — inject AI-suggested virtual edges if needed</li>
+ *   <li>700 {@link NodeLimitStep} — truncate to max node count if requested</li>
+ *   <li>800 {@link ImpactRelationStep} — derive cross-category impact relations</li>
+ *   <li>900 {@link ScoringTraceStep} — merge scoring-trace origin metadata</li>
+ *   <li>1000 {@link ImpactSelectionStep} — mark most valuable nodes for impact display</li>
  *   <li>Finalization — presence reasons, parent codes, notes, summary stats, logging</li>
  * </ol>
+ *
+ * <p><b>Core invariant</b>: after anchor-selection (order&nbsp;100) the pipeline checks
+ * for an empty anchor list and short-circuits with an empty view when no anchors are found.
+ * This invariant is enforced here and must not be bypassed by custom steps.
  */
 @Service
 public class ArchitectureViewPipeline {
 
     private static final Logger log = LoggerFactory.getLogger(ArchitectureViewPipeline.class);
 
-    // --- Pure steps (no Spring dependencies) ---------------------------
-    private final AnchorSelectionStep anchorSelectionStep   = new AnchorSelectionStep();
-    private final RelationshipBuildStep relationshipBuildStep = new RelationshipBuildStep();
-    private final NodeLimitStep nodeLimitStep               = new NodeLimitStep();
+    private final ArchitecturePipelineStepRegistry registry;
 
-    // --- Spring-managed steps ------------------------------------------
-    private final RelevancePropagationStep relevancePropagationStep;
-    private final ElementBuildStep elementBuildStep;
-    private final LeafEnrichmentStep leafEnrichmentStep;
-    private final ProvisionalRelationStep provisionalRelationStep;
-    private final ImpactRelationStep impactRelationStep;
-    private final ScoringTraceStep scoringTraceStep;
-    private final ImpactSelectionStep impactSelectionStep;
-
-    public ArchitectureViewPipeline(RelevancePropagationStep relevancePropagationStep,
-                                    ElementBuildStep elementBuildStep,
-                                    LeafEnrichmentStep leafEnrichmentStep,
-                                    ProvisionalRelationStep provisionalRelationStep,
-                                    ImpactRelationStep impactRelationStep,
-                                    ScoringTraceStep scoringTraceStep,
-                                    ImpactSelectionStep impactSelectionStep) {
-        this.relevancePropagationStep = relevancePropagationStep;
-        this.elementBuildStep         = elementBuildStep;
-        this.leafEnrichmentStep       = leafEnrichmentStep;
-        this.provisionalRelationStep  = provisionalRelationStep;
-        this.impactRelationStep       = impactRelationStep;
-        this.scoringTraceStep         = scoringTraceStep;
-        this.impactSelectionStep      = impactSelectionStep;
+    public ArchitectureViewPipeline(ArchitecturePipelineStepRegistry registry) {
+        this.registry = registry;
     }
 
     /**
-     * Runs all pipeline steps in order and returns the populated
+     * Runs all enabled pipeline steps in order and returns the populated
      * {@link RequirementArchitectureView}.
      */
     public RequirementArchitectureView execute(ArchitectureViewContext ctx) {
         RequirementArchitectureView view = ctx.getView();
+        List<ArchitecturePipelineStep> enabledSteps = registry.getEnabledSteps();
 
-        // Step 1: Anchor selection
-        anchorSelectionStep.execute(ctx);
+        ArchitecturePipelineStep firstEnabledStep = enabledSteps.stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Architecture pipeline requires at least one enabled step, specifically %s as the first step"
+                                .formatted(AnchorSelectionStep.STEP_ID)));
+        if (!AnchorSelectionStep.STEP_ID.equals(firstEnabledStep.id())) {
+            throw new IllegalStateException(
+                    "Architecture pipeline must execute %s first, but found %s"
+                            .formatted(AnchorSelectionStep.STEP_ID, firstEnabledStep.id()));
+        }
+
+        firstEnabledStep.apply(ctx);
         view.setAnchors(ctx.getAnchors());
-
         if (ctx.getAnchors().isEmpty()) {
-            view.getNotes().add("No nodes met the anchor threshold; architecture view is empty.");
+            view.getNotes().add(
+                    "No nodes met the anchor threshold; architecture view is empty.");
             return view;
         }
 
-        // Step 2: Relevance propagation
-        relevancePropagationStep.execute(ctx);
+        for (ArchitecturePipelineStep step : enabledSteps.subList(1, enabledSteps.size())) {
+            step.apply(ctx);
+        }
 
-        // Step 3: Build elements
-        elementBuildStep.execute(ctx);
-
-        // Step 4: Leaf enrichment
-        leafEnrichmentStep.execute(ctx);
-
-        // Step 5: Build relationships
-        relationshipBuildStep.execute(ctx);
-
-        // Step 6: Provisional relation injection
-        provisionalRelationStep.execute(ctx);
-
-        // Step 7: Node limit truncation
-        nodeLimitStep.execute(ctx);
-
-        // Step 8: Impact relation generation (after truncation so only kept nodes are used)
-        impactRelationStep.execute(ctx);
-
-        // Step 9: Scoring trace merge
-        scoringTraceStep.execute(ctx);
-
-        // Step 10: Impact selection
-        impactSelectionStep.execute(ctx);
-
-        // Step 11: Finalization
+        // Finalization (core invariant — not a pipeline step)
         populatePresenceReasons(ctx.getElements(), ctx.getRelationships());
         populateParentNodeCodes(ctx.getElements());
 

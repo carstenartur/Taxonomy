@@ -32,9 +32,16 @@ import java.util.stream.Collectors;
  * (codes with a dash, e.g. "CO-1063") that are not already included.
  * The number of additions per root is capped at
  * {@link PipelineConstants#MAX_LEAF_ENRICHMENT}.
+ *
+ * <p><b>Safe extension point</b> — this step may be replaced or augmented
+ * without affecting downstream invariants, as long as the context element
+ * list remains sorted anchors-first by relevance on exit.
  */
 @Service
-public class LeafEnrichmentStep {
+public class LeafEnrichmentStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = "leaf-enrichment";
 
     private static final Logger log = LoggerFactory.getLogger(LeafEnrichmentStep.class);
 
@@ -51,7 +58,14 @@ public class LeafEnrichmentStep {
         this.taxonomyService = taxonomyService;
     }
 
-    public void execute(ArchitectureViewContext ctx) {
+    @Override
+    public String id() { return STEP_ID; }
+
+    @Override
+    public int order() { return 400; }
+
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
         List<RequirementElementView> elements = ctx.getElements();
         Map<String, Integer> scores = ctx.getScores();
 
