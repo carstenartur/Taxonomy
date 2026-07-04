@@ -26,7 +26,7 @@ Taxonomy Application,com.taxonomy.provenance.model,RequirementSourceLink,12,59,0
 Taxonomy Application,com.taxonomy,TaxonomyApplication,8,0,0,0,3,0,2,0,2,0
 Taxonomy Application,com.taxonomy,AppConfig,0,57,0,0,0,16,0,5,0,5
 Taxonomy Application,com.taxonomy.search.controller,SearchApiController,37,112,10,18,5,26,10,12,0,8
-Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController,248,262,29,17,55,74,21,11,1,8
+Taxonomy Application,com.taxonomy.analysis.controller,AnalysisApiController,269,288,29,17,59,81,21,13,1,10
 Taxonomy Application,com.taxonomy.analysis.controller,AnalysisSseEventMapper,25,233,7,17,4,39,7,9,0,4
 Taxonomy Application,com.taxonomy.analysis.controller,AnalysisSseEventMapper.MappedEvent,0,9,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.architecture.model,ArchitectureCommitIndex,8,79,1,1,2,24,3,22,2,22
@@ -82,7 +82,7 @@ Taxonomy Application,com.taxonomy.analysis.service,LlmProviderConfig,149,218,71,
 Taxonomy Application,com.taxonomy.analysis.service,LlmRecordReplayService,127,467,16,32,27,100,15,24,3,12
 Taxonomy Application,com.taxonomy.analysis.service,LlmRecordReplayService.ManifestData,0,11,0,0,0,3,0,1,0,1
 Taxonomy Application,com.taxonomy.versioning.controller,ContextNavigationController,77,274,11,9,20,54,8,16,1,13
-Taxonomy Application,com.taxonomy.versioning.controller,DslApiController,764,1396,41,33,181,286,42,43,17,31
+Taxonomy Application,com.taxonomy.versioning.controller,DslApiController,764,1460,41,33,181,298,42,44,17,32
 Taxonomy Application,com.taxonomy.versioning.controller,GitStateController,0,63,0,0,0,15,0,5,0,5
 Taxonomy Application,com.taxonomy.catalog.service.importer,FrameworkImportService.RegisteredProfile,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.catalog.service.importer,StructurizrDslParser,17,286,17,43,5,62,17,22,0,6
@@ -91,8 +91,8 @@ Taxonomy Application,com.taxonomy.catalog.service.importer,ApqcExcelParser,92,36
 Taxonomy Application,com.taxonomy.catalog.service.importer,FrameworkImportService,38,334,2,8,7,68,2,11,0,8
 Taxonomy Application,com.taxonomy.catalog.service.importer,ExternalParser.ParsedExternalModel,0,9,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.catalog.service.importer,UafXmlParser,153,239,45,33,34,67,34,15,1,9
-Taxonomy Application,com.taxonomy.analysis.usecase,AnalyzeRequirementUseCase,1,155,3,9,1,46,3,9,0,6
-Taxonomy Application,com.taxonomy.analysis.usecase,AnalyzeRequirementCommand,0,15,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.analysis.usecase,AnalyzeRequirementUseCase,1,157,3,9,1,46,3,9,0,6
+Taxonomy Application,com.taxonomy.analysis.usecase,AnalyzeRequirementCommand,0,21,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.usecase,AnalysisStreamEvent.Phase,0,9,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.usecase,AnalyzeRequirementResult,0,6,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.analysis.usecase,StreamRequirementAnalysisUseCase.new AnalysisEventCallback() {...},0,58,0,0,0,11,0,6,0,6
@@ -191,7 +191,7 @@ Taxonomy Application,com.taxonomy.versioning.service,VersioningFacade.FullContex
 Taxonomy Application,com.taxonomy.versioning.service,HypothesisService,33,626,12,32,7,127,12,26,0,16
 Taxonomy Application,com.taxonomy.versioning.service,SelectiveTransferService,78,401,21,21,12,90,18,18,3,12
 Taxonomy Application,com.taxonomy.versioning.service,ContextCompareService,104,298,5,17,21,63,5,16,0,10
-Taxonomy Application,com.taxonomy.versioning.service,DslOperationsFacade,76,222,3,7,14,46,13,33,10,31
+Taxonomy Application,com.taxonomy.versioning.service,DslOperationsFacade,86,235,3,7,16,48,15,35,12,33
 Taxonomy Application,com.taxonomy.versioning.service,RepositoryStateService,99,372,3,27,15,87,3,33,0,21
 Taxonomy Application,com.taxonomy.versioning.service,ConflictDetectionService.MergePreview,0,27,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.versioning.service,ContextHistoryService,54,100,1,1,20,28,1,6,0,6
