@@ -184,10 +184,14 @@ class ArchitectureReportTests {
 
     @Test
     void reportRendererRegistryResolvesTrimmedFormatId() {
-        assertThat(reportRendererRegistry.findByFormatId(" markdown "))
-                .map(ReportRendererExtension::descriptor)
-                .map(descriptor -> descriptor.id())
-                .contains("markdown");
+        ArchitectureReport report = reportService.generateReport(
+                Map.of("CP-1010", 90), "test requirement", 50);
+
+        ReportRendererExtension trimmedRenderer = reportRendererRegistry.getRequired(" markdown ");
+
+        assertThat(trimmedRenderer.descriptor().id()).isEqualTo("markdown");
+        assertThat(trimmedRenderer.render(ReportRenderContext.of(report)).utf8())
+                .isEqualTo(reportService.renderMarkdown(report));
     }
 
     @Test
@@ -400,7 +404,7 @@ class ArchitectureReportTests {
         return new ReportRendererExtension() {
             @Override
             public ReportFormatDescriptor descriptor() {
-                return new ReportFormatDescriptor(id, id, id, "text/plain", false);
+                return new ReportFormatDescriptor(id, id + " display", id + ".txt", "text/plain", false);
             }
 
             @Override
