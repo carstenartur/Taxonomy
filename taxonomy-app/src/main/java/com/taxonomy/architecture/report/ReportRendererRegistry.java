@@ -50,6 +50,6 @@ public class ReportRendererRegistry {
     }
 
     private String normalize(String formatId) {
-        return formatId.toLowerCase(Locale.ROOT);
+        return formatId.trim().toLowerCase(Locale.ROOT);
     }
 }

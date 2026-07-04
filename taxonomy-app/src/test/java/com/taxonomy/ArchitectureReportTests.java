@@ -1,6 +1,9 @@
 package com.taxonomy;
 
 import com.taxonomy.architecture.report.ReportRenderContext;
+import com.taxonomy.architecture.report.ReportFormatDescriptor;
+import com.taxonomy.architecture.report.ReportRenderResult;
+import com.taxonomy.architecture.report.ReportRendererExtension;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
 import com.taxonomy.dto.*;
 import com.taxonomy.architecture.service.ArchitectureReportService;
@@ -15,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -176,6 +180,24 @@ class ArchitectureReportTests {
         assertThat(reportRendererRegistry.listDescriptors())
                 .extracting(descriptor -> descriptor.id())
                 .contains("markdown", "html", "docx", "json");
+    }
+
+    @Test
+    void reportRendererRegistryResolvesTrimmedFormatId() {
+        assertThat(reportRendererRegistry.findByFormatId(" markdown "))
+                .map(ReportRendererExtension::descriptor)
+                .map(descriptor -> descriptor.id())
+                .contains("markdown");
+    }
+
+    @Test
+    void reportRendererRegistryRejectsWhitespaceOnlyDuplicateFormatIds() {
+        ReportRendererExtension markdown = renderer("markdown");
+        ReportRendererExtension duplicate = renderer(" markdown ");
+
+        assertThatThrownBy(() -> new ReportRendererRegistry(java.util.List.of(markdown, duplicate)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Duplicate report renderer format ID: markdown");
     }
 
     @Test
@@ -372,5 +394,19 @@ class ArchitectureReportTests {
 
         assertThat(el.getExplanationTrace()).isNotNull();
         assertThat(el.getExplanationTrace().getSummaryText()).isEqualTo("test trace");
+    }
+
+    private static ReportRendererExtension renderer(String id) {
+        return new ReportRendererExtension() {
+            @Override
+            public ReportFormatDescriptor descriptor() {
+                return new ReportFormatDescriptor(id, id, id, "text/plain", false);
+            }
+
+            @Override
+            public ReportRenderResult render(ReportRenderContext context) {
+                return new ReportRenderResult(new byte[0]);
+            }
+        };
     }
 }
