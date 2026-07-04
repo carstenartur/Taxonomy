@@ -84,7 +84,8 @@ class DslApiControllerContextBoundaryTest {
 
         when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
         when(dslOperationsFacade.getDslHistory("draft", WorkspaceContext.SHARED)).thenReturn(List.of());
-        when(dslOperationsFacade.getViewContext("alice", "draft", WorkspaceContext.SHARED)).thenReturn(viewContext);
+        // When SHARED context is used, getViewContext receives SHARED.username() ("system"), not the authenticated user
+        when(dslOperationsFacade.getViewContext(WorkspaceContext.SHARED.username(), "draft", WorkspaceContext.SHARED)).thenReturn(viewContext);
         doThrow(new IllegalStateException("boom")).when(repositoryStateService).ensureWorkspaceState("alice");
 
         ResponseEntity<Map<String, Object>> response = controller.getHistory("draft");
@@ -94,6 +95,6 @@ class DslApiControllerContextBoundaryTest {
 
         verify(workspaceResolver, never()).resolveCurrentContext();
         verify(dslOperationsFacade).getDslHistory("draft", WorkspaceContext.SHARED);
-        verify(dslOperationsFacade).getViewContext("alice", "draft", WorkspaceContext.SHARED);
+        verify(dslOperationsFacade).getViewContext(WorkspaceContext.SHARED.username(), "draft", WorkspaceContext.SHARED);
     }
 }
