@@ -1,5 +1,51 @@
 # Extension Points
 
+## ExportFormatExtension
+
+Diagram export formats (Mermaid, ArchiMate, Visio, Structurizr, and any future
+format) are pluggable via `ExportFormatExtension` implementations in
+`taxonomy-app/com.taxonomy.export.service`:
+
+- `descriptor()` returns a serializable `ExportFormatDescriptor`
+  (format ID, display name, file extension, HTTP content type, binary flag)
+- `export(ExportContext)` converts the projected `DiagramModel` to `ExportResult` bytes
+
+`ExportContext` carries the `DiagramModel` (post-projection) and an optional
+`Map<String, Object> options` map (e.g. `"locale"` → `"de"` for Mermaid labels).
+
+The registry is `ExportFormatExtensionRegistry`, which supports:
+
+- lookup by format ID (`getRequired("mermaid")`, `findByFormatId("archimate")`, etc.)
+- listing all registered formats (`listDescriptors()`)
+
+### Registered built-in adapters
+
+| Format ID      | Class                          | Output                                      |
+|----------------|--------------------------------|---------------------------------------------|
+| `archimate`    | `ArchiMateExportExtension`     | ArchiMate XML (`.xml`)                      |
+| `mermaid`      | `MermaidExportExtension`       | Mermaid flowchart text (`.mmd`)             |
+| `structurizr`  | `StructurizrExportExtension`   | Structurizr DSL text (`.dsl`)               |
+| `visio`        | `VisioExportExtension`         | Visio package (`.vsdx`, binary)             |
+
+### Add a new export format
+
+1. Create a Spring `@Component` implementing `ExportFormatExtension` in
+   `taxonomy-app/com.taxonomy.export.service`.
+2. Provide a unique `descriptor().id()` (lowercase, e.g. `"bpmn"`).
+3. Implement `export(ExportContext context)` using `context.diagram()` and
+   optionally `context.options()`.
+4. The new format is automatically registered in `ExportFormatExtensionRegistry`
+   without any changes to existing format implementations.
+5. If the format also needs a dedicated REST endpoint, add it to
+   `ExportApiController` via `ExportFormatExtensionRegistry`.
+
+> **Note:** The exporter logic (the format-specific conversion) should remain in
+> a framework-free class in `taxonomy-export` (no Spring annotations), which the
+> `@Component` adapter in `taxonomy-app` then delegates to.  This matches the
+> existing adapter pattern for Mermaid, ArchiMate, Visio, and Structurizr.
+
+---
+
 ## ReportRendererExtension
 
 Reports can be rendered via `ReportRendererExtension` implementations in

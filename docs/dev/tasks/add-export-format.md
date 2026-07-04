@@ -7,7 +7,41 @@ download from the export panel.
 
 ---
 
-## Primary entry points
+## Preferred approach: ExportFormatExtension (recommended)
+
+New export formats should implement the `ExportFormatExtension` SPI.  This is
+the stable extension point that requires no changes to existing services or
+endpoints.
+
+### Steps
+
+1. Create the format-specific exporter class in `taxonomy-export` (framework-free,
+   no Spring annotations) following the existing pattern:
+   ```
+   taxonomy-export/src/main/java/com/taxonomy/export/<FormatName>ExportService.java
+   ```
+2. Register the exporter as a Spring bean in
+   `taxonomy-app/src/main/java/com/taxonomy/shared/config/ExportConfig.java`.
+3. Create a Spring `@Component` adapter in
+   `taxonomy-app/src/main/java/com/taxonomy/export/service/<FormatName>ExportExtension.java`
+   implementing `ExportFormatExtension`.
+4. The new format is automatically registered in `ExportFormatExtensionRegistry`
+   and can be retrieved via `getRequired("<format-id>")`.
+5. If a dedicated REST endpoint is needed, add it to `ExportApiController` using
+   `ExportFormatExtensionRegistry` — no changes to existing endpoint methods.
+
+See [`docs/dev/07-extension-points.md`](../07-extension-points.md#exportformatextension)
+for the full SPI contract.
+
+---
+
+## Legacy approach (without extension point)
+
+The entries below document the manual wiring that was required before
+`ExportFormatExtension` was introduced.  Prefer the extension-point approach
+for all new formats.
+
+### Primary entry points (legacy)
 
 | File | What to do |
 |---|---|
