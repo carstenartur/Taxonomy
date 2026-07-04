@@ -8,38 +8,23 @@
         <artifactId>taxonomy</artifactId>
         <version>1.2.4-SNAPSHOT</version>
     </parent>
-    <artifactId>taxonomy-export</artifactId>
-    <name>Taxonomy Export</name>
-    <description>Export formats: ArchiMate, Visio, Mermaid, diagram models, and XML converters</description>
+    <artifactId>taxonomy-extension-api</artifactId>
+    <name>Taxonomy Extension API</name>
+    <description>Internal extension SPI contracts and metadata types (Spring-free, app-independent)</description>
+
     <dependencies>
         <dependency>
             <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-domain</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- XStream for Visio VDX serialization -->
         <dependency>
-            <groupId>com.thoughtworks.xstream</groupId>
-            <artifactId>xstream</artifactId>
-            <version>${xstream.version}</version>
-        </dependency>
-        <!-- SLF4J for logging -->
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-        </dependency>
-        <!-- JUnit + AssertJ for tests -->
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
-            <scope>test</scope>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-export</artifactId>
+            <version>${project.version}</version>
         </dependency>
     </dependencies>
+
     <build>
         <plugins>
             <plugin>
@@ -48,7 +33,7 @@
                 <version>3.6.2</version>
                 <executions>
                     <execution>
-                        <id>ban-taxonomy-app-dependency</id>
+                        <id>enforce-extension-api-boundaries</id>
                         <goals>
                             <goal>enforce</goal>
                         </goals>
@@ -58,6 +43,13 @@
                                     <searchTransitive>true</searchTransitive>
                                     <excludes>
                                         <exclude>com.taxonomy:taxonomy-app</exclude>
+                                        <exclude>org.springframework:*</exclude>
+                                        <exclude>org.springframework.boot:*</exclude>
+                                        <exclude>org.springframework.data:*</exclude>
+                                        <exclude>jakarta.persistence:*</exclude>
+                                        <exclude>javax.persistence:*</exclude>
+                                        <exclude>org.hibernate:*</exclude>
+                                        <exclude>org.hibernate.orm:*</exclude>
                                     </excludes>
                                 </bannedDependencies>
                             </rules>

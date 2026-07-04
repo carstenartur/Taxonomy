@@ -149,12 +149,13 @@ flowchart TD
 
 ## Module Architecture
 
-The project is a multi-module Maven build with four modules:
+The project is a multi-module Maven build with five modules:
 
 ```
 taxonomy-domain/       Pure domain types (DTOs, enums) — no framework dependencies
 taxonomy-dsl/          Architecture DSL (parser, model, validator, differ); provenance model (source, sourceVersion, sourceFragment, requirementSourceLink) — no framework dependencies
 taxonomy-export/       Export services (ArchiMate, Visio, Mermaid, Diagram) — no framework dependencies
+taxonomy-extension-api/ Internal extension SPI contracts and metadata — no framework dependencies
 taxonomy-app/          Spring Boot application (controllers, services, JPA, search, storage)
 ```
 
@@ -164,10 +165,13 @@ Dependency graph:
 taxonomy-app  →  taxonomy-domain
 taxonomy-app  →  taxonomy-dsl
 taxonomy-app  →  taxonomy-export
+taxonomy-app  →  taxonomy-extension-api
 taxonomy-export  →  taxonomy-domain
+taxonomy-extension-api  →  taxonomy-domain
+taxonomy-extension-api  →  taxonomy-export
 ```
 
-`taxonomy-domain`, `taxonomy-dsl`, and `taxonomy-export` have **no Spring dependencies** and can be tested and used independently.
+`taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export`, and `taxonomy-extension-api` have **no Spring dependencies** and can be tested and used independently.
 
 ---
 

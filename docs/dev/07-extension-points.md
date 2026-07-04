@@ -6,6 +6,9 @@ Diagram export formats (Mermaid, ArchiMate, Visio, Structurizr, and any future
 format) are pluggable via `ExportFormatExtension` implementations in
 `taxonomy-app/src/main/java/com/taxonomy/export/service`:
 
+The SPI contracts and metadata types for this extension point live in
+`taxonomy-extension-api/src/main/java/com/taxonomy/export/service`.
+
 - `descriptor()` returns a serializable `ExportFormatDescriptor`
   (format ID, display name, file extension, HTTP content type, binary flag)
 - `export(ExportContext)` converts the projected `DiagramModel` to `ExportResult` bytes
@@ -53,6 +56,9 @@ The registry is `ExportFormatExtensionRegistry`, which supports:
 Reports can be rendered via `ReportRendererExtension` implementations in
 `taxonomy-app`:
 
+The SPI contracts and metadata types for this extension point live in
+`taxonomy-extension-api/src/main/java/com/taxonomy/architecture/report`.
+
 - `descriptor()` returns a serializable `ReportFormatDescriptor`
 - `render(ReportRenderContext)` returns `ReportRenderResult` bytes
 
@@ -76,6 +82,9 @@ The registry is `ReportRendererRegistry`, which supports:
 
 Framework model imports (UAF, APQC, C4, etc.) are pluggable via
 `ImportProfileExtension` implementations in `taxonomy-app`:
+
+The SPI contracts and metadata types for this extension point live in
+`taxonomy-extension-api/src/main/java/com/taxonomy/catalog/service/importer`.
 
 - `descriptor()` returns a serializable `ImportProfileDescriptor`  
   (profile ID, display name, supported element/relation types, accepted file format)
@@ -117,6 +126,9 @@ layer (`ImportApiController`) and `ImportProfileRegistry`.  The REST API shape
 
 LLM providers are described via `LlmProviderExtension` implementations in
 `taxonomy-app`:
+
+The SPI contracts and metadata types for this extension point live in
+`taxonomy-extension-api/src/main/java/com/taxonomy/analysis/service`.
 
 - `descriptor()` returns a serializable `LlmProviderDescriptor`
   (provider ID, display name, capability flags, required configuration properties)

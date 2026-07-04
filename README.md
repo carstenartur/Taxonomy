@@ -422,9 +422,10 @@ Taxonomy/
 ├── taxonomy-domain/     # Pure domain types (DTOs, enums) — no framework dependencies
 ├── taxonomy-dsl/        # Architecture DSL: parser, serializer, validator, differ
 ├── taxonomy-export/     # Export formats: ArchiMate, Visio, Mermaid, Diagram
+├── taxonomy-extension-api/ # Internal extension SPI contracts + metadata (Spring-free)
 ├── taxonomy-app/        # Spring Boot application: REST API, services, persistence, UI
 ├── docs/                # Documentation and auto-generated screenshots
-└── pom.xml              # Parent POM (4 modules, Spring Boot 4, Java 21)
+└── pom.xml              # Parent POM (5 modules, Spring Boot 4, Java 21)
 ```
 
 ---
