@@ -1,5 +1,10 @@
 package com.taxonomy.architecture.controller;
 
+import com.taxonomy.architecture.report.ReportFormatDescriptor;
+import com.taxonomy.architecture.report.ReportRenderContext;
+import com.taxonomy.architecture.report.ReportRenderResult;
+import com.taxonomy.architecture.report.ReportRendererExtension;
+import com.taxonomy.architecture.report.ReportRendererRegistry;
 import com.taxonomy.dto.ArchitectureReport;
 import com.taxonomy.architecture.service.ArchitectureReportService;
 import com.taxonomy.versioning.service.RepositoryStateService;
@@ -31,13 +36,16 @@ import java.util.Map;
 public class ReportApiController {
 
     private final ArchitectureReportService reportService;
+    private final ReportRendererRegistry reportRendererRegistry;
     private final RepositoryStateService repositoryStateService;
     private final WorkspaceResolver workspaceResolver;
 
     public ReportApiController(ArchitectureReportService reportService,
+                               ReportRendererRegistry reportRendererRegistry,
                                RepositoryStateService repositoryStateService,
                                WorkspaceResolver workspaceResolver) {
         this.reportService = reportService;
+        this.reportRendererRegistry = reportRendererRegistry;
         this.repositoryStateService = repositoryStateService;
         this.workspaceResolver = workspaceResolver;
     }
@@ -63,13 +71,16 @@ public class ReportApiController {
 
         ArchitectureReport report = reportService.generateReport(
                 request.scores(), request.businessText(), request.minScore());
-        String markdown = reportService.renderMarkdown(report);
+        ReportRendererExtension renderer = reportRendererRegistry.getRequired("markdown");
+        ReportFormatDescriptor format = renderer.descriptor();
+        ReportRenderResult rendered = renderer
+                .render(ReportRenderContext.of(report));
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"architecture-report.md\"")
-                .header(HttpHeaders.CONTENT_TYPE, "text/markdown; charset=UTF-8")
-                .body(markdown.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        "attachment; filename=\"architecture-report." + format.fileExtension() + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, format.contentType())
+                .body(rendered.bytes());
     }
 
     @Operation(summary = "Export HTML report",
@@ -84,13 +95,16 @@ public class ReportApiController {
 
         ArchitectureReport report = reportService.generateReport(
                 request.scores(), request.businessText(), request.minScore());
-        String html = reportService.renderHtml(report);
+        ReportRendererExtension renderer = reportRendererRegistry.getRequired("html");
+        ReportFormatDescriptor format = renderer.descriptor();
+        ReportRenderResult rendered = renderer
+                .render(ReportRenderContext.of(report));
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"architecture-report.html\"")
-                .header(HttpHeaders.CONTENT_TYPE, "text/html; charset=UTF-8")
-                .body(html.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        "attachment; filename=\"architecture-report." + format.fileExtension() + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, format.contentType())
+                .body(rendered.bytes());
     }
 
     @Operation(summary = "Export DOCX report",
@@ -105,14 +119,16 @@ public class ReportApiController {
 
         ArchitectureReport report = reportService.generateReport(
                 request.scores(), request.businessText(), request.minScore());
-        byte[] docx = reportService.renderDocx(report);
+        ReportRendererExtension renderer = reportRendererRegistry.getRequired("docx");
+        ReportFormatDescriptor format = renderer.descriptor();
+        ReportRenderResult rendered = renderer
+                .render(ReportRenderContext.of(report));
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"architecture-report.docx\"")
-                .contentType(MediaType.parseMediaType(
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
-                .body(docx);
+                        "attachment; filename=\"architecture-report." + format.fileExtension() + "\"")
+                .contentType(MediaType.parseMediaType(format.contentType()))
+                .body(rendered.bytes());
     }
 
     @Operation(summary = "Export JSON report",

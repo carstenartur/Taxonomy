@@ -1,5 +1,10 @@
 package com.taxonomy;
 
+import com.taxonomy.architecture.report.ReportRenderContext;
+import com.taxonomy.architecture.report.ReportFormatDescriptor;
+import com.taxonomy.architecture.report.ReportRenderResult;
+import com.taxonomy.architecture.report.ReportRendererExtension;
+import com.taxonomy.architecture.report.ReportRendererRegistry;
 import com.taxonomy.dto.*;
 import com.taxonomy.architecture.service.ArchitectureReportService;
 import com.taxonomy.architecture.service.ExplanationTraceService;
@@ -13,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -31,6 +37,7 @@ class ArchitectureReportTests {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ArchitectureReportService reportService;
+    @Autowired private ReportRendererRegistry reportRendererRegistry;
     @Autowired private ExplanationTraceService traceService;
 
     // ── Report Service Tests ──────────────────────────────────────────────────
@@ -125,6 +132,76 @@ class ArchitectureReportTests {
         // DOCX files start with PK (ZIP magic bytes)
         assertThat(docx[0]).isEqualTo((byte) 0x50);
         assertThat(docx[1]).isEqualTo((byte) 0x4B);
+    }
+
+    @Test
+    void markdownRendererExtensionMatchesLegacyOutput() {
+        ArchitectureReport report = reportService.generateReport(
+                Map.of("CP-1010", 90), "test requirement", 50);
+
+        String legacyMarkdown = reportService.renderMarkdown(report);
+        String extensionMarkdown = reportRendererRegistry.getRequired("markdown")
+                .render(ReportRenderContext.of(report))
+                .utf8();
+
+        assertThat(extensionMarkdown).isEqualTo(legacyMarkdown);
+    }
+
+    @Test
+    void htmlRendererExtensionMatchesLegacyOutput() {
+        ArchitectureReport report = reportService.generateReport(
+                Map.of("CP-1010", 90), "test requirement", 50);
+
+        String legacyHtml = reportService.renderHtml(report);
+        String extensionHtml = reportRendererRegistry.getRequired("html")
+                .render(ReportRenderContext.of(report))
+                .utf8();
+
+        assertThat(extensionHtml).isEqualTo(legacyHtml);
+    }
+
+    @Test
+    void docxRendererExtensionSmokeTest() {
+        ArchitectureReport report = reportService.generateReport(
+                Map.of("CP-1010", 90), "test requirement", 50);
+
+        byte[] docx = reportRendererRegistry.getRequired("docx")
+                .render(ReportRenderContext.of(report))
+                .bytes();
+
+        assertThat(docx).isNotNull();
+        assertThat(docx.length).isGreaterThan(0);
+        assertThat(docx[0]).isEqualTo((byte) 0x50);
+        assertThat(docx[1]).isEqualTo((byte) 0x4B);
+    }
+
+    @Test
+    void reportRendererRegistryListsKnownFormats() {
+        assertThat(reportRendererRegistry.listDescriptors())
+                .extracting(descriptor -> descriptor.id())
+                .contains("markdown", "html", "docx", "json");
+    }
+
+    @Test
+    void reportRendererRegistryResolvesTrimmedFormatId() {
+        ArchitectureReport report = reportService.generateReport(
+                Map.of("CP-1010", 90), "test requirement", 50);
+
+        ReportRendererExtension trimmedRenderer = reportRendererRegistry.getRequired(" markdown ");
+
+        assertThat(trimmedRenderer.descriptor().id()).isEqualTo("markdown");
+        assertThat(trimmedRenderer.render(ReportRenderContext.of(report)).utf8())
+                .isEqualTo(reportService.renderMarkdown(report));
+    }
+
+    @Test
+    void reportRendererRegistryRejectsWhitespaceOnlyDuplicateFormatIds() {
+        ReportRendererExtension markdown = renderer("markdown");
+        ReportRendererExtension duplicate = renderer(" markdown ");
+
+        assertThatThrownBy(() -> new ReportRendererRegistry(java.util.List.of(markdown, duplicate)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Duplicate report renderer format ID: markdown");
     }
 
     @Test
@@ -321,5 +398,19 @@ class ArchitectureReportTests {
 
         assertThat(el.getExplanationTrace()).isNotNull();
         assertThat(el.getExplanationTrace().getSummaryText()).isEqualTo("test trace");
+    }
+
+    private static ReportRendererExtension renderer(String id) {
+        return new ReportRendererExtension() {
+            @Override
+            public ReportFormatDescriptor descriptor() {
+                return new ReportFormatDescriptor(id, id + " display", id + ".txt", "text/plain", false);
+            }
+
+            @Override
+            public ReportRenderResult render(ReportRenderContext context) {
+                return new ReportRenderResult(new byte[0]);
+            }
+        };
     }
 }
