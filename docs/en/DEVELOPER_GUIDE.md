@@ -61,7 +61,7 @@ modify one specific part of the system without reading the full architecture ref
 git clone https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
 
-# Compile all 4 modules (~5 seconds)
+# Compile all 5 modules (~5 seconds)
 mvn compile
 
 # Run all tests (~60 seconds, no Docker needed)
@@ -80,16 +80,17 @@ Open <http://localhost:8080> to see the application.
 
 ## Module Architecture
 
-The project is a multi-module Maven build with four modules. See [Architecture](ARCHITECTURE.md#module-architecture) for the full module diagram and dependency graph.
+The project is a multi-module Maven build with five modules. See [Architecture](ARCHITECTURE.md#module-architecture) for the full module diagram and dependency graph.
 
 | Module | Scope | Spring? |
 |---|---|---|
 | `taxonomy-domain` | Pure domain types (DTOs, enums) | No |
 | `taxonomy-dsl` | Architecture DSL (parser, model, validator, differ, provenance) | No |
 | `taxonomy-export` | Export services (ArchiMate, Visio, Mermaid, Diagram) | No |
+| `taxonomy-extension-api` | Internal extension SPI contracts + metadata | No |
 | `taxonomy-app` | Spring Boot application (controllers, services, JPA, search, storage) | Yes |
 
-- `taxonomy-domain`, `taxonomy-dsl`, and `taxonomy-export` have **no Spring dependencies** and can be tested independently.
+- `taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export`, and `taxonomy-extension-api` have **no Spring dependencies** and can be tested independently.
 - The Spring Boot JAR is produced by `taxonomy-app`.
 
 ---

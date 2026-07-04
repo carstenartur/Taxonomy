@@ -28,6 +28,11 @@
             <artifactId>taxonomy-export</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-extension-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
 
         <!-- Spring Boot starters -->
         <dependency>

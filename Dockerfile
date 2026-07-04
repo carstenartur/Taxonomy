@@ -5,12 +5,14 @@ COPY pom.xml .
 COPY taxonomy-domain/pom.xml taxonomy-domain/pom.xml
 COPY taxonomy-dsl/pom.xml taxonomy-dsl/pom.xml
 COPY taxonomy-export/pom.xml taxonomy-export/pom.xml
+COPY taxonomy-extension-api/pom.xml taxonomy-extension-api/pom.xml
 COPY taxonomy-app/pom.xml taxonomy-app/pom.xml
 # Pre-fetch dependencies so they are cached in a separate layer
 RUN mvn -q dependency:go-offline -B
 COPY taxonomy-domain/src taxonomy-domain/src
 COPY taxonomy-dsl/src taxonomy-dsl/src
 COPY taxonomy-export/src taxonomy-export/src
+COPY taxonomy-extension-api/src taxonomy-extension-api/src
 COPY taxonomy-app/src taxonomy-app/src
 RUN mvn -q -DskipTests package
 

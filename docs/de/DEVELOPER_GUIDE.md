@@ -29,7 +29,7 @@ Dieses Handbuch richtet sich an Entwicklerinnen und Entwickler, die zum Taxonomy
 git clone https://github.com/carstenartur/Taxonomy.git
 cd Taxonomy
 
-# Compile all 4 modules (~5 seconds)
+# Compile all 5 modules (~5 seconds)
 mvn compile
 
 # Run all tests (~60 seconds, no Docker needed)
@@ -48,16 +48,17 @@ mvn -pl taxonomy-app spring-boot:run
 
 ## Modularchitektur
 
-Das Projekt ist ein Multi-Modul-Maven-Build mit vier Modulen. Siehe [Architektur](ARCHITECTURE.md#module-architecture) für das vollständige Moduldiagramm und den Abhängigkeitsgraphen.
+Das Projekt ist ein Multi-Modul-Maven-Build mit fünf Modulen. Siehe [Architektur](ARCHITECTURE.md#module-architecture) für das vollständige Moduldiagramm und den Abhängigkeitsgraphen.
 
 | Modul | Umfang | Spring? |
 |---|---|---|
 | `taxonomy-domain` | Reine Domänentypen (DTOs, Enums) | Nein |
 | `taxonomy-dsl` | Architektur-DSL (Parser, Modell, Validator, Differ, Provenienz) | Nein |
 | `taxonomy-export` | Exportdienste (ArchiMate, Visio, Mermaid, Diagramm) | Nein |
+| `taxonomy-extension-api` | Interne Extension-SPI-Verträge + Metadaten | Nein |
 | `taxonomy-app` | Spring-Boot-Anwendung (Controller, Services, JPA, Suche, Speicher) | Ja |
 
-- `taxonomy-domain`, `taxonomy-dsl` und `taxonomy-export` haben **keine Spring-Abhängigkeiten** und können unabhängig getestet werden.
+- `taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export` und `taxonomy-extension-api` haben **keine Spring-Abhängigkeiten** und können unabhängig getestet werden.
 - Das Spring-Boot-JAR wird von `taxonomy-app` erzeugt.
 
 ---
