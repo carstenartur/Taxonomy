@@ -1,8 +1,14 @@
 package com.taxonomy.export.controller;
 
+import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.dto.SavedAnalysis;
 import com.taxonomy.export.MermaidLabels;
+import com.taxonomy.export.service.ExportContext;
 import com.taxonomy.export.service.ExportFacade;
+import com.taxonomy.export.service.ExportFormatDescriptor;
+import com.taxonomy.export.service.ExportFormatExtension;
+import com.taxonomy.export.service.ExportFormatExtensionRegistry;
+import com.taxonomy.export.service.ExportResult;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -11,19 +17,29 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api")
 @Tag(name = "Export")
 public class ExportApiController {
 
-    private final ExportFacade exportFacade;
+    private static final Logger log = LoggerFactory.getLogger(ExportApiController.class);
 
-    public ExportApiController(ExportFacade exportFacade) {
+    private final ExportFacade exportFacade;
+    private final ExportFormatExtensionRegistry exportFormatRegistry;
+
+    public ExportApiController(ExportFacade exportFacade,
+                               ExportFormatExtensionRegistry exportFormatRegistry) {
         this.exportFacade = exportFacade;
+        this.exportFormatRegistry = exportFormatRegistry;
     }
 
     // ── Visio Diagram Export ──────────────────────────────────────────────────
@@ -124,6 +140,53 @@ public class ExportApiController {
         headers.set(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8");
 
         return ResponseEntity.ok().headers(headers).body(dsl.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    // ── Generic format-agnostic export ──────────────────────────────────────
+
+    @Operation(summary = "Export diagram in any registered format",
+               description = "Exports a diagram in the format identified by {formatId}. " +
+                             "Registered formats: archimate, mermaid, structurizr, visio, plus any " +
+                             "custom ExportFormatExtension components. " +
+                             "An optional 'locale' field (e.g. 'de') is forwarded to the format adapter.",
+               tags = {"Export"})
+    @ApiResponse(responseCode = "200", description = "Diagram file returned as attachment")
+    @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
+    @ApiResponse(responseCode = "404", description = "Unknown format ID")
+    @PostMapping("/diagram/export/{formatId}")
+    public ResponseEntity<byte[]> exportByFormat(
+            @PathVariable String formatId,
+            @RequestBody Map<String, Object> body) {
+        String businessText = (String) body.get("businessText");
+        if (businessText == null || businessText.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        Optional<ExportFormatExtension> extensionOpt = exportFormatRegistry.findByFormatId(formatId);
+        if (extensionOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        ExportFormatExtension extension = extensionOpt.get();
+        ExportFormatDescriptor descriptor = extension.descriptor();
+
+        Map<String, Object> options = new HashMap<>(body);
+        options.remove("businessText");
+
+        try {
+            DiagramModel diagram = exportFacade.buildDiagram(businessText);
+            ExportResult result = extension.export(new ExportContext(diagram, options));
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.CONTENT_DISPOSITION,
+                    "attachment; filename=\"diagram." + descriptor.fileExtension() + "\"");
+            headers.set(HttpHeaders.CONTENT_TYPE, descriptor.contentType());
+
+            return ResponseEntity.ok().headers(headers).body(result.bytes());
+        } catch (UncheckedIOException e) {
+            log.error("Export failed for format '{}': {}", formatId, e.getMessage(), e);
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     // ── Scores import / export endpoints ────────────────────────────────────────

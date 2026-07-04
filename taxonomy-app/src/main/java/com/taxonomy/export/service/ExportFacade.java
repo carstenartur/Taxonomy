@@ -161,6 +161,22 @@ public class ExportFacade {
         return llmService.getActiveProviderName();
     }
 
+    // ── Diagram model building ──────────────────────────────────────
+
+    /**
+     * Analyzes business text and returns the projected {@link DiagramModel}.
+     *
+     * <p>This is the entry point for the generic export endpoint, which then
+     * delegates conversion to an {@link ExportFormatExtension} looked up from
+     * {@code ExportFormatExtensionRegistry}.
+     *
+     * @param businessText the requirement text to analyze
+     * @return the projected diagram model
+     */
+    public DiagramModel buildDiagram(String businessText) {
+        return analyzeAndProject(businessText);
+    }
+
     // ── Internal helpers ────────────────────────────────────────────
 
     private DiagramModel analyzeAndProject(String businessText) {
