@@ -1,0 +1,43 @@
+# Maintainability Matrix
+
+**Purpose:** Developer navigation aid — shows where to make changes for each feature area, which areas are easy or difficult to extend, and where test coverage exists.
+
+> This document tracks *maintainability* (ease of extension and modification), not product completeness.
+> For product completeness status see [`FEATURE_MATRIX.md`](../en/FEATURE_MATRIX.md).
+
+---
+
+## Feature Areas
+
+| Feature area | Primary backend package | Primary frontend module | Main controller/use case | Main service/facade | Main DTOs/domain types | Extension point exists? | Slice tests exist? | Screenshot/UI tests exist? | Typical test command | Cognitive load | Notes / known coupling |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Requirement analysis | `com.taxonomy.analysis.service` | `js/core/taxonomy-analysis.js`, `js/api/analysis-api.js` | `AnalysisApiController` | `AnalysisFacade`, `LlmService` | `AnalysisResult`, `SavedAnalysis` | Yes — `LlmGateway` SPI | Yes | Yes | `mvn test -Dtest=AnalysisTest` | High | LLM gateway registry, rate-limit retry, SSE streaming, provisional-relation lifecycle all coupled in facade |
+| Streaming analysis | `com.taxonomy.analysis.service` | `js/core/taxonomy-analysis.js`, `js/api/analysis-api.js` | `AnalysisApiController` (SSE endpoint) | `AnalysisFacade`, `LlmService` | `AnalysisResult` (partial) | Yes — `LlmGateway` SPI | Yes | No | `mvn test -Dtest=AnalysisTest` | High | SSE event lifecycle is tightly coupled with `AnalysisFacade`; requires `AnalysisSseEventMapper` |
+| Architecture view construction | `com.taxonomy.architecture.pipeline`, `com.taxonomy.architecture.service` | `js/core/taxonomy-views.js` | `ArchitectureSummaryApiController` | `RequirementArchitectureViewService` (facade) → `ArchitectureViewPipeline` | `RequirementArchitectureView`, `RequirementElementView`, `RequirementRelationView` | Yes — `ArchitectureViewPipeline` steps are independent classes | Yes | Yes | `mvn test -Dtest=ArchitectureViewTest` | High | 10-step pipeline; each step is isolated but the `ArchitectureViewContext` state object accumulates coupling across steps |
+| Relation proposals | `com.taxonomy.relations.service` | `js/relations/taxonomy-relations.js` | `ProposalApiController` | `RelationProposalService` | `RelationProposalDto`, `RelationProposal` | No | Yes | Yes | `mvn test -Dtest=RelationProposalServiceTest` | Medium | Proposal lifecycle (proposed → accepted/rejected) crosses relation and analysis domains |
+| Gap analysis | `com.taxonomy.architecture.service` | `js/core/taxonomy-analysis.js` | `GapAnalysisApiController` | `ArchitectureGapService` | `GapAnalysisView` | No | Yes | Yes | `mvn test -Dtest=ArchitectureGapServiceTest` | Medium | Depends on both propagation result and scoring pipeline |
+| Pattern detection | `com.taxonomy.architecture.service` | `js/core/taxonomy-views.js` | `PatternDetectionApiController` | `ArchitecturePatternService` | `PatternMatch` | No | Yes | No | `mvn test -Dtest=ArchitecturePatternServiceTest` | Medium | Pattern rules are statically configured; no runtime extension point |
+| Recommendations | `com.taxonomy.architecture.service` | `js/core/taxonomy-analysis.js` | `RecommendationApiController` | `ArchitectureRecommendationService` | `ArchitectureRecommendation` | No | Yes | No | `mvn test -Dtest=ArchitectureRecommendationServiceTest` | Low | Thin layer over gap analysis + scoring trace |
+| Reports | `com.taxonomy.architecture.service` | `js/core/taxonomy-views.js` | `ReportApiController` | `ArchitectureReportService` | `ArchitectureReport` | No | Yes | No | `mvn test -Dtest=ArchitectureReportServiceTest` | Low | Aggregates gap, recommendation, and impact results into a single report DTO |
+| Export formats | `com.taxonomy.export.service`, `com.taxonomy.archimate`, `com.taxonomy.diagram`, `com.taxonomy.visio` | `js/shared/taxonomy-export.js` | `export/controller/ExportController` | `ExportFacade` | `ExportResult` | Yes — add a new format class in `taxonomy-export` | Yes | No | `mvn test -Dtest=ExportFacadeTest` | Low | New formats must be registered in `ExportFacade`; `taxonomy-export` module is Spring-free by design |
+| Document import | `com.taxonomy.catalog.service` (import path), `com.taxonomy.shared` | `js/shared/taxonomy-document-import.js`, `js/shared/taxonomy-import.js` | `ImportApiController`, `ArchiMateImportController` | `CatalogFacade` | `ImportResultDto` | No | Yes | No | `mvn test -Dtest=ImportTest` | Medium | ArchiMate and generic document paths share catalog facade; format-specific parsing is not factored out |
+| DSL editor | `com.taxonomy.dsl.storage`, `com.taxonomy.dsl.export`, `com.taxonomy.versioning.service` | `js/shared/taxonomy-dsl-editor.js`, `js/shared/taxonomy-dsl-codemirror.mjs` | `DslApiController` | `DslOperationsFacade` | `CanonicalArchitectureModel`, `ArchitectureElement`, `ArchitectureRelation` | No | Yes | Yes | `mvn test -Dtest=DslTest` | High | JGit DFS storage, custom parser, materialization to DB, and conflict detection are all coupled through `DslOperationsFacade` |
+| Version history | `com.taxonomy.versioning.service` | `js/versioning/taxonomy-versions.js`, `js/versioning/taxonomy-history-search.js` | `ContextNavigationController` | `ContextHistoryService`, `VersioningFacade` | `CommitSummary`, `ArchitectureCommitIndex` | No | Yes | No | `mvn test -Dtest=VersioningTest` | Medium | Commit index rebuilt on materialization; history queries traverse JGit object store |
+| Branch compare | `com.taxonomy.versioning.service` | `js/versioning/taxonomy-context-compare.js` | `ContextNavigationController` | `ContextCompareService` | `ModelDiff`, `DiffResult` | No | Yes | No | `mvn test -Dtest=ContextCompareServiceTest` | Medium | Diff algorithm in `taxonomy-dsl` module; compare service orchestrates JGit + diff + rendering |
+| Merge/cherry-pick/conflict resolution | `com.taxonomy.versioning.service`, `com.taxonomy.workspace.service` | `js/workspace/taxonomy-merge-resolution.js` | `DslApiController`, `GitStateController` | `DslOperationsFacade`, `ConflictDetectionService` | `MergeResult`, `ConflictEntry` | No | Yes | No | `mvn test -Dtest=DslOperationsFacadeTest` | High | Three-way merge, conflict detection, and selective-transfer all interact with JGit DFS; shared mutable workspace state |
+| Workspace sync/publish | `com.taxonomy.workspace.service` | `js/workspace/taxonomy-workspace-sync.js`, `js/workspace/taxonomy-workspace-provisioning.js` | `WorkspaceController`, `ExternalSyncController` | `WorkspaceResolver`, `RepositoryStateService` | `WorkspaceContext` | No | Yes | No | `mvn test -Dtest=WorkspaceTest` | Medium | Workspace context resolution is at request boundary by design; sync path crosses workspace and versioning domains |
+| Search / semantic search / hybrid search | `com.taxonomy.search.service` | `js/shared/taxonomy-search.js` | `SearchApiController` | `HybridSearchService`, `GraphSearchService` | `SearchResultDto`, `TaxonomyNodeDto` | No | Yes | No | `mvn test -Dtest=SearchTest` | Medium | Hybrid search fuses Lucene BM25 + KNN via `RankFusionUtil`; ONNX embedding model loaded at startup |
+| Graph exploration | `com.taxonomy.relations.service`, `com.taxonomy.architecture.service` | `js/shared/taxonomy-graph.js` | `GraphQueryApiController`, `RelationApiController` | `ArchitectureGraphQueryServiceImpl`, `RelationTraversalService` | `GraphView`, `NodeNeighborsDto` | No | Yes | No | `mvn test -Dtest=GraphQueryTest` | Medium | Graph traversal depth and direction combine with architecture anchor logic; shared traversal between relations and architecture domains |
+| Admin/diagnostics | `com.taxonomy.shared.controller`, `com.taxonomy.shared.service` | `js/shared/taxonomy-about.js` | `SharedController` | `DiagnosticsService` | `SystemInfoDto` | No | No | No | `mvn test -Dtest=DiagnosticsTest` | Low | Single-purpose endpoint; minimal coupling |
+
+---
+
+## Update Rule
+
+When a feature area receives a **new controller, service, UI module, or extension point**, update the corresponding row in this matrix:
+
+1. Update the affected columns (package, module, controller/service name, extension-point flag, test flags).
+2. Re-assess the cognitive-load rating if coupling increased significantly.
+3. Add a note in the **Notes / known coupling** column if the change introduces a new cross-feature dependency.
+
+Maintainability matrix changes belong in the same PR as the feature change.

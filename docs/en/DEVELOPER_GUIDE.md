@@ -26,6 +26,7 @@ This guide is intended for developers contributing to the Taxonomy Architecture 
 - [Common Pitfalls](#common-pitfalls)
 - [Architecture Conventions](#architecture-conventions)
 - [Definition of Done — User-Facing Features](#definition-of-done--user-facing-features)
+- [Maintainability Matrix](#maintainability-matrix)
 
 ---
 
@@ -605,3 +606,22 @@ The following CI tests catch common documentation drift:
 - `HelpControllerTest.everyEnglishDocFileIsRegistered()` — every `docs/en/*.md` must be in `HelpController`
 - `HelpControllerTest.everyRegisteredDocHasI18nKeys()` — every registered doc must have EN + DE i18n keys
 - `I18nApiControllerTest.englishAndGermanHaveSameKeys()` — EN and DE bundles must have identical key sets
+
+
+---
+
+## Maintainability Matrix
+
+The [Maintainability Matrix](../internal/MAINTAINABILITY_MATRIX.md) lists every feature area with its primary backend package, frontend module, main controller and service, DTOs, test coverage flags, and cognitive-load rating.
+
+Use it to locate the right entry points for a focused change and to understand which areas have known cross-cutting coupling.
+
+**ArchUnit rules** — the architectural boundary rules are in
+`taxonomy-app/src/test/java/com/taxonomy/ArchitectureTest.java`.
+Rules currently enforced include:
+- No circular dependencies between domain packages
+- Controllers must not access repositories directly
+- Services must not depend on controllers
+- `taxonomy-domain`, `taxonomy-dsl` (framework-free packages), and `taxonomy-export` (framework-free packages) must be Spring-free
+- `taxonomy-dsl` and `taxonomy-export` framework-free packages must not depend on `taxonomy-app` packages
+- Workspace context must be resolved at request boundaries only
