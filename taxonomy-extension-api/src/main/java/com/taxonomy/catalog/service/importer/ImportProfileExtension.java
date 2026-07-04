@@ -1,6 +1,7 @@
 package com.taxonomy.catalog.service.importer;
 
 import com.taxonomy.dto.FrameworkImportResult;
+import com.taxonomy.shared.extension.ExtensionKind;
 import com.taxonomy.shared.extension.TaxonomyExtension;
 
 /**
@@ -26,6 +27,27 @@ import com.taxonomy.shared.extension.TaxonomyExtension;
  * }</pre>
  */
 public interface ImportProfileExtension extends TaxonomyExtension {
+
+    @Override
+    default String id() {
+        return descriptor().profileId();
+    }
+
+    @Override
+    default String displayName() {
+        return descriptor().displayName();
+    }
+
+    @Override
+    default String description() {
+        ImportProfileDescriptor descriptor = descriptor();
+        return "Imports framework models from %s files".formatted(descriptor.acceptedFileFormat());
+    }
+
+    @Override
+    default ExtensionKind kind() {
+        return ExtensionKind.IMPORT_PROFILE;
+    }
 
     /**
      * Returns the static descriptor for this profile (ID, display name, supported types, format).

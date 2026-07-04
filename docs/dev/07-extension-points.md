@@ -2,6 +2,28 @@
 
 Related developer note: [Relation and DSL Extension Boundaries](relation-and-dsl-extension-boundaries.md)
 
+## Shared internal SPI
+
+All internal extension contracts now build on a small shared SPI in
+`taxonomy-extension-api/src/main/java/com/taxonomy/shared/extension`:
+
+- `TaxonomyExtension` defines stable metadata methods: `id()`,
+  `displayName()`, `description()`, and `kind()`
+- `ExtensionKind` classifies extensions as `EXPORT_FORMAT`,
+  `REPORT_RENDERER`, `IMPORT_PROFILE`, `LLM_PROVIDER`, or
+  `ARCHITECTURE_PIPELINE_STEP`
+- `ExtensionDescriptor` is the generic, serializable metadata view that can be
+  safely exposed to REST/UI code without leaking implementation classes
+
+`taxonomy-app/src/main/java/com/taxonomy/shared/extension/ExtensionRegistry`
+collects all Spring extension beans, validates duplicate IDs per
+`ExtensionKind`, and offers read-only descriptor lookups (`listAll()`,
+`listByKind(...)`, `findDescriptor(...)`).
+
+This is an internal extension model only. It does **not** support external
+plugin JAR loading, runtime installation, custom classloaders, or a plugin
+marketplace.
+
 ## ExportFormatExtension
 
 Diagram export formats (Mermaid, ArchiMate, Visio, Structurizr, and any future

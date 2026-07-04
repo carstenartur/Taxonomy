@@ -9,6 +9,8 @@ We introduce a dedicated Maven module now:
 `taxonomy-extension-api` contains stable internal extension contracts and metadata types only:
 
 - `TaxonomyExtension`
+- `ExtensionKind`
+- `ExtensionDescriptor`
 - Export SPI contracts (`ExportFormatExtension` + descriptor/context/result types)
 - Report SPI contracts (`ReportRendererExtension` + descriptor/context/result types)
 - Import SPI contracts (`ImportProfileExtension` + descriptor/input types)
