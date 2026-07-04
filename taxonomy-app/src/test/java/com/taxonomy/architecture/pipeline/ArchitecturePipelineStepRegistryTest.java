@@ -2,6 +2,7 @@ package com.taxonomy.architecture.pipeline;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,7 +73,7 @@ class ArchitecturePipelineStepRegistryTest {
         List<ArchitecturePipelineStepDescriptor> descriptors = registry.listDescriptors();
 
         assertThat(descriptors).extracting(ArchitecturePipelineStepDescriptor::id)
-                .containsExactlyInAnyOrder("enabled", "disabled");
+                .containsExactly("enabled", "disabled");
         assertThat(descriptors).filteredOn(d -> !d.enabledByDefault())
                 .extracting(ArchitecturePipelineStepDescriptor::id)
                 .containsExactly("disabled");
@@ -133,6 +134,14 @@ class ArchitecturePipelineStepRegistryTest {
                 new ArchitecturePipelineStepRegistry(List.of(nullId)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("non-blank ID");
+    }
+
+    @Test
+    void rejectsNullStepBeforeSorting() {
+        assertThatThrownBy(() ->
+                new ArchitecturePipelineStepRegistry(Arrays.asList(stubStep("alpha", 100), null)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("null ArchitecturePipelineStep");
     }
 
     // ── Default pipeline step IDs and ordering ────────────────────────────────

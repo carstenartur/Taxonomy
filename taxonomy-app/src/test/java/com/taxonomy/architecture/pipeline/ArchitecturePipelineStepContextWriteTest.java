@@ -49,7 +49,7 @@ class ArchitecturePipelineStepContextWriteTest {
             @Override public int order()    { return 350; }
             @Override public void apply(ArchitectureViewContext c) {
                 RequirementElementView el = new RequirementElementView();
-                el.setNodeCode("FAKE-001");
+                el.setNodeCode("CR");
                 el.setRelevance(0.99);
                 el.setAnchor(false);
                 c.getElements().add(el);
@@ -59,7 +59,7 @@ class ArchitecturePipelineStepContextWriteTest {
         writer.apply(ctx);
 
         assertThat(ctx.getElements()).hasSize(1);
-        assertThat(ctx.getElements().get(0).getNodeCode()).isEqualTo("FAKE-001");
+        assertThat(ctx.getElements().get(0).getNodeCode()).isEqualTo("CR");
         assertThat(ctx.getElements().get(0).getRelevance()).isEqualTo(0.99);
     }
 
@@ -80,7 +80,7 @@ class ArchitecturePipelineStepContextWriteTest {
             @Override public void apply(ArchitectureViewContext c) {
                 List<RequirementElementView> newList = new ArrayList<>();
                 RequirementElementView fresh = new RequirementElementView();
-                fresh.setNodeCode("CP-NEW");
+                fresh.setNodeCode("CR");
                 newList.add(fresh);
                 c.setElements(newList);
             }
@@ -89,7 +89,7 @@ class ArchitecturePipelineStepContextWriteTest {
         replacer.apply(ctx);
 
         assertThat(ctx.getElements()).hasSize(1);
-        assertThat(ctx.getElements().get(0).getNodeCode()).isEqualTo("CP-NEW");
+        assertThat(ctx.getElements().get(0).getNodeCode()).isEqualTo("CR");
     }
 
     // ── enabledByDefault defaults to true ────────────────────────────────────

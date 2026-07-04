@@ -30,10 +30,9 @@ public class ArchitecturePipelineStepRegistry {
         Map<Integer, ArchitecturePipelineStep> byOrder = new LinkedHashMap<>();
 
         steps.stream()
+                .map(ArchitecturePipelineStepRegistry::validatedStep)
                 .sorted(Comparator.comparingInt(ArchitecturePipelineStep::order))
                 .forEach(step -> {
-                    validateStep(step);
-
                     ArchitecturePipelineStep prevId = byId.putIfAbsent(step.id(), step);
                     if (prevId != null) {
                         throw new IllegalStateException(
@@ -78,7 +77,7 @@ public class ArchitecturePipelineStepRegistry {
 
     // --- Validation helpers -------------------------------------------
 
-    private static void validateStep(ArchitecturePipelineStep step) {
+    private static ArchitecturePipelineStep validatedStep(ArchitecturePipelineStep step) {
         if (step == null) {
             throw new IllegalStateException(
                     "A null ArchitecturePipelineStep was passed to the registry");
@@ -89,5 +88,6 @@ public class ArchitecturePipelineStepRegistry {
                     "Pipeline step %s must declare a non-blank ID"
                             .formatted(step.getClass().getName()));
         }
+        return step;
     }
 }

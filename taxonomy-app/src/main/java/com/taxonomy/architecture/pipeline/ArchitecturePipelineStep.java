@@ -17,9 +17,11 @@ import com.taxonomy.shared.extension.TaxonomyExtension;
  *       valid elements, node-count limits).  Their ordering and semantics must not
  *       be changed; replacing or disabling them will break the pipeline output.</li>
  *   <li><b>Safe extension points</b> — steps with {@code coreInvariant = false}
- *       may be augmented or replaced by adding a new implementation that declares
- *       an {@link #order()} value adjacent to the step it extends.  A replacement
- *       must still leave the context in a consistent state for subsequent steps.</li>
+ *       may be augmented by adding a new implementation that declares
+ *       an {@link #order()} value adjacent to the step it extends. Replacing a
+ *       default step requires changing bean registration so only one implementation
+ *       occupies each unique order/ID slot, and the replacement must still leave
+ *       the context in a consistent state for subsequent steps.</li>
  * </ul>
  *
  * <h2>Default step sequence</h2>

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -57,19 +58,29 @@ public class ArchitectureViewPipeline {
      */
     public RequirementArchitectureView execute(ArchitectureViewContext ctx) {
         RequirementArchitectureView view = ctx.getView();
+        List<ArchitecturePipelineStep> enabledSteps = registry.getEnabledSteps();
 
-        for (ArchitecturePipelineStep step : registry.getEnabledSteps()) {
+        ArchitecturePipelineStep anchorSelectionStep = enabledSteps.stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Architecture pipeline must enable %s as its first step"
+                                .formatted(AnchorSelectionStep.STEP_ID)));
+        if (!Objects.equals(anchorSelectionStep.id(), AnchorSelectionStep.STEP_ID)) {
+            throw new IllegalStateException(
+                    "Architecture pipeline must execute %s first, but found %s"
+                            .formatted(AnchorSelectionStep.STEP_ID, anchorSelectionStep.id()));
+        }
+
+        anchorSelectionStep.apply(ctx);
+        view.setAnchors(ctx.getAnchors());
+        if (ctx.getAnchors().isEmpty()) {
+            view.getNotes().add(
+                    "No nodes met the anchor threshold; architecture view is empty.");
+            return view;
+        }
+
+        for (ArchitecturePipelineStep step : enabledSteps.subList(1, enabledSteps.size())) {
             step.apply(ctx);
-
-            // Core invariant: expose anchors on the view and abort if none were selected.
-            if (AnchorSelectionStep.STEP_ID.equals(step.id())) {
-                view.setAnchors(ctx.getAnchors());
-                if (ctx.getAnchors().isEmpty()) {
-                    view.getNotes().add(
-                            "No nodes met the anchor threshold; architecture view is empty.");
-                    return view;
-                }
-            }
         }
 
         // Finalization (core invariant — not a pipeline step)
