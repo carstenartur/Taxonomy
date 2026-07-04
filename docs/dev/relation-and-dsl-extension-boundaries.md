@@ -51,7 +51,12 @@ modules.
 7. Review seed/import paths that persist or generate relation types, including:
    - `taxonomy-app/src/main/resources/data/relations.csv`
    - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/RelationSeedParser.java`
-   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/*.java`
+   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/ArchiMateXmlImporter.java`
+   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/UafImportProfileExtension.java`
+   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/C4ImportProfileExtension.java`
+   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/ApqcCsvImportProfileExtension.java`
+   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/ApqcExcelImportProfileExtension.java`
+   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/StructurizrDslParser.java`
 
 ### Files, services, UI modules, and tests affected by relation changes
 
@@ -63,7 +68,7 @@ modules.
 | Analysis / graph usage | `AnalysisRelationGenerator.java`, `GraphSearchService.java`, `RelationTraversalService.java`, `RelationshipBuildStep.java`, `ImpactRelationStep.java`, `ProvisionalRelationStep.java` |
 | DSL mirror | `taxonomy-dsl/.../DslValidator.java`, `AstToModelMapper.java`, `ModelToAstMapper.java`, `DslTokenizer.java`, `ModelDiffer.java`, `SemanticDiffDescriber.java` |
 | UI | `taxonomy-app/src/main/resources/templates/index.html`, `taxonomy-app/src/main/resources/static/js/relations/taxonomy-relations.js` |
-| Seed/import data | `taxonomy-app/src/main/resources/data/relations.csv`, `RelationSeedParser.java`, importer classes under `taxonomy-app/.../catalog/service/importer/` |
+| Seed/import data | `taxonomy-app/src/main/resources/data/relations.csv`, `RelationSeedParser.java`, `ArchiMateXmlImporter.java`, `UafImportProfileExtension.java`, `C4ImportProfileExtension.java`, `ApqcCsvImportProfileExtension.java`, `ApqcExcelImportProfileExtension.java`, `StructurizrDslParser.java` |
 | Tests | `taxonomy-domain/src/test/java/com/taxonomy/model/RelationTypeTest.java`, `taxonomy-app/src/test/java/com/taxonomy/TaxonomyRelationTests.java`, `RelationProposalTests.java`, `RelationQualityTests.java`, `AnalysisRelationGeneratorTests.java`, `RequirementCoverageTests.java`, `taxonomy-app/src/test/java/com/taxonomy/catalog/service/RelationSeedParserTest.java`, `taxonomy-app/src/test/java/com/taxonomy/architecture/pipeline/ProvisionalRelationStepTest.java`, plus DSL tests that assert relation parsing/validation/tokenization |
 
 ### Relation metadata that can safely move to an extension descriptor
