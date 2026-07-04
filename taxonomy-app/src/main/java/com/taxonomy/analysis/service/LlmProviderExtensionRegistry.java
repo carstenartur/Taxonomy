@@ -41,9 +41,12 @@ public class LlmProviderExtensionRegistry {
     /**
      * Returns the extension for the given provider.
      *
-     * @throws IllegalArgumentException if no extension is registered for the provider
+     * @throws IllegalArgumentException if {@code provider} is null or no extension is registered for it
      */
     public LlmProviderExtension getRequired(LlmProvider provider) {
+        if (provider == null) {
+            throw new IllegalArgumentException("provider must not be null");
+        }
         return findById(provider.name())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "No LlmProviderExtension registered for provider: " + provider));
@@ -60,11 +63,12 @@ public class LlmProviderExtensionRegistry {
     }
 
     /**
-     * Lists the descriptors of all registered LLM providers.
+     * Lists the descriptors of all registered LLM providers, sorted by provider ID.
      */
     public List<LlmProviderDescriptor> listDescriptors() {
         return byProviderId.values().stream()
                 .map(LlmProviderExtension::descriptor)
+                .sorted(Comparator.comparing(LlmProviderDescriptor::providerId))
                 .toList();
     }
 
@@ -73,6 +77,9 @@ public class LlmProviderExtensionRegistry {
     }
 
     private Registration validatedRegistration(LlmProviderExtension extension) {
+        if (extension == null) {
+            throw new IllegalStateException("A null LlmProviderExtension was passed to the registry");
+        }
         LlmProviderDescriptor descriptor = extension.descriptor();
         if (descriptor == null) {
             throw new IllegalStateException(
@@ -84,6 +91,17 @@ public class LlmProviderExtensionRegistry {
             throw new IllegalStateException(
                     "LLM provider extension %s must declare a non-blank provider ID"
                             .formatted(extension.getClass().getName()));
+        }
+        LlmProvider provider = extension.provider();
+        if (provider == null) {
+            throw new IllegalStateException(
+                    "LLM provider extension %s returned a null provider"
+                            .formatted(extension.getClass().getName()));
+        }
+        if (!provider.name().equals(providerId)) {
+            throw new IllegalStateException(
+                    "LLM provider extension %s has mismatched providerId '%s' and provider().name() '%s'"
+                            .formatted(extension.getClass().getName(), providerId, provider.name()));
         }
         return new Registration(normalize(providerId), extension);
     }

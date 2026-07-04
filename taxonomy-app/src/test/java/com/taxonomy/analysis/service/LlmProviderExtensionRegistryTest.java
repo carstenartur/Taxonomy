@@ -30,13 +30,15 @@ class LlmProviderExtensionRegistryTest {
     }
 
     @Test
-    void listDescriptors_returnsAllSevenProviders() {
+    void listDescriptors_returnsAllProviders() {
         List<LlmProviderDescriptor> descriptors = registry.listDescriptors();
-        assertThat(descriptors).hasSize(7);
+        assertThat(descriptors).hasSize(LlmProvider.values().length);
         assertThat(descriptors)
                 .extracting(LlmProviderDescriptor::providerId)
                 .containsExactlyInAnyOrder(
-                        "GEMINI", "OPENAI", "DEEPSEEK", "QWEN", "LLAMA", "MISTRAL", "LOCAL_ONNX");
+                        java.util.Arrays.stream(LlmProvider.values())
+                                .map(LlmProvider::name)
+                                .toArray(String[]::new));
     }
 
     @ParameterizedTest
@@ -63,10 +65,10 @@ class LlmProviderExtensionRegistryTest {
     }
 
     @Test
-    void getRequired_unknownProviderThrows() {
-        // This tests that getRequired delegates correctly — we verify it works for
-        // a known value and that a null-based call would throw.
-        assertThatCode(() -> registry.getRequired(LlmProvider.GEMINI)).doesNotThrowAnyException();
+    void getRequired_nullProviderThrows() {
+        assertThatThrownBy(() -> registry.getRequired(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("null");
     }
 
     @Test
