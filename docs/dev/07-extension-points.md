@@ -1,10 +1,36 @@
 # Extension Points
 
-Related developer note: [Relation and DSL Extension Boundaries](relation-and-dsl-extension-boundaries.md)
+Related developer notes:
+
+- [Change Map](01-change-map.md)
+- [Task: Add a New LLM Provider](tasks/add-llm-provider.md)
+- [Task: Add a New Export Format](tasks/add-export-format.md)
+- [Task: Add a New Relation Type](tasks/add-relation-type.md)
+- [Task: Add a DSL Property](tasks/add-dsl-property.md)
+- [Relation and DSL Extension Boundaries](relation-and-dsl-extension-boundaries.md)
+
+Use this page when you need the **stable starting point** for a common feature
+addition. It documents the extension anchors that already exist in the codebase.
+It does **not** introduce a plugin framework or runtime loading of external JARs.
+
+## Extension map
+
+| Area | Status | Stable starting point |
+|---|---|---|
+| [LLM providers](#llm-providers) | Explicit SPI | `LlmProviderExtension` + `LlmProviderExtensionRegistry` |
+| [Prompt templates](#prompt-templates) | Implicit, documented anchor | `PromptTemplateService` + `src/main/resources/prompts/` |
+| [Export formats](#export-formats) | Explicit SPI | `ExportFormatExtension` + `ExportFormatExtensionRegistry` |
+| [Import profiles and document mappings](#import-profiles-and-document-mappings) | Mixed | `ImportProfileExtension` / `ImportProfileRegistry` and `DocumentAnalysisService` |
+| [Relation types and compatibility rules](#relation-types-and-compatibility-rules) | Implicit, documented anchor | `RelationType` + `RelationCompatibilityMatrix` |
+| [Architecture view pipeline steps](#architecture-view-pipeline-steps) | Explicit SPI | `ArchitecturePipelineStep` + `ArchitecturePipelineStepRegistry` |
+| [Report formats](#report-formats) | Explicit SPI | `ReportRendererExtension` + `ReportRendererRegistry` |
+| [UI panels](#ui-panels) | Implicit, documented anchor | `index.html` + `src/main/resources/static/js/` |
+| [Workspace and versioning operations](#workspace-and-versioning-operations) | Implicit, documented anchor | `WorkspaceManager` / `VersioningFacade` / versioning services |
+| [DSL grammar and property additions](#dsl-grammar-and-property-additions) | Implicit, documented anchor | `TaxDslParser` + serializer + mappers + validator |
 
 ## Shared internal SPI
 
-All internal extension contracts now build on a small shared SPI in
+The explicit extension points share a small internal SPI in
 `taxonomy-extension-api/src/main/java/com/taxonomy/shared/extension`:
 
 - `TaxonomyExtension` defines stable metadata methods: `id()`,
@@ -12,185 +38,562 @@ All internal extension contracts now build on a small shared SPI in
 - `ExtensionKind` classifies extensions as `EXPORT_FORMAT`,
   `REPORT_RENDERER`, `IMPORT_PROFILE`, `LLM_PROVIDER`, or
   `ARCHITECTURE_PIPELINE_STEP`
-- `ExtensionDescriptor` is the generic, serializable metadata view that can be
-  safely exposed to REST/UI code without leaking implementation classes
+- `ExtensionDescriptor` is the framework-free metadata view safe for REST/UI
 
 `taxonomy-app/src/main/java/com/taxonomy/shared/extension/ExtensionRegistry`
-collects all Spring extension beans, validates duplicate IDs per
-`ExtensionKind`, and offers read-only descriptor lookups (`listAll()`,
-`listByKind(...)`, `findDescriptor(...)`).
+collects all Spring extension beans, validates duplicate IDs per kind, and
+exposes descriptor lookups (`listAll()`, `listByKind(...)`,
+`findDescriptor(...)`).
 
-This is an internal extension model only. It does **not** support external
-plugin JAR loading, runtime installation, custom classloaders, or a plugin
-marketplace.
+For explicit extension kinds you can inspect registered descriptors through the
+read-only REST API:
 
-## ExportFormatExtension
+- `GET /api/extensions`
+- `GET /api/extensions/{kind}`
 
-Diagram export formats (Mermaid, ArchiMate, Visio, Structurizr, and any future
-format) are pluggable via `ExportFormatExtension` implementations in
-`taxonomy-app/src/main/java/com/taxonomy/export/service`:
-
-The SPI contracts and metadata types for this extension point live in
-`taxonomy-extension-api/src/main/java/com/taxonomy/export/service`.
-
-- `descriptor()` returns a serializable `ExportFormatDescriptor`
-  (format ID, display name, file extension, HTTP content type, binary flag)
-- `export(ExportContext)` converts the projected `DiagramModel` to `ExportResult` bytes
-
-`ExportContext` carries the `DiagramModel` (post-projection) and an optional
-`Map<String, Object> options` map (e.g. `"locale"` → `"de"` for Mermaid labels).
-
-The registry is `ExportFormatExtensionRegistry`, which supports:
-
-- lookup by format ID (`getRequired("mermaid")`, `findByFormatId("archimate")`, etc.)
-- listing all registered formats (`listDescriptors()`)
-
-### Registered built-in adapters
-
-| Format ID      | Class                          | Output                                      |
-|----------------|--------------------------------|---------------------------------------------|
-| `archimate`    | `ArchiMateExportExtension`     | ArchiMate XML (`.xml`)                      |
-| `mermaid`      | `MermaidExportExtension`       | Mermaid flowchart text (`.mmd`)             |
-| `structurizr`  | `StructurizrExportExtension`   | Structurizr DSL text (`.dsl`)               |
-| `visio`        | `VisioExportExtension`         | Visio package (`.vsdx`, binary)             |
-
-### Add a new export format
-
-1. Create a Spring `@Component` implementing `ExportFormatExtension` in
-   `taxonomy-app/src/main/java/com/taxonomy/export/service`.
-2. Provide a unique `descriptor().id()` (lowercase, e.g. `"bpmn"`).
-3. Implement `export(ExportContext context)` using `context.diagram()` and
-   optionally `context.options()`.
-4. The new format is automatically registered in `ExportFormatExtensionRegistry`
-   without any changes to existing format implementations.
-5. The generic endpoint `POST /api/diagram/export/{formatId}` automatically routes
-   requests to the new format — no changes to `ExportApiController` are required.
-   If a format-specific endpoint with a custom URL is also needed, add it to
-   `ExportApiController` via `ExportFormatExtensionRegistry`.
-
-> **Note:** The exporter logic (the format-specific conversion) should remain in
-> a framework-free class in `taxonomy-export` (no Spring annotations), which the
-> `@Component` adapter in `taxonomy-app` then delegates to.  This matches the
-> existing adapter pattern for Mermaid, ArchiMate, Visio, and Structurizr.
+implemented by
+`taxonomy-app/src/main/java/com/taxonomy/shared/controller/ExtensionApiController.java`.
 
 ---
 
-## ReportRendererExtension
+## LLM providers
 
-Reports can be rendered via `ReportRendererExtension` implementations in
-`taxonomy-app`:
+**Status:** Explicit SPI
 
-The SPI contracts and metadata types for this extension point live in
-`taxonomy-extension-api/src/main/java/com/taxonomy/architecture/report`.
+**Interface / registry / configuration point**
 
-- `descriptor()` returns a serializable `ReportFormatDescriptor`
-- `render(ReportRenderContext)` returns `ReportRenderResult` bytes
+- `taxonomy-extension-api/src/main/java/com/taxonomy/analysis/service/LlmProviderExtension.java`
+- `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmProviderExtensionRegistry.java`
+- `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmGatewayRegistry.java`
+- `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmProviderConfig.java`
 
-The registry is `ReportRendererRegistry`, which supports:
+`LlmProviderExtension` describes provider metadata; `LlmGatewayRegistry`
+provides the HTTP gateway used by `LlmService`.
 
-- lookup by format ID (`getRequired("markdown")`, `getRequired("html")`, etc.)
-- listing registered formats (`listDescriptors()`)
+**Required files**
 
-### Add a new report format
+- `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmProvider.java`
+- new Spring `@Component` implementing `LlmProviderExtension`
+- gateway registration in `LlmGatewayRegistry`
+- API-key or model wiring in `LlmProviderConfig`
+- configuration property entry in
+  `taxonomy-app/src/main/resources/application.properties`
 
-1. Create a Spring `@Component` implementing `ReportRendererExtension`.
-2. Provide a unique `descriptor().id()` and the target content type/file extension.
-3. Implement `render(...)` using the existing `ArchitectureReport` data in
-   `ReportRenderContext`.
-4. If the format needs a new endpoint, wire it in `ReportApiController` via
-   `ReportRendererRegistry` without changing existing format implementations.
+**Optional files**
 
----
+- provider-specific gateway class if `OpenAiCompatibleGateway` is not enough
+- `LlmResponseParser` only if the response JSON shape differs
+- prompt files under `taxonomy-app/src/main/resources/prompts/` only if the
+  provider needs different prompt structure
 
-## ImportProfileExtension
+**Required tests**
 
-Framework model imports (UAF, APQC, C4, etc.) are pluggable via
-`ImportProfileExtension` implementations in `taxonomy-app`:
+- `taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmProviderExtensionRegistryTest.java`
+- `taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmGatewayRegistryTest.java`
+- provider-specific gateway test if custom HTTP behavior is added
 
-The SPI contracts and metadata types for this extension point live in
-`taxonomy-extension-api/src/main/java/com/taxonomy/catalog/service/importer`.
+**Documentation updates**
 
-- `descriptor()` returns a serializable `ImportProfileDescriptor`  
-  (profile ID, display name, supported element/relation types, accepted file format)
-- `preview(ImportInput)` performs a dry-run (parse + map, no DB write) and returns `FrameworkImportResult`
-- `importData(ImportInput)` runs the full pipeline (parse → map → DSL serialize → materialize) and returns `FrameworkImportResult`
+- `docs/en/CONFIGURATION_REFERENCE.md`
+- `docs/en/AI_PROVIDERS.md`
+- `docs/dev/tasks/add-llm-provider.md` if the workflow changes
 
-`ImportInput` carries the `InputStream` from the uploaded file and an optional target `branch`.
+**Common failure modes**
 
-The registry is `ImportProfileRegistry`, which supports:
-
-- lookup by profile ID (`getRequired("uaf")`, `findById("apqc")`, etc.)
-- listing registered profiles (`listDescriptors()`)
-
-`FrameworkImportService` is the thin facade that translates between the REST
-layer (`ImportApiController`) and `ImportProfileRegistry`.  The REST API shape
-(`GET /api/import/profiles`, `POST /api/import/preview/{profileId}`,
-`POST /api/import/{profileId}`) is unchanged.
-
-> **Frontend note:** UI modules should use the import API client functions in
-> `js/api/import-api.js` (`ImportApi.loadProfiles()`, `ImportApi.preview()`,
-> `ImportApi.execute()`) rather than constructing `/api/import/…` paths
-> directly.  This ensures API changes propagate to all callers consistently.
-
-### Add a new import profile
-
-1. Create a Spring `@Component` implementing `ImportProfileExtension`, or
-   extend `AbstractFrameworkImportProfileExtension` if your profile uses
-   a standard `MappingProfile` + `ExternalParser` pair.
-2. Provide a unique `descriptor().profileId()` and the appropriate metadata.
-3. Implement `preview(ImportInput)` and `importData(ImportInput)` (or let the
-   base class handle the pipeline and only override `profile()` and `parser()`).
-4. The new profile is automatically registered in `ImportProfileRegistry` and
-   exposed by `GET /api/import/profiles` without any changes to existing
-   profile implementations.
+- enum name, `descriptor().providerId()`, and gateway registration do not match
+- API key added to config but not surfaced by `LlmProviderConfig.getAvailableProviders()`
+- new provider implemented directly in `LlmService` instead of via the extension
+  metadata + gateway split
+- real API calls added to tests instead of using existing mocks/fakes
 
 ---
 
-## LlmProviderExtension
+## Prompt templates
 
-LLM providers are described via `LlmProviderExtension` implementations in
-`taxonomy-app`:
+**Status:** Implicit extension point, anchored by `PromptTemplateService`
 
-The SPI contracts and metadata types for this extension point live in
-`taxonomy-extension-api/src/main/java/com/taxonomy/analysis/service`.
+**Interface / registry / configuration point**
 
-- `descriptor()` returns a serializable `LlmProviderDescriptor`
-  (provider ID, display name, capability flags, required configuration properties)
-- `provider()` returns the corresponding `LlmProvider` enum constant
+- `taxonomy-app/src/main/java/com/taxonomy/shared/service/PromptTemplateService.java`
+- `taxonomy-app/src/main/resources/prompts/*.txt`
 
-The `LlmProviderDescriptor` captures:
+There is no prompt-template registry. The stable anchor is the combination of
+`PromptTemplateService` and filename-based lookup.
 
-| Field | Type | Description |
-|---|---|---|
-| `providerId` | `String` | Matches `LlmProvider.name()` (e.g. `"GEMINI"`) |
-| `providerName` | `String` | Human-readable name (e.g. `"Gemini"`) |
-| `requiresApiKey` | `boolean` | `true` for cloud providers; `false` for `LOCAL_ONNX` |
-| `supportsStreaming` | `boolean` | `true` if streaming responses are supported |
-| `supportsStructuredOutput` | `boolean` | `true` if JSON-schema structured output is supported |
-| `supportsLocalExecution` | `boolean` | `true` for `LOCAL_ONNX`; `false` for all cloud providers |
-| `configurationProperties` | `List<String>` | Spring property keys required (e.g. `["gemini.api.key"]`) |
+**Required files**
 
-The registry is `LlmProviderExtensionRegistry`, which supports:
+- new or updated `.txt` file in `taxonomy-app/src/main/resources/prompts/`
 
-- lookup by `LlmProvider` enum (`getRequired(LlmProvider.GEMINI)`)
-- lookup by provider ID string (`findById("gemini")`, case-insensitive)
-- listing all registered descriptors (`listDescriptors()`)
+**Optional files**
 
-The actual HTTP communication continues to use `LlmGateway` and `LlmGatewayRegistry`.
-`LlmProviderExtension` is the metadata/descriptor layer; it does not replace the gateway.
+- `PromptTemplateService.TAXONOMY_NAMES` if a new template code needs a friendly name
+- `PromptTemplateService` render helpers if a new prompt family introduces new
+  placeholders or categorization prefixes
 
-### Add a new LLM provider
+**Required tests**
 
-1. Add a new constant to the `LlmProvider` enum.
-2. Create a Spring `@Component` implementing `LlmProviderExtension`.
-3. Return a `LlmProviderDescriptor` with a `providerId` matching the enum constant name.
-4. Implement `provider()` returning the new enum constant.
-5. Register a gateway in `LlmGatewayRegistry` for the new constant
-   (typically a new `OpenAiCompatibleGateway` instance if the provider is OpenAI-compatible).
-6. Add API key injection in `LlmProviderConfig` and wire it into `getApiKey(...)` and
-   `getAvailableProviders()`.
-7. Add a unit test asserting that `LlmProviderExtensionRegistry.getRequired(NEW_PROVIDER)`
-   returns an extension whose `descriptor().providerId()` matches the enum name.
+- `taxonomy-app/src/test/java/com/taxonomy/PromptTemplateTests.java`
 
-The new provider is automatically listed by `LlmProviderExtensionRegistry.listDescriptors()`
-without any changes to existing provider implementations.
+**Documentation updates**
+
+- this page if a new template family/prefix is introduced
+- user-facing docs only if prompt editing or prompt categories become visible in the UI
+
+**Common failure modes**
+
+- adding a taxonomy-specific template without preserving `default.txt` fallback
+- introducing placeholders that `PromptTemplateService` never substitutes
+- using an ad-hoc filename prefix without updating prompt categorization logic
+- placing provider-specific behavior in prompt files when it belongs in the LLM
+  provider/gateway layer
+
+---
+
+## Export formats
+
+**Status:** Explicit SPI
+
+**Interface / registry / configuration point**
+
+- `taxonomy-extension-api/src/main/java/com/taxonomy/export/service/ExportFormatExtension.java`
+- `taxonomy-app/src/main/java/com/taxonomy/export/service/ExportFormatExtensionRegistry.java`
+- `taxonomy-app/src/main/java/com/taxonomy/shared/config/ExportConfig.java`
+- `taxonomy-app/src/main/java/com/taxonomy/export/controller/ExportApiController.java`
+
+The stable path is:
+
+1. framework-free exporter in `taxonomy-export`
+2. Spring bean wiring in `ExportConfig`
+3. Spring `@Component` adapter implementing `ExportFormatExtension`
+4. generic export endpoint `POST /api/diagram/export/{formatId}`
+
+**Required files**
+
+- exporter class in `taxonomy-export/src/main/java/com/taxonomy/export/`
+- bean registration in `taxonomy-app/src/main/java/com/taxonomy/shared/config/ExportConfig.java`
+- adapter in `taxonomy-app/src/main/java/com/taxonomy/export/service/*ExportExtension.java`
+
+**Optional files**
+
+- `ExportApiController` only if a format-specific endpoint with a custom URL is needed
+- `taxonomy-app/src/main/resources/templates/index.html`
+- `taxonomy-app/src/main/resources/static/js/shared/taxonomy-export.js`
+- i18n entries if the format is exposed by a new button or menu label
+
+**Required tests**
+
+- exporter unit test in `taxonomy-export/src/test/java/com/taxonomy/export/`
+- `taxonomy-app/src/test/java/com/taxonomy/export/service/ExportFormatExtensionRegistryTest.java`
+- `taxonomy-app/src/test/java/com/taxonomy/export/service/ExportFormatExtensionAdapterTest.java`
+
+**Documentation updates**
+
+- `docs/dev/tasks/add-export-format.md`
+- `docs/en/API_REFERENCE.md` only if a custom endpoint is added
+- user-facing docs only if the format is exposed in the UI
+
+**Common failure modes**
+
+- exporter logic placed in `taxonomy-app` instead of `taxonomy-export`
+- adapter added but exporter bean not wired in `ExportConfig`
+- duplicate format IDs or inconsistent `descriptor()` metadata
+- adding a one-off controller endpoint when the generic registry-backed endpoint
+  is sufficient
+
+---
+
+## Import profiles and document mappings
+
+**Status:** Mixed — explicit SPI for framework imports, implicit anchor for
+document/provenance mappings
+
+### Framework import profiles
+
+**Interface / registry / configuration point**
+
+- `taxonomy-extension-api/src/main/java/com/taxonomy/catalog/service/importer/ImportProfileExtension.java`
+- `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/ImportProfileRegistry.java`
+- `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/FrameworkImportService.java`
+- `taxonomy-app/src/main/resources/static/js/api/import-api.js`
+
+**Required files**
+
+- new Spring `@Component` implementing `ImportProfileExtension`, usually by
+  extending `AbstractFrameworkImportProfileExtension`
+- parser and/or mapping profile used by the extension
+
+**Optional files**
+
+- custom controller logic only for non-standard endpoints; standard profile
+  additions should flow through `ImportApiController`
+- UI changes only if the import profile needs extra inputs beyond profile ID,
+  file, and branch
+
+**Required tests**
+
+- `taxonomy-app/src/test/java/com/taxonomy/catalog/service/importer/ImportProfileRegistryTest.java`
+- `taxonomy-app/src/test/java/com/taxonomy/catalog/service/importer/FrameworkImportServiceTest.java`
+- parser tests such as `ApqcCsvParserTest`, `ApqcExcelParserRichTextTest`,
+  `StructurizrDslParserTest`, or `UafXmlParserTest`
+- mapping profile tests in `taxonomy-dsl/src/test/java/com/taxonomy/dsl/mapping/profiles/`
+
+**Documentation updates**
+
+- `docs/en/FRAMEWORK_IMPORT.md`
+- `docs/dev/tasks/add-document-import-mapping.md` if the workflow changes
+
+**Common failure modes**
+
+- `descriptor().profileId()` does not match the UI/API expectation
+- bypassing `ImportApi.loadProfiles()` / `ImportApi.preview()` / `ImportApi.execute()`
+  and hardcoding URLs in the frontend
+- mixing parser logic, mapping logic, and persistence logic in one class instead
+  of using the existing parse → map → DSL → materialize pipeline
+
+### Document mappings
+
+**Interface / registry / configuration point**
+
+- `taxonomy-app/src/main/java/com/taxonomy/provenance/service/DocumentAnalysisService.java`
+- `taxonomy-app/src/main/java/com/taxonomy/provenance/service/DocumentParserService.java`
+- `taxonomy-app/src/main/java/com/taxonomy/provenance/service/StructuredDocumentParser.java`
+- `taxonomy-app/src/main/java/com/taxonomy/provenance/service/ChunkingStrategySelector.java`
+
+There is no registry. The documented anchor is the provenance pipeline above.
+
+**Required files**
+
+- the parser or chunking service that understands the new document structure
+- `DocumentAnalysisService` mapping logic if new sections/fields must become
+  requirements or provenance links
+
+**Optional files**
+
+- DSL/provenance block changes only if the mapping introduces genuinely new
+  persisted structure
+- UI/import result rendering if new fields are shown to users
+
+**Required tests**
+
+- `taxonomy-app/src/test/java/com/taxonomy/provenance/DocumentImportControllerTest.java`
+- `taxonomy-app/src/test/java/com/taxonomy/provenance/DocumentParserServiceTest.java`
+- `taxonomy-app/src/test/java/com/taxonomy/provenance/StructuredDocumentParserTest.java`
+- `taxonomy-app/src/test/java/com/taxonomy/provenance/service/DocumentAnalysisServiceTest.java`
+- `taxonomy-app/src/test/java/com/taxonomy/provenance/ChunkingStrategySelectorTest.java`
+
+**Documentation updates**
+
+- `docs/en/USER_GUIDE.md` if supported document behavior changes
+- any provenance-specific user/admin guide that lists supported formats
+
+**Common failure modes**
+
+- parsing a new structure but never mapping it into provenance/requirements
+- adding new persisted provenance shape without updating DSL round-trip handling
+- bypassing chunking strategy selection and hardcoding one parser path
+
+---
+
+## Relation types and compatibility rules
+
+**Status:** Implicit extension point, anchored by enum + compatibility + UI touchpoints
+
+**Interface / registry / configuration point**
+
+- `taxonomy-domain/src/main/java/com/taxonomy/model/RelationType.java`
+- `taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationCompatibilityMatrix.java`
+- `taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationValidationService.java`
+- `taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProposalService.java`
+- `taxonomy-dsl/src/main/java/com/taxonomy/dsl/validation/DslValidator.java`
+
+There is currently **no dedicated relation-type registry or `/api/relations/types`
+metadata endpoint**. The UI still duplicates the allowed values in
+`taxonomy-app/src/main/resources/templates/index.html`.
+
+**Required files**
+
+- `RelationType.java`
+- `RelationCompatibilityMatrix.java`
+- both relation-type `<select>` lists in `index.html`
+
+**Optional files**
+
+- `RelationValidationService` if the new type needs special validation
+- `RelationProposalService` / `RelationCandidateService` if proposal heuristics
+  depend on the new type
+- `taxonomy-app/src/main/resources/data/relation_seeds.csv`
+- `taxonomy-dsl/src/main/java/com/taxonomy/dsl/validation/DslValidator.java`
+- i18n or help text if the new type needs a user-facing label/description
+
+**Required tests**
+
+- `taxonomy-domain/src/test/java/com/taxonomy/model/RelationTypeTest.java`
+- `taxonomy-app/src/test/java/com/taxonomy/RelationProposalTests.java`
+- `taxonomy-app/src/test/java/com/taxonomy/ArchitectureAnalysisTests.java`
+- `taxonomy-app/src/test/java/com/taxonomy/CsvRelationsIntegrationTest.java` if seed data is changed
+- `taxonomy-dsl/src/test/java/com/taxonomy/dsl/DslValidatorTest.java` if DSL validation changes
+
+**Documentation updates**
+
+- `docs/en/RELATION_SEEDS.md` if seed data or guidance changes
+- this page if a future dedicated relation-type endpoint or registry is introduced
+
+**Common failure modes**
+
+- new enum constant added but omitted from one or both relation-type selects in `index.html`
+- compatibility matrix not updated, causing the validator to reject all uses of the new type
+- proposal/analysis logic still assuming the old closed set of relation types
+- seed data added for combinations the compatibility matrix forbids
+
+---
+
+## Architecture view pipeline steps
+
+**Status:** Explicit SPI
+
+**Interface / registry / configuration point**
+
+- `taxonomy-app/src/main/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStep.java`
+- `taxonomy-app/src/main/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStepRegistry.java`
+- `taxonomy-app/src/main/java/com/taxonomy/architecture/pipeline/ArchitectureViewPipeline.java`
+
+Implementations are Spring `@Service` beans discovered automatically. Stable
+step IDs live on the built-ins as `STEP_ID` constants.
+
+**Required files**
+
+- new `@Service` implementing `ArchitecturePipelineStep`
+
+**Optional files**
+
+- `descriptor()` override if the default metadata is not enough
+- DTO/controller/UI updates only if the step produces new user-visible output
+- architecture docs if the step changes the conceptual pipeline
+
+**Required tests**
+
+- `taxonomy-app/src/test/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStepRegistryTest.java`
+- `taxonomy-app/src/test/java/com/taxonomy/architecture/pipeline/ArchitectureViewPipelineTest.java`
+- step-specific test such as `AnchorSelectionStepTest`,
+  `NodeLimitStepTest`, or `ProvisionalRelationStepTest`
+- `taxonomy-app/src/test/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStepContextWriteTest.java`
+  when the step writes new context fields
+
+**Documentation updates**
+
+- `docs/en/ARCHITECTURE.md` if the default pipeline sequence changes
+- `docs/dev/tasks/add-architecture-view-step.md` if the recommended workflow changes
+
+**Common failure modes**
+
+- duplicate `id()` or `order()` values
+- inserting a step in the wrong order so later steps see inconsistent context
+- modifying a core-invariant step without preserving its guarantees
+- using non-deterministic collection ordering inside a step
+
+---
+
+## Report formats
+
+**Status:** Explicit SPI
+
+**Interface / registry / configuration point**
+
+- `taxonomy-extension-api/src/main/java/com/taxonomy/architecture/report/ReportRendererExtension.java`
+- `taxonomy-app/src/main/java/com/taxonomy/architecture/report/ReportRendererRegistry.java`
+- `taxonomy-app/src/main/java/com/taxonomy/architecture/controller/ReportApiController.java`
+
+**Required files**
+
+- new Spring `@Component` implementing `ReportRendererExtension`
+
+**Optional files**
+
+- controller changes only if a new endpoint shape is required
+- UI affordances only if the format is directly user-selectable
+
+**Required tests**
+
+- `taxonomy-app/src/test/java/com/taxonomy/ArchitectureReportTests.java`
+- renderer-specific test if the format has custom serialization rules
+
+**Documentation updates**
+
+- user/API docs if the new format is exposed publicly
+- this page if a new renderer family changes the extension workflow
+
+**Common failure modes**
+
+- duplicate format IDs or inconsistent descriptor metadata
+- renderer bypasses `ReportRendererRegistry` and wires directly into a controller
+- wrong content type or file extension advertised for downloads
+
+---
+
+## UI panels
+
+**Status:** Implicit extension point, anchored by template + JS module + i18n
+
+**Interface / registry / configuration point**
+
+- `taxonomy-app/src/main/resources/templates/index.html`
+- `taxonomy-app/src/main/resources/static/js/`
+- `taxonomy-app/src/main/resources/messages.properties`
+- `taxonomy-app/src/main/resources/messages_de.properties`
+
+There is no panel registry. A panel is currently defined by its HTML anchor(s),
+its JavaScript module(s), and any backing controller/DTO needed for data.
+
+**Required files**
+
+- `index.html`
+- one or more JS modules under `src/main/resources/static/js/`
+- English and German i18n entries for every new visible label/message
+
+**Optional files**
+
+- controller/DTO additions if the panel needs new server data
+- screenshot assets/docs if the panel becomes part of user documentation
+
+**Required tests**
+
+- controller test for any new endpoint backing the panel
+- `taxonomy-app/src/test/java/com/taxonomy/shared/controller/TemplateI18nLintTest.java`
+- `ScreenshotGeneratorIT` only when you intentionally refresh documented screenshots
+
+**Documentation updates**
+
+- `docs/en/USER_GUIDE.md` for user-visible workflows
+- feature matrix or screenshot references if the new panel becomes documented UI
+
+**Common failure modes**
+
+- missing `messages.properties` / `messages_de.properties` keys
+- adding HTML but forgetting to register or initialize the matching JS module
+- reusing DOM IDs already owned by another panel
+- adding POST/DELETE UI actions without following the existing CSRF pattern
+
+---
+
+## Workspace and versioning operations
+
+**Status:** Implicit extension point, anchored by named facades/services
+
+**Interface / registry / configuration point**
+
+- `taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java`
+- `taxonomy-app/src/main/java/com/taxonomy/versioning/service/VersioningFacade.java`
+- `taxonomy-app/src/main/java/com/taxonomy/versioning/service/RepositoryStateService.java`
+- `taxonomy-app/src/main/java/com/taxonomy/versioning/service/ContextNavigationService.java`
+- `taxonomy-app/src/main/java/com/taxonomy/versioning/service/SelectiveTransferService.java`
+
+Use controllers only as request boundaries:
+
+- `taxonomy-app/src/main/java/com/taxonomy/workspace/controller/WorkspaceController.java`
+- `taxonomy-app/src/main/java/com/taxonomy/versioning/controller/ContextNavigationController.java`
+- `taxonomy-app/src/main/java/com/taxonomy/versioning/controller/GitStateController.java`
+
+**Required files**
+
+- one service/facade method that owns the operation
+- one controller endpoint if the operation is externally triggered
+
+**Optional files**
+
+- JS modules under `static/js/workspace/` or `static/js/versioning/`
+- DTO additions if the operation returns new metadata
+- compare/transfer/conflict helpers depending on the operation type
+
+**Required tests**
+
+- `taxonomy-app/src/test/java/com/taxonomy/workspace/controller/WorkspaceControllerTest.java`
+- one or more focused service tests such as:
+  - `WorkspaceManagerTest`
+  - `RepositoryStateServiceTest`
+  - `ContextNavigationServiceTest`
+  - `SelectiveTransferServiceTest`
+  - `ContextCompareServiceTest`
+  - `ConflictDetectionServiceTest`
+
+**Documentation updates**
+
+- `docs/en/WORKSPACE_VERSIONING.md`
+- `docs/en/USER_GUIDE.md` if the operation is end-user visible
+
+**Common failure modes**
+
+- resolving workspace context deep inside service code instead of at the request boundary
+- splitting one operation across multiple services without a clear orchestration owner
+- forgetting repository-state/conflict guards for operations that mutate Git-backed content
+- adding the backend operation without updating the workspace/versioning JS module that exposes it
+
+---
+
+## DSL grammar and property additions
+
+**Status:** Implicit extension point, anchored by the round-trip pipeline
+
+**Interface / registry / configuration point**
+
+- `taxonomy-dsl/src/main/java/com/taxonomy/dsl/parser/TaxDslParser.java`
+- `taxonomy-dsl/src/main/java/com/taxonomy/dsl/serializer/TaxDslSerializer.java`
+- `taxonomy-dsl/src/main/java/com/taxonomy/dsl/mapper/AstToModelMapper.java`
+- `taxonomy-dsl/src/main/java/com/taxonomy/dsl/mapper/ModelToAstMapper.java`
+- `taxonomy-dsl/src/main/java/com/taxonomy/dsl/validation/DslValidator.java`
+- `taxonomy-dsl/src/main/java/com/taxonomy/dsl/diff/ModelDiffer.java`
+- `taxonomy-app/src/main/java/com/taxonomy/dsl/DslMaterializeService.java`
+
+There is no DSL extension registry. The stable anchor is the parse → model →
+serialize → diff → materialize pipeline.
+
+**Required files**
+
+- for a new property: model, serializer order, both mappers, and any validator/materializer logic that depends on it
+- for a new block type: parser block registration, model, serializer, both mappers,
+  validator, and often tokenizer/materialization support
+
+**Optional files**
+
+- `taxonomy-dsl/src/main/java/com/taxonomy/dsl/parser/DslTokenizer.java` for new block keywords
+- DTO/controller/export/indexing changes only if the new DSL shape leaves the DSL layer
+
+**Required tests**
+
+- `taxonomy-dsl/src/test/java/com/taxonomy/dsl/TaxDslParserTest.java`
+- `taxonomy-dsl/src/test/java/com/taxonomy/dsl/TaxDslSerializerTest.java`
+- `taxonomy-dsl/src/test/java/com/taxonomy/dsl/TaxDslRoundtripTest.java`
+- `taxonomy-dsl/src/test/java/com/taxonomy/dsl/AstToModelMapperTest.java`
+- `taxonomy-dsl/src/test/java/com/taxonomy/dsl/ModelToAstMapperTest.java`
+- `taxonomy-dsl/src/test/java/com/taxonomy/dsl/DslValidatorTest.java`
+- `taxonomy-dsl/src/test/java/com/taxonomy/dsl/diff/ModelDifferTest.java`
+- `taxonomy-app/src/test/java/com/taxonomy/dsl/DslMaterializeServiceTest.java`
+- `taxonomy-app/src/test/java/com/taxonomy/dsl/storage/DslGitRepositoryTest.java`
+  when persisted DSL shape changes
+
+**Documentation updates**
+
+- `docs/dev/tasks/add-dsl-property.md`
+- `docs/en/ARCHITECTURE.md` if the language surface or persisted model changes materially
+
+**Common failure modes**
+
+- parser accepts a new property but serializer/mappers silently drop it
+- round-trip idempotence breaks, creating noisy Git diffs
+- diff/materialization logic still assumes the old model
+- new block keyword added to the parser but omitted from tokenizer or validation
+
+---
+
+## Safe-add checklist
+
+Before you add a new extension or extend an existing one:
+
+1. Identify whether the area has an **explicit SPI** or an **implicit documented anchor**.
+2. Start from the file listed in the **Stable starting point** table above.
+3. Update the owning registry/facade/anchor first, not the call sites.
+4. Add or extend the focused tests listed for that area.
+5. Update user/admin/developer docs in the same change when behavior or workflow changes.
+6. For explicit SPIs, verify the new descriptor is discoverable through
+   `ExtensionRegistry` / `/api/extensions` where applicable.
+7. For UI-facing changes, verify HTML, JS, and i18n all move together.
+8. For DSL and persisted-model changes, verify round-trip and materialization behavior.

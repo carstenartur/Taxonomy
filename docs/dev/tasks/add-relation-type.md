@@ -6,6 +6,10 @@ Add a new semantic relation type (e.g., `INFLUENCES`, `CONSTRAINS`) to the
 `RelationType` enum and ensure it is handled correctly throughout the
 validation, scoring, and DSL layers.
 
+> Start with the stable extension anchor in
+> [`docs/dev/07-extension-points.md#relation-types-and-compatibility-rules`](../07-extension-points.md#relation-types-and-compatibility-rules).
+> Use this page for the end-to-end file/test/doc checklist.
+
 ---
 
 ## Primary entry points

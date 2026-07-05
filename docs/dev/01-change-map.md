@@ -4,21 +4,23 @@ Quick-reference table mapping common task types to the packages, entry points,
 tests, and documentation you need.
 
 For step-by-step instructions, follow the link in the **Task page** column.
+For the stable extension anchor behind each task, follow the link in the
+**Extension guide** column.
 
 ---
 
 ## Common change types
 
-| Task | Primary module(s) | Entry point(s) | Test command | Task page |
-|---|---|---|---|---|
-| Add a new LLM provider | `taxonomy-app` | `analysis/service/LlmService.java` | `mvn test -pl taxonomy-app` | [add-llm-provider](tasks/add-llm-provider.md) |
-| Add a new export format | `taxonomy-export`, `taxonomy-app` | `export/` + `ExportApiController.java` | `mvn test -pl taxonomy-export` | [add-export-format](tasks/add-export-format.md) |
-| Add a new relation type | `taxonomy-domain`, `taxonomy-app` | `model/RelationType.java` | `mvn test -pl taxonomy-domain` + `mvn test -pl taxonomy-app` | [add-relation-type](tasks/add-relation-type.md) |
-| Add an architecture view step | `taxonomy-app` | `architecture/service/RequirementArchitectureViewService.java` | `mvn test -pl taxonomy-app` | [add-architecture-view-step](tasks/add-architecture-view-step.md) |
-| Add a document import mapping | `taxonomy-app` | `provenance/service/DocumentAnalysisService.java` | `mvn test -pl taxonomy-app` | [add-document-import-mapping](tasks/add-document-import-mapping.md) |
-| Add a workspace operation | `taxonomy-app` | `workspace/service/WorkspaceManager.java` | `mvn test -pl taxonomy-app` | [add-workspace-operation](tasks/add-workspace-operation.md) |
-| Add a UI panel | `taxonomy-app` | `resources/templates/index.html` + `static/js/` | `mvn verify -DexcludedGroups=real-llm` | [add-ui-panel](tasks/add-ui-panel.md) |
-| Add a DSL property | `taxonomy-dsl` | `dsl/parser/TaxDslParser.java` | `mvn test -pl taxonomy-dsl` | [add-dsl-property](tasks/add-dsl-property.md) |
+| Task | Primary module(s) | Entry point(s) | Test command | Task page | Extension guide |
+|---|---|---|---|---|---|
+| Add a new LLM provider | `taxonomy-extension-api`, `taxonomy-app` | `LlmProviderExtension.java` + `LlmGatewayRegistry.java` | `mvn test -pl taxonomy-app -am` | [add-llm-provider](tasks/add-llm-provider.md) | [LLM providers](07-extension-points.md#llm-providers) |
+| Add a new export format | `taxonomy-extension-api`, `taxonomy-export`, `taxonomy-app` | `ExportFormatExtension.java` + `ExportFormatExtensionRegistry.java` | `mvn test -pl taxonomy-export -am` | [add-export-format](tasks/add-export-format.md) | [Export formats](07-extension-points.md#export-formats) |
+| Add a new relation type | `taxonomy-domain`, `taxonomy-app`, `taxonomy-dsl` | `RelationType.java` + `RelationCompatibilityMatrix.java` | `mvn test -pl taxonomy-domain -am` + `mvn test -pl taxonomy-app -am` | [add-relation-type](tasks/add-relation-type.md) | [Relation types](07-extension-points.md#relation-types-and-compatibility-rules) |
+| Add an architecture view step | `taxonomy-app` | `ArchitecturePipelineStep.java` + `ArchitecturePipelineStepRegistry.java` | `mvn test -pl taxonomy-app -am` | [add-architecture-view-step](tasks/add-architecture-view-step.md) | [Pipeline steps](07-extension-points.md#architecture-view-pipeline-steps) |
+| Add a document import mapping | `taxonomy-app` | `DocumentAnalysisService.java` + `DocumentParserService.java` | `mvn test -pl taxonomy-app -am` | [add-document-import-mapping](tasks/add-document-import-mapping.md) | [Import profiles / mappings](07-extension-points.md#import-profiles-and-document-mappings) |
+| Add a workspace operation | `taxonomy-app` | `WorkspaceManager.java` + `VersioningFacade.java` | `mvn test -pl taxonomy-app -am` | [add-workspace-operation](tasks/add-workspace-operation.md) | [Workspace/versioning](07-extension-points.md#workspace-and-versioning-operations) |
+| Add a UI panel | `taxonomy-app` | `resources/templates/index.html` + `static/js/` | `mvn verify -DexcludedGroups="real-llm"` | [add-ui-panel](tasks/add-ui-panel.md) | [UI panels](07-extension-points.md#ui-panels) |
+| Add a DSL property | `taxonomy-dsl`, `taxonomy-app` | `TaxDslParser.java` + `TaxDslSerializer.java` | `mvn test -pl taxonomy-dsl -am` | [add-dsl-property](tasks/add-dsl-property.md) | [DSL grammar / properties](07-extension-points.md#dsl-grammar-and-property-additions) |
 
 ---
 
