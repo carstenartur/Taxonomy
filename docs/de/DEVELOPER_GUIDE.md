@@ -2,10 +2,17 @@
 
 Dieses Handbuch richtet sich an Entwicklerinnen und Entwickler, die zum Taxonomy Architecture Analyzer beitragen.
 
+> **Neu in der Codebasis?**
+> Beginnen Sie mit dem [aufgabenorientierten Einstiegspunkt](../dev/00-start-here.md),
+> um den kleinsten sicheren Änderungsbereich für Ihre konkrete Aufgabe zu finden.
+> Das vorliegende Dokument ist die **tiefergehende Architektuurreferenz**.
+
 ---
 
 ## Inhaltsverzeichnis
 
+- [Aufgabenorientierter Leitfaden (docs/dev/)](#aufgabenorientierter-leitfaden)
+- [Erweiterungspunkte](#erweiterungspunkte)
 - [Schnellstart](#schnellstart)
 - [Modularchitektur](#modularchitektur)
 - [Modulverantwortlichkeiten](#modulverantwortlichkeiten)
@@ -20,6 +27,51 @@ Dieses Handbuch richtet sich an Entwicklerinnen und Entwickler, die zum Taxonomy
 - [Häufige Stolperfallen](#häufige-stolperfallen)
 - [Architekturkonventionen](#architekturkonventionen)
 - [Definition of Done — Benutzer-sichtbare Funktionen](#definition-of-done--benutzer-sichtbare-funktionen)
+- [Wartbarkeitsmatrix](#wartbarkeitsmatrix)
+
+---
+
+## Aufgabenorientierter Leitfaden
+
+Das Verzeichnis `docs/dev/` bietet eine aufgabenorientierte Übersicht für Entwicklerinnen und Entwickler,
+die einen bestimmten Teil des Systems ändern möchten, ohne die gesamte Architekturreferenz lesen zu müssen.
+
+| Datei | Zweck |
+|---|---|
+| [`docs/dev/00-start-here.md`](../dev/00-start-here.md) | Wie man eine einzelne Aufgabe angeht |
+| [`docs/dev/01-change-map.md`](../dev/01-change-map.md) | Tabelle: Aufgaben → Pakete, Einstiegspunkte und Tests |
+| [`docs/dev/07-extension-points.md`](../dev/07-extension-points.md) | Stabile Erweiterungsanker für häufige Feature-Ergänzungen |
+| [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md) | Maven-Befehle und Testklassen nach Änderungstyp |
+| [`docs/dev/tasks/add-llm-provider.md`](../dev/tasks/add-llm-provider.md) | Einen neuen LLM-Anbieter hinzufügen |
+| [`docs/dev/tasks/add-export-format.md`](../dev/tasks/add-export-format.md) | Ein neues Exportformat hinzufügen |
+| [`docs/dev/tasks/add-relation-type.md`](../dev/tasks/add-relation-type.md) | Einen neuen Relationstyp hinzufügen |
+| [`docs/dev/tasks/add-architecture-view-step.md`](../dev/tasks/add-architecture-view-step.md) | Einen Architekturansicht-Pipeline-Schritt hinzufügen |
+| [`docs/dev/tasks/add-document-import-mapping.md`](../dev/tasks/add-document-import-mapping.md) | Ein Dokumentimport-Mapping hinzufügen |
+| [`docs/dev/tasks/add-workspace-operation.md`](../dev/tasks/add-workspace-operation.md) | Eine Workspace-Operation hinzufügen |
+| [`docs/dev/tasks/add-ui-panel.md`](../dev/tasks/add-ui-panel.md) | Ein UI-Panel hinzufügen |
+| [`docs/dev/tasks/add-dsl-property.md`](../dev/tasks/add-dsl-property.md) | Eine DSL-Eigenschaft oder einen Blocktyp hinzufügen |
+
+> Das Verzeichnis `docs/dev/` ist der **aufgabenorientierte Einstiegspunkt**.
+> Die nachfolgenden Abschnitte bleiben die **tiefergehende Referenz** für Module, Konventionen,
+> Stolperfallen und Architekturentscheidungen.
+
+---
+
+## Erweiterungspunkte
+
+Bevor Sie einen Anbieter, Exporter, Relationstyp, Pipeline-Schritt oder DSL-Bereich hinzufügen,
+konsultieren Sie zuerst den dedizierten Erweiterungsleitfaden:
+
+- [`docs/dev/07-extension-points.md`](../dev/07-extension-points.md)
+
+Er unterscheidet zwischen:
+
+- **expliziten SPIs** (Registries/Interfaces bereits vorhanden) und
+- **impliziten, aber dokumentierten Ankern** (die Codebasis hat eine stabile Fassade,
+  einen Service oder eine Dateigrenze, aber noch keine Registry).
+
+Verwenden Sie den Erweiterungsleitfaden, um den kleinsten sicheren Ausgangspunkt zu finden,
+bevor Sie die tiefergehenden Architekturabschnitte lesen.
 
 ---
 
@@ -461,6 +513,28 @@ Standard-Benutzeroberfläche anzeigen. Diese dürfen in Entwicklerdokumentation 
 
 ---
 
+## README-Showcase-Diagramm aktualisieren
+
+Das Mermaid-Diagramm im README-Abschnitt „Architecture Impact Showcase" wird
+deterministisch von `ReadmeShowcaseTest` generiert (kein LLM-Aufruf erforderlich).
+
+Nach Änderungen an der Analyse-Pipeline, der Diagrammprojektion oder dem Mermaid-Export:
+
+1. Ausführen:
+   ```
+   mvn test -pl taxonomy-app -am -Dtest=ReadmeShowcaseTest -Dsurefire.failIfNoSpecifiedTests=false
+   ```
+2. `taxonomy-app/target/readme-showcase.md` öffnen und den Mermaid-Block
+   (alles zwischen ` ```mermaid ` und ` ``` `) in `README.md` kopieren und
+   den bestehenden Block im Abschnitt „Architecture Impact Showcase" ersetzen.
+3. Außerdem die Zusammenfassungszeile oberhalb des Mermaid-Blocks aktualisieren
+   (Element-, Schicht- und Relationsanzahl), damit sie zur ersten Zeile von `readme-showcase.md` passt.
+
+`ReadmeShowcaseDriftTest` schlägt in CI fehl, wenn das README-Diagramm von der
+aktuellen `exportShowcase()`-Ausgabe abweicht, sodass das Diagramm stets korrekt bleibt.
+
+---
+
 ## Screenshot-Konventionen
 
 Screenshots werden automatisch von `ScreenshotGeneratorIT` generiert und in `docs/images/` gespeichert.
@@ -539,3 +613,24 @@ Die folgenden CI-Tests erkennen häufige Dokumentationsdrift:
 - `HelpControllerTest.everyEnglishDocFileIsRegistered()` — jede `docs/en/*.md` muss in `HelpController` registriert sein
 - `HelpControllerTest.everyRegisteredDocHasI18nKeys()` — jedes registrierte Dokument muss EN + DE i18n-Keys haben
 - `I18nApiControllerTest.englishAndGermanHaveSameKeys()` — EN- und DE-Bundles müssen identische Key-Sets haben
+
+---
+
+## Wartbarkeitsmatrix
+
+Die [Wartbarkeitsmatrix](../internal/MAINTAINABILITY_MATRIX.md) listet jeden Funktionsbereich mit seinem primären
+Backend-Paket, Frontend-Modul, Haupt-Controller und -Service, DTOs, Test-Coverage-Flags und einer kognitiven
+Belastungsbewertung auf.
+
+Verwenden Sie sie, um die richtigen Einstiegspunkte für eine fokussierte Änderung zu finden und zu verstehen,
+welche Bereiche bekannte querschnittliche Kopplungen aufweisen.
+
+**ArchUnit-Regeln** — die Architekturgrenzregeln befinden sich in
+`taxonomy-app/src/test/java/com/taxonomy/ArchitectureTest.java`.
+Aktuell durchgesetzte Regeln:
+- Keine zirkulären Abhängigkeiten zwischen Domain-Paketen
+- Controller dürfen nicht direkt auf Repositories zugreifen
+- Services dürfen nicht von Controllern abhängen
+- `taxonomy-domain`, `taxonomy-dsl` (framework-freie Pakete) und `taxonomy-export` (framework-freie Pakete) müssen Spring-frei sein
+- `taxonomy-dsl`- und `taxonomy-export`-framework-freie Pakete dürfen nicht von `taxonomy-app`-Paketen abhängen
+- Workspace-Kontext darf nur an Request-Grenzen aufgelöst werden
