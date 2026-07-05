@@ -131,7 +131,10 @@ class ArchitectureTest {
         return new DescribedPredicate<>("controller classes outside repository-access allowlist") {
             @Override
             public boolean test(JavaClass input) {
-                return input.getPackageName().contains(".controller")
+                String packageName = input.getPackageName();
+                boolean isControllerPackage = packageName.endsWith(".controller")
+                        || packageName.contains(".controller.");
+                return isControllerPackage
                         && !CONTROLLER_REPOSITORY_ACCESS_ALLOWLIST_CLASS_NAMES.contains(input.getName());
             }
         };
@@ -190,9 +193,10 @@ class ArchitectureTest {
      * Controllers must go through services or facades and never touch
      * repositories directly.
      *
-     * <p>This rule covers all controller packages. Security controllers are
-     * excluded because Spring Security patterns commonly involve direct
-     * repository access for user/role management.
+     * <p>This rule covers all controller packages and is enforced via a
+     * class-level allowlist ({@link #CONTROLLER_REPOSITORY_ACCESS_ALLOWLIST}).
+     * For rationale and removal conditions, see
+     * {@code docs/dev/08-archunit-exceptions.md}.
      */
     @ArchTest
     static final ArchRule controllersShouldNotAccessRepositories = noClasses()
