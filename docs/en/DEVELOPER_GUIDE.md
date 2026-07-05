@@ -651,6 +651,8 @@ Use it to locate the right entry points for a focused change and to understand w
 
 **ArchUnit rules** — the architectural boundary rules are in
 `taxonomy-app/src/test/java/com/taxonomy/ArchitectureTest.java`.
+Current temporary exceptions and removal conditions are documented in
+[`docs/dev/08-archunit-exceptions.md`](../dev/08-archunit-exceptions.md).
 Rules currently enforced include:
 - No circular dependencies between domain packages
 - Controllers must not access repositories directly

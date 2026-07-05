@@ -10,7 +10,9 @@ import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.tngtech.archunit.base.DescribedPredicate.alwaysTrue;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage;
@@ -53,9 +55,35 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
  *       allowlist; each entry should be removed once the service is updated to accept
  *       {@code WorkspaceContext} as an explicit parameter.</li>
  * </ul>
+ *
+ * <p>See {@code docs/dev/08-archunit-exceptions.md} for the detailed per-entry
+ * rationale and removal conditions.
  */
 @AnalyzeClasses(packages = "com.taxonomy", importOptions = ImportOption.DoNotIncludeTests.class)
 class ArchitectureTest {
+
+    private record AllowlistEntry(String className, String reason, String removalCondition) {
+    }
+
+    /**
+     * Small allowlist for controllers that still use repositories directly.
+     *
+     * <p>Removal condition is documented per entry.
+     */
+    private static final List<AllowlistEntry> CONTROLLER_REPOSITORY_ACCESS_ALLOWLIST = List.of(
+            new AllowlistEntry(
+                    "com.taxonomy.security.controller.ChangePasswordController",
+                    "Current password-change flow still validates and updates AppUser directly.",
+                    "Remove once password change is handled via a dedicated security service/facade."),
+            new AllowlistEntry(
+                    "com.taxonomy.security.controller.UserManagementController",
+                    "Current admin user-management endpoints still orchestrate user/role persistence directly.",
+                    "Remove once user/role CRUD orchestration is moved to a dedicated security service/facade.")
+    );
+    private static final Set<String> CONTROLLER_REPOSITORY_ACCESS_ALLOWLIST_CLASS_NAMES =
+            CONTROLLER_REPOSITORY_ACCESS_ALLOWLIST.stream()
+                    .map(AllowlistEntry::className)
+                    .collect(Collectors.toUnmodifiableSet());
 
     /**
      * Temporary exceptions to the "service classes must not resolve request context implicitly" rule.
@@ -64,15 +92,53 @@ class ArchitectureTest {
      * {@code resolveCurrentUsername()} internally and therefore remains on the
      * documented migration allowlist in {@code docs/dev/05-workspace-git-context.md}.
      */
-    private static final Set<String> IMPLICIT_WORKSPACE_RESOLUTION_ALLOWLIST = Set.of(
-            "com.taxonomy.catalog.service.CatalogFacade",
-            "com.taxonomy.dsl.export.DslMaterializeService",
-            "com.taxonomy.relations.service.GraphSearchService",
-            "com.taxonomy.relations.service.RelationProposalService",
-            "com.taxonomy.versioning.service.DslOperationsFacade",
-            "com.taxonomy.versioning.service.HypothesisService",
-            "com.taxonomy.versioning.service.SelectiveTransferService"
+    private static final List<AllowlistEntry> IMPLICIT_WORKSPACE_RESOLUTION_ALLOWLIST = List.of(
+            new AllowlistEntry(
+                    "com.taxonomy.catalog.service.CatalogFacade",
+                    "Legacy catalog endpoints still build workspace-aware response state internally.",
+                    "Remove once callers pass resolved username/context explicitly to catalog service methods."),
+            new AllowlistEntry(
+                    "com.taxonomy.dsl.export.DslMaterializeService",
+                    "DSL materialization still switches between shared/workspace routing internally.",
+                    "Remove once materialization receives explicit WorkspaceContext from request boundary."),
+            new AllowlistEntry(
+                    "com.taxonomy.relations.service.GraphSearchService",
+                    "Graph search still resolves current workspace internally for relation queries.",
+                    "Remove once graph search APIs accept WorkspaceContext from boundary/facade."),
+            new AllowlistEntry(
+                    "com.taxonomy.relations.service.RelationProposalService",
+                    "Proposal CRUD still derives active workspace internally.",
+                    "Remove once proposal operations receive WorkspaceContext from boundary/facade."),
+            new AllowlistEntry(
+                    "com.taxonomy.versioning.service.DslOperationsFacade",
+                    "Remaining DSL/versioning operations still resolve workspace context inside the facade.",
+                    "Remove once all facade operations are context-explicit."),
+            new AllowlistEntry(
+                    "com.taxonomy.versioning.service.HypothesisService",
+                    "Hypothesis persistence/listing still resolves active workspace internally.",
+                    "Remove once hypothesis methods receive WorkspaceContext from request boundary."),
+            new AllowlistEntry(
+                    "com.taxonomy.versioning.service.SelectiveTransferService",
+                    "Selective transfer still resolves current workspace/user for navigation state.",
+                    "Remove once selective transfer APIs become context-explicit.")
     );
+    private static final Set<String> IMPLICIT_WORKSPACE_RESOLUTION_ALLOWLIST_CLASS_NAMES =
+            IMPLICIT_WORKSPACE_RESOLUTION_ALLOWLIST.stream()
+                    .map(AllowlistEntry::className)
+                    .collect(Collectors.toUnmodifiableSet());
+
+    private static DescribedPredicate<JavaClass> controllerClassesOutsideRepositoryAllowlist() {
+        return new DescribedPredicate<>("controller classes outside repository-access allowlist") {
+            @Override
+            public boolean test(JavaClass input) {
+                String packageName = input.getPackageName();
+                boolean isControllerPackage = packageName.endsWith(".controller")
+                        || packageName.contains(".controller.");
+                return isControllerPackage
+                        && !CONTROLLER_REPOSITORY_ACCESS_ALLOWLIST_CLASS_NAMES.contains(input.getName());
+            }
+        };
+    }
 
     private static DescribedPredicate<JavaClass> serviceClassesOutsideImplicitWorkspaceAllowlist() {
         return new DescribedPredicate<>("service classes outside the implicit workspace allowlist") {
@@ -81,7 +147,7 @@ class ArchitectureTest {
                 return input.isAnnotatedWith(Service.class)
                         && !WorkspaceResolver.class.getName().equals(input.getName())
                         && !WorkspaceContextResolver.class.getName().equals(input.getName())
-                        && !IMPLICIT_WORKSPACE_RESOLUTION_ALLOWLIST.contains(input.getName());
+                        && !IMPLICIT_WORKSPACE_RESOLUTION_ALLOWLIST_CLASS_NAMES.contains(input.getName());
             }
         };
     }
@@ -127,17 +193,17 @@ class ArchitectureTest {
      * Controllers must go through services or facades and never touch
      * repositories directly.
      *
-     * <p>This rule covers all controller packages. Security controllers are
-     * excluded because Spring Security patterns commonly involve direct
-     * repository access for user/role management.
+     * <p>This rule covers all controller packages and is enforced via a
+     * class-level allowlist ({@link #CONTROLLER_REPOSITORY_ACCESS_ALLOWLIST}).
+     * For rationale and removal conditions, see
+     * {@code docs/dev/08-archunit-exceptions.md}.
      */
     @ArchTest
     static final ArchRule controllersShouldNotAccessRepositories = noClasses()
-            .that().resideInAPackage("..controller..")
-            .and().resideOutsideOfPackage("com.taxonomy.security.controller..")
+            .that(controllerClassesOutsideRepositoryAllowlist())
             .should().dependOnClassesThat()
             .resideInAPackage("..repository..")
-            .because("Controllers should use services or facades, not repositories (security controllers excluded)");
+            .because("Controllers should use services/facades/DTOs; repository access is restricted to documented allowlist");
 
     @ArchTest
     static final ArchRule servicesShouldNotDependOnControllers = noClasses()
