@@ -6,7 +6,7 @@
   "codeRepository": "https://github.com/carstenartur/Taxonomy",
   "issueTracker": "https://github.com/carstenartur/Taxonomy/issues",
   "license": "https://spdx.org/licenses/MIT",
-  "version": "1.2.4-SNAPSHOT",
+  "version": "1.2.4",
   "dateCreated": "2026-01-01",
   "programmingLanguage": [
     "Java",
@@ -51,5 +51,6 @@
     "Java 21+",
     "Maven 3.9+",
     "Optional LLM API key or LOCAL_ONNX provider"
-  ]
+  ],
+  "datePublished": "2026-07-05"
 }
