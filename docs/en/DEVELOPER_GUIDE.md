@@ -645,7 +645,7 @@ The following CI tests catch common documentation drift:
 
 ## Maintainability Matrix
 
-The [Maintainability Matrix](../internal/MAINTAINABILITY_MATRIX.md) lists every feature area with its primary backend package, frontend module, main controller and service, DTOs, test coverage flags, and cognitive-load rating.
+The [Maintainability Matrix](../internal/MAINTAINABILITY_MATRIX.md) lists every feature area with its primary backend package, frontend module, main controller and service, DTOs, test coverage flags, and cognitive-load rating. Unlike [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md), it is about developer navigation and extension effort rather than product completeness.
 
 Use it to locate the right entry points for a focused change and to understand which areas have known cross-cutting coupling.
 
