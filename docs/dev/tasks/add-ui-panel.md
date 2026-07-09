@@ -77,7 +77,7 @@ The UI is structured as a set of independent JS modules, each responsible for on
 
 For a new panel, create a new module (`<panel-name>.js`) following the
 IIFE / module pattern used in existing modules.
-Register the module in `index.html` via a `<script src="…">` tag.
+Register the module in `index.html` via a `<script src="/js/<panel-name>.js"></script>` tag.
 
 ---
 
