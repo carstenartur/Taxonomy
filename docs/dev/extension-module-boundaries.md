@@ -36,6 +36,11 @@ Initial implementation and registry classes stay in existing modules:
   - `taxonomy-app`
   - Spring (`org.springframework*`)
   - JPA/persistence (`jakarta.persistence*`, `javax.persistence*`, `org.hibernate*`)
+- Accepted exception: `taxonomy-extension-api` depends on `taxonomy-export` so
+  `ExportContext` can carry `com.taxonomy.diagram.DiagramModel` as part of the
+  stable export SPI contract.
+- Revisit trigger: if `DiagramModel` is needed by other SPI families, extract a
+  lower-level contract module and move diagram DTOs there.
 - `taxonomy-dsl` and `taxonomy-export` remain protected from application-layer dependencies by architecture tests in `taxonomy-app/src/test/java/com/taxonomy/ArchitectureTest.java`.
 
 ## What is intentionally not split yet

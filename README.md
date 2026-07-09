@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SBOM](https://img.shields.io/badge/SBOM-CycloneDX-informational?logo=owasp&style=flat)](https://github.com/carstenartur/Taxonomy/dependency-graph/sbom)
 [![DOI](https://zenodo.org/badge/1172765819.svg)](https://zenodo.org/badge/latestdoi/1172765819)
-[![GitHub release](https://img.shields.io/github/v/release/carstenartur/Taxonomy?style=flat-square)](https://github.com/carstenartur/Taxonomy/releases/tag/v1.2.2)
+[![GitHub release](https://img.shields.io/github/v/release/carstenartur/Taxonomy?style=flat-square)](https://github.com/carstenartur/Taxonomy/releases/latest)
 
 **Turn a business requirement into a validated architecture view — in one step.**
 
@@ -333,8 +333,8 @@ Open <http://localhost:8080> and log in with `admin` / `admin`.
 
 ### Container Image
 
-The official Docker image is published to **GitHub Container Registry** on every push
-to `main`:
+The official Docker image is published to **GitHub Container Registry** from pushes to
+`main` and from release tags (`v*`):
 
 ```
 ghcr.io/carstenartur/taxonomy
@@ -351,7 +351,8 @@ docker run -p 8080:8080 ghcr.io/carstenartur/taxonomy:latest
 |---|---|---|
 | `latest` | `ghcr.io/carstenartur/taxonomy:latest` | Most recent build from the default branch (`main`) |
 | `main` | `ghcr.io/carstenartur/taxonomy:main` | Identical to `latest` (branch-name tag) |
-| `sha-<hash>` | `ghcr.io/carstenartur/taxonomy:sha-abc1234` | Pinned to a specific commit — use for reproducible deployments |
+| `vX.Y.Z` | `ghcr.io/carstenartur/taxonomy:v1.2.5` | Release-tag image for a published version |
+| `sha-<hash>` | `ghcr.io/carstenartur/taxonomy:sha-abc1234` | Pinned to a specific commit from `main` or release-tag builds |
 
 > See the [Container Image Guide](docs/en/CONTAINER_IMAGE.md) for Docker Compose usage,
 > environment variables, volume mounts, and upgrade notes.

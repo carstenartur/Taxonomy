@@ -58,7 +58,7 @@ LLM-dependent tests are skipped gracefully with `Assumptions.assumeTrue(System.g
 
 2. **Add the image reference** to `docs/USER_GUIDE.md` at the appropriate location:
    ```markdown
-   ![Alt text](images/NN-my-feature.png)
+   ![Alt text](/docs/images/01-full-page-layout.png)
    ```
 
 3. **Run the generator** locally (`mvn package -DskipTests && mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT`) to produce the PNG file.
