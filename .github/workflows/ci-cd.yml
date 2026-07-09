@@ -55,82 +55,18 @@ jobs:
           SBOM_FILE="target/taxonomy-sbom.json"
           VEX_FILE="target/taxonomy-vex.json"
 
-          if [ ! -f "$SBOM_FILE" ]; then
-            echo "::warning::SBOM file not found at $SBOM_FILE — skipping VEX generation"
-            exit 0
-          fi
-
-          # Generate VEX document
-          python3 - <<'VEXEOF'
-          import json, uuid, datetime, sys
-
-          vex = {
-              "bomFormat": "CycloneDX",
-              "specVersion": "1.6",
-              "version": 1,
-              "serialNumber": f"urn:uuid:{uuid.uuid4()}",
-              "metadata": {
-                  "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                  "tools": {
-                      "components": [
-                          {
-                              "type": "application",
-                              "name": "taxonomy-vex-generator",
-                              "version": "1.0.0",
-                              "description": "Automated VEX generator for Taxonomy Architecture Analyzer"
-                          }
-                      ]
-                  },
-                  "component": {
-                      "type": "application",
-                      "name": "Taxonomy Architecture Analyzer",
-                      "bom-ref": "taxonomy-app",
-                      "purl": "pkg:github/carstenartur/Taxonomy",
-                      "supplier": {
-                          "name": "Carsten Hammer",
-                          "url": ["https://github.com/carstenartur"]
-                      }
-                  }
-              },
-              "vulnerabilities": []
-          }
-
-          # Parse SBOM and reference it from the VEX document
-          with open("target/taxonomy-sbom.json") as f:
-              sbom = json.load(f)
-
-          # Add metadata properties linking VEX to SBOM
-          vex["metadata"]["properties"] = [
-              {
-                  "name": "vex:sbom-ref",
-                  "value": sbom.get("serialNumber", "unknown")
-              },
-              {
-                  "name": "vex:sbom-version",
-                  "value": str(sbom.get("version", 1))
-              },
-              {
-                  "name": "vex:assessment-status",
-                  "value": "automated-initial"
-              },
-              {
-                  "name": "vex:policy",
-                  "value": "No known exploitable vulnerabilities at time of build. All runtime dependencies use permissive open-source licenses (Apache 2.0, MIT, BSD, ISC, EDL 1.0)."
-              }
-          ]
-
-          with open("target/taxonomy-vex.json", "w") as f:
-              json.dump(vex, f, indent=2)
-
-          print(f"VEX document generated: target/taxonomy-vex.json")
-          print(f"  SBOM serial: {sbom.get('serialNumber', 'N/A')}")
-          print(f"  Components in SBOM: {len(sbom.get('components', []))}")
-          VEXEOF
+          python3 .github/scripts/generate-vex.py \
+            --sbom "$SBOM_FILE" \
+            --output "$VEX_FILE"
 
           echo "### 📋 VEX Document" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "VEX document generated at \`target/taxonomy-vex.json\`" >> $GITHUB_STEP_SUMMARY
-          echo "SBOM reference: \`$(python3 -c "import json; print(json.load(open('$SBOM_FILE')).get('serialNumber','N/A'))")\`" >> $GITHUB_STEP_SUMMARY
+          if [ -f "$VEX_FILE" ]; then
+            echo "VEX document generated at \`$VEX_FILE\`" >> $GITHUB_STEP_SUMMARY
+            echo "SBOM reference: \`$(python3 -c "import json; print(json.load(open('$SBOM_FILE')).get('serialNumber','N/A'))")\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "VEX generation skipped (SBOM not available)." >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload SBOM and VEX artifacts
         uses: actions/upload-artifact@v7
@@ -293,8 +229,13 @@ jobs:
     name: Publish Docker Image
     needs: build-and-test
     runs-on: ubuntu-latest
-    # Only publish from the default branch or the active PR branch
-    if: github.event_name == 'push'
+    # Publish only from default branch pushes and release tags.
+    if: >
+      github.event_name == 'push' &&
+      (
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ||
+        startsWith(github.ref, 'refs/tags/v')
+      )
     permissions:
       contents: read
       packages: write
@@ -316,6 +257,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
+            type=ref,event=tag
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
           annotations: |

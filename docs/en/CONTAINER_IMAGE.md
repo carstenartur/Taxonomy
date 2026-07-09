@@ -1,7 +1,7 @@
 # Taxonomy Architecture Analyzer — Container Image
 
 The official container image is published to **GitHub Container Registry (GHCR)** by the
-CI/CD pipeline on every push to the default branch.
+CI/CD pipeline from pushes to the default branch and from release tags (`v*`).
 
 ```
 ghcr.io/carstenartur/taxonomy
@@ -36,13 +36,14 @@ The CI/CD pipeline (`ci-cd.yml`) publishes the following tags:
 |---|---|---|---|
 | `latest` | `ghcr.io/carstenartur/taxonomy:latest` | Every push to `main` | Quick start, local testing |
 | `main` | `ghcr.io/carstenartur/taxonomy:main` | Every push to `main` | Identical to `latest` (branch-name tag) |
-| `sha-<hash>` | `ghcr.io/carstenartur/taxonomy:sha-abc1234` | Every push to any branch | Reproducible deployments — pin to a specific commit |
+| `vX.Y.Z` | `ghcr.io/carstenartur/taxonomy:v1.2.5` | On release tag pushes (`v*`) | Versioned image for releases |
+| `sha-<hash>` | `ghcr.io/carstenartur/taxonomy:sha-abc1234` | Every push to `main` and release tags | Reproducible deployments — pin to a specific commit |
 
 **Choosing a tag:**
 
 - Use **`latest`** for local experimentation or CI pipelines that always want the newest build.
 - Use **`sha-<hash>`** in production to pin a known-good version and upgrade explicitly.
-- Feature branches also produce `sha-` tags, but no `latest` tag.
+- Feature branches do not publish images to GHCR.
 
 ---
 
