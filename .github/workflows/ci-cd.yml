@@ -65,6 +65,7 @@ jobs:
             echo "VEX document generated at \`$VEX_FILE\`" >> $GITHUB_STEP_SUMMARY
             echo "SBOM reference: \`$(python3 -c "import json; print(json.load(open('$SBOM_FILE')).get('serialNumber','N/A'))")\`" >> $GITHUB_STEP_SUMMARY
           else
+            echo "::warning::SBOM file not found at $SBOM_FILE; skipping VEX generation."
             echo "VEX generation skipped (SBOM not available)." >> $GITHUB_STEP_SUMMARY
           fi
 

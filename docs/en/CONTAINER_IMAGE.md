@@ -1,7 +1,7 @@
 # Taxonomy Architecture Analyzer — Container Image
 
 The official container image is published to **GitHub Container Registry (GHCR)** by the
-CI/CD pipeline from pushes to the default branch and from release tags (`v*`).
+CI/CD pipeline on pushes to the default branch and on release tags (`v*`).
 
 ```
 ghcr.io/carstenartur/taxonomy
