@@ -254,10 +254,10 @@ public class HypothesisService {
     @Transactional(readOnly = true)
     public List&lt;RelationHypothesis&gt; findByStatus(HypothesisStatus status) {
 <span class="fc" id="L256">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
-<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        if (ctx.workspaceId() != null) {</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">        if (ctx.workspaceId() != null) {</span>
 <span class="fc" id="L258">            return hypothesisRepository.findByStatusAndWorkspace(status, ctx.workspaceId());</span>
         }
-<span class="nc" id="L260">        return hypothesisRepository.findByStatus(status);</span>
+<span class="fc" id="L260">        return hypothesisRepository.findByStatus(status);</span>
     }
 
     /**

@@ -108,8 +108,8 @@ public class TaxonomyRelationService {
 
         // Programmatic duplicate check (covers NULL workspace_id in unique constraint)
         List&lt;TaxonomyRelation&gt; existing;
-<span class="pc bpc" id="L111" title="1 of 2 branches missed.">        if (workspaceId != null) {</span>
-<span class="nc" id="L112">            existing = relationRepository.findByWorkspaceAndSourceTargetType(</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">        if (workspaceId != null) {</span>
+<span class="fc" id="L112">            existing = relationRepository.findByWorkspaceAndSourceTargetType(</span>
                     workspaceId, sourceCode, targetCode, type);
         } else {
 <span class="fc" id="L115">            existing = relationRepository.findBySourceNodeCodeAndTargetNodeCodeAndRelationType(</span>
