@@ -223,10 +223,27 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- Markdown → HTML rendering for in-app help -->
+        <!-- Markdown → HTML rendering for in-app help. Keep this list limited to
+             the extensions used by HelpController; flexmark-all also pulls the
+             unused PDF converter and its legacy PDFBox 2.x dependency family. -->
         <dependency>
             <groupId>com.vladsch.flexmark</groupId>
-            <artifactId>flexmark-all</artifactId>
+            <artifactId>flexmark</artifactId>
+            <version>${flexmark.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark-ext-autolink</artifactId>
+            <version>${flexmark.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark-ext-gfm-strikethrough</artifactId>
+            <version>${flexmark.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark-ext-tables</artifactId>
             <version>${flexmark.version}</version>
         </dependency>
     </dependencies>
