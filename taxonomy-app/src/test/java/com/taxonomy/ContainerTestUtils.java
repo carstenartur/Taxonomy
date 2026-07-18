@@ -171,7 +171,8 @@ final class ContainerTestUtils {
         // test network, so disable the upgrade variants and trust that test origin.
         options.addArguments(
                 "--disable-features=HttpsUpgrades,HttpsFirstMode,HttpsFirstModeV2,"
-                        + "HttpsFirstBalancedMode,HttpsFirstModeForTypedNavigations,"
+                        + "HttpsFirstBalancedMode,HttpsFirstBalancedModeAutoEnable,"
+                        + "HttpsFirstModeForTypedNavigations,"
                         + "HttpsFirstModeInterstitial",
                 "--unsafely-treat-insecure-origin-as-secure=http://app:8080",
                 "--ignore-certificate-errors",
