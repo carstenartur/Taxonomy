@@ -93,7 +93,7 @@ abstract class AbstractSeleniumContainerIT {
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
 
         // Login via form (Spring Security requires authentication)
-        driver.get("http://app:8080/login");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/login");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.name("username")));
         driver.findElement(By.name("username")).sendKeys("admin");
@@ -101,7 +101,7 @@ abstract class AbstractSeleniumContainerIT {
         driver.findElement(By.cssSelector("button[type='submit'], input[type='submit']")).click();
 
         // Wait for the main page to load after login
-        driver.get("http://app:8080/");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // Wait for the data-view-rendered attribute which is set by renderView() after
@@ -257,7 +257,7 @@ abstract class AbstractSeleniumContainerIT {
     @Order(17)
     void languageSwitchToGermanChangesUiLabels() {
         // Navigate to home first (in English by default)
-        driver.get("http://app:8080/");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
 
@@ -320,7 +320,7 @@ abstract class AbstractSeleniumContainerIT {
     @Order(19)
     void switchBackToEnglish() {
         // Navigate back to home/browse page first (test 18 may have left us on the Help page)
-        driver.get("http://app:8080/");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("langSelector")));
 

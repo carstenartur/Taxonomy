@@ -67,7 +67,7 @@ class OnnxSeleniumIT {
 
         appContainer = new GenericContainer<>(ContainerTestUtils.sharedImage())
                 .withNetwork(network)
-                .withNetworkAliases("app")
+                .withNetworkAliases(ContainerTestUtils.APP_NETWORK_ALIAS)
                 .withExposedPorts(8080)
                 .withEnv("LLM_PROVIDER", "LOCAL_ONNX")
                 .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true")
@@ -92,7 +92,7 @@ class OnnxSeleniumIT {
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
 
         // Login via form (Spring Security requires authentication)
-        driver.get("http://app:8080/login");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/login");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.name("username")));
         driver.findElement(By.name("username")).sendKeys("admin");
@@ -100,7 +100,7 @@ class OnnxSeleniumIT {
         driver.findElement(By.cssSelector("button[type='submit'], input[type='submit']")).click();
 
         // Wait for the main page to load after login
-        driver.get("http://app:8080/");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         new WebDriverWait(driver, Duration.ofSeconds(60))

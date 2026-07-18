@@ -346,7 +346,7 @@ class ScreenshotGeneratorIT {
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
 
         // Login via form (Spring Security requires authentication)
-        driver.get("http://app:8080/login");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/login");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.name("username")));
         driver.findElement(By.name("username")).sendKeys("admin");
@@ -354,7 +354,7 @@ class ScreenshotGeneratorIT {
         driver.findElement(By.cssSelector("button[type='submit'], input[type='submit']")).click();
 
         // Load the application and wait for the taxonomy tree to be FULLY RENDERED
-        driver.get("http://app:8080/");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         new WebDriverWait(driver, Duration.ofSeconds(15))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // Wait for the data-view-rendered attribute which is set by renderView() after
@@ -615,7 +615,7 @@ class ScreenshotGeneratorIT {
 
     /** Reloads the page and waits for the taxonomy tree to be fully rendered. */
     private void resetPageState() {
-        driver.get("http://app:8080/");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // Wait for the data-view-rendered attribute which is set by renderView() after
         // the taxonomy data has been fetched and the view has been fully rendered.
@@ -1010,7 +1010,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(1)
     void captureFullPageLayout() throws IOException {
-        driver.get("http://app:8080/");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // Wait for actual taxonomy nodes to be rendered (not just the container div with loading spinner)
         wait(15).until(ExpectedConditions.presenceOfElementLocated(
@@ -2666,7 +2666,7 @@ class ScreenshotGeneratorIT {
     @Order(70)
     void captureSwaggerUi() throws IOException {
         // Navigate to Swagger UI
-        driver.get("http://app:8080/swagger-ui.html");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/swagger-ui.html");
 
         // Wait for Swagger UI framework to load (info section with API title)
         try {

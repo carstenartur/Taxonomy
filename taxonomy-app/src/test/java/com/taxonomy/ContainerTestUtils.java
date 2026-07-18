@@ -117,6 +117,8 @@ final class ContainerTestUtils {
     static final String POSTGRES_IMAGE = "postgres:16-alpine";
     static final String ORACLE_IMAGE = "gvenzl/oracle-free:23-slim-faststart";
     static final String MSSQL_IMAGE = "mcr.microsoft.com/mssql/server:2022-CU18-ubuntu-22.04";
+    static final String APP_NETWORK_ALIAS = "taxonomy.test";
+    static final String APP_ORIGIN = "http://" + APP_NETWORK_ALIAS + ":8080";
     private static final String SELENIUM_IMAGE_PROPERTY = "selenium.container.image";
 
     /** Strong password required by SQL Server's complexity rules. */
@@ -166,18 +168,11 @@ final class ContainerTestUtils {
 
     private static ChromeOptions chromeOptions() {
         ChromeOptions options = new ChromeOptions();
-        // Chrome 145+ aggressively upgrades http:// to https:// (HTTPS-First Mode).
-        // The application container intentionally serves plain HTTP on its private
-        // test network, so disable the upgrade variants and trust that test origin.
-        options.addArguments(
-                "--disable-features=HttpsUpgrades,HttpsFirstMode,HttpsFirstModeV2,"
-                        + "HttpsFirstBalancedMode,HttpsFirstBalancedModeAutoEnable,"
-                        + "HttpsFirstModeForTypedNavigations,"
-                        + "HttpsFirstModeInterstitial",
-                "--unsafely-treat-insecure-origin-as-secure=http://app:8080",
-                "--ignore-certificate-errors",
-                "--allow-running-insecure-content");
-        options.setAcceptInsecureCerts(true);
+        // Chrome's automated-test guidance recommends allowlisting intentional
+        // HTTP origins. APP_NETWORK_ALIAS deliberately uses the reserved .test
+        // TLD; the former alias "app" collided with the HSTS-preloaded .app TLD,
+        // which forces HTTPS before any HTTPS-First feature flag is considered.
+        options.addArguments("--unsafely-treat-insecure-origin-as-secure=" + APP_ORIGIN);
         return options;
     }
 
@@ -261,7 +256,7 @@ final class ContainerTestUtils {
     static GenericContainer<?> appContainer(Network network) {
         return new GenericContainer<>(SHARED_IMAGE)
                 .withNetwork(network)
-                .withNetworkAliases("app")
+                .withNetworkAliases(APP_NETWORK_ALIAS)
                 .withExposedPorts(8080)
                 .withStartupTimeout(Duration.ofSeconds(180))
                 .waitingFor(Wait.forHttp("/actuator/health")
