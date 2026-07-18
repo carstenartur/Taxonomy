@@ -303,6 +303,14 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <excludedGroups>${excludedGroups}</excludedGroups>
+                    <systemPropertyVariables>
+                        <!--
+                            Different Spring test contexts rebuild the same in-memory
+                            HSQLDB schema. Retaining only the current context prevents
+                            a stale JGit repository from being reused afterwards.
+                        -->
+                        <spring.test.context.cache.maxSize>1</spring.test.context.cache.maxSize>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
             <plugin>

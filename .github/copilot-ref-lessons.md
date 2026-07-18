@@ -32,6 +32,14 @@
 
 **Key takeaway:** Beans that maintain internal state tied to database contents (like JGit's `DfsBlockCache`) must handle table recreation gracefully. Use unique identifiers, avoid static mutable state, or use `@DirtiesContext` as a last resort.
 
+## Keep one Spring test context when JGit shares the in-memory database (2026-07-18)
+
+**Problem:** A cached `@SpringBootTest` context can retain JGit reftable pack names after another context recreates the shared `taxonomydb` schema. Reusing the older context then fails with `FileNotFoundException: pack-...-INSERT.ref`. A JVM-wide bootstrap guard and unique pack names do not help when the database rows themselves have been deleted.
+
+**Fix:** Surefire sets `spring.test.context.cache.maxSize=1`. When a different test context replaces the current one, Spring no longer keeps the older database-backed JGit repository available for later reuse.
+
+**Key takeaway:** Do not increase the Spring test context cache while multiple contexts use `ddl-auto=create` against the same named in-memory HSQLDB. A targeted `@DirtiesContext` only hides the next context transition that can reproduce the stale repository.
+
 ---
 
 ## HSQLDB in-memory + Hibernate SessionFactory for JGit (2026-03-12)
