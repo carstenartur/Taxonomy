@@ -72,14 +72,11 @@
         <hibernate-search-backend.version>8.4.0.Final</hibernate-search-backend.version>
         <jgit.version>7.7.0.202606012155-r</jgit.version>
         <springdoc.version>3.0.3</springdoc.version>
-        <!-- Named selenium-java.version (NOT selenium.version) to avoid overriding
-             Spring Boot's managed selenium.version property, which controls the
-             selenium-bom and all transitive Selenium artifact versions.  Overriding
-             it caused Testcontainers to pull a newer Chrome Docker image with
-             HTTPS-First Mode enabled by default (ERR_SSL_PROTOCOL_ERROR).
-             This property is referenced only by the selenium-java dependency in
-             taxonomy-app/pom.xml. -->
-        <selenium-java.version>4.46.0</selenium-java.version>
+        <!-- Keep the Selenium BOM and the explicitly selected browser image aligned.
+             The dated image tag makes CI reproducible; ContainerTestUtils also checks
+             at runtime that its Selenium version matches this image tag. -->
+        <selenium.version>4.46.0</selenium.version>
+        <selenium.container.image>selenium/standalone-chrome:4.46.0-20260707</selenium.container.image>
         <archunit.version>1.4.2</archunit.version>
         <flexmark.version>0.64.8</flexmark.version>
         <xstream.version>1.4.21</xstream.version>

@@ -7,6 +7,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.Future;
 
+import org.openqa.selenium.BuildInfo;
+import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.remote.RemoteWebDriver;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -14,6 +17,8 @@ import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.mssqlserver.MSSQLServerContainer;
 import org.testcontainers.oracle.OracleContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.selenium.BrowserWebDriverContainer;
+import org.testcontainers.utility.DockerImageName;
 
 /**
  * Shared utilities for container-based integration tests.
@@ -112,9 +117,119 @@ final class ContainerTestUtils {
     static final String POSTGRES_IMAGE = "postgres:16-alpine";
     static final String ORACLE_IMAGE = "gvenzl/oracle-free:23-slim-faststart";
     static final String MSSQL_IMAGE = "mcr.microsoft.com/mssql/server:2022-CU18-ubuntu-22.04";
+    private static final String SELENIUM_IMAGE_PROPERTY = "selenium.container.image";
 
     /** Strong password required by SQL Server's complexity rules. */
     static final String MSSQL_PASSWORD = "A_Str0ng_Required_Password";
+
+    // ── Selenium container factory ───────────────────────────────────────────────
+
+    /**
+     * Starts a Selenium browser container and creates its matching remote driver.
+     * The caller owns the returned session and must close it before closing the
+     * Docker network.
+     */
+    static BrowserSession startBrowser(Network network) {
+        BrowserWebDriverContainer container = new BrowserWebDriverContainer(seleniumImage())
+                .withNetwork(network);
+        container.start();
+        try {
+            RemoteWebDriver driver = new RemoteWebDriver(container.getSeleniumAddress(), chromeOptions());
+            return new BrowserSession(container, driver);
+        } catch (RuntimeException e) {
+            try {
+                container.stop();
+            } catch (RuntimeException stopFailure) {
+                e.addSuppressed(stopFailure);
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Resolves the configured image and rejects a client/image version mismatch.
+     * Failsafe supplies the pinned image from the root POM; the fallback keeps IDE
+     * runs convenient while still using the Selenium client version on the classpath.
+     */
+    static DockerImageName seleniumImage() {
+        String seleniumVersion = new BuildInfo().getReleaseLabel();
+        String configuredImage = System.getProperty(
+                SELENIUM_IMAGE_PROPERTY, "selenium/standalone-chrome:" + seleniumVersion);
+        DockerImageName image = DockerImageName.parse(configuredImage);
+        String imageTag = image.getVersionPart();
+        if (!imageTag.equals(seleniumVersion) && !imageTag.startsWith(seleniumVersion + "-")) {
+            throw new IllegalStateException("Selenium client " + seleniumVersion
+                    + " does not match browser image " + configuredImage);
+        }
+        return image;
+    }
+
+    private static ChromeOptions chromeOptions() {
+        ChromeOptions options = new ChromeOptions();
+        // Chrome 145+ aggressively upgrades http:// to https:// (HTTPS-First Mode).
+        // The application container intentionally serves plain HTTP on its private
+        // test network, so disable the upgrade variants and trust that test origin.
+        options.addArguments(
+                "--disable-features=HttpsUpgrades,HttpsFirstMode,HttpsFirstModeV2,"
+                        + "HttpsFirstBalancedMode,HttpsFirstModeForTypedNavigations,"
+                        + "HttpsFirstModeInterstitial",
+                "--unsafely-treat-insecure-origin-as-secure=http://app:8080",
+                "--ignore-certificate-errors",
+                "--allow-running-insecure-content");
+        options.setAcceptInsecureCerts(true);
+        return options;
+    }
+
+    /** Owns both sides of a Selenium session and closes the driver before its container. */
+    record BrowserSession(BrowserWebDriverContainer container, RemoteWebDriver driver)
+            implements AutoCloseable {
+        @Override
+        public void close() {
+            RuntimeException failure = null;
+            try {
+                driver.quit();
+            } catch (RuntimeException e) {
+                failure = e;
+            }
+            try {
+                container.stop();
+            } catch (RuntimeException e) {
+                if (failure == null) {
+                    failure = e;
+                } else {
+                    failure.addSuppressed(e);
+                }
+            }
+            if (failure != null) {
+                throw failure;
+            }
+        }
+    }
+
+    /**
+     * Closes every resource in order, even if an earlier cleanup fails, then
+     * rethrows the first failure with any later failures attached.
+     */
+    static void closeAll(AutoCloseable... resources) throws Exception {
+        Exception failure = null;
+        for (AutoCloseable resource : resources) {
+            if (resource == null) {
+                continue;
+            }
+            try {
+                resource.close();
+            } catch (Exception e) {
+                if (failure == null) {
+                    failure = e;
+                } else {
+                    failure.addSuppressed(e);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
+    }
 
     // ── Application container factories ──────────────────────────────────────
 

@@ -12,10 +12,8 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
-import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
-import org.testcontainers.containers.BrowserWebDriverContainer;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -60,7 +58,7 @@ class OnnxSeleniumIT {
 
     private Network network;
     private GenericContainer<?> appContainer;
-    private BrowserWebDriverContainer<?> chrome;
+    private ContainerTestUtils.BrowserSession browserSession;
     private WebDriver driver;
 
     @BeforeAll
@@ -89,21 +87,8 @@ class OnnxSeleniumIT {
 
         appContainer.start();
 
-        ChromeOptions chromeOptions = new ChromeOptions();
-        chromeOptions.addArguments(
-                "--disable-features=HttpsUpgrades,HttpsFirstMode,HttpsFirstModeV2,"
-                        + "HttpsFirstBalancedMode,HttpsFirstModeForTypedNavigations,"
-                        + "HttpsFirstModeInterstitial",
-                "--unsafely-treat-insecure-origin-as-secure=http://app:8080",
-                "--ignore-certificate-errors",
-                "--allow-running-insecure-content");
-        chromeOptions.setAcceptInsecureCerts(true);
-        chrome = new BrowserWebDriverContainer<>()
-                .withNetwork(network)
-                .withCapabilities(chromeOptions);
-        chrome.start();
-
-        driver = chrome.getWebDriver();
+        browserSession = ContainerTestUtils.startBrowser(network);
+        driver = browserSession.driver();
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
 
         // Login via form (Spring Security requires authentication)
@@ -135,10 +120,8 @@ class OnnxSeleniumIT {
     }
 
     @AfterAll
-    void stopContainers() {
-        if (chrome != null) chrome.stop();
-        if (appContainer != null) appContainer.stop();
-        if (network != null) network.close();
+    void stopContainers() throws Exception {
+        ContainerTestUtils.closeAll(browserSession, appContainer, network);
     }
 
     private String baseUrl() {
