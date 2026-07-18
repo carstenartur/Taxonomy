@@ -212,8 +212,12 @@
         </dependency>
         <dependency>
             <groupId>org.seleniumhq.selenium</groupId>
-            <artifactId>selenium-java</artifactId>
-            <version>${selenium-java.version}</version>
+            <artifactId>selenium-chrome-driver</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-support</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -286,6 +290,14 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <excludedGroups>${excludedGroups}</excludedGroups>
+                    <systemPropertyVariables>
+                        <!--
+                            Different Spring test contexts rebuild the same in-memory
+                            HSQLDB schema. Retaining only the current context prevents
+                            a stale JGit repository from being reused afterwards.
+                        -->
+                        <spring.test.context.cache.maxSize>1</spring.test.context.cache.maxSize>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
             <plugin>
@@ -346,6 +358,9 @@
                         <!-- Pass the final JAR name so ContainerTestUtils can locate the fat JAR
                              deterministically without a regex scan (e.g. taxonomy-app-1.x.x-SNA...). -->
                         <project.build.finalName>${project.build.finalName}</project.build.finalName>
+                        <!-- Keep the browser/grid image explicit and aligned with the
+                             Selenium BOM instead of deriving it from a transitive JAR. -->
+                        <selenium.container.image>${selenium.container.image}</selenium.container.image>
                     </systemPropertyVariables>
                 </configuration>
                 <executions>

@@ -32,6 +32,22 @@
 
 **Key takeaway:** Beans that maintain internal state tied to database contents (like JGit's `DfsBlockCache`) must handle table recreation gracefully. Use unique identifiers, avoid static mutable state, or use `@DirtiesContext` as a last resort.
 
+## Keep one Spring test context when JGit shares the in-memory database (2026-07-18)
+
+**Problem:** A cached `@SpringBootTest` context can retain JGit reftable pack names after another context recreates the shared `taxonomydb` schema. Reusing the older context then fails with `FileNotFoundException: pack-...-INSERT.ref`. A JVM-wide bootstrap guard and unique pack names do not help when the database rows themselves have been deleted.
+
+**Fix:** Surefire sets `spring.test.context.cache.maxSize=1`. When a different test context replaces the current one, Spring no longer keeps the older database-backed JGit repository available for later reuse.
+
+**Key takeaway:** Do not increase the Spring test context cache while multiple contexts use `ddl-auto=create` against the same named in-memory HSQLDB. A targeted `@DirtiesContext` only hides the next context transition that can reproduce the stale repository.
+
+## Do not use an HSTS-preloaded TLD as a Docker HTTP alias (2026-07-18)
+
+**Problem:** The Selenium application container used the single-label network alias `app` and served plain HTTP. Chrome matches that hostname against the HSTS-preloaded `.app` TLD and therefore rewrites `http://app:8080` to HTTPS. HSTS takes precedence over HTTPS-First feature flags, insecure-origin allowlists, and certificate-error options, so the tests fail with `ERR_SSL_PROTOCOL_ERROR` even when those switches are present.
+
+**Fix:** Use the reserved test hostname `taxonomy.test` for the container alias and every browser URL. Keep the origin in `ContainerTestUtils.APP_ORIGIN` and pass that same value to Chrome's automated-test HTTP allowlist.
+
+**Key takeaway:** Test-only HTTP hostnames must use a reserved non-HSTS suffix such as `.test`; never name a plain-HTTP container after an HSTS-preloaded TLD such as `.app` or `.dev`.
+
 ---
 
 ## HSQLDB in-memory + Hibernate SessionFactory for JGit (2026-03-12)

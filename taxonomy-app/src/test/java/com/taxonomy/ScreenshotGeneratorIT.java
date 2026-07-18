@@ -15,10 +15,8 @@ import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
-import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
-import org.testcontainers.containers.BrowserWebDriverContainer;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -316,7 +314,7 @@ class ScreenshotGeneratorIT {
 
     private static Network network;
     private static GenericContainer<?> app;
-    private static BrowserWebDriverContainer<?> chrome;
+    private static ContainerTestUtils.BrowserSession browserSession;
     private static WebDriver driver;
 
     @BeforeAll
@@ -343,29 +341,12 @@ class ScreenshotGeneratorIT {
         app = appContainer;
         app.start();
 
-        ChromeOptions chromeOptions = new ChromeOptions();
-        // Chrome 145+ aggressively upgrades http:// → https:// (HTTPS-First Mode).
-        // The app container only speaks plain HTTP, causing ERR_SSL_PROTOCOL_ERROR.
-        // Disable all known HTTPS-upgrade feature variants across Chrome versions
-        // and explicitly mark the plain-HTTP app origin as "secure".
-        chromeOptions.addArguments(
-                "--disable-features=HttpsUpgrades,HttpsFirstMode,HttpsFirstModeV2,"
-                        + "HttpsFirstBalancedMode,HttpsFirstModeForTypedNavigations,"
-                        + "HttpsFirstModeInterstitial",
-                "--unsafely-treat-insecure-origin-as-secure=http://app:8080",
-                "--ignore-certificate-errors",
-                "--allow-running-insecure-content");
-        chromeOptions.setAcceptInsecureCerts(true);
-        chrome = new BrowserWebDriverContainer<>()
-                .withNetwork(network)
-                .withCapabilities(chromeOptions);
-        chrome.start();
-
-        driver = chrome.getWebDriver();
+        browserSession = ContainerTestUtils.startBrowser(network);
+        driver = browserSession.driver();
         driver.manage().window().setSize(new org.openqa.selenium.Dimension(1400, 900));
 
         // Login via form (Spring Security requires authentication)
-        driver.get("http://app:8080/login");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/login");
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.name("username")));
         driver.findElement(By.name("username")).sendKeys("admin");
@@ -373,7 +354,7 @@ class ScreenshotGeneratorIT {
         driver.findElement(By.cssSelector("button[type='submit'], input[type='submit']")).click();
 
         // Load the application and wait for the taxonomy tree to be FULLY RENDERED
-        driver.get("http://app:8080/");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         new WebDriverWait(driver, Duration.ofSeconds(15))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // Wait for the data-view-rendered attribute which is set by renderView() after
@@ -396,10 +377,8 @@ class ScreenshotGeneratorIT {
     }
 
     @AfterAll
-    static void stopContainers() {
-        if (chrome != null) chrome.stop();
-        if (app != null) app.stop();
-        if (network != null) network.close();
+    static void stopContainers() throws Exception {
+        ContainerTestUtils.closeAll(browserSession, app, network);
     }
 
     // ── Helper methods ─────────────────────────────────────────────────────────
@@ -636,7 +615,7 @@ class ScreenshotGeneratorIT {
 
     /** Reloads the page and waits for the taxonomy tree to be fully rendered. */
     private void resetPageState() {
-        driver.get("http://app:8080/");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // Wait for the data-view-rendered attribute which is set by renderView() after
         // the taxonomy data has been fetched and the view has been fully rendered.
@@ -1031,7 +1010,7 @@ class ScreenshotGeneratorIT {
     @Test
     @Order(1)
     void captureFullPageLayout() throws IOException {
-        driver.get("http://app:8080/");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
         wait(15).until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // Wait for actual taxonomy nodes to be rendered (not just the container div with loading spinner)
         wait(15).until(ExpectedConditions.presenceOfElementLocated(
@@ -2687,7 +2666,7 @@ class ScreenshotGeneratorIT {
     @Order(70)
     void captureSwaggerUi() throws IOException {
         // Navigate to Swagger UI
-        driver.get("http://app:8080/swagger-ui.html");
+        driver.get(ContainerTestUtils.APP_ORIGIN + "/swagger-ui.html");
 
         // Wait for Swagger UI framework to load (info section with API title)
         try {
