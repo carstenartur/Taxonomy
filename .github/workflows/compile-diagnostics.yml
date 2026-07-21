@@ -1,4 +1,4 @@
-name: Compile Diagnostics
+name: Test Diagnostics
 
 on:
   push:
@@ -10,10 +10,13 @@ on:
 permissions:
   contents: read
 
+env:
+  BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+
 jobs:
-  compile:
+  test-diagnostics:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -24,25 +27,33 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Compile reactor and preserve complete log
-        id: compile
+      - name: Download and verify pinned embedding model
+        env:
+          MODEL_REVISION: ${{ env.BGE_MODEL_REVISION }}
+        run: bash .github/scripts/download-embedding-model.sh
+
+      - name: Run full reactor tests and preserve complete log
+        id: tests
         shell: bash
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         run: |
           mkdir -p target
           set +e
           set -o pipefail
-          mvn -B -DskipTests package 2>&1 | tee target/maven-build.log
+          mvn -B install -DexcludedGroups="real-llm" 2>&1 | tee target/maven-test.log
           status=${PIPESTATUS[0]}
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Upload complete Maven log
+      - name: Upload complete Maven test log
         uses: actions/upload-artifact@v7
         with:
-          name: maven-build-log
-          path: target/maven-build.log
+          name: maven-test-log
+          path: target/maven-test.log
           retention-days: 14
 
-      - name: Fail when Maven failed
-        if: steps.compile.outputs.exit_code != '0'
+      - name: Fail when Maven tests failed
+        if: steps.tests.outputs.exit_code != '0'
         run: exit 1
