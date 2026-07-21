@@ -164,7 +164,7 @@ class LlmServiceBranchCoverageTest {
     }
 
     @Test
-    void mockDetailedCallUsesDeterministicFallbackWhenRecordingIsUnavailable() {
+    void mockDetailedCallUsesDeterministicFallbackWhenRecordingIsUnavailable() throws Exception {
         when(providerConfig.isMockMode()).thenReturn(true);
         when(savedAnalysisService.loadFromClasspath(anyString())).thenThrow(new IllegalStateException("missing fixture"));
         List<TaxonomyNode> nodes = List.of(node("BP-X", "BP", "BP"), node("BP-Y", "BP", "BP"));
