@@ -37,9 +37,46 @@
 #mainNavTabs [role="tab"]:focus-visible,
 .tax-node-actions button:focus-visible,
 .taxonomy-accessible-dialog button:focus-visible,
-.taxonomy-accessible-dialog input:focus-visible {
+.taxonomy-accessible-dialog input:focus-visible,
+.table-responsive:focus-visible {
     outline: 3px solid #0d6efd;
     outline-offset: 2px;
+}
+
+/* Bootstrap's default outline tones are slightly below WCAG AA on the light
+   workbench background at the small control sizes used by Taxonomy. */
+.btn-outline-secondary {
+    --bs-btn-color: #565e64;
+    --bs-btn-border-color: #565e64;
+    --bs-btn-hover-bg: #565e64;
+    --bs-btn-hover-border-color: #565e64;
+    --bs-btn-active-bg: #565e64;
+    --bs-btn-active-border-color: #565e64;
+}
+.btn-outline-info {
+    --bs-btn-color: #075985;
+    --bs-btn-border-color: #075985;
+    --bs-btn-hover-bg: #075985;
+    --bs-btn-hover-border-color: #075985;
+    --bs-btn-active-bg: #075985;
+    --bs-btn-active-border-color: #075985;
+}
+.btn-outline-success {
+    --bs-btn-color: #146c43;
+    --bs-btn-border-color: #146c43;
+    --bs-btn-hover-bg: #146c43;
+    --bs-btn-hover-border-color: #146c43;
+    --bs-btn-active-bg: #146c43;
+    --bs-btn-active-border-color: #146c43;
+}
+.alert-warning code,
+.bg-warning-subtle code,
+.bg-warning code {
+    color: #842029;
+}
+.legend-box[style*="rgba(0,128,0,0.75)"] {
+    background: #2f7532 !important;
+    color: #fff !important;
 }
 
 /* Touch users cannot discover hover-only node actions. */
