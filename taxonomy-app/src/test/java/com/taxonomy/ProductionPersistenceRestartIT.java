@@ -39,7 +39,8 @@ class ProductionPersistenceRestartIT {
                 .build();
 
         long countAfterWrite;
-        try (GenericContainer<?> first = persistentAppContainer()) {
+        GenericContainer<?> first = persistentAppContainer();
+        try {
             first.start();
             URI origin = origin(first);
             awaitInitialized(client, origin);
@@ -63,9 +64,12 @@ class ProductionPersistenceRestartIT {
 
             countAfterWrite = relationCount(client, origin);
             assertThat(countAfterWrite).isGreaterThan(countBefore);
+        } finally {
+            stopContainerAndRestoreHostPermissions(first);
         }
 
-        try (GenericContainer<?> second = persistentAppContainer()) {
+        GenericContainer<?> second = persistentAppContainer();
+        try {
             second.start();
             URI origin = origin(second);
             awaitInitialized(client, origin);
@@ -78,6 +82,8 @@ class ProductionPersistenceRestartIT {
                     .build());
             assertThat(relations.statusCode()).isEqualTo(200);
             assertThat(relations.body()).contains("production-persistence-restart-it");
+        } finally {
+            stopContainerAndRestoreHostPermissions(second);
         }
     }
 
@@ -96,6 +102,29 @@ class ProductionPersistenceRestartIT {
                 .withEnv("TAXONOMY_EMBEDDING_ENABLED", "false")
                 .withEnv("TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD", "false")
                 .withEnv("TAXONOMY_THYMELEAF_CACHE", "true");
+    }
+
+    /**
+     * The production image deliberately runs as the non-root {@code taxonomy}
+     * user. Files created in a host bind mount therefore have the container UID.
+     * Before JUnit removes its {@link TempDir}, make the persisted contents
+     * writable by the host runner. This preserves the non-root runtime contract
+     * while keeping test cleanup deterministic.
+     */
+    private static void stopContainerAndRestoreHostPermissions(GenericContainer<?> container)
+            throws Exception {
+        try {
+            if (container.isRunning()) {
+                var result = container.execInContainer(
+                        "sh", "-c",
+                        "find /app/data -mindepth 1 -exec chmod a+rwX {} +");
+                assertThat(result.getExitCode())
+                        .as("restore host cleanup permissions: %s", result.getStderr())
+                        .isZero();
+            }
+        } finally {
+            container.stop();
+        }
     }
 
     private static URI origin(GenericContainer<?> container) {
