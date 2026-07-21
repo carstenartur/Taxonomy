@@ -9,6 +9,7 @@ on:
       - 'taxonomy-app/src/main/java/com/taxonomy/**/controller/**'
       - 'taxonomy-app/src/main/java/com/taxonomy/security/**'
       - 'taxonomy-app/src/main/java/com/taxonomy/versioning/**'
+      - 'taxonomy-app/pom.xml'
       - 'taxonomy-export/**'
       - 'taxonomy-extension-api/**'
       - '.github/scripts/accessibility-audit.mjs'
@@ -95,3 +96,13 @@ jobs:
             /tmp/taxonomy-a11y.log
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Upload source patch inputs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: airgap-source-inputs
+          path: |
+            taxonomy-app/pom.xml
+            taxonomy-app/src/main/resources/templates/index.html
+          retention-days: 2
