@@ -150,13 +150,15 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- SBOM generation (CycloneDX) — required by BSI for software supply chain transparency -->
+            <!-- Generate one authoritative aggregate SBOM at the reactor root. -->
             <plugin>
                 <groupId>org.cyclonedx</groupId>
                 <artifactId>cyclonedx-maven-plugin</artifactId>
                 <version>${cyclonedx.version}</version>
+                <inherited>false</inherited>
                 <executions>
                     <execution>
+                        <id>generate-aggregate-sbom</id>
                         <phase>package</phase>
                         <goals>
                             <goal>makeAggregateBom</goal>
@@ -165,8 +167,11 @@
                 </executions>
                 <configuration>
                     <projectType>application</projectType>
+                    <outputDirectory>${maven.multiModuleProjectDirectory}/target</outputDirectory>
                     <outputFormat>all</outputFormat>
                     <outputName>taxonomy-sbom</outputName>
+                    <outputReactorProjects>false</outputReactorProjects>
+                    <skipNotDeployed>false</skipNotDeployed>
                     <schemaVersion>1.6</schemaVersion>
                     <includeBomSerialNumber>true</includeBomSerialNumber>
                     <includeCompileScope>true</includeCompileScope>
