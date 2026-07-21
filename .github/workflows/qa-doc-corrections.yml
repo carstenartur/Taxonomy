@@ -1,0 +1,38 @@
+name: Apply QA Documentation Corrections
+
+on:
+  push:
+    branches:
+      - qa/senior-architecture-ergonomics-hardening
+    paths:
+      - '.github/scripts/apply-qa-doc-corrections.py'
+      - '.github/workflows/qa-doc-corrections.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    name: Apply idempotent documentation migration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: qa/senior-architecture-ergonomics-hardening
+          fetch-depth: 0
+
+      - name: Apply corrections
+        run: python3 .github/scripts/apply-qa-doc-corrections.py
+
+      - name: Commit documentation updates
+        run: |
+          if git diff --quiet; then
+            echo "Documentation is already synchronized."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add README.md docs taxonomy-app/src/main/resources/i18n
+          git commit -m 'docs: synchronize QA hardening documentation'
+          git push origin HEAD:qa/senior-architecture-ergonomics-hardening
