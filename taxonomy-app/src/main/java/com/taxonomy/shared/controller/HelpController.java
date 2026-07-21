@@ -44,6 +44,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class HelpController {
 
     private static final Logger log = LoggerFactory.getLogger(HelpController.class);
+    private static final String REPOSITORY_DOCS_URL =
+            "https://github.com/carstenartur/Taxonomy/blob/main/docs/";
 
     /** Only allow safe filename characters to prevent path traversal. */
     private static final java.util.regex.Pattern SAFE_NAME = java.util.regex.Pattern.compile("^[A-Za-z0-9_-]+$");
@@ -137,7 +139,6 @@ public class HelpController {
         if (!SAFE_NAME.matcher(docName).matches()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid document name");
         }
-        // Only allow documents that exist in the known list
         boolean knownDoc = KNOWN_FILENAMES.contains(docName);
         if (!knownDoc) {
             return ResponseEntity.notFound().build();
@@ -155,8 +156,6 @@ public class HelpController {
     @GetMapping("/images/{imageName}")
     @ResponseBody
     public ResponseEntity<byte[]> getImage(@PathVariable String imageName) {
-        // Validate the full filename: only alphanumeric, hyphens, underscores, and dots allowed.
-        // This prevents path traversal (no slashes, no "..") while allowing extensions like .png.
         if (!SAFE_IMAGE.matcher(imageName).matches() || imageName.contains("..")) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
@@ -174,20 +173,16 @@ public class HelpController {
         }
     }
 
-    // ── private helpers ───────────────────────────────────────────────────────
-
     /**
      * Resolves a document by locale, falling back through:
      * docs/{lang}/{docName}.md → docs/en/{docName}.md
      */
     private String renderDoc(String docName, Locale locale) {
-        // 1. Try locale-specific path
         String localePath = "docs/" + locale.getLanguage() + "/" + docName + ".md";
         ClassPathResource localeResource = new ClassPathResource(localePath);
         if (localeResource.exists()) {
             return parseResource(localeResource, docName);
         }
-        // 2. Fallback to English
         String enPath = "docs/en/" + docName + ".md";
         ClassPathResource enResource = new ClassPathResource(enPath);
         if (enResource.exists()) {
@@ -199,10 +194,9 @@ public class HelpController {
     private String parseResource(ClassPathResource resource, String docName) {
         try (InputStream in = resource.getInputStream()) {
             String markdown = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            // Rewrite relative image paths to absolute /help/images/... URLs
             markdown = markdown.replaceAll("\\(\\.\\./images/([^)]++)\\)", "(/help/images/$1)");
-            // Also rewrite HTML <img src="../images/..."> tags
             markdown = markdown.replaceAll("src=\"\\.\\./images/([^\"]++)\"", "src=\"/help/images/$1\"");
+            markdown = rewriteRepositoryDocLinks(markdown);
             Node document = parser.parse(markdown);
             String body = renderer.render(document);
             return "<div class=\"help-doc-content\">" + body + "</div>";
@@ -210,6 +204,12 @@ public class HelpController {
             log.error("Failed to render help doc {}: {}", docName, e.getMessage());
             return null;
         }
+    }
+
+    static String rewriteRepositoryDocLinks(String markdown) {
+        return markdown
+                .replaceAll("\\(\\.\\./dev/([^)]++)\\)", "(" + REPOSITORY_DOCS_URL + "dev/$1)")
+                .replaceAll("\\(\\.\\./internal/([^)]++)\\)", "(" + REPOSITORY_DOCS_URL + "internal/$1)");
     }
 
     private MediaType guessMediaType(String imageName) {
