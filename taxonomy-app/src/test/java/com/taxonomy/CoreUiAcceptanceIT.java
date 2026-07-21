@@ -86,9 +86,11 @@ class CoreUiAcceptanceIT {
 
         activeTab.click();
         activeTab.sendKeys(Keys.ARROW_RIGHT);
-        WebElement architectureTab = wait.until(ExpectedConditions.attributeToBe(
-                By.cssSelector("#mainNavTabs .nav-link[data-page='architecture']"),
-                "aria-selected", "true"));
+        By architectureTabSelector =
+                By.cssSelector("#mainNavTabs .nav-link[data-page='architecture']");
+        wait.until(ExpectedConditions.attributeToBe(
+                architectureTabSelector, "aria-selected", "true"));
+        WebElement architectureTab = driver.findElement(architectureTabSelector);
         assertThat(architectureTab.getAttribute("tabindex")).isEqualTo("0");
         assertThat(driver.findElement(By.id("tab-architecture")).isDisplayed()).isTrue();
 
