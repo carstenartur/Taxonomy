@@ -3,24 +3,28 @@ package com.taxonomy;
 import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.relations.service.GraphSearchService;
 import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Tests for the graph-semantic search endpoint introduced as part of the
- * Hibernate Search migration (requirement 3: graph-semantic search).
+ * Hibernate Search migration.
  *
- * <p>The DJL model is NOT loaded in these tests. All graph searches gracefully
- * degrade to empty results when the model is unavailable.
+ * <p>The DJL model is not loaded in these tests. All direct service calls use
+ * the explicit shared workspace context and gracefully degrade to empty results
+ * when the model is unavailable.</p>
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -36,17 +40,17 @@ class GraphSearchTests {
     @Autowired
     private LocalEmbeddingService embeddingService;
 
-    // ── GraphSearchService unit tests ─────────────────────────────────────────
-
     @Test
     void graphSearchReturnsNonNullResultWhenModelNotLoaded() {
-        GraphSearchResult result = graphSearchService.graphSearch("satellite communications", 10);
+        GraphSearchResult result = graphSearchService.graphSearch(
+                "satellite communications", 10, WorkspaceContext.SHARED);
         assertThat(result).isNotNull();
     }
 
     @Test
     void graphSearchResultHasAllRequiredFields() {
-        GraphSearchResult result = graphSearchService.graphSearch("business process management", 10);
+        GraphSearchResult result = graphSearchService.graphSearch(
+                "business process management", 10, WorkspaceContext.SHARED);
         assertThat(result.getMatchedNodes()).isNotNull();
         assertThat(result.getRelationCountByRoot()).isNotNull();
         assertThat(result.getTopRelationTypes()).isNotNull();
@@ -56,7 +60,8 @@ class GraphSearchTests {
     @Test
     void graphSearchWithEmbeddingUnavailableReturnsSummaryMessage() {
         if (!embeddingService.isAvailable()) {
-            GraphSearchResult result = graphSearchService.graphSearch("anything", 5);
+            GraphSearchResult result = graphSearchService.graphSearch(
+                    "anything", 5, WorkspaceContext.SHARED);
             assertThat(result.getSummary()).isNotBlank();
             assertThat(result.getMatchedNodes()).isEmpty();
         }
@@ -65,13 +70,12 @@ class GraphSearchTests {
     @Test
     void graphSearchWithEmbeddingUnavailableReturnsEmptyNodes() {
         if (!embeddingService.isAvailable()) {
-            GraphSearchResult result = graphSearchService.graphSearch("network services", 20);
+            GraphSearchResult result = graphSearchService.graphSearch(
+                    "network services", 20, WorkspaceContext.SHARED);
             assertThat(result.getMatchedNodes()).isEmpty();
             assertThat(result.getRelationCountByRoot()).isEmpty();
         }
     }
-
-    // ── REST endpoint tests ───────────────────────────────────────────────────
 
     @Test
     void graphSearchEndpointReturnsBadRequestForBlankQuery() throws Exception {
