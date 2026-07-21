@@ -25,6 +25,11 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
 
+      - name: Correct exact German source wording
+        run: |
+          sed -i 's/kein Pool für In-Process-HSQLDB erforderlich/kein Pool für In-Process-HSQLDB nötig/' \
+            .github/scripts/apply-open-points.py
+
       - name: Apply repository patches
         run: |
           set +e
