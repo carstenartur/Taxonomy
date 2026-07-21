@@ -1,0 +1,63 @@
+name: Stage CI SBOM Fix
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/fix-ci-sbom.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  stage:
+    if: github.head_ref == 'qa/complete-open-points'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: qa/complete-open-points
+          fetch-depth: 0
+
+      - name: Stage corrected CI workflow
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path('.github/workflows/ci-cd.yml')
+          text = source.read_text(encoding='utf-8')
+          old = '''          python3 .github/scripts/check-dependency-hygiene.py \\
+            --sbom target/taxonomy-sbom.json \\
+            --expected-pdfbox-version "$PDFBOX_VERSION" \\
+            --report target/dependency-hygiene-report.txt
+'''
+          new = '''          SBOM_SOURCE=taxonomy-app/target/taxonomy-sbom.json
+          if [ ! -f "$SBOM_SOURCE" ]; then
+            SBOM_SOURCE=$(find . -path '*/target/taxonomy-sbom.json' -type f | sort | head -n 1)
+          fi
+          test -n "$SBOM_SOURCE"
+          test -f "$SBOM_SOURCE"
+          mkdir -p target
+          cp "$SBOM_SOURCE" target/taxonomy-sbom.json
+          SBOM_XML_SOURCE=${SBOM_SOURCE%.json}.xml
+          if [ -f "$SBOM_XML_SOURCE" ]; then
+            cp "$SBOM_XML_SOURCE" target/taxonomy-sbom.xml
+          fi
+          echo "Validating packaged SBOM from $SBOM_SOURCE"
+          python3 .github/scripts/check-dependency-hygiene.py \\
+            --sbom target/taxonomy-sbom.json \\
+            --expected-pdfbox-version "$PDFBOX_VERSION" \\
+            --report target/dependency-hygiene-report.txt
+'''
+          if text.count(old) != 1:
+              raise SystemExit('expected dependency-hygiene block not found exactly once')
+          Path('.github/generated-ci-cd.yml').write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Commit staged workflow payload
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .github/generated-ci-cd.yml
+          git commit -m 'chore: stage CI SBOM path normalization payload'
+          git push origin HEAD:qa/complete-open-points
