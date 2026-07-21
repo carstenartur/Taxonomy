@@ -4,6 +4,10 @@ import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,6 +34,12 @@ class DslApiControllerTest {
 
     @Autowired
     private RelationHypothesisRepository hypothesisRepository;
+
+    @Autowired
+    private RepositoryStateService repositoryStateService;
+
+    @Autowired
+    private WorkspaceResolver workspaceResolver;
 
     @Test
     void exportCurrentArchitectureReturnsText() throws Exception {
@@ -238,6 +248,7 @@ class DslApiControllerTest {
         h.setStatus(HypothesisStatus.PROVISIONAL);
         h.setConfidence(0.85);
         h.setAnalysisSessionId("test-session-accept");
+        scopeToCurrentWorkspace(h);
         RelationHypothesis saved = hypothesisRepository.save(h);
 
         mockMvc.perform(post("/api/dsl/hypotheses/" + saved.getId() + "/accept"))
@@ -256,6 +267,7 @@ class DslApiControllerTest {
         h.setStatus(HypothesisStatus.PROVISIONAL);
         h.setConfidence(0.50);
         h.setAnalysisSessionId("test-session-2");
+        scopeToCurrentWorkspace(h);
         RelationHypothesis saved = hypothesisRepository.save(h);
 
         mockMvc.perform(post("/api/dsl/hypotheses/" + saved.getId() + "/reject"))
@@ -272,6 +284,7 @@ class DslApiControllerTest {
         h.setStatus(HypothesisStatus.ACCEPTED);
         h.setConfidence(0.60);
         h.setAnalysisSessionId("test-session-3");
+        scopeToCurrentWorkspace(h);
         RelationHypothesis saved = hypothesisRepository.save(h);
 
         mockMvc.perform(post("/api/dsl/hypotheses/" + saved.getId() + "/accept"))
@@ -288,6 +301,7 @@ class DslApiControllerTest {
         h.setStatus(HypothesisStatus.PROVISIONAL);
         h.setConfidence(0.50);
         h.setAnalysisSessionId("test-session-4");
+        scopeToCurrentWorkspace(h);
         RelationHypothesis saved = hypothesisRepository.save(h);
 
         mockMvc.perform(get("/api/dsl/hypotheses/" + saved.getId() + "/evidence"))
@@ -304,6 +318,7 @@ class DslApiControllerTest {
         h1.setStatus(HypothesisStatus.PROPOSED);
         h1.setConfidence(0.70);
         h1.setAnalysisSessionId("test-filter");
+        scopeToCurrentWorkspace(h1);
         hypothesisRepository.save(h1);
 
         mockMvc.perform(get("/api/dsl/hypotheses").param("status", "PROPOSED"))
@@ -1028,4 +1043,12 @@ class DslApiControllerTest {
                 .andExpect(jsonPath("$.commitId").isNotEmpty())
                 .andExpect(jsonPath("$.resolution").value("manual"));
     }
+    private void scopeToCurrentWorkspace(RelationHypothesis hypothesis) {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        repositoryStateService.ensureWorkspaceState(username);
+        WorkspaceContext context = workspaceResolver.resolveCurrentContext();
+        hypothesis.setWorkspaceId(context.workspaceId());
+        hypothesis.setOwnerUsername(context.username());
+    }
+
 }

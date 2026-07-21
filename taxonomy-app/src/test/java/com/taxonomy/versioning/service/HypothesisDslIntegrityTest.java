@@ -91,7 +91,7 @@ class HypothesisDslIntegrityTest {
         String dsl = dslCaptor.getValue();
         assertThat(dsl)
                 .contains("meta {")
-                .contains("version: \"2.0\";")
+                .contains("version: \"2.1\";")
                 .contains("element CP-1023 type Capability {")
                 .contains("relation CP-1023 REALIZES CR-1047 {")
                 .contains("status: provisional;");

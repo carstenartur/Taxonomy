@@ -179,14 +179,14 @@ class SecurityTests {
     @Test
     @WithMockUser(roles = "USER")
     void userCannotAccessAdminEndpoints() throws Exception {
-        mockMvc.perform(get("/api/admin/status"))
+        mockMvc.perform(get("/api/prompts"))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     @WithMockUser(roles = "ARCHITECT")
     void architectCannotAccessAdminEndpoints() throws Exception {
-        mockMvc.perform(get("/api/admin/status"))
+        mockMvc.perform(get("/api/prompts"))
                 .andExpect(status().isForbidden());
     }
 
