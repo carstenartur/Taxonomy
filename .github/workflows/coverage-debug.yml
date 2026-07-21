@@ -26,7 +26,7 @@ jobs:
           set +e
           set -o pipefail
           mvn -pl taxonomy-app -am \
-            -Dtest=LlmServiceBranchCoverageTest,LlmProviderConfigBranchCoverageTest,WorkspaceControllerBranchCoverageTest \
+            -Dtest=LlmServiceBranchCoverageTest,LlmProviderConfigBranchCoverageTest,WorkspaceControllerBranchCoverageTest,DslApiControllerBranchCoverageTest \
             -Dsurefire.failIfNoSpecifiedTests=false \
             test --no-transfer-progress 2>&1 | tee focused-coverage-tests.log
           status=${PIPESTATUS[0]}
