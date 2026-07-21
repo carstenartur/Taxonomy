@@ -163,7 +163,9 @@ class WorkspaceControllerBranchCoverageTest {
         when(contextCompareService.compareBranches(any(), any())).thenThrow(new IOException("compare failed"));
         ResponseEntity<?> failure = controller.compare("left", "right", null, null, null);
         assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
-        assertThat((Map<?, ?>) failure.getBody()).containsEntry("message", "compare failed");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> failureBody = (Map<String, Object>) failure.getBody();
+        assertThat(failureBody).containsEntry("message", "compare failed");
     }
 
     @Test
