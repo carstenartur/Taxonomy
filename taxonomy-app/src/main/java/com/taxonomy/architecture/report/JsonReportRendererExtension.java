@@ -2,6 +2,10 @@ package com.taxonomy.architecture.report;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
@@ -9,12 +13,7 @@ import org.springframework.stereotype.Component;
 public class JsonReportRendererExtension implements ReportRendererExtension {
 
     private static final ReportFormatDescriptor DESCRIPTOR = new ReportFormatDescriptor(
-            "json",
-            "JSON",
-            "json",
-            "application/json",
-            false
-    );
+            "json", "JSON", "json", "application/json", false);
 
     private final ObjectMapper objectMapper;
 
