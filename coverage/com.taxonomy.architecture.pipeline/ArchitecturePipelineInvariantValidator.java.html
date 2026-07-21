@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ArchitecturePipelineInvariantValidator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.pipeline</a> &gt; <span class="el_source">ArchitecturePipelineInvariantValidator.java</span></div><h1>ArchitecturePipelineInvariantValidator.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.pipeline;
+
+import com.taxonomy.dto.RequirementAnchor;
+import com.taxonomy.dto.RequirementElementView;
+import com.taxonomy.dto.RequirementRelationshipView;
+import org.springframework.stereotype.Component;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Validates cross-step invariants after each architecture pipeline stage and
+ * before the final view is returned. A faulty custom step therefore fails at
+ * the point where it corrupts the shared context instead of producing a
+ * plausible but inconsistent architecture result.
+ */
+@Component
+<span class="fc" id="L19">public class ArchitecturePipelineInvariantValidator {</span>
+
+    public void afterStep(ArchitecturePipelineStep step, ArchitectureViewContext context) {
+<span class="pc bpc" id="L22" title="1 of 2 branches missed.">        if (step == null) {</span>
+<span class="nc" id="L23">            throw new IllegalStateException(&quot;Architecture pipeline executed a null step&quot;);</span>
+        }
+<span class="fc" id="L25">        validateCollections(context, step.id());</span>
+<span class="fc" id="L26">        validateAnchors(context.getAnchors(), step.id());</span>
+<span class="fc" id="L27">        validateElements(context.getElements(), step.id());</span>
+<span class="fc" id="L28">        validateRelationships(context.getRelationships(), step.id());</span>
+
+<span class="fc bfc" id="L30" title="All 4 branches covered.">        if (step.order() &gt;= 700 &amp;&amp; context.getMaxArchitectureNodes() &gt; 0</span>
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">                &amp;&amp; context.getElements().size() &gt; context.getMaxArchitectureNodes()) {</span>
+<span class="nc" id="L32">            throw new IllegalStateException(</span>
+                    &quot;Pipeline invariant failed after '%s': %d elements exceed maxArchitectureNodes=%d&quot;
+<span class="nc" id="L34">                            .formatted(step.id(), context.getElements().size(),</span>
+<span class="nc" id="L35">                                    context.getMaxArchitectureNodes()));</span>
+        }
+<span class="fc" id="L37">    }</span>
+
+    public void beforeReturn(ArchitectureViewContext context) {
+<span class="fc" id="L40">        validateCollections(context, &quot;finalization&quot;);</span>
+<span class="fc" id="L41">        validateAnchors(context.getAnchors(), &quot;finalization&quot;);</span>
+<span class="fc" id="L42">        validateElements(context.getElements(), &quot;finalization&quot;);</span>
+<span class="fc" id="L43">        validateRelationships(context.getRelationships(), &quot;finalization&quot;);</span>
+
+<span class="fc" id="L45">        Set&lt;String&gt; elementCodes = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        for (RequirementElementView element : context.getElements()) {</span>
+<span class="fc" id="L47">            elementCodes.add(element.getNodeCode());</span>
+<span class="fc" id="L48">        }</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        for (RequirementRelationshipView relationship : context.getRelationships()) {</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">            if (!elementCodes.contains(relationship.getSourceCode())</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">                    || !elementCodes.contains(relationship.getTargetCode())) {</span>
+<span class="fc" id="L52">                throw new IllegalStateException(</span>
+                        &quot;Pipeline invariant failed during finalization: relation %s -&gt; %s references an element outside the view&quot;
+<span class="fc" id="L54">                                .formatted(relationship.getSourceCode(), relationship.getTargetCode()));</span>
+            }
+<span class="fc" id="L56">        }</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        for (RequirementAnchor anchor : context.getAnchors()) {</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">            if (!elementCodes.contains(anchor.getNodeCode())) {</span>
+<span class="nc" id="L59">                throw new IllegalStateException(</span>
+                        &quot;Pipeline invariant failed during finalization: anchor %s is absent from included elements&quot;
+<span class="nc" id="L61">                                .formatted(anchor.getNodeCode()));</span>
+            }
+<span class="fc" id="L63">        }</span>
+<span class="fc" id="L64">    }</span>
+
+    private void validateCollections(ArchitectureViewContext context, String phase) {
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (context == null) {</span>
+<span class="nc" id="L68">            throw new IllegalStateException(&quot;Pipeline invariant failed after '&quot; + phase + &quot;': context is null&quot;);</span>
+        }
+<span class="pc bpc" id="L70" title="2 of 4 branches missed.">        if (context.getAnchors() == null || context.getElements() == null</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">                || context.getRelationships() == null) {</span>
+<span class="nc" id="L72">            throw new IllegalStateException(</span>
+                    &quot;Pipeline invariant failed after '%s': anchors, elements and relationships must not be null&quot;
+<span class="nc" id="L74">                            .formatted(phase));</span>
+        }
+<span class="fc" id="L76">    }</span>
+
+    private void validateAnchors(List&lt;RequirementAnchor&gt; anchors, String phase) {
+<span class="fc" id="L79">        Set&lt;String&gt; seen = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">        for (RequirementAnchor anchor : anchors) {</span>
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">            if (anchor == null || isBlank(anchor.getNodeCode())) {</span>
+<span class="nc" id="L82">                throw new IllegalStateException(</span>
+                        &quot;Pipeline invariant failed after '%s': anchor code must not be blank&quot;
+<span class="nc" id="L84">                                .formatted(phase));</span>
+            }
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">            if (!seen.add(anchor.getNodeCode())) {</span>
+<span class="nc" id="L87">                throw new IllegalStateException(</span>
+                        &quot;Pipeline invariant failed after '%s': duplicate anchor %s&quot;
+<span class="nc" id="L89">                                .formatted(phase, anchor.getNodeCode()));</span>
+            }
+<span class="fc" id="L91">        }</span>
+<span class="fc" id="L92">    }</span>
+
+    private void validateElements(List&lt;RequirementElementView&gt; elements, String phase) {
+<span class="fc" id="L95">        Set&lt;String&gt; seen = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        for (RequirementElementView element : elements) {</span>
+<span class="pc bpc" id="L97" title="2 of 4 branches missed.">            if (element == null || isBlank(element.getNodeCode())) {</span>
+<span class="nc" id="L98">                throw new IllegalStateException(</span>
+                        &quot;Pipeline invariant failed after '%s': element code must not be blank&quot;
+<span class="nc" id="L100">                                .formatted(phase));</span>
+            }
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            if (!seen.add(element.getNodeCode())) {</span>
+<span class="fc" id="L103">                throw new IllegalStateException(</span>
+                        &quot;Pipeline invariant failed after '%s': duplicate element %s&quot;
+<span class="fc" id="L105">                                .formatted(phase, element.getNodeCode()));</span>
+            }
+<span class="pc bpc" id="L107" title="2 of 4 branches missed.">            if (!Double.isFinite(element.getRelevance()) || element.getRelevance() &lt; 0) {</span>
+<span class="nc" id="L108">                throw new IllegalStateException(</span>
+                        &quot;Pipeline invariant failed after '%s': invalid relevance for %s&quot;
+<span class="nc" id="L110">                                .formatted(phase, element.getNodeCode()));</span>
+            }
+<span class="pc bpc" id="L112" title="2 of 4 branches missed.">            if (element.getHopDistance() &lt; 0 || element.getDirectLlmScore() &lt; 0</span>
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">                    || element.getDirectLlmScore() &gt; 100) {</span>
+<span class="nc" id="L114">                throw new IllegalStateException(</span>
+                        &quot;Pipeline invariant failed after '%s': invalid score/hop values for %s&quot;
+<span class="nc" id="L116">                                .formatted(phase, element.getNodeCode()));</span>
+            }
+<span class="fc" id="L118">        }</span>
+<span class="fc" id="L119">    }</span>
+
+    private void validateRelationships(List&lt;RequirementRelationshipView&gt; relationships, String phase) {
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        for (RequirementRelationshipView relationship : relationships) {</span>
+<span class="pc bpc" id="L123" title="2 of 4 branches missed.">            if (relationship == null || isBlank(relationship.getSourceCode())</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">                    || isBlank(relationship.getTargetCode())</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">                    || isBlank(relationship.getRelationType())) {</span>
+<span class="nc" id="L126">                throw new IllegalStateException(</span>
+                        &quot;Pipeline invariant failed after '%s': relation endpoints and type must not be blank&quot;
+<span class="nc" id="L128">                                .formatted(phase));</span>
+            }
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">            if (!Double.isFinite(relationship.getPropagatedRelevance())</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">                    || relationship.getPropagatedRelevance() &lt; 0</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">                    || relationship.getHopDistance() &lt; 0</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">                    || relationship.getConfidence() &lt; 0</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">                    || relationship.getConfidence() &gt; 1) {</span>
+<span class="nc" id="L135">                throw new IllegalStateException(</span>
+                        &quot;Pipeline invariant failed after '%s': invalid values for relation %s -&gt; %s&quot;
+<span class="nc" id="L137">                                .formatted(phase, relationship.getSourceCode(), relationship.getTargetCode()));</span>
+            }
+<span class="fc" id="L139">        }</span>
+<span class="fc" id="L140">    }</span>
+
+    private boolean isBlank(String value) {
+<span class="pc bpc" id="L143" title="2 of 4 branches missed.">        return value == null || value.isBlank();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

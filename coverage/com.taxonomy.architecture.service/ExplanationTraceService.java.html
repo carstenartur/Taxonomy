@@ -56,9 +56,9 @@ public class ExplanationTraceService {
 <span class="fc" id="L56">        ExplanationTrace trace = new ExplanationTrace();</span>
 
 <span class="fc" id="L58">        Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
-<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (nodeOpt.isEmpty()) {</span>
-<span class="fc" id="L60">            trace.setSummaryText(&quot;Node not found: &quot; + nodeCode);</span>
-<span class="fc" id="L61">            return trace;</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (nodeOpt.isEmpty()) {</span>
+<span class="nc" id="L60">            trace.setSummaryText(&quot;Node not found: &quot; + nodeCode);</span>
+<span class="nc" id="L61">            return trace;</span>
         }
 
 <span class="fc" id="L64">        TaxonomyNode node = nodeOpt.get();</span>
@@ -97,18 +97,18 @@ public class ExplanationTraceService {
                                                       Map&lt;String, String&gt; reasons,
                                                       String businessText,
                                                       int minScore) {
-<span class="pc bpc" id="L100" title="1 of 4 branches missed.">        if (scores == null || scores.isEmpty()) {</span>
-<span class="fc" id="L101">            return Map.of();</span>
+<span class="nc bnc" id="L100" title="All 4 branches missed.">        if (scores == null || scores.isEmpty()) {</span>
+<span class="nc" id="L101">            return Map.of();</span>
         }
 
-<span class="fc" id="L104">        Map&lt;String, ExplanationTrace&gt; traces = new LinkedHashMap&lt;&gt;();</span>
-<span class="fc bfc" id="L105" title="All 2 branches covered.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
-<span class="pc bpc" id="L106" title="2 of 4 branches missed.">            if (entry.getValue() != null &amp;&amp; entry.getValue() &gt;= minScore) {</span>
-<span class="fc" id="L107">                traces.put(entry.getKey(),</span>
-<span class="fc" id="L108">                        buildTrace(entry.getKey(), scores, reasons, businessText));</span>
+<span class="nc" id="L104">        Map&lt;String, ExplanationTrace&gt; traces = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc bnc" id="L105" title="All 2 branches missed.">        for (Map.Entry&lt;String, Integer&gt; entry : scores.entrySet()) {</span>
+<span class="nc bnc" id="L106" title="All 4 branches missed.">            if (entry.getValue() != null &amp;&amp; entry.getValue() &gt;= minScore) {</span>
+<span class="nc" id="L107">                traces.put(entry.getKey(),</span>
+<span class="nc" id="L108">                        buildTrace(entry.getKey(), scores, reasons, businessText));</span>
             }
-<span class="fc" id="L110">        }</span>
-<span class="fc" id="L111">        return traces;</span>
+<span class="nc" id="L110">        }</span>
+<span class="nc" id="L111">        return traces;</span>
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────

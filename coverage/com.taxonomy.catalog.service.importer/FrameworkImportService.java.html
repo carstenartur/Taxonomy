@@ -2,72 +2,53 @@
 
 import com.taxonomy.dto.FrameworkImportResult;
 import com.taxonomy.dto.ProfileInfo;
+import com.taxonomy.extension.api.importer.ImportInput;
+import com.taxonomy.extension.api.importer.ImportProfileExtension;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Generic framework import service that delegates to {@link ImportProfileRegistry}.
- *
- * &lt;p&gt;Registered profiles (backed by {@link ImportProfileExtension} adapters):
- * &lt;ul&gt;
- *   &lt;li&gt;{@code uaf} — UAF/DoDAF XMI XML ({@link UafImportProfileExtension})&lt;/li&gt;
- *   &lt;li&gt;{@code apqc} — APQC PCF CSV ({@link ApqcCsvImportProfileExtension})&lt;/li&gt;
- *   &lt;li&gt;{@code apqc-excel} — APQC PCF Excel ({@link ApqcExcelImportProfileExtension})&lt;/li&gt;
- *   &lt;li&gt;{@code c4} — C4/Structurizr DSL ({@link C4ImportProfileExtension})&lt;/li&gt;
- * &lt;/ul&gt;
- *
- * &lt;p&gt;The public API of this class is unchanged so that {@link com.taxonomy.catalog.controller.ImportApiController}
- * requires no modification.
- */
+/** Generic framework import service delegating to registered profile adapters. */
 @Service
 public class FrameworkImportService {
 
     private final ImportProfileRegistry registry;
 
-<span class="fc" id="L30">    public FrameworkImportService(ImportProfileRegistry registry) {</span>
-<span class="fc" id="L31">        this.registry = registry;</span>
-<span class="fc" id="L32">    }</span>
+<span class="fc" id="L19">    public FrameworkImportService(ImportProfileRegistry registry) {</span>
+<span class="fc" id="L20">        this.registry = registry;</span>
+<span class="fc" id="L21">    }</span>
 
-    /**
-     * Returns info about all available import profiles.
-     */
     public List&lt;ProfileInfo&gt; getAvailableProfiles() {
-<span class="fc" id="L38">        return registry.listDescriptors().stream()</span>
-<span class="fc" id="L39">                .map(d -&gt; new ProfileInfo(</span>
-<span class="fc" id="L40">                        d.profileId(),</span>
-<span class="fc" id="L41">                        d.displayName(),</span>
-<span class="fc" id="L42">                        d.supportedElementTypes(),</span>
-<span class="fc" id="L43">                        d.supportedRelationTypes(),</span>
-<span class="fc" id="L44">                        d.acceptedFileFormat()))</span>
-<span class="fc" id="L45">                .toList();</span>
+<span class="fc" id="L24">        return registry.listDescriptors().stream()</span>
+<span class="fc" id="L25">                .map(descriptor -&gt; new ProfileInfo(</span>
+<span class="fc" id="L26">                        descriptor.profileId(),</span>
+<span class="fc" id="L27">                        descriptor.displayName(),</span>
+<span class="fc" id="L28">                        descriptor.supportedElementTypes(),</span>
+<span class="fc" id="L29">                        descriptor.supportedRelationTypes(),</span>
+<span class="fc" id="L30">                        descriptor.acceptedFileFormat()))</span>
+<span class="fc" id="L31">                .toList();</span>
     }
 
-    /**
-     * Preview an import (dry run): parse and map but do not materialize.
-     */
     public FrameworkImportResult preview(String profileId, InputStream input) {
-<span class="fc" id="L52">        return registry.findById(profileId)</span>
-<span class="fc" id="L53">                .map(ext -&gt; ext.preview(ImportInput.forPreview(input)))</span>
-<span class="fc" id="L54">                .orElseGet(() -&gt; errorResult(profileId, &quot;Unknown profile: &quot; + profileId));</span>
+<span class="fc" id="L35">        return registry.findById(profileId)</span>
+<span class="fc" id="L36">                .map(extension -&gt; extension.preview(ImportInput.forPreview(input)))</span>
+<span class="fc" id="L37">                .orElseGet(() -&gt; errorResult(profileId, &quot;Unknown profile: &quot; + profileId));</span>
     }
 
-    /**
-     * Full import: parse, map, serialize to DSL, and materialize into the database.
-     */
-    public FrameworkImportResult importFile(String profileId, InputStream input, String branch) {
-<span class="fc" id="L61">        return registry.findById(profileId)</span>
-<span class="fc" id="L62">                .map(ext -&gt; ext.importData(new ImportInput(input, branch)))</span>
-<span class="fc" id="L63">                .orElseGet(() -&gt; errorResult(profileId, &quot;Unknown profile: &quot; + profileId));</span>
+    public FrameworkImportResult importFile(
+            String profileId, InputStream input, String branch) {
+<span class="fc" id="L42">        return registry.findById(profileId)</span>
+<span class="fc" id="L43">                .map(extension -&gt; extension.importData(new ImportInput(input, branch)))</span>
+<span class="fc" id="L44">                .orElseGet(() -&gt; errorResult(profileId, &quot;Unknown profile: &quot; + profileId));</span>
     }
 
     private static FrameworkImportResult errorResult(String profileId, String message) {
-<span class="fc" id="L67">        return new FrameworkImportResult(</span>
+<span class="fc" id="L48">        return new FrameworkImportResult(</span>
                 profileId, profileId, false,
                 0, 0, 0, 0, 0, 0, null,
-<span class="fc" id="L70">                List.of(message), List.of(), Map.of());</span>
+<span class="fc" id="L51">                List.of(message), List.of(), Map.of());</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

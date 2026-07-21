@@ -3,41 +3,38 @@
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dsl.mapping.MappingProfile;
 import com.taxonomy.dsl.mapping.profiles.C4MappingProfile;
+import com.taxonomy.extension.api.importer.ImportProfileDescriptor;
 import org.springframework.stereotype.Component;
 
-/**
- * {@link ImportProfileExtension} adapter for the C4 / Structurizr DSL import profile.
- */
 @Component
 public class C4ImportProfileExtension extends AbstractFrameworkImportProfileExtension {
 
-<span class="fc" id="L14">    private static final MappingProfile PROFILE = new C4MappingProfile();</span>
-<span class="fc" id="L15">    private static final ExternalParser PARSER = new StructurizrDslParser();</span>
-
-<span class="fc" id="L17">    private static final ImportProfileDescriptor DESCRIPTOR = new ImportProfileDescriptor(</span>
-<span class="fc" id="L18">            PROFILE.profileId(),</span>
-<span class="fc" id="L19">            PROFILE.displayName(),</span>
-<span class="fc" id="L20">            PROFILE.supportedElementTypes(),</span>
-<span class="fc" id="L21">            PROFILE.supportedRelationTypes(),</span>
-<span class="fc" id="L22">            PARSER.fileFormat());</span>
+<span class="fc" id="L12">    private static final MappingProfile PROFILE = new C4MappingProfile();</span>
+<span class="fc" id="L13">    private static final ExternalParser PARSER = new StructurizrDslParser();</span>
+<span class="fc" id="L14">    private static final ImportProfileDescriptor DESCRIPTOR = new ImportProfileDescriptor(</span>
+<span class="fc" id="L15">            PROFILE.profileId(),</span>
+<span class="fc" id="L16">            PROFILE.displayName(),</span>
+<span class="fc" id="L17">            PROFILE.supportedElementTypes(),</span>
+<span class="fc" id="L18">            PROFILE.supportedRelationTypes(),</span>
+<span class="fc" id="L19">            PARSER.fileFormat());</span>
 
     public C4ImportProfileExtension(DslMaterializeService materializeService) {
-<span class="fc" id="L25">        super(materializeService);</span>
-<span class="fc" id="L26">    }</span>
+<span class="fc" id="L22">        super(materializeService);</span>
+<span class="fc" id="L23">    }</span>
 
     @Override
     public ImportProfileDescriptor descriptor() {
-<span class="fc" id="L30">        return DESCRIPTOR;</span>
+<span class="fc" id="L27">        return DESCRIPTOR;</span>
     }
 
     @Override
     protected MappingProfile profile() {
-<span class="fc" id="L35">        return PROFILE;</span>
+<span class="fc" id="L32">        return PROFILE;</span>
     }
 
     @Override
     protected ExternalParser parser() {
-<span class="fc" id="L40">        return PARSER;</span>
+<span class="fc" id="L37">        return PARSER;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

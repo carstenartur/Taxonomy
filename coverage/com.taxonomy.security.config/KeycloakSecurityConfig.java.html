@@ -2,8 +2,9 @@
 
 import com.taxonomy.security.keycloak.KeycloakAuthenticationEntryPoint;
 import com.taxonomy.security.keycloak.KeycloakJwtAuthConverter;
-import com.taxonomy.security.keycloak.KeycloakOidcUserService;
 import com.taxonomy.security.keycloak.KeycloakLogoutHandler;
+import com.taxonomy.security.keycloak.KeycloakOidcUserService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -12,12 +13,13 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 /**
  * Spring Security configuration for Keycloak/OIDC mode.
- * &lt;p&gt;
- * Active when the {@code keycloak} profile is enabled.
- * Uses OAuth2 Login (browser SSO) and OAuth2 Resource Server (JWT for REST API).
+ * Browser OIDC sessions retain CSRF protection; explicit JWT Bearer API clients
+ * are stateless and do not require a CSRF token.
  */
 @Configuration
 @EnableMethodSecurity
@@ -31,53 +33,55 @@ public class KeycloakSecurityConfig {
     private final KeycloakAuthenticationEntryPoint authenticationEntryPoint;
 
     public KeycloakSecurityConfig(AuthorizationRulesConfigurer authRules,
-                                  KeycloakJwtAuthConverter jwtAuthConverter,
-                                  KeycloakOidcUserService oidcUserService,
-                                  KeycloakLogoutHandler logoutHandler,
-<span class="nc" id="L37">                                  KeycloakAuthenticationEntryPoint authenticationEntryPoint) {</span>
-<span class="nc" id="L38">        this.authRules = authRules;</span>
-<span class="nc" id="L39">        this.jwtAuthConverter = jwtAuthConverter;</span>
-<span class="nc" id="L40">        this.oidcUserService = oidcUserService;</span>
-<span class="nc" id="L41">        this.logoutHandler = logoutHandler;</span>
-<span class="nc" id="L42">        this.authenticationEntryPoint = authenticationEntryPoint;</span>
-<span class="nc" id="L43">    }</span>
+                                   KeycloakJwtAuthConverter jwtAuthConverter,
+                                   KeycloakOidcUserService oidcUserService,
+                                   KeycloakLogoutHandler logoutHandler,
+<span class="nc" id="L39">                                   KeycloakAuthenticationEntryPoint authenticationEntryPoint) {</span>
+<span class="nc" id="L40">        this.authRules = authRules;</span>
+<span class="nc" id="L41">        this.jwtAuthConverter = jwtAuthConverter;</span>
+<span class="nc" id="L42">        this.oidcUserService = oidcUserService;</span>
+<span class="nc" id="L43">        this.logoutHandler = logoutHandler;</span>
+<span class="nc" id="L44">        this.authenticationEntryPoint = authenticationEntryPoint;</span>
+<span class="nc" id="L45">    }</span>
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-<span class="nc" id="L47">        http</span>
-<span class="nc" id="L48">            .authorizeHttpRequests(auth -&gt; authRules.configure(auth))</span>
-<span class="nc" id="L49">            .csrf(csrf -&gt; csrf</span>
-<span class="nc" id="L50">                .ignoringRequestMatchers(&quot;/api/**&quot;)</span>
-<span class="nc" id="L51">                .ignoringRequestMatchers(&quot;/login/oauth2/code/**&quot;)</span>
-            )
-<span class="nc" id="L53">            .headers(headers -&gt; headers</span>
-<span class="nc" id="L54">                .contentTypeOptions(Customizer.withDefaults())</span>
-<span class="nc" id="L55">                .frameOptions(frame -&gt; frame.sameOrigin())</span>
-<span class="nc" id="L56">                .httpStrictTransportSecurity(hsts -&gt; hsts</span>
-<span class="nc" id="L57">                    .includeSubDomains(true)</span>
-<span class="nc" id="L58">                    .maxAgeInSeconds(31536000))</span>
-<span class="nc" id="L59">                .referrerPolicy(referrer -&gt; referrer</span>
-<span class="nc" id="L60">                    .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))</span>
-            )
-            // Browser: OAuth2 Login → Keycloak login page
-<span class="nc" id="L63">            .oauth2Login(oauth2 -&gt; oauth2</span>
-<span class="nc" id="L64">                .userInfoEndpoint(userInfo -&gt; userInfo</span>
-<span class="nc" id="L65">                    .oidcUserService(oidcUserService)</span>
-                )
-            )
-            // REST API: JWT Bearer Token
-<span class="nc" id="L69">            .oauth2ResourceServer(oauth2 -&gt; oauth2</span>
-<span class="nc" id="L70">                .authenticationEntryPoint(authenticationEntryPoint)</span>
-<span class="nc" id="L71">                .jwt(jwt -&gt; jwt</span>
-<span class="nc" id="L72">                    .jwtAuthenticationConverter(jwtAuthConverter)</span>
-                )
-            )
-            // Logout: also log out at Keycloak (RP-Initiated Logout)
-<span class="nc" id="L76">            .logout(logout -&gt; logout</span>
-<span class="nc" id="L77">                .logoutSuccessHandler(logoutHandler)</span>
-            );
+<span class="nc" id="L49">        RequestMatcher csrfExempt = new OrRequestMatcher(</span>
+                KeycloakSecurityConfig::isStatelessBearerApiClient,
+                KeycloakSecurityConfig::isOAuth2Callback);
 
-<span class="nc" id="L80">        return http.build();</span>
+<span class="nc" id="L53">        http</span>
+<span class="nc" id="L54">            .authorizeHttpRequests(auth -&gt; authRules.configure(auth))</span>
+<span class="nc" id="L55">            .csrf(csrf -&gt; csrf.ignoringRequestMatchers(csrfExempt))</span>
+<span class="nc" id="L56">            .headers(headers -&gt; headers</span>
+<span class="nc" id="L57">                .contentTypeOptions(Customizer.withDefaults())</span>
+<span class="nc" id="L58">                .frameOptions(frame -&gt; frame.sameOrigin())</span>
+<span class="nc" id="L59">                .httpStrictTransportSecurity(hsts -&gt; hsts</span>
+<span class="nc" id="L60">                    .includeSubDomains(true)</span>
+<span class="nc" id="L61">                    .maxAgeInSeconds(31536000))</span>
+<span class="nc" id="L62">                .referrerPolicy(referrer -&gt; referrer</span>
+<span class="nc" id="L63">                    .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))</span>
+<span class="nc" id="L64">            .oauth2Login(oauth2 -&gt; oauth2</span>
+<span class="nc" id="L65">                .userInfoEndpoint(userInfo -&gt; userInfo.oidcUserService(oidcUserService)))</span>
+<span class="nc" id="L66">            .oauth2ResourceServer(oauth2 -&gt; oauth2</span>
+<span class="nc" id="L67">                .authenticationEntryPoint(authenticationEntryPoint)</span>
+<span class="nc" id="L68">                .jwt(jwt -&gt; jwt.jwtAuthenticationConverter(jwtAuthConverter)))</span>
+<span class="nc" id="L69">            .logout(logout -&gt; logout.logoutSuccessHandler(logoutHandler));</span>
+
+<span class="nc" id="L71">        return http.build();</span>
+    }
+
+    private static boolean isStatelessBearerApiClient(HttpServletRequest request) {
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        if (!request.getRequestURI().startsWith(&quot;/api/&quot;)) {</span>
+<span class="nc" id="L76">            return false;</span>
+        }
+<span class="nc" id="L78">        String authorization = request.getHeader(&quot;Authorization&quot;);</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">        return authorization != null</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">                &amp;&amp; authorization.regionMatches(true, 0, &quot;Bearer &quot;, 0, 7);</span>
+    }
+
+    private static boolean isOAuth2Callback(HttpServletRequest request) {
+<span class="nc" id="L84">        return request.getRequestURI().startsWith(&quot;/login/oauth2/code/&quot;);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

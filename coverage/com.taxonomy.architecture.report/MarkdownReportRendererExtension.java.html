@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MarkdownReportRendererExtension.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.report</a> &gt; <span class="el_source">MarkdownReportRendererExtension.java</span></div><h1>MarkdownReportRendererExtension.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.report;
 
 import com.taxonomy.architecture.service.ArchitectureReportService;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -8,29 +12,24 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class MarkdownReportRendererExtension implements ReportRendererExtension {
 
-<span class="fc" id="L11">    private static final ReportFormatDescriptor DESCRIPTOR = new ReportFormatDescriptor(</span>
-            &quot;markdown&quot;,
-            &quot;Markdown&quot;,
-            &quot;md&quot;,
-            &quot;text/markdown; charset=UTF-8&quot;,
-            false
-    );
+<span class="fc" id="L15">    private static final ReportFormatDescriptor DESCRIPTOR = new ReportFormatDescriptor(</span>
+            &quot;markdown&quot;, &quot;Markdown&quot;, &quot;md&quot;, &quot;text/markdown; charset=UTF-8&quot;, false);
 
     private final ArchitectureReportService reportService;
 
-<span class="fc" id="L21">    public MarkdownReportRendererExtension(ArchitectureReportService reportService) {</span>
-<span class="fc" id="L22">        this.reportService = reportService;</span>
-<span class="fc" id="L23">    }</span>
+<span class="fc" id="L20">    public MarkdownReportRendererExtension(ArchitectureReportService reportService) {</span>
+<span class="fc" id="L21">        this.reportService = reportService;</span>
+<span class="fc" id="L22">    }</span>
 
     @Override
     public ReportFormatDescriptor descriptor() {
-<span class="fc" id="L27">        return DESCRIPTOR;</span>
+<span class="fc" id="L26">        return DESCRIPTOR;</span>
     }
 
     @Override
     public ReportRenderResult render(ReportRenderContext context) {
-<span class="fc" id="L32">        String markdown = reportService.renderMarkdown(context.report());</span>
-<span class="fc" id="L33">        return new ReportRenderResult(markdown.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L31">        String markdown = reportService.renderMarkdown(context.report());</span>
+<span class="fc" id="L32">        return new ReportRenderResult(markdown.getBytes(StandardCharsets.UTF_8));</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

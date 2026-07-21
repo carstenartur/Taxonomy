@@ -7,6 +7,8 @@ import com.taxonomy.dsl.mapping.MappingProfile;
 import com.taxonomy.dsl.mapping.MappingResult;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.dto.FrameworkImportResult;
+import com.taxonomy.extension.api.importer.ImportInput;
+import com.taxonomy.extension.api.importer.ImportProfileExtension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,118 +16,93 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Convenience base class for {@link ImportProfileExtension} implementations backed by a
- * {@link MappingProfile} and an {@link ExternalParser}.
- *
- * &lt;p&gt;Subclasses only need to supply:
- * &lt;ul&gt;
- *   &lt;li&gt;{@link #descriptor()} — profile metadata&lt;/li&gt;
- *   &lt;li&gt;{@link #profile()} — the mapping profile instance&lt;/li&gt;
- *   &lt;li&gt;{@link #parser()} — the file parser instance&lt;/li&gt;
- * &lt;/ul&gt;
- *
- * &lt;p&gt;The parse → map → serialize → materialize pipeline is provided here so
- * individual adapters stay free of boilerplate.
- */
+/** Shared parse-map-serialize-materialize implementation for framework profiles. */
 public abstract class AbstractFrameworkImportProfileExtension implements ImportProfileExtension {
 
-<span class="fc" id="L33">    private static final Logger log = LoggerFactory.getLogger(AbstractFrameworkImportProfileExtension.class);</span>
+<span class="fc" id="L22">    private static final Logger log =</span>
+<span class="fc" id="L23">            LoggerFactory.getLogger(AbstractFrameworkImportProfileExtension.class);</span>
 
     private final DslMaterializeService materializeService;
 
-<span class="fc" id="L37">    protected AbstractFrameworkImportProfileExtension(DslMaterializeService materializeService) {</span>
-<span class="fc" id="L38">        this.materializeService = materializeService;</span>
-<span class="fc" id="L39">    }</span>
+<span class="fc" id="L27">    protected AbstractFrameworkImportProfileExtension(DslMaterializeService materializeService) {</span>
+<span class="fc" id="L28">        this.materializeService = materializeService;</span>
+<span class="fc" id="L29">    }</span>
 
-    /** Returns the {@link MappingProfile} used by this adapter. */
     protected abstract MappingProfile profile();
 
-    /** Returns the {@link ExternalParser} used by this adapter. */
     protected abstract ExternalParser parser();
 
     @Override
     public FrameworkImportResult preview(ImportInput input) {
-<span class="fc" id="L49">        String profileId = descriptor().profileId();</span>
-<span class="fc" id="L50">        String displayName = descriptor().displayName();</span>
+<span class="fc" id="L37">        String profileId = descriptor().profileId();</span>
+<span class="fc" id="L38">        String displayName = descriptor().displayName();</span>
         try {
-<span class="fc" id="L52">            ExternalParser.ParsedExternalModel parsed = parser().parse(input.inputStream());</span>
-<span class="fc" id="L53">            ExternalModelMapper mapper = new ExternalModelMapper(profile());</span>
-<span class="fc" id="L54">            MappingResult mappingResult = mapper.map(parsed.elements(), parsed.relations());</span>
-
-<span class="fc" id="L56">            return new FrameworkImportResult(</span>
+<span class="fc" id="L40">            ExternalParser.ParsedExternalModel parsed = parser().parse(input.inputStream());</span>
+<span class="fc" id="L41">            MappingResult mappingResult =</span>
+<span class="fc" id="L42">                    new ExternalModelMapper(profile()).map(parsed.elements(), parsed.relations());</span>
+<span class="fc" id="L43">            return new FrameworkImportResult(</span>
                     profileId,
                     displayName,
                     true,
-<span class="fc" id="L60">                    parsed.elements().size(),</span>
-<span class="fc" id="L61">                    (int) mappingResult.mappingStatistics().getOrDefault(&quot;mappedElements&quot;, 0),</span>
-<span class="fc" id="L62">                    parsed.relations().size(),</span>
-<span class="fc" id="L63">                    (int) mappingResult.mappingStatistics().getOrDefault(&quot;mappedRelations&quot;, 0),</span>
+<span class="fc" id="L47">                    parsed.elements().size(),</span>
+<span class="fc" id="L48">                    (int) mappingResult.mappingStatistics().getOrDefault(&quot;mappedElements&quot;, 0),</span>
+<span class="fc" id="L49">                    parsed.relations().size(),</span>
+<span class="fc" id="L50">                    (int) mappingResult.mappingStatistics().getOrDefault(&quot;mappedRelations&quot;, 0),</span>
                     0, 0, null,
-<span class="fc" id="L65">                    mappingResult.warnings(),</span>
-<span class="fc" id="L66">                    new ArrayList&lt;&gt;(mappingResult.unmappedTypes()),</span>
-<span class="fc" id="L67">                    mappingResult.mappingStatistics());</span>
-<span class="nc" id="L68">        } catch (Exception e) {</span>
-<span class="nc" id="L69">            log.error(&quot;Preview failed for profile {}&quot;, profileId, e);</span>
-<span class="nc" id="L70">            return errorResult(profileId, displayName, &quot;Preview failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L52">                    mappingResult.warnings(),</span>
+<span class="fc" id="L53">                    new ArrayList&lt;&gt;(mappingResult.unmappedTypes()),</span>
+<span class="fc" id="L54">                    mappingResult.mappingStatistics());</span>
+<span class="nc" id="L55">        } catch (Exception e) {</span>
+<span class="nc" id="L56">            log.error(&quot;Preview failed for profile {}&quot;, profileId, e);</span>
+<span class="nc" id="L57">            return errorResult(profileId, displayName, &quot;Preview failed: &quot; + e.getMessage());</span>
         }
     }
 
     @Override
     public FrameworkImportResult importData(ImportInput input) {
-<span class="fc" id="L76">        String profileId = descriptor().profileId();</span>
-<span class="fc" id="L77">        String displayName = descriptor().displayName();</span>
-<span class="fc" id="L78">        String branch = input.branch();</span>
+<span class="fc" id="L63">        String profileId = descriptor().profileId();</span>
+<span class="fc" id="L64">        String displayName = descriptor().displayName();</span>
         try {
-            // 1. Parse
-<span class="fc" id="L81">            ExternalParser.ParsedExternalModel parsed = parser().parse(input.inputStream());</span>
+<span class="fc" id="L66">            ExternalParser.ParsedExternalModel parsed = parser().parse(input.inputStream());</span>
+<span class="fc" id="L67">            MappingResult mappingResult =</span>
+<span class="fc" id="L68">                    new ExternalModelMapper(profile()).map(parsed.elements(), parsed.relations());</span>
+<span class="fc" id="L69">            String dslText = new TaxDslSerializer().serialize(</span>
+<span class="fc" id="L70">                    new ModelToAstMapper().toDocument(mappingResult.model(), profileId + &quot;-import&quot;));</span>
+<span class="fc" id="L71">            String path = &quot;import/&quot; + profileId + &quot;-&quot; + System.currentTimeMillis() + &quot;.taxdsl&quot;;</span>
+<span class="fc" id="L72">            DslMaterializeService.MaterializeResult materialized =</span>
+<span class="fc" id="L73">                    materializeService.materialize(dslText, path, input.branch(), null);</span>
 
-            // 2. Map to canonical model
-<span class="fc" id="L84">            ExternalModelMapper mapper = new ExternalModelMapper(profile());</span>
-<span class="fc" id="L85">            MappingResult mappingResult = mapper.map(parsed.elements(), parsed.relations());</span>
-
-            // 3. Serialize to DSL text
-<span class="fc" id="L88">            ModelToAstMapper astMapper = new ModelToAstMapper();</span>
-<span class="fc" id="L89">            TaxDslSerializer serializer = new TaxDslSerializer();</span>
-<span class="fc" id="L90">            var astDoc = astMapper.toDocument(mappingResult.model(), profileId + &quot;-import&quot;);</span>
-<span class="fc" id="L91">            String dslText = serializer.serialize(astDoc);</span>
-
-            // 4. Materialize
-<span class="fc" id="L94">            String path = &quot;import/&quot; + profileId + &quot;-&quot; + System.currentTimeMillis() + &quot;.taxdsl&quot;;</span>
-<span class="fc" id="L95">            DslMaterializeService.MaterializeResult matResult =</span>
-<span class="fc" id="L96">                    materializeService.materialize(dslText, path, branch, null);</span>
-
-<span class="fc" id="L98">            List&lt;String&gt; allWarnings = new ArrayList&lt;&gt;(mappingResult.warnings());</span>
-<span class="fc" id="L99">            allWarnings.addAll(matResult.warnings());</span>
-<span class="pc bpc" id="L100" title="1 of 2 branches missed.">            if (!matResult.valid()) {</span>
-<span class="nc" id="L101">                allWarnings.addAll(matResult.errors());</span>
+<span class="fc" id="L75">            List&lt;String&gt; warnings = new ArrayList&lt;&gt;(mappingResult.warnings());</span>
+<span class="fc" id="L76">            warnings.addAll(materialized.warnings());</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">            if (!materialized.valid()) {</span>
+<span class="nc" id="L78">                warnings.addAll(materialized.errors());</span>
             }
-
-<span class="fc" id="L104">            return new FrameworkImportResult(</span>
+<span class="fc" id="L80">            return new FrameworkImportResult(</span>
                     profileId,
                     displayName,
-<span class="fc" id="L107">                    matResult.valid(),</span>
-<span class="fc" id="L108">                    parsed.elements().size(),</span>
-<span class="fc" id="L109">                    (int) mappingResult.mappingStatistics().getOrDefault(&quot;mappedElements&quot;, 0),</span>
-<span class="fc" id="L110">                    parsed.relations().size(),</span>
-<span class="fc" id="L111">                    (int) mappingResult.mappingStatistics().getOrDefault(&quot;mappedRelations&quot;, 0),</span>
-<span class="fc" id="L112">                    matResult.relationsCreated(),</span>
-<span class="fc" id="L113">                    matResult.hypothesesCreated(),</span>
-<span class="fc" id="L114">                    matResult.documentId(),</span>
-                    allWarnings,
-<span class="fc" id="L116">                    new ArrayList&lt;&gt;(mappingResult.unmappedTypes()),</span>
-<span class="fc" id="L117">                    mappingResult.mappingStatistics());</span>
-<span class="nc" id="L118">        } catch (Exception e) {</span>
-<span class="nc" id="L119">            log.error(&quot;Import failed for profile {}&quot;, profileId, e);</span>
-<span class="nc" id="L120">            return errorResult(profileId, displayName, &quot;Import failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L83">                    materialized.valid(),</span>
+<span class="fc" id="L84">                    parsed.elements().size(),</span>
+<span class="fc" id="L85">                    (int) mappingResult.mappingStatistics().getOrDefault(&quot;mappedElements&quot;, 0),</span>
+<span class="fc" id="L86">                    parsed.relations().size(),</span>
+<span class="fc" id="L87">                    (int) mappingResult.mappingStatistics().getOrDefault(&quot;mappedRelations&quot;, 0),</span>
+<span class="fc" id="L88">                    materialized.relationsCreated(),</span>
+<span class="fc" id="L89">                    materialized.hypothesesCreated(),</span>
+<span class="fc" id="L90">                    materialized.documentId(),</span>
+                    warnings,
+<span class="fc" id="L92">                    new ArrayList&lt;&gt;(mappingResult.unmappedTypes()),</span>
+<span class="fc" id="L93">                    mappingResult.mappingStatistics());</span>
+<span class="nc" id="L94">        } catch (Exception e) {</span>
+<span class="nc" id="L95">            log.error(&quot;Import failed for profile {}&quot;, profileId, e);</span>
+<span class="nc" id="L96">            return errorResult(profileId, displayName, &quot;Import failed: &quot; + e.getMessage());</span>
         }
     }
 
-    private static FrameworkImportResult errorResult(String profileId, String displayName, String message) {
-<span class="nc" id="L125">        return new FrameworkImportResult(</span>
+    private static FrameworkImportResult errorResult(
+            String profileId, String displayName, String message) {
+<span class="nc" id="L102">        return new FrameworkImportResult(</span>
                 profileId, displayName, false,
                 0, 0, 0, 0, 0, 0, null,
-<span class="nc" id="L128">                List.of(message), List.of(), Map.of());</span>
+<span class="nc" id="L105">                List.of(message), List.of(), Map.of());</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -2,54 +2,50 @@
 
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
+import com.taxonomy.export.spi.ExportContext;
+import com.taxonomy.export.spi.ExportFormatDescriptor;
+import com.taxonomy.export.spi.ExportFormatExtension;
+import com.taxonomy.export.spi.ExportResult;
 import com.taxonomy.visio.VisioDocument;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 
-/**
- * {@link ExportFormatExtension} adapter for Visio (.vsdx) output.
- *
- * &lt;p&gt;Delegates to {@link VisioDiagramService} and {@link VisioPackageBuilder},
- * keeping both underlying services unchanged.  Any {@link IOException} from
- * the package builder is wrapped as {@link UncheckedIOException}.
- */
+/** Spring adapter for Visio VSDX output. */
 @Component
 public class VisioExportExtension implements ExportFormatExtension {
 
-    /** Stable format ID used for registry lookup. */
     public static final String FORMAT_ID = &quot;visio&quot;;
 
-<span class="fc" id="L24">    private static final ExportFormatDescriptor DESCRIPTOR = new ExportFormatDescriptor(</span>
+<span class="fc" id="L21">    private static final ExportFormatDescriptor DESCRIPTOR = new ExportFormatDescriptor(</span>
             FORMAT_ID,
             &quot;Visio&quot;,
             &quot;vsdx&quot;,
             &quot;application/vnd.ms-visio.drawing.main+xml&quot;,
-            true
-    );
+            true);
 
     private final VisioDiagramService visioDiagramService;
     private final VisioPackageBuilder visioPackageBuilder;
 
     public VisioExportExtension(VisioDiagramService visioDiagramService,
-<span class="fc" id="L36">                                 VisioPackageBuilder visioPackageBuilder) {</span>
-<span class="fc" id="L37">        this.visioDiagramService = visioDiagramService;</span>
-<span class="fc" id="L38">        this.visioPackageBuilder = visioPackageBuilder;</span>
-<span class="fc" id="L39">    }</span>
+<span class="fc" id="L32">                                VisioPackageBuilder visioPackageBuilder) {</span>
+<span class="fc" id="L33">        this.visioDiagramService = visioDiagramService;</span>
+<span class="fc" id="L34">        this.visioPackageBuilder = visioPackageBuilder;</span>
+<span class="fc" id="L35">    }</span>
 
     @Override
     public ExportFormatDescriptor descriptor() {
-<span class="fc" id="L43">        return DESCRIPTOR;</span>
+<span class="fc" id="L39">        return DESCRIPTOR;</span>
     }
 
     @Override
     public ExportResult export(ExportContext context) {
-<span class="nc" id="L48">        VisioDocument doc = visioDiagramService.convert(context.diagram());</span>
+<span class="nc" id="L44">        VisioDocument document = visioDiagramService.convert(context.diagram());</span>
         try {
-<span class="nc" id="L50">            return new ExportResult(visioPackageBuilder.build(doc));</span>
-<span class="nc" id="L51">        } catch (IOException e) {</span>
-<span class="nc" id="L52">            throw new UncheckedIOException(&quot;Visio export failed&quot;, e);</span>
+<span class="nc" id="L46">            return new ExportResult(visioPackageBuilder.build(document));</span>
+<span class="nc" id="L47">        } catch (IOException e) {</span>
+<span class="nc" id="L48">            throw new UncheckedIOException(&quot;Visio export failed&quot;, e);</span>
         }
     }
 }

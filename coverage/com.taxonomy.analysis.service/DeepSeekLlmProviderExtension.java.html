@@ -1,32 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DeepSeekLlmProviderExtension.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">DeepSeekLlmProviderExtension.java</span></div><h1>DeepSeekLlmProviderExtension.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
 
+import com.taxonomy.extension.api.llm.LlmProviderDescriptor;
+import com.taxonomy.extension.api.llm.LlmProviderExtension;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
-/**
- * {@link LlmProviderExtension} for DeepSeek.
- */
+/** Provider metadata adapter for DeepSeek. */
 @Component
 <span class="fc" id="L11">public class DeepSeekLlmProviderExtension implements LlmProviderExtension {</span>
 
 <span class="fc" id="L13">    private static final LlmProviderDescriptor DESCRIPTOR = new LlmProviderDescriptor(</span>
-            &quot;DEEPSEEK&quot;,
-            &quot;DeepSeek&quot;,
-            true,
-            false,
-            false,
-            false,
-<span class="fc" id="L20">            List.of(&quot;deepseek.api.key&quot;));</span>
+            &quot;DEEPSEEK&quot;, &quot;DeepSeek&quot;, true, false, false, false,
+<span class="fc" id="L15">            List.of(&quot;deepseek.api.key&quot;));</span>
 
     @Override
     public LlmProviderDescriptor descriptor() {
-<span class="fc" id="L24">        return DESCRIPTOR;</span>
-    }
-
-    @Override
-    public LlmProvider provider() {
-<span class="fc" id="L29">        return LlmProvider.DEEPSEEK;</span>
+<span class="fc" id="L19">        return DESCRIPTOR;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

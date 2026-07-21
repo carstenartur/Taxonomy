@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>SecurityConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">SecurityConfig.java</span></div><h1>SecurityConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -10,14 +11,15 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 /**
  * Spring Security configuration for form-login mode (default, without Keycloak).
- * &lt;p&gt;
- * Active when the {@code keycloak} profile is NOT active.
- * Protects GUI (form login + session) and REST API (HTTP Basic for programmatic clients).
- * CSRF protection is enabled for browser sessions but disabled for {@code /api/**} paths
- * so that stateless REST clients authenticated via HTTP Basic can POST without a CSRF token.
+ *
+ * &lt;p&gt;The GUI uses form-login sessions and therefore keeps CSRF protection for
+ * state-changing API calls. Only programmatic API clients authenticated with an
+ * explicit Basic or Bearer Authorization header are treated as stateless and
+ * may call the REST API without a CSRF token.&lt;/p&gt;
  */
 @Configuration
 @EnableMethodSecurity
@@ -26,36 +28,52 @@ public class SecurityConfig {
 
     private final AuthorizationRulesConfigurer authRules;
 
-<span class="fc" id="L29">    public SecurityConfig(AuthorizationRulesConfigurer authRules) {</span>
-<span class="fc" id="L30">        this.authRules = authRules;</span>
-<span class="fc" id="L31">    }</span>
+<span class="fc" id="L31">    public SecurityConfig(AuthorizationRulesConfigurer authRules) {</span>
+<span class="fc" id="L32">        this.authRules = authRules;</span>
+<span class="fc" id="L33">    }</span>
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-<span class="fc" id="L35">        http</span>
-<span class="fc" id="L36">            .authorizeHttpRequests(auth -&gt; authRules.configure(auth))</span>
-<span class="fc" id="L37">            .csrf(csrf -&gt; csrf</span>
-<span class="fc" id="L38">                .ignoringRequestMatchers(&quot;/api/**&quot;)</span>
-            )
-<span class="fc" id="L40">            .headers(headers -&gt; headers</span>
-<span class="fc" id="L41">                .contentTypeOptions(Customizer.withDefaults())</span>
-<span class="fc" id="L42">                .frameOptions(frame -&gt; frame.sameOrigin())</span>
-<span class="fc" id="L43">                .httpStrictTransportSecurity(hsts -&gt; hsts</span>
-<span class="fc" id="L44">                    .includeSubDomains(true)</span>
-<span class="fc" id="L45">                    .maxAgeInSeconds(31536000))</span>
-<span class="fc" id="L46">                .referrerPolicy(referrer -&gt; referrer</span>
-<span class="fc" id="L47">                    .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))</span>
-            )
-<span class="fc" id="L49">            .formLogin(Customizer.withDefaults())</span>
-<span class="fc" id="L50">            .httpBasic(Customizer.withDefaults())</span>
-<span class="fc" id="L51">            .logout(Customizer.withDefaults());</span>
+<span class="fc" id="L37">        RequestMatcher statelessApiClient = SecurityConfig::isStatelessApiClient;</span>
 
-<span class="fc" id="L53">        return http.build();</span>
+<span class="fc" id="L39">        http</span>
+<span class="fc" id="L40">            .authorizeHttpRequests(auth -&gt; authRules.configure(auth))</span>
+<span class="fc" id="L41">            .csrf(csrf -&gt; csrf.ignoringRequestMatchers(statelessApiClient))</span>
+<span class="fc" id="L42">            .headers(headers -&gt; headers</span>
+<span class="fc" id="L43">                .contentTypeOptions(Customizer.withDefaults())</span>
+<span class="fc" id="L44">                .frameOptions(frame -&gt; frame.sameOrigin())</span>
+<span class="fc" id="L45">                .httpStrictTransportSecurity(hsts -&gt; hsts</span>
+<span class="fc" id="L46">                    .includeSubDomains(true)</span>
+<span class="fc" id="L47">                    .maxAgeInSeconds(31536000))</span>
+<span class="fc" id="L48">                .referrerPolicy(referrer -&gt; referrer</span>
+<span class="fc" id="L49">                    .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))</span>
+            )
+<span class="fc" id="L51">            .formLogin(Customizer.withDefaults())</span>
+<span class="fc" id="L52">            .httpBasic(Customizer.withDefaults())</span>
+<span class="fc" id="L53">            .logout(Customizer.withDefaults());</span>
+
+<span class="fc" id="L55">        return http.build();</span>
+    }
+
+    /**
+     * A request is stateless only when it carries an explicit HTTP
+     * authentication scheme. The absence of an existing session is not enough:
+     * otherwise a browser request made before session resolution could bypass
+     * CSRF protection.
+     */
+    static boolean isStatelessApiClient(HttpServletRequest request) {
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (!request.getRequestURI().startsWith(&quot;/api/&quot;)) {</span>
+<span class="fc" id="L66">            return false;</span>
+        }
+<span class="fc" id="L68">        String authorization = request.getHeader(&quot;Authorization&quot;);</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">        return authorization != null</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">                &amp;&amp; (authorization.regionMatches(true, 0, &quot;Basic &quot;, 0, 6)</span>
+<span class="pc bnc" id="L71" title="All 2 branches missed.">                || authorization.regionMatches(true, 0, &quot;Bearer &quot;, 0, 7));</span>
     }
 
     @Bean
     PasswordEncoder passwordEncoder() {
-<span class="fc" id="L58">        return new BCryptPasswordEncoder();</span>
+<span class="fc" id="L76">        return new BCryptPasswordEncoder();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

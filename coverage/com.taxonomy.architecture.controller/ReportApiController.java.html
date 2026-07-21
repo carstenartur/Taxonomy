@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ReportApiController.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.controller</a> &gt; <span class="el_source">ReportApiController.java</span></div><h1>ReportApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.controller;
 
-import com.taxonomy.architecture.report.ReportFormatDescriptor;
-import com.taxonomy.architecture.report.ReportRenderContext;
-import com.taxonomy.architecture.report.ReportRenderResult;
-import com.taxonomy.architecture.report.ReportRendererExtension;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
-import com.taxonomy.dto.ArchitectureReport;
 import com.taxonomy.architecture.service.ArchitectureReportService;
+import com.taxonomy.dto.ArchitectureReport;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
 import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -15,21 +16,13 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
-/**
- * REST API for Architecture Report Export.
- *
- * &lt;p&gt;Endpoints:
- * &lt;ul&gt;
- *   &lt;li&gt;{@code POST /api/report/markdown} — Export as Markdown (.md)&lt;/li&gt;
- *   &lt;li&gt;{@code POST /api/report/html}     — Export as standalone HTML&lt;/li&gt;
- *   &lt;li&gt;{@code POST /api/report/docx}     — Export as Word document (.docx)&lt;/li&gt;
- *   &lt;li&gt;{@code POST /api/report/json}     — Export as structured JSON&lt;/li&gt;
- * &lt;/ul&gt;
- */
 @RestController
 @RequestMapping(&quot;/api/report&quot;)
 @Tag(name = &quot;Report Export&quot;)
@@ -43,109 +36,86 @@ public class ReportApiController {
     public ReportApiController(ArchitectureReportService reportService,
                                ReportRendererRegistry reportRendererRegistry,
                                RepositoryStateService repositoryStateService,
-<span class="fc" id="L46">                               WorkspaceResolver workspaceResolver) {</span>
-<span class="fc" id="L47">        this.reportService = reportService;</span>
-<span class="fc" id="L48">        this.reportRendererRegistry = reportRendererRegistry;</span>
-<span class="fc" id="L49">        this.repositoryStateService = repositoryStateService;</span>
-<span class="fc" id="L50">        this.workspaceResolver = workspaceResolver;</span>
-<span class="fc" id="L51">    }</span>
+<span class="fc" id="L39">                               WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L40">        this.reportService = reportService;</span>
+<span class="fc" id="L41">        this.reportRendererRegistry = reportRendererRegistry;</span>
+<span class="fc" id="L42">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L43">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L44">    }</span>
 
-    /**
-     * Request body for report generation.
-     */
-<span class="fc" id="L56">    public record ReportRequest(</span>
+<span class="fc" id="L46">    public record ReportRequest(</span>
             Map&lt;String, Integer&gt; scores,
             String businessText,
             int minScore) {
     }
 
     @Operation(summary = &quot;Export Markdown report&quot;,
-               description = &quot;Generates a comprehensive architecture report as Markdown&quot;)
+            description = &quot;Generates a comprehensive architecture report as Markdown&quot;)
     @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Markdown report returned&quot;)
     @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Scores are missing&quot;)
     @PostMapping(&quot;/markdown&quot;)
     public ResponseEntity&lt;byte[]&gt; exportMarkdown(@RequestBody ReportRequest request) {
-<span class="fc bfc" id="L68" title="All 4 branches covered.">        if (request.scores() == null || request.scores().isEmpty()) {</span>
-<span class="fc" id="L69">            return ResponseEntity.badRequest().build();</span>
-        }
-
-<span class="fc" id="L72">        ArchitectureReport report = reportService.generateReport(</span>
-<span class="fc" id="L73">                request.scores(), request.businessText(), request.minScore());</span>
-<span class="fc" id="L74">        ReportRendererExtension renderer = reportRendererRegistry.getRequired(&quot;markdown&quot;);</span>
-<span class="fc" id="L75">        ReportFormatDescriptor format = renderer.descriptor();</span>
-<span class="fc" id="L76">        ReportRenderResult rendered = renderer</span>
-<span class="fc" id="L77">                .render(ReportRenderContext.of(report));</span>
-
-<span class="fc" id="L79">        return ResponseEntity.ok()</span>
-<span class="fc" id="L80">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
-<span class="fc" id="L81">                        &quot;attachment; filename=\&quot;architecture-report.&quot; + format.fileExtension() + &quot;\&quot;&quot;)</span>
-<span class="fc" id="L82">                .header(HttpHeaders.CONTENT_TYPE, format.contentType())</span>
-<span class="fc" id="L83">                .body(rendered.bytes());</span>
+<span class="fc" id="L58">        return render(request, &quot;markdown&quot;);</span>
     }
 
     @Operation(summary = &quot;Export HTML report&quot;,
-               description = &quot;Generates a comprehensive architecture report as standalone HTML&quot;)
+            description = &quot;Generates a comprehensive architecture report as standalone HTML&quot;)
     @ApiResponse(responseCode = &quot;200&quot;, description = &quot;HTML report returned&quot;)
     @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Scores are missing&quot;)
     @PostMapping(&quot;/html&quot;)
     public ResponseEntity&lt;byte[]&gt; exportHtml(@RequestBody ReportRequest request) {
-<span class="pc bpc" id="L92" title="2 of 4 branches missed.">        if (request.scores() == null || request.scores().isEmpty()) {</span>
-<span class="nc" id="L93">            return ResponseEntity.badRequest().build();</span>
-        }
-
-<span class="fc" id="L96">        ArchitectureReport report = reportService.generateReport(</span>
-<span class="fc" id="L97">                request.scores(), request.businessText(), request.minScore());</span>
-<span class="fc" id="L98">        ReportRendererExtension renderer = reportRendererRegistry.getRequired(&quot;html&quot;);</span>
-<span class="fc" id="L99">        ReportFormatDescriptor format = renderer.descriptor();</span>
-<span class="fc" id="L100">        ReportRenderResult rendered = renderer</span>
-<span class="fc" id="L101">                .render(ReportRenderContext.of(report));</span>
-
-<span class="fc" id="L103">        return ResponseEntity.ok()</span>
-<span class="fc" id="L104">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
-<span class="fc" id="L105">                        &quot;attachment; filename=\&quot;architecture-report.&quot; + format.fileExtension() + &quot;\&quot;&quot;)</span>
-<span class="fc" id="L106">                .header(HttpHeaders.CONTENT_TYPE, format.contentType())</span>
-<span class="fc" id="L107">                .body(rendered.bytes());</span>
+<span class="fc" id="L67">        return render(request, &quot;html&quot;);</span>
     }
 
     @Operation(summary = &quot;Export DOCX report&quot;,
-               description = &quot;Generates a comprehensive architecture report as Word document&quot;)
+            description = &quot;Generates a comprehensive architecture report as Word document&quot;)
     @ApiResponse(responseCode = &quot;200&quot;, description = &quot;DOCX report returned as binary&quot;)
     @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Scores are missing&quot;)
     @PostMapping(&quot;/docx&quot;)
     public ResponseEntity&lt;byte[]&gt; exportDocx(@RequestBody ReportRequest request) {
-<span class="pc bpc" id="L116" title="2 of 4 branches missed.">        if (request.scores() == null || request.scores().isEmpty()) {</span>
-<span class="nc" id="L117">            return ResponseEntity.badRequest().build();</span>
-        }
-
-<span class="fc" id="L120">        ArchitectureReport report = reportService.generateReport(</span>
-<span class="fc" id="L121">                request.scores(), request.businessText(), request.minScore());</span>
-<span class="fc" id="L122">        ReportRendererExtension renderer = reportRendererRegistry.getRequired(&quot;docx&quot;);</span>
-<span class="fc" id="L123">        ReportFormatDescriptor format = renderer.descriptor();</span>
-<span class="fc" id="L124">        ReportRenderResult rendered = renderer</span>
-<span class="fc" id="L125">                .render(ReportRenderContext.of(report));</span>
-
-<span class="fc" id="L127">        return ResponseEntity.ok()</span>
-<span class="fc" id="L128">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
-<span class="fc" id="L129">                        &quot;attachment; filename=\&quot;architecture-report.&quot; + format.fileExtension() + &quot;\&quot;&quot;)</span>
-<span class="fc" id="L130">                .contentType(MediaType.parseMediaType(format.contentType()))</span>
-<span class="fc" id="L131">                .body(rendered.bytes());</span>
+<span class="fc" id="L76">        return render(request, &quot;docx&quot;);</span>
     }
 
     @Operation(summary = &quot;Export JSON report&quot;,
-               description = &quot;Returns the full architecture report as structured JSON&quot;)
+            description = &quot;Returns the full architecture report as structured JSON&quot;)
     @ApiResponse(responseCode = &quot;200&quot;, description = &quot;JSON report returned&quot;)
     @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Scores are missing&quot;)
     @PostMapping(&quot;/json&quot;)
     public ResponseEntity&lt;ArchitectureReport&gt; exportJson(@RequestBody ReportRequest request) {
-<span class="pc bpc" id="L140" title="2 of 4 branches missed.">        if (request.scores() == null || request.scores().isEmpty()) {</span>
-<span class="nc" id="L141">            return ResponseEntity.badRequest().build();</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (!isValid(request)) {</span>
+<span class="nc" id="L86">            return ResponseEntity.badRequest().build();</span>
         }
+<span class="fc" id="L88">        ArchitectureReport report = generateReport(request);</span>
+<span class="fc" id="L89">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L90">        String username = context.username();</span>
+<span class="fc" id="L91">        String branch = repositoryStateService.resolveWorkspaceBranch(username);</span>
+<span class="fc" id="L92">        report.setViewContext(repositoryStateService.getViewContext(username, branch, context));</span>
+<span class="fc" id="L93">        return ResponseEntity.ok(report);</span>
+    }
 
-<span class="fc" id="L144">        ArchitectureReport report = reportService.generateReport(</span>
-<span class="fc" id="L145">                request.scores(), request.businessText(), request.minScore());</span>
-<span class="fc" id="L146">        report.setViewContext(repositoryStateService.getViewContext(</span>
-<span class="fc" id="L147">                workspaceResolver.resolveCurrentUsername(), &quot;draft&quot;));</span>
-<span class="fc" id="L148">        return ResponseEntity.ok(report);</span>
+    private ResponseEntity&lt;byte[]&gt; render(ReportRequest request, String formatId) {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if (!isValid(request)) {</span>
+<span class="fc" id="L98">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L100">        ArchitectureReport report = generateReport(request);</span>
+<span class="fc" id="L101">        ReportRendererExtension renderer = reportRendererRegistry.getRequired(formatId);</span>
+<span class="fc" id="L102">        ReportFormatDescriptor format = renderer.descriptor();</span>
+<span class="fc" id="L103">        ReportRenderResult rendered = renderer.render(ReportRenderContext.of(report));</span>
+<span class="fc" id="L104">        return ResponseEntity.ok()</span>
+<span class="fc" id="L105">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
+                        &quot;attachment; filename=\&quot;architecture-report.&quot;
+<span class="fc" id="L107">                                + format.fileExtension() + &quot;\&quot;&quot;)</span>
+<span class="fc" id="L108">                .contentType(MediaType.parseMediaType(format.contentType()))</span>
+<span class="fc" id="L109">                .body(rendered.bytes());</span>
+    }
+
+    private ArchitectureReport generateReport(ReportRequest request) {
+<span class="fc" id="L113">        return reportService.generateReport(</span>
+<span class="fc" id="L114">                request.scores(), request.businessText(), request.minScore());</span>
+    }
+
+    private boolean isValid(ReportRequest request) {
+<span class="pc bpc" id="L118" title="2 of 6 branches missed.">        return request != null &amp;&amp; request.scores() != null &amp;&amp; !request.scores().isEmpty();</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

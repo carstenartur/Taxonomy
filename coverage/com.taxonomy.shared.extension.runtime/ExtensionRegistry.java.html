@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ExtensionRegistry.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.extension.runtime</a> &gt; <span class="el_source">ExtensionRegistry.java</span></div><h1>ExtensionRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.extension.runtime;
+
+import com.taxonomy.shared.extension.ExtensionDescriptor;
+import com.taxonomy.shared.extension.ExtensionKind;
+import com.taxonomy.shared.extension.TaxonomyExtension;
+import org.springframework.stereotype.Service;
+
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+
+/** Spring runtime registry for all internal taxonomy extension beans. */
+@Service
+public class ExtensionRegistry {
+
+    private final Map&lt;ExtensionKind, Map&lt;String, TaxonomyExtension&gt;&gt; byKind;
+
+<span class="fc" id="L22">    public ExtensionRegistry(List&lt;TaxonomyExtension&gt; extensions) {</span>
+<span class="fc" id="L23">        EnumMap&lt;ExtensionKind, Map&lt;String, TaxonomyExtension&gt;&gt; registrations =</span>
+                new EnumMap&lt;&gt;(ExtensionKind.class);
+<span class="fc bfc" id="L25" title="All 2 branches covered.">        for (ExtensionKind kind : ExtensionKind.values()) {</span>
+<span class="fc" id="L26">            registrations.put(kind, new LinkedHashMap&lt;&gt;());</span>
+        }
+<span class="fc" id="L28">        extensions.stream()</span>
+<span class="fc" id="L29">                .map(this::validatedRegistration)</span>
+<span class="fc" id="L30">                .sorted(Comparator.comparing(Registration::kind)</span>
+<span class="fc" id="L31">                        .thenComparing(Registration::normalizedId))</span>
+<span class="fc" id="L32">                .forEach(registration -&gt; {</span>
+<span class="fc" id="L33">                    Map&lt;String, TaxonomyExtension&gt; extensionsById =</span>
+<span class="fc" id="L34">                            registrations.get(registration.kind());</span>
+<span class="fc" id="L35">                    TaxonomyExtension previous = extensionsById.putIfAbsent(</span>
+<span class="fc" id="L36">                            registration.normalizedId(), registration.extension());</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">                    if (previous != null) {</span>
+<span class="fc" id="L38">                        throw new IllegalStateException(</span>
+                                &quot;Duplicate extension ID for kind %s: normalized ID '%s' conflicts between %s (id='%s') and %s (id='%s')&quot;
+<span class="fc" id="L40">                                        .formatted(</span>
+<span class="fc" id="L41">                                                registration.kind(),</span>
+<span class="fc" id="L42">                                                registration.normalizedId(),</span>
+<span class="fc" id="L43">                                                previous.getClass().getName(),</span>
+<span class="fc" id="L44">                                                previous.id(),</span>
+<span class="fc" id="L45">                                                registration.extension().getClass().getName(),</span>
+<span class="fc" id="L46">                                                registration.extension().id()));</span>
+                    }
+<span class="fc" id="L48">                });</span>
+
+<span class="fc" id="L50">        EnumMap&lt;ExtensionKind, Map&lt;String, TaxonomyExtension&gt;&gt; immutable =</span>
+                new EnumMap&lt;&gt;(ExtensionKind.class);
+<span class="fc" id="L52">        registrations.forEach((kind, values) -&gt; immutable.put(kind, Map.copyOf(values)));</span>
+<span class="fc" id="L53">        this.byKind = Map.copyOf(immutable);</span>
+<span class="fc" id="L54">    }</span>
+
+    public List&lt;ExtensionDescriptor&gt; listAll() {
+<span class="nc" id="L57">        return byKind.keySet().stream()</span>
+<span class="nc" id="L58">                .sorted()</span>
+<span class="nc" id="L59">                .flatMap(kind -&gt; listByKind(kind).stream())</span>
+<span class="nc" id="L60">                .toList();</span>
+    }
+
+    public List&lt;ExtensionDescriptor&gt; listByKind(ExtensionKind kind) {
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (kind == null) {</span>
+<span class="nc" id="L65">            return List.of();</span>
+        }
+<span class="fc" id="L67">        return byKind.getOrDefault(kind, Map.of()).values().stream()</span>
+<span class="fc" id="L68">                .map(TaxonomyExtension::extensionDescriptor)</span>
+<span class="fc" id="L69">                .sorted(Comparator.comparing(</span>
+<span class="fc" id="L70">                                (ExtensionDescriptor descriptor) -&gt; normalize(descriptor.id()))</span>
+<span class="fc" id="L71">                        .thenComparing(ExtensionDescriptor::id))</span>
+<span class="fc" id="L72">                .toList();</span>
+    }
+
+    public Optional&lt;ExtensionDescriptor&gt; findDescriptor(ExtensionKind kind, String id) {
+<span class="pc bpc" id="L76" title="3 of 6 branches missed.">        if (kind == null || id == null || id.isBlank()) {</span>
+<span class="nc" id="L77">            return Optional.empty();</span>
+        }
+<span class="fc" id="L79">        return Optional.ofNullable(byKind.getOrDefault(kind, Map.of()).get(normalize(id)))</span>
+<span class="fc" id="L80">                .map(TaxonomyExtension::extensionDescriptor);</span>
+    }
+
+    public ExtensionDescriptor getRequiredDescriptor(ExtensionKind kind, String id) {
+<span class="fc" id="L84">        return findDescriptor(kind, id)</span>
+<span class="pc" id="L85">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+<span class="nc" id="L86">                        &quot;Unknown extension %s/%s&quot;.formatted(kind, id)));</span>
+    }
+
+    private Registration validatedRegistration(TaxonomyExtension extension) {
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">        if (extension == null) {</span>
+<span class="nc" id="L91">            throw new IllegalStateException(&quot;A null TaxonomyExtension was passed to the registry&quot;);</span>
+        }
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (extension.kind() == null) {</span>
+<span class="nc" id="L94">            throw new IllegalStateException(</span>
+<span class="nc" id="L95">                    &quot;Extension %s returned a null kind&quot;.formatted(extension.getClass().getName()));</span>
+        }
+<span class="pc bpc" id="L97" title="2 of 4 branches missed.">        if (extension.id() == null || extension.id().isBlank()) {</span>
+<span class="nc" id="L98">            throw new IllegalStateException(</span>
+                    &quot;Extension %s must declare a non-blank ID&quot;
+<span class="nc" id="L100">                            .formatted(extension.getClass().getName()));</span>
+        }
+<span class="pc bpc" id="L102" title="2 of 4 branches missed.">        if (extension.displayName() == null || extension.displayName().isBlank()) {</span>
+<span class="nc" id="L103">            throw new IllegalStateException(</span>
+                    &quot;Extension %s must declare a non-blank display name&quot;
+<span class="nc" id="L105">                            .formatted(extension.getClass().getName()));</span>
+        }
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">        if (extension.description() == null) {</span>
+<span class="nc" id="L108">            throw new IllegalStateException(</span>
+                    &quot;Extension %s must declare a non-null description&quot;
+<span class="nc" id="L110">                            .formatted(extension.getClass().getName()));</span>
+        }
+<span class="fc" id="L112">        return new Registration(extension.kind(), normalize(extension.id()), extension);</span>
+    }
+
+    private String normalize(String id) {
+<span class="fc" id="L116">        return id.trim().toLowerCase(Locale.ROOT);</span>
+    }
+
+<span class="fc" id="L119">    private record Registration(</span>
+            ExtensionKind kind, String normalizedId, TaxonomyExtension extension) {
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

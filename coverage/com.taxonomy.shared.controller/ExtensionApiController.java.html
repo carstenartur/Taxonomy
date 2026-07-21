@@ -2,7 +2,7 @@
 
 import com.taxonomy.shared.extension.ExtensionDescriptor;
 import com.taxonomy.shared.extension.ExtensionKind;
-import com.taxonomy.shared.extension.ExtensionRegistry;
+import com.taxonomy.shared.extension.runtime.ExtensionRegistry;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -16,18 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Read-only REST API for registered extension descriptors.
- *
- * &lt;p&gt;Endpoints:
- * &lt;ul&gt;
- *   &lt;li&gt;{@code GET /api/extensions} — List all registered extensions ordered by kind (enum order) then by ID&lt;/li&gt;
- *   &lt;li&gt;{@code GET /api/extensions/{kind}} — List extensions for a specific kind&lt;/li&gt;
- * &lt;/ul&gt;
- *
- * &lt;p&gt;Only descriptor metadata is exposed; implementation classes, bean names,
- * and internal object references are never included in the response.
- */
+/** Read-only REST API exposing extension descriptors, never implementation types. */
 @RestController
 @RequestMapping(&quot;/api/extensions&quot;)
 @Tag(name = &quot;Extensions&quot;)
@@ -35,50 +24,37 @@ public class ExtensionApiController {
 
     private final ExtensionRegistry extensionRegistry;
 
-<span class="fc" id="L38">    public ExtensionApiController(ExtensionRegistry extensionRegistry) {</span>
-<span class="fc" id="L39">        this.extensionRegistry = extensionRegistry;</span>
-<span class="fc" id="L40">    }</span>
+<span class="fc" id="L27">    public ExtensionApiController(ExtensionRegistry extensionRegistry) {</span>
+<span class="fc" id="L28">        this.extensionRegistry = extensionRegistry;</span>
+<span class="fc" id="L29">    }</span>
 
-    /**
-     * Lists all registered extension descriptors across every {@link ExtensionKind}.
-     *
-     * @return flat list of descriptors ordered by kind (enum order) then by ID
-     */
     @Operation(
             summary = &quot;List all registered extensions&quot;,
-            description = &quot;Returns descriptor metadata for every registered internal extension point. &quot; +
-                          &quot;Results are ordered by kind (enum declaration order) and then by ID. &quot; +
-                          &quot;Implementation class names and internal bean references are never exposed.&quot;,
+            description = &quot;Returns descriptor metadata for every registered internal extension point.&quot;,
             tags = {&quot;Extensions&quot;})
     @ApiResponse(responseCode = &quot;200&quot;, description = &quot;List of extension descriptors&quot;)
     @GetMapping
     public ResponseEntity&lt;List&lt;ExtensionDescriptor&gt;&gt; listAll() {
-<span class="fc" id="L56">        return ResponseEntity.ok(extensionRegistry.listAll());</span>
+<span class="fc" id="L38">        return ResponseEntity.ok(extensionRegistry.listAll());</span>
     }
 
-    /**
-     * Lists all registered extension descriptors for the given {@link ExtensionKind}.
-     *
-     * @param kind the extension kind name (case-insensitive), e.g. {@code EXPORT_FORMAT}
-     * @return list of descriptors for the requested kind, sorted by ID
-     */
     @Operation(
             summary = &quot;List extensions by kind&quot;,
-            description = &quot;Returns descriptor metadata for all registered extensions of the specified kind. &quot; +
-                          &quot;The kind parameter is matched case-insensitively.&quot;,
+            description = &quot;Returns descriptor metadata for the specified extension kind.&quot;,
             tags = {&quot;Extensions&quot;})
-    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;List of extension descriptors for the requested kind&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;List of extension descriptors&quot;)
     @ApiResponse(responseCode = &quot;404&quot;, description = &quot;Unknown extension kind&quot;)
     @GetMapping(&quot;/{kind}&quot;)
     public ResponseEntity&lt;List&lt;ExtensionDescriptor&gt;&gt; listByKind(
-            @Parameter(description = &quot;Extension kind, e.g. EXPORT_FORMAT&quot;) @PathVariable String kind) {
-        ExtensionKind extensionKind;
+            @Parameter(description = &quot;Extension kind, e.g. EXPORT_FORMAT&quot;)
+            @PathVariable String kind) {
         try {
-<span class="fc" id="L77">            extensionKind = ExtensionKind.valueOf(kind.trim().toUpperCase(Locale.ROOT));</span>
-<span class="fc" id="L78">        } catch (IllegalArgumentException e) {</span>
-<span class="fc" id="L79">            return ResponseEntity.notFound().build();</span>
-<span class="fc" id="L80">        }</span>
-<span class="fc" id="L81">        return ResponseEntity.ok(extensionRegistry.listByKind(extensionKind));</span>
+<span class="fc" id="L52">            ExtensionKind extensionKind =</span>
+<span class="fc" id="L53">                    ExtensionKind.valueOf(kind.trim().toUpperCase(Locale.ROOT));</span>
+<span class="fc" id="L54">            return ResponseEntity.ok(extensionRegistry.listByKind(extensionKind));</span>
+<span class="fc" id="L55">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L56">            return ResponseEntity.notFound().build();</span>
+        }
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

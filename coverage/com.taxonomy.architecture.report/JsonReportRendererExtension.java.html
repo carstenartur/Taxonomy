@@ -2,38 +2,37 @@
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 @Component
 public class JsonReportRendererExtension implements ReportRendererExtension {
 
-<span class="fc" id="L11">    private static final ReportFormatDescriptor DESCRIPTOR = new ReportFormatDescriptor(</span>
-            &quot;json&quot;,
-            &quot;JSON&quot;,
-            &quot;json&quot;,
-            &quot;application/json&quot;,
-            false
-    );
+<span class="fc" id="L15">    private static final ReportFormatDescriptor DESCRIPTOR = new ReportFormatDescriptor(</span>
+            &quot;json&quot;, &quot;JSON&quot;, &quot;json&quot;, &quot;application/json&quot;, false);
 
     private final ObjectMapper objectMapper;
 
-<span class="fc" id="L21">    public JsonReportRendererExtension(ObjectProvider&lt;ObjectMapper&gt; objectMapperProvider) {</span>
-<span class="fc" id="L22">        this.objectMapper = objectMapperProvider.getIfAvailable(</span>
-<span class="fc" id="L23">                () -&gt; new ObjectMapper().findAndRegisterModules());</span>
-<span class="fc" id="L24">    }</span>
+<span class="fc" id="L20">    public JsonReportRendererExtension(ObjectProvider&lt;ObjectMapper&gt; objectMapperProvider) {</span>
+<span class="fc" id="L21">        this.objectMapper = objectMapperProvider.getIfAvailable(</span>
+<span class="fc" id="L22">                () -&gt; new ObjectMapper().findAndRegisterModules());</span>
+<span class="fc" id="L23">    }</span>
 
     @Override
     public ReportFormatDescriptor descriptor() {
-<span class="fc" id="L28">        return DESCRIPTOR;</span>
+<span class="fc" id="L27">        return DESCRIPTOR;</span>
     }
 
     @Override
     public ReportRenderResult render(ReportRenderContext context) {
         try {
-<span class="nc" id="L34">            return new ReportRenderResult(objectMapper.writeValueAsBytes(context.report()));</span>
-<span class="nc" id="L35">        } catch (JsonProcessingException e) {</span>
-<span class="nc" id="L36">            throw new IllegalStateException(&quot;Failed to render JSON report&quot;, e);</span>
+<span class="nc" id="L33">            return new ReportRenderResult(objectMapper.writeValueAsBytes(context.report()));</span>
+<span class="nc" id="L34">        } catch (JsonProcessingException e) {</span>
+<span class="nc" id="L35">            throw new IllegalStateException(&quot;Failed to render JSON report&quot;, e);</span>
         }
     }
 }

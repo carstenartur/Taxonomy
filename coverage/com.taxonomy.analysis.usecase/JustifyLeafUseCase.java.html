@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JustifyLeafUseCase.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.usecase</a> &gt; <span class="el_source">JustifyLeafUseCase.java</span></div><h1>JustifyLeafUseCase.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.usecase;
+
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.TaxonomyService;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+/** Application use case for explaining one leaf-node match. */
+@Service
+public class JustifyLeafUseCase {
+
+    private final TaxonomyService taxonomyService;
+    private final LlmService llmService;
+
+<span class="fc" id="L17">    public JustifyLeafUseCase(TaxonomyService taxonomyService, LlmService llmService) {</span>
+<span class="fc" id="L18">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L19">        this.llmService = llmService;</span>
+<span class="fc" id="L20">    }</span>
+
+    public JustifyLeafResult justify(JustifyLeafCommand command) {
+<span class="nc" id="L23">        List&lt;TaxonomyNode&gt; path = taxonomyService.getPathToRoot(command.nodeCode());</span>
+<span class="nc" id="L24">        String justification = llmService.generateLeafJustification(</span>
+<span class="nc" id="L25">                command.businessText(),</span>
+<span class="nc" id="L26">                command.nodeCode(),</span>
+                path,
+<span class="nc" id="L28">                command.scores(),</span>
+<span class="nc" id="L29">                command.reasons());</span>
+<span class="nc" id="L30">        return new JustifyLeafResult(command.nodeCode(), justification);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
