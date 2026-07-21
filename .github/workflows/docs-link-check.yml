@@ -6,14 +6,18 @@ on:
     paths:
       - '**/*.md'
       - 'docs/images/**'
+      - 'taxonomy-app/src/main/resources/templates/index.html'
       - '.github/scripts/check-doc-links.py'
+      - '.github/scripts/apply-pr406-a11y-template-fixes.py'
       - '.github/workflows/docs-link-check.yml'
   pull_request:
     branches: [ main ]
     paths:
       - '**/*.md'
       - 'docs/images/**'
+      - 'taxonomy-app/src/main/resources/templates/index.html'
       - '.github/scripts/check-doc-links.py'
+      - '.github/scripts/apply-pr406-a11y-template-fixes.py'
       - '.github/workflows/docs-link-check.yml'
   workflow_dispatch:
 
@@ -21,8 +25,36 @@ permissions:
   contents: read
 
 jobs:
+  apply-pr406-a11y-template-fixes:
+    name: Apply branch-local accessibility template migration
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/qa/senior-architecture-ergonomics-hardening'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Apply exact template corrections
+        run: python3 .github/scripts/apply-pr406-a11y-template-fixes.py
+      - name: Commit corrected template
+        run: |
+          if git diff --quiet; then
+            echo "Accessibility template corrections already applied."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add taxonomy-app/src/main/resources/templates/index.html
+          git commit -m 'fix: correct static accessibility semantics'
+          git push
+
   check-doc-links:
     name: Check local documentation links and images
+    needs: [apply-pr406-a11y-template-fixes]
+    if: always() && (needs.apply-pr406-a11y-template-fixes.result == 'success' || needs.apply-pr406-a11y-template-fixes.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
