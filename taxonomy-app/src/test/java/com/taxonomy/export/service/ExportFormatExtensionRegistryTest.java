@@ -76,7 +76,7 @@ class ExportFormatExtensionRegistryTest {
         assertThatThrownBy(() -> new ExportFormatExtensionRegistry(
                 List.of(stubExtension("mermaid"), stubExtension("Mermaid"))))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContainingIgnoringCase("mermaid");
+                .hasMessageContaining("mermaid");
     }
 
     @Test
