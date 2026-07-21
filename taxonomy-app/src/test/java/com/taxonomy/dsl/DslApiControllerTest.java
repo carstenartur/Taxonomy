@@ -835,6 +835,7 @@ class DslApiControllerTest {
     }
 
     @Test
+    @WithMockUser(username = "hypothesis-apply-user", roles = "ADMIN")
     void applyHypothesisForSession() throws Exception {
         // Create a hypothesis
         RelationHypothesis h = new RelationHypothesis();

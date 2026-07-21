@@ -75,6 +75,7 @@ class AdminAuthorizationRegressionTest {
 
         mockMvc.perform(post("/api/admin/verify")
                         .session(session)
+                        .with(csrf().useInvalidToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isForbidden());
