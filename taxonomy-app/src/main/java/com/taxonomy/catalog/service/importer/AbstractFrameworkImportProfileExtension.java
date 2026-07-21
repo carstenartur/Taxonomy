@@ -7,6 +7,8 @@ import com.taxonomy.dsl.mapping.MappingProfile;
 import com.taxonomy.dsl.mapping.MappingResult;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.dto.FrameworkImportResult;
+import com.taxonomy.extension.api.importer.ImportInput;
+import com.taxonomy.extension.api.importer.ImportProfileExtension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,23 +16,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Convenience base class for {@link ImportProfileExtension} implementations backed by a
- * {@link MappingProfile} and an {@link ExternalParser}.
- *
- * <p>Subclasses only need to supply:
- * <ul>
- *   <li>{@link #descriptor()} — profile metadata</li>
- *   <li>{@link #profile()} — the mapping profile instance</li>
- *   <li>{@link #parser()} — the file parser instance</li>
- * </ul>
- *
- * <p>The parse → map → serialize → materialize pipeline is provided here so
- * individual adapters stay free of boilerplate.
- */
+/** Shared parse-map-serialize-materialize implementation for framework profiles. */
 public abstract class AbstractFrameworkImportProfileExtension implements ImportProfileExtension {
 
-    private static final Logger log = LoggerFactory.getLogger(AbstractFrameworkImportProfileExtension.class);
+    private static final Logger log =
+            LoggerFactory.getLogger(AbstractFrameworkImportProfileExtension.class);
 
     private final DslMaterializeService materializeService;
 
@@ -38,10 +28,8 @@ public abstract class AbstractFrameworkImportProfileExtension implements ImportP
         this.materializeService = materializeService;
     }
 
-    /** Returns the {@link MappingProfile} used by this adapter. */
     protected abstract MappingProfile profile();
 
-    /** Returns the {@link ExternalParser} used by this adapter. */
     protected abstract ExternalParser parser();
 
     @Override
@@ -50,9 +38,8 @@ public abstract class AbstractFrameworkImportProfileExtension implements ImportP
         String displayName = descriptor().displayName();
         try {
             ExternalParser.ParsedExternalModel parsed = parser().parse(input.inputStream());
-            ExternalModelMapper mapper = new ExternalModelMapper(profile());
-            MappingResult mappingResult = mapper.map(parsed.elements(), parsed.relations());
-
+            MappingResult mappingResult =
+                    new ExternalModelMapper(profile()).map(parsed.elements(), parsed.relations());
             return new FrameworkImportResult(
                     profileId,
                     displayName,
@@ -75,44 +62,33 @@ public abstract class AbstractFrameworkImportProfileExtension implements ImportP
     public FrameworkImportResult importData(ImportInput input) {
         String profileId = descriptor().profileId();
         String displayName = descriptor().displayName();
-        String branch = input.branch();
         try {
-            // 1. Parse
             ExternalParser.ParsedExternalModel parsed = parser().parse(input.inputStream());
-
-            // 2. Map to canonical model
-            ExternalModelMapper mapper = new ExternalModelMapper(profile());
-            MappingResult mappingResult = mapper.map(parsed.elements(), parsed.relations());
-
-            // 3. Serialize to DSL text
-            ModelToAstMapper astMapper = new ModelToAstMapper();
-            TaxDslSerializer serializer = new TaxDslSerializer();
-            var astDoc = astMapper.toDocument(mappingResult.model(), profileId + "-import");
-            String dslText = serializer.serialize(astDoc);
-
-            // 4. Materialize
+            MappingResult mappingResult =
+                    new ExternalModelMapper(profile()).map(parsed.elements(), parsed.relations());
+            String dslText = new TaxDslSerializer().serialize(
+                    new ModelToAstMapper().toDocument(mappingResult.model(), profileId + "-import"));
             String path = "import/" + profileId + "-" + System.currentTimeMillis() + ".taxdsl";
-            DslMaterializeService.MaterializeResult matResult =
-                    materializeService.materialize(dslText, path, branch, null);
+            DslMaterializeService.MaterializeResult materialized =
+                    materializeService.materialize(dslText, path, input.branch(), null);
 
-            List<String> allWarnings = new ArrayList<>(mappingResult.warnings());
-            allWarnings.addAll(matResult.warnings());
-            if (!matResult.valid()) {
-                allWarnings.addAll(matResult.errors());
+            List<String> warnings = new ArrayList<>(mappingResult.warnings());
+            warnings.addAll(materialized.warnings());
+            if (!materialized.valid()) {
+                warnings.addAll(materialized.errors());
             }
-
             return new FrameworkImportResult(
                     profileId,
                     displayName,
-                    matResult.valid(),
+                    materialized.valid(),
                     parsed.elements().size(),
                     (int) mappingResult.mappingStatistics().getOrDefault("mappedElements", 0),
                     parsed.relations().size(),
                     (int) mappingResult.mappingStatistics().getOrDefault("mappedRelations", 0),
-                    matResult.relationsCreated(),
-                    matResult.hypothesesCreated(),
-                    matResult.documentId(),
-                    allWarnings,
+                    materialized.relationsCreated(),
+                    materialized.hypothesesCreated(),
+                    materialized.documentId(),
+                    warnings,
                     new ArrayList<>(mappingResult.unmappedTypes()),
                     mappingResult.mappingStatistics());
         } catch (Exception e) {
@@ -121,7 +97,8 @@ public abstract class AbstractFrameworkImportProfileExtension implements ImportP
         }
     }
 
-    private static FrameworkImportResult errorResult(String profileId, String displayName, String message) {
+    private static FrameworkImportResult errorResult(
+            String profileId, String displayName, String message) {
         return new FrameworkImportResult(
                 profileId, displayName, false,
                 0, 0, 0, 0, 0, 0, null,
