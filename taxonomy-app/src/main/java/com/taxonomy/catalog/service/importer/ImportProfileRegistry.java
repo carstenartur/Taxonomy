@@ -1,5 +1,7 @@
 package com.taxonomy.catalog.service.importer;
 
+import com.taxonomy.extension.api.importer.ImportProfileDescriptor;
+import com.taxonomy.extension.api.importer.ImportProfileExtension;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
@@ -9,13 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Registry for import profile extensions.
- *
- * <p>All Spring beans implementing {@link ImportProfileExtension} are collected
- * here automatically.  Use {@link #getRequired(String)} or {@link #findById(String)}
- * to look up a profile, and {@link #listDescriptors()} to enumerate available profiles.
- */
+/** Spring registry for framework import profile adapters. */
 @Service
 public class ImportProfileRegistry {
 
@@ -28,8 +24,7 @@ public class ImportProfileRegistry {
                 .sorted(Comparator.comparing(Registration::normalizedProfileId))
                 .forEach(registration -> {
                     ImportProfileExtension previous = map.putIfAbsent(
-                            registration.normalizedProfileId(),
-                            registration.extension());
+                            registration.normalizedProfileId(), registration.extension());
                     if (previous != null) {
                         throw new IllegalStateException(
                                 "Duplicate import profile ID: " + registration.normalizedProfileId());
@@ -38,20 +33,12 @@ public class ImportProfileRegistry {
         this.byProfileId = Map.copyOf(map);
     }
 
-    /**
-     * Returns the extension for the given profile ID.
-     *
-     * @throws IllegalArgumentException if no extension is registered for the ID
-     */
     public ImportProfileExtension getRequired(String profileId) {
         return findById(profileId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Unknown import profile: " + profileId));
     }
 
-    /**
-     * Returns the extension for the given profile ID, or empty if not found.
-     */
     public Optional<ImportProfileExtension> findById(String profileId) {
         if (profileId == null || profileId.isBlank()) {
             return Optional.empty();
@@ -59,33 +46,27 @@ public class ImportProfileRegistry {
         return Optional.ofNullable(byProfileId.get(normalize(profileId)));
     }
 
-    /**
-     * Lists the descriptors of all registered import profiles.
-     */
     public List<ImportProfileDescriptor> listDescriptors() {
         return byProfileId.values().stream()
                 .map(ImportProfileExtension::descriptor)
                 .toList();
     }
 
-    private String normalize(String profileId) {
-        return profileId.trim().toLowerCase(Locale.ROOT);
-    }
-
     private Registration validatedRegistration(ImportProfileExtension extension) {
-        ImportProfileDescriptor descriptor = extension.descriptor();
-        if (descriptor == null) {
-            throw new IllegalStateException(
-                    "Import profile extension %s returned a null descriptor"
-                            .formatted(extension.getClass().getName()));
+        if (extension == null || extension.descriptor() == null) {
+            throw new IllegalStateException("Import profile extension must declare a descriptor");
         }
-        String profileId = descriptor.profileId();
+        String profileId = extension.descriptor().profileId();
         if (profileId == null || profileId.isBlank()) {
             throw new IllegalStateException(
                     "Import profile extension %s must declare a non-blank profile ID"
                             .formatted(extension.getClass().getName()));
         }
         return new Registration(normalize(profileId), extension);
+    }
+
+    private String normalize(String profileId) {
+        return profileId.trim().toLowerCase(Locale.ROOT);
     }
 
     private record Registration(String normalizedProfileId, ImportProfileExtension extension) {
