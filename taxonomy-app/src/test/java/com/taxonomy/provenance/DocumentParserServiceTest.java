@@ -2,12 +2,21 @@ package com.taxonomy.provenance;
 
 import com.taxonomy.dto.RequirementCandidate;
 import com.taxonomy.provenance.service.DocumentParserService;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockMultipartFile;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Unit tests for the {@link DocumentParserService} text extraction and
@@ -144,6 +153,32 @@ class DocumentParserServiceTest {
     }
 
     @Test
+    void parseExtractsTextAndPageCountFromRealPdf() throws IOException {
+        String requirement = "The system shall retain an auditable history of every architecture change "
+                + "and make the responsible actor and timestamp available for review.";
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "requirements.pdf", "application/pdf", createPdf(requirement));
+
+        var result = parserService.parse(file);
+
+        assertThat(result.getMimeType()).isEqualTo("application/pdf");
+        assertThat(result.getTotalPages()).isEqualTo(1);
+        assertThat(result.getRawTextPreview()).contains(requirement);
+        assertThat(result.getCandidates())
+                .extracting(RequirementCandidate::getText)
+                .anySatisfy(text -> assertThat(text).contains(requirement));
+    }
+
+    @Test
+    void parseRejectsMalformedPdf() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "broken.pdf", "application/pdf", "%PDF-1.7\ntruncated".getBytes());
+
+        assertThatThrownBy(() -> parserService.parse(file))
+                .isInstanceOf(IOException.class);
+    }
+
+    @Test
     void longParagraphsAreSplitNotTruncated() {
         // Build a paragraph well over 2000 chars with distinct sentences
         StringBuilder sb = new StringBuilder();
@@ -255,6 +290,23 @@ class DocumentParserServiceTest {
         // Each chunk must respect the max length
         for (RequirementCandidate c : candidates) {
             assertThat(c.getText().length()).isLessThanOrEqualTo(2000);
+        }
+    }
+
+    private static byte[] createPdf(String text) throws IOException {
+        try (PDDocument document = new PDDocument();
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+                content.beginText();
+                content.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                content.newLineAtOffset(72, 720);
+                content.showText(text);
+                content.endText();
+            }
+            document.save(output);
+            return output.toByteArray();
         }
     }
 }
