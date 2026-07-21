@@ -42,10 +42,7 @@ These are temporary exceptions to:
 5. `com.taxonomy.versioning.service.DslOperationsFacade`
    - Why: remaining DSL/versioning operations still resolve workspace context inside the facade.
    - Remove when: all facade operations become context-explicit.
-6. `com.taxonomy.versioning.service.HypothesisService`
-   - Why: hypothesis persistence/listing still resolves active workspace internally.
-   - Remove when: hypothesis methods receive `WorkspaceContext` from request boundary.
-7. `com.taxonomy.versioning.service.SelectiveTransferService`
+6. `com.taxonomy.versioning.service.SelectiveTransferService`
    - Why: selective transfer still resolves current workspace/user for navigation state.
    - Remove when: selective transfer APIs become context-explicit.
 

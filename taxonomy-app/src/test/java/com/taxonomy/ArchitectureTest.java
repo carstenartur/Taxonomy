@@ -114,10 +114,6 @@ class ArchitectureTest {
                     "Remaining DSL/versioning operations still resolve workspace context inside the facade.",
                     "Remove once all facade operations are context-explicit."),
             new AllowlistEntry(
-                    "com.taxonomy.versioning.service.HypothesisService",
-                    "Hypothesis persistence/listing still resolves active workspace internally.",
-                    "Remove once hypothesis methods receive WorkspaceContext from request boundary."),
-            new AllowlistEntry(
                     "com.taxonomy.versioning.service.SelectiveTransferService",
                     "Selective transfer still resolves current workspace/user for navigation state.",
                     "Remove once selective transfer APIs become context-explicit.")

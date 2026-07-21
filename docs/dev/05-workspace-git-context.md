@@ -32,6 +32,7 @@ This avoids request flows where an early call uses `SHARED` and a later call use
 - `AnalysisApiController` now resolves `username` + `WorkspaceContext` once and passes both through `AnalyzeRequirementCommand`.
 - `AnalyzeRequirementUseCase` now uses the explicit command context when attaching `viewContext`.
 - `DslApiController` now resolves `username` + `WorkspaceContext` once before workspace-aware history/current response state is loaded through `DslOperationsFacade`.
+- `HypothesisService` now receives explicit `WorkspaceContext` for persistence, listing, evidence access, acceptance, rejection, and session application; cross-workspace IDs are treated as not found.
 
 ## Current internal implicit-resolution inventory
 
@@ -42,7 +43,6 @@ The following service classes still resolve current request context internally a
 - `com.taxonomy.relations.service.GraphSearchService` — graph search still resolves the current workspace for relation queries.
 - `com.taxonomy.relations.service.RelationProposalService` — proposal CRUD still derives the active workspace internally.
 - `com.taxonomy.versioning.service.DslOperationsFacade` — several remaining DSL/versioning operations still resolve workspace context inside the facade.
-- `com.taxonomy.versioning.service.HypothesisService` — hypothesis persistence/listing still derives the active workspace internally.
 - `com.taxonomy.versioning.service.SelectiveTransferService` — selective transfer still resolves the current workspace/user for navigation state.
 
 ## Architectural enforcement
