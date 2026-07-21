@@ -7,6 +7,7 @@ on:
       - 'taxonomy-app/src/main/resources/templates/**'
       - 'taxonomy-app/src/main/resources/static/**'
       - 'taxonomy-app/src/main/java/com/taxonomy/**/controller/**'
+      - 'taxonomy-app/src/main/java/com/taxonomy/security/**'
       - '.github/scripts/accessibility-audit.mjs'
       - '.github/workflows/accessibility.yml'
   push:
@@ -38,8 +39,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
-          cache: npm
-          cache-dependency-path: .github/workflows/accessibility.yml
 
       - name: Build application
         run: mvn -q -pl taxonomy-app -am package -DskipTests
