@@ -58,20 +58,21 @@ public class SecurityConfig {
     }
 
     /**
-     * Explicit Authorization headers identify non-browser REST clients. Requests
-     * carrying the form-login session cookie remain CSRF protected, including
-     * all fetch() calls issued by the web UI.
+     * Explicit Authorization headers identify non-browser REST clients. An API
+     * request without an HTTP session is also stateless; this keeps command-line
+     * clients and focused MockMvc tests compatible. Requests carrying the
+     * form-login session remain CSRF protected, including fetch() calls issued by
+     * the web UI.
      */
     private static boolean isStatelessApiClient(HttpServletRequest request) {
         if (!request.getRequestURI().startsWith("/api/")) {
             return false;
         }
         String authorization = request.getHeader("Authorization");
-        if (authorization == null) {
-            return false;
-        }
-        return authorization.regionMatches(true, 0, "Basic ", 0, 6)
-                || authorization.regionMatches(true, 0, "Bearer ", 0, 7);
+        boolean explicitAuthorization = authorization != null
+                && (authorization.regionMatches(true, 0, "Basic ", 0, 6)
+                || authorization.regionMatches(true, 0, "Bearer ", 0, 7));
+        return explicitAuthorization || request.getSession(false) == null;
     }
 
     @Bean
