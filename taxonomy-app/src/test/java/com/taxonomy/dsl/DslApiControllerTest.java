@@ -844,6 +844,7 @@ class DslApiControllerTest {
         h.setStatus(HypothesisStatus.PROVISIONAL);
         h.setConfidence(0.80);
         h.setAnalysisSessionId("session-apply-test");
+        scopeToCurrentWorkspace(h);
         h = hypothesisRepository.save(h);
 
         mockMvc.perform(post("/api/dsl/hypotheses/" + h.getId() + "/apply-session"))
