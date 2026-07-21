@@ -3,17 +3,14 @@ package com.taxonomy.catalog.service.importer;
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dsl.mapping.MappingProfile;
 import com.taxonomy.dsl.mapping.profiles.ApqcMappingProfile;
+import com.taxonomy.extension.api.importer.ImportProfileDescriptor;
 import org.springframework.stereotype.Component;
 
-/**
- * {@link ImportProfileExtension} adapter for the APQC PCF Excel import profile.
- */
 @Component
 public class ApqcExcelImportProfileExtension extends AbstractFrameworkImportProfileExtension {
 
     private static final MappingProfile PROFILE = new ApqcMappingProfile();
     private static final ExternalParser PARSER = new ApqcExcelParser();
-
     private static final ImportProfileDescriptor DESCRIPTOR = new ImportProfileDescriptor(
             "apqc-excel",
             "APQC PCF (Excel)",
