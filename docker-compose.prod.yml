@@ -35,7 +35,9 @@ services:
       - TAXONOMY_AUDIT_LOGGING=true
       - TAXONOMY_SWAGGER_PUBLIC=false
       # Persist the embedded database and Lucene index in the mounted volume.
-      - TAXONOMY_DATASOURCE_URL=jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;shutdown=true
+      # Immediate log fsync prevents an acknowledged architecture change from
+      # being lost when the application container is replaced directly after a commit.
+      - TAXONOMY_DATASOURCE_URL=jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;hsqldb.write_delay_millis=0;shutdown=true
       - TAXONOMY_DDL_AUTO=update
       - TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem
       - TAXONOMY_SEARCH_DIRECTORY_ROOT=/app/data/lucene-index

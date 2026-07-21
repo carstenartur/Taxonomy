@@ -62,6 +62,7 @@ class ProductionPersistenceRestartIT {
                             """.formatted(PERSISTENCE_PROVENANCE)))
                     .build());
             assertThat(createResponse.statusCode()).isEqualTo(200);
+            assertThat(createResponse.body()).contains(PERSISTENCE_PROVENANCE);
             assertThat(relationCount(client, origin)).isGreaterThan(countBeforeWrite);
         } finally {
             stopContainerAndRestoreHostPermissions(first);
@@ -98,7 +99,8 @@ class ProductionPersistenceRestartIT {
                         "/app/data", BindMode.READ_WRITE)
                 .withEnv("SPRING_PROFILES_ACTIVE", "production,hsqldb")
                 .withEnv("TAXONOMY_DATASOURCE_URL",
-                        "jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;shutdown=true")
+                        "jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;"
+                                + "hsqldb.write_delay_millis=0;shutdown=true")
                 .withEnv("TAXONOMY_DDL_AUTO", "update")
                 .withEnv("TAXONOMY_SEARCH_DIRECTORY_TYPE", "local-filesystem")
                 .withEnv("TAXONOMY_SEARCH_DIRECTORY_ROOT", "/app/data/lucene-index")
