@@ -84,25 +84,19 @@ jobs:
           TAXONOMY_BASE_URL: http://127.0.0.1:8080
           TAXONOMY_A11Y_USERNAME: admin
           TAXONOMY_A11Y_PASSWORD: a11y-test-password
+          TAXONOMY_A11Y_REPORT: /tmp/taxonomy-a11y-report.json
+          TAXONOMY_A11Y_TEXT_REPORT: /tmp/taxonomy-a11y-report.txt
         run: node .github/scripts/accessibility-audit.mjs
 
-      - name: Upload diagnostic logs on failure
-        if: failure()
+      - name: Upload accessibility evidence
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: accessibility-diagnostic-logs
+          name: accessibility-evidence
           path: |
+            /tmp/taxonomy-a11y-report.json
+            /tmp/taxonomy-a11y-report.txt
             /tmp/taxonomy-a11y-build.log
             /tmp/taxonomy-a11y.log
           if-no-files-found: ignore
           retention-days: 14
-
-      - name: Upload source patch inputs
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: airgap-source-inputs
-          path: |
-            taxonomy-app/pom.xml
-            taxonomy-app/src/main/resources/templates/index.html
-          retention-days: 2
