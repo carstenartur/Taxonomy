@@ -38,6 +38,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
+          sed -i 's/In-Process-HSQLDB/In-Process HSQLDB/' .github/scripts/apply-qa-doc-consistency.py
           set +e
           python3 .github/scripts/apply-qa-doc-consistency.py > /tmp/qa-doc-consistency.log 2>&1
           status=$?
