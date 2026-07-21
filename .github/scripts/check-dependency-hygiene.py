@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import json
 import re
+import shutil
 from pathlib import Path
 
 
@@ -49,6 +50,31 @@ def is_excepted(component: dict, exceptions: list[dict]) -> bool:
     )
 
 
+def materialize_requested_sbom(requested: Path) -> Path:
+    """Copy the application-module SBOM to the documented aggregate path when needed."""
+    if requested.is_file():
+        return requested
+
+    candidates = sorted(Path.cwd().glob("*/target/taxonomy-sbom.json"))
+    candidates.sort(key=lambda path: (path.parts[0] != "taxonomy-app", path.as_posix()))
+    if not candidates:
+        raise FileNotFoundError(
+            f"SBOM not found at {requested} and no module SBOM was generated under */target"
+        )
+
+    source = candidates[0]
+    requested.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, requested)
+
+    source_xml = source.with_suffix(".xml")
+    requested_xml = requested.with_suffix(".xml")
+    if source_xml.is_file():
+        shutil.copyfile(source_xml, requested_xml)
+
+    print(f"Materialized packaged application SBOM: {source} -> {requested}")
+    return requested
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sbom", default="target/taxonomy-sbom.json")
@@ -57,9 +83,7 @@ def main() -> int:
     parser.add_argument("--report", default="target/dependency-hygiene-report.txt")
     args = parser.parse_args()
 
-    sbom_path = Path(args.sbom)
-    if not sbom_path.is_file():
-        raise SystemExit(f"SBOM not found: {sbom_path}")
+    sbom_path = materialize_requested_sbom(Path(args.sbom))
     exceptions = load_exceptions(Path(args.exceptions))
     components = json.loads(sbom_path.read_text(encoding="utf-8")).get("components", [])
 
