@@ -27,7 +27,7 @@ Dieses Dokument beschreibt die Architektur des Taxonomy Architecture Analyzer �
 
 Die Anwendung ist eine einzelne Spring Boot 4 / Java 21 Webanwendung mit folgenden Hauptmerkmalen:
 
-- **In-Process HSQLDB** — Taxonomiedaten (~2.500 Knoten über 8 Blätter aus einer Excel-Arbeitsmappe) werden beim Start in eine eingebettete HSQLDB-Datenbank geladen. Standardmäßig ist keine externe Datenbank erforderlich.
+- **In-Process HSQLDB** — das konfigurationsfreie Profil verwendet eingebettete HSQLDB; dateibasierte Installationen persistieren Katalog- und JGit-Daten, während nur eine leere Datenbank oder ein explizites Neuladen die mitgelieferte Arbeitsmappe importiert. Standardmäßig ist keine externe Datenbank erforderlich.
 - **Multi-Anbieter-LLM-Integration** — Geschäftsanforderungen können von einem der sechs unterstützten Sprachmodellanbieter (Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral) oder von einem lokalen Offline-Modell (`bge-small-en-v1.5` über DJL / ONNX Runtime) analysiert werden, das keinen API-Schlüssel benötigt.
 - **Taxonomiebaum-Visualisierung** — Die Hierarchie wird als zusammenklappbarer Bootstrap-5-Baum mit farbcodierten Übereinstimmungs-Overlays dargestellt.
 - **Architekturintelligenz** — Bewertete Analyseergebnisse werden automatisch zu Architekturansichten zusammengestellt, die als ArchiMate-XML, Visio `.vsdx` und Mermaid-Flussdiagramme exportiert werden können.
@@ -196,7 +196,7 @@ DSL-Dokumente werden unter dem Dateinamen `architecture.taxdsl` gespeichert. Der
 
 ## Datenladung
 
-Beim Start lädt `TaxonomyService` den C3-Taxonomiekatalog aus der mitgelieferten Excel-Arbeitsmappe (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) mit Apache POI. Eine CSV-Seed-Datei (`relations.csv`) liefert Standard-Beziehungen, wenn kein Relations-Blatt in der Arbeitsmappe vorhanden ist.
+Wenn der Katalog leer ist oder `TAXONOMY_INIT_RELOAD_EXISTING=true` ausdrücklich einen Ersatz anfordert, importiert `TaxonomyService` die mitgelieferte C3-Arbeitsmappe (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) mit Apache POI. Andernfalls werden persistierte Katalogzeilen weiterverwendet. Eine CSV-Seed-Datei (`relations.csv`) liefert Standard-Beziehungen, wenn kein Relations-Blatt vorhanden ist.
 
 ### Beziehungs-Seed-Modell
 
@@ -239,38 +239,43 @@ Kinder werden durch hierarchische Codes aus der Arbeitsmappe identifiziert (z. B
 
 ## CI / CD
 
-Jeder Push löst den **CI / CD** GitHub Actions Workflow aus:
+Jeder Push und Pull Request führt einen schreibgeschützten Verifikationsjob aus.
+Der Build umfasst den deterministischen Maven-Lebenszyklus, die Abhängigkeits-
+und SBOM-Policy, JUnit-Veröffentlichung und unveränderliche Artefakte. Dafür ist
+keine Schreibberechtigung auf Repository-Inhalte erforderlich.
 
-| Schritt | Was passiert |
+| Ebene | Auslöser und Verantwortung |
 |---|---|
-| **Build & Test** | `mvn verify` — kompiliert, führt Integrationstests aus |
-| **Docker-Image veröffentlichen** | Push in die GitHub Container Registry (`ghcr.io`) |
-| **Auf Render deployen** | Löst einen Render-Deploy-Hook aus (falls Secret gesetzt) |
+| **Build & Test** | `mvn install` mit deterministischen Tests; erzeugt JAR-, SBOM-, Abhängigkeits-, Test- und Coverage-Artefakte |
+| **Core Integration** | Vier explizit ausgewählte HSQLDB-/Testcontainers-Szenarien |
+| **Database Compatibility** | PostgreSQL-Paar bei relevanten PRs; geplante/manuelle PostgreSQL-, MSSQL- und Oracle-Matrix |
+| **UI / Accessibility** | Chromium/Firefox sowie Desktop-/Tablet-/Mobil-Nachweise |
+| **Berichtsveröffentlichung** | Separater schreibberechtigter Job nur nach einem Push auf den Standard-Branch |
+| **Screenshot-Veröffentlichung** | Separater vertrauenswürdiger `workflow_dispatch`; schreibgeschützte Erzeugung und isolierter Main-Publisher |
+| **Container / Deployment** | GHCR-Veröffentlichung und optionaler Render-Hook erst nach erfolgreichem geeignetem Push |
 
-📋 **[Testergebnis-Bericht](https://carstenartur.github.io/Taxonomy/tests/surefire-report.html)**
-📈 **[Code-Coverage-Bericht](https://carstenartur.github.io/Taxonomy/coverage/)**
+Die Grenze zwischen Prüfung und Mutation ist in
+[`docs/dev/CI_SECURITY.md`](../dev/CI_SECURITY.md) beschrieben.
 
 ## Datenbank
 
-### Standard: In-Process-HSQLDB
+### Standard: eingebettete HSQLDB
 
-Die Anwendung wird mit einer eingebetteten HSQLDB-Datenbank ausgeliefert. Es ist keine Installation oder ein externer Datenbankserver erforderlich. Alle Taxonomiedaten werden beim Start aus der mitgelieferten Excel-Arbeitsmappe geladen.
+Das Standardprofil benötigt keinen Datenbankserver. Es verwendet einen
+begrenzten HikariCP-Pool mit `minimum-idle=1` und `maximum-pool-size=4`. Bei
+Datei-URLs mit `shutdown=true` muss eine Verbindung offen bleiben, damit HSQLDB
+nicht zwischen Spring-Startphasen beendet wird.
 
-Da HSQLDB **in-process** läuft (gleiche JVM, kein Netzwerk-Hop), verursacht ein JDBC-Verbindungspool nur Overhead. Die Anwendung verwendet daher `SimpleDriverDataSource` anstelle des Spring-Boot-Standards HikariCP. Dies eliminiert HikariPool-Verbindungserschöpfungsprobleme und reduziert den Speicherverbrauch — besonders wichtig auf eingeschränkten Hosts wie dem Render Free Tier (512 MB RAM).
+Der Entwicklungsstandard ist eine In-Memory-URL. Die Produktions-Docker-
+Konfiguration verwendet dateibasierte HSQLDB- und Lucene-Speicherung. Vorhandene
+persistierte Katalogzeilen werden beim Neustart weiterverwendet.
+`TAXONOMY_INIT_RELOAD_EXISTING=true` löst bewusst ein destruktives Neuladen aus
+der mitgelieferten Arbeitsmappe aus.
 
-### MSSQL-Kompatibilität
-
-Alle Entity-Klassen sind für korrektes Verhalten auf Microsoft SQL Server annotiert:
-
-- **`@Nationalized`** auf jedem `String`-Feld → erzeugt `nvarchar` statt `varchar`,
-  verhindert Beschädigung von Nicht-ASCII-Zeichen (z. B. deutsche Umlaute ä, ö, ü, ß).
-- **`@Lob`** auf Textfeldern, die 4000 Zeichen überschreiten können (`descriptionEn`,
-  `descriptionDe`, `reference`) → erzeugt `nvarchar(max)` / `ntext` auf MSSQL.
-- **`@Lob` + `FloatArrayConverter`** auf `semanticEmbedding`-Feldern in `TaxonomyNode`
-  und `TaxonomyRelation` → speichert Embedding-Vektoren als streambare BLOBs unter Verwendung
-  von Little-Endian-IEEE-754-Serialisierung.
-
-Die Anwendung verwendet standardmäßig weiterhin HSQLDB (kein MSSQL-Setup erforderlich).
+PostgreSQL, Microsoft SQL Server und Oracle verwenden eigene Profile und die
+begrenzte Testcontainers-Kompatibilitätsmatrix. Details und Testbefehle stehen
+in [Datenbank-Setup](DATABASE_SETUP.md) und
+[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
 
 ## Ratenbegrenzung
 

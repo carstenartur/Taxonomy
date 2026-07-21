@@ -27,7 +27,7 @@ This document describes the architecture of the Taxonomy Architecture Analyzer �
 
 The application is a single Spring Boot 4 / Java 21 web application with the following main characteristics:
 
-- **In-process HSQLDB** — taxonomy data (~2,500 nodes across 8 sheets from an Excel workbook) is loaded at startup into an embedded HSQLDB database. No external database is required by default.
+- **In-process HSQLDB** — the zero-configuration profile uses embedded HSQLDB; file-backed deployments persist catalogue and JGit data, while an empty database or an explicit reload imports the bundled workbook. No external database is required by default.
 - **Multi-provider LLM integration** — business requirements can be analysed by any of six supported language model providers (Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral), or by a local offline model (`bge-small-en-v1.5` via DJL / ONNX Runtime) that requires no API key.
 - **Taxonomy tree visualisation** — the hierarchy is rendered as a collapsible Bootstrap 5 tree with colour-coded match overlays.
 - **Architecture intelligence** — scored analysis results are automatically assembled into architecture views, which can be exported to ArchiMate XML, Visio `.vsdx`, and Mermaid flowcharts.
@@ -199,7 +199,7 @@ DSL documents are stored under the filename `architecture.taxdsl`. The `DslApiCo
 
 ## Data Loading
 
-At startup, `TaxonomyService` loads the C3 Taxonomy Catalogue from the bundled Excel workbook (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) using Apache POI. A CSV fallback (`relations.csv`) provides seed relations when no Relations sheet is present in the workbook.
+When the catalogue is empty—or when `TAXONOMY_INIT_RELOAD_EXISTING=true` explicitly requests replacement—`TaxonomyService` imports the bundled C3 workbook (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) through Apache POI. Otherwise persisted catalogue rows are reused. A CSV fallback (`relations.csv`) provides seed relations when no Relations sheet is present.
 
 ### Relation Seed Model
 
@@ -244,38 +244,42 @@ Children are identified by hierarchical codes from the workbook (e.g. `BP-1327`,
 
 ## CI / CD
 
-Every push triggers the **CI / CD** GitHub Actions workflow:
+Every push and pull request runs a read-only verification job. The build executes
+the deterministic Maven lifecycle, dependency/SBOM policy, JUnit publication,
+and immutable artifact creation. It does not need repository-content write
+permission.
 
-| Step | What happens |
+| Layer | Trigger and responsibility |
 |---|---|
-| **Build & Test** | `mvn verify` — compiles, runs integration tests |
-| **Publish Docker Image** | Pushes to GitHub Container Registry (`ghcr.io`) |
-| **Deploy to Render** | Triggers a Render deploy hook (if secret is set) |
+| **Build & Test** | `mvn install` with deterministic tests; produces JAR, SBOM, dependency, test, and coverage artifacts |
+| **Core Integration** | Four explicitly selected HSQLDB/Testcontainers scenarios |
+| **Database Compatibility** | PostgreSQL pair on relevant PRs; scheduled/manual PostgreSQL, MSSQL, and Oracle matrix |
+| **UI / Accessibility** | Chromium/Firefox and desktop/tablet/mobile evidence |
+| **Report publication** | Separate write-capable job only after a default-branch push |
+| **Screenshot publication** | Separate trusted `workflow_dispatch`; read-only generation followed by an isolated main-branch publisher |
+| **Container / deployment** | GHCR publication and optional Render hook only after a successful eligible push |
 
-📋 **[Test Results Report](https://carstenartur.github.io/Taxonomy/tests/surefire-report.html)**
-📈 **[Code Coverage Report](https://carstenartur.github.io/Taxonomy/coverage/)**
+The verification/mutation boundary is documented in
+[`docs/dev/CI_SECURITY.md`](../dev/CI_SECURITY.md).
 
 ## Database
 
-### Default: in-process HSQLDB
+### Default: embedded HSQLDB
 
-The application ships with an embedded HSQLDB database. No installation or external database server is required. All taxonomy data is loaded from the bundled Excel workbook at startup.
+The default profile needs no database server. It uses a bounded HikariCP pool
+with `minimum-idle=1` and `maximum-pool-size=4`. Keeping one connection open is
+important for file URLs that use `shutdown=true`; otherwise HSQLDB can close
+between Spring startup phases.
 
-Because HSQLDB runs **in-process** (same JVM, no network hop), a JDBC connection pool adds only overhead. The application therefore uses `SimpleDriverDataSource` instead of the Spring Boot default HikariCP. This eliminates HikariPool connection-exhaustion issues and reduces memory usage — particularly important on constrained hosts such as the Render free tier (512 MB RAM).
+The development default is an in-memory URL. Production Docker configuration
+uses file-backed HSQLDB and filesystem Lucene storage. Existing persisted
+catalogue rows are reused on restart. `TAXONOMY_INIT_RELOAD_EXISTING=true`
+performs an intentional destructive catalogue reload from the bundled workbook.
 
-### MSSQL Compatibility
-
-All entity classes are annotated for correct behaviour on Microsoft SQL Server:
-
-- **`@Nationalized`** on every `String` field → produces `nvarchar` instead of `varchar`,
-  preventing corruption of non-ASCII characters (e.g. German umlauts ä, ö, ü, ß).
-- **`@Lob`** on text fields that may exceed 4000 characters (`descriptionEn`,
-  `descriptionDe`, `reference`) → produces `nvarchar(max)` / `ntext` on MSSQL.
-- **`@Lob` + `FloatArrayConverter`** on `semanticEmbedding` fields in `TaxonomyNode`
-  and `TaxonomyRelation` → stores embedding vectors as streamable BLOBs using
-  little-endian IEEE 754 serialisation.
-
-The application continues to use HSQLDB by default (no MSSQL setup required).
+PostgreSQL, Microsoft SQL Server, and Oracle use dedicated profiles and the
+bounded Testcontainers compatibility matrix. Detailed setup and test commands
+are in [Database Setup](DATABASE_SETUP.md) and
+[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
 
 ## Rate Limiting
 

@@ -84,11 +84,15 @@ cd Taxonomy
 # Compile all 5 modules (~5 seconds)
 mvn compile
 
-# Run all tests (~60 seconds, no Docker needed)
-mvn test
-
-# Run including integration tests (requires Docker)
+# Vollständigen deterministischen Lebenszyklus ausführen (kein Docker nötig)
 mvn verify
+
+# Ein explizites Testcontainers-Szenario ausführen (Docker erforderlich)
+mvn -B -pl taxonomy-app -am install -DskipTests
+mvn -B -pl taxonomy-app failsafe:integration-test failsafe:verify \
+  -DskipITs=false -Dit.test=DiagnosticsContainerIT \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
 
 # Start locally (browse-only, no API key needed)
 mvn -pl taxonomy-app spring-boot:run
@@ -191,59 +195,68 @@ Die Haupt-Spring-Boot-Anwendung:
 
 ## Tests ausführen
 
+Das Root-POM hält `mvn verify` deterministisch und begrenzt. Es führt Unit-,
+Spring-, Architektur-, Vertrags- und Abhängigkeitshygiene-Tests ohne Docker und
+ohne Live-LLM-Aufrufe aus. Failsafe-/Testcontainers-Tests werden explizit
+ausgewählt.
+
 ```bash
-# All unit + Spring context tests (no Docker needed)
-mvn test
-
-# Tests for a single module
-mvn test -pl taxonomy-dsl
-mvn test -pl taxonomy-app
-
-# Tests for a single class
-mvn test -pl taxonomy-app -Dtest=TaxonomyApplicationTests
-
-# Integration tests (requires Docker for Testcontainers)
+# Vollständiger Standard-Lebenszyklus (kein Docker)
 mvn verify
 
-# Screenshot generation (requires Docker + optionally GEMINI_API_KEY)
-mvn package -DskipTests
-mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
+# Einzelnes Modul oder einzelne Testklasse
+mvn test -pl taxonomy-dsl
+mvn test -pl taxonomy-app -Dtest=TaxonomyApplicationTests
+
+# Reactor für einen isolierten Integrationstest vorbereiten
+mvn -B -pl taxonomy-app -am install -DskipTests
+
+# Ein zentrales Testcontainers-Szenario
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test=ProductionPersistenceRestartIT \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
 ```
 
-### Integrationstests für externe Datenbanken
+### Kompatibilität mit externen Datenbanken
 
-Das Projekt enthält Integrationstests, die die korrekte Funktionsweise der Anwendung mit PostgreSQL, Microsoft SQL Server und Oracle-Datenbanken verifizieren. PostgreSQL- und MSSQL-Tests werden als Teil des standardmäßigen `mvn verify`-Builds ausgeführt (Docker erforderlich). Oracle-Tests sind **optional** — mit `db-oracle` getaggt und standardmäßig ausgeschlossen. Um spezifische Datenbanktests auszuführen:
+Die PostgreSQL-, Microsoft-SQL-Server- und Oracle-Tests sind normale Maven-
+Failsafe-/Testcontainers-Tests. Alle drei `db-*`-Tags sind jedoch im Standard-
+Lebenszyklus ausgeschlossen. Relevante Pull Requests zur Datenbankkonfiguration
+führen das begrenzte PostgreSQL-Paar aus Diagnose- und Selenium-Test aus.
+Geplante und manuelle Workflows decken die ausgewählte vollständige Matrix ab.
 
 ```bash
-# Run only PostgreSQL integration tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Postgres*IT"
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test='*Postgres*IT' \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm
 
-# Run only MSSQL integration tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Mssql*IT"
-
-# Run only Oracle integration tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Oracle*IT"
-
-# Run ALL external database tests
-mvn verify -DexcludedGroups=real-llm
-
-# Run all Selenium + external-db tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="Selenium*ContainerIT"
+# Für andere Familien *Mssql*IT beziehungsweise *Oracle*IT einsetzen.
 ```
 
-**Architektur:** Jede externe Datenbank-Testklasse erbt von `AbstractDatabaseContainerIT` (REST-/Diagnosetests) oder `AbstractSeleniumContainerIT` (Selenium-UI-Tests). Die Basisklassen enthalten die gesamte Testlogik; datenbankspezifische Unterklassen umfassen ca. 30 Zeilen Konfiguration, die den Datenbank-Container und die JDBC-Umgebungsvariablen für den App-Container festlegen.
+`-DexcludedGroups=real-llm` aktiviert bewusst die Datenbank-Tags und schließt
+weiterhin Live-LLM-Aufrufe aus. Die Testklassen erben von
+`AbstractDatabaseContainerIT` oder `AbstractSeleniumContainerIT`; Anwendungs-
+und Datenbankcontainer teilen sich ein Testcontainers-Netzwerk und erhalten das
+Spring-Profil sowie die JDBC-Einstellungen über Umgebungsvariablen.
 
-**Funktionsweise:** Das Anwendungs-JAR wird einmal gebaut und in einem Docker-Container (`eclipse-temurin:21-jre`) ausgeführt. Ein Datenbank-Container (PostgreSQL, MSSQL oder Oracle) läuft im selben Docker-Netzwerk. Der App-Container erhält `SPRING_PROFILES_ACTIVE` (z. B. `mssql` oder `postgres`), um das datenbankspezifische Spring-Profil zu aktivieren, sowie Umgebungsvariablen wie `TAXONOMY_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` usw., um spezifische Verbindungseinstellungen zu überschreiben.
-
-Konventionen für Testdateinamen:
-
-| Muster | Runner | Beschreibung |
+| Muster/Tag | Runner | Standard-Lebenszyklus |
 |---|---|---|
-| `*Test.java`, `*Tests.java` | maven-surefire-plugin | Unit- und Spring-Kontexttests |
-| `*IT.java` | maven-failsafe-plugin | Integrationstests (Docker erforderlich) |
-| `@Tag("db-postgres")` | maven-failsafe-plugin | PostgreSQL-Tests (standardmäßig enthalten) |
-| `@Tag("db-mssql")` | maven-failsafe-plugin | MSSQL-Tests (standardmäßig enthalten) |
-| `@Tag("db-oracle")` | maven-failsafe-plugin | Oracle-Tests (standardmäßig ausgeschlossen) |
+| `*Test.java`, `*Tests.java` | Surefire | enthalten |
+| `*IT.java` | Failsafe | übersprungen, solange `skipITs=true` |
+| `db-postgres` | Failsafe/Testcontainers | ausgeschlossen |
+| `db-mssql` | Failsafe/Testcontainers | ausgeschlossen |
+| `db-oracle` | Failsafe/Testcontainers | ausgeschlossen |
+| `real-llm` | Surefire/Failsafe | ausgeschlossen |
+
+Der verbindliche Befehlskatalog sowie Browsermatrix, Accessibility-Prüfung und
+Screenshot-Verfahren stehen in
+[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
 
 ---
 

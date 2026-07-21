@@ -84,11 +84,15 @@ cd Taxonomy
 # Compile all 5 modules (~5 seconds)
 mvn compile
 
-# Run all tests (~60 seconds, no Docker needed)
-mvn test
-
-# Run including integration tests (requires Docker)
+# Run the complete deterministic lifecycle (no Docker needed)
 mvn verify
+
+# Run one explicit Testcontainers scenario (Docker required)
+mvn -B -pl taxonomy-app -am install -DskipTests
+mvn -B -pl taxonomy-app failsafe:integration-test failsafe:verify \
+  -DskipITs=false -Dit.test=DiagnosticsContainerIT \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
 
 # Start locally (browse-only, no API key needed)
 mvn -pl taxonomy-app spring-boot:run
@@ -191,59 +195,67 @@ The main Spring Boot application:
 
 ## Running Tests
 
+The root POM keeps `mvn verify` deterministic and bounded. It runs unit, Spring,
+architecture, contract, and dependency-hygiene tests without Docker or live LLM
+calls. Failsafe/Testcontainers tests are selected explicitly.
+
 ```bash
-# All unit + Spring context tests (no Docker needed)
-mvn test
-
-# Tests for a single module
-mvn test -pl taxonomy-dsl
-mvn test -pl taxonomy-app
-
-# Tests for a single class
-mvn test -pl taxonomy-app -Dtest=TaxonomyApplicationTests
-
-# Integration tests (requires Docker for Testcontainers)
+# Complete standard lifecycle (no Docker)
 mvn verify
 
-# Screenshot generation (requires Docker + optionally GEMINI_API_KEY)
-mvn package -DskipTests
-mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
+# One module or test class
+mvn test -pl taxonomy-dsl
+mvn test -pl taxonomy-app -Dtest=TaxonomyApplicationTests
+
+# Prepare the reactor for an isolated integration test
+mvn -B -pl taxonomy-app -am install -DskipTests
+
+# One core Testcontainers scenario
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test=ProductionPersistenceRestartIT \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
 ```
 
-### External Database Integration Tests
+### External database compatibility
 
-The project includes integration tests that verify the application works correctly against PostgreSQL, Microsoft SQL Server, and Oracle databases. PostgreSQL and MSSQL tests run as part of the default `mvn verify` build (requires Docker). Oracle tests are **opt-in** — tagged with `db-oracle` and excluded by default. To run specific database tests:
+PostgreSQL, Microsoft SQL Server, and Oracle tests are ordinary Maven
+Failsafe/Testcontainers tests, but all three `db-*` tags are excluded from the
+standard lifecycle. Relevant database-configuration pull requests run the
+bounded PostgreSQL diagnostics/Selenium pair. Scheduled and manual workflows
+cover the selected full matrix.
 
 ```bash
-# Run only PostgreSQL integration tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Postgres*IT"
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test='*Postgres*IT' \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm
 
-# Run only MSSQL integration tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Mssql*IT"
-
-# Run only Oracle integration tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Oracle*IT"
-
-# Run ALL external database tests
-mvn verify -DexcludedGroups=real-llm
-
-# Run all Selenium + external-db tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="Selenium*ContainerIT"
+# Substitute *Mssql*IT or *Oracle*IT for another family.
 ```
 
-**Architecture:** Each external-database test class inherits from `AbstractDatabaseContainerIT` (REST/diagnostics tests) or `AbstractSeleniumContainerIT` (Selenium UI tests). The base classes hold all test logic; DB-specific subclasses are ~30 lines of configuration that specify the database container and the JDBC env vars to pass to the app container.
+`-DexcludedGroups=real-llm` deliberately includes the database tags while still
+excluding live LLM calls. Test classes inherit from
+`AbstractDatabaseContainerIT` or `AbstractSeleniumContainerIT`; application and
+database containers share a Testcontainers network and receive the selected
+Spring profile and JDBC settings through environment variables.
 
-**How it works:** The application JAR is built once and runs in a Docker container (`eclipse-temurin:21-jre`). A database container (PostgreSQL, MSSQL, or Oracle) runs on the same Docker network. The app container receives `SPRING_PROFILES_ACTIVE` (e.g. `mssql` or `postgres`) to activate the database-specific Spring profile, plus env vars like `TAXONOMY_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, etc. to override specific connection settings.
-
-Test file naming conventions:
-
-| Pattern | Runner | Description |
+| Pattern/tag | Runner | Standard lifecycle |
 |---|---|---|
-| `*Test.java`, `*Tests.java` | maven-surefire-plugin | Unit and Spring context tests |
-| `*IT.java` | maven-failsafe-plugin | Integration tests (require Docker) |
-| `@Tag("db-postgres")` | maven-failsafe-plugin | PostgreSQL tests (included by default) |
-| `@Tag("db-mssql")` | maven-failsafe-plugin | MSSQL tests (included by default) |
-| `@Tag("db-oracle")` | maven-failsafe-plugin | Oracle tests (excluded by default) |
+| `*Test.java`, `*Tests.java` | Surefire | Included |
+| `*IT.java` | Failsafe | Skipped while `skipITs=true` |
+| `db-postgres` | Failsafe/Testcontainers | Excluded |
+| `db-mssql` | Failsafe/Testcontainers | Excluded |
+| `db-oracle` | Failsafe/Testcontainers | Excluded |
+| `real-llm` | Surefire/Failsafe | Excluded |
+
+The authoritative command catalogue, browser matrix, accessibility audit, and
+screenshot procedure are maintained in
+[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
 
 ---
 
