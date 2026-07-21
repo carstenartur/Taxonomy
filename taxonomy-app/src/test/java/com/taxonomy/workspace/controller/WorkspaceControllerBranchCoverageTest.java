@@ -55,7 +55,7 @@ class WorkspaceControllerBranchCoverageTest {
         controller = new WorkspaceController(workspaceManager, workspaceResolver, contextCompareService,
                 contextHistoryService, contextNavigationService, syncIntegrationService,
                 workspaceProjectionService, systemRepositoryService);
-        when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
+        org.mockito.Mockito.lenient().when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
     }
 
     @Test
