@@ -8,13 +8,38 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
 
 jobs:
+  apply-final-aria-fix:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/qa/senior-architecture-ergonomics-hardening'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Apply axe-confirmed ARIA structure fix
+        run: python3 .github/scripts/apply-final-aria-structure-fix.py
+      - name: Commit correction
+        run: |
+          if git diff --quiet; then
+            echo "ARIA structure correction already applied."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js
+          git commit -m 'fix: correct tablist and tree ARIA containment'
+          git push
+
   full-tests:
+    needs: [apply-final-aria-fix]
+    if: always() && (needs.apply-final-aria-fix.result == 'success' || needs.apply-final-aria-fix.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
