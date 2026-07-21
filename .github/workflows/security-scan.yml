@@ -1,0 +1,57 @@
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**/pom.xml'
+      - 'Dockerfile'
+      - 'docker-compose*.yml'
+      - '.github/workflows/**'
+      - '.github/scripts/**'
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  trivy:
+    name: Trivy dependencies, secrets, and configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build application for packaged dependency inspection
+        run: mvn -B -pl taxonomy-app -am package -DskipTests
+
+      - name: Scan repository and packaged application
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: '1'
+
+      - name: Upload SARIF to GitHub code scanning
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: taxonomy-trivy
+
+      - name: Archive scanner evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trivy-security-scan
+          path: trivy-results.sarif
+          if-no-files-found: warn
+          retention-days: 90
