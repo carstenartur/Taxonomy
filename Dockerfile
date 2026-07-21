@@ -62,4 +62,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
 # rebuilding the image.
 ENV JAVA_OPTS="-XX:+UseSerialGC -Xss512k -XX:MaxRAMPercentage=50.0 -Xmx220m"
 USER taxonomy
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+STOPSIGNAL SIGTERM
+# exec replaces the shell with the JVM so Java becomes PID 1 and receives
+# Docker's SIGTERM directly. This allows Spring, HikariCP, HSQLDB and Lucene to
+# close cleanly before a replacement container opens the persisted data again.
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
