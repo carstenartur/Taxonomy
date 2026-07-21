@@ -1472,29 +1472,6 @@
 <script th:src="@{/js/api/analysis-api.js}"></script>
 <script th:src="@{/js/core/taxonomy-state.js}"></script>
 <script th:src="@{/js/core/taxonomy-views.js}"></script>
-<script>
-    /* ── CSRF token support for fetch() ──────────────────────────────────────────
-       Reads the Spring Security CSRF token from meta tags and automatically
-       attaches it to all non-GET/HEAD fetch requests. */
-    (function() {
-        const csrfToken  = document.querySelector('meta[name="_csrf"]')?.content;
-        const csrfHeader = document.querySelector('meta[name="_csrf_header"]')?.content;
-        if (!csrfToken || !csrfHeader) return;
-        const originalFetch = window.fetch;
-        window.fetch = function(url, init) {
-            init = init || {};
-            const method = (init.method || 'GET').toUpperCase();
-            if (method !== 'GET' && method !== 'HEAD') {
-                init.headers = init.headers instanceof Headers
-                    ? init.headers : new Headers(init.headers || {});
-                if (!init.headers.has(csrfHeader)) {
-                    init.headers.set(csrfHeader, csrfToken);
-                }
-            }
-            return originalFetch.call(this, url, init);
-        };
-    })();
-</script>
 <script th:src="@{/js/workspace/taxonomy-git-status.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-workspace-sync.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-workspace-provisioning.js}"></script>
@@ -1503,6 +1480,7 @@
 <script th:src="@{/js/versioning/taxonomy-history-search.js}"></script>
 <script th:src="@{/js/versioning/taxonomy-context-compare.js}"></script>
 <script th:src="@{/js/versioning/taxonomy-context-transfer.js}"></script>
+<script th:src="@{/js/versioning/taxonomy-recognition-assistance.js}"></script>
 <script th:src="@{/js/shared/taxonomy-action-guards.js}"></script>
 <script th:src="@{/js/workspace/taxonomy-merge-resolution.js}"></script>
 <script th:src="@{/js/shared/taxonomy-operation-result.js}"></script>
