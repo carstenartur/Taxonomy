@@ -329,10 +329,10 @@ const themeCompartment = new Compartment();
 // ── Light-mode syntax highlighting ────────────────────────────────────
 const taxDslLightHighlight = syntaxHighlighting(HighlightStyle.define([
     { tag: tags.keyword,         color: '#7c3aed', fontWeight: 'bold' },  // Purple — element, relation, meta, view…
-    { tag: tags.typeName,        color: '#d97706' },                       // Orange — Capability, Service, Process…
+    { tag: tags.typeName,        color: '#92400e' },                       // Orange — Capability, Service, Process…
     { tag: tags.operatorKeyword, color: '#dc2626', fontWeight: 'bold' },   // Red — REALIZES, SUPPORTS, USES…
-    { tag: tags.propertyName,    color: '#059669' },                       // Teal — title, description, status…
-    { tag: tags.string,          color: '#16a34a' },                       // Green — "Secure Voice Communications"
+    { tag: tags.propertyName,    color: '#047857' },                       // Teal — title, description, status…
+    { tag: tags.string,          color: '#166534' },                       // Green — "Secure Voice Communications"
     { tag: tags.comment,         color: '#6b7280', fontStyle: 'italic' },  // Grey italic — # comment
     { tag: tags.variableName,    color: '#2563eb' },                       // Blue — CP-1023, BP-1327, REQ-001
     { tag: tags.number,          color: '#0891b2' },                       // Cyan — 0.85, 42
@@ -438,6 +438,12 @@ document.addEventListener('DOMContentLoaded', () => {
         ],
         parent: container
     });
+
+    // CodeMirror keeps scrolling on a separate DOM node. Make that region
+    // keyboard reachable and explicitly named instead of excluding it from axe.
+    view.scrollDOM.tabIndex = 0;
+    view.scrollDOM.setAttribute('role', 'region');
+    view.scrollDOM.setAttribute('aria-label', 'TaxDSL editor scroll area');
 
     window.dslCmView = view;
     container.dispatchEvent(new CustomEvent('cm-ready'));
