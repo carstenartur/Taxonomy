@@ -1,0 +1,94 @@
+package com.taxonomy.shared.extension.runtime;
+
+import com.taxonomy.export.spi.ExportContext;
+import com.taxonomy.export.spi.ExportFormatDescriptor;
+import com.taxonomy.export.spi.ExportFormatExtension;
+import com.taxonomy.export.spi.ExportResult;
+import com.taxonomy.shared.extension.ExtensionDescriptor;
+import com.taxonomy.shared.extension.ExtensionKind;
+import com.taxonomy.shared.extension.TaxonomyExtension;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class ExtensionRegistryTest {
+
+    @Test
+    void listByKindExposesSerializableDescriptorsWithoutImplementationTypes() {
+        ExtensionRegistry registry = new ExtensionRegistry(List.of(
+                new StubExportFormatExtension("mermaid", "Mermaid"),
+                new StubExtension("gemini", "Gemini", "Cloud provider", ExtensionKind.LLM_PROVIDER)));
+
+        assertThat(registry.listByKind(ExtensionKind.EXPORT_FORMAT))
+                .containsExactly(new ExtensionDescriptor(
+                        "mermaid", "Mermaid", "Exports diagrams as Mermaid",
+                        ExtensionKind.EXPORT_FORMAT));
+        assertThat(registry.findDescriptor(ExtensionKind.LLM_PROVIDER, "GEMINI"))
+                .contains(new ExtensionDescriptor(
+                        "gemini", "Gemini", "Cloud provider", ExtensionKind.LLM_PROVIDER));
+    }
+
+    @Test
+    void duplicateIdsAreValidatedPerKind() {
+        StubExtension first = new StubExtension(
+                "mermaid", "Mermaid", "", ExtensionKind.EXPORT_FORMAT);
+        AlternativeStubExtension second = new AlternativeStubExtension(
+                "MERMAID", "Mermaid 2", "", ExtensionKind.EXPORT_FORMAT);
+        assertThatThrownBy(() -> new ExtensionRegistry(List.of(first, second)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Duplicate extension ID")
+                .hasMessageContaining("EXPORT_FORMAT")
+                .hasMessageContaining("normalized ID 'mermaid'");
+    }
+
+    @Test
+    void descriptorsAreSortedAndIdsMayRepeatAcrossDifferentKinds() {
+        ExtensionRegistry registry = new ExtensionRegistry(List.of(
+                new StubExtension("zeta", "Zeta", "", ExtensionKind.EXPORT_FORMAT),
+                new StubExtension("alpha", "Alpha", "", ExtensionKind.EXPORT_FORMAT),
+                new StubExtension("Beta", "Beta", "", ExtensionKind.EXPORT_FORMAT),
+                new StubExtension("shared", "Report Shared", "", ExtensionKind.REPORT_RENDERER)));
+        assertThat(registry.listByKind(ExtensionKind.EXPORT_FORMAT))
+                .extracting(ExtensionDescriptor::id)
+                .containsExactly("alpha", "Beta", "zeta");
+        assertThat(registry.getRequiredDescriptor(
+                ExtensionKind.REPORT_RENDERER, "shared").displayName())
+                .isEqualTo("Report Shared");
+    }
+
+    private record StubExtension(
+            String id,
+            String displayName,
+            String description,
+            ExtensionKind kind) implements TaxonomyExtension {
+    }
+
+    private record AlternativeStubExtension(
+            String id,
+            String displayName,
+            String description,
+            ExtensionKind kind) implements TaxonomyExtension {
+    }
+
+    private static final class StubExportFormatExtension implements ExportFormatExtension {
+        private final ExportFormatDescriptor descriptor;
+
+        private StubExportFormatExtension(String id, String displayName) {
+            descriptor = new ExportFormatDescriptor(
+                    id, displayName, "mmd", "text/plain", false);
+        }
+
+        @Override
+        public ExportFormatDescriptor descriptor() {
+            return descriptor;
+        }
+
+        @Override
+        public ExportResult export(ExportContext context) {
+            return new ExportResult(new byte[0]);
+        }
+    }
+}
