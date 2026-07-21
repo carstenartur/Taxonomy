@@ -50,29 +50,64 @@ def is_excepted(component: dict, exceptions: list[dict]) -> bool:
     )
 
 
-def materialize_requested_sbom(requested: Path) -> Path:
-    """Copy the application-module SBOM to the documented aggregate path when needed."""
-    if requested.is_file():
-        return requested
+def read_components(path: Path) -> list[dict]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    components = data.get("components")
+    if not isinstance(components, list) or not components:
+        raise ValueError(f"SBOM contains no dependency components: {path}")
+    return components
 
-    candidates = sorted(Path.cwd().glob("*/target/taxonomy-sbom.json"))
-    candidates.sort(key=lambda path: (path.parts[0] != "taxonomy-app", path.as_posix()))
-    if not candidates:
-        raise FileNotFoundError(
-            f"SBOM not found at {requested} and no module SBOM was generated under */target"
-        )
 
-    source = candidates[0]
-    requested.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, requested)
+def candidate_sboms(requested: Path) -> list[Path]:
+    candidates: list[Path] = []
+    for candidate in (
+        requested,
+        Path("taxonomy-app/target/taxonomy-sbom.json"),
+        Path("taxonomy-app/target/bom.json"),
+        Path("target/bom.json"),
+    ):
+        if candidate.is_file() and candidate not in candidates:
+            candidates.append(candidate)
 
-    source_xml = source.with_suffix(".xml")
-    requested_xml = requested.with_suffix(".xml")
-    if source_xml.is_file():
-        shutil.copyfile(source_xml, requested_xml)
+    for pattern in ("*/target/taxonomy-sbom.json", "*/target/bom.json"):
+        for candidate in sorted(Path.cwd().glob(pattern)):
+            if candidate.is_file() and candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
 
-    print(f"Materialized packaged application SBOM: {source} -> {requested}")
-    return requested
+
+def materialize_requested_sbom(requested: Path) -> tuple[Path, list[dict]]:
+    errors: list[str] = []
+    for candidate in candidate_sboms(requested):
+        try:
+            components = read_components(candidate)
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            errors.append(f"{candidate}: {error}")
+            continue
+
+        if candidate.resolve() != requested.resolve():
+            requested.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(candidate, requested)
+            candidate_xml = candidate.with_suffix(".xml")
+            requested_xml = requested.with_suffix(".xml")
+            if candidate_xml.is_file():
+                shutil.copyfile(candidate_xml, requested_xml)
+            print(f"Materialized packaged application SBOM: {candidate} -> {requested}")
+        return requested, components
+
+    details = "; ".join(errors) if errors else "no candidate files found"
+    raise FileNotFoundError(f"no usable CycloneDX SBOM available ({details})")
+
+
+def write_failure_report(report_path: Path, error: Exception) -> None:
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report = (
+        "Taxonomy packaged dependency hygiene\n\n"
+        f"Policy evaluation error: {type(error).__name__}: {error}\n\n"
+        "Result: FAIL\n"
+    )
+    report_path.write_text(report, encoding="utf-8")
+    print(report, end="")
 
 
 def main() -> int:
@@ -82,10 +117,14 @@ def main() -> int:
     parser.add_argument("--exceptions", default=".github/dependency-hygiene-exceptions.json")
     parser.add_argument("--report", default="target/dependency-hygiene-report.txt")
     args = parser.parse_args()
+    report_path = Path(args.report)
 
-    sbom_path = materialize_requested_sbom(Path(args.sbom))
-    exceptions = load_exceptions(Path(args.exceptions))
-    components = json.loads(sbom_path.read_text(encoding="utf-8")).get("components", [])
+    try:
+        _, components = materialize_requested_sbom(Path(args.sbom))
+        exceptions = load_exceptions(Path(args.exceptions))
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        write_failure_report(report_path, error)
+        return 1
 
     banned: list[dict] = []
     pdfbox_components: list[dict] = []
@@ -138,8 +177,8 @@ def main() -> int:
     lines.append("")
     lines.append("Result: FAIL" if failed else "Result: PASS")
     report = "\n".join(lines) + "\n"
-    Path(args.report).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.report).write_text(report, encoding="utf-8")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(report, encoding="utf-8")
     print(report, end="")
     return 1 if failed else 0
 
