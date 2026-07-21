@@ -13,7 +13,6 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 
@@ -34,10 +33,10 @@ public class KeycloakSecurityConfig {
     private final KeycloakAuthenticationEntryPoint authenticationEntryPoint;
 
     public KeycloakSecurityConfig(AuthorizationRulesConfigurer authRules,
-                                  KeycloakJwtAuthConverter jwtAuthConverter,
-                                  KeycloakOidcUserService oidcUserService,
-                                  KeycloakLogoutHandler logoutHandler,
-                                  KeycloakAuthenticationEntryPoint authenticationEntryPoint) {
+                                   KeycloakJwtAuthConverter jwtAuthConverter,
+                                   KeycloakOidcUserService oidcUserService,
+                                   KeycloakLogoutHandler logoutHandler,
+                                   KeycloakAuthenticationEntryPoint authenticationEntryPoint) {
         this.authRules = authRules;
         this.jwtAuthConverter = jwtAuthConverter;
         this.oidcUserService = oidcUserService;
@@ -49,7 +48,7 @@ public class KeycloakSecurityConfig {
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         RequestMatcher csrfExempt = new OrRequestMatcher(
                 KeycloakSecurityConfig::isStatelessBearerApiClient,
-                new AntPathRequestMatcher("/login/oauth2/code/**"));
+                KeycloakSecurityConfig::isOAuth2Callback);
 
         http
             .authorizeHttpRequests(auth -> authRules.configure(auth))
@@ -79,5 +78,9 @@ public class KeycloakSecurityConfig {
         String authorization = request.getHeader("Authorization");
         return authorization != null
                 && authorization.regionMatches(true, 0, "Bearer ", 0, 7);
+    }
+
+    private static boolean isOAuth2Callback(HttpServletRequest request) {
+        return request.getRequestURI().startsWith("/login/oauth2/code/");
     }
 }
