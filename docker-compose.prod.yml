@@ -20,7 +20,7 @@ services:
     # Or use the published image instead of building locally:
     # image: ghcr.io/carstenartur/taxonomy:latest
     environment:
-      - SPRING_PROFILES_ACTIVE=hsqldb
+      - SPRING_PROFILES_ACTIVE=production,hsqldb
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
