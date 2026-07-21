@@ -1,0 +1,34 @@
+name: Apply Template Hardening
+
+on:
+  push:
+    branches:
+      - qa/senior-architecture-ergonomics-hardening
+    paths:
+      - '.github/scripts/apply-template-hardening.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.repository == 'carstenartur/Taxonomy'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: qa/senior-architecture-ergonomics-hardening
+          fetch-depth: 0
+      - name: Patch template
+        run: python3 .github/scripts/apply-template-hardening.py
+      - name: Commit source changes
+        run: |
+          if git diff --quiet; then
+            echo 'Template hardening already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add taxonomy-app/src/main/resources/templates/index.html
+          git commit -m 'refactor: extract template security and recognition behavior'
+          git push origin HEAD:qa/senior-architecture-ergonomics-hardening
