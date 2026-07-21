@@ -56,7 +56,7 @@ class ExternalSyncControllerBranchCoverageTest {
         assertThat(configurationFailure.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(configurationFailure.getBody()).containsEntry("error", "Configuration error");
 
-        when(externalGitSyncService.fetchFromExternal()).thenThrow(new IOException("network"));
+        doThrow(new IOException("network")).when(externalGitSyncService).fetchFromExternal();
         var unexpectedFailure = controller.fetchFromExternal();
         assertThat(unexpectedFailure.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(unexpectedFailure.getBody()).containsEntry("error", "Fetch failed");
@@ -90,7 +90,7 @@ class ExternalSyncControllerBranchCoverageTest {
         when(externalGitSyncService.fullSync("alice")).thenThrow(new IllegalStateException("disabled"));
         assertThat(controller.fullSync().getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
-        when(externalGitSyncService.fullSync("alice")).thenThrow(new IOException("network"));
+        doThrow(new IOException("network")).when(externalGitSyncService).fullSync("alice");
         assertThat(controller.fullSync().getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
