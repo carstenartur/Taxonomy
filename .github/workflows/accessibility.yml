@@ -8,6 +8,9 @@ on:
       - 'taxonomy-app/src/main/resources/static/**'
       - 'taxonomy-app/src/main/java/com/taxonomy/**/controller/**'
       - 'taxonomy-app/src/main/java/com/taxonomy/security/**'
+      - 'taxonomy-app/src/main/java/com/taxonomy/versioning/**'
+      - 'taxonomy-export/**'
+      - 'taxonomy-extension-api/**'
       - '.github/scripts/accessibility-audit.mjs'
       - '.github/workflows/accessibility.yml'
   push:
@@ -41,7 +44,11 @@ jobs:
           node-version: '24'
 
       - name: Build application
-        run: mvn -q -pl taxonomy-app -am package -DskipTests
+        shell: bash
+        run: |
+          set -o pipefail
+          mvn -B -pl taxonomy-app -am package -DskipTests \
+            2>&1 | tee /tmp/taxonomy-a11y-build.log
 
       - name: Start application
         env:
@@ -78,10 +85,13 @@ jobs:
           TAXONOMY_A11Y_PASSWORD: a11y-test-password
         run: node .github/scripts/accessibility-audit.mjs
 
-      - name: Upload application log on failure
+      - name: Upload diagnostic logs on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: accessibility-application-log
-          path: /tmp/taxonomy-a11y.log
+          name: accessibility-diagnostic-logs
+          path: |
+            /tmp/taxonomy-a11y-build.log
+            /tmp/taxonomy-a11y.log
+          if-no-files-found: ignore
           retention-days: 14
