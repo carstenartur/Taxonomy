@@ -12,7 +12,6 @@ import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
 import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,8 +42,6 @@ class HypothesisDslIntegrityTest {
     @Mock
     private DslGitRepositoryFactory repositoryFactory;
     @Mock
-    private WorkspaceContextResolver contextResolver;
-    @Mock
     private DslGitRepository workspaceRepository;
 
     private HypothesisService service;
@@ -56,8 +53,7 @@ class HypothesisDslIntegrityTest {
                 evidenceRepository,
                 relationService,
                 nodeRepository,
-                repositoryFactory,
-                contextResolver);
+                repositoryFactory);
         when(hypothesisRepository.findBySourceNodeIdAndTargetNodeIdAndRelationType(
                 anyString(), anyString(), any())).thenReturn(List.of());
         when(hypothesisRepository.save(any(RelationHypothesis.class)))
