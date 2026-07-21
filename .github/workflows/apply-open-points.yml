@@ -20,8 +20,24 @@ jobs:
           ref: qa/complete-open-points
           fetch-depth: 0
 
+      - name: Configure branch commit identity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
       - name: Apply repository patches
-        run: python3 .github/scripts/apply-open-points.py
+        run: |
+          set +e
+          python3 .github/scripts/apply-open-points.py > /tmp/apply-open-points.log 2>&1
+          status=$?
+          cat /tmp/apply-open-points.log
+          if [ "$status" -ne 0 ]; then
+            cp /tmp/apply-open-points.log .github/apply-open-points-error.log
+            git add .github/apply-open-points-error.log
+            git commit -m 'chore: record QA migration diagnostic'
+            git push origin HEAD:qa/complete-open-points
+            exit "$status"
+          fi
 
       - name: Validate generated sources
         run: |
@@ -36,8 +52,7 @@ jobs:
 
       - name: Commit final branch state
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          rm -f .github/apply-open-points-error.log
           git add -A
           git commit -m 'qa: complete database, dependency, UX, accessibility, and CI hardening'
           git push origin HEAD:qa/complete-open-points
