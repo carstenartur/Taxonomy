@@ -2,7 +2,8 @@ name: CI / CD
 
 on:
   push:
-    branches: [ "**" ]
+    branches-ignore: [ gh-pages ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -11,8 +12,6 @@ permissions:
   contents: read
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/taxonomy
   BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
 
 jobs:
@@ -44,6 +43,13 @@ jobs:
         env:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+
+      - name: Enforce aggregate JaCoCo coverage
+        run: |
+          python3 .github/scripts/check-coverage.py \
+            --minimum 0.81 \
+            --report target/coverage-gate.txt
+          cat target/coverage-gate.txt >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify packaged dependency hygiene
         run: |
@@ -83,6 +89,7 @@ jobs:
             target/taxonomy-vex.json
             target/dependency-hygiene-tree.txt
             target/dependency-hygiene-report.txt
+            target/coverage-gate.txt
             models/bge-small-en-v1.5/MODEL_PROVENANCE.txt
           if-no-files-found: warn
           retention-days: 90
@@ -127,18 +134,23 @@ jobs:
 
           covered = missed = 0
           try:
-              for path in glob.glob('**/target/site/jacoco/jacoco.xml', recursive=True):
+              reports = glob.glob('**/target/site/jacoco/jacoco.xml', recursive=True)
+              for path in reports:
                   root = ET.parse(path).getroot()
-                  for counter in root.iter('counter'):
-                      if counter.get('type') == 'INSTRUCTION':
-                          covered += int(counter.get('covered', 0))
-                          missed += int(counter.get('missed', 0))
+                  counter = next((item for item in root.findall('counter')
+                                  if item.get('type') == 'INSTRUCTION'), None)
+                  if counter is None:
+                      raise ValueError(f'No report-level instruction counter in {path}')
+                  covered += int(counter.get('covered', 0))
+                  missed += int(counter.get('missed', 0))
               total = covered + missed
-              percentage = round(covered / total * 100) if total else 0
-              color = 'brightgreen' if percentage >= 80 else 'yellow' if percentage >= 60 else 'red'
+              ratio = covered / total if total else 0.0
+              color = 'brightgreen' if ratio >= 0.81 else 'yellow' if ratio >= 0.60 else 'red'
               coverage_badge = {
-                  'schemaVersion': 1, 'label': 'coverage',
-                  'message': f'{percentage}%', 'color': color,
+                  'schemaVersion': 1,
+                  'label': 'coverage',
+                  'message': f'{ratio * 100:.2f}%' if total else 'unknown',
+                  'color': color if total else 'lightgrey',
               }
           except Exception as error:
               print(f'Coverage badge generation failed: {error}')
@@ -193,6 +205,9 @@ jobs:
           if [ -d taxonomy-app/target/site/jacoco ]; then
             cp -a taxonomy-app/target/site/jacoco/. target/quality-reports/coverage/
           fi
+          if [ -f target/coverage-gate.txt ]; then
+            cp target/coverage-gate.txt target/quality-reports/coverage/coverage-gate.txt
+          fi
 
       - name: Upload report publication artifact
         uses: actions/upload-artifact@v7
@@ -217,115 +232,3 @@ jobs:
           name: app-jar
           path: taxonomy-app/target/taxonomy-app-*.jar
           retention-days: 1
-
-  publish-reports:
-    name: Publish reports
-    needs: build-and-test
-    if: >-
-      github.event_name == 'push' &&
-      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    concurrency:
-      group: taxonomy-quality-report-publication
-      cancel-in-progress: false
-    steps:
-      - name: Download verified report artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: quality-reports
-          path: quality-reports
-
-      - name: Publish test report to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        if: hashFiles('quality-reports/tests/surefire-report.html') != ''
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: quality-reports/tests
-          destination_dir: tests
-          keep_files: true
-          user_name: github-actions[bot]
-          user_email: github-actions[bot]@users.noreply.github.com
-          commit_message: 'Deploy Surefire test report ${{ github.sha }}'
-
-      - name: Publish coverage report to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        if: hashFiles('quality-reports/coverage/**') != ''
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: quality-reports/coverage
-          destination_dir: coverage
-          keep_files: true
-          user_name: github-actions[bot]
-          user_email: github-actions[bot]@users.noreply.github.com
-          commit_message: 'Deploy JaCoCo coverage report ${{ github.sha }}'
-
-  publish-image:
-    name: Publish Docker Image
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    if: >
-      github.event_name == 'push' &&
-      (
-        github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ||
-        startsWith(github.ref, 'refs/tags/v')
-      )
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=tag
-            type=sha,prefix=sha-
-            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
-          annotations: |
-            org.opencontainers.image.title=Taxonomy Architecture Analyzer
-            org.opencontainers.image.description=Spring Boot web application for C3-taxonomy catalogue analysis
-            org.opencontainers.image.licenses=MIT
-            org.opencontainers.image.vendor=Carsten Hammer
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
-            VCS_REF=${{ github.sha }}
-            VERSION=${{ steps.meta.outputs.version }}
-
-  deploy-render:
-    name: Deploy to Render
-    needs: publish-image
-    runs-on: ubuntu-latest
-    if: >
-      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
-      github.event_name == 'push'
-    steps:
-      - name: Trigger Render deploy hook
-        env:
-          HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        if: ${{ env.HOOK_URL != '' }}
-        run: |
-          curl -fsSL --retry 3 "$HOOK_URL"
-          echo "Render deployment triggered."
