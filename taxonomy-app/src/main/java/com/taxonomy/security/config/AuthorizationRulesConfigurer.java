@@ -32,6 +32,11 @@ public class AuthorizationRulesConfigurer {
             auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").authenticated();
         }
 
+        // The UI uses these endpoints to decide whether to show the admin lock.
+        // They must be reachable by authenticated non-admin users, but never grant
+        // additional privileges; the controller derives the result from ROLE_ADMIN.
+        auth.requestMatchers("/api/admin/status", "/api/admin/verify").authenticated();
+
         // Administrative surfaces. These checks are also repeated inside the
         // controller as defense in depth for diagnostics and prompt mutation.
         auth.requestMatchers("/admin/**", "/api/admin/**", "/api/preferences/**",
