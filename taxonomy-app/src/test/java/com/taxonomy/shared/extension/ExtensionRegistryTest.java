@@ -1,9 +1,9 @@
 package com.taxonomy.shared.extension;
 
-import com.taxonomy.export.service.ExportContext;
-import com.taxonomy.export.service.ExportFormatDescriptor;
-import com.taxonomy.export.service.ExportFormatExtension;
-import com.taxonomy.export.service.ExportResult;
+import com.taxonomy.export.spi.ExportContext;
+import com.taxonomy.export.spi.ExportFormatDescriptor;
+import com.taxonomy.export.spi.ExportFormatExtension;
+import com.taxonomy.export.spi.ExportResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -11,9 +11,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Unit tests for {@link ExtensionRegistry}.
- */
 class ExtensionRegistryTest {
 
     @Test
@@ -28,31 +25,24 @@ class ExtensionRegistryTest {
                         "mermaid",
                         "Mermaid",
                         "Exports diagrams as Mermaid",
-                        ExtensionKind.EXPORT_FORMAT
-                ));
+                        ExtensionKind.EXPORT_FORMAT));
 
         assertThat(registry.findDescriptor(ExtensionKind.LLM_PROVIDER, "GEMINI"))
                 .contains(new ExtensionDescriptor(
                         "gemini",
                         "Gemini",
                         "Cloud provider",
-                        ExtensionKind.LLM_PROVIDER
-                ));
+                        ExtensionKind.LLM_PROVIDER));
     }
 
     @Test
     void duplicateIdsAreValidatedPerKind() {
-        StubExtension first = new StubExtension("mermaid", "Mermaid", "", ExtensionKind.EXPORT_FORMAT);
+        StubExtension first = new StubExtension(
+                "mermaid", "Mermaid", "", ExtensionKind.EXPORT_FORMAT);
         AlternativeStubExtension second = new AlternativeStubExtension(
-                "MERMAID",
-                "Mermaid 2",
-                "",
-                ExtensionKind.EXPORT_FORMAT
-        );
-        assertThatThrownBy(() -> new ExtensionRegistry(List.of(
-                first,
-                second
-        )))
+                "MERMAID", "Mermaid 2", "", ExtensionKind.EXPORT_FORMAT);
+
+        assertThatThrownBy(() -> new ExtensionRegistry(List.of(first, second)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Duplicate extension ID")
                 .hasMessageContaining("EXPORT_FORMAT")
@@ -92,16 +82,14 @@ class ExtensionRegistryTest {
             String id,
             String displayName,
             String description,
-            ExtensionKind kind
-    ) implements TaxonomyExtension {
+            ExtensionKind kind) implements TaxonomyExtension {
     }
 
     private record AlternativeStubExtension(
             String id,
             String displayName,
             String description,
-            ExtensionKind kind
-    ) implements TaxonomyExtension {
+            ExtensionKind kind) implements TaxonomyExtension {
     }
 
     private static final class StubExportFormatExtension implements ExportFormatExtension {
@@ -109,7 +97,8 @@ class ExtensionRegistryTest {
         private final ExportFormatDescriptor descriptor;
 
         private StubExportFormatExtension(String id, String displayName) {
-            this.descriptor = new ExportFormatDescriptor(id, displayName, "mmd", "text/plain", false);
+            this.descriptor = new ExportFormatDescriptor(
+                    id, displayName, "mmd", "text/plain", false);
         }
 
         @Override
