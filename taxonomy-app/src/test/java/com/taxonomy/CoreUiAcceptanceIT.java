@@ -14,6 +14,7 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 
 import java.time.Duration;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -67,6 +68,7 @@ class CoreUiAcceptanceIT {
         driver.findElement(By.cssSelector("form")).submit();
 
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("mainNavTabs")));
+        dismissOnboardingWhenShown();
         wait.until(d -> {
             WebElement tree = d.findElement(By.id("taxonomyTree"));
             String rendered = tree.getAttribute("data-view-rendered");
@@ -97,5 +99,14 @@ class CoreUiAcceptanceIT {
         WebElement adminTab = driver.findElement(
                 By.cssSelector("#mainNavTabs .nav-link[data-page='admin']"));
         assertThat(adminTab.isDisplayed()).isTrue();
+    }
+
+    private void dismissOnboardingWhenShown() {
+        List<WebElement> dismissButtons = driver.findElements(By.id("onboardingDismiss"));
+        if (dismissButtons.isEmpty() || !dismissButtons.getFirst().isDisplayed()) {
+            return;
+        }
+        dismissButtons.getFirst().click();
+        wait.until(ExpectedConditions.invisibilityOfElementLocated(By.id("onboardingOverlay")));
     }
 }
