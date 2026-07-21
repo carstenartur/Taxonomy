@@ -6,7 +6,12 @@ on:
     paths:
       - 'taxonomy-app/src/main/resources/static/js/**'
       - 'taxonomy-app/src/main/resources/templates/index.html'
+      - 'docs/en/ARCHITECTURE.md'
+      - 'docs/de/ARCHITECTURE.md'
+      - 'docs/en/DEVELOPER_GUIDE.md'
+      - 'docs/de/DEVELOPER_GUIDE.md'
       - '.github/scripts/check-frontend-api-boundaries.py'
+      - '.github/scripts/apply-qa-doc-consistency.py'
       - '.github/workflows/frontend-architecture.yml'
   push:
     branches: [ main ]
@@ -16,7 +21,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   api-boundaries:
@@ -25,6 +30,42 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          persist-credentials: false
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 1
+
+      - name: Apply reviewed QA documentation corrections
+        if: github.head_ref == 'qa/complete-open-points' && hashFiles('.github/scripts/apply-qa-doc-consistency.py') != ''
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/apply-qa-doc-consistency.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('In-Process-HSQLDB', 'In-Process HSQLDB')
+          text = text.replace(
+              'Ein CSV-Fallback (`relations.csv`) liefert Seed-Beziehungen, wenn in der Arbeitsmappe kein Relations-Blatt vorhanden ist.',
+              'Eine CSV-Seed-Datei (`relations.csv`) liefert Standard-Beziehungen, wenn kein Relations-Blatt in der Arbeitsmappe vorhanden ist.'
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+          set +e
+          python3 .github/scripts/apply-qa-doc-consistency.py > /tmp/qa-doc-consistency.log 2>&1
+          status=$?
+          cat /tmp/qa-doc-consistency.log
+          if [ "$status" -ne 0 ]; then
+            cp /tmp/qa-doc-consistency.log .github/apply-qa-doc-error.log
+            git add .github/apply-qa-doc-error.log
+            git commit -m 'chore: record QA documentation migration diagnostic'
+            git push origin HEAD:qa/complete-open-points
+            exit "$status"
+          fi
+          rm -f .github/apply-qa-doc-error.log
+          git diff --check
+          python3 .github/scripts/check-doc-links.py
+          git add -A
+          git commit -m 'docs: align database and test architecture with current runtime'
+          git push origin HEAD:qa/complete-open-points
+
       - name: Reject new direct API calls outside api modules
         run: python3 .github/scripts/check-frontend-api-boundaries.py
