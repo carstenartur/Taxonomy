@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Apply the one-time Air-Gap browser asset migration on the QA hardening branch."""
+"""Apply the one-time Air-Gap browser asset migration on the QA hardening branch.
+
+The script is deliberately idempotent so reruns cannot duplicate dependencies or tags.
+"""
 
 from __future__ import annotations
 
