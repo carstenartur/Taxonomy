@@ -1,0 +1,53 @@
+name: Apply Final Database Documentation
+
+on:
+  push:
+    branches: [ qa/complete-open-points ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: qa/complete-open-points
+          fetch-depth: 0
+      - name: Correct final EN and DE HSQLDB statements
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          replacements = {
+              'docs/en/DATABASE_SETUP.md': [
+                  ('> **Note:** The default HSQLDB profile does **not** use HikariCP — it uses `SimpleDriverDataSource` to avoid connection pool overhead in single-JVM mode.',
+                   '> **Note:** The HSQLDB profile uses a small bounded HikariCP pool (`minimum-idle=1`, `maximum-pool-size=4`). The idle connection is required for a stable file-database lifecycle when `shutdown=true` is used.'),
+                  ('The taxonomy data is always loaded from the bundled Excel workbook at startup, so no data migration from HSQLDB is needed for the taxonomy itself. Architecture DSL data (Git repository) is stored in the database and will need to be re-created or migrated manually.',
+                   'An empty target database imports the bundled taxonomy workbook. A file-backed source database may also contain user relations, workspaces, hypotheses, and JGit architecture history; migrate those records explicitly when moving to another database backend.')],
+              'docs/de/DATABASE_SETUP.md': [
+                  ('> **Hinweis:** Das Standard-HSQLDB-Profil verwendet **kein** HikariCP — es nutzt `SimpleDriverDataSource`, um den Verbindungspool-Overhead im Einzeln-JVM-Modus zu vermeiden.',
+                   '> **Hinweis:** Das HSQLDB-Profil verwendet einen kleinen begrenzten HikariCP-Pool (`minimum-idle=1`, `maximum-pool-size=4`). Die Leerlaufverbindung ist für einen stabilen Lebenszyklus dateibasierter Datenbanken mit `shutdown=true` erforderlich.'),
+                  ('Die Taxonomiedaten werden beim Start immer aus der mitgelieferten Excel-Arbeitsmappe geladen, sodass für die Taxonomie selbst keine Datenmigration von HSQLDB erforderlich ist. Architektur-DSL-Daten (Git-Repository) werden in der Datenbank gespeichert und müssen manuell neu erstellt oder migriert werden.',
+                   'Eine leere Zieldatenbank importiert die mitgelieferte Taxonomie-Arbeitsmappe. Eine dateibasierte Quelldatenbank kann zusätzlich Benutzerrelationen, Workspaces, Hypothesen und JGit-Architekturhistorie enthalten; diese Datensätze müssen beim Wechsel des Datenbank-Backends explizit migriert werden.')]
+          }
+          for path, pairs in replacements.items():
+              file = Path(path)
+              text = file.read_text(encoding='utf-8')
+              for old, new in pairs:
+                  if old not in text and new not in text:
+                      raise SystemExit(f'Expected old or new statement in {path}')
+                  text = text.replace(old, new, 1)
+              file.write_text(text, encoding='utf-8')
+          PY
+      - name: Validate and commit
+        run: |
+          python3 .github/scripts/check-doc-links.py
+          git diff --check
+          rm -f .github/workflows/apply-final-database-docs.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'docs: correct final HSQLDB migration references'
+          git push origin HEAD:qa/complete-open-points
