@@ -6,12 +6,7 @@ on:
     paths:
       - 'taxonomy-app/src/main/resources/static/js/**'
       - 'taxonomy-app/src/main/resources/templates/index.html'
-      - 'docs/en/ARCHITECTURE.md'
-      - 'docs/de/ARCHITECTURE.md'
-      - 'docs/en/DEVELOPER_GUIDE.md'
-      - 'docs/de/DEVELOPER_GUIDE.md'
       - '.github/scripts/check-frontend-api-boundaries.py'
-      - '.github/scripts/apply-final-doc-alignment.py'
       - '.github/workflows/frontend-architecture.yml'
   push:
     branches: [ main ]
@@ -21,7 +16,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   api-boundaries:
@@ -30,20 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
-          fetch-depth: 1
-
-      - name: Apply final EN/DE architecture documentation alignment
-        if: github.head_ref == 'qa/complete-open-points' && hashFiles('.github/scripts/apply-final-doc-alignment.py') != ''
-        run: |
-          python3 .github/scripts/apply-final-doc-alignment.py
-          git diff --check
-          python3 .github/scripts/check-doc-links.py
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'docs: align database and test architecture with current runtime'
-          git push origin HEAD:qa/complete-open-points
-
+          persist-credentials: false
       - name: Reject new direct API calls outside api modules
         run: python3 .github/scripts/check-frontend-api-boundaries.py
