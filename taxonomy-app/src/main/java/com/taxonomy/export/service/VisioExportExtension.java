@@ -2,23 +2,20 @@ package com.taxonomy.export.service;
 
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
+import com.taxonomy.export.spi.ExportContext;
+import com.taxonomy.export.spi.ExportFormatDescriptor;
+import com.taxonomy.export.spi.ExportFormatExtension;
+import com.taxonomy.export.spi.ExportResult;
 import com.taxonomy.visio.VisioDocument;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 
-/**
- * {@link ExportFormatExtension} adapter for Visio (.vsdx) output.
- *
- * <p>Delegates to {@link VisioDiagramService} and {@link VisioPackageBuilder},
- * keeping both underlying services unchanged.  Any {@link IOException} from
- * the package builder is wrapped as {@link UncheckedIOException}.
- */
+/** Spring adapter for Visio VSDX output. */
 @Component
 public class VisioExportExtension implements ExportFormatExtension {
 
-    /** Stable format ID used for registry lookup. */
     public static final String FORMAT_ID = "visio";
 
     private static final ExportFormatDescriptor DESCRIPTOR = new ExportFormatDescriptor(
@@ -26,14 +23,13 @@ public class VisioExportExtension implements ExportFormatExtension {
             "Visio",
             "vsdx",
             "application/vnd.ms-visio.drawing.main+xml",
-            true
-    );
+            true);
 
     private final VisioDiagramService visioDiagramService;
     private final VisioPackageBuilder visioPackageBuilder;
 
     public VisioExportExtension(VisioDiagramService visioDiagramService,
-                                 VisioPackageBuilder visioPackageBuilder) {
+                                VisioPackageBuilder visioPackageBuilder) {
         this.visioDiagramService = visioDiagramService;
         this.visioPackageBuilder = visioPackageBuilder;
     }
@@ -45,9 +41,9 @@ public class VisioExportExtension implements ExportFormatExtension {
 
     @Override
     public ExportResult export(ExportContext context) {
-        VisioDocument doc = visioDiagramService.convert(context.diagram());
+        VisioDocument document = visioDiagramService.convert(context.diagram());
         try {
-            return new ExportResult(visioPackageBuilder.build(doc));
+            return new ExportResult(visioPackageBuilder.build(document));
         } catch (IOException e) {
             throw new UncheckedIOException("Visio export failed", e);
         }
