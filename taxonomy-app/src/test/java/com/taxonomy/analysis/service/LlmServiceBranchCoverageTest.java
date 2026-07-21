@@ -204,6 +204,7 @@ class LlmServiceBranchCoverageTest {
         assertThat(rateLimited.getStatus()).isEqualTo("PARTIAL");
         assertThat(rateLimited.getErrorMessage()).contains("Rate limit reached");
 
+        org.mockito.Mockito.reset(gateway);
         when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
         when(gateway.sendHttpRequest(anyString(), anyString())).thenThrow(new IllegalStateException("network"));
         AnalysisResult failed = service.analyzeWithBudget("requirement");
@@ -295,9 +296,11 @@ class LlmServiceBranchCoverageTest {
         when(gateway.sendHttpRequest("prompt", "test-key")).thenThrow(new LlmRateLimitException("quota"));
         assertThatThrownBy(() -> service.callLlmRaw("prompt")).isInstanceOf(LlmRateLimitException.class);
 
+        org.mockito.Mockito.reset(gateway);
         when(gateway.sendHttpRequest("prompt", "test-key")).thenThrow(new LlmTimeoutException("timeout"));
         assertThatThrownBy(() -> service.callLlmRaw("prompt")).isInstanceOf(LlmTimeoutException.class);
 
+        org.mockito.Mockito.reset(gateway);
         when(gateway.sendHttpRequest("prompt", "test-key")).thenThrow(new IllegalStateException("broken"));
         assertThat(service.callLlmRaw("prompt")).isNull();
         assertThat(service.getDiagnostics()).containsEntry("lastError", "broken");
