@@ -62,6 +62,8 @@
     </modules>
     <properties>
         <java.version>21</java.version>
+        <!-- Security override: fixes CVE-2026-54515 in jackson-databind 2.21.4. -->
+        <jackson-bom.version>2.21.5</jackson-bom.version>
         <djl.version>0.36.0</djl.version>
         <excludedGroups>real-llm</excludedGroups>
         <!-- Dependency versions (centralized to avoid repetition in child POMs) -->
