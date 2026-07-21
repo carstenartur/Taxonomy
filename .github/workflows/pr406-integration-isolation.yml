@@ -36,8 +36,8 @@ jobs:
           MODEL_REVISION: ${{ env.BGE_MODEL_REVISION }}
         run: bash .github/scripts/download-embedding-model.sh
 
-      - name: Build application without running tests
-        run: mvn -B -pl taxonomy-app -am package -DskipTests
+      - name: Install reactor without running tests
+        run: mvn -B -pl taxonomy-app -am install -DskipTests
 
       - name: Run focused integration test
         id: focused
