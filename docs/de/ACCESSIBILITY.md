@@ -100,3 +100,11 @@ Die veröffentlichte Erklärung muss Kontaktweg, Erstellungsdatum, Prüfmethode,
 - [Sicherheit](SECURITY.md)
 - [Datenschutz](DATA_PROTECTION.md)
 - [Digitale Souveränität](DIGITAL_SOVEREIGNTY.md)
+
+## Automatisierte Browser-Abdeckungsmatrix
+
+Die gepflegte Browser-, Viewport-, CodeMirror-, Tastatur-, Reduced-Motion- und
+axe-Abdeckung ist in
+[`docs/dev/BROWSER_QA.md`](../dev/BROWSER_QA.md) beschrieben. Neue moderate
+axe-Befunde werden gegen eine geprüfte Baseline blockiert; CodeMirror ist nicht
+von der Prüfung ausgeschlossen.

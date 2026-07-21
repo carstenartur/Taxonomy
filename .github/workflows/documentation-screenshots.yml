@@ -1,0 +1,109 @@
+name: Documentation Screenshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taxonomy-documentation-screenshots-main
+  cancel-in-progress: false
+
+env:
+  BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+
+jobs:
+  generate:
+    name: Generate screenshot artifact
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Validate trusted invocation
+        run: |
+          test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
+          test "${GITHUB_REF}" = "refs/heads/main"
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Download and verify pinned embedding model
+        env:
+          MODEL_REVISION: ${{ env.BGE_MODEL_REVISION }}
+        run: bash .github/scripts/download-embedding-model.sh
+
+      - name: Generate deterministic documentation screenshots
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          LLM_MOCK: 'true'
+        run: >-
+          mvn -B verify
+          -DskipITs=false
+          -DgenerateScreenshots
+          -Dit.test=ScreenshotGeneratorIT
+          -DfailIfNoTests=false
+          -Dfailsafe.rerunFailingTestsCount=1
+          -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
+
+      - name: Stage screenshot artifact
+        run: |
+          mkdir -p target/generated-screenshots
+          cp docs/images/*.png target/generated-screenshots/
+          test -n "$(find target/generated-screenshots -maxdepth 1 -name '*.png' -print -quit)"
+
+      - name: Upload generated screenshots
+        uses: actions/upload-artifact@v7
+        with:
+          name: generated-documentation-screenshots
+          path: target/generated-screenshots/*.png
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish screenshots to main
+    needs: generate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate publication target
+        run: |
+          test "${GITHUB_EVENT_NAME}" = "workflow_dispatch"
+          test "${GITHUB_REF}" = "refs/heads/main"
+          test "$(git branch --show-current)" = "main"
+
+      - name: Download verified screenshots
+        uses: actions/download-artifact@v7
+        with:
+          name: generated-documentation-screenshots
+          path: docs/images
+
+      - name: Commit changed screenshots only
+        run: |
+          git pull --ff-only origin main
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add docs/images/*.png
+          if git diff --staged --quiet; then
+            echo "No screenshot changes to publish."
+            exit 0
+          fi
+          git commit -m 'docs: regenerate documentation screenshots [skip ci]'
+          git push origin HEAD:main

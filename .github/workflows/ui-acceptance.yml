@@ -21,11 +21,37 @@ permissions:
 
 jobs:
   real-ui-flow:
-    name: Real browser workflow without injected results
+    name: ${{ matrix.profile }}
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: desktop-chromium
+            browser: chromium
+            width: 1440
+            height: 1000
+            mode: full
+          - profile: desktop-firefox
+            browser: firefox
+            width: 1440
+            height: 1000
+            mode: full
+          - profile: tablet-chromium
+            browser: chromium
+            width: 1024
+            height: 768
+            mode: responsive
+          - profile: mobile-chromium
+            browser: chromium
+            width: 390
+            height: 844
+            mode: responsive
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Java 21
         uses: actions/setup-java@v5
@@ -56,30 +82,39 @@ jobs:
           java -jar "$JAR" > /tmp/taxonomy-ui.log 2>&1 &
           echo $! > /tmp/taxonomy-ui.pid
           for i in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:8080/login >/dev/null; then
-              exit 0
-            fi
+            if curl -fsS http://127.0.0.1:8080/login >/dev/null; then exit 0; fi
             sleep 2
           done
           cat /tmp/taxonomy-ui.log
           exit 1
 
-      - name: Install pinned Playwright
+      - name: Install pinned Playwright browser engines
         run: |
           npm install --no-save --no-audit --no-fund @playwright/test@1.61.1
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium firefox
 
       - name: Run real UI acceptance flow
         env:
           TAXONOMY_BASE_URL: http://127.0.0.1:8080
           TAXONOMY_UI_USERNAME: admin
           TAXONOMY_UI_PASSWORD: ui-acceptance-password
+          TAXONOMY_BROWSER: ${{ matrix.browser }}
+          TAXONOMY_UI_PROFILE: ${{ matrix.profile }}
+          TAXONOMY_VIEWPORT_WIDTH: ${{ matrix.width }}
+          TAXONOMY_VIEWPORT_HEIGHT: ${{ matrix.height }}
+          TAXONOMY_UI_MODE: ${{ matrix.mode }}
+          TAXONOMY_UI_REPORT: /tmp/taxonomy-ui-${{ matrix.profile }}.json
+          TAXONOMY_UI_SCREENSHOT: /tmp/taxonomy-ui-${{ matrix.profile }}.png
         run: node .github/scripts/ui-acceptance.mjs
 
-      - name: Upload application log on failure
-        if: failure()
+      - name: Upload UI acceptance evidence
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ui-acceptance-application-log
-          path: /tmp/taxonomy-ui.log
+          name: ui-acceptance-${{ matrix.profile }}
+          path: |
+            /tmp/taxonomy-ui-${{ matrix.profile }}.json
+            /tmp/taxonomy-ui-${{ matrix.profile }}.png
+            /tmp/taxonomy-ui.log
+          if-no-files-found: warn
           retention-days: 14

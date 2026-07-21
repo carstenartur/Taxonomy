@@ -6,11 +6,9 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      generate-screenshots:
-        description: 'Run documentation screenshot generation (fixtures, not acceptance evidence)'
-        type: boolean
-        default: false
+
+permissions:
+  contents: read
 
 env:
   REGISTRY: ghcr.io
@@ -22,10 +20,12 @@ jobs:
     name: Build & Test
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       checks: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Java 21
         uses: actions/setup-java@v5
@@ -45,52 +45,47 @@ jobs:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
 
+      - name: Verify packaged dependency hygiene
+        run: |
+          PDFBOX_VERSION=$(mvn help:evaluate -Dexpression=pdfbox.version -q -DforceStdout)
+          mvn -q -pl taxonomy-app dependency:tree \
+            -Dscope=runtime \
+            -Dincludes='org.apache.pdfbox:*,com.vladsch.flexmark:flexmark-pdf-converter,com.openhtmltopdf:*' \
+            -DoutputFile=../target/dependency-hygiene-tree.txt
+          python3 .github/scripts/check-dependency-hygiene.py \
+            --sbom target/taxonomy-sbom.json \
+            --expected-pdfbox-version "$PDFBOX_VERSION" \
+            --report target/dependency-hygiene-report.txt
+
       - name: Generate SBOM companion metadata
         if: always()
         run: |
-          SBOM_FILE="target/taxonomy-sbom.json"
-          COMPANION_FILE="target/taxonomy-vex.json"
           python3 .github/scripts/generate-vex.py \
-            --sbom "$SBOM_FILE" \
-            --output "$COMPANION_FILE"
+            --sbom target/taxonomy-sbom.json \
+            --output target/taxonomy-vex.json
           echo "### SBOM companion metadata" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f "$COMPANION_FILE" ]; then
-            echo "Generated: \`$COMPANION_FILE\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f target/taxonomy-vex.json ]; then
+            echo "Generated: \`target/taxonomy-vex.json\`" >> "$GITHUB_STEP_SUMMARY"
             echo "Assessment status: **not-assessed** — this is not a vulnerability scan or exploitability statement." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "SBOM was unavailable; companion metadata was not generated." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload SBOM and companion artifacts
+      - name: Upload SBOM and dependency evidence
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: sbom-companion
+          name: sbom-dependency-evidence
           path: |
             target/taxonomy-sbom.json
             target/taxonomy-sbom.xml
             target/taxonomy-vex.json
+            target/dependency-hygiene-tree.txt
+            target/dependency-hygiene-report.txt
             models/bge-small-en-v1.5/MODEL_PROVENANCE.txt
           if-no-files-found: warn
           retention-days: 90
-
-      - name: Generate documentation screenshots
-        if: ${{ github.event.inputs.generate-screenshots == 'true' }}
-        run: >-
-          mvn -q verify -DgenerateScreenshots
-          -Dit.test=ScreenshotGeneratorIT
-          -DfailIfNoTests=false
-          -Dfailsafe.rerunFailingTestsCount=1
-
-      - name: Commit generated documentation screenshots
-        if: ${{ github.event.inputs.generate-screenshots == 'true' }}
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add docs/images/*.png
-          git diff --staged --quiet || git commit -m 'docs: regenerate documentation screenshots [skip ci]'
-          git push
 
       - name: Publish authoritative JUnit results
         uses: dorny/test-reporter@v3
@@ -142,18 +137,14 @@ jobs:
               percentage = round(covered / total * 100) if total else 0
               color = 'brightgreen' if percentage >= 80 else 'yellow' if percentage >= 60 else 'red'
               coverage_badge = {
-                  'schemaVersion': 1,
-                  'label': 'coverage',
-                  'message': f'{percentage}%',
-                  'color': color,
+                  'schemaVersion': 1, 'label': 'coverage',
+                  'message': f'{percentage}%', 'color': color,
               }
           except Exception as error:
               print(f'Coverage badge generation failed: {error}')
               coverage_badge = {
-                  'schemaVersion': 1,
-                  'label': 'coverage',
-                  'message': 'unknown',
-                  'color': 'lightgrey',
+                  'schemaVersion': 1, 'label': 'coverage',
+                  'message': 'unknown', 'color': 'lightgrey',
               }
           os.makedirs('taxonomy-app/target/site/jacoco', exist_ok=True)
           with open('taxonomy-app/target/site/jacoco/badge.json', 'w', encoding='utf-8') as handle:
@@ -179,47 +170,38 @@ jobs:
               else:
                   message, color = f'{tests - skipped} passed', 'brightgreen'
               tests_badge = {
-                  'schemaVersion': 1,
-                  'label': 'tests',
-                  'message': message,
-                  'color': color,
+                  'schemaVersion': 1, 'label': 'tests',
+                  'message': message, 'color': color,
               }
           except Exception as error:
               print(f'Tests badge generation failed: {error}')
               tests_badge = {
-                  'schemaVersion': 1,
-                  'label': 'tests',
-                  'message': 'unknown',
-                  'color': 'lightgrey',
+                  'schemaVersion': 1, 'label': 'tests',
+                  'message': 'unknown', 'color': 'lightgrey',
               }
           os.makedirs('target/site', exist_ok=True)
           with open('target/site/badge.json', 'w', encoding='utf-8') as handle:
               json.dump(tests_badge, handle)
           PY
 
-      - name: Deploy test report to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        if: always() && github.ref == 'refs/heads/main' && hashFiles('target/site/surefire-report.html') != ''
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: target/site
-          destination_dir: tests
-          keep_files: true
-          user_name: github-actions[bot]
-          user_email: github-actions[bot]@users.noreply.github.com
-          commit_message: 'Deploy Surefire test report ${{ github.sha }}'
+      - name: Stage immutable report artifact
+        if: always()
+        run: |
+          rm -rf target/quality-reports
+          mkdir -p target/quality-reports/tests target/quality-reports/coverage
+          if [ -d target/site ]; then cp -a target/site/. target/quality-reports/tests/; fi
+          if [ -d taxonomy-app/target/site/jacoco ]; then
+            cp -a taxonomy-app/target/site/jacoco/. target/quality-reports/coverage/
+          fi
 
-      - name: Deploy coverage report to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        if: always() && github.ref == 'refs/heads/main'
+      - name: Upload report publication artifact
+        uses: actions/upload-artifact@v7
+        if: always()
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: taxonomy-app/target/site/jacoco
-          destination_dir: coverage
-          keep_files: true
-          user_name: github-actions[bot]
-          user_email: github-actions[bot]@users.noreply.github.com
-          commit_message: 'Deploy JaCoCo coverage report'
+          name: quality-reports
+          path: target/quality-reports/**
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Report URLs
         if: always()
@@ -236,6 +218,49 @@ jobs:
           path: taxonomy-app/target/taxonomy-app-*.jar
           retention-days: 1
 
+  publish-reports:
+    name: Publish reports
+    needs: build-and-test
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: taxonomy-quality-report-publication
+      cancel-in-progress: false
+    steps:
+      - name: Download verified report artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: quality-reports
+          path: quality-reports
+
+      - name: Publish test report to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        if: hashFiles('quality-reports/tests/surefire-report.html') != ''
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: quality-reports/tests
+          destination_dir: tests
+          keep_files: true
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
+          commit_message: 'Deploy Surefire test report ${{ github.sha }}'
+
+      - name: Publish coverage report to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        if: hashFiles('quality-reports/coverage/**') != ''
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: quality-reports/coverage
+          destination_dir: coverage
+          keep_files: true
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
+          commit_message: 'Deploy JaCoCo coverage report ${{ github.sha }}'
+
   publish-image:
     name: Publish Docker Image
     needs: build-and-test
@@ -251,6 +276,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4

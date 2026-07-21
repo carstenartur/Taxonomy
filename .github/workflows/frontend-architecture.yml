@@ -24,5 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Reject new direct API calls outside api modules
         run: python3 .github/scripts/check-frontend-api-boundaries.py

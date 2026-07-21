@@ -28,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
+        with:
+          persist-credentials: false
       - name: Check local Markdown links and image targets
         run: python3 .github/scripts/check-doc-links.py

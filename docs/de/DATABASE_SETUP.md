@@ -39,11 +39,12 @@ Die Anwendung wird mit einer eingebetteten HSQLDB-Datenbank ausgeliefert. Es ist
 
 **Wesentliche Eigenschaften:**
 - Läuft **In-Process** (gleiche JVM, kein Netzwerk-Hop)
-- Verwendet `SimpleDriverDataSource` anstelle von HikariCP, um den Overhead eines Verbindungspools zu vermeiden
-- Alle Daten werden beim Start aus der mitgelieferten Excel-Arbeitsmappe geladen
-- Daten werden zwischen Neustarts **nicht persistiert** (In-Memory-Modus)
+- Verwendet einen begrenzten HikariCP-Pool (`minimum-idle=1`, `maximum-pool-size=4`)
+- Nutzt standardmäßig eine In-Memory-URL für Entwicklung und Tests ohne Einrichtung
+- Unterstützt für persistente Installationen eine Datei-URL; der Pool hält eine Verbindung offen, damit `shutdown=true` HSQLDB nicht während des Spring-Starts beendet
+- Verwendet einen vorhandenen persistierten Katalog nach einem Neustart weiter; `TAXONOMY_INIT_RELOAD_EXISTING=true` löst bewusst ein destruktives Neuladen aus
 
-Dies ist ideal für Entwicklung, Tests und Demo-Bereitstellungen.
+Der In-Memory-Standard eignet sich für Entwicklung und Tests. Die Produktions-Docker-Konfiguration verwendet dateibasierte HSQLDB- und Lucene-Speicherung.
 
 ---
 
@@ -105,8 +106,13 @@ PostgreSQL verwendet standardmäßig UTF-8, sodass alle Zeichenkettenfelder ohne
 ### Integrationstests ausführen
 
 ```bash
-mvn package -DskipTests
-mvn verify -pl taxonomy-app -DexcludedGroups=real-llm -Dit.test="*Postgres*IT"
+mvn -B -pl taxonomy-app -am install -DskipTests
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test='*Postgres*IT' \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm
 ```
 
 ---
@@ -173,8 +179,13 @@ Das Passwort muss mindestens 8 Zeichen lang sein und Zeichen aus mindestens drei
 ### Integrationstests ausführen
 
 ```bash
-mvn package -DskipTests
-mvn verify -pl taxonomy-app -DexcludedGroups=real-llm -Dit.test="*Mssql*IT"
+mvn -B -pl taxonomy-app -am install -DskipTests
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test='*Mssql*IT' \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm
 ```
 
 ---
@@ -252,8 +263,13 @@ Für Oracle-Instanzen, die eine **SID** verwenden, nutzen Sie: `jdbc:oracle:thin
 ### Integrationstests ausführen
 
 ```bash
-mvn package -DskipTests
-mvn verify -pl taxonomy-app -DexcludedGroups=real-llm -Dit.test="*Oracle*IT"
+mvn -B -pl taxonomy-app -am install -DskipTests
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test='*Oracle*IT' \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm
 ```
 
 ---
@@ -302,7 +318,7 @@ Alle Produktions-Datenbankprofile (PostgreSQL, MSSQL, Oracle) konfigurieren Hika
 export SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=20
 ```
 
-> **Hinweis:** Das Standard-HSQLDB-Profil verwendet **kein** HikariCP — es nutzt `SimpleDriverDataSource`, um den Verbindungspool-Overhead im Einzeln-JVM-Modus zu vermeiden.
+> **Hinweis:** Das HSQLDB-Profil verwendet einen kleinen begrenzten HikariCP-Pool (`minimum-idle=1`, `maximum-pool-size=4`). Die Leerlaufverbindung ist für einen stabilen Lebenszyklus dateibasierter Datenbanken mit `shutdown=true` erforderlich.
 
 ---
 
@@ -317,7 +333,7 @@ Um von der Standard-HSQLDB auf eine Produktionsdatenbank zu migrieren:
 5. **Auf update umstellen** — Wechseln Sie nach der Ersteinrichtung zu `TAXONOMY_DDL_AUTO=update`, um Daten über Neustarts hinweg zu erhalten.
 6. **Überprüfen** — Prüfen Sie den Health-Endpunkt (`GET /actuator/health`) und führen Sie eine Testanalyse durch.
 
-Die Taxonomiedaten werden beim Start immer aus der mitgelieferten Excel-Arbeitsmappe geladen, sodass für die Taxonomie selbst keine Datenmigration von HSQLDB erforderlich ist. Architektur-DSL-Daten (Git-Repository) werden in der Datenbank gespeichert und müssen manuell neu erstellt oder migriert werden.
+Eine leere Zieldatenbank importiert die mitgelieferte Taxonomie-Arbeitsmappe. Eine dateibasierte Quelldatenbank kann zusätzlich Benutzerrelationen, Workspaces, Hypothesen und JGit-Architekturhistorie enthalten; diese Datensätze müssen beim Wechsel des Datenbank-Backends explizit migriert werden.
 
 ---
 
@@ -326,3 +342,15 @@ Die Taxonomiedaten werden beim Start immer aus der mitgelieferten Excel-Arbeitsm
 - [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md) — Alle Umgebungsvariablen
 - [Bereitstellungshandbuch](DEPLOYMENT_GUIDE.md) — Docker- und Cloud-Bereitstellung
 - [Architektur](ARCHITECTURE.md) — Datenbankarchitektur und Entity-Modell
+
+## Testarchitektur und Kompatibilitätsnachweise
+
+`mvn verify` ist der begrenzte deterministische Standard-Lebenszyklus und startet
+keine externe Datenbank. Die zentralen HSQLDB-Container-Tests sowie die
+PostgreSQL-/MSSQL-/Oracle-Matrix sind normale Failsafe-/Testcontainers-Tests und
+werden mit `-DskipITs=false` aktiviert.
+
+Der Workflow `Database Compatibility` führt bei relevanten Pull Requests die
+PostgreSQL-Diagnose- und Selenium-Tests aus, wöchentlich alle sechs Szenarien und
+bei manueller Ausführung die ausgewählte Datenbankfamilie. Die lokalen Befehle
+stehen in [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).

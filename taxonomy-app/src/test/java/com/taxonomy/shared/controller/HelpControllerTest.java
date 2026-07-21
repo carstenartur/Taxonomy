@@ -77,7 +77,7 @@ class HelpControllerTest {
 
     /**
      * Every registered doc must have a matching {@code help.toc.<name>} key in
-     * both the English and German message bundles.  Prevents
+     * both the English and German message bundles. Prevents
      * "doc registered but i18n key forgotten" drift.
      */
     @Test
@@ -185,11 +185,21 @@ class HelpControllerTest {
 
     @Test
     void docRenderingRewritesImagePaths() throws Exception {
-        // Verify that ../images/ references in Markdown are rewritten to /help/images/ in rendered HTML
         mockMvc.perform(get("/help/USER_GUIDE").accept(MediaType.TEXT_HTML))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("src=\"/help/images/")))
                 .andExpect(content().string(not(containsString("src=\"../images/"))));
+    }
+
+    @Test
+    void repositoryInternalLinksAreRewrittenForHelpTab() {
+        String markdown = "[Tests](../dev/06-testing-by-change-type.md) "
+                + "[Matrix](../internal/MAINTAINABILITY_MATRIX.md)";
+
+        assertEquals(
+                "[Tests](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md) "
+                + "[Matrix](https://github.com/carstenartur/Taxonomy/blob/main/docs/internal/MAINTAINABILITY_MATRIX.md)",
+                HelpController.rewriteRepositoryDocLinks(markdown));
     }
 
     @Test
@@ -218,7 +228,6 @@ class HelpControllerTest {
 
     @Test
     void imagePathTraversalReturns400() throws Exception {
-        // path segment with ".." should be rejected
         mockMvc.perform(get("/help/images/..%2Fsecret.txt"))
                 .andExpect(status().is4xxClientError());
     }

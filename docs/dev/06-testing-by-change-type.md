@@ -1,148 +1,177 @@
 # Testing by Change Type
 
-This page maps common change types to the Maven commands and likely test classes
-you should run to verify your change.
+All verification commands run from a normal Git checkout. GitHub Actions only
+orchestrates the same Maven, Failsafe, Testcontainers, Playwright, and axe
+contracts that developers can execute locally.
 
----
+## Test layers
+
+| Layer | Purpose | Default command |
+|---|---|---|
+| Standard lifecycle | Unit, Spring context, controller, architecture, contract, dependency-hygiene, and module tests | `mvn verify` |
+| Core integration | HSQLDB diagnostics, real browser flow, and persistence restart | `mvn verify -DskipITs=false -Dit.test=<class>` |
+| Database compatibility | PostgreSQL, MSSQL, and Oracle diagnostics plus Selenium flows | `mvn verify -DskipITs=false -Dit.test=<class> -DexcludedGroups=real-llm` |
+| Browser UX | Desktop Chromium/Firefox plus tablet/mobile Chromium | `node .github/scripts/ui-acceptance.mjs` |
+| Accessibility | Authenticated axe audit with checked moderate baseline | `node .github/scripts/accessibility-audit.mjs` |
+| Real LLM | Explicit live-provider integration | Select the test and remove `real-llm` from excluded groups |
+| Documentation screenshots | Deterministic visual fixtures, not acceptance evidence | `mvn verify -DskipITs=false -DgenerateScreenshots -Dit.test=ScreenshotGeneratorIT` |
+
+The root POM sets `skipITs=true`; container tests are enabled explicitly with
+`-DskipITs=false`. The default excluded tags are
+`real-llm,db-postgres,db-mssql,db-oracle`.
 
 ## Quick reference
 
-| Change type | Minimum command | Also run if… |
+| Change | Minimum | Additional evidence |
 |---|---|---|
-| Pure domain type (DTO, enum) | `mvn test -pl taxonomy-domain` | …it is used in a controller response → also run `mvn test -pl taxonomy-app` |
-| DSL parser / serializer | `mvn test -pl taxonomy-dsl` | …you changed property ordering or block types → also run `mvn test -pl taxonomy-app` |
-| Export service | `mvn test -pl taxonomy-export` | …you changed the controller or `ExportConfig` → also run `mvn test -pl taxonomy-app` |
-| Spring service (no controller change) | `mvn test -pl taxonomy-app` | Always sufficient for service-only changes |
-| REST controller | `mvn test -pl taxonomy-app` | …you added a new endpoint → also update `API_REFERENCE.md` |
-| UI template or JS module | `mvn verify -DexcludedGroups=real-llm` | Always run full verify for any UI change |
-| Spring configuration (`application.properties`, `@Configuration` class) | `mvn verify -DexcludedGroups=real-llm` | Always run full verify for config changes |
-| JPA entity or repository | `mvn verify -DexcludedGroups=real-llm` | Always run full verify for schema changes |
-| LLM provider addition | `mvn test -pl taxonomy-app` | …you changed `application.properties` → also run `mvn verify -DexcludedGroups=real-llm` |
-| Workspace operation | `mvn test -pl taxonomy-app` | …you changed the controller or UI → also run `mvn verify -DexcludedGroups=real-llm` |
-| Document import mapping | `mvn test -pl taxonomy-app` | …you changed the controller → also run `mvn verify -DexcludedGroups=real-llm` |
+| Domain DTO or enum | `mvn test -pl taxonomy-domain` | App tests when exposed through API |
+| DSL parser/serializer | `mvn test -pl taxonomy-dsl` | App and editor tests for materialization/UI changes |
+| Export model/serializer | `mvn test -pl taxonomy-export` | App tests for endpoint or adapter changes |
+| Spring service/controller | `mvn test -pl taxonomy-app` | `mvn verify` for configuration, persistence, or API changes |
+| Dependency or POM | `mvn verify` | SBOM hygiene command below |
+| UI/CSS/JavaScript | `mvn verify` | Browser and accessibility commands below |
+| Security | `mvn verify` | MockMvc security tests and `CoreUiAcceptanceIT` |
+| HSQLDB/persistence | `mvn verify` | `ProductionPersistenceRestartIT` |
+| External DB mapping | `mvn verify` | Both diagnostics and Selenium tests for that family |
+| Documentation | `python3 .github/scripts/check-doc-links.py` | Screenshots only for visible UI changes |
 
----
-
-## Full CI command
-
-The authoritative build command (identical to what GitHub Actions runs) is:
+## Standard lifecycle
 
 ```bash
-mvn -q verify -DexcludedGroups="real-llm"
+mvn verify
+mvn clean verify                 # release-style clean build
 ```
 
-Run this before opening a pull request if your change touches:
-- A REST controller or API endpoint
-- A UI template (`index.html`) or any JS module
-- Application startup, configuration, or Spring context
-- `pom.xml` or any dependency version
-- A Dockerfile or container configuration
+This lifecycle remains deterministic: it does not start Docker or contact a live
+LLM. Maven Enforcer rejects prohibited packaged dependency chains.
 
----
-
-## Test class reference by area
-
-### Analysis / LLM
-
-| Test class | What it covers |
-|---|---|
-| `AnalysisApiControllerTest` | `/api/analysis` endpoint, mock LLM responses |
-| `LlmServiceTest` | Provider selection, response parsing, rate-limit handling |
-| `LlmRecordReplayServiceTest` | Record/replay mode for offline LLM testing |
-
-### Taxonomy catalog
-
-| Test class | What it covers |
-|---|---|
-| `TaxonomyServiceTest` | Node lookup, scoring, hierarchy traversal |
-| `ApiControllerTest` | `/api/taxonomy` endpoint |
-| `SearchApiControllerTest` | Full-text and KNN search endpoints |
-
-### Relations
-
-| Test class | What it covers |
-|---|---|
-| `RelationApiControllerTest` | CRUD for `TaxonomyRelation` |
-| `ProposalApiControllerTest` | Proposal lifecycle (propose → accept/reject) |
-| `RelationValidationServiceTest` | Type-combination compatibility rules |
-| `CoverageApiControllerTest` | Requirement coverage calculations |
-
-### Export
-
-| Test class | What it covers |
-|---|---|
-| `ExportApiControllerTest` | Export endpoint routing |
-| `ArchiMateRoundtripTest` | ArchiMate XML round-trip correctness |
-| `MermaidExportServiceTest` | Mermaid output correctness |
-| `VisioPackageBuilderTest` | Visio `.vsdx` package structure |
-
-### Architecture / views
-
-| Test class | What it covers |
-|---|---|
-| `GapAnalysisApiControllerTest` | Gap analysis computation |
-| `ReportApiControllerTest` | Architecture report generation |
-| `ArchitectureSummaryApiControllerTest` | Summary endpoint |
-| `ReadmeShowcaseDriftTest` | README diagram stays in sync with code |
-
-### DSL
-
-| Test class | What it covers |
-|---|---|
-| `TaxDslParserTest` | Parser correctness for all block types |
-| `TaxDslSerializerTest` | Serializer round-trip and canonical ordering |
-| `DslValidatorTest` | Semantic validation rules |
-| `ModelDifferTest` | Semantic diff between two models |
-| `DslGitRepositoryTest` | JGit DFS storage commit/read/branch |
-
-### Provenance / document import
-
-| Test class | What it covers |
-|---|---|
-| `DocumentImportControllerTest` | Upload and parsing endpoint |
-| `DocumentAnalysisServiceTest` | Chunk extraction and mapping logic |
-
-### Workspace
-
-| Test class | What it covers |
-|---|---|
-| `WorkspaceControllerTest` | Workspace CRUD, context switching |
-| `DslApiControllerTest` | DSL commit, read, diff endpoints |
-
----
-
-## Integration tests (require Docker)
-
-Integration tests follow the `*IT.java` naming convention and are run by
-`maven-failsafe-plugin` during `mvn verify`.
-
-| Pattern | Coverage |
-|---|---|
-| `*PostgresContainerIT` | Full stack against PostgreSQL |
-| `*MssqlContainerIT` | Full stack against Microsoft SQL Server |
-| `*OracleContainerIT` | Full stack against Oracle (opt-in, tag `db-oracle`) |
-| `ScreenshotGeneratorIT` | Selenium screenshot regeneration |
-
-Run a specific integration test:
+### Dependency and SBOM evidence
 
 ```bash
-# Run only PostgreSQL integration tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Postgres*IT"
+PDFBOX_VERSION=$(mvn help:evaluate -Dexpression=pdfbox.version -q -DforceStdout)
+python3 .github/scripts/check-dependency-hygiene.py \
+  --sbom target/taxonomy-sbom.json \
+  --expected-pdfbox-version "$PDFBOX_VERSION"
 
-# Regenerate screenshots
-mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
+mvn -pl taxonomy-app dependency:tree \
+  -Dscope=runtime \
+  -Dincludes='org.apache.pdfbox:*,com.vladsch.flexmark:flexmark-pdf-converter,com.openhtmltopdf:*'
 ```
 
----
+See [DEPENDENCY_HYGIENE.md](DEPENDENCY_HYGIENE.md) for the reviewed exception
+process.
 
-## Test annotations reference
+## Core Testcontainers integration
 
-| Annotation | Usage |
+| Test | Coverage |
 |---|---|
-| `@SpringBootTest` + `@AutoConfigureMockMvc` | Standard unit test with full Spring context |
-| `@WithMockUser(roles = "ADMIN")` | Simulate an authenticated admin user |
-| `@Tag("real-llm")` | LLM tests excluded from CI by default |
-| `@Tag("db-oracle")` | Oracle tests excluded from CI by default |
+| `DiagnosticsContainerIT` | Packaged app and diagnostics on embedded HSQLDB |
+| `DiagnosticsWithApiKeyContainerIT` | Provider-key detection and masking |
+| `CoreUiAcceptanceIT` | Login, onboarding, local assets, and keyboard navigation |
+| `ProductionPersistenceRestartIT` | File HSQLDB and Lucene data survive container replacement |
 
-All `@SpringBootTest` test classes **must** include `@WithMockUser(…)` or
-`@WithAnonymousUser`; without it, MockMvc requests return HTTP 401.
+```bash
+mvn -B -pl taxonomy-app -am install -DskipTests
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test=ProductionPersistenceRestartIT \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
+```
+
+## Database compatibility matrix
+
+The scheduled/manual workflow runs these ordinary Testcontainers tests:
+
+| Database | Diagnostics | Browser | Tag |
+|---|---|---|---|
+| PostgreSQL | `DiagnosticsPostgresContainerIT` | `SeleniumPostgresContainerIT` | `db-postgres` |
+| MSSQL | `DiagnosticsMssqlContainerIT` | `SeleniumMssqlContainerIT` | `db-mssql` |
+| Oracle Free | `DiagnosticsOracleContainerIT` | `SeleniumOracleContainerIT` | `db-oracle` |
+
+Pull requests that change database configuration run the complete PostgreSQL
+pair as a bounded compatibility smoke test. Weekly and manual runs cover all
+selected families.
+
+```bash
+mvn -B -pl taxonomy-app -am install -DskipTests
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test='*Postgres*IT' \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm
+```
+
+Use `*Mssql*IT` or `*Oracle*IT` for the other families.
+
+## Browser UX matrix
+
+Install the pinned test dependency and intended browser engines:
+
+```bash
+npm install --no-save --no-audit --no-fund @playwright/test@1.61.1
+npx playwright install --with-deps chromium firefox
+```
+
+Example desktop Firefox run:
+
+```bash
+TAXONOMY_BASE_URL=http://127.0.0.1:8080 \
+TAXONOMY_UI_USERNAME=admin \
+TAXONOMY_UI_PASSWORD=ui-acceptance-password \
+TAXONOMY_BROWSER=firefox \
+TAXONOMY_UI_PROFILE=desktop-firefox \
+TAXONOMY_VIEWPORT_WIDTH=1440 \
+TAXONOMY_VIEWPORT_HEIGHT=1000 \
+TAXONOMY_UI_MODE=full \
+node .github/scripts/ui-acceptance.mjs
+```
+
+The CI matrix also runs tablet and mobile read/navigation flows. See
+[BROWSER_QA.md](BROWSER_QA.md).
+
+## Accessibility
+
+```bash
+npm install --no-save --no-audit --no-fund \
+  @playwright/test@1.61.1 @axe-core/playwright@4.12.1
+npx playwright install --with-deps chromium
+node .github/scripts/accessibility-audit.mjs
+```
+
+Critical and serious findings always fail. Moderate findings must match the
+reviewed signatures in `.github/accessibility-baseline.json`; new signatures
+fail the build. The TaxDSL CodeMirror editor is audited and has a dedicated
+keyboard focus-escape check.
+
+## Documentation screenshots
+
+```bash
+mvn -B verify \
+  -DskipITs=false \
+  -DgenerateScreenshots \
+  -Dit.test=ScreenshotGeneratorIT \
+  -DfailIfNoTests=false
+```
+
+Screenshots may use deterministic mock data. They do not prove live backends or
+external AI providers are healthy. Publication is isolated in the manually
+triggered `Documentation Screenshots` workflow.
+
+## Security context and annotations
+
+| Annotation/property | Use |
+|---|---|
+| `@SpringBootTest` + `@AutoConfigureMockMvc` | Spring integration without containers |
+| `@WithMockUser(...)` | Explicit authenticated MockMvc context |
+| `@Testcontainers` | Docker-backed integration |
+| `@Tag("real-llm")` | Live provider test, excluded by default |
+| `@Tag("db-postgres")` | PostgreSQL matrix |
+| `@Tag("db-mssql")` | MSSQL matrix |
+| `@Tag("db-oracle")` | Oracle matrix |
+| `@EnabledIfSystemProperty` | Explicit opt-in test such as screenshots |
+
+Browser and container acceptance tests must exercise real application contracts;
+they must not inject result DOM or fake service-health state.

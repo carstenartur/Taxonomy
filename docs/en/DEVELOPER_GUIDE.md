@@ -3,7 +3,7 @@
 This guide is intended for developers contributing to the Taxonomy Architecture Analyzer.
 
 > **New to the codebase?**
-> Start with the [task-oriented entry point](../dev/00-start-here.md)
+> Start with the [task-oriented entry point](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/00-start-here.md)
 > to find the smallest safe change area for your specific task.
 > The present document is the **deep architecture reference**.
 
@@ -38,18 +38,18 @@ modify one specific part of the system without reading the full architecture ref
 
 | File | Purpose |
 |---|---|
-| [`docs/dev/00-start-here.md`](../dev/00-start-here.md) | How to approach a single-task change |
-| [`docs/dev/01-change-map.md`](../dev/01-change-map.md) | Table mapping tasks to packages, entry points, and tests |
-| [`docs/dev/07-extension-points.md`](../dev/07-extension-points.md) | Stable extension anchors for common feature additions |
-| [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md) | Maven commands and test classes by change type |
-| [`docs/dev/tasks/add-llm-provider.md`](../dev/tasks/add-llm-provider.md) | Add a new LLM provider |
-| [`docs/dev/tasks/add-export-format.md`](../dev/tasks/add-export-format.md) | Add a new export format |
-| [`docs/dev/tasks/add-relation-type.md`](../dev/tasks/add-relation-type.md) | Add a new relation type |
-| [`docs/dev/tasks/add-architecture-view-step.md`](../dev/tasks/add-architecture-view-step.md) | Add an architecture view pipeline step |
-| [`docs/dev/tasks/add-document-import-mapping.md`](../dev/tasks/add-document-import-mapping.md) | Add a document import mapping |
-| [`docs/dev/tasks/add-workspace-operation.md`](../dev/tasks/add-workspace-operation.md) | Add a workspace operation |
-| [`docs/dev/tasks/add-ui-panel.md`](../dev/tasks/add-ui-panel.md) | Add a UI panel |
-| [`docs/dev/tasks/add-dsl-property.md`](../dev/tasks/add-dsl-property.md) | Add a DSL property or block type |
+| [`docs/dev/00-start-here.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/00-start-here.md) | How to approach a single-task change |
+| [`docs/dev/01-change-map.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/01-change-map.md) | Table mapping tasks to packages, entry points, and tests |
+| [`docs/dev/07-extension-points.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/07-extension-points.md) | Stable extension anchors for common feature additions |
+| [`docs/dev/06-testing-by-change-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md) | Maven commands and test classes by change type |
+| [`docs/dev/tasks/add-llm-provider.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-llm-provider.md) | Add a new LLM provider |
+| [`docs/dev/tasks/add-export-format.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-export-format.md) | Add a new export format |
+| [`docs/dev/tasks/add-relation-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-relation-type.md) | Add a new relation type |
+| [`docs/dev/tasks/add-architecture-view-step.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-architecture-view-step.md) | Add an architecture view pipeline step |
+| [`docs/dev/tasks/add-document-import-mapping.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-document-import-mapping.md) | Add a document import mapping |
+| [`docs/dev/tasks/add-workspace-operation.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-workspace-operation.md) | Add a workspace operation |
+| [`docs/dev/tasks/add-ui-panel.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-ui-panel.md) | Add a UI panel |
+| [`docs/dev/tasks/add-dsl-property.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-dsl-property.md) | Add a DSL property or block type |
 
 > The `docs/dev/` directory is the **task-oriented entry point**.
 > The sections below remain the **deep reference** for modules, conventions, pitfalls,
@@ -62,7 +62,7 @@ modify one specific part of the system without reading the full architecture ref
 Before adding a provider, exporter, relation type, pipeline step, or DSL
 surface area, check the dedicated extension guide first:
 
-- [`docs/dev/07-extension-points.md`](../dev/07-extension-points.md)
+- [`docs/dev/07-extension-points.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/07-extension-points.md)
 
 It distinguishes between:
 
@@ -84,11 +84,15 @@ cd Taxonomy
 # Compile all 5 modules (~5 seconds)
 mvn compile
 
-# Run all tests (~60 seconds, no Docker needed)
-mvn test
-
-# Run including integration tests (requires Docker)
+# Run the complete deterministic lifecycle (no Docker needed)
 mvn verify
+
+# Run one explicit Testcontainers scenario (Docker required)
+mvn -B -pl taxonomy-app -am install -DskipTests
+mvn -B -pl taxonomy-app failsafe:integration-test failsafe:verify \
+  -DskipITs=false -Dit.test=DiagnosticsContainerIT \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
 
 # Start locally (browse-only, no API key needed)
 mvn -pl taxonomy-app spring-boot:run
@@ -191,59 +195,67 @@ The main Spring Boot application:
 
 ## Running Tests
 
+The root POM keeps `mvn verify` deterministic and bounded. It runs unit, Spring,
+architecture, contract, and dependency-hygiene tests without Docker or live LLM
+calls. Failsafe/Testcontainers tests are selected explicitly.
+
 ```bash
-# All unit + Spring context tests (no Docker needed)
-mvn test
-
-# Tests for a single module
-mvn test -pl taxonomy-dsl
-mvn test -pl taxonomy-app
-
-# Tests for a single class
-mvn test -pl taxonomy-app -Dtest=TaxonomyApplicationTests
-
-# Integration tests (requires Docker for Testcontainers)
+# Complete standard lifecycle (no Docker)
 mvn verify
 
-# Screenshot generation (requires Docker + optionally GEMINI_API_KEY)
-mvn package -DskipTests
-mvn failsafe:integration-test -DgenerateScreenshots=true -Dit.test=ScreenshotGeneratorIT
+# One module or test class
+mvn test -pl taxonomy-dsl
+mvn test -pl taxonomy-app -Dtest=TaxonomyApplicationTests
+
+# Prepare the reactor for an isolated integration test
+mvn -B -pl taxonomy-app -am install -DskipTests
+
+# One core Testcontainers scenario
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test=ProductionPersistenceRestartIT \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm,db-postgres,db-mssql,db-oracle
 ```
 
-### External Database Integration Tests
+### External database compatibility
 
-The project includes integration tests that verify the application works correctly against PostgreSQL, Microsoft SQL Server, and Oracle databases. PostgreSQL and MSSQL tests run as part of the default `mvn verify` build (requires Docker). Oracle tests are **opt-in** — tagged with `db-oracle` and excluded by default. To run specific database tests:
+PostgreSQL, Microsoft SQL Server, and Oracle tests are ordinary Maven
+Failsafe/Testcontainers tests, but all three `db-*` tags are excluded from the
+standard lifecycle. Relevant database-configuration pull requests run the
+bounded PostgreSQL diagnostics/Selenium pair. Scheduled and manual workflows
+cover the selected full matrix.
 
 ```bash
-# Run only PostgreSQL integration tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Postgres*IT"
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test='*Postgres*IT' \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm
 
-# Run only MSSQL integration tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Mssql*IT"
-
-# Run only Oracle integration tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="*Oracle*IT"
-
-# Run ALL external database tests
-mvn verify -DexcludedGroups=real-llm
-
-# Run all Selenium + external-db tests
-mvn verify -DexcludedGroups=real-llm -Dit.test="Selenium*ContainerIT"
+# Substitute *Mssql*IT or *Oracle*IT for another family.
 ```
 
-**Architecture:** Each external-database test class inherits from `AbstractDatabaseContainerIT` (REST/diagnostics tests) or `AbstractSeleniumContainerIT` (Selenium UI tests). The base classes hold all test logic; DB-specific subclasses are ~30 lines of configuration that specify the database container and the JDBC env vars to pass to the app container.
+`-DexcludedGroups=real-llm` deliberately includes the database tags while still
+excluding live LLM calls. Test classes inherit from
+`AbstractDatabaseContainerIT` or `AbstractSeleniumContainerIT`; application and
+database containers share a Testcontainers network and receive the selected
+Spring profile and JDBC settings through environment variables.
 
-**How it works:** The application JAR is built once and runs in a Docker container (`eclipse-temurin:21-jre`). A database container (PostgreSQL, MSSQL, or Oracle) runs on the same Docker network. The app container receives `SPRING_PROFILES_ACTIVE` (e.g. `mssql` or `postgres`) to activate the database-specific Spring profile, plus env vars like `TAXONOMY_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, etc. to override specific connection settings.
-
-Test file naming conventions:
-
-| Pattern | Runner | Description |
+| Pattern/tag | Runner | Standard lifecycle |
 |---|---|---|
-| `*Test.java`, `*Tests.java` | maven-surefire-plugin | Unit and Spring context tests |
-| `*IT.java` | maven-failsafe-plugin | Integration tests (require Docker) |
-| `@Tag("db-postgres")` | maven-failsafe-plugin | PostgreSQL tests (included by default) |
-| `@Tag("db-mssql")` | maven-failsafe-plugin | MSSQL tests (included by default) |
-| `@Tag("db-oracle")` | maven-failsafe-plugin | Oracle tests (excluded by default) |
+| `*Test.java`, `*Tests.java` | Surefire | Included |
+| `*IT.java` | Failsafe | Skipped while `skipITs=true` |
+| `db-postgres` | Failsafe/Testcontainers | Excluded |
+| `db-mssql` | Failsafe/Testcontainers | Excluded |
+| `db-oracle` | Failsafe/Testcontainers | Excluded |
+| `real-llm` | Surefire/Failsafe | Excluded |
+
+The authoritative command catalogue, browser matrix, accessibility audit, and
+screenshot procedure are maintained in
+[`docs/dev/06-testing-by-change-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md).
 
 ---
 
@@ -261,7 +273,7 @@ Test file naming conventions:
 ## Adding a New Export Format
 
 Use the stable extension point documented in
-[`docs/dev/07-extension-points.md#export-formats`](../dev/07-extension-points.md#export-formats).
+[`docs/dev/07-extension-points.md#export-formats`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/07-extension-points.md#export-formats).
 
 The current preferred path is:
 
@@ -278,7 +290,7 @@ The current preferred path is:
 ## Adding a New LLM Provider
 
 Use the stable extension point documented in
-[`docs/dev/07-extension-points.md#llm-providers`](../dev/07-extension-points.md#llm-providers).
+[`docs/dev/07-extension-points.md#llm-providers`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/07-extension-points.md#llm-providers).
 
 The current preferred path is:
 
@@ -645,14 +657,14 @@ The following CI tests catch common documentation drift:
 
 ## Maintainability Matrix
 
-The [Maintainability Matrix](../internal/MAINTAINABILITY_MATRIX.md) lists every feature area with its primary backend package, frontend module, main controller and service, DTOs, test coverage flags, and cognitive-load rating. Unlike [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md), it is about developer navigation and extension effort rather than product completeness.
+The [Maintainability Matrix](https://github.com/carstenartur/Taxonomy/blob/main/docs/internal/MAINTAINABILITY_MATRIX.md) lists every feature area with its primary backend package, frontend module, main controller and service, DTOs, test coverage flags, and cognitive-load rating. Unlike [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md), it is about developer navigation and extension effort rather than product completeness.
 
 Use it to locate the right entry points for a focused change and to understand which areas have known cross-cutting coupling.
 
 **ArchUnit rules** — the architectural boundary rules are in
 `taxonomy-app/src/test/java/com/taxonomy/ArchitectureTest.java`.
 Current temporary exceptions and removal conditions are documented in
-[`docs/dev/08-archunit-exceptions.md`](../dev/08-archunit-exceptions.md).
+[`docs/dev/08-archunit-exceptions.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/08-archunit-exceptions.md).
 Rules currently enforced include:
 - No circular dependencies between domain packages
 - Controllers must not access repositories directly
@@ -660,3 +672,10 @@ Rules currently enforced include:
 - `taxonomy-domain`, `taxonomy-dsl` (framework-free packages), and `taxonomy-export` (framework-free packages) must be Spring-free
 - `taxonomy-dsl` and `taxonomy-export` framework-free packages must not depend on `taxonomy-app` packages
 - Workspace context must be resolved at request boundaries only
+
+## Current QA entry points
+
+Use [`docs/dev/06-testing-by-change-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md)
+for standard, core-container, database, browser, accessibility, dependency, and
+screenshot commands. CI permission boundaries are documented in
+[`docs/dev/CI_SECURITY.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/CI_SECURITY.md).

@@ -104,3 +104,10 @@ The statement must include a feedback contact, preparation date, test method, kn
 - [Security](SECURITY.md)
 - [Data Protection](DATA_PROTECTION.md)
 - [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md)
+
+## Automated browser coverage matrix
+
+The maintained browser, viewport, CodeMirror, keyboard, reduced-motion, and axe
+coverage is documented in
+[`docs/dev/BROWSER_QA.md`](../dev/BROWSER_QA.md). New moderate axe findings are
+blocked against a reviewed baseline; CodeMirror is not excluded from the audit.
