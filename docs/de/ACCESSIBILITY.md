@@ -1,193 +1,102 @@
-# Barrierefreiheitskonzept (BITV 2.0 / WCAG 2.1)
+# Nachweismatrix zur Barrierefreiheit (BITV 2.0 / WCAG 2.1)
 
-Dieses Dokument beschreibt das Barrierefreiheitskonzept für den Taxonomy Architecture Analyzer gemäß der **Barrierefreie-Informationstechnik-Verordnung (BITV 2.0)** und den **Web Content Accessibility Guidelines (WCAG 2.1 Level AA)**.
+**Letzte codebasierte Prüfung:** 21. Juli 2026  
+**Ziel:** WCAG 2.1 Level AA / EN 301 549 / BITV 2.0  
+**Aktueller Stand:** Teilweise konform – eine formale BIK-BITV-Prüfung wurde noch nicht durchgeführt.
 
----
-
-## Inhaltsverzeichnis
-
-1. [Geltungsbereich](#geltungsbereich)
-2. [Konformitätsziel](#konformitätsziel)
-3. [Bestandsaufnahme der UI-Komponenten](#bestandsaufnahme-der-ui-komponenten)
-4. [Identifizierte Handlungsfelder](#identifizierte-handlungsfelder)
-5. [Maßnahmenplan](#maßnahmenplan)
-6. [Prüfverfahren](#prüfverfahren)
-7. [Erklärung zur Barrierefreiheit](#erklärung-zur-barrierefreiheit)
-
----
+Dieses Dokument hält umgesetzte Maßnahmen, automatisierte Nachweise, bekannte Einschränkungen und die vor einer Freigabe erforderlichen manuellen Prüfungen fest. Es ist keine Erklärung vollständiger rechtlicher Konformität.
 
 ## Geltungsbereich
 
-| Aspekt | Detail |
-|---|---|
-| **Anwendung** | Taxonomy Architecture Analyzer — Web-Anwendung (Single-Page) |
-| **Rechtsgrundlage** | BITV 2.0 (§ 1–3), basierend auf BGG § 12a–12d |
-| **Technischer Standard** | WCAG 2.1 Level AA (EN 301 549 V3.2.1) |
-| **Geltung** | Alle öffentlich zugänglichen Webseiten und Anwendungsoberflächen bei Einsatz in Bundesbehörden |
-| **Fristen** | Bestehende Webanwendungen: BITV 2.0 vollständig anwendbar |
+Bewertet wird die authentifizierte Webanwendung mit Analyse, Taxonomiebaum, Architekturansichten, Graph-Erkundung, Versionierung, DSL-Editor, Hilfe, Administration, Einstellungen, Dialogen und Statusmeldungen.
 
----
+## Umsetzungs- und Nachweismatrix
 
-## Konformitätsziel
-
-Das Konformitätsziel ist **WCAG 2.1 Level AA**, das dem BITV-2.0-Standard entspricht. Die vier Grundprinzipien:
-
-| Prinzip | Beschreibung | Relevanz für Taxonomy |
-|---|---|---|
-| **Wahrnehmbar** | Informationen müssen in verschiedenen Formen darstellbar sein | Hoch — farbcodierte Taxonomie-Bäume, Diagramme |
-| **Bedienbar** | Navigation und Bedienung müssen per Tastatur möglich sein | Hoch — komplexe Baum-Navigation, modale Dialoge |
-| **Verständlich** | Inhalte und Bedienung müssen verständlich sein | Mittel — Fachterminologie, KI-Ergebnisse |
-| **Robust** | Inhalte müssen von assistiven Technologien interpretierbar sein | Hoch — dynamische Bootstrap-Komponenten |
-
----
-
-## Bestandsaufnahme der UI-Komponenten
-
-### Technologie-Stack
-
-| Komponente | Technologie | Barrierefreiheits-Relevanz |
-|---|---|---|
-| **Framework** | Bootstrap 5 | Grundlegende ARIA-Unterstützung vorhanden |
-| **Template Engine** | Thymeleaf (serverseitiges Rendering) | HTML-Struktur kontrollierbar |
-| **JavaScript** | Vanilla JS (~29 Module) | Dynamische Inhalte erfordern ARIA-Live-Regionen |
-| **Diagramme** | Mermaid.js (SVG-Rendering) | SVG erfordert Textalternativen |
-| **Icons** | Bootstrap Icons | Icon-only-Elemente erfordern sr-only-Labels |
-| **Baumansicht** | Custom JavaScript (Taxonomie-Baum) | Komplexe Komponente; Treeview-ARIA erforderlich |
-
-### UI-Bereiche und Bewertung
-
-| UI-Bereich | Beschreibung | Status |
-|---|---|---|
-| **Navigation** | Top-Navbar mit Dropdown-Menüs | ⚠️ Tastaturnavigation prüfen |
-| **Analysepanel** | Textarea + Buttons für KI-Analyse | ⚠️ Label-Zuordnung prüfen |
-| **Taxonomie-Baum** | Scored Tree mit Farbcodierung | ❌ Farbcodierung allein unzugänglich |
-| **Architecture View** | Mermaid-Diagramme (SVG) | ❌ Keine Textalternative |
-| **Diff-Ansicht** | Farbcodierte Code-Diffs | ⚠️ Zusätzliche Markierungen erforderlich |
-| **Graph-Exploration** | Visuelle Graphen | ❌ Nicht barrierefrei |
-| **Admin Panel** | 🔒 Emoji als Interaktionselement | ❌ Nicht barrierefrei |
-| **Modale Dialoge** | Bootstrap Modals | ⚠️ Fokus-Management prüfen |
-| **Toasts/Benachrichtigungen** | Bootstrap Toasts | ⚠️ ARIA-Live-Regionen prüfen |
-
----
-
-## Identifizierte Handlungsfelder
-
-### Priorität Hoch 🔴
-
-| # | Handlungsfeld | Betroffene WCAG-Kriterien | Beschreibung |
+| Bereich | Aktuelle Umsetzung | Nachweis / Regressionsschutz | Status |
 |---|---|---|---|
-| **A1** | Scored Taxonomy Tree — Farbcodierung | 1.4.1 (Use of Color), 1.1.1 (Non-text Content) | Farbcodierung der Scores (rot/gelb/grün) ist die einzige Informationsquelle; Screenreader erhalten keine Score-Information |
-| **A2** | Tastaturnavigation | 2.1.1 (Keyboard), 2.4.3 (Focus Order), 2.4.7 (Focus Visible) | Tab-Order, Skip-Links und Focus-Indikatoren für alle interaktiven Elemente sicherstellen |
-| **A3** | Formular-Labels | 1.3.1 (Info and Relationships), 3.3.2 (Labels or Instructions) | Alle Formularfelder (Analyse-Textarea, Suchfelder, Login) mit zugeordneten `<label for="">`-Elementen versehen |
-| **A4** | Admin Panel Lock-Button | 2.5.3 (Label in Name), 1.1.1 (Non-text Content) | 🔒-Emoji als Interaktionselement durch accessible Button mit Textlabel ersetzen |
-| **A5** | Architecture View (Mermaid) | 1.1.1 (Non-text Content) | SVG-Diagramme ohne Textalternative; Alt-Texte oder tabellarische Alternative bereitstellen |
+| Dokumentensprache | Thymeleaf setzt die Sprache anhand der aktiven Locale | Template und authentifizierter axe-Test | Umgesetzt |
+| Sprunglink | Bei Fokus sichtbarer Link zum Hauptinhalt | Markup und Fokus-CSS | Umgesetzt |
+| Statusmeldungen | Höfliche und dringende ARIA-Live-Regionen | UI-Hilfsschicht und axe-Test | Umgesetzt |
+| Hauptnavigation | `tablist`-/`tab`-/`tabpanel`-Semantik, `aria-selected`, Roving Tabindex, Pfeil-/Pos1-/Ende-Tasten | `taxonomy-utils.js` und axe-Test | Umgesetzt |
+| Taxonomiebaum | `tree`, `treeitem`, `group`, `aria-expanded`, Pfeil-/Pos1-/Ende-/Enter-/Leertasten-Bedienung | Browsercode und fokussierte Tests | Umgesetzt |
+| Scores und Begründungen | Zugänglicher Name enthält Code, Titel, Score und Begründung; MutationObserver synchronisiert dynamische Änderungen | `taxonomy-utils.js` | Umgesetzt |
+| Fokusdarstellung | Sichtbare `focus-visible`-Umrandungen für Baum, Navigation, Dialoge und Knotenaktionen | CSS-Vertrag | Umgesetzt |
+| Dialoge | Bootstrap-Fokusführung; gemeinsamer Score-/Hinweisdialog basiert auf beschriftetem `<dialog>` | UI-Code und axe-Test | Umgesetzt |
+| Administration | Berechtigung ausschließlich über `ROLE_ADMIN`; Symbolschaltfläche besitzt zugänglichen Namen | Security- und UI-Regressionstests | Umgesetzt |
+| Veraltete Ergebnisse | Änderung der Anforderung nach einer Analyse erzeugt Warnung und Rücksetzaktion | Screenshot- und Verhaltenstest | Umgesetzt |
+| Touch-Bedienung | Knotenaktionen werden bei groben Zeigegeräten eingeblendet; wichtige Bedienelemente erhalten 44-Pixel-Ziele | Responsives Ergonomie-Stylesheet | Umgesetzt |
+| Zoom und Reflow | Navigation, Panels und Aktionen brechen auf schmalen beziehungsweise gezoomten Ansichten um | CSS; manuelle Endprüfung erforderlich | Teilweise |
+| Reduzierte Bewegung | Animationen und Übergänge werden bei `prefers-reduced-motion` minimiert | CSS | Umgesetzt |
+| Graphen und Diagramme | Mehrere Ansichten besitzen Tabellen oder Detaildarstellungen; die vollständige inhaltliche Gleichwertigkeit ist noch manuell zu prüfen | Manuelle Prüfung | Teilweise |
+| DSL-Editor | CodeMirror stellt eine eigene Accessibility-Struktur bereit; separate Prüfung nötig | Manuelle Tastatur-/Screenreader-Prüfung | Teilweise |
+| Kontraste | Bootstrap-Grundfarben und explizite Textfarben; vollständige Prüfung aller Zustände bleibt erforderlich | axe plus manuelle Prüfung | Teilweise |
 
-### Priorität Mittel 🟡
+## Automatischer Accessibility-Gate
 
-| # | Handlungsfeld | Betroffene WCAG-Kriterien | Beschreibung |
-|---|---|---|---|
-| **A6** | Diff-Ansicht | 1.4.1 (Use of Color) | Farbcodierte Diffs (grün/rot) durch zusätzliche Symbole (+/−/~) und Screenreader-Labels ergänzen |
-| **A7** | Graph-Exploration | 1.1.1 (Non-text Content) | Visuelle Graphen durch tabellarische Alternativansicht mit Keyboard-Navigation ergänzen |
-| **A8** | Farbkontraste | 1.4.3 (Contrast Minimum) | Kontrast-Audit aller Farben mit axe/Lighthouse durchführen; Mindestkontrastverhältnis 4.5:1 sicherstellen |
-| **A9** | ARIA-Live-Regionen | 4.1.3 (Status Messages) | Dynamische Statusmeldungen (Analyse läuft, Export abgeschlossen) als ARIA-Live-Regionen markieren |
-| **A10** | Modale Dialoge | 2.4.3 (Focus Order) | Fokus-Trapping in Modals sicherstellen; Fokus bei Schließen zurücksetzen |
+Der Workflow `.github/workflows/accessibility.yml`:
 
----
+1. baut und startet die echte Spring-Boot-Anwendung;
+2. meldet sich über das Formular an;
+3. öffnet Analyse, Architektur, Graph, Versionen, DSL, Hilfe, Administration und Einstellungen;
+4. führt `@axe-core/playwright` für WCAG 2.0/2.1 A und AA aus;
+5. schlägt bei kritischen oder schwerwiegenden Verstößen fehl;
+6. lädt bei Fehlern das Anwendungslog hoch.
 
-## Maßnahmenplan
+Fest gepinnte Werkzeuge:
 
-### Phase 1: Audit und Quick Wins (Wochen 1–2)
+- `@playwright/test` 1.61.1
+- `@axe-core/playwright` 4.12.1
 
-| # | Maßnahme | Aufwand | WCAG-Kriterien |
-|---|---|---|---|
-| M1 | axe/Lighthouse-Audit der Hauptseite durchführen | 2 Tage | Alle |
-| M2 | Skip-Links implementieren (`<a href="#main-content">Zum Inhalt springen</a>`) | 0,5 Tage | 2.4.1 |
-| M3 | `<label for="">`-Zuordnung für alle Formularfelder | 1 Tag | 1.3.1, 3.3.2 |
-| M4 | 🔒-Button durch accessible Button mit Text ersetzen | 0,5 Tage | 2.5.3, 1.1.1 |
-| M5 | `lang="de"` oder `lang="en"` auf `<html>`-Element sicherstellen | 0,5 Tage | 3.1.1 |
+Automatische Tests belegen keine vollständige Konformität. Sie ersetzen weder Tastatur-, Screenreader-, Zoom- und Kognitionstests noch die fachliche Prüfung von Diagrammalternativen.
 
-### Phase 2: Kernkomponenten (Wochen 3–6)
+## Verbindliche manuelle Release-Prüfungen
 
-| # | Maßnahme | Aufwand | WCAG-Kriterien |
-|---|---|---|---|
-| M6 | Taxonomie-Baum: ARIA-`treeview`-Rolle, Score als Text (`aria-label`) | 3 Tage | 1.4.1, 1.1.1, 4.1.2 |
-| M7 | Taxonomie-Baum: Tastaturnavigation (Pfeiltasten, Enter, Space) | 2 Tage | 2.1.1, 2.4.3 |
-| M8 | Architecture View: Tabellarische Alternativansicht | 2 Tage | 1.1.1 |
-| M9 | Diff-Ansicht: +/−/~-Symbole und `aria-label` ergänzen | 1 Tag | 1.4.1 |
-| M10 | ARIA-Live-Regionen für dynamische Statusmeldungen | 1 Tag | 4.1.3 |
+- [ ] Primären Workflow vollständig ohne Maus bedienen.
+- [ ] Fokusreihenfolge und Fokusrückgabe für jeden Dialog prüfen.
+- [ ] 200 % und 400 % Browser-Zoom ohne Verlust wesentlicher Inhalte testen.
+- [ ] 320 CSS-Pixel sowie ein Touch-Gerät testen.
+- [ ] Windows High Contrast / Forced Colors testen.
+- [ ] `prefers-reduced-motion` testen.
+- [ ] Taxonomiebaum und Versionsdialoge mit NVDA oder JAWS testen.
+- [ ] Primären Workflow mit VoiceOver unter macOS/iOS testen.
+- [ ] Für jede Architektur-/Graphinformation eine Tabelle oder strukturierte Textalternative bestätigen.
+- [ ] Sicherstellen, dass Validierungsfehler Feld, Ursache und Korrekturmöglichkeit benennen und Eingaben erhalten bleiben.
 
-### Phase 3: Verfeinerung (Wochen 7–10)
+## Bekannte Einschränkungen
 
-| # | Maßnahme | Aufwand | WCAG-Kriterien |
-|---|---|---|---|
-| M11 | Kontrast-Audit und Farbkorrekturen | 2 Tage | 1.4.3 |
-| M12 | Graph-Exploration: Tabellarische Alternative | 3 Tage | 1.1.1 |
-| M13 | Fokus-Management in Modals verbessern | 1 Tag | 2.4.3 |
-| M14 | Screenreader-Tests (NVDA, VoiceOver) | 3 Tage | Alle |
-| M15 | BIK-BITV-Konformitätstest vorbereiten | 2 Tage | Alle |
+1. Komplexe D3-Diagramme benötigen noch eine vollständige Gleichwertigkeitsprüfung ihrer Tabellen-/Detailalternativen.
+2. CodeMirror benötigt eine eigene Screenreader- und Tastatur-Testmatrix.
+3. Eine formale BIK-BITV-Prüfung fehlt.
+4. 400-%-Zoom und alle unterstützten mobilen Geräte sind nicht unabhängig zertifiziert.
+5. Expertenbereiche wie selektiver Transfer, rohe DSL, Git-Historie und Konfliktauflösung besitzen weiterhin hohe kognitive Last.
+6. Drittanbieter-Browserressourcen müssen lokal bereitgestellt sein, bevor eine Installation als vollständig netzisoliert bezeichnet werden kann.
 
----
+## Softwareergonomische Regeln
 
-## Prüfverfahren
+Neue oder geänderte Workflows müssen:
 
-### Automatisierte Tests
+- Erkennen statt Erinnern unterstützen: suchbare Auswahl statt roher IDs oder Commit-Hashes.
+- pro Aufgabenbereich eine klare Primäraktion zeigen.
+- Diagnose- und Systemmetriken aus der Standardarbeitsfläche heraushalten.
+- wesentliche Aktionen nicht ausschließlich hinter Hover verstecken.
+- Farbe nie als einzigen Informationsträger verwenden.
+- keine nativen `alert()`-/`prompt()`-Dialoge verwenden.
+- Eingaben nach Validierungs- oder Netzwerkfehlern erhalten.
+- asynchrone Ergebnisse und Fehler über Live-Regionen ankündigen.
+- zu jedem Graphen und Diagramm eine nichtgrafische Darstellung bereitstellen.
 
-| Tool | Einsatzbereich | Frequenz |
-|---|---|---|
-| **axe-core** | HTML-Struktur, ARIA, Kontraste, Labels | Bei jedem Build (CI-Integration empfohlen) |
-| **Lighthouse Accessibility Audit** | Gesamtseiten-Bewertung | Monatlich / bei Release |
-| **Pa11y** | Automatisierte Seitenprüfung | Optional, ergänzend |
+## Vorlage für die Konformitätserklärung
 
-### Manuelle Tests
+Bis zum Abschluss einer formalen Prüfung sollte eine einsetzende Stelle sinngemäß formulieren:
 
-| Test | Beschreibung | Frequenz |
-|---|---|---|
-| **Tastaturnavigation** | Alle Funktionen ohne Maus erreichbar? Tab-Order logisch? | Bei jedem UI-Release |
-| **Screenreader-Test** | NVDA (Windows) / VoiceOver (macOS) / Orca (Linux) | Quartalsweise |
-| **Zoom-Test** | 200% Zoom: Keine Inhalte abgeschnitten? | Bei jedem UI-Release |
-| **Kontrast-Prüfung** | Colour Contrast Analyser für kritische Farben | Bei Farbänderungen |
+> Der Taxonomy Architecture Analyzer ist teilweise konform mit BITV 2.0 / WCAG 2.1 Level AA. Automatisierte axe-Prüfungen decken die zentralen authentifizierten Anwendungsbereiche ab. Verbleibende Einschränkungen betreffen komplexe Visualisierungen, den DSL-Editor, umfassende Screenreader-Prüfungen und die formale BIK-BITV-Zertifizierung.
 
-### BIK-BITV-Test
+Die veröffentlichte Erklärung muss Kontaktweg, Erstellungsdatum, Prüfmethode, bekannte Barrieren und das Schlichtungsverfahren enthalten.
 
-Für den Einsatz in Bundesbehörden wird ein vollständiger **BIK-BITV-Test** empfohlen:
+## Verwandte Dokumente
 
-| Aspekt | Detail |
-|---|---|
-| **Prüfverfahren** | BIK-BITV-Test (92 Prüfschritte, basierend auf EN 301 549) |
-| **Durchführung** | Durch zertifizierte BIK-Prüfstellen |
-| **Empfohlener Zeitpunkt** | Nach Abschluss der Maßnahmen Phase 1–3 |
-| **Ergebnis** | BITV-Konformitätsbericht mit Prüfprotokoll |
-
----
-
-## Erklärung zur Barrierefreiheit
-
-Gemäß **§ 12b BGG** (Behindertengleichstellungsgesetz) muss eine Erklärung zur Barrierefreiheit veröffentlicht werden. Vorlage:
-
----
-
-> ### Erklärung zur Barrierefreiheit
->
-> **[Name der Behörde]** ist bemüht, den Taxonomy Architecture Analyzer im Einklang mit § 12a BGG und der BITV 2.0 barrierefrei zugänglich zu machen.
->
-> **Stand der Vereinbarkeit:** Diese Anwendung ist **teilweise vereinbar** mit der BITV 2.0.
->
-> **Nicht barrierefreie Inhalte:**
-> - Farbcodierte Taxonomie-Bäume und Architekturdiagramme verfügen noch nicht über vollständige Textalternativen
-> - Graph-Exploration-Funktionen sind primär visuell und bieten noch keine tabellarische Alternative
-> - Einzelne interaktive Elemente sind noch nicht vollständig per Tastatur bedienbar
->
-> **Maßnahmen:** Die identifizierten Barrieren werden gemäß dem dokumentierten [Maßnahmenplan](#maßnahmenplan) schrittweise behoben.
->
-> **Feedback und Kontakt:** Wenn Sie Barrieren bei der Nutzung dieser Anwendung feststellen, kontaktieren Sie bitte **[E-Mail der zuständigen Stelle]**.
->
-> **Schlichtungsverfahren:** Bei unbefriedigender Reaktion können Sie sich an die Schlichtungsstelle nach § 16 BGG wenden: [Schlichtungsstelle nach dem Behindertengleichstellungsgesetz](https://www.schlichtungsstelle-bgg.de/).
-
----
-
-## Verwandte Dokumentation
-
-- [User Guide](USER_GUIDE.md) — Benutzerhandbuch
-- [Security](SECURITY.md) — Sicherheitsarchitektur
-- [Deployment Checklist](DEPLOYMENT_CHECKLIST.md) — Deployment-Checkliste für Behördenumgebungen
-- [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — Digitale Souveränität
+- [Benutzerhandbuch](USER_GUIDE.md)
+- [Deployment-Checkliste](DEPLOYMENT_CHECKLIST.md)
+- [Sicherheit](SECURITY.md)
+- [Datenschutz](DATA_PROTECTION.md)
+- [Digitale Souveränität](DIGITAL_SOVEREIGNTY.md)
