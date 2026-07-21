@@ -80,11 +80,11 @@ import java.util.stream.Collectors;
         String rawText;
         int pageCount;
 
-<span class="pc bpc" id="L83" title="1 of 2 branches missed.">        if (MIME_PDF.equals(contentType)) {</span>
-<span class="nc" id="L84">            try (PDDocument pdf = Loader.loadPDF(file.getBytes())) {</span>
-<span class="nc" id="L85">                pageCount = pdf.getNumberOfPages();</span>
-<span class="nc" id="L86">                PDFTextStripper stripper = new PDFTextStripper();</span>
-<span class="nc" id="L87">                rawText = stripper.getText(pdf);</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (MIME_PDF.equals(contentType)) {</span>
+<span class="fc" id="L84">            try (PDDocument pdf = Loader.loadPDF(file.getBytes())) {</span>
+<span class="fc" id="L85">                pageCount = pdf.getNumberOfPages();</span>
+<span class="fc" id="L86">                PDFTextStripper stripper = new PDFTextStripper();</span>
+<span class="fc" id="L87">                rawText = stripper.getText(pdf);</span>
             }
 <span class="pc bpc" id="L89" title="1 of 2 branches missed.">        } else if (MIME_DOCX.equals(contentType)) {</span>
 <span class="fc" id="L90">            try (InputStream in = file.getInputStream();</span>
@@ -144,7 +144,7 @@ import java.util.stream.Collectors;
     private String detectMimeType(MultipartFile file) {
 <span class="fc" id="L145">        String ct = file.getContentType();</span>
 <span class="pc bpc" id="L146" title="2 of 4 branches missed.">        if (ct != null &amp;&amp; !ct.isBlank()) {</span>
-<span class="pc bpc" id="L147" title="1 of 2 branches missed.">            if (ct.contains(&quot;pdf&quot;)) return MIME_PDF;</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">            if (ct.contains(&quot;pdf&quot;)) return MIME_PDF;</span>
 <span class="pc bpc" id="L148" title="3 of 4 branches missed.">            if (ct.contains(&quot;wordprocessingml&quot;) || ct.contains(&quot;docx&quot;)) return MIME_DOCX;</span>
         }
 <span class="nc" id="L150">        String name = file.getOriginalFilename();</span>
