@@ -31,16 +31,27 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.head_ref || github.ref_name }}
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Apply reviewed QA documentation corrections
         if: github.head_ref == 'qa/complete-open-points' && hashFiles('.github/scripts/apply-qa-doc-consistency.py') != ''
         run: |
-          python3 .github/scripts/apply-qa-doc-consistency.py
-          git diff --check
-          python3 .github/scripts/check-doc-links.py
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
+          set +e
+          python3 .github/scripts/apply-qa-doc-consistency.py > /tmp/qa-doc-consistency.log 2>&1
+          status=$?
+          cat /tmp/qa-doc-consistency.log
+          if [ "$status" -ne 0 ]; then
+            cp /tmp/qa-doc-consistency.log .github/apply-qa-doc-error.log
+            git add .github/apply-qa-doc-error.log
+            git commit -m 'chore: record QA documentation migration diagnostic'
+            git push origin HEAD:qa/complete-open-points
+            exit "$status"
+          fi
+          rm -f .github/apply-qa-doc-error.log
+          git diff --check
+          python3 .github/scripts/check-doc-links.py
           git add -A
           git commit -m 'docs: align database and test architecture with current runtime'
           git push origin HEAD:qa/complete-open-points
