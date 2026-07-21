@@ -1,0 +1,110 @@
+name: Database Compatibility
+
+on:
+  workflow_dispatch:
+    inputs:
+      database:
+        description: Database family to test
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - postgres
+          - mssql
+          - oracle
+  schedule:
+    - cron: '17 2 * * 0'
+
+permissions:
+  contents: read
+
+env:
+  BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+
+jobs:
+  select-matrix:
+    name: Select database tests
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        env:
+          DATABASE: ${{ inputs.database || 'all' }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+
+          selected = os.environ.get('DATABASE', 'all')
+          tests = {
+              'postgres': [
+                  'DiagnosticsPostgresContainerIT',
+                  'SeleniumPostgresContainerIT',
+              ],
+              'mssql': [
+                  'DiagnosticsMssqlContainerIT',
+                  'SeleniumMssqlContainerIT',
+              ],
+              'oracle': [
+                  'DiagnosticsOracleContainerIT',
+                  'SeleniumOracleContainerIT',
+              ],
+          }
+          families = tests if selected == 'all' else {selected: tests[selected]}
+          include = [
+              {'database': database, 'test': test}
+              for database, database_tests in families.items()
+              for test in database_tests
+          ]
+          print('matrix=' + json.dumps({'include': include}, separators=(',', ':')))
+          PY
+
+  database-testcontainers:
+    name: ${{ matrix.database }} / ${{ matrix.test }}
+    needs: select-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select-matrix.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Download and verify pinned embedding model
+        env:
+          MODEL_REVISION: ${{ env.BGE_MODEL_REVISION }}
+        run: bash .github/scripts/download-embedding-model.sh
+
+      - name: Install reactor without running tests
+        run: mvn -B -pl taxonomy-app -am install -DskipTests
+
+      - name: Run database compatibility test
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+        run: >-
+          mvn -B -pl taxonomy-app
+          failsafe:integration-test failsafe:verify
+          -DskipITs=false
+          -Dit.test=${{ matrix.test }}
+          -DfailIfNoTests=false
+          -DexcludedGroups=real-llm
+
+      - name: Upload database compatibility evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: database-${{ matrix.database }}-${{ matrix.test }}
+          path: taxonomy-app/target/failsafe-reports/**
+          if-no-files-found: warn
+          retention-days: 14
