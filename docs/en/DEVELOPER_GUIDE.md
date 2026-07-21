@@ -3,7 +3,7 @@
 This guide is intended for developers contributing to the Taxonomy Architecture Analyzer.
 
 > **New to the codebase?**
-> Start with the [task-oriented entry point](../dev/00-start-here.md)
+> Start with the [task-oriented entry point](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/00-start-here.md)
 > to find the smallest safe change area for your specific task.
 > The present document is the **deep architecture reference**.
 
@@ -38,18 +38,18 @@ modify one specific part of the system without reading the full architecture ref
 
 | File | Purpose |
 |---|---|
-| [`docs/dev/00-start-here.md`](../dev/00-start-here.md) | How to approach a single-task change |
-| [`docs/dev/01-change-map.md`](../dev/01-change-map.md) | Table mapping tasks to packages, entry points, and tests |
-| [`docs/dev/07-extension-points.md`](../dev/07-extension-points.md) | Stable extension anchors for common feature additions |
-| [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md) | Maven commands and test classes by change type |
-| [`docs/dev/tasks/add-llm-provider.md`](../dev/tasks/add-llm-provider.md) | Add a new LLM provider |
-| [`docs/dev/tasks/add-export-format.md`](../dev/tasks/add-export-format.md) | Add a new export format |
-| [`docs/dev/tasks/add-relation-type.md`](../dev/tasks/add-relation-type.md) | Add a new relation type |
-| [`docs/dev/tasks/add-architecture-view-step.md`](../dev/tasks/add-architecture-view-step.md) | Add an architecture view pipeline step |
-| [`docs/dev/tasks/add-document-import-mapping.md`](../dev/tasks/add-document-import-mapping.md) | Add a document import mapping |
-| [`docs/dev/tasks/add-workspace-operation.md`](../dev/tasks/add-workspace-operation.md) | Add a workspace operation |
-| [`docs/dev/tasks/add-ui-panel.md`](../dev/tasks/add-ui-panel.md) | Add a UI panel |
-| [`docs/dev/tasks/add-dsl-property.md`](../dev/tasks/add-dsl-property.md) | Add a DSL property or block type |
+| [`docs/dev/00-start-here.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/00-start-here.md) | How to approach a single-task change |
+| [`docs/dev/01-change-map.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/01-change-map.md) | Table mapping tasks to packages, entry points, and tests |
+| [`docs/dev/07-extension-points.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/07-extension-points.md) | Stable extension anchors for common feature additions |
+| [`docs/dev/06-testing-by-change-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md) | Maven commands and test classes by change type |
+| [`docs/dev/tasks/add-llm-provider.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-llm-provider.md) | Add a new LLM provider |
+| [`docs/dev/tasks/add-export-format.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-export-format.md) | Add a new export format |
+| [`docs/dev/tasks/add-relation-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-relation-type.md) | Add a new relation type |
+| [`docs/dev/tasks/add-architecture-view-step.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-architecture-view-step.md) | Add an architecture view pipeline step |
+| [`docs/dev/tasks/add-document-import-mapping.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-document-import-mapping.md) | Add a document import mapping |
+| [`docs/dev/tasks/add-workspace-operation.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-workspace-operation.md) | Add a workspace operation |
+| [`docs/dev/tasks/add-ui-panel.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-ui-panel.md) | Add a UI panel |
+| [`docs/dev/tasks/add-dsl-property.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-dsl-property.md) | Add a DSL property or block type |
 
 > The `docs/dev/` directory is the **task-oriented entry point**.
 > The sections below remain the **deep reference** for modules, conventions, pitfalls,
@@ -62,7 +62,7 @@ modify one specific part of the system without reading the full architecture ref
 Before adding a provider, exporter, relation type, pipeline step, or DSL
 surface area, check the dedicated extension guide first:
 
-- [`docs/dev/07-extension-points.md`](../dev/07-extension-points.md)
+- [`docs/dev/07-extension-points.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/07-extension-points.md)
 
 It distinguishes between:
 
@@ -255,7 +255,7 @@ Spring profile and JDBC settings through environment variables.
 
 The authoritative command catalogue, browser matrix, accessibility audit, and
 screenshot procedure are maintained in
-[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
+[`docs/dev/06-testing-by-change-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md).
 
 ---
 
@@ -273,7 +273,7 @@ screenshot procedure are maintained in
 ## Adding a New Export Format
 
 Use the stable extension point documented in
-[`docs/dev/07-extension-points.md#export-formats`](../dev/07-extension-points.md#export-formats).
+[`docs/dev/07-extension-points.md#export-formats`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/07-extension-points.md#export-formats).
 
 The current preferred path is:
 
@@ -290,7 +290,7 @@ The current preferred path is:
 ## Adding a New LLM Provider
 
 Use the stable extension point documented in
-[`docs/dev/07-extension-points.md#llm-providers`](../dev/07-extension-points.md#llm-providers).
+[`docs/dev/07-extension-points.md#llm-providers`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/07-extension-points.md#llm-providers).
 
 The current preferred path is:
 
@@ -657,14 +657,14 @@ The following CI tests catch common documentation drift:
 
 ## Maintainability Matrix
 
-The [Maintainability Matrix](../internal/MAINTAINABILITY_MATRIX.md) lists every feature area with its primary backend package, frontend module, main controller and service, DTOs, test coverage flags, and cognitive-load rating. Unlike [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md), it is about developer navigation and extension effort rather than product completeness.
+The [Maintainability Matrix](https://github.com/carstenartur/Taxonomy/blob/main/docs/internal/MAINTAINABILITY_MATRIX.md) lists every feature area with its primary backend package, frontend module, main controller and service, DTOs, test coverage flags, and cognitive-load rating. Unlike [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md), it is about developer navigation and extension effort rather than product completeness.
 
 Use it to locate the right entry points for a focused change and to understand which areas have known cross-cutting coupling.
 
 **ArchUnit rules** — the architectural boundary rules are in
 `taxonomy-app/src/test/java/com/taxonomy/ArchitectureTest.java`.
 Current temporary exceptions and removal conditions are documented in
-[`docs/dev/08-archunit-exceptions.md`](../dev/08-archunit-exceptions.md).
+[`docs/dev/08-archunit-exceptions.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/08-archunit-exceptions.md).
 Rules currently enforced include:
 - No circular dependencies between domain packages
 - Controllers must not access repositories directly
@@ -675,7 +675,7 @@ Rules currently enforced include:
 
 ## Current QA entry points
 
-Use [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md)
+Use [`docs/dev/06-testing-by-change-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md)
 for standard, core-container, database, browser, accessibility, dependency, and
 screenshot commands. CI permission boundaries are documented in
-[`docs/dev/CI_SECURITY.md`](../dev/CI_SECURITY.md).
+[`docs/dev/CI_SECURITY.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/CI_SECURITY.md).

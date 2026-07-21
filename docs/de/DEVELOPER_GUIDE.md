@@ -3,7 +3,7 @@
 Dieses Handbuch richtet sich an Entwicklerinnen und Entwickler, die zum Taxonomy Architecture Analyzer beitragen.
 
 > **Neu in der Codebasis?**
-> Beginnen Sie mit dem [aufgabenorientierten Einstiegspunkt](../dev/00-start-here.md),
+> Beginnen Sie mit dem [aufgabenorientierten Einstiegspunkt](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/00-start-here.md),
 > um den kleinsten sicheren Änderungsbereich für Ihre konkrete Aufgabe zu finden.
 > Das vorliegende Dokument ist die **tiefergehende Architektuurreferenz**.
 
@@ -38,18 +38,18 @@ die einen bestimmten Teil des Systems ändern möchten, ohne die gesamte Archite
 
 | Datei | Zweck |
 |---|---|
-| [`docs/dev/00-start-here.md`](../dev/00-start-here.md) | Wie man eine einzelne Aufgabe angeht |
-| [`docs/dev/01-change-map.md`](../dev/01-change-map.md) | Tabelle: Aufgaben → Pakete, Einstiegspunkte und Tests |
-| [`docs/dev/07-extension-points.md`](../dev/07-extension-points.md) | Stabile Erweiterungsanker für häufige Feature-Ergänzungen |
-| [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md) | Maven-Befehle und Testklassen nach Änderungstyp |
-| [`docs/dev/tasks/add-llm-provider.md`](../dev/tasks/add-llm-provider.md) | Einen neuen LLM-Anbieter hinzufügen |
-| [`docs/dev/tasks/add-export-format.md`](../dev/tasks/add-export-format.md) | Ein neues Exportformat hinzufügen |
-| [`docs/dev/tasks/add-relation-type.md`](../dev/tasks/add-relation-type.md) | Einen neuen Relationstyp hinzufügen |
-| [`docs/dev/tasks/add-architecture-view-step.md`](../dev/tasks/add-architecture-view-step.md) | Einen Architekturansicht-Pipeline-Schritt hinzufügen |
-| [`docs/dev/tasks/add-document-import-mapping.md`](../dev/tasks/add-document-import-mapping.md) | Ein Dokumentimport-Mapping hinzufügen |
-| [`docs/dev/tasks/add-workspace-operation.md`](../dev/tasks/add-workspace-operation.md) | Eine Workspace-Operation hinzufügen |
-| [`docs/dev/tasks/add-ui-panel.md`](../dev/tasks/add-ui-panel.md) | Ein UI-Panel hinzufügen |
-| [`docs/dev/tasks/add-dsl-property.md`](../dev/tasks/add-dsl-property.md) | Eine DSL-Eigenschaft oder einen Blocktyp hinzufügen |
+| [`docs/dev/00-start-here.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/00-start-here.md) | Wie man eine einzelne Aufgabe angeht |
+| [`docs/dev/01-change-map.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/01-change-map.md) | Tabelle: Aufgaben → Pakete, Einstiegspunkte und Tests |
+| [`docs/dev/07-extension-points.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/07-extension-points.md) | Stabile Erweiterungsanker für häufige Feature-Ergänzungen |
+| [`docs/dev/06-testing-by-change-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md) | Maven-Befehle und Testklassen nach Änderungstyp |
+| [`docs/dev/tasks/add-llm-provider.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-llm-provider.md) | Einen neuen LLM-Anbieter hinzufügen |
+| [`docs/dev/tasks/add-export-format.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-export-format.md) | Ein neues Exportformat hinzufügen |
+| [`docs/dev/tasks/add-relation-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-relation-type.md) | Einen neuen Relationstyp hinzufügen |
+| [`docs/dev/tasks/add-architecture-view-step.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-architecture-view-step.md) | Einen Architekturansicht-Pipeline-Schritt hinzufügen |
+| [`docs/dev/tasks/add-document-import-mapping.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-document-import-mapping.md) | Ein Dokumentimport-Mapping hinzufügen |
+| [`docs/dev/tasks/add-workspace-operation.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-workspace-operation.md) | Eine Workspace-Operation hinzufügen |
+| [`docs/dev/tasks/add-ui-panel.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-ui-panel.md) | Ein UI-Panel hinzufügen |
+| [`docs/dev/tasks/add-dsl-property.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/tasks/add-dsl-property.md) | Eine DSL-Eigenschaft oder einen Blocktyp hinzufügen |
 
 > Das Verzeichnis `docs/dev/` ist der **aufgabenorientierte Einstiegspunkt**.
 > Die nachfolgenden Abschnitte bleiben die **tiefergehende Referenz** für Module, Konventionen,
@@ -62,7 +62,7 @@ die einen bestimmten Teil des Systems ändern möchten, ohne die gesamte Archite
 Bevor Sie einen Anbieter, Exporter, Relationstyp, Pipeline-Schritt oder DSL-Bereich hinzufügen,
 konsultieren Sie zuerst den dedizierten Erweiterungsleitfaden:
 
-- [`docs/dev/07-extension-points.md`](../dev/07-extension-points.md)
+- [`docs/dev/07-extension-points.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/07-extension-points.md)
 
 Er unterscheidet zwischen:
 
@@ -256,7 +256,7 @@ Spring-Profil sowie die JDBC-Einstellungen über Umgebungsvariablen.
 
 Der verbindliche Befehlskatalog sowie Browsermatrix, Accessibility-Prüfung und
 Screenshot-Verfahren stehen in
-[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
+[`docs/dev/06-testing-by-change-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md).
 
 ---
 
@@ -631,7 +631,7 @@ Die folgenden CI-Tests erkennen häufige Dokumentationsdrift:
 
 ## Wartbarkeitsmatrix
 
-Die [Wartbarkeitsmatrix](../internal/MAINTAINABILITY_MATRIX.md) listet jeden Funktionsbereich mit seinem primären
+Die [Wartbarkeitsmatrix](https://github.com/carstenartur/Taxonomy/blob/main/docs/internal/MAINTAINABILITY_MATRIX.md) listet jeden Funktionsbereich mit seinem primären
 Backend-Paket, Frontend-Modul, Haupt-Controller und -Service, DTOs, Test-Coverage-Flags und einer kognitiven
 Belastungsbewertung auf.
 
@@ -652,6 +652,6 @@ Aktuell durchgesetzte Regeln:
 
 Die Befehle für Standard-, Core-Container-, Datenbank-, Browser-,
 Accessibility-, Abhängigkeits- und Screenshot-Prüfungen stehen in
-[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
+[`docs/dev/06-testing-by-change-type.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/06-testing-by-change-type.md).
 Die CI-Berechtigungsgrenzen sind in
-[`docs/dev/CI_SECURITY.md`](../dev/CI_SECURITY.md) beschrieben.
+[`docs/dev/CI_SECURITY.md`](https://github.com/carstenartur/Taxonomy/blob/main/docs/dev/CI_SECURITY.md) beschrieben.
