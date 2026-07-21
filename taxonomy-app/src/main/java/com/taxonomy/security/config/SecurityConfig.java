@@ -17,7 +17,7 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
  * Spring Security configuration for form-login mode (default, without Keycloak).
  *
  * <p>The GUI uses form-login sessions and therefore keeps CSRF protection for
- * state-changing API calls. Programmatic API clients authenticated with an
+ * state-changing API calls. Only programmatic API clients authenticated with an
  * explicit Basic or Bearer Authorization header are treated as stateless and
  * may call the REST API without a CSRF token.</p>
  */
@@ -38,9 +38,7 @@ public class SecurityConfig {
 
         http
             .authorizeHttpRequests(auth -> authRules.configure(auth))
-            .csrf(csrf -> csrf
-                .ignoringRequestMatchers(statelessApiClient)
-            )
+            .csrf(csrf -> csrf.ignoringRequestMatchers(statelessApiClient))
             .headers(headers -> headers
                 .contentTypeOptions(Customizer.withDefaults())
                 .frameOptions(frame -> frame.sameOrigin())
@@ -58,21 +56,19 @@ public class SecurityConfig {
     }
 
     /**
-     * Explicit Authorization headers identify non-browser REST clients. An API
-     * request without an HTTP session is also stateless; this keeps command-line
-     * clients and focused MockMvc tests compatible. Requests carrying the
-     * form-login session remain CSRF protected, including fetch() calls issued by
-     * the web UI.
+     * A request is stateless only when it carries an explicit HTTP
+     * authentication scheme. The absence of an existing session is not enough:
+     * otherwise a browser request made before session resolution could bypass
+     * CSRF protection.
      */
-    private static boolean isStatelessApiClient(HttpServletRequest request) {
+    static boolean isStatelessApiClient(HttpServletRequest request) {
         if (!request.getRequestURI().startsWith("/api/")) {
             return false;
         }
         String authorization = request.getHeader("Authorization");
-        boolean explicitAuthorization = authorization != null
+        return authorization != null
                 && (authorization.regionMatches(true, 0, "Basic ", 0, 6)
                 || authorization.regionMatches(true, 0, "Bearer ", 0, 7));
-        return explicitAuthorization || request.getSession(false) == null;
     }
 
     @Bean
