@@ -12,7 +12,7 @@ Taxonomy Architecture Analyzer incorporates components from the following third-
 
 | License | Components | Government Use |
 |---|---|---|
-| Apache License 2.0 | Spring Boot, Apache POI, Lucene, Hibernate, springdoc, DJL, Micrometer, JaCoCo | ✅ Permissive, no restrictions |
+| Apache License 2.0 | Spring Boot, Apache POI, Apache PDFBox, Lucene, Hibernate, springdoc, DJL, Micrometer, JaCoCo | ✅ Permissive, no restrictions |
 | MIT License | Bootstrap, jsPDF, svg2pdf.js, ONNX Runtime, CodeMirror | ✅ Permissive, no restrictions |
 | ISC License | D3.js | ✅ Permissive, no restrictions |
 | BSD Licenses | HSQLDB, PostgreSQL JDBC, XStream, Flexmark-java | ✅ Permissive, no restrictions |
@@ -36,6 +36,10 @@ https://spring.io/
 ### Apache POI
 Copyright © The Apache Software Foundation
 https://poi.apache.org/
+
+### Apache PDFBox
+Copyright © The Apache Software Foundation
+https://pdfbox.apache.org/
 
 ### Apache Lucene
 Copyright © The Apache Software Foundation

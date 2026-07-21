@@ -71,7 +71,7 @@
         <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
         <!-- Dependency versions (centralized to avoid repetition in child POMs) -->
         <poi.version>5.5.1</poi.version>
-        <pdfbox.version>3.0.7</pdfbox.version>
+        <pdfbox.version>3.0.8</pdfbox.version>
         <lucene.version>9.12.3</lucene.version>
         <hibernate-search.version>8.3.1.Final</hibernate-search.version>
         <hibernate-search-backend.version>8.4.0.Final</hibernate-search-backend.version>
