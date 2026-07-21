@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.actor == 'carstenartur' && github.ref == 'refs/heads/qa/complete-open-points'
+    if: github.ref == 'refs/heads/qa/complete-open-points'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
