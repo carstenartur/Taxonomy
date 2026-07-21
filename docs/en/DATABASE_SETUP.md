@@ -318,7 +318,7 @@ Override via environment variables:
 export SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=20
 ```
 
-> **Note:** The default HSQLDB profile does **not** use HikariCP — it uses `SimpleDriverDataSource` to avoid connection pool overhead in single-JVM mode.
+> **Note:** The HSQLDB profile uses a small bounded HikariCP pool (`minimum-idle=1`, `maximum-pool-size=4`). The idle connection is required for a stable file-database lifecycle when `shutdown=true` is used.
 
 ---
 
@@ -333,7 +333,7 @@ To migrate from the default HSQLDB to a production database:
 5. **Switch to update** — After the initial setup, switch to `TAXONOMY_DDL_AUTO=update` to preserve data across restarts.
 6. **Verify** — Check the health endpoint (`GET /actuator/health`) and run a test analysis.
 
-The taxonomy data is always loaded from the bundled Excel workbook at startup, so no data migration from HSQLDB is needed for the taxonomy itself. Architecture DSL data (Git repository) is stored in the database and will need to be re-created or migrated manually.
+An empty target database imports the bundled taxonomy workbook. A file-backed source database may also contain user relations, workspaces, hypotheses, and JGit architecture history; migrate those records explicitly when moving to another database backend.
 
 ---
 

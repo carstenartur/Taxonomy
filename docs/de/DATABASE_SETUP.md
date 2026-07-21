@@ -318,7 +318,7 @@ Alle Produktions-Datenbankprofile (PostgreSQL, MSSQL, Oracle) konfigurieren Hika
 export SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=20
 ```
 
-> **Hinweis:** Das Standard-HSQLDB-Profil verwendet **kein** HikariCP — es nutzt `SimpleDriverDataSource`, um den Verbindungspool-Overhead im Einzeln-JVM-Modus zu vermeiden.
+> **Hinweis:** Das HSQLDB-Profil verwendet einen kleinen begrenzten HikariCP-Pool (`minimum-idle=1`, `maximum-pool-size=4`). Die Leerlaufverbindung ist für einen stabilen Lebenszyklus dateibasierter Datenbanken mit `shutdown=true` erforderlich.
 
 ---
 
@@ -333,7 +333,7 @@ Um von der Standard-HSQLDB auf eine Produktionsdatenbank zu migrieren:
 5. **Auf update umstellen** — Wechseln Sie nach der Ersteinrichtung zu `TAXONOMY_DDL_AUTO=update`, um Daten über Neustarts hinweg zu erhalten.
 6. **Überprüfen** — Prüfen Sie den Health-Endpunkt (`GET /actuator/health`) und führen Sie eine Testanalyse durch.
 
-Die Taxonomiedaten werden beim Start immer aus der mitgelieferten Excel-Arbeitsmappe geladen, sodass für die Taxonomie selbst keine Datenmigration von HSQLDB erforderlich ist. Architektur-DSL-Daten (Git-Repository) werden in der Datenbank gespeichert und müssen manuell neu erstellt oder migriert werden.
+Eine leere Zieldatenbank importiert die mitgelieferte Taxonomie-Arbeitsmappe. Eine dateibasierte Quelldatenbank kann zusätzlich Benutzerrelationen, Workspaces, Hypothesen und JGit-Architekturhistorie enthalten; diese Datensätze müssen beim Wechsel des Datenbank-Backends explizit migriert werden.
 
 ---
 
