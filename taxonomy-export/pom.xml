@@ -10,11 +10,16 @@
     </parent>
     <artifactId>taxonomy-export</artifactId>
     <name>Taxonomy Export</name>
-    <description>Export formats: ArchiMate, Visio, Mermaid, diagram models, and XML converters</description>
+    <description>Export formats, diagram models, converters, and the diagram export SPI</description>
     <dependencies>
         <dependency>
             <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-domain</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-extension-api</artifactId>
             <version>${project.version}</version>
         </dependency>
         <!-- XStream for Visio VDX serialization -->
