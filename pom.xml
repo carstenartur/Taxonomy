@@ -63,7 +63,11 @@
     <properties>
         <java.version>21</java.version>
         <djl.version>0.36.0</djl.version>
-        <excludedGroups>real-llm</excludedGroups>
+        <!-- The default lifecycle runs deterministic core, UI and embedded-persistence
+             integration tests. The heavyweight external-database compatibility matrix
+             remains fully Testcontainers-based and can be enabled locally with
+             -DexcludedGroups=real-llm or by selecting an individual *ContainerIT. -->
+        <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
         <!-- Dependency versions (centralized to avoid repetition in child POMs) -->
         <poi.version>5.5.1</poi.version>
         <pdfbox.version>3.0.7</pdfbox.version>
