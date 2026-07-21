@@ -3,6 +3,8 @@ name: Compile Diagnostics
 on:
   push:
     branches: [ "qa/senior-architecture-ergonomics-hardening" ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
