@@ -62,8 +62,11 @@
     </modules>
     <properties>
         <java.version>21</java.version>
-        <!-- Security override: fixes CVE-2026-54515 in jackson-databind 2.21.4. -->
-        <jackson-bom.version>2.21.5</jackson-bom.version>
+        <!-- Jackson 2 security override. Spring Boot 4.1 manages the legacy
+             com.fasterxml.jackson line separately from Jackson 3 (tools.jackson).
+             2.18.9 contains the fix for CVE-2026-54515 and is available from
+             Maven Central; Jackson 3 remains managed by Spring Boot. -->
+        <jackson-2-bom.version>2.18.9</jackson-2-bom.version>
         <djl.version>0.36.0</djl.version>
         <excludedGroups>real-llm</excludedGroups>
         <!-- Dependency versions (centralized to avoid repetition in child POMs) -->
