@@ -8,17 +8,12 @@ Each exception includes:
 - why it exists today
 - the condition that allows removing it
 
-## Controller → repository allowlist
+## Controller → repository rule
 
-These are temporary exceptions to the rule
-`controllersShouldNotAccessRepositories`.
-
-1. `com.taxonomy.security.controller.ChangePasswordController`
-   - Why: password-change flow still validates and updates `AppUser` directly.
-   - Remove when: password change is handled via a dedicated security service/facade.
-2. `com.taxonomy.security.controller.UserManagementController`
-   - Why: admin user-management endpoints still orchestrate user/role persistence directly.
-   - Remove when: user/role CRUD orchestration is moved to a dedicated security service/facade.
+There are no remaining controller exceptions. Password changes and user/role
+administration are delegated to `PasswordChangeService` and
+`UserManagementService`; all controller packages are therefore required to stay
+repository-free.
 
 ## Service implicit workspace-resolution allowlist
 

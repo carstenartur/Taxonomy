@@ -70,16 +70,7 @@ class ArchitectureTest {
      *
      * <p>Removal condition is documented per entry.
      */
-    private static final List<AllowlistEntry> CONTROLLER_REPOSITORY_ACCESS_ALLOWLIST = List.of(
-            new AllowlistEntry(
-                    "com.taxonomy.security.controller.ChangePasswordController",
-                    "Current password-change flow still validates and updates AppUser directly.",
-                    "Remove once password change is handled via a dedicated security service/facade."),
-            new AllowlistEntry(
-                    "com.taxonomy.security.controller.UserManagementController",
-                    "Current admin user-management endpoints still orchestrate user/role persistence directly.",
-                    "Remove once user/role CRUD orchestration is moved to a dedicated security service/facade.")
-    );
+    private static final List<AllowlistEntry> CONTROLLER_REPOSITORY_ACCESS_ALLOWLIST = List.of();
     private static final Set<String> CONTROLLER_REPOSITORY_ACCESS_ALLOWLIST_CLASS_NAMES =
             CONTROLLER_REPOSITORY_ACCESS_ALLOWLIST.stream()
                     .map(AllowlistEntry::className)
