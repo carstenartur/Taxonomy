@@ -39,7 +39,7 @@ report as review evidence.
 
 An exception is a last resort. A change must update both:
 
-1. the Maven Enforcer `includes` list for the exact coordinate; and
+1. the Maven Enforcer `bannedDependencies/excludes` list for the exact coordinate; and
 2. `.github/dependency-hygiene-exceptions.json` with the exact group, artifact,
    version, owner, rationale, ISO expiry date, and objective removal condition.
 
