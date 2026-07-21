@@ -39,11 +39,12 @@ The application ships with an embedded HSQLDB database. No installation or exter
 
 **Key characteristics:**
 - Runs **in-process** (same JVM, no network hop)
-- Uses `SimpleDriverDataSource` instead of HikariCP to avoid connection pool overhead
-- All data is loaded from the bundled Excel workbook at startup
-- Data is **not persisted** between restarts (in-memory mode)
+- Uses a bounded HikariCP pool (`minimum-idle=1`, `maximum-pool-size=4`)
+- Defaults to an in-memory URL for zero-configuration development and tests
+- Supports a file URL for persistent deployments; the pool keeps a connection open so `shutdown=true` cannot close HSQLDB during Spring startup
+- Reuses an existing persisted catalogue on restart; `TAXONOMY_INIT_RELOAD_EXISTING=true` performs an intentional destructive reload
 
-This is ideal for development, testing, and demo deployments.
+The in-memory default is ideal for development and tests. Production Docker defaults use file-backed HSQLDB and filesystem Lucene storage.
 
 ---
 
@@ -105,8 +106,13 @@ PostgreSQL uses UTF-8 by default, so all string fields are stored correctly with
 ### Running Integration Tests
 
 ```bash
-mvn package -DskipTests
-mvn verify -pl taxonomy-app -DexcludedGroups=real-llm -Dit.test="*Postgres*IT"
+mvn -B -pl taxonomy-app -am install -DskipTests
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test='*Postgres*IT' \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm
 ```
 
 ---
@@ -173,8 +179,13 @@ The password must be at least 8 characters and contain characters from at least 
 ### Running Integration Tests
 
 ```bash
-mvn package -DskipTests
-mvn verify -pl taxonomy-app -DexcludedGroups=real-llm -Dit.test="*Mssql*IT"
+mvn -B -pl taxonomy-app -am install -DskipTests
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test='*Mssql*IT' \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm
 ```
 
 ---
@@ -252,8 +263,13 @@ For Oracle instances using a **SID**, use: `jdbc:oracle:thin:@localhost:1521:ORC
 ### Running Integration Tests
 
 ```bash
-mvn package -DskipTests
-mvn verify -pl taxonomy-app -DexcludedGroups=real-llm -Dit.test="*Oracle*IT"
+mvn -B -pl taxonomy-app -am install -DskipTests
+mvn -B -pl taxonomy-app \
+  failsafe:integration-test failsafe:verify \
+  -DskipITs=false \
+  -Dit.test='*Oracle*IT' \
+  -DfailIfNoTests=false \
+  -DexcludedGroups=real-llm
 ```
 
 ---
@@ -326,3 +342,14 @@ The taxonomy data is always loaded from the bundled Excel workbook at startup, s
 - [Configuration Reference](CONFIGURATION_REFERENCE.md) — All environment variables
 - [Deployment Guide](DEPLOYMENT_GUIDE.md) — Docker and cloud deployment
 - [Architecture](ARCHITECTURE.md) — Database architecture and entity model
+
+## Test architecture and compatibility evidence
+
+`mvn verify` is the bounded deterministic lifecycle and does not start external
+databases. Core HSQLDB container tests and the PostgreSQL/MSSQL/Oracle matrix are
+ordinary Failsafe/Testcontainers tests enabled with `-DskipITs=false`.
+
+The `Database Compatibility` workflow runs PostgreSQL diagnostics and Selenium
+on relevant pull requests, all six database scenarios weekly, and a selected
+family on manual dispatch. Every command is documented in
+[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).

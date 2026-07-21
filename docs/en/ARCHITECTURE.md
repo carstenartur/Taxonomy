@@ -635,3 +635,10 @@ graph LR
     style export fill:#FFF3E0
     style app fill:#FCE4EC
 ```
+
+## Verification architecture
+
+Verification is split into a deterministic standard Maven lifecycle, four core
+Testcontainers scenarios, and an external database compatibility matrix. Tests
+remain executable from a plain checkout; workflows only schedule them. See
+[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).

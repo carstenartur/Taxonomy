@@ -634,3 +634,11 @@ Aktuell durchgesetzte Regeln:
 - `taxonomy-domain`, `taxonomy-dsl` (framework-freie Pakete) und `taxonomy-export` (framework-freie Pakete) müssen Spring-frei sein
 - `taxonomy-dsl`- und `taxonomy-export`-framework-freie Pakete dürfen nicht von `taxonomy-app`-Paketen abhängen
 - Workspace-Kontext darf nur an Request-Grenzen aufgelöst werden
+
+## Aktuelle QA-Einstiegspunkte
+
+Die Befehle für Standard-, Core-Container-, Datenbank-, Browser-,
+Accessibility-, Abhängigkeits- und Screenshot-Prüfungen stehen in
+[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
+Die CI-Berechtigungsgrenzen sind in
+[`docs/dev/CI_SECURITY.md`](../dev/CI_SECURITY.md) beschrieben.

@@ -211,8 +211,11 @@ Set `SPRING_PROFILES_ACTIVE` to select the database; the default is `hsqldb`.
 |---|---|---|
 | `spring.datasource.url` | `jdbc:hsqldb:mem:taxonomydb;DB_CLOSE_DELAY=-1` | In-memory HSQLDB. Override for disk-backed storage. |
 | `spring.datasource.driver-class-name` | `org.hsqldb.jdbc.JDBCDriver` | HSQLDB JDBC driver. |
-| `spring.datasource.type` | `SimpleDriverDataSource` | Bypasses HikariCP — no pool needed for in-process HSQLDB. |
-| `spring.jpa.database-platform` | `org.hibernate.dialect.HSQLDialect` | Explicit dialect (required because `SimpleDriverDataSource` does not expose JDBC metadata). |
+| `spring.datasource.type` | `com.zaxxer.hikari.HikariDataSource` | Bounded pool used for both in-memory and file HSQLDB. |
+| `spring.datasource.hikari.minimum-idle` | `${TAXONOMY_DB_MIN_IDLE:1}` | Keeps one connection alive; required for file URLs using `shutdown=true`. |
+| `spring.datasource.hikari.maximum-pool-size` | `${TAXONOMY_DB_MAX_POOL_SIZE:4}` | Bounded maximum for embedded HSQLDB. |
+| `spring.datasource.hikari.connection-timeout` | `${TAXONOMY_DB_CONNECTION_TIMEOUT_MS:30000}` | Maximum connection wait in milliseconds. |
+| `spring.jpa.database-platform` | `org.hibernate.dialect.HSQLDialect` | Explicit dialect for deterministic startup. |
 
 ### MSSQL Profile
 
@@ -256,6 +259,24 @@ Activate with `SPRING_PROFILES_ACTIVE=oracle`. See [DATABASE_SETUP.md](DATABASE_
 | `spring.datasource.hikari.connection-timeout` | `30000` | Connection timeout (ms). |
 | `spring.datasource.hikari.initialization-fail-timeout` | `60000` | Startup retry timeout (ms). |
 
+---
+
+## Build and integration-test selection
+
+These are Maven properties/tags, not runtime environment variables:
+
+| Property/tag | Default | Effect |
+|---|---|---|
+| `skipITs` | `true` | Keeps the standard lifecycle bounded; set `-DskipITs=false` for Failsafe/Testcontainers tests. |
+| `excludedGroups` | `real-llm,db-postgres,db-mssql,db-oracle` | Excludes live providers and heavyweight database families by default. |
+| `db-postgres` | excluded | PostgreSQL compatibility tests. |
+| `db-mssql` | excluded | Microsoft SQL Server compatibility tests. |
+| `db-oracle` | excluded | Oracle compatibility tests. |
+| `real-llm` | excluded | Live external LLM calls. |
+
+Passing `-DexcludedGroups=real-llm` deliberately includes all database tags
+while still excluding live LLM calls. See
+[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
 ---
 
 ## Hibernate Search / Lucene

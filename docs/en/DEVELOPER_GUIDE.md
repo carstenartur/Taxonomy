@@ -660,3 +660,10 @@ Rules currently enforced include:
 - `taxonomy-domain`, `taxonomy-dsl` (framework-free packages), and `taxonomy-export` (framework-free packages) must be Spring-free
 - `taxonomy-dsl` and `taxonomy-export` framework-free packages must not depend on `taxonomy-app` packages
 - Workspace context must be resolved at request boundaries only
+
+## Current QA entry points
+
+Use [`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md)
+for standard, core-container, database, browser, accessibility, dependency, and
+screenshot commands. CI permission boundaries are documented in
+[`docs/dev/CI_SECURITY.md`](../dev/CI_SECURITY.md).

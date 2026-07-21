@@ -630,3 +630,11 @@ graph LR
     style export fill:#FFF3E0
     style app fill:#FCE4EC
 ```
+
+## Verifikationsarchitektur
+
+Die Verifikation ist in einen deterministischen Maven-Standard-Lebenszyklus,
+vier zentrale Testcontainers-Szenarien und eine externe Datenbank-
+Kompatibilitätsmatrix aufgeteilt. Alle Tests bleiben aus einem normalen Checkout
+ausführbar; Workflows planen sie lediglich ein. Siehe
+[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).

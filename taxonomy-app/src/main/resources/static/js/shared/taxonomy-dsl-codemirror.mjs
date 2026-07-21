@@ -384,10 +384,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const container = document.getElementById('dslEditorContainer');
     if (!container) return;
 
+    container.setAttribute('tabindex', '-1');
+    let keyboardHelp = document.getElementById('dslEditorKeyboardHelp');
+    if (!keyboardHelp) {
+        keyboardHelp = document.createElement('p');
+        keyboardHelp.id = 'dslEditorKeyboardHelp';
+        keyboardHelp.className = 'visually-hidden';
+        keyboardHelp.textContent = 'TaxDSL editor. Press Control+Space for suggestions, Alt+Shift+F to format, and Escape to leave the editor.';
+        container.before(keyboardHelp);
+    }
+
     const view = new EditorView({
         doc: '',
         extensions: [
             basicSetup,
+            EditorView.contentAttributes.of({
+                'aria-label': 'TaxDSL editor',
+                'aria-describedby': 'dslEditorKeyboardHelp',
+                'aria-keyshortcuts': 'Control+Space Alt+Shift+F Escape'
+            }),
             taxDslLanguage,
             autocompletion({ override: [taxDslCompletions] }),
             taxDslLinter,
@@ -401,15 +416,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     maxHeight: '500px'
                 }
             }),
-            keymap.of([{
-                key: 'Shift-Alt-f',
-                run: () => {
-                    if (typeof window.dslFormatContent === 'function') {
-                        window.dslFormatContent();
+            keymap.of([
+                {
+                    key: 'Escape',
+                    run: view => {
+                        view.contentDOM.blur();
+                        container.focus({ preventScroll: true });
+                        return true;
                     }
-                    return true;
+                },
+                {
+                    key: 'Shift-Alt-f',
+                    run: () => {
+                        if (typeof window.dslFormatContent === 'function') {
+                            window.dslFormatContent();
+                        }
+                        return true;
+                    }
                 }
-            }])
+            ])
         ],
         parent: container
     });

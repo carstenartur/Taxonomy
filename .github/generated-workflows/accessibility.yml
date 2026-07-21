@@ -1,0 +1,121 @@
+name: Accessibility
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'taxonomy-app/src/main/resources/templates/**'
+      - 'taxonomy-app/src/main/resources/static/**'
+      - 'taxonomy-app/src/main/java/com/taxonomy/**/controller/**'
+      - 'taxonomy-app/src/main/java/com/taxonomy/security/**'
+      - 'taxonomy-app/src/main/java/com/taxonomy/versioning/**'
+      - 'taxonomy-app/pom.xml'
+      - 'taxonomy-export/**'
+      - 'taxonomy-extension-api/**'
+      - '.github/accessibility-baseline.json'
+      - '.github/scripts/accessibility-audit.mjs'
+      - '.github/workflows/accessibility.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'taxonomy-app/src/main/resources/templates/**'
+      - 'taxonomy-app/src/main/resources/static/**'
+      - '.github/accessibility-baseline.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  axe-audit:
+    name: axe / ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: desktop
+            width: 1440
+            height: 1000
+          - profile: tablet
+            width: 1024
+            height: 768
+          - profile: mobile
+            width: 390
+            height: 844
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Build application
+        shell: bash
+        run: |
+          set -o pipefail
+          mvn -B -pl taxonomy-app -am package -DskipTests \
+            2>&1 | tee /tmp/taxonomy-a11y-build.log
+
+      - name: Start application
+        env:
+          TAXONOMY_ADMIN_PASSWORD: a11y-test-password
+          TAXONOMY_REQUIRE_PASSWORD_CHANGE: 'false'
+          TAXONOMY_EMBEDDING_ENABLED: 'false'
+          TAXONOMY_INIT_ASYNC: 'true'
+          TAXONOMY_THYMELEAF_CACHE: 'false'
+        run: |
+          JAR=$(find taxonomy-app/target -maxdepth 1 -name 'taxonomy-app-*.jar' ! -name 'original-*' | head -n 1)
+          test -n "$JAR"
+          java -jar "$JAR" > /tmp/taxonomy-a11y.log 2>&1 &
+          echo $! > /tmp/taxonomy-a11y.pid
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8080/login >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/taxonomy-a11y.log
+          exit 1
+
+      - name: Install pinned browser audit tools
+        run: |
+          npm install --no-save --no-audit --no-fund \
+            @playwright/test@1.61.1 \
+            @axe-core/playwright@4.12.1
+          npx playwright install --with-deps chromium
+
+      - name: Run axe audit with checked moderate baseline
+        env:
+          TAXONOMY_BASE_URL: http://127.0.0.1:8080
+          TAXONOMY_A11Y_USERNAME: admin
+          TAXONOMY_A11Y_PASSWORD: a11y-test-password
+          TAXONOMY_A11Y_PROFILE: ${{ matrix.profile }}
+          TAXONOMY_VIEWPORT_WIDTH: ${{ matrix.width }}
+          TAXONOMY_VIEWPORT_HEIGHT: ${{ matrix.height }}
+          TAXONOMY_A11Y_REPORT: /tmp/taxonomy-a11y-${{ matrix.profile }}.json
+          TAXONOMY_A11Y_TEXT_REPORT: /tmp/taxonomy-a11y-${{ matrix.profile }}.txt
+          TAXONOMY_A11Y_BASELINE: .github/accessibility-baseline.json
+        run: node .github/scripts/accessibility-audit.mjs
+
+      - name: Upload accessibility evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: accessibility-${{ matrix.profile }}
+          path: |
+            /tmp/taxonomy-a11y-${{ matrix.profile }}.json
+            /tmp/taxonomy-a11y-${{ matrix.profile }}.txt
+            /tmp/taxonomy-a11y-build.log
+            /tmp/taxonomy-a11y.log
+          if-no-files-found: ignore
+          retention-days: 14
