@@ -8,13 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       generate-screenshots:
-        description: 'Run screenshot generation (heavy, requires Docker + headless Chrome)'
+        description: 'Run documentation screenshot generation (fixtures, not acceptance evidence)'
         type: boolean
         default: false
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/taxonomy
+  BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
 
 jobs:
   build-and-test:
@@ -30,61 +31,59 @@ jobs:
         uses: actions/setup-java@v5
         with:
           java-version: '21'
-          distribution: 'temurin'
-          cache: 'maven'
+          distribution: temurin
+          cache: maven
 
-      - name: Download embedding model
-        run: |
-          mkdir -p models/bge-small-en-v1.5
-          cd models/bge-small-en-v1.5
-          curl -fsL -o model.onnx https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/onnx/model.onnx
-          curl -fsL -o tokenizer.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer.json
-          curl -fsL -o tokenizer_config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/tokenizer_config.json
-          curl -fsL -o special_tokens_map.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/special_tokens_map.json
-          curl -fsL -o config.json https://huggingface.co/BAAI/bge-small-en-v1.5/resolve/main/config.json
+      - name: Download and verify pinned embedding model
+        env:
+          MODEL_REVISION: ${{ env.BGE_MODEL_REVISION }}
+        run: bash .github/scripts/download-embedding-model.sh
 
       - name: Build and run tests
         run: mvn -q install -DexcludedGroups="real-llm"
         env:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
 
-      - name: Generate VEX document from SBOM
+      - name: Generate SBOM companion metadata
+        if: always()
         run: |
-          # The CycloneDX SBOM is generated during 'mvn install' in the package phase.
-          # Create a VEX document that references the SBOM.
           SBOM_FILE="target/taxonomy-sbom.json"
-          VEX_FILE="target/taxonomy-vex.json"
-
+          COMPANION_FILE="target/taxonomy-vex.json"
           python3 .github/scripts/generate-vex.py \
             --sbom "$SBOM_FILE" \
-            --output "$VEX_FILE"
-
-          echo "### 📋 VEX Document" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f "$VEX_FILE" ]; then
-            echo "VEX document generated at \`$VEX_FILE\`" >> $GITHUB_STEP_SUMMARY
-            echo "SBOM reference: \`$(python3 -c "import json; print(json.load(open('$SBOM_FILE')).get('serialNumber','N/A'))")\`" >> $GITHUB_STEP_SUMMARY
+            --output "$COMPANION_FILE"
+          echo "### SBOM companion metadata" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$COMPANION_FILE" ]; then
+            echo "Generated: \`$COMPANION_FILE\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "Assessment status: **not-assessed** — this is not a vulnerability scan or exploitability statement." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "::warning::SBOM file not found at $SBOM_FILE; skipping VEX generation."
-            echo "VEX generation skipped (SBOM not available)." >> $GITHUB_STEP_SUMMARY
+            echo "SBOM was unavailable; companion metadata was not generated." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload SBOM and VEX artifacts
+      - name: Upload SBOM and companion artifacts
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: sbom-vex
+          name: sbom-companion
           path: |
             target/taxonomy-sbom.json
             target/taxonomy-sbom.xml
             target/taxonomy-vex.json
+            models/bge-small-en-v1.5/MODEL_PROVENANCE.txt
+          if-no-files-found: warn
           retention-days: 90
 
       - name: Generate documentation screenshots
         if: ${{ github.event.inputs.generate-screenshots == 'true' }}
-        run: mvn -q verify -DgenerateScreenshots -Dit.test=ScreenshotGeneratorIT -DfailIfNoTests=false -Dfailsafe.rerunFailingTestsCount=1
+        run: >-
+          mvn -q verify -DgenerateScreenshots
+          -Dit.test=ScreenshotGeneratorIT
+          -DfailIfNoTests=false
+          -Dfailsafe.rerunFailingTestsCount=1
 
-      - name: Commit generated screenshots
+      - name: Commit generated documentation screenshots
         if: ${{ github.event.inputs.generate-screenshots == 'true' }}
         run: |
           git config user.name 'github-actions[bot]'
@@ -93,7 +92,7 @@ jobs:
           git diff --staged --quiet || git commit -m 'docs: regenerate documentation screenshots [skip ci]'
           git push
 
-      - name: Publish test results
+      - name: Publish authoritative JUnit results
         uses: dorny/test-reporter@v3
         if: always()
         continue-on-error: true
@@ -104,112 +103,110 @@ jobs:
           fail-on-error: false
           max-annotations: '50'
 
-      - name: Generate test HTML reports
+      - name: Generate test HTML report
         if: always()
         run: |
           mkdir -p target/site
           mvn surefire-report:report --no-transfer-progress -DskipTests -Daggregate=true || true
-          # The surefire-report plugin outputs to target/site/surefire-report.html
           if [ ! -f target/site/surefire-report.html ]; then
-            echo "::warning::surefire-report.html not found in target/site, attempting fallback..."
-            # Fallback: copy from any module that generated it
-            find . -name "surefire-report.html" -type f | head -1 | xargs -I {} cp {} target/site/surefire-report.html 2>/dev/null || true
+            REPORT=$(find . -name 'surefire-report.html' -type f | head -n 1 || true)
+            if [ -n "$REPORT" ]; then
+              cp "$REPORT" target/site/surefire-report.html
+            fi
           fi
-          # Inject build metadata so the report always differs from the previous deploy
           if [ -f target/site/surefire-report.html ]; then
-            sed -i "s|</body>|<!-- Build: ${{ github.sha }} $(date -u +%Y-%m-%dT%H:%M:%SZ) --></body>|" target/site/surefire-report.html
-          fi
-
-      - name: Verify test report exists
-        if: always()
-        run: |
-          echo "=== Contents of target/site ==="
-          ls -la target/site/ || echo "WARNING: target/site does not exist!"
-          if [ ! -f target/site/surefire-report.html ]; then
-            echo "::warning::surefire-report.html was not generated! Creating a placeholder."
-            mkdir -p target/site
-            cat > target/site/surefire-report.html << 'HTML'
-          <!DOCTYPE html>
-          <html>
-          <head><title>Test Report</title></head>
-          <body><h1>Test Report</h1><p>Tests passed but HTML report generation encountered issues.</p></body>
-          </html>
-          HTML
+            sed -i "s|</body>|<!-- Build: ${{ github.sha }} $(date -u +%Y-%m-%dT%H:%M:%SZ) --></body>|" \
+              target/site/surefire-report.html
           else
-            echo "surefire-report.html size: $(wc -c < target/site/surefire-report.html) bytes"
+            echo "::warning::HTML test report unavailable. GitHub Checks/JUnit XML remain authoritative."
           fi
 
       - name: Generate badge JSON files
         if: always()
         run: |
-          python3 - <<'EOF'
+          python3 - <<'PY'
+          import glob
+          import json
+          import os
           import xml.etree.ElementTree as ET
-          import json, os, glob
 
-          COVERAGE_GREEN_THRESHOLD  = 80  # % >= this → brightgreen
-          COVERAGE_YELLOW_THRESHOLD = 60  # % >= this → yellow, else red
-
-          # --- Coverage badge ---
+          covered = missed = 0
           try:
-              covered, missed = 0, 0
-              for jacoco_file in glob.glob('**/target/site/jacoco/jacoco.xml', recursive=True):
-                  tree = ET.parse(jacoco_file)
-                  root = tree.getroot()
+              for path in glob.glob('**/target/site/jacoco/jacoco.xml', recursive=True):
+                  root = ET.parse(path).getroot()
                   for counter in root.iter('counter'):
                       if counter.get('type') == 'INSTRUCTION':
                           covered += int(counter.get('covered', 0))
-                          missed  += int(counter.get('missed', 0))
+                          missed += int(counter.get('missed', 0))
               total = covered + missed
-              pct   = round(covered / total * 100) if total > 0 else 0
-              if pct >= COVERAGE_GREEN_THRESHOLD:
-                  color = 'brightgreen'
-              elif pct >= COVERAGE_YELLOW_THRESHOLD:
-                  color = 'yellow'
-              else:
-                  color = 'red'
-              badge = {"schemaVersion": 1, "label": "coverage", "message": f"{pct}%", "color": color}
-          except Exception as e:
-              print(f"Coverage badge generation failed: {e}")
-              badge = {"schemaVersion": 1, "label": "coverage", "message": "unknown", "color": "lightgrey"}
+              percentage = round(covered / total * 100) if total else 0
+              color = 'brightgreen' if percentage >= 80 else 'yellow' if percentage >= 60 else 'red'
+              coverage_badge = {
+                  'schemaVersion': 1,
+                  'label': 'coverage',
+                  'message': f'{percentage}%',
+                  'color': color,
+              }
+          except Exception as error:
+              print(f'Coverage badge generation failed: {error}')
+              coverage_badge = {
+                  'schemaVersion': 1,
+                  'label': 'coverage',
+                  'message': 'unknown',
+                  'color': 'lightgrey',
+              }
           os.makedirs('taxonomy-app/target/site/jacoco', exist_ok=True)
-          with open('taxonomy-app/target/site/jacoco/badge.json', 'w') as f:
-              json.dump(badge, f)
+          with open('taxonomy-app/target/site/jacoco/badge.json', 'w', encoding='utf-8') as handle:
+              json.dump(coverage_badge, handle)
 
-          # --- Tests badge ---
           try:
-              files = (glob.glob('**/target/surefire-reports/TEST-*.xml', recursive=True) +
-                       glob.glob('**/target/failsafe-reports/TEST-*.xml', recursive=True))
-              total_tests = total_failures = total_errors = 0
+              files = (
+                  glob.glob('**/target/surefire-reports/TEST-*.xml', recursive=True)
+                  + glob.glob('**/target/failsafe-reports/TEST-*.xml', recursive=True)
+              )
+              tests = failures = errors = skipped = 0
               for path in files:
                   root = ET.parse(path).getroot()
-                  total_tests    += int(root.get('tests',    0))
-                  total_failures += int(root.get('failures', 0))
-                  total_errors   += int(root.get('errors',   0))
-              failed = total_failures + total_errors
-              passed = total_tests - failed
-              if failed > 0:
-                  msg, color = f"{failed}/{total_tests} failed", "red"
+                  tests += int(root.get('tests', 0))
+                  failures += int(root.get('failures', 0))
+                  errors += int(root.get('errors', 0))
+                  skipped += int(root.get('skipped', 0))
+              failed = failures + errors
+              if not files:
+                  message, color = 'no reports', 'lightgrey'
+              elif failed:
+                  message, color = f'{failed}/{tests} failed', 'red'
               else:
-                  msg, color = f"{passed} passed", "brightgreen"
-              badge = {"schemaVersion": 1, "label": "tests", "message": msg, "color": color}
-          except Exception as e:
-              print(f"Tests badge generation failed: {e}")
-              badge = {"schemaVersion": 1, "label": "tests", "message": "unknown", "color": "lightgrey"}
+                  message, color = f'{tests - skipped} passed', 'brightgreen'
+              tests_badge = {
+                  'schemaVersion': 1,
+                  'label': 'tests',
+                  'message': message,
+                  'color': color,
+              }
+          except Exception as error:
+              print(f'Tests badge generation failed: {error}')
+              tests_badge = {
+                  'schemaVersion': 1,
+                  'label': 'tests',
+                  'message': 'unknown',
+                  'color': 'lightgrey',
+              }
           os.makedirs('target/site', exist_ok=True)
-          with open('target/site/badge.json', 'w') as f:
-              json.dump(badge, f)
-          EOF
+          with open('target/site/badge.json', 'w', encoding='utf-8') as handle:
+              json.dump(tests_badge, handle)
+          PY
 
       - name: Deploy test report to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
-        if: always() && github.ref == 'refs/heads/main'
+        if: always() && github.ref == 'refs/heads/main' && hashFiles('target/site/surefire-report.html') != ''
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: target/site
           destination_dir: tests
           keep_files: true
-          user_name: 'github-actions[bot]'
-          user_email: 'github-actions[bot]@users.noreply.github.com'
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
           commit_message: 'Deploy Surefire test report ${{ github.sha }}'
 
       - name: Deploy coverage report to GitHub Pages
@@ -220,17 +217,17 @@ jobs:
           publish_dir: taxonomy-app/target/site/jacoco
           destination_dir: coverage
           keep_files: true
-          user_name: 'github-actions[bot]'
-          user_email: 'github-actions[bot]@users.noreply.github.com'
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
           commit_message: 'Deploy JaCoCo coverage report'
 
       - name: Report URLs
         if: always()
         run: |
-          echo "### 📊 Reports" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📋 [View Test Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/tests/surefire-report.html)" >> $GITHUB_STEP_SUMMARY
-          echo "📈 [View Coverage Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/coverage/)" >> $GITHUB_STEP_SUMMARY
+          echo "### Reports" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "[View Test Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/tests/surefire-report.html)" >> "$GITHUB_STEP_SUMMARY"
+          echo "[View Coverage Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/coverage/)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v7
@@ -243,7 +240,6 @@ jobs:
     name: Publish Docker Image
     needs: build-and-test
     runs-on: ubuntu-latest
-    # Publish only from default branch pushes and release tags.
     if: >
       github.event_name == 'push' &&
       (
@@ -253,7 +249,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-
     steps:
       - uses: actions/checkout@v7
 
@@ -296,7 +291,6 @@ jobs:
     name: Deploy to Render
     needs: publish-image
     runs-on: ubuntu-latest
-    # Only deploy from the default branch; requires RENDER_DEPLOY_HOOK_URL secret
     if: >
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
       github.event_name == 'push'
