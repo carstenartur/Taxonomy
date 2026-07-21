@@ -3,8 +3,6 @@ package com.taxonomy.catalog.service.importer;
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dto.FrameworkImportResult;
 import com.taxonomy.extension.api.importer.ImportInput;
-import com.taxonomy.extension.api.importer.ImportProfileDescriptor;
-import com.taxonomy.extension.api.importer.ImportProfileExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -35,7 +33,7 @@ class ImportProfileRegistryTest {
     @Test
     void listDescriptorsContainsAllProfiles() {
         assertThat(registry.listDescriptors())
-                .extracting(ImportProfileDescriptor::profileId)
+                .extracting(descriptor -> descriptor.profileId())
                 .containsExactlyInAnyOrder("uaf", "apqc", "apqc-excel", "c4");
     }
 
@@ -59,7 +57,8 @@ class ImportProfileRegistryTest {
 
     @Test
     void descriptorsExposeExpectedMetadata() {
-        ImportProfileDescriptor uaf = registry.getRequired("uaf").descriptor();
+        com.taxonomy.extension.api.importer.ImportProfileDescriptor uaf =
+                registry.getRequired("uaf").descriptor();
         assertThat(uaf.displayName()).isEqualTo("UAF / DoDAF");
         assertThat(uaf.acceptedFileFormat()).isEqualTo("xml");
         assertThat(uaf.supportedElementTypes()).isNotEmpty();
@@ -99,15 +98,18 @@ class ImportProfileRegistryTest {
 
     @Test
     void invalidDescriptorsFailFast() {
-        ImportProfileExtension nullDescriptor = mock(ImportProfileExtension.class);
+        com.taxonomy.extension.api.importer.ImportProfileExtension nullDescriptor =
+                mock(com.taxonomy.extension.api.importer.ImportProfileExtension.class);
         when(nullDescriptor.descriptor()).thenReturn(null);
         assertThatThrownBy(() -> new ImportProfileRegistry(List.of(nullDescriptor)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("descriptor");
 
-        ImportProfileExtension blankId = mock(ImportProfileExtension.class);
-        when(blankId.descriptor()).thenReturn(new ImportProfileDescriptor(
-                "   ", "Broken", Set.of(), Set.of(), "xml"));
+        com.taxonomy.extension.api.importer.ImportProfileExtension blankId =
+                mock(com.taxonomy.extension.api.importer.ImportProfileExtension.class);
+        when(blankId.descriptor()).thenReturn(
+                new com.taxonomy.extension.api.importer.ImportProfileDescriptor(
+                        "   ", "Broken", Set.of(), Set.of(), "xml"));
         assertThatThrownBy(() -> new ImportProfileRegistry(List.of(blankId)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("non-blank profile ID");
