@@ -1,13 +1,13 @@
 package com.taxonomy.export.service;
 
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.analysis.service.SavedAnalysisService;
 import com.taxonomy.archimate.ArchiMateModel;
+import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.SavedAnalysis;
-import com.taxonomy.analysis.service.LlmService;
-import com.taxonomy.analysis.service.SavedAnalysisService;
-import com.taxonomy.architecture.service.RequirementArchitectureViewService;
 import com.taxonomy.export.ArchiMateDiagramService;
 import com.taxonomy.export.ArchiMateXmlExporter;
 import com.taxonomy.export.DiagramProjectionService;
@@ -16,6 +16,7 @@ import com.taxonomy.export.MermaidLabels;
 import com.taxonomy.export.StructurizrExportService;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
+import com.taxonomy.export.spi.ExportFormatExtension;
 import com.taxonomy.visio.VisioDocument;
 import org.springframework.stereotype.Service;
 
@@ -23,13 +24,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-/**
- * High-level facade that aggregates the export domain services.
- *
- * <p>Provides coarse-grained operations for diagram export (Visio,
- * ArchiMate, Mermaid) and scores import/export, so that the
- * {@code ExportApiController} only needs a single dependency.
- */
+/** High-level application facade for analysis-driven exports and score exchange. */
 @Service
 public class ExportFacade {
 
@@ -66,73 +61,30 @@ public class ExportFacade {
         this.savedAnalysisService = savedAnalysisService;
     }
 
-    // ── Diagram export ──────────────────────────────────────────────
-
-    /**
-     * Analyze business text, build an architecture view, and export as Visio.
-     *
-     * @param businessText the requirement text to analyze
-     * @return the Visio .vsdx file as a byte array
-     * @throws IOException if Visio package building fails
-     */
     public byte[] exportAsVisio(String businessText) throws IOException {
         DiagramModel diagram = analyzeAndProject(businessText);
-        VisioDocument visioDoc = visioDiagramService.convert(diagram);
-        return visioPackageBuilder.build(visioDoc);
+        VisioDocument visioDocument = visioDiagramService.convert(diagram);
+        return visioPackageBuilder.build(visioDocument);
     }
 
-    /**
-     * Analyze business text, build an architecture view, and export as ArchiMate XML.
-     *
-     * @param businessText the requirement text to analyze
-     * @return the ArchiMate XML as a byte array
-     */
     public byte[] exportAsArchiMate(String businessText) {
         DiagramModel diagram = analyzeAndProject(businessText);
-        ArchiMateModel archiMateModel = archiMateDiagramService.convert(diagram);
-        return archiMateXmlExporter.export(archiMateModel);
+        ArchiMateModel model = archiMateDiagramService.convert(diagram);
+        return archiMateXmlExporter.export(model);
     }
 
-    /**
-     * Analyze business text, build an architecture view, and export as Mermaid text.
-     *
-     * @param businessText the requirement text to analyze
-     * @return the Mermaid flowchart text
-     */
     public String exportAsMermaid(String businessText) {
-        DiagramModel diagram = analyzeAndProject(businessText);
-        return mermaidExportService.export(diagram);
+        return mermaidExportService.export(analyzeAndProject(businessText));
     }
 
-    /**
-     * Analyze business text, build an architecture view, and export as Mermaid text
-     * using the given localized labels.
-     *
-     * @param businessText the requirement text to analyze
-     * @param labels       locale-specific display labels for the Mermaid output
-     * @return the Mermaid flowchart text with localized labels
-     */
     public String exportAsMermaid(String businessText, MermaidLabels labels) {
-        DiagramModel diagram = analyzeAndProject(businessText);
-        return mermaidExportService.export(diagram, labels);
+        return mermaidExportService.export(analyzeAndProject(businessText), labels);
     }
 
-    /**
-     * Analyze business text, build an architecture view, and export as Structurizr DSL.
-     *
-     * @param businessText the requirement text to analyze
-     * @return the Structurizr workspace DSL text
-     */
     public String exportAsStructurizrDsl(String businessText) {
-        DiagramModel diagram = analyzeAndProject(businessText);
-        return structurizrExportService.export(diagram);
+        return structurizrExportService.export(analyzeAndProject(businessText));
     }
 
-    // ── Scores import / export ──────────────────────────────────────
-
-    /**
-     * Build a {@link SavedAnalysis} export envelope for the given scores.
-     */
     public SavedAnalysis buildExport(String requirement,
                                      Map<String, Integer> scores,
                                      Map<String, String> reasons,
@@ -140,44 +92,24 @@ public class ExportFacade {
         return savedAnalysisService.buildExport(requirement, scores, reasons, provider);
     }
 
-    /**
-     * Import scores from a JSON string.
-     */
     public SavedAnalysis importFromJson(String jsonBody) throws IOException {
         return savedAnalysisService.importFromJson(jsonBody);
     }
 
-    /**
-     * Find unknown taxonomy codes in a saved analysis.
-     */
     public List<String> findUnknownCodes(SavedAnalysis saved) {
         return savedAnalysisService.findUnknownCodes(saved);
     }
 
-    /**
-     * Returns the name of the currently active LLM provider.
-     */
     public String getActiveProviderName() {
         return llmService.getActiveProviderName();
     }
 
-    // ── Diagram model building ──────────────────────────────────────
-
     /**
-     * Analyzes business text and returns the projected {@link DiagramModel}.
-     *
-     * <p>This is the entry point for the generic export endpoint, which then
-     * delegates conversion to an {@link ExportFormatExtension} looked up from
-     * {@code ExportFormatExtensionRegistry}.
-     *
-     * @param businessText the requirement text to analyze
-     * @return the projected diagram model
+     * Builds the format-neutral diagram consumed by an {@link ExportFormatExtension}.
      */
     public DiagramModel buildDiagram(String businessText) {
         return analyzeAndProject(businessText);
     }
-
-    // ── Internal helpers ────────────────────────────────────────────
 
     private DiagramModel analyzeAndProject(String businessText) {
         AnalysisResult result = llmService.analyzeWithBudget(businessText);
