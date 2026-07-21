@@ -7,8 +7,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * Shared authorization rules used by both the form-login and Keycloak
- * security configurations. Ensures that role-based access control is
- * consistent regardless of the authentication method.
+ * security configurations. Rules are ordered from most specific to least
+ * specific so that state-changing endpoints are never accidentally covered by
+ * the generic authenticated-user fallback.
  */
 @Component
 public class AuthorizationRulesConfigurer {
@@ -16,68 +17,67 @@ public class AuthorizationRulesConfigurer {
     @Value("${taxonomy.security.swagger-public:true}")
     private boolean swaggerPublic;
 
-    /**
-     * Configures the shared authorization rules for all security filter chains.
-     *
-     * @param auth the authorization registry to configure
-     */
     public void configure(
             AuthorizeHttpRequestsConfigurer<org.springframework.security.config.annotation.web.builders.HttpSecurity>
                     .AuthorizationManagerRequestMatcherRegistry auth) {
-        // Public resources
-        auth.requestMatchers("/login", "/error", "/css/**", "/js/**", "/images/**", "/webjars/**").permitAll();
-
-        // OIDC callback endpoints (must be public for Keycloak redirects)
+        auth.requestMatchers("/login", "/error", "/css/**", "/js/**", "/images/**", "/webjars/**")
+                .permitAll();
         auth.requestMatchers("/login/oauth2/**", "/oauth2/**").permitAll();
-
-        // Change-password page — must be accessible to authenticated users
         auth.requestMatchers("/change-password").authenticated();
-
-        // Health / status endpoints
         auth.requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll();
 
-        // OpenAPI / Swagger UI — configurable
         if (swaggerPublic) {
             auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll();
         } else {
             auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").authenticated();
         }
 
-        // Admin-only
-        auth.requestMatchers("/admin/**", "/api/admin/**").hasRole("ADMIN");
-        auth.requestMatchers("/api/preferences/**").hasRole("ADMIN");
+        // Administrative surfaces. These checks are also repeated inside the
+        // controller as defense in depth for diagnostics and prompt mutation.
+        auth.requestMatchers("/admin/**", "/api/admin/**", "/api/preferences/**",
+                        "/api/diagnostics", "/api/prompts/**")
+                .hasRole("ADMIN");
 
-        // Write operations on architecture endpoints — ARCHITECT or ADMIN
+        // Architecture mutation — ARCHITECT or ADMIN.
         auth.requestMatchers(HttpMethod.POST,   "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PUT,    "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
-        auth.requestMatchers(HttpMethod.DELETE,  "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/relations/**").hasAnyRole("ARCHITECT", "ADMIN");
 
         auth.requestMatchers(HttpMethod.POST,   "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PUT,    "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");
-        auth.requestMatchers(HttpMethod.DELETE,  "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/dsl/**").hasAnyRole("ARCHITECT", "ADMIN");
 
         auth.requestMatchers(HttpMethod.POST,   "/api/git/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.PUT,    "/api/git/**").hasAnyRole("ARCHITECT", "ADMIN");
-        auth.requestMatchers(HttpMethod.DELETE,  "/api/git/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/git/**").hasAnyRole("ARCHITECT", "ADMIN");
 
-        // Context navigation — reads for any user, writes for ARCHITECT/ADMIN
-        auth.requestMatchers(HttpMethod.GET,    "/api/context/**").authenticated();
-        auth.requestMatchers(HttpMethod.POST,   "/api/context/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.GET,  "/api/context/**").authenticated();
+        auth.requestMatchers(HttpMethod.POST, "/api/context/**").hasAnyRole("ARCHITECT", "ADMIN");
 
-        // Workspace — reads for any user, writes for ADMIN
-        auth.requestMatchers(HttpMethod.GET,    "/api/workspace/**").authenticated();
-        auth.requestMatchers(HttpMethod.POST,   "/api/workspace/**").hasRole("ADMIN");
+        auth.requestMatchers(HttpMethod.GET,  "/api/workspace/**").authenticated();
+        auth.requestMatchers(HttpMethod.POST, "/api/workspace/**").hasRole("ADMIN");
 
-        auth.requestMatchers(HttpMethod.POST,   "/api/export/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
+        // Import preview is read-only, while materialization and provenance
+        // registration mutate workspace state.
+        auth.requestMatchers(HttpMethod.POST, "/api/import/preview/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/import/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/documents/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.PUT, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.DELETE, "/api/provenance/**").hasAnyRole("ARCHITECT", "ADMIN");
 
-        // Reading API — any authenticated user
-        auth.requestMatchers(HttpMethod.GET, "/api/**").authenticated();
-
-        // POST to analyze/search etc. — any authenticated user
+        // End-user analysis and export operations.
+        auth.requestMatchers(HttpMethod.POST, "/api/export/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
+        auth.requestMatchers(HttpMethod.POST, "/api/report/**").hasAnyRole("USER", "ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/analyze").authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/justify-leaf").authenticated();
 
-        // GUI — any authenticated user
+        // Reading API — any authenticated user.
+        auth.requestMatchers(HttpMethod.GET, "/api/**").authenticated();
+
+        // Remaining API requests must still be authenticated. Specific write
+        // capabilities should be added above rather than relying on this rule.
+        auth.requestMatchers("/api/**").authenticated();
         auth.requestMatchers("/**").authenticated();
     }
 }
