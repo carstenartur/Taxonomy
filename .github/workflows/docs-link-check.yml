@@ -6,23 +6,49 @@ on:
     paths:
       - '**/*.md'
       - 'docs/images/**'
+      - 'pom.xml'
       - '.github/scripts/check-doc-links.py'
+      - '.github/scripts/apply-jackson-security-update.py'
       - '.github/workflows/docs-link-check.yml'
   pull_request:
     branches: [ main ]
     paths:
       - '**/*.md'
       - 'docs/images/**'
+      - 'pom.xml'
       - '.github/scripts/check-doc-links.py'
+      - '.github/scripts/apply-jackson-security-update.py'
       - '.github/workflows/docs-link-check.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  apply-jackson-security-update:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/qa/senior-architecture-ergonomics-hardening'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Apply patched Jackson BOM version
+        run: python3 .github/scripts/apply-jackson-security-update.py
+      - name: Commit dependency security update
+        run: |
+          if git diff --quiet; then
+            echo "Jackson security override already applied."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add pom.xml
+          git commit -m 'security: update Jackson to 2.21.5'
+          git push
+
   check-doc-links:
-    name: Check local documentation links and images
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
