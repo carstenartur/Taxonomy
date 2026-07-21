@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
@@ -44,14 +45,14 @@ class AdminAuthorizationRegressionTest {
     }
 
     @Test
-    @WithMockUser(username = "architect", roles = "ADMIN")
+    @WithMockUser(username = "administrator", roles = "ADMIN")
     void roleAdminIsAuthorizedWithoutSecondApplicationPassword() throws Exception {
         mockMvc.perform(get("/api/admin/status"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.passwordRequired").value(false));
 
         mockMvc.perform(post("/api/admin/verify")
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(true))
@@ -65,7 +66,7 @@ class AdminAuthorizationRegressionTest {
         mockMvc.perform(post("/api/admin/verify")
                         .session(session)
                         .with(user("admin").roles("ADMIN"))
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isForbidden());
 
@@ -73,7 +74,7 @@ class AdminAuthorizationRegressionTest {
                         .session(session)
                         .with(user("admin").roles("ADMIN"))
                         .with(csrf())
-                        .contentType("application/json")
+                        .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(true));
