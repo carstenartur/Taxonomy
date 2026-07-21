@@ -32,11 +32,12 @@ jobs:
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
 
-      - name: Apply final reviewed database documentation statements
+      - name: Apply final reviewed documentation statements
         if: github.head_ref == 'qa/complete-open-points'
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
           replacements = {
               'docs/en/DATABASE_SETUP.md': [
                   ('> **Note:** The default HSQLDB profile does **not** use HikariCP — it uses `SimpleDriverDataSource` to avoid connection pool overhead in single-JVM mode.',
@@ -57,20 +58,37 @@ jobs:
                       raise SystemExit(f'Expected old or new statement in {path}')
                   text = text.replace(old, new, 1)
               file.write_text(text, encoding='utf-8')
+
+          hygiene = Path('docs/dev/DEPENDENCY_HYGIENE.md')
+          text = hygiene.read_text(encoding='utf-8')
+          old = '1. the Maven Enforcer `includes` list for the exact coordinate; and'
+          new = '1. the Maven Enforcer `bannedDependencies/excludes` list for the exact coordinate; and'
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit('Maven Enforcer exception terminology is neither old nor corrected')
+          hygiene.write_text(text, encoding='utf-8')
+
+          repository = 'https://github.com/carstenartur/Taxonomy/blob/main/'
+          for name in ('docs/en/DEVELOPER_GUIDE.md', 'docs/de/DEVELOPER_GUIDE.md'):
+              path = Path(name)
+              guide = path.read_text(encoding='utf-8')
+              guide = guide.replace('](../dev/', f']({repository}docs/dev/')
+              guide = guide.replace('](../internal/', f']({repository}docs/internal/')
+              path.write_text(guide, encoding='utf-8')
           PY
-          rm -f .github/workflows/apply-final-database-docs.yml
 
       - name: Check local Markdown links and image targets
         run: |
           git diff --check
           python3 .github/scripts/check-doc-links.py
 
-      - name: Commit final database documentation correction
+      - name: Commit final documentation correction
         if: github.head_ref == 'qa/complete-open-points'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add docs/en/DATABASE_SETUP.md docs/de/DATABASE_SETUP.md .github/workflows/apply-final-database-docs.yml
+          git add -A docs .github/workflows
           if git diff --staged --quiet; then exit 0; fi
-          git commit -m 'docs: correct final HSQLDB migration references'
+          git commit -m 'docs: finalize database, dependency, and Help references'
           git push origin HEAD:qa/complete-open-points
