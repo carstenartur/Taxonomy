@@ -1,0 +1,43 @@
+name: Apply QA Open Points
+
+on:
+  push:
+    branches: [ qa/complete-open-points ]
+    paths:
+      - '.github/scripts/apply-open-points.py'
+      - '.github/workflows/apply-open-points.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor == 'carstenartur' && github.ref == 'refs/heads/qa/complete-open-points'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: qa/complete-open-points
+          fetch-depth: 0
+
+      - name: Apply repository patches
+        run: python3 .github/scripts/apply-open-points.py
+
+      - name: Validate generated sources
+        run: |
+          python3 -m py_compile .github/scripts/check-dependency-hygiene.py
+          node --check .github/scripts/ui-acceptance.mjs
+          node --check .github/scripts/accessibility-audit.mjs
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ET.parse('pom.xml')
+          PY
+          git diff --check
+
+      - name: Commit final branch state
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'qa: complete database, dependency, UX, accessibility, and CI hardening'
+          git push origin HEAD:qa/complete-open-points
