@@ -1,0 +1,81 @@
+name: PR 406 Integration Isolation
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+
+jobs:
+  focused-integration-test:
+    name: ${{ matrix.test }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - CoreUiAcceptanceIT
+          - ProductionPersistenceRestartIT
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Download pinned embedding model
+        env:
+          MODEL_REVISION: ${{ env.BGE_MODEL_REVISION }}
+        run: bash .github/scripts/download-embedding-model.sh
+
+      - name: Build application without running tests
+        run: mvn -B -pl taxonomy-app -am package -DskipTests
+
+      - name: Run focused integration test
+        id: focused
+        shell: bash
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+        run: |
+          mkdir -p target
+          set +e
+          set -o pipefail
+          mvn -B -pl taxonomy-app \
+            failsafe:integration-test failsafe:verify \
+            -Dit.test="${{ matrix.test }}" \
+            -DfailIfNoTests=false \
+            -DexcludedGroups="real-llm" \
+            2>&1 | tee "target/${{ matrix.test }}.log"
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" -ne 0 ]; then
+            echo "--- Focused integration-test report summary ---"
+            find taxonomy-app/target/failsafe-reports -maxdepth 1 -type f \
+              \( -name '*.txt' -o -name '*.dumpstream' \) \
+              -print -exec tail -n 160 {} \; 2>/dev/null || true
+          fi
+          exit 0
+
+      - name: Upload focused test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-${{ matrix.test }}
+          path: |
+            target/${{ matrix.test }}.log
+            taxonomy-app/target/failsafe-reports/**
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Fail when focused integration test failed
+        if: ${{ steps.focused.outputs.exit_code != '0' }}
+        run: exit 1
