@@ -1,0 +1,7 @@
+Taxonomy JaCoCo instruction coverage
+
+taxonomy-app/target/site/jacoco/jacoco.xml: 81.20% (46645/57444 instructions)
+
+Aggregate: 81.20% (46645/57444 instructions)
+Required:  81.00%
+Result:    PASS

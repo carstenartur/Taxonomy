@@ -106,21 +106,21 @@ public class LlmProviderConfig {
 <span class="fc" id="L106">        LlmProvider override = requestProviderOverride.get();</span>
 <span class="fc bfc" id="L107" title="All 2 branches covered.">        if (override != null) return override;</span>
 
-<span class="pc bpc" id="L109" title="2 of 4 branches missed.">        if (llmProviderConfig != null &amp;&amp; !llmProviderConfig.isBlank()) {</span>
+<span class="pc bpc" id="L109" title="1 of 4 branches missed.">        if (llmProviderConfig != null &amp;&amp; !llmProviderConfig.isBlank()) {</span>
             try {
-<span class="nc" id="L111">                return LlmProvider.valueOf(llmProviderConfig.trim().toUpperCase());</span>
-<span class="nc" id="L112">            } catch (IllegalArgumentException e) {</span>
-<span class="nc" id="L113">                log.warn(&quot;Unknown LLM provider '{}' in config; falling back to auto-detect&quot;,</span>
+<span class="fc" id="L111">                return LlmProvider.valueOf(llmProviderConfig.trim().toUpperCase());</span>
+<span class="fc" id="L112">            } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L113">                log.warn(&quot;Unknown LLM provider '{}' in config; falling back to auto-detect&quot;,</span>
                         llmProviderConfig);
             }
         }
 
-<span class="pc bpc" id="L118" title="2 of 4 branches missed.">        if (geminiApiKey  != null &amp;&amp; !geminiApiKey.isBlank())  return LlmProvider.GEMINI;</span>
-<span class="pc bpc" id="L119" title="2 of 4 branches missed.">        if (openaiApiKey  != null &amp;&amp; !openaiApiKey.isBlank())  return LlmProvider.OPENAI;</span>
-<span class="pc bpc" id="L120" title="2 of 4 branches missed.">        if (deepseekApiKey != null &amp;&amp; !deepseekApiKey.isBlank()) return LlmProvider.DEEPSEEK;</span>
-<span class="pc bpc" id="L121" title="2 of 4 branches missed.">        if (qwenApiKey    != null &amp;&amp; !qwenApiKey.isBlank())    return LlmProvider.QWEN;</span>
-<span class="pc bpc" id="L122" title="2 of 4 branches missed.">        if (llamaApiKey   != null &amp;&amp; !llamaApiKey.isBlank())   return LlmProvider.LLAMA;</span>
-<span class="pc bpc" id="L123" title="2 of 4 branches missed.">        if (mistralApiKey != null &amp;&amp; !mistralApiKey.isBlank()) return LlmProvider.MISTRAL;</span>
+<span class="pc bpc" id="L118" title="1 of 4 branches missed.">        if (geminiApiKey  != null &amp;&amp; !geminiApiKey.isBlank())  return LlmProvider.GEMINI;</span>
+<span class="pc bpc" id="L119" title="1 of 4 branches missed.">        if (openaiApiKey  != null &amp;&amp; !openaiApiKey.isBlank())  return LlmProvider.OPENAI;</span>
+<span class="pc bpc" id="L120" title="1 of 4 branches missed.">        if (deepseekApiKey != null &amp;&amp; !deepseekApiKey.isBlank()) return LlmProvider.DEEPSEEK;</span>
+<span class="pc bpc" id="L121" title="1 of 4 branches missed.">        if (qwenApiKey    != null &amp;&amp; !qwenApiKey.isBlank())    return LlmProvider.QWEN;</span>
+<span class="pc bpc" id="L122" title="1 of 4 branches missed.">        if (llamaApiKey   != null &amp;&amp; !llamaApiKey.isBlank())   return LlmProvider.LLAMA;</span>
+<span class="pc bpc" id="L123" title="1 of 4 branches missed.">        if (mistralApiKey != null &amp;&amp; !mistralApiKey.isBlank()) return LlmProvider.MISTRAL;</span>
 
 <span class="fc" id="L125">        return LlmProvider.GEMINI;</span>
     }
@@ -129,15 +129,15 @@ public class LlmProviderConfig {
      * Returns a human-readable name for the active provider (e.g. &quot;Gemini&quot;, &quot;OpenAI&quot;).
      */
     public String getActiveProviderName() {
-<span class="pc bpc" id="L132" title="1 of 2 branches missed.">        if (llmMock) return &quot;Mock&quot;;</span>
-<span class="pc bpc" id="L133" title="6 of 7 branches missed.">        return switch (getActiveProvider()) {</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (llmMock) return &quot;Mock&quot;;</span>
+<span class="fc bfc" id="L133" title="All 7 branches covered.">        return switch (getActiveProvider()) {</span>
 <span class="fc" id="L134">            case GEMINI      -&gt; &quot;Gemini&quot;;</span>
-<span class="nc" id="L135">            case OPENAI      -&gt; &quot;OpenAI&quot;;</span>
-<span class="nc" id="L136">            case DEEPSEEK    -&gt; &quot;DeepSeek&quot;;</span>
-<span class="nc" id="L137">            case QWEN        -&gt; &quot;Qwen&quot;;</span>
-<span class="nc" id="L138">            case LLAMA       -&gt; &quot;Llama&quot;;</span>
-<span class="nc" id="L139">            case MISTRAL     -&gt; &quot;Mistral&quot;;</span>
-<span class="nc" id="L140">            case LOCAL_ONNX  -&gt; &quot;Local (bge-small-en-v1.5)&quot;;</span>
+<span class="fc" id="L135">            case OPENAI      -&gt; &quot;OpenAI&quot;;</span>
+<span class="fc" id="L136">            case DEEPSEEK    -&gt; &quot;DeepSeek&quot;;</span>
+<span class="fc" id="L137">            case QWEN        -&gt; &quot;Qwen&quot;;</span>
+<span class="fc" id="L138">            case LLAMA       -&gt; &quot;Llama&quot;;</span>
+<span class="fc" id="L139">            case MISTRAL     -&gt; &quot;Mistral&quot;;</span>
+<span class="fc" id="L140">            case LOCAL_ONNX  -&gt; &quot;Local (bge-small-en-v1.5)&quot;;</span>
         };
     }
 
@@ -149,12 +149,12 @@ public class LlmProviderConfig {
     public List&lt;String&gt; getAvailableProviders() {
 <span class="fc" id="L150">        List&lt;String&gt; providers = new ArrayList&lt;&gt;();</span>
 <span class="fc" id="L151">        providers.add(&quot;LOCAL_ONNX&quot;);</span>
-<span class="pc bpc" id="L152" title="2 of 4 branches missed.">        if (geminiApiKey  != null &amp;&amp; !geminiApiKey.isBlank())  providers.add(&quot;GEMINI&quot;);</span>
-<span class="pc bpc" id="L153" title="2 of 4 branches missed.">        if (openaiApiKey  != null &amp;&amp; !openaiApiKey.isBlank())  providers.add(&quot;OPENAI&quot;);</span>
-<span class="pc bpc" id="L154" title="2 of 4 branches missed.">        if (deepseekApiKey != null &amp;&amp; !deepseekApiKey.isBlank()) providers.add(&quot;DEEPSEEK&quot;);</span>
-<span class="pc bpc" id="L155" title="2 of 4 branches missed.">        if (qwenApiKey    != null &amp;&amp; !qwenApiKey.isBlank())    providers.add(&quot;QWEN&quot;);</span>
-<span class="pc bpc" id="L156" title="2 of 4 branches missed.">        if (llamaApiKey   != null &amp;&amp; !llamaApiKey.isBlank())   providers.add(&quot;LLAMA&quot;);</span>
-<span class="pc bpc" id="L157" title="2 of 4 branches missed.">        if (mistralApiKey != null &amp;&amp; !mistralApiKey.isBlank()) providers.add(&quot;MISTRAL&quot;);</span>
+<span class="pc bpc" id="L152" title="1 of 4 branches missed.">        if (geminiApiKey  != null &amp;&amp; !geminiApiKey.isBlank())  providers.add(&quot;GEMINI&quot;);</span>
+<span class="pc bpc" id="L153" title="1 of 4 branches missed.">        if (openaiApiKey  != null &amp;&amp; !openaiApiKey.isBlank())  providers.add(&quot;OPENAI&quot;);</span>
+<span class="pc bpc" id="L154" title="1 of 4 branches missed.">        if (deepseekApiKey != null &amp;&amp; !deepseekApiKey.isBlank()) providers.add(&quot;DEEPSEEK&quot;);</span>
+<span class="pc bpc" id="L155" title="1 of 4 branches missed.">        if (qwenApiKey    != null &amp;&amp; !qwenApiKey.isBlank())    providers.add(&quot;QWEN&quot;);</span>
+<span class="pc bpc" id="L156" title="1 of 4 branches missed.">        if (llamaApiKey   != null &amp;&amp; !llamaApiKey.isBlank())   providers.add(&quot;LLAMA&quot;);</span>
+<span class="pc bpc" id="L157" title="1 of 4 branches missed.">        if (mistralApiKey != null &amp;&amp; !mistralApiKey.isBlank()) providers.add(&quot;MISTRAL&quot;);</span>
 <span class="fc" id="L158">        return providers;</span>
     }
 
@@ -163,14 +163,14 @@ public class LlmProviderConfig {
      * {@link LlmProvider#LOCAL_ONNX} which requires no key.
      */
     public String getApiKey(LlmProvider provider) {
-<span class="pc bpc" id="L166" title="6 of 7 branches missed.">        return switch (provider) {</span>
+<span class="fc bfc" id="L166" title="All 7 branches covered.">        return switch (provider) {</span>
 <span class="fc" id="L167">            case GEMINI      -&gt; geminiApiKey;</span>
-<span class="nc" id="L168">            case OPENAI      -&gt; openaiApiKey;</span>
-<span class="nc" id="L169">            case DEEPSEEK    -&gt; deepseekApiKey;</span>
-<span class="nc" id="L170">            case QWEN        -&gt; qwenApiKey;</span>
-<span class="nc" id="L171">            case LLAMA       -&gt; llamaApiKey;</span>
-<span class="nc" id="L172">            case MISTRAL     -&gt; mistralApiKey;</span>
-<span class="nc" id="L173">            case LOCAL_ONNX  -&gt; null;</span>
+<span class="fc" id="L168">            case OPENAI      -&gt; openaiApiKey;</span>
+<span class="fc" id="L169">            case DEEPSEEK    -&gt; deepseekApiKey;</span>
+<span class="fc" id="L170">            case QWEN        -&gt; qwenApiKey;</span>
+<span class="fc" id="L171">            case LLAMA       -&gt; llamaApiKey;</span>
+<span class="fc" id="L172">            case MISTRAL     -&gt; mistralApiKey;</span>
+<span class="fc" id="L173">            case LOCAL_ONNX  -&gt; null;</span>
         };
     }
 
@@ -181,13 +181,13 @@ public class LlmProviderConfig {
      *         {@link LlmProvider#GEMINI} (which uses a different call pattern)
      */
     public String getOpenAiCompatibleUrl(LlmProvider provider) {
-<span class="nc bnc" id="L184" title="All 6 branches missed.">        return switch (provider) {</span>
-<span class="nc" id="L185">            case OPENAI   -&gt; OPENAI_URL;</span>
-<span class="nc" id="L186">            case DEEPSEEK -&gt; DEEPSEEK_URL;</span>
-<span class="nc" id="L187">            case QWEN     -&gt; QWEN_URL;</span>
-<span class="nc" id="L188">            case LLAMA    -&gt; LLAMA_URL;</span>
-<span class="nc" id="L189">            case MISTRAL  -&gt; MISTRAL_URL;</span>
-<span class="nc" id="L190">            default -&gt; throw new IllegalArgumentException(&quot;Not an OpenAI-compatible provider: &quot; + provider);</span>
+<span class="fc bfc" id="L184" title="All 6 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L185">            case OPENAI   -&gt; OPENAI_URL;</span>
+<span class="fc" id="L186">            case DEEPSEEK -&gt; DEEPSEEK_URL;</span>
+<span class="fc" id="L187">            case QWEN     -&gt; QWEN_URL;</span>
+<span class="fc" id="L188">            case LLAMA    -&gt; LLAMA_URL;</span>
+<span class="fc" id="L189">            case MISTRAL  -&gt; MISTRAL_URL;</span>
+<span class="fc" id="L190">            default -&gt; throw new IllegalArgumentException(&quot;Not an OpenAI-compatible provider: &quot; + provider);</span>
         };
     }
 
@@ -197,27 +197,27 @@ public class LlmProviderConfig {
      * @throws IllegalArgumentException for non-OpenAI-compatible providers
      */
     public String getOpenAiCompatibleModel(LlmProvider provider) {
-<span class="nc bnc" id="L200" title="All 6 branches missed.">        return switch (provider) {</span>
-<span class="nc" id="L201">            case OPENAI   -&gt; OPENAI_MODEL;</span>
-<span class="nc" id="L202">            case DEEPSEEK -&gt; DEEPSEEK_MODEL;</span>
-<span class="nc" id="L203">            case QWEN     -&gt; QWEN_MODEL;</span>
-<span class="nc" id="L204">            case LLAMA    -&gt; LLAMA_MODEL;</span>
-<span class="nc" id="L205">            case MISTRAL  -&gt; MISTRAL_MODEL;</span>
-<span class="nc" id="L206">            default -&gt; throw new IllegalArgumentException(&quot;Unknown provider: &quot; + provider);</span>
+<span class="fc bfc" id="L200" title="All 6 branches covered.">        return switch (provider) {</span>
+<span class="fc" id="L201">            case OPENAI   -&gt; OPENAI_MODEL;</span>
+<span class="fc" id="L202">            case DEEPSEEK -&gt; DEEPSEEK_MODEL;</span>
+<span class="fc" id="L203">            case QWEN     -&gt; QWEN_MODEL;</span>
+<span class="fc" id="L204">            case LLAMA    -&gt; LLAMA_MODEL;</span>
+<span class="fc" id="L205">            case MISTRAL  -&gt; MISTRAL_MODEL;</span>
+<span class="fc" id="L206">            default -&gt; throw new IllegalArgumentException(&quot;Unknown provider: &quot; + provider);</span>
         };
     }
 
     /** Returns the Gemini endpoint URL (including the query-parameter key placeholder). */
     public String getGeminiUrl() {
-<span class="nc" id="L212">        return GEMINI_URL;</span>
+<span class="fc" id="L212">        return GEMINI_URL;</span>
     }
 
     // ── Availability checks ───────────────────────────────────────────────────
 
     /** Returns {@code true} if at least one cloud LLM API key is configured. */
     public boolean hasAnyCloudApiKey() {
-<span class="pc bpc" id="L219" title="3 of 6 branches missed.">        return (geminiApiKey   != null &amp;&amp; !geminiApiKey.isBlank())</span>
-<span class="pc bpc" id="L220" title="2 of 4 branches missed.">            || (openaiApiKey   != null &amp;&amp; !openaiApiKey.isBlank())</span>
+<span class="pc bpc" id="L219" title="2 of 6 branches missed.">        return (geminiApiKey   != null &amp;&amp; !geminiApiKey.isBlank())</span>
+<span class="pc bpc" id="L220" title="1 of 4 branches missed.">            || (openaiApiKey   != null &amp;&amp; !openaiApiKey.isBlank())</span>
 <span class="pc bpc" id="L221" title="2 of 4 branches missed.">            || (deepseekApiKey != null &amp;&amp; !deepseekApiKey.isBlank())</span>
 <span class="pc bpc" id="L222" title="2 of 4 branches missed.">            || (qwenApiKey     != null &amp;&amp; !qwenApiKey.isBlank())</span>
 <span class="pc bpc" id="L223" title="2 of 4 branches missed.">            || (llamaApiKey    != null &amp;&amp; !llamaApiKey.isBlank())</span>
@@ -238,16 +238,16 @@ public class LlmProviderConfig {
      * &lt;/ul&gt;
      */
     public AiAvailabilityLevel getAvailabilityLevel() {
-<span class="pc bpc" id="L241" title="1 of 2 branches missed.">        if (llmMock) return AiAvailabilityLevel.FULL;</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        if (llmMock) return AiAvailabilityLevel.FULL;</span>
 <span class="fc" id="L242">        LlmProvider provider = getActiveProvider();</span>
-<span class="pc bpc" id="L243" title="1 of 2 branches missed.">        if (provider == LlmProvider.LOCAL_ONNX) {</span>
-<span class="nc bnc" id="L244" title="All 2 branches missed.">            return localEmbeddingService.isAvailable()</span>
-<span class="nc" id="L245">                    ? AiAvailabilityLevel.LIMITED</span>
-<span class="nc" id="L246">                    : AiAvailabilityLevel.UNAVAILABLE;</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        if (provider == LlmProvider.LOCAL_ONNX) {</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">            return localEmbeddingService.isAvailable()</span>
+<span class="fc" id="L245">                    ? AiAvailabilityLevel.LIMITED</span>
+<span class="fc" id="L246">                    : AiAvailabilityLevel.UNAVAILABLE;</span>
         }
-<span class="pc bpc" id="L248" title="1 of 2 branches missed.">        if (hasAnyCloudApiKey()) return AiAvailabilityLevel.FULL;</span>
-<span class="pc bpc" id="L249" title="1 of 2 branches missed.">        return localEmbeddingService.isAvailable()</span>
-<span class="nc" id="L250">                ? AiAvailabilityLevel.LIMITED</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        if (hasAnyCloudApiKey()) return AiAvailabilityLevel.FULL;</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        return localEmbeddingService.isAvailable()</span>
+<span class="fc" id="L250">                ? AiAvailabilityLevel.LIMITED</span>
 <span class="fc" id="L251">                : AiAvailabilityLevel.UNAVAILABLE;</span>
     }
 
@@ -257,7 +257,7 @@ public class LlmProviderConfig {
      * or if mock mode is active.
      */
     public boolean isAvailable() {
-<span class="nc bnc" id="L260" title="All 2 branches missed.">        return getAvailabilityLevel() != AiAvailabilityLevel.UNAVAILABLE;</span>
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">        return getAvailabilityLevel() != AiAvailabilityLevel.UNAVAILABLE;</span>
     }
 
     /** Returns {@code true} when mock mode is enabled via {@code llm.mock=true}. */

@@ -204,8 +204,8 @@ public class DslApiController {
             // Derive branch from the after document when available
 <span class="fc" id="L205">            String branch = &quot;draft&quot;;</span>
 <span class="fc" id="L206">            var afterDoc = dslOps.findDocumentById(afterDocId);</span>
-<span class="pc bpc" id="L207" title="2 of 4 branches missed.">            if (afterDoc.isPresent() &amp;&amp; afterDoc.get().getBranch() != null) {</span>
-<span class="nc" id="L208">                branch = afterDoc.get().getBranch();</span>
+<span class="pc bpc" id="L207" title="1 of 4 branches missed.">            if (afterDoc.isPresent() &amp;&amp; afterDoc.get().getBranch() != null) {</span>
+<span class="fc" id="L208">                branch = afterDoc.get().getBranch();</span>
             }
 
 <span class="fc" id="L211">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
@@ -216,10 +216,10 @@ public class DslApiController {
 <span class="fc" id="L216">            result.put(&quot;documentId&quot;, matResult.documentId());</span>
 <span class="fc" id="L217">            result.put(&quot;viewContext&quot;, dslOps.getViewContext(branch));</span>
 <span class="fc" id="L218">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L219">        } catch (IllegalArgumentException e) {</span>
-<span class="nc" id="L220">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L221">            error.put(&quot;error&quot;, e.getMessage());</span>
-<span class="nc" id="L222">            return ResponseEntity.badRequest().body(error);</span>
+<span class="fc" id="L219">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L220">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L221">            error.put(&quot;error&quot;, e.getMessage());</span>
+<span class="fc" id="L222">            return ResponseEntity.badRequest().body(error);</span>
         }
     }
 
@@ -416,9 +416,9 @@ public class DslApiController {
 <span class="fc" id="L416">                branch.put(&quot;created&quot;, gb.created());</span>
 <span class="fc" id="L417">                branches.add(branch);</span>
 <span class="fc" id="L418">            }</span>
-<span class="nc" id="L419">        } catch (IOException e) {</span>
-<span class="nc" id="L420">            log.error(&quot;Failed to list branches&quot;, e);</span>
-<span class="nc" id="L421">            return ResponseEntity.internalServerError().build();</span>
+<span class="fc" id="L419">        } catch (IOException e) {</span>
+<span class="fc" id="L420">            log.error(&quot;Failed to list branches&quot;, e);</span>
+<span class="fc" id="L421">            return ResponseEntity.internalServerError().build();</span>
 <span class="fc" id="L422">        }</span>
 
 <span class="fc" id="L424">        return ResponseEntity.ok(branches);</span>
@@ -434,11 +434,11 @@ public class DslApiController {
         String gitHeadId;
         try {
 <span class="fc" id="L436">            gitHeadId = dslOps.createBranch(name, fromBranch);</span>
-<span class="nc" id="L437">        } catch (IOException e) {</span>
-<span class="nc" id="L438">            log.error(&quot;Branch creation failed&quot;, e);</span>
-<span class="nc" id="L439">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L440">            error.put(&quot;error&quot;, &quot;Branch creation failed: &quot; + e.getMessage());</span>
-<span class="nc" id="L441">            return ResponseEntity.internalServerError().body(error);</span>
+<span class="fc" id="L437">        } catch (IOException e) {</span>
+<span class="fc" id="L438">            log.error(&quot;Branch creation failed&quot;, e);</span>
+<span class="fc" id="L439">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L440">            error.put(&quot;error&quot;, &quot;Branch creation failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L441">            return ResponseEntity.internalServerError().body(error);</span>
 <span class="fc" id="L442">        }</span>
 
 <span class="fc bfc" id="L444" title="All 2 branches covered.">        if (gitHeadId == null) {</span>
@@ -464,10 +464,10 @@ public class DslApiController {
             @RequestParam(defaultValue = &quot;review&quot;) String targetBranch) {
         try {
 <span class="fc" id="L466">            String newCommitId = dslOps.cherryPick(commitId, targetBranch);</span>
-<span class="pc bpc" id="L467" title="1 of 2 branches missed.">            if (newCommitId == null) {</span>
-<span class="nc" id="L468">                Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L469">                error.put(&quot;error&quot;, &quot;Cherry-pick failed (conflict or invalid commit)&quot;);</span>
-<span class="nc" id="L470">                return ResponseEntity.badRequest().body(error);</span>
+<span class="fc bfc" id="L467" title="All 2 branches covered.">            if (newCommitId == null) {</span>
+<span class="fc" id="L468">                Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L469">                error.put(&quot;error&quot;, &quot;Cherry-pick failed (conflict or invalid commit)&quot;);</span>
+<span class="fc" id="L470">                return ResponseEntity.badRequest().body(error);</span>
             }
 <span class="fc" id="L472">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
 <span class="fc" id="L473">            result.put(&quot;commitId&quot;, newCommitId);</span>
@@ -478,10 +478,10 @@ public class DslApiController {
 <span class="fc" id="L478">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
 <span class="fc" id="L479">            error.put(&quot;error&quot;, &quot;Cherry-pick failed: commit not found — &quot; + e.getMessage());</span>
 <span class="fc" id="L480">            return ResponseEntity.badRequest().body(error);</span>
-<span class="nc" id="L481">        } catch (IOException e) {</span>
-<span class="nc" id="L482">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L483">            error.put(&quot;error&quot;, &quot;Cherry-pick failed: &quot; + e.getMessage());</span>
-<span class="nc" id="L484">            return ResponseEntity.internalServerError().body(error);</span>
+<span class="fc" id="L481">        } catch (IOException e) {</span>
+<span class="fc" id="L482">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L483">            error.put(&quot;error&quot;, &quot;Cherry-pick failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L484">            return ResponseEntity.internalServerError().body(error);</span>
         }
     }
 
@@ -503,10 +503,10 @@ public class DslApiController {
 <span class="fc" id="L503">            result.put(&quot;fromBranch&quot;, fromBranch);</span>
 <span class="fc" id="L504">            result.put(&quot;intoBranch&quot;, intoBranch);</span>
 <span class="fc" id="L505">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L506">        } catch (IOException e) {</span>
-<span class="nc" id="L507">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L508">            error.put(&quot;error&quot;, &quot;Merge failed: &quot; + e.getMessage());</span>
-<span class="nc" id="L509">            return ResponseEntity.internalServerError().body(error);</span>
+<span class="fc" id="L506">        } catch (IOException e) {</span>
+<span class="fc" id="L507">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L508">            error.put(&quot;error&quot;, &quot;Merge failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L509">            return ResponseEntity.internalServerError().body(error);</span>
         }
     }
 
@@ -520,25 +520,25 @@ public class DslApiController {
             @RequestParam String commitId,
             @RequestParam(defaultValue = &quot;draft&quot;) String branch) {
         try {
-<span class="nc" id="L523">            String newCommitId = dslOps.revert(commitId, branch);</span>
-<span class="nc bnc" id="L524" title="All 2 branches missed.">            if (newCommitId == null) {</span>
-<span class="nc" id="L525">                Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L526">                error.put(&quot;error&quot;, &quot;Revert failed (conflict, initial commit, or branch not found)&quot;);</span>
-<span class="nc" id="L527">                return ResponseEntity.badRequest().body(error);</span>
+<span class="fc" id="L523">            String newCommitId = dslOps.revert(commitId, branch);</span>
+<span class="fc bfc" id="L524" title="All 2 branches covered.">            if (newCommitId == null) {</span>
+<span class="fc" id="L525">                Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L526">                error.put(&quot;error&quot;, &quot;Revert failed (conflict, initial commit, or branch not found)&quot;);</span>
+<span class="fc" id="L527">                return ResponseEntity.badRequest().body(error);</span>
             }
-<span class="nc" id="L529">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L530">            result.put(&quot;commitId&quot;, newCommitId);</span>
-<span class="nc" id="L531">            result.put(&quot;branch&quot;, branch);</span>
-<span class="nc" id="L532">            result.put(&quot;revertedCommit&quot;, commitId);</span>
-<span class="nc" id="L533">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L529">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L530">            result.put(&quot;commitId&quot;, newCommitId);</span>
+<span class="fc" id="L531">            result.put(&quot;branch&quot;, branch);</span>
+<span class="fc" id="L532">            result.put(&quot;revertedCommit&quot;, commitId);</span>
+<span class="fc" id="L533">            return ResponseEntity.ok(result);</span>
 <span class="nc" id="L534">        } catch (org.eclipse.jgit.errors.MissingObjectException e) {</span>
 <span class="nc" id="L535">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
 <span class="nc" id="L536">            error.put(&quot;error&quot;, &quot;Revert failed: commit not found — &quot; + e.getMessage());</span>
 <span class="nc" id="L537">            return ResponseEntity.badRequest().body(error);</span>
-<span class="nc" id="L538">        } catch (IOException e) {</span>
-<span class="nc" id="L539">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L540">            error.put(&quot;error&quot;, &quot;Revert failed: &quot; + e.getMessage());</span>
-<span class="nc" id="L541">            return ResponseEntity.internalServerError().body(error);</span>
+<span class="fc" id="L538">        } catch (IOException e) {</span>
+<span class="fc" id="L539">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L540">            error.put(&quot;error&quot;, &quot;Revert failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L541">            return ResponseEntity.internalServerError().body(error);</span>
         }
     }
 
@@ -549,20 +549,20 @@ public class DslApiController {
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; undoLast(
             @RequestParam(defaultValue = &quot;draft&quot;) String branch) {
         try {
-<span class="nc" id="L552">            String newHeadId = dslOps.undoLast(branch);</span>
-<span class="nc bnc" id="L553" title="All 2 branches missed.">            if (newHeadId == null) {</span>
-<span class="nc" id="L554">                Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L555">                error.put(&quot;error&quot;, &quot;Undo failed (branch not found or only initial commit)&quot;);</span>
-<span class="nc" id="L556">                return ResponseEntity.badRequest().body(error);</span>
+<span class="fc" id="L552">            String newHeadId = dslOps.undoLast(branch);</span>
+<span class="fc bfc" id="L553" title="All 2 branches covered.">            if (newHeadId == null) {</span>
+<span class="fc" id="L554">                Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L555">                error.put(&quot;error&quot;, &quot;Undo failed (branch not found or only initial commit)&quot;);</span>
+<span class="fc" id="L556">                return ResponseEntity.badRequest().body(error);</span>
             }
-<span class="nc" id="L558">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L559">            result.put(&quot;commitId&quot;, newHeadId);</span>
-<span class="nc" id="L560">            result.put(&quot;branch&quot;, branch);</span>
-<span class="nc" id="L561">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L562">        } catch (IOException e) {</span>
-<span class="nc" id="L563">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L564">            error.put(&quot;error&quot;, &quot;Undo failed: &quot; + e.getMessage());</span>
-<span class="nc" id="L565">            return ResponseEntity.internalServerError().body(error);</span>
+<span class="fc" id="L558">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L559">            result.put(&quot;commitId&quot;, newHeadId);</span>
+<span class="fc" id="L560">            result.put(&quot;branch&quot;, branch);</span>
+<span class="fc" id="L561">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L562">        } catch (IOException e) {</span>
+<span class="fc" id="L563">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L564">            error.put(&quot;error&quot;, &quot;Undo failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L565">            return ResponseEntity.internalServerError().body(error);</span>
         }
     }
 
@@ -574,21 +574,21 @@ public class DslApiController {
             @RequestParam String commitId,
             @RequestParam(defaultValue = &quot;draft&quot;) String branch) {
         try {
-<span class="nc" id="L577">            String newCommitId = dslOps.restore(commitId, branch);</span>
-<span class="nc bnc" id="L578" title="All 2 branches missed.">            if (newCommitId == null) {</span>
-<span class="nc" id="L579">                Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L580">                error.put(&quot;error&quot;, &quot;Restore failed: source commit not found or has no DSL content&quot;);</span>
-<span class="nc" id="L581">                return ResponseEntity.badRequest().body(error);</span>
+<span class="fc" id="L577">            String newCommitId = dslOps.restore(commitId, branch);</span>
+<span class="fc bfc" id="L578" title="All 2 branches covered.">            if (newCommitId == null) {</span>
+<span class="fc" id="L579">                Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L580">                error.put(&quot;error&quot;, &quot;Restore failed: source commit not found or has no DSL content&quot;);</span>
+<span class="fc" id="L581">                return ResponseEntity.badRequest().body(error);</span>
             }
-<span class="nc" id="L583">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L584">            result.put(&quot;commitId&quot;, newCommitId);</span>
-<span class="nc" id="L585">            result.put(&quot;branch&quot;, branch);</span>
-<span class="nc" id="L586">            result.put(&quot;restoredFrom&quot;, commitId);</span>
-<span class="nc" id="L587">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L588">        } catch (Exception e) {</span>
-<span class="nc" id="L589">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L590">            error.put(&quot;error&quot;, &quot;Restore failed: &quot; + e.getMessage());</span>
-<span class="nc" id="L591">            return ResponseEntity.internalServerError().body(error);</span>
+<span class="fc" id="L583">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L584">            result.put(&quot;commitId&quot;, newCommitId);</span>
+<span class="fc" id="L585">            result.put(&quot;branch&quot;, branch);</span>
+<span class="fc" id="L586">            result.put(&quot;restoredFrom&quot;, commitId);</span>
+<span class="fc" id="L587">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L588">        } catch (Exception e) {</span>
+<span class="fc" id="L589">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L590">            error.put(&quot;error&quot;, &quot;Restore failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L591">            return ResponseEntity.internalServerError().body(error);</span>
         }
     }
 
@@ -601,7 +601,7 @@ public class DslApiController {
     public ResponseEntity&lt;ConflictDetectionService.MergePreview&gt; previewMerge(
             @RequestParam String from,
             @RequestParam String into) {
-<span class="nc" id="L604">        return ResponseEntity.ok(dslOps.previewMerge(from, into));</span>
+<span class="fc" id="L604">        return ResponseEntity.ok(dslOps.previewMerge(from, into));</span>
     }
 
     @GetMapping(&quot;/cherry-pick/preview&quot;)
@@ -611,7 +611,7 @@ public class DslApiController {
     public ResponseEntity&lt;ConflictDetectionService.CherryPickPreview&gt; previewCherryPick(
             @RequestParam String commitId,
             @RequestParam(defaultValue = &quot;review&quot;) String targetBranch) {
-<span class="nc" id="L614">        return ResponseEntity.ok(dslOps.previewCherryPick(commitId, targetBranch));</span>
+<span class="fc" id="L614">        return ResponseEntity.ok(dslOps.previewCherryPick(commitId, targetBranch));</span>
     }
 
     // ── Conflict details &amp; resolution ───────────────────────────────
@@ -651,11 +651,11 @@ public class DslApiController {
 <span class="fc" id="L651">            result.put(&quot;intoBranch&quot;, intoBranch);</span>
 <span class="fc" id="L652">            result.put(&quot;resolution&quot;, &quot;manual&quot;);</span>
 <span class="fc" id="L653">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L654">        } catch (Exception e) {</span>
-<span class="nc" id="L655">            log.error(&quot;Merge resolution failed&quot;, e);</span>
-<span class="nc" id="L656">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L657">            error.put(&quot;error&quot;, &quot;Merge resolution failed: &quot; + e.getMessage());</span>
-<span class="nc" id="L658">            return ResponseEntity.internalServerError().body(error);</span>
+<span class="fc" id="L654">        } catch (Exception e) {</span>
+<span class="fc" id="L655">            log.error(&quot;Merge resolution failed&quot;, e);</span>
+<span class="fc" id="L656">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L657">            error.put(&quot;error&quot;, &quot;Merge resolution failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L658">            return ResponseEntity.internalServerError().body(error);</span>
         }
     }
 
@@ -665,9 +665,9 @@ public class DslApiController {
     public ResponseEntity&lt;?&gt; getCherryPickConflictDetails(
             @RequestParam String commitId,
             @RequestParam(defaultValue = &quot;review&quot;) String targetBranch) {
-<span class="nc" id="L668">        var details = dslOps.getCherryPickConflictDetails(commitId, targetBranch);</span>
-<span class="nc bnc" id="L669" title="All 2 branches missed.">        if (details == null) {</span>
-<span class="nc" id="L670">            return ResponseEntity.ok(Map.of(&quot;conflict&quot;, false, &quot;message&quot;, &quot;No conflict detected&quot;));</span>
+<span class="fc" id="L668">        var details = dslOps.getCherryPickConflictDetails(commitId, targetBranch);</span>
+<span class="pc bpc" id="L669" title="1 of 2 branches missed.">        if (details == null) {</span>
+<span class="fc" id="L670">            return ResponseEntity.ok(Map.of(&quot;conflict&quot;, false, &quot;message&quot;, &quot;No conflict detected&quot;));</span>
         }
 <span class="nc" id="L672">        return ResponseEntity.ok(details);</span>
     }
@@ -682,21 +682,21 @@ public class DslApiController {
             @RequestBody String resolvedContent,
             Authentication authentication) {
         try {
-<span class="nc bnc" id="L685" title="All 2 branches missed.">            String username = authentication != null ? authentication.getName() : &quot;system&quot;;</span>
-<span class="nc" id="L686">            String newCommitId = dslOps.commitDsl(targetBranch, resolvedContent,</span>
-<span class="nc" id="L687">                    username, &quot;Resolve cherry-pick conflict: &quot; + commitId.substring(0, Math.min(7, commitId.length())));</span>
+<span class="fc bfc" id="L685" title="All 2 branches covered.">            String username = authentication != null ? authentication.getName() : &quot;system&quot;;</span>
+<span class="fc" id="L686">            String newCommitId = dslOps.commitDsl(targetBranch, resolvedContent,</span>
+<span class="fc" id="L687">                    username, &quot;Resolve cherry-pick conflict: &quot; + commitId.substring(0, Math.min(7, commitId.length())));</span>
 
-<span class="nc" id="L689">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L690">            result.put(&quot;commitId&quot;, newCommitId);</span>
-<span class="nc" id="L691">            result.put(&quot;targetBranch&quot;, targetBranch);</span>
-<span class="nc" id="L692">            result.put(&quot;cherryPickedFrom&quot;, commitId);</span>
-<span class="nc" id="L693">            result.put(&quot;resolution&quot;, &quot;manual&quot;);</span>
-<span class="nc" id="L694">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L695">        } catch (Exception e) {</span>
-<span class="nc" id="L696">            log.error(&quot;Cherry-pick resolution failed&quot;, e);</span>
-<span class="nc" id="L697">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L698">            error.put(&quot;error&quot;, &quot;Cherry-pick resolution failed: &quot; + e.getMessage());</span>
-<span class="nc" id="L699">            return ResponseEntity.internalServerError().body(error);</span>
+<span class="fc" id="L689">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L690">            result.put(&quot;commitId&quot;, newCommitId);</span>
+<span class="fc" id="L691">            result.put(&quot;targetBranch&quot;, targetBranch);</span>
+<span class="fc" id="L692">            result.put(&quot;cherryPickedFrom&quot;, commitId);</span>
+<span class="fc" id="L693">            result.put(&quot;resolution&quot;, &quot;manual&quot;);</span>
+<span class="fc" id="L694">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L695">        } catch (Exception e) {</span>
+<span class="fc" id="L696">            log.error(&quot;Cherry-pick resolution failed&quot;, e);</span>
+<span class="fc" id="L697">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L698">            error.put(&quot;error&quot;, &quot;Cherry-pick resolution failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L699">            return ResponseEntity.internalServerError().body(error);</span>
         }
     }
 
@@ -722,11 +722,11 @@ public class DslApiController {
 <span class="fc" id="L722">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
 <span class="fc" id="L723">            error.put(&quot;error&quot;, e.getMessage());</span>
 <span class="fc" id="L724">            return ResponseEntity.badRequest().body(error);</span>
-<span class="nc" id="L725">        } catch (IOException e) {</span>
-<span class="nc" id="L726">            log.error(&quot;Branch deletion failed&quot;, e);</span>
-<span class="nc" id="L727">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L728">            error.put(&quot;error&quot;, &quot;Branch deletion failed: &quot; + e.getMessage());</span>
-<span class="nc" id="L729">            return ResponseEntity.internalServerError().body(error);</span>
+<span class="fc" id="L725">        } catch (IOException e) {</span>
+<span class="fc" id="L726">            log.error(&quot;Branch deletion failed&quot;, e);</span>
+<span class="fc" id="L727">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L728">            error.put(&quot;error&quot;, &quot;Branch deletion failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L729">            return ResponseEntity.internalServerError().body(error);</span>
         }
     }
 
@@ -737,7 +737,7 @@ public class DslApiController {
     public ResponseEntity&lt;RepositoryStateGuard.OperationCheck&gt; checkOperation(
             @RequestParam(defaultValue = &quot;draft&quot;) String branch,
             @RequestParam String operationType) {
-<span class="nc" id="L740">        return ResponseEntity.ok(dslOps.checkWriteOperation(branch, operationType));</span>
+<span class="fc" id="L740">        return ResponseEntity.ok(dslOps.checkWriteOperation(branch, operationType));</span>
     }
 
     // ── Git-backed read operations ──────────────────────────────────
@@ -762,10 +762,10 @@ public class DslApiController {
 <span class="fc" id="L762">            result.put(&quot;length&quot;, dslText.length());</span>
 <span class="fc" id="L763">            result.put(&quot;viewContext&quot;, dslOps.getViewContext(workspaceContext.username(), branch, workspaceContext));</span>
 <span class="fc" id="L764">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L765">        } catch (IOException e) {</span>
-<span class="nc" id="L766">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L767">            error.put(&quot;error&quot;, &quot;Git read failed: &quot; + e.getMessage());</span>
-<span class="nc" id="L768">            return ResponseEntity.internalServerError().body(error);</span>
+<span class="fc" id="L765">        } catch (IOException e) {</span>
+<span class="fc" id="L766">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L767">            error.put(&quot;error&quot;, &quot;Git read failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L768">            return ResponseEntity.internalServerError().body(error);</span>
         }
     }
 
@@ -775,18 +775,18 @@ public class DslApiController {
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getGitCommit(@PathVariable String commitId) {
         try {
 <span class="fc" id="L777">            String dslText = dslOps.getDslAtCommit(commitId);</span>
-<span class="pc bpc" id="L778" title="1 of 2 branches missed.">            if (dslText == null) {</span>
-<span class="nc" id="L779">                return ResponseEntity.notFound().build();</span>
+<span class="fc bfc" id="L778" title="All 2 branches covered.">            if (dslText == null) {</span>
+<span class="fc" id="L779">                return ResponseEntity.notFound().build();</span>
             }
 <span class="fc" id="L781">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
 <span class="fc" id="L782">            result.put(&quot;commitId&quot;, commitId);</span>
 <span class="fc" id="L783">            result.put(&quot;dslText&quot;, dslText);</span>
 <span class="fc" id="L784">            result.put(&quot;length&quot;, dslText.length());</span>
 <span class="fc" id="L785">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L786">        } catch (Exception e) {</span>
-<span class="nc" id="L787">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L788">            error.put(&quot;error&quot;, &quot;Git read failed: &quot; + e.getMessage());</span>
-<span class="nc" id="L789">            return ResponseEntity.badRequest().body(error);</span>
+<span class="fc" id="L786">        } catch (Exception e) {</span>
+<span class="fc" id="L787">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L788">            error.put(&quot;error&quot;, &quot;Git read failed: &quot; + e.getMessage());</span>
+<span class="fc" id="L789">            return ResponseEntity.badRequest().body(error);</span>
         }
     }
 
@@ -851,10 +851,10 @@ public class DslApiController {
 <span class="fc" id="L851">            return ResponseEntity.ok(result);</span>
 <span class="fc" id="L852">        } catch (IllegalArgumentException e) {</span>
 <span class="fc" id="L853">            return ResponseEntity.notFound().build();</span>
-<span class="nc" id="L854">        } catch (IllegalStateException e) {</span>
-<span class="nc" id="L855">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L856">            error.put(&quot;error&quot;, e.getMessage());</span>
-<span class="nc" id="L857">            return ResponseEntity.badRequest().body(error);</span>
+<span class="fc" id="L854">        } catch (IllegalStateException e) {</span>
+<span class="fc" id="L855">            Map&lt;String, Object&gt; error = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L856">            error.put(&quot;error&quot;, e.getMessage());</span>
+<span class="fc" id="L857">            return ResponseEntity.badRequest().body(error);</span>
         }
     }
 
@@ -880,8 +880,8 @@ public class DslApiController {
     public ResponseEntity&lt;?&gt; getHypothesisEvidence(@PathVariable Long id) {
         try {
 <span class="fc" id="L882">            return ResponseEntity.ok(hypothesisService.findEvidence(id, currentWorkspaceContext()));</span>
-<span class="nc" id="L883">        } catch (IllegalArgumentException e) {</span>
-<span class="nc" id="L884">            return ResponseEntity.notFound().build();</span>
+<span class="fc" id="L883">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L884">            return ResponseEntity.notFound().build();</span>
         }
     }
 
@@ -931,7 +931,7 @@ public class DslApiController {
             description = &quot;Searches affectedRelationIds and tokenized DSL text for the given &quot; +
                     &quot;relation key (e.g., 'CP-1023 REALIZES CR-1047') using Hibernate Search.&quot;)
     public ResponseEntity&lt;?&gt; findHistoryByRelation(@RequestParam String key) {
-<span class="nc" id="L934">        return ResponseEntity.ok(dslOps.findByRelation(key));</span>
+<span class="fc" id="L934">        return ResponseEntity.ok(dslOps.findByRelation(key));</span>
     }
 
     @GetMapping(&quot;/history/element/{elementId}/aggregation&quot;)
@@ -939,12 +939,12 @@ public class DslApiController {
             description = &quot;Returns firstSeen, lastSeen, occurrence count, volatility, &quot; +
                     &quot;and recent commit messages for the given element ID.&quot;)
     public ResponseEntity&lt;?&gt; elementHistoryAggregation(@PathVariable String elementId) {
-<span class="nc" id="L942">        var aggregation = dslOps.aggregateElementHistory(elementId);</span>
-<span class="nc bnc" id="L943" title="All 2 branches missed.">        if (aggregation == null) {</span>
-<span class="nc" id="L944">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L945">            result.put(&quot;elementId&quot;, elementId);</span>
-<span class="nc" id="L946">            result.put(&quot;message&quot;, &quot;No history found for element &quot; + elementId);</span>
-<span class="nc" id="L947">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L942">        var aggregation = dslOps.aggregateElementHistory(elementId);</span>
+<span class="pc bpc" id="L943" title="1 of 2 branches missed.">        if (aggregation == null) {</span>
+<span class="fc" id="L944">            Map&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L945">            result.put(&quot;elementId&quot;, elementId);</span>
+<span class="fc" id="L946">            result.put(&quot;message&quot;, &quot;No history found for element &quot; + elementId);</span>
+<span class="fc" id="L947">            return ResponseEntity.ok(result);</span>
         }
 <span class="nc" id="L949">        return ResponseEntity.ok(aggregation);</span>
     }
@@ -960,9 +960,9 @@ public class DslApiController {
             @RequestParam(defaultValue = &quot;draft&quot;) String currentBranch,
             @RequestParam(defaultValue = &quot;50&quot;) int maxResults) {
 
-<span class="nc" id="L963">        var hits = dslOps.searchHistory(query, maxResults);</span>
-<span class="nc bnc" id="L964" title="All 2 branches missed.">        if (hits.isEmpty()) {</span>
-<span class="nc" id="L965">            return ResponseEntity.ok(List.of());</span>
+<span class="fc" id="L963">        var hits = dslOps.searchHistory(query, maxResults);</span>
+<span class="pc bpc" id="L964" title="1 of 2 branches missed.">        if (hits.isEmpty()) {</span>
+<span class="fc" id="L965">            return ResponseEntity.ok(List.of());</span>
         }
 
         String headCommit;

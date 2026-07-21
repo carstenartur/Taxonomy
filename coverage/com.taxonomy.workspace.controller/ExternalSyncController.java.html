@@ -44,20 +44,20 @@ public class ExternalSyncController {
                     &quot;into the system repository. Requires EXTERNAL_CANONICAL topology mode.&quot;)
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; fetchFromExternal() {
         try {
-<span class="nc" id="L47">            var result = externalGitSyncService.fetchFromExternal();</span>
-<span class="nc" id="L48">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L49">            response.put(&quot;success&quot;, true);</span>
-<span class="nc" id="L50">            response.put(&quot;updates&quot;, result.getTrackingRefUpdates().size());</span>
-<span class="nc" id="L51">            return ResponseEntity.ok(response);</span>
+<span class="fc" id="L47">            var result = externalGitSyncService.fetchFromExternal();</span>
+<span class="fc" id="L48">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L49">            response.put(&quot;success&quot;, true);</span>
+<span class="fc" id="L50">            response.put(&quot;updates&quot;, result.getTrackingRefUpdates().size());</span>
+<span class="fc" id="L51">            return ResponseEntity.ok(response);</span>
 <span class="fc" id="L52">        } catch (IllegalStateException e) {</span>
 <span class="fc" id="L53">            return ResponseEntity.badRequest().body(Map.of(</span>
                     &quot;error&quot;, &quot;Configuration error&quot;,
 <span class="fc" id="L55">                    &quot;message&quot;, e.getMessage()</span>
             ));
-<span class="nc" id="L57">        } catch (Exception e) {</span>
-<span class="nc" id="L58">            return ResponseEntity.internalServerError().body(Map.of(</span>
+<span class="fc" id="L57">        } catch (Exception e) {</span>
+<span class="fc" id="L58">            return ResponseEntity.internalServerError().body(Map.of(</span>
                     &quot;error&quot;, &quot;Fetch failed&quot;,
-<span class="nc" id="L60">                    &quot;message&quot;, e.getMessage()</span>
+<span class="fc" id="L60">                    &quot;message&quot;, e.getMessage()</span>
             ));
         }
     }
@@ -69,20 +69,20 @@ public class ExternalSyncController {
             @RequestParam(required = false) String branch) {
         try {
 <span class="fc bfc" id="L71" title="All 2 branches covered.">            String targetBranch = branch != null ? branch : systemRepositoryService.getSharedBranch();</span>
-<span class="nc" id="L72">            var result = externalGitSyncService.pushToExternal(targetBranch);</span>
-<span class="nc" id="L73">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L74">            response.put(&quot;success&quot;, true);</span>
-<span class="nc" id="L75">            response.put(&quot;branch&quot;, targetBranch);</span>
-<span class="nc" id="L76">            return ResponseEntity.ok(response);</span>
+<span class="fc" id="L72">            var result = externalGitSyncService.pushToExternal(targetBranch);</span>
+<span class="fc" id="L73">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L74">            response.put(&quot;success&quot;, true);</span>
+<span class="fc" id="L75">            response.put(&quot;branch&quot;, targetBranch);</span>
+<span class="fc" id="L76">            return ResponseEntity.ok(response);</span>
 <span class="fc" id="L77">        } catch (IllegalStateException e) {</span>
 <span class="fc" id="L78">            return ResponseEntity.badRequest().body(Map.of(</span>
                     &quot;error&quot;, &quot;Configuration error&quot;,
 <span class="fc" id="L80">                    &quot;message&quot;, e.getMessage()</span>
             ));
-<span class="nc" id="L82">        } catch (Exception e) {</span>
-<span class="nc" id="L83">            return ResponseEntity.internalServerError().body(Map.of(</span>
+<span class="fc" id="L82">        } catch (Exception e) {</span>
+<span class="fc" id="L83">            return ResponseEntity.internalServerError().body(Map.of(</span>
                     &quot;error&quot;, &quot;Push failed&quot;,
-<span class="nc" id="L85">                    &quot;message&quot;, e.getMessage()</span>
+<span class="fc" id="L85">                    &quot;message&quot;, e.getMessage()</span>
             ));
         }
     }
@@ -93,20 +93,20 @@ public class ExternalSyncController {
     public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; fullSync() {
         try {
 <span class="fc" id="L95">            String username = workspaceResolver.resolveCurrentUsername();</span>
-<span class="nc" id="L96">            String commitId = externalGitSyncService.fullSync(username);</span>
-<span class="nc" id="L97">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
-<span class="nc" id="L98">            response.put(&quot;success&quot;, true);</span>
-<span class="nc" id="L99">            response.put(&quot;commitId&quot;, commitId);</span>
-<span class="nc" id="L100">            return ResponseEntity.ok(response);</span>
+<span class="fc" id="L96">            String commitId = externalGitSyncService.fullSync(username);</span>
+<span class="fc" id="L97">            Map&lt;String, Object&gt; response = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L98">            response.put(&quot;success&quot;, true);</span>
+<span class="fc" id="L99">            response.put(&quot;commitId&quot;, commitId);</span>
+<span class="fc" id="L100">            return ResponseEntity.ok(response);</span>
 <span class="fc" id="L101">        } catch (IllegalStateException e) {</span>
 <span class="fc" id="L102">            return ResponseEntity.badRequest().body(Map.of(</span>
                     &quot;error&quot;, &quot;Configuration error&quot;,
 <span class="fc" id="L104">                    &quot;message&quot;, e.getMessage()</span>
             ));
-<span class="nc" id="L106">        } catch (Exception e) {</span>
-<span class="nc" id="L107">            return ResponseEntity.internalServerError().body(Map.of(</span>
+<span class="fc" id="L106">        } catch (Exception e) {</span>
+<span class="fc" id="L107">            return ResponseEntity.internalServerError().body(Map.of(</span>
                     &quot;error&quot;, &quot;Full sync failed&quot;,
-<span class="nc" id="L109">                    &quot;message&quot;, e.getMessage()</span>
+<span class="fc" id="L109">                    &quot;message&quot;, e.getMessage()</span>
             ));
         }
     }
@@ -138,7 +138,7 @@ public class ExternalSyncController {
 <span class="fc bfc" id="L138" title="All 2 branches covered.">            if (externalUrl != null) {</span>
 <span class="fc" id="L139">                sysRepo.setExternalUrl(externalUrl);</span>
             }
-<span class="pc bpc" id="L141" title="1 of 2 branches missed.">            if (topologyMode != null) {</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            if (topologyMode != null) {</span>
 <span class="fc" id="L142">                sysRepo.setTopologyMode(RepositoryTopologyMode.valueOf(topologyMode));</span>
             }
 
@@ -154,10 +154,10 @@ public class ExternalSyncController {
                     &quot;error&quot;, &quot;Invalid parameter&quot;,
 <span class="fc" id="L155">                    &quot;message&quot;, e.getMessage()</span>
             ));
-<span class="nc" id="L157">        } catch (Exception e) {</span>
-<span class="nc" id="L158">            return ResponseEntity.internalServerError().body(Map.of(</span>
+<span class="fc" id="L157">        } catch (Exception e) {</span>
+<span class="fc" id="L158">            return ResponseEntity.internalServerError().body(Map.of(</span>
                     &quot;error&quot;, &quot;Configuration failed&quot;,
-<span class="nc" id="L160">                    &quot;message&quot;, e.getMessage()</span>
+<span class="fc" id="L160">                    &quot;message&quot;, e.getMessage()</span>
             ));
         }
     }
