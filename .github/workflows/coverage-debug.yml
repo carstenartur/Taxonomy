@@ -1,0 +1,40 @@
+name: Coverage Test Compile
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  test-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Compile production and test sources
+        id: compile
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          mvn -pl taxonomy-app -am -DskipTests test-compile --no-transfer-progress 2>&1 | tee maven-test-compile.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload compilation diagnostics
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-test-compile-log
+          path: maven-test-compile.log
+          retention-days: 3
+      - name: Enforce compilation result
+        if: steps.compile.outputs.status != '0'
+        run: exit 1
