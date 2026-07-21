@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Generate a minimal CycloneDX VEX document for the release SBOM."""
+"""Generate CycloneDX SBOM companion metadata.
+
+The generated document deliberately does *not* claim that dependencies were
+scanned or that vulnerabilities are not exploitable. It links release metadata
+to the SBOM and records that an exploitability assessment is still required.
+A real VEX assertion must be produced by a vulnerability scanner plus a
+reviewed per-vulnerability assessment process.
+"""
 
 from __future__ import annotations
 
@@ -20,18 +27,18 @@ def main() -> None:
     parser.add_argument(
         "--output",
         default="target/taxonomy-vex.json",
-        help="Path to write the generated VEX document.",
+        help="Path to write the CycloneDX SBOM companion document.",
     )
     args = parser.parse_args()
 
     sbom_path = Path(args.sbom)
     output_path = Path(args.output)
     if not sbom_path.is_file():
-        print(f"SBOM file not found at {sbom_path}; skipping VEX generation")
+        print(f"SBOM file not found at {sbom_path}; skipping companion generation")
         return
 
     sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
-    vex = {
+    companion = {
         "bomFormat": "CycloneDX",
         "specVersion": "1.6",
         "version": 1,
@@ -42,9 +49,12 @@ def main() -> None:
                 "components": [
                     {
                         "type": "application",
-                        "name": "taxonomy-vex-generator",
-                        "version": "1.0.0",
-                        "description": "Automated VEX generator for Taxonomy Architecture Analyzer",
+                        "name": "taxonomy-sbom-companion-generator",
+                        "version": "2.0.0",
+                        "description": (
+                            "Links Taxonomy release metadata to its SBOM without "
+                            "making vulnerability or exploitability assertions"
+                        ),
                     }
                 ]
             },
@@ -60,20 +70,24 @@ def main() -> None:
             },
             "properties": [
                 {
-                    "name": "vex:sbom-ref",
+                    "name": "taxonomy:sbom-ref",
                     "value": sbom.get("serialNumber", "unknown"),
                 },
                 {
-                    "name": "vex:sbom-version",
+                    "name": "taxonomy:sbom-version",
                     "value": str(sbom.get("version", 1)),
                 },
                 {
                     "name": "vex:assessment-status",
-                    "value": "automated-initial",
+                    "value": "not-assessed",
                 },
                 {
                     "name": "vex:policy",
-                    "value": "No known exploitable vulnerabilities at time of build. Runtime dependency status is derived from the generated release SBOM.",
+                    "value": (
+                        "No vulnerability scan or exploitability assessment is represented "
+                        "by this document. An empty vulnerabilities array is not evidence "
+                        "that the release has no known or exploitable vulnerabilities."
+                    ),
                 },
             ],
         },
@@ -81,8 +95,9 @@ def main() -> None:
     }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(vex, indent=2) + "\n", encoding="utf-8")
-    print(f"VEX document generated: {output_path}")
+    output_path.write_text(json.dumps(companion, indent=2) + "\n", encoding="utf-8")
+    print(f"SBOM companion document generated: {output_path}")
+    print("  Vulnerability assessment: not-assessed")
     print(f"  SBOM serial: {sbom.get('serialNumber', 'N/A')}")
     print(f"  Components in SBOM: {len(sbom.get('components', []))}")
 
