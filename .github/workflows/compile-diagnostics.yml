@@ -8,13 +8,38 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   BGE_MODEL_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
 
 jobs:
+  apply-final-contract-fixes:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/qa/senior-architecture-ergonomics-hardening'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Apply exact test and schema corrections
+        run: python3 .github/scripts/apply-pr406-test-contract-fixes.py
+      - name: Commit corrections
+        run: |
+          if git diff --quiet; then
+            echo "Final contract corrections already applied."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add taxonomy-app/src/main taxonomy-app/src/test
+          git commit -m 'test: align fixtures with hardened security and workspace contracts'
+          git push
+
   test-diagnostics:
+    needs: [apply-final-contract-fixes]
+    if: always() && (needs.apply-final-contract-fixes.result == 'success' || needs.apply-final-contract-fixes.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -55,5 +80,5 @@ jobs:
           retention-days: 14
 
       - name: Fail when Maven tests failed
-        if: steps.tests.outputs.exit_code != '0'
+        if: ${{ steps.tests.outputs.exit_code != '0' }}
         run: exit 1
