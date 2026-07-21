@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""One-time extraction of inline CSRF logic and identifier assistance."""
+"""One-time extraction of inline CSRF logic and identifier assistance.
+
+Idempotent by design; a retrigger is safe after concurrent branch updates.
+"""
 
 from pathlib import Path
 
