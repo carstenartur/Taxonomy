@@ -61,6 +61,8 @@ window.TaxonomyUtils = (function () {
         Array.from(tabList.querySelectorAll('.nav-link[data-page]')).forEach(function (link) {
             var page = link.getAttribute('data-page');
             var active = link.classList.contains('active');
+            var wrapper = link.closest('li');
+            if (wrapper) wrapper.setAttribute('role', 'presentation');
             if (!link.id) link.id = 'main-tab-' + page;
             link.setAttribute('role', 'tab');
             link.setAttribute('aria-selected', active ? 'true' : 'false');
@@ -121,11 +123,22 @@ window.TaxonomyUtils = (function () {
         }
     }
 
+    function syncTreeContainerSemantics(tree) {
+        if (tree.querySelector('[role="treeitem"]')) {
+            tree.setAttribute('role', 'tree');
+            tree.removeAttribute('aria-busy');
+        } else {
+            tree.removeAttribute('role');
+            tree.setAttribute('aria-busy', 'true');
+        }
+    }
+
     function installTreeAccessibilityObserver() {
         var tree = document.getElementById('taxonomyTree');
         if (!tree || tree.dataset.a11yObserved) return;
         tree.dataset.a11yObserved = 'true';
         var syncAll = function () {
+            syncTreeContainerSemantics(tree);
             tree.querySelectorAll('[role="treeitem"]').forEach(syncTreeItemAccessibility);
             refreshNodeCodeSuggestions();
         };
@@ -142,6 +155,7 @@ window.TaxonomyUtils = (function () {
                     node.querySelectorAll('[role="treeitem"]').forEach(syncTreeItemAccessibility);
                 });
             });
+            syncTreeContainerSemantics(tree);
             refreshNodeCodeSuggestions();
         }).observe(tree, {
             subtree: true,
