@@ -9,7 +9,8 @@ const reportPath = process.env.TAXONOMY_A11Y_REPORT || '/tmp/taxonomy-a11y-repor
 const textReportPath = process.env.TAXONOMY_A11Y_TEXT_REPORT || '/tmp/taxonomy-a11y-report.txt';
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+const page = await context.newPage();
 const findings = [];
 let auditError = null;
 
@@ -83,5 +84,6 @@ try {
   } else {
     console.log(textReport.trim());
   }
+  await context.close();
   await browser.close();
 }
