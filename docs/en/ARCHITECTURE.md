@@ -44,7 +44,7 @@ The system design follows these guiding principles, aligned with the
 | **Open Standards** | All exports use open formats (ArchiMate 3.x XML, OpenAPI, Mermaid, ONNX, CycloneDX). No proprietary data formats are required. |
 | **Open Source First** | MIT license. Full source code public. openCode-compatible. |
 | **Interoperability** | REST API with OpenAPI spec. Framework import pipeline (UAF, APQC, C4). Export to 5+ formats. |
-| **Modularity & Reuse** | 4 Maven modules with minimal coupling. 3 modules are Spring-free and independently testable. |
+| **Modularity & Reuse** | 5 Maven modules with minimal coupling. 4 modules are Spring-free and independently testable. |
 | **Integration** | Import pipelines for UAF/DoDAF, APQC PCF, C4/Structurizr. Keycloak SSO. External Git sync. |
 | **Scalability** | Stateless REST API. Pluggable database backend (HSQLDB, PostgreSQL, MSSQL, Oracle). Container-ready. |
 | **Security & Trust** | Spring Security 3-role model. HSTS/CSP headers. Rate limiting. Air-gapped operation. GDPR documentation. |
@@ -155,7 +155,7 @@ The project is a multi-module Maven build with five modules:
 taxonomy-domain/       Pure domain types (DTOs, enums) — no framework dependencies
 taxonomy-dsl/          Architecture DSL (parser, model, validator, differ); provenance model (source, sourceVersion, sourceFragment, requirementSourceLink) — no framework dependencies
 taxonomy-export/       Export services (ArchiMate, Visio, Mermaid, Diagram) — no framework dependencies
-taxonomy-extension-api/ Internal extension SPI contracts and metadata — no framework dependencies
+taxonomy-extension-api/ Common extension metadata plus report/import/LLM contracts — no framework dependencies
 taxonomy-app/          Spring Boot application (controllers, services, JPA, search, storage)
 ```
 
@@ -166,12 +166,12 @@ taxonomy-app  →  taxonomy-domain
 taxonomy-app  →  taxonomy-dsl
 taxonomy-app  →  taxonomy-export
 taxonomy-app  →  taxonomy-extension-api
-taxonomy-export  →  taxonomy-domain
 taxonomy-extension-api  →  taxonomy-domain
-taxonomy-extension-api  →  taxonomy-export
+taxonomy-export  →  taxonomy-domain
+taxonomy-export  →  taxonomy-extension-api
 ```
 
-`taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export`, and `taxonomy-extension-api` have **no Spring dependencies** and can be tested and used independently.
+`taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export`, and `taxonomy-extension-api` have **no Spring dependencies**. The common extension API does not depend on export, DSL, or application modules; feature-specific contracts are owned by their lowest appropriate domain module.
 
 ---
 
