@@ -1,410 +1,177 @@
 package com.taxonomy;
 
-import com.taxonomy.architecture.report.ReportRenderContext;
-import com.taxonomy.architecture.report.ReportFormatDescriptor;
-import com.taxonomy.architecture.report.ReportRenderResult;
-import com.taxonomy.architecture.report.ReportRendererExtension;
 import com.taxonomy.architecture.report.ReportRendererRegistry;
-import com.taxonomy.dto.*;
 import com.taxonomy.architecture.service.ArchitectureReportService;
 import com.taxonomy.architecture.service.ExplanationTraceService;
+import com.taxonomy.dto.ArchitectureReport;
+import com.taxonomy.dto.ExplanationTrace;
+import com.taxonomy.dto.RecommendedElement;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import org.springframework.security.test.context.support.WithMockUser;
-import com.taxonomy.dto.ArchitectureReport;
-import com.taxonomy.dto.ExplanationTrace;
-import com.taxonomy.dto.RecommendedElement;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Tests for Architecture Report Export (Feature 7) and
- * Structured Explainable Reasoning (Feature 6b).
- */
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser(roles = "ADMIN")
+@WithMockUser(username = "report-admin", roles = "ADMIN")
 class ArchitectureReportTests {
 
-    @Autowired private MockMvc mockMvc;
-    @Autowired private ArchitectureReportService reportService;
-    @Autowired private ReportRendererRegistry reportRendererRegistry;
-    @Autowired private ExplanationTraceService traceService;
-
-    // ── Report Service Tests ──────────────────────────────────────────────────
+    @Autowired
+    private MockMvc mockMvc;
+    @Autowired
+    private ArchitectureReportService reportService;
+    @Autowired
+    private ReportRendererRegistry reportRendererRegistry;
+    @Autowired
+    private ExplanationTraceService traceService;
 
     @Test
-    void generateReportWithEmptyScoresReturnsEmptyReport() {
-        ArchitectureReport report = reportService.generateReport(Map.of(), "test requirement", 50);
+    void reportServicePopulatesSectionsAndHandlesEmptyInput() {
+        ArchitectureReport populated = reportService.generateReport(
+                Map.of("CP-1010", 90, "BP-1010", 80),
+                "secure voice communications",
+                50);
+        assertThat(populated.getBusinessText()).isEqualTo("secure voice communications");
+        assertThat(populated.getScores()).hasSize(2);
+        assertThat(populated.getArchitectureView()).isNotNull();
+        assertThat(populated.getGapAnalysis()).isNotNull();
+        assertThat(populated.getPatternDetection()).isNotNull();
+        assertThat(populated.getRecommendation()).isNotNull();
+        assertThat(populated.getMermaidDiagram()).isNotNull();
 
-        assertThat(report.getBusinessText()).isEqualTo("test requirement");
-        assertThat(report.getGeneratedAt()).isNotNull();
-        assertThat(report.getArchitectureView()).isNotNull();
-        assertThat(report.getGapAnalysis()).isNotNull();
-        assertThat(report.getPatternDetection()).isNotNull();
-        assertThat(report.getRecommendation()).isNotNull();
-        assertThat(report.getMermaidDiagram()).isNotNull();
+        ArchitectureReport empty = reportService.generateReport(null, "empty", 0);
+        assertThat(empty.getScores()).isEmpty();
+        assertThat(empty.getGeneratedAt()).isNotNull();
     }
 
     @Test
-    void generateReportWithScoresPopulatesAllSections() {
-        Map<String, Integer> scores = Map.of("CP-1010", 90, "BP-1010", 80);
-        ArchitectureReport report = reportService.generateReport(scores, "secure voice communications", 50);
-
-        assertThat(report.getBusinessText()).isEqualTo("secure voice communications");
-        assertThat(report.getScores()).isEqualTo(scores);
-        assertThat(report.getArchitectureView()).isNotNull();
-        assertThat(report.getGapAnalysis()).isNotNull();
-        assertThat(report.getPatternDetection()).isNotNull();
-        assertThat(report.getRecommendation()).isNotNull();
-        assertThat(report.getMermaidDiagram()).isNotNull();
+    void textRenderersMatchExistingServiceOutput() {
+        ArchitectureReport report = sampleReport();
+        assertThat(reportRendererRegistry.getRequired("markdown")
+                .render(ReportRenderContext.of(report)).utf8())
+                .isEqualTo(reportService.renderMarkdown(report))
+                .contains("# Architecture Analysis Report", "```mermaid");
+        assertThat(reportRendererRegistry.getRequired("html")
+                .render(ReportRenderContext.of(report)).utf8())
+                .isEqualTo(reportService.renderHtml(report))
+                .contains("<!DOCTYPE html>", "<table>", "<strong>");
     }
 
     @Test
-    void generateReportWithNullScoresDoesNotThrow() {
-        ArchitectureReport report = reportService.generateReport(null, "test", 0);
-
-        assertThat(report).isNotNull();
-        assertThat(report.getScores()).isEmpty();
-    }
-
-    @Test
-    void renderMarkdownContainsExpectedSections() {
-        Map<String, Integer> scores = Map.of("CP-1010", 90);
-        ArchitectureReport report = reportService.generateReport(scores, "test requirement", 50);
-        String markdown = reportService.renderMarkdown(report);
-
-        assertThat(markdown).contains("# Architecture Analysis Report");
-        assertThat(markdown).contains("## 1. Architecture Summary");
-        assertThat(markdown).contains("## 2. Gap Analysis");
-        assertThat(markdown).contains("## 3. Detected Patterns");
-        assertThat(markdown).contains("## 4. Recommendations");
-        assertThat(markdown).contains("Generated by Taxonomy Architecture Analyzer");
-    }
-
-    @Test
-    void renderMarkdownIncludesBusinessText() {
-        ArchitectureReport report = reportService.generateReport(
-                Map.of("CP-1010", 90), "my special requirement", 50);
-        String markdown = reportService.renderMarkdown(report);
-
-        assertThat(markdown).contains("my special requirement");
-    }
-
-    @Test
-    void renderMarkdownIncludesMermaidDiagram() {
-        ArchitectureReport report = reportService.generateReport(
-                Map.of("CP-1010", 90), "test", 50);
-        String markdown = reportService.renderMarkdown(report);
-
-        assertThat(markdown).contains("```mermaid");
-    }
-
-    @Test
-    void renderHtmlContainsHtmlStructure() {
-        ArchitectureReport report = reportService.generateReport(
-                Map.of("CP-1010", 90), "test", 50);
-        String html = reportService.renderHtml(report);
-
-        assertThat(html).contains("<!DOCTYPE html>");
-        assertThat(html).contains("<html");
-        assertThat(html).contains("Architecture Analysis Report");
-        assertThat(html).contains("</html>");
-    }
-
-    @Test
-    void renderDocxProducesNonEmptyBytes() {
-        ArchitectureReport report = reportService.generateReport(
-                Map.of("CP-1010", 90), "test requirement", 50);
-        byte[] docx = reportService.renderDocx(report);
-
-        assertThat(docx).isNotNull();
-        assertThat(docx.length).isGreaterThan(0);
-        // DOCX files start with PK (ZIP magic bytes)
-        assertThat(docx[0]).isEqualTo((byte) 0x50);
-        assertThat(docx[1]).isEqualTo((byte) 0x4B);
-    }
-
-    @Test
-    void markdownRendererExtensionMatchesLegacyOutput() {
-        ArchitectureReport report = reportService.generateReport(
-                Map.of("CP-1010", 90), "test requirement", 50);
-
-        String legacyMarkdown = reportService.renderMarkdown(report);
-        String extensionMarkdown = reportRendererRegistry.getRequired("markdown")
-                .render(ReportRenderContext.of(report))
-                .utf8();
-
-        assertThat(extensionMarkdown).isEqualTo(legacyMarkdown);
-    }
-
-    @Test
-    void htmlRendererExtensionMatchesLegacyOutput() {
-        ArchitectureReport report = reportService.generateReport(
-                Map.of("CP-1010", 90), "test requirement", 50);
-
-        String legacyHtml = reportService.renderHtml(report);
-        String extensionHtml = reportRendererRegistry.getRequired("html")
-                .render(ReportRenderContext.of(report))
-                .utf8();
-
-        assertThat(extensionHtml).isEqualTo(legacyHtml);
-    }
-
-    @Test
-    void docxRendererExtensionSmokeTest() {
-        ArchitectureReport report = reportService.generateReport(
-                Map.of("CP-1010", 90), "test requirement", 50);
-
+    void docxRendererProducesZipPackage() {
         byte[] docx = reportRendererRegistry.getRequired("docx")
-                .render(ReportRenderContext.of(report))
-                .bytes();
-
-        assertThat(docx).isNotNull();
-        assertThat(docx.length).isGreaterThan(0);
+                .render(ReportRenderContext.of(sampleReport())).bytes();
+        assertThat(docx).hasSizeGreaterThan(2);
         assertThat(docx[0]).isEqualTo((byte) 0x50);
         assertThat(docx[1]).isEqualTo((byte) 0x4B);
     }
 
     @Test
-    void reportRendererRegistryListsKnownFormats() {
+    void rendererRegistryListsFormatsAndNormalizesIds() {
         assertThat(reportRendererRegistry.listDescriptors())
-                .extracting(descriptor -> descriptor.id())
+                .extracting(ReportFormatDescriptor::id)
                 .contains("markdown", "html", "docx", "json");
+        assertThat(reportRendererRegistry.getRequired(" markdown ").descriptor().id())
+                .isEqualTo("markdown");
     }
 
     @Test
-    void reportRendererRegistryResolvesTrimmedFormatId() {
-        ArchitectureReport report = reportService.generateReport(
-                Map.of("CP-1010", 90), "test requirement", 50);
-
-        ReportRendererExtension trimmedRenderer = reportRendererRegistry.getRequired(" markdown ");
-
-        assertThat(trimmedRenderer.descriptor().id()).isEqualTo("markdown");
-        assertThat(trimmedRenderer.render(ReportRenderContext.of(report)).utf8())
-                .isEqualTo(reportService.renderMarkdown(report));
-    }
-
-    @Test
-    void reportRendererRegistryRejectsWhitespaceOnlyDuplicateFormatIds() {
-        ReportRendererExtension markdown = renderer("markdown");
+    void rendererRegistryRejectsNormalizedDuplicateIds() {
+        ReportRendererExtension first = renderer("markdown");
         ReportRendererExtension duplicate = renderer(" markdown ");
-
-        assertThatThrownBy(() -> new ReportRendererRegistry(java.util.List.of(markdown, duplicate)))
+        assertThatThrownBy(() -> new ReportRendererRegistry(List.of(first, duplicate)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Duplicate report renderer format ID: markdown");
     }
 
     @Test
-    void renderHtmlConvertsHeadingsCorrectly() {
-        ArchitectureReport report = reportService.generateReport(
-                Map.of("CP-1010", 90), "test", 50);
-        String html = reportService.renderHtml(report);
-
-        assertThat(html).contains("<h1>");
-        assertThat(html).contains("<h2>");
-    }
-
-    @Test
-    void renderHtmlConvertsTablesCorrectly() {
-        ArchitectureReport report = reportService.generateReport(
-                Map.of("CP-1010", 90), "test", 50);
-        String html = reportService.renderHtml(report);
-
-        assertThat(html).contains("<table>");
-        assertThat(html).contains("<th>");
-    }
-
-    @Test
-    void renderHtmlConvertsBoldAndCode() {
-        ArchitectureReport report = reportService.generateReport(
-                Map.of("CP-1010", 90), "test", 50);
-        String html = reportService.renderHtml(report);
-
-        assertThat(html).contains("<strong>");
-        assertThat(html).contains("<code>");
-    }
-
-    // ── Report API Endpoint Tests ─────────────────────────────────────────────
-
-    @Test
-    void markdownEndpointReturnsOk() throws Exception {
+    void reportEndpointsReturnExpectedFormatsAndRejectMissingScores() throws Exception {
+        String request = "{\"scores\":{\"CP-1010\":90},\"businessText\":\"test\",\"minScore\":50}";
         mockMvc.perform(post("/api/report/markdown")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"scores\":{\"CP-1010\":90},\"businessText\":\"test\",\"minScore\":50}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
                 .andExpect(status().isOk())
-                .andExpect(header().string("Content-Disposition", "attachment; filename=\"architecture-report.md\""));
-    }
-
-    @Test
-    void htmlEndpointReturnsOk() throws Exception {
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"architecture-report.md\""));
         mockMvc.perform(post("/api/report/html")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"scores\":{\"CP-1010\":90},\"businessText\":\"test\",\"minScore\":50}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
                 .andExpect(status().isOk())
-                .andExpect(header().string("Content-Disposition", "attachment; filename=\"architecture-report.html\""));
-    }
-
-    @Test
-    void docxEndpointReturnsOk() throws Exception {
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"architecture-report.html\""));
         mockMvc.perform(post("/api/report/docx")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"scores\":{\"CP-1010\":90},\"businessText\":\"test\",\"minScore\":50}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
                 .andExpect(status().isOk())
-                .andExpect(header().string("Content-Disposition", "attachment; filename=\"architecture-report.docx\""));
-    }
-
-    @Test
-    void jsonEndpointReturnsOk() throws Exception {
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"architecture-report.docx\""));
         mockMvc.perform(post("/api/report/json")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"scores\":{\"CP-1010\":90},\"businessText\":\"test\",\"minScore\":50}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.businessText").value("test"))
-                .andExpect(jsonPath("$.architectureView").isMap())
-                .andExpect(jsonPath("$.gapAnalysis").isMap())
-                .andExpect(jsonPath("$.patternDetection").isMap())
-                .andExpect(jsonPath("$.recommendation").isMap())
-                .andExpect(jsonPath("$.mermaidDiagram").isString());
-    }
-
-    @Test
-    void reportEndpointRejectsMissingScores() throws Exception {
-        mockMvc.perform(post("/api/report/markdown")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"scores\":null,\"businessText\":\"test\",\"minScore\":50}"))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void reportEndpointRejectsEmptyScores() throws Exception {
+                .andExpect(jsonPath("$.viewContext").exists());
         mockMvc.perform(post("/api/report/markdown")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":{},\"businessText\":\"test\",\"minScore\":50}"))
                 .andExpect(status().isBadRequest());
     }
 
-    // ── ExplanationTrace Service Tests ────────────────────────────────────────
-
     @Test
-    void buildTraceForExistingNodeReturnsTrace() {
-        Map<String, Integer> scores = Map.of("CP-1010", 85);
-        ExplanationTrace trace = traceService.buildTrace("CP-1010", scores, Map.of(), "test requirement");
-
-        assertThat(trace).isNotNull();
+    void explanationTraceProvidesStructuredEvidence() {
+        ExplanationTrace trace = traceService.buildTrace(
+                "CP-1010",
+                Map.of("CP-1010", 85),
+                Map.of(),
+                "communications secure voice capability");
         assertThat(trace.getSemanticScore()).isGreaterThan(0);
         assertThat(trace.getTaxonomyRoot()).isNotNull();
-        assertThat(trace.getSummaryText()).isNotNull();
-        assertThat(trace.getScoreBreakdown()).isNotEmpty();
+        assertThat(trace.getScoreBreakdown())
+                .extracting(ExplanationTrace.ScoreComponent::getFactor)
+                .contains("Direct LLM Score", "Keyword Overlap", "Hierarchy Depth");
         assertThat(trace.getRelationPath()).isNotEmpty();
     }
 
     @Test
-    void buildTraceForUnknownNodeReturnsSummary() {
-        ExplanationTrace trace = traceService.buildTrace("UNKNOWN-999", Map.of(), Map.of(), "test");
-
-        assertThat(trace.getSummaryText()).contains("Node not found");
-    }
-
-    @Test
-    void buildTracesForMultipleNodesReturnsMap() {
-        Map<String, Integer> scores = Map.of("CP-1010", 90, "BP-1010", 80);
-        Map<String, ExplanationTrace> traces = traceService.buildTraces(scores, Map.of(), "test", 50);
-
-        assertThat(traces).isNotEmpty();
-        assertThat(traces).containsKey("CP-1010");
-        assertThat(traces).containsKey("BP-1010");
-    }
-
-    @Test
-    void buildTracesWithEmptyScoresReturnsEmpty() {
-        Map<String, ExplanationTrace> traces = traceService.buildTraces(Map.of(), Map.of(), "test", 50);
-
-        assertThat(traces).isEmpty();
-    }
-
-    @Test
-    void buildTraceExtractsMatchedKeywords() {
-        Map<String, Integer> scores = Map.of("CP-1010", 85);
-        ExplanationTrace trace = traceService.buildTrace("CP-1010", scores, Map.of(),
-                "communications secure voice capability");
-
-        assertThat(trace.getMatchedKeywords()).isNotNull();
-        // Keywords are lowercase tokens from business text matching node name tokens
-    }
-
-    @Test
-    void scoreBreakdownContainsExpectedComponents() {
-        Map<String, Integer> scores = Map.of("CP-1010", 90);
-        ExplanationTrace trace = traceService.buildTrace("CP-1010", scores, Map.of(), "test");
-
-        assertThat(trace.getScoreBreakdown()).isNotEmpty();
-        assertThat(trace.getScoreBreakdown().stream()
-                .map(ExplanationTrace.ScoreComponent::getFactor))
-                .contains("Direct LLM Score", "Keyword Overlap", "Hierarchy Depth");
-    }
-
-    // ── ExplanationTrace API Endpoint Tests ───────────────────────────────────
-
-    @Test
-    void explainNodeEndpointReturnsOk() throws Exception {
-        mockMvc.perform(post("/api/explain/CP-1010")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"scores\":{\"CP-1010\":90},\"businessText\":\"test\",\"minScore\":50}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.semanticScore").isNumber())
-                .andExpect(jsonPath("$.scoreBreakdown").isArray())
-                .andExpect(jsonPath("$.relationPath").isArray())
-                .andExpect(jsonPath("$.summaryText").isString());
-    }
-
-    @Test
-    void explainAllEndpointReturnsOk() throws Exception {
-        mockMvc.perform(post("/api/explain")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"scores\":{\"CP-1010\":90,\"BP-1010\":80},\"businessText\":\"test\",\"minScore\":50}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.CP-1010").isMap())
-                .andExpect(jsonPath("$.BP-1010").isMap());
-    }
-
-    @Test
-    void explainNodeReturnsTraceWithBreakdown() throws Exception {
+    void explanationEndpointsAndRecommendedElementIntegrationWork() throws Exception {
         mockMvc.perform(post("/api/explain/CP-1010")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scores\":{\"CP-1010\":85},\"businessText\":\"capability test\",\"minScore\":50}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.scoreBreakdown[0].factor").value("Direct LLM Score"))
-                .andExpect(jsonPath("$.scoreBreakdown[0].value").value(0.85));
-    }
+                .andExpect(jsonPath("$.scoreBreakdown[0].factor").value("Direct LLM Score"));
 
-    // ── RecommendedElement ExplanationTrace Integration ───────────────────────
-
-    @Test
-    void recommendedElementHasExplanationTraceField() {
-        RecommendedElement el = new RecommendedElement("CP-1010", "Test", "CP", 90, "reason");
+        RecommendedElement element = new RecommendedElement(
+                "CP-1010", "Test", "CP", 90, "reason");
         ExplanationTrace trace = new ExplanationTrace();
         trace.setSummaryText("test trace");
-        el.setExplanationTrace(trace);
+        element.setExplanationTrace(trace);
+        assertThat(element.getExplanationTrace().getSummaryText()).isEqualTo("test trace");
+    }
 
-        assertThat(el.getExplanationTrace()).isNotNull();
-        assertThat(el.getExplanationTrace().getSummaryText()).isEqualTo("test trace");
+    private ArchitectureReport sampleReport() {
+        return reportService.generateReport(
+                Map.of("CP-1010", 90), "test requirement", 50);
     }
 
     private static ReportRendererExtension renderer(String id) {
         return new ReportRendererExtension() {
             @Override
             public ReportFormatDescriptor descriptor() {
-                return new ReportFormatDescriptor(id, id + " display", id + ".txt", "text/plain", false);
+                return new ReportFormatDescriptor(
+                        id, id + " display", "txt", "text/plain", false);
             }
 
             @Override

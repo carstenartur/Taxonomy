@@ -7,6 +7,17 @@ Values are set via environment variables (recommended for production) or in
 
 ---
 
+## Startup and Catalogue Initialization
+
+| Variable | Property | Type | Default | Description |
+|---|---|---|---|---|
+| `TAXONOMY_INIT_ASYNC` | `taxonomy.init.async` | Boolean | `false` | Load the taxonomy after the HTTP server has opened its port. Useful on constrained PaaS platforms. |
+| `TAXONOMY_INIT_RELOAD_EXISTING` | `taxonomy.init.reload-existing` | Boolean | `false` | Reuse a persisted catalogue on normal restarts. Set to `true` only for an intentional destructive refresh from the bundled Excel catalogue. Relations are removed before nodes and deletes are flushed before inserts. |
+
+Persistent production deployments should leave `TAXONOMY_INIT_RELOAD_EXISTING=false`. Catalogue replacement is an explicit maintenance operation and should be preceded by a database and index backup.
+
+---
+
 ## LLM Provider Configuration
 
 | Variable | Property | Type | Default | Description |

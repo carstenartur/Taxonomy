@@ -63,7 +63,12 @@
     <properties>
         <java.version>21</java.version>
         <djl.version>0.36.0</djl.version>
-        <excludedGroups>real-llm</excludedGroups>
+        <!-- Keep the default Maven lifecycle deterministic and bounded. Container
+             integration tests remain ordinary Maven/Failsafe/Testcontainers tests
+             and are enabled locally with -DskipITs=false. The external-database
+             compatibility matrix is additionally selected by its db-* tags. -->
+        <skipITs>true</skipITs>
+        <excludedGroups>real-llm,db-postgres,db-mssql,db-oracle</excludedGroups>
         <!-- Dependency versions (centralized to avoid repetition in child POMs) -->
         <poi.version>5.5.1</poi.version>
         <pdfbox.version>3.0.7</pdfbox.version>

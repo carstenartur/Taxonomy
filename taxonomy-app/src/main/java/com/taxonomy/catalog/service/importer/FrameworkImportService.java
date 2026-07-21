@@ -2,26 +2,15 @@ package com.taxonomy.catalog.service.importer;
 
 import com.taxonomy.dto.FrameworkImportResult;
 import com.taxonomy.dto.ProfileInfo;
+import com.taxonomy.extension.api.importer.ImportInput;
+import com.taxonomy.extension.api.importer.ImportProfileExtension;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Generic framework import service that delegates to {@link ImportProfileRegistry}.
- *
- * <p>Registered profiles (backed by {@link ImportProfileExtension} adapters):
- * <ul>
- *   <li>{@code uaf} — UAF/DoDAF XMI XML ({@link UafImportProfileExtension})</li>
- *   <li>{@code apqc} — APQC PCF CSV ({@link ApqcCsvImportProfileExtension})</li>
- *   <li>{@code apqc-excel} — APQC PCF Excel ({@link ApqcExcelImportProfileExtension})</li>
- *   <li>{@code c4} — C4/Structurizr DSL ({@link C4ImportProfileExtension})</li>
- * </ul>
- *
- * <p>The public API of this class is unchanged so that {@link com.taxonomy.catalog.controller.ImportApiController}
- * requires no modification.
- */
+/** Generic framework import service delegating to registered profile adapters. */
 @Service
 public class FrameworkImportService {
 
@@ -31,35 +20,27 @@ public class FrameworkImportService {
         this.registry = registry;
     }
 
-    /**
-     * Returns info about all available import profiles.
-     */
     public List<ProfileInfo> getAvailableProfiles() {
         return registry.listDescriptors().stream()
-                .map(d -> new ProfileInfo(
-                        d.profileId(),
-                        d.displayName(),
-                        d.supportedElementTypes(),
-                        d.supportedRelationTypes(),
-                        d.acceptedFileFormat()))
+                .map(descriptor -> new ProfileInfo(
+                        descriptor.profileId(),
+                        descriptor.displayName(),
+                        descriptor.supportedElementTypes(),
+                        descriptor.supportedRelationTypes(),
+                        descriptor.acceptedFileFormat()))
                 .toList();
     }
 
-    /**
-     * Preview an import (dry run): parse and map but do not materialize.
-     */
     public FrameworkImportResult preview(String profileId, InputStream input) {
         return registry.findById(profileId)
-                .map(ext -> ext.preview(ImportInput.forPreview(input)))
+                .map(extension -> extension.preview(ImportInput.forPreview(input)))
                 .orElseGet(() -> errorResult(profileId, "Unknown profile: " + profileId));
     }
 
-    /**
-     * Full import: parse, map, serialize to DSL, and materialize into the database.
-     */
-    public FrameworkImportResult importFile(String profileId, InputStream input, String branch) {
+    public FrameworkImportResult importFile(
+            String profileId, InputStream input, String branch) {
         return registry.findById(profileId)
-                .map(ext -> ext.importData(new ImportInput(input, branch)))
+                .map(extension -> extension.importData(new ImportInput(input, branch)))
                 .orElseGet(() -> errorResult(profileId, "Unknown profile: " + profileId));
     }
 

@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.ai.llama.api-key=",
     "spring.ai.mistral.api-key="
 })
-@WithMockUser
+@WithMockUser(roles = "ARCHITECT")
 class DocumentImportControllerTest {
 
     /** Shared oversized payload (50 MB + 1 byte) to avoid repeated large allocations. */

@@ -73,6 +73,13 @@ public class TaxonomyService {
     @Value("${taxonomy.init.async:false}")
     private boolean asyncInit;
 
+    /**
+     * Explicit maintenance switch for replacing an already persisted catalogue.
+     * Normal restarts reuse the database and its Hibernate Search index.
+     */
+    @Value("${taxonomy.init.reload-existing:false}")
+    private boolean reloadExisting;
+
     // ── Startup readiness tracking ────────────────────────────────────────────
     private final AtomicBoolean initialized  = new AtomicBoolean(false);
     private final AtomicBoolean initializing = new AtomicBoolean(false);
@@ -194,8 +201,25 @@ public class TaxonomyService {
     }
 
     private void doLoadTaxonomy() throws Exception {
-        relationRepository.deleteAll();
-        repository.deleteAll();
+        long persistedNodeCount = repository.count();
+        if (persistedNodeCount > 0 && !reloadExisting) {
+            log.info("Found {} persisted taxonomy nodes — reusing the existing catalogue and search index.",
+                    persistedNodeCount);
+            return;
+        }
+
+        if (persistedNodeCount > 0) {
+            log.warn("Forced taxonomy catalogue reload requested — replacing {} persisted nodes.",
+                    persistedNodeCount);
+            // Flush deletes before any identity-generated inserts. Without this explicit
+            // ordering, HSQLDB can observe a new root insert before the old unique-key row
+            // has been removed.
+            relationRepository.deleteAll();
+            entityManager.flush();
+            repository.deleteAll();
+            entityManager.flush();
+            entityManager.clear();
+        }
 
         ClassPathResource resource = new ClassPathResource(CATALOGUE_PATH);
 

@@ -1,163 +1,133 @@
 # Deployment Checklist — Government / Enterprise Environments
 
-This checklist covers all steps required to introduce the Taxonomy Architecture Analyzer in a controlled government or enterprise environment.
+This checklist is a release gate for controlled Taxonomy deployments. A checked item must be backed by an observed result, configuration record, or test protocol — not only by the presence of documentation.
 
----
+## 1. Architecture and persistence decision
 
-## Pre-Deployment
+- [ ] **Deployment topology approved** — VM, Kubernetes, Docker host, or managed platform documented.
+- [ ] **Database selected**:
+  - PostgreSQL / SQL Server / Oracle for multi-user production, or
+  - file-backed HSQLDB only for small controlled installations.
+- [ ] **No in-memory production database** — `jdbc:hsqldb:mem:` is not used for persistent deployments.
+- [ ] **Schema management defined** — use the production profile; plan migration tooling before incompatible schema changes.
+- [ ] **Persistent Lucene index configured** — `TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem` and a persistent root path.
+- [ ] **Persistent storage mounted** — `/app/data` or the database volume survives container recreation.
+- [ ] **Restart persistence test passed** — create a user/workspace/change, restart or recreate the container, and verify the state remains available.
+- [ ] **Backup and restore test completed** — database, Git/JGit state, uploaded provenance data and configuration secrets are covered.
 
-- [ ] **Infrastructure approved** — server or container platform provisioned (VM, Kubernetes, Docker host)
-- [ ] **Network access** — outbound HTTPS to LLM API endpoints allowed (or `LLM_PROVIDER=LOCAL_ONNX` for air-gapped)
-- [ ] **TLS certificates** — valid certificate for the deployment domain, configured in reverse proxy
-- [ ] **Database selected** — PostgreSQL, SQL Server, or Oracle provisioned (see [Database Setup](DATABASE_SETUP.md))
-- [ ] **Backup strategy defined** — database backups, Lucene index, JGit repository directory
-- [ ] **SBOM reviewed** — `target/taxonomy-sbom.json` generated via `mvn package` and reviewed for license compliance
+### Supported embedded production baseline
 
----
+The supplied `docker-compose.prod.yml` configures:
 
-## Security Configuration
-
-- [ ] **Activate production profile**: `SPRING_PROFILES_ACTIVE=production,postgres`
-- [ ] **Change default admin password**: `TAXONOMY_ADMIN_PASSWORD=<strong-random-password>`
-- [ ] **Set admin panel token**: `ADMIN_PASSWORD=<separate-admin-panel-secret>`
-- [ ] **Audit logging enabled** (automatic in production profile): `TAXONOMY_AUDIT_LOGGING=true`
-- [ ] **Password change enforced** (automatic in production profile): `TAXONOMY_REQUIRE_PASSWORD_CHANGE=true`
-- [ ] **Swagger UI restricted** (automatic in production profile): `TAXONOMY_SPRINGDOC_ENABLED=false`
-- [ ] **Brute-force protection verified**: `TAXONOMY_LOGIN_RATE_LIMIT=true` (default)
-- [ ] **HTTPS enforced** via reverse proxy — HSTS headers already sent by the application
-
----
-
-## LLM / AI Configuration
-
-- [ ] **LLM provider selected** — set `LLM_PROVIDER` and the corresponding API key environment variable
-- [ ] **Rate limits configured** — `TAXONOMY_LLM_RPM` matches provider quota
-- [ ] **For air-gapped deployments**: set `LLM_PROVIDER=LOCAL_ONNX`, pre-download embedding model with `TAXONOMY_EMBEDDING_MODEL_DIR`
-- [ ] **AI transparency documented** — see [AI Transparency](AI_TRANSPARENCY.md)
-
----
-
-## Data Protection
-
-- [ ] **Data protection impact assessment (DPIA)** completed if personal data is processed
-- [ ] **Data retention policy** defined for audit logs, user accounts, workspace data
-- [ ] **Data processing agreement** in place if using cloud-hosted LLM providers
-- [ ] **See full details**: [Data Protection](DATA_PROTECTION.md)
-
----
-
-## User Management
-
-- [ ] **User accounts created** for all initial users via Admin API or GUI
-- [ ] **Roles assigned** — USER (analysts), ARCHITECT (architects), ADMIN (administrators)
-- [ ] **Keycloak / SSO integration** configured if required (see [Keycloak Setup](KEYCLOAK_SETUP.md))
-
----
-
-## Monitoring & Operations
-
-- [ ] **Health check endpoint** configured in load balancer: `GET /api/status/startup`
-- [ ] **Actuator endpoints** accessible to operations team: `/actuator/health`, `/actuator/metrics`, `/actuator/prometheus`
-- [ ] **Prometheus scraping** configured for `/actuator/prometheus`
-- [ ] **Log rotation** configured — see [Operations Guide](OPERATIONS_GUIDE.md)
-- [ ] **Alerting** configured for health-check failures and error-rate spikes
-
----
-
-## Docker Deployment
-
-```bash
-docker run -d \
-  --name taxonomy-analyzer \
-  -p 8080:8080 \
-  -v taxonomy-data:/app/data \
-  -e SPRING_PROFILES_ACTIVE=production,postgres \
-  -e TAXONOMY_ADMIN_PASSWORD=<strong-password> \
-  -e ADMIN_PASSWORD=<admin-panel-secret> \
-  -e GEMINI_API_KEY=<your-api-key> \
-  -e TAXONOMY_DATASOURCE_URL=jdbc:postgresql://db:5432/taxonomy \
-  -e SPRING_DATASOURCE_USERNAME=taxonomy \
-  -e SPRING_DATASOURCE_PASSWORD=<db-password> \
-  ghcr.io/carstenartur/taxonomy:latest
+```text
+SPRING_PROFILES_ACTIVE=hsqldb
+TAXONOMY_DATASOURCE_URL=jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;shutdown=true
+TAXONOMY_DDL_AUTO=update
+TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem
+TAXONOMY_SEARCH_DIRECTORY_ROOT=/app/data/lucene-index
 ```
 
----
+For larger or business-critical deployments, use the `production` profile together with an external database profile, for example `production,postgres`.
 
-## Post-Deployment Verification
+## 2. Security configuration
 
-- [ ] **Application starts** — check `GET /api/status/startup` returns 200
-- [ ] **Login works** — authenticate as admin, verify password change prompt
-- [ ] **Taxonomy loaded** — `GET /api/taxonomy` returns ~2,500 nodes
-- [ ] **Analysis works** — submit a test requirement, verify AI scoring
-- [ ] **Export works** — generate ArchiMate XML, verify valid output
-- [ ] **Audit logs written** — check application logs for `LOGIN_SUCCESS` entries
-- [ ] **Health endpoint** — `/actuator/health` returns UP
+- [ ] **Strong initial administrator password supplied** — `TAXONOMY_ADMIN_PASSWORD` is set; production Compose refuses a missing value.
+- [ ] **Default `admin/admin` rejected** — verify the deployment does not start or go live with the default password.
+- [ ] **Password change policy enabled** — `TAXONOMY_REQUIRE_PASSWORD_CHANGE=true`.
+- [ ] **Brute-force protection enabled** — `TAXONOMY_LOGIN_RATE_LIMIT=true`.
+- [ ] **Security audit logging enabled** — `TAXONOMY_AUDIT_LOGGING=true`.
+- [ ] **Swagger restricted or disabled** — `TAXONOMY_SWAGGER_PUBLIC=false` and preferably `TAXONOMY_SPRINGDOC_ENABLED=false`.
+- [ ] **TLS termination configured** — use Caddy, nginx, ingress, or native TLS; port 8080 remains internal.
+- [ ] **Role assignment reviewed** — USER, ARCHITECT and ADMIN follow least privilege.
+- [ ] **Admin functions verified** — diagnostics, prompt templates, logs and preferences require `ROLE_ADMIN`; no second shared admin password is used.
+- [ ] **CSRF verified for browser sessions** — unsafe requests with a form-login session fail without a CSRF token.
+- [ ] **Stateless API authentication verified** — Basic/Bearer clients are explicitly authenticated and do not reuse browser session cookies.
+- [ ] **Mutating endpoint matrix reviewed** — import, document/provenance, relation, DSL, Git, context and workspace writes require the intended role.
 
----
+## 3. Network and AI configuration
 
-## BSI AI Compliance
+- [ ] **Provider selected and documented** — provider, model, region, data processing and retention are recorded.
+- [ ] **Secrets stored outside source control** — platform secret store or Docker/Kubernetes secrets used.
+- [ ] **LLM quotas configured** — `TAXONOMY_LLM_RPM` and timeout values match the provider contract.
+- [ ] **Cloud provider outbound destinations restricted** where network policy supports allowlisting.
+- [ ] **Local model policy decided** — runtime downloads are disabled for controlled production with `TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false`.
+- [ ] **Model revision and checksum recorded** when a local embedding model is deployed.
+- [ ] **Network-isolated claim verified** — all browser assets and model files must be locally available; `LOCAL_ONNX` alone only makes the AI execution local.
 
-- [ ] **BSI KI Checklist reviewed** — all criteria from [BSI KI Checklist](BSI_KI_CHECKLIST.md) verified for the deployment environment
-- [ ] **AI provider selection documented** — rationale for chosen LLM provider recorded (data residency, security classification)
-- [ ] **Bias monitoring process defined** — schedule for comparative analysis across providers (see BSI Checklist recommendations)
-- [ ] **Review cycle established** — monthly SBOM review, quarterly provider comparison, annual full KI audit
+## 4. Data protection and AI governance
 
----
+- [ ] Data protection impact assessment completed where required.
+- [ ] Data retention/deletion policy covers requirements, documents, prompts, model responses, logs, users and workspaces.
+- [ ] Data processing agreement exists for every cloud LLM provider.
+- [ ] Prompt and response logging policy reviewed for confidential information.
+- [ ] AI transparency documentation adapted to the actual provider and deployment.
+- [ ] Human review responsibilities for proposed relations and architecture recommendations are assigned.
+- [ ] AI literacy training completed for relevant users.
 
-## Accessibility (BITV 2.0)
+## 5. Supply chain and release integrity
 
-- [ ] **Accessibility concept reviewed** — [Barrierefreiheitskonzept](ACCESSIBILITY.md) reviewed and adapted for deployment context
-- [ ] **axe/Lighthouse audit passed** — automated accessibility audit with acceptable score
-- [ ] **Keyboard navigation verified** — all core functions reachable via keyboard
-- [ ] **Barrierefreiheitserklärung published** — accessibility statement per § 12b BGG for the deployment URL
-- [ ] **Feedback mechanism established** — contact point for accessibility issues communicated to users
+- [ ] Release version and Git commit recorded.
+- [ ] Zenodo DOI recorded when the deployment is tied to an archived research release.
+- [ ] CycloneDX SBOM reviewed.
+- [ ] Vulnerability scanner executed against dependencies and container image.
+- [ ] The SBOM companion document is not treated as a vulnerability or exploitability assessment.
+- [ ] Base image, Java runtime, Maven dependencies, browser libraries and AI model revisions are pinned.
+- [ ] Image digest used for reproducible production deployments instead of a mutable `latest` tag.
+- [ ] Third-party licenses and notices reviewed.
 
----
+## 6. Accessibility and software ergonomics
 
-## AI Literacy
+- [ ] Authenticated axe workflow passes for the release commit.
+- [ ] Full primary workflow completed using keyboard only.
+- [ ] NVDA/JAWS and VoiceOver tests completed for the primary workflow.
+- [ ] 200 % and 400 % zoom tests passed.
+- [ ] 320 CSS-pixel and touch-device tests passed.
+- [ ] Architecture and graph views have equivalent table/structured-text alternatives.
+- [ ] A deployment-specific accessibility statement and feedback channel are published.
+- [ ] Expert-only functions are separated or clearly labelled; diagnostics are not shown in the default work area.
 
-- [ ] **AI Literacy training completed** — all users trained per [AI Literacy Concept](AI_LITERACY_CONCEPT.md) before system use
-- [ ] **Training attendance documented** — participant list with dates retained for compliance
-- [ ] **Refresher training scheduled** — annual refresher or upon significant system changes
+## 7. Monitoring and operations
 
----
+- [ ] Load balancer/container health check uses `/actuator/health/readiness`.
+- [ ] Liveness check uses `/actuator/health/liveness`.
+- [ ] Prometheus endpoint access is restricted to monitoring infrastructure.
+- [ ] Log retention, redaction and rotation are configured.
+- [ ] Alerts exist for readiness failures, authentication anomalies, high error rate, memory pressure and failed background initialization.
+- [ ] Recovery procedure for failed taxonomy initialization documented.
+- [ ] Workspace and repository consistency checks scheduled.
 
-## Compliance Documents Provided
+## 8. Post-deployment acceptance
 
-| Document | Location |
-|---|---|
-| Security Architecture | [docs/SECURITY.md](SECURITY.md) |
-| Data Protection | [docs/DATA_PROTECTION.md](DATA_PROTECTION.md) |
-| AI Transparency | [docs/AI_TRANSPARENCY.md](AI_TRANSPARENCY.md) |
-| BSI KI Checklist | [docs/BSI_KI_CHECKLIST.md](BSI_KI_CHECKLIST.md) |
-| AI Literacy Concept | [docs/AI_LITERACY_CONCEPT.md](AI_LITERACY_CONCEPT.md) |
-| Accessibility Concept | [docs/ACCESSIBILITY.md](ACCESSIBILITY.md) |
-| Digital Sovereignty | [docs/DIGITAL_SOVEREIGNTY.md](DIGITAL_SOVEREIGNTY.md) |
-| Administration Integration | [docs/VERWALTUNGSINTEGRATION.md](VERWALTUNGSINTEGRATION.md) |
-| Operations Guide | [docs/OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md) |
-| SSO Integration | [docs/KEYCLOAK_SETUP.md](KEYCLOAK_SETUP.md) |
-| Third-Party Notices | [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) |
-| SBOM | `target/taxonomy-sbom.json` (generated at build time) |
+- [ ] Login and forced password change behave as configured.
+- [ ] Taxonomy loads and exposes the expected eight roots.
+- [ ] Requirement analysis succeeds with the selected provider.
+- [ ] Interactive and non-interactive analyses produce consistent, traceable results.
+- [ ] Hypotheses are stored in the active workspace and their committed TaxDSL parses successfully.
+- [ ] Relation acceptance/rejection respects workspace isolation.
+- [ ] Branch, compare, merge, cherry-pick and restore workflows pass with real data.
+- [ ] Imports use the configured working branch rather than an undocumented hard-coded branch.
+- [ ] ArchiMate, Visio, Mermaid, JSON and report exports open in their target tools.
+- [ ] Restart persistence test is repeated against the deployed environment.
+- [ ] Backup restoration is verified on a separate instance.
 
----
+## Sign-off
 
-## Sign-Off
+| Checkpoint | Responsible | Evidence / ticket | Date | Approval |
+|---|---|---|---|---|
+| Architecture and persistence | | | | |
+| Security | | | | |
+| Data protection / AI governance | | | | |
+| Accessibility | | | | |
+| Operations and recovery | | | | |
+| Go-live decision | | | | |
 
-| Checkpoint | Responsible | Date | Signature |
-|---|---|---|---|
-| Security review completed | | | |
-| Data protection review completed | | | |
-| Operations readiness confirmed | | | |
-| Go-live approved | | | |
+## Related documentation
 
----
-
-## Related Documentation
-
-- [Deployment Guide](DEPLOYMENT_GUIDE.md) — detailed deployment instructions (Docker, Render.com)
-- [Configuration Reference](CONFIGURATION_REFERENCE.md) — all environment variables
-- [Security](SECURITY.md) — security architecture
-- [BSI KI Checklist](BSI_KI_CHECKLIST.md) — BSI criteria checklist for AI models
-- [AI Literacy Concept](AI_LITERACY_CONCEPT.md) — AI literacy training concept
-- [Accessibility](ACCESSIBILITY.md) — BITV 2.0 / WCAG 2.1 accessibility concept
-- [Digital Sovereignty](DIGITAL_SOVEREIGNTY.md) — digital sovereignty and openCode compatibility
+- [Deployment Guide](DEPLOYMENT_GUIDE.md)
+- [Configuration Reference](CONFIGURATION_REFERENCE.md)
+- [Database Setup](DATABASE_SETUP.md)
+- [Security](SECURITY.md)
+- [Operations Guide](OPERATIONS_GUIDE.md)
+- [Accessibility Evidence](ACCESSIBILITY.md)
+- [AI Transparency](AI_TRANSPARENCY.md)
+- [Data Protection](DATA_PROTECTION.md)

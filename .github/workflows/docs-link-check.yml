@@ -6,6 +6,7 @@ on:
     paths:
       - '**/*.md'
       - 'docs/images/**'
+      - 'taxonomy-app/src/main/resources/templates/index.html'
       - '.github/scripts/check-doc-links.py'
       - '.github/workflows/docs-link-check.yml'
   pull_request:
@@ -13,6 +14,7 @@ on:
     paths:
       - '**/*.md'
       - 'docs/images/**'
+      - 'taxonomy-app/src/main/resources/templates/index.html'
       - '.github/scripts/check-doc-links.py'
       - '.github/workflows/docs-link-check.yml'
   workflow_dispatch:

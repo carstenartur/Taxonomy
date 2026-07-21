@@ -12,6 +12,7 @@ import com.taxonomy.shared.config.ExportConfig;
 import com.taxonomy.versioning.service.HypothesisService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import org.springframework.stereotype.Service;
+
 import java.util.Locale;
 
 @Service
@@ -43,7 +44,7 @@ public class AnalyzeRequirementUseCase {
             applyProviderOverride(command.provider());
 
             AnalysisResult result = llmService.analyzeWithBudget(command.businessText());
-            enrichWithRelationHypotheses(result);
+            enrichWithRelationHypotheses(command, result);
             enrichWithArchitectureView(command, result);
             populateViewContext(command, result);
             return new AnalyzeRequirementResult(result);
@@ -63,13 +64,17 @@ public class AnalyzeRequirementUseCase {
         }
     }
 
-    private void enrichWithRelationHypotheses(AnalysisResult result) {
+    private void enrichWithRelationHypotheses(AnalyzeRequirementCommand command,
+                                               AnalysisResult result) {
         if (result.getScores() == null) {
             return;
         }
         result.setProvisionalRelations(analysisRelationGenerator.generate(result.getScores()));
         if (!result.getProvisionalRelations().isEmpty()) {
-            hypothesisService.persistFromAnalysis(result.getProvisionalRelations(), null);
+            hypothesisService.persistFromAnalysis(
+                    result.getProvisionalRelations(),
+                    null,
+                    command.workspaceContext());
         }
     }
 

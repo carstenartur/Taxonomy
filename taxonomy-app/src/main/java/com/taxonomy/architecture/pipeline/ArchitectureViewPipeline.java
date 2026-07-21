@@ -13,32 +13,9 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Orchestrates all architecture-view pipeline steps and produces the final
- * {@link RequirementArchitectureView}.
- *
- * <p>Steps are discovered from the {@link ArchitecturePipelineStepRegistry} and
- * executed in ascending {@link ArchitecturePipelineStep#order()} order.  Only
- * steps where {@link ArchitecturePipelineStep#enabledByDefault()} returns
- * {@code true} are run.
- *
- * <p>Deterministic default step order:
- * <ol>
- *   <li>100 {@link AnchorSelectionStep} — select anchor nodes from LLM scores</li>
- *   <li>200 {@link RelevancePropagationStep} — propagate relevance through relations</li>
- *   <li>300 {@link ElementBuildStep} — build initial element list from propagation</li>
- *   <li>400 {@link LeafEnrichmentStep} — add top-scoring concrete leaf nodes</li>
- *   <li>500 {@link RelationshipBuildStep} — build relationships from propagation traversal</li>
- *   <li>600 {@link ProvisionalRelationStep} — inject AI-suggested virtual edges if needed</li>
- *   <li>700 {@link NodeLimitStep} — truncate to max node count if requested</li>
- *   <li>800 {@link ImpactRelationStep} — derive cross-category impact relations</li>
- *   <li>900 {@link ScoringTraceStep} — merge scoring-trace origin metadata</li>
- *   <li>1000 {@link ImpactSelectionStep} — mark most valuable nodes for impact display</li>
- *   <li>Finalization — presence reasons, parent codes, notes, summary stats, logging</li>
- * </ol>
- *
- * <p><b>Core invariant</b>: after anchor-selection (order&nbsp;100) the pipeline checks
- * for an empty anchor list and short-circuits with an empty view when no anchors are found.
- * This invariant is enforced here and must not be bypassed by custom steps.
+ * Executes the ordered architecture-view steps and validates their shared
+ * context after every stage. Extension steps may enrich the pipeline but cannot
+ * silently violate core element, relation, anchor, score, or node-limit invariants.
  */
 @Service
 public class ArchitectureViewPipeline {
@@ -46,17 +23,16 @@ public class ArchitectureViewPipeline {
     private static final Logger log = LoggerFactory.getLogger(ArchitectureViewPipeline.class);
 
     private final ArchitecturePipelineStepRegistry registry;
+    private final ArchitecturePipelineInvariantValidator invariantValidator;
 
-    public ArchitectureViewPipeline(ArchitecturePipelineStepRegistry registry) {
+    public ArchitectureViewPipeline(ArchitecturePipelineStepRegistry registry,
+                                    ArchitecturePipelineInvariantValidator invariantValidator) {
         this.registry = registry;
+        this.invariantValidator = invariantValidator;
     }
 
-    /**
-     * Runs all enabled pipeline steps in order and returns the populated
-     * {@link RequirementArchitectureView}.
-     */
-    public RequirementArchitectureView execute(ArchitectureViewContext ctx) {
-        RequirementArchitectureView view = ctx.getView();
+    public RequirementArchitectureView execute(ArchitectureViewContext context) {
+        RequirementArchitectureView view = context.getView();
         List<ArchitecturePipelineStep> enabledSteps = registry.getEnabledSteps();
 
         ArchitecturePipelineStep firstEnabledStep = enabledSteps.stream()
@@ -70,121 +46,121 @@ public class ArchitectureViewPipeline {
                             .formatted(AnchorSelectionStep.STEP_ID, firstEnabledStep.id()));
         }
 
-        firstEnabledStep.apply(ctx);
-        view.setAnchors(ctx.getAnchors());
-        if (ctx.getAnchors().isEmpty()) {
-            view.getNotes().add(
-                    "No nodes met the anchor threshold; architecture view is empty.");
+        firstEnabledStep.apply(context);
+        invariantValidator.afterStep(firstEnabledStep, context);
+        view.setAnchors(context.getAnchors());
+        if (context.getAnchors().isEmpty()) {
+            view.getNotes().add("No nodes met the anchor threshold; architecture view is empty.");
+            invariantValidator.beforeReturn(context);
             return view;
         }
 
         for (ArchitecturePipelineStep step : enabledSteps.subList(1, enabledSteps.size())) {
-            step.apply(ctx);
+            step.apply(context);
+            invariantValidator.afterStep(step, context);
         }
 
-        // Finalization (core invariant — not a pipeline step)
-        populatePresenceReasons(ctx.getElements(), ctx.getRelationships());
-        populateParentNodeCodes(ctx.getElements());
+        populatePresenceReasons(context.getElements(), context.getRelationships());
+        populateParentNodeCodes(context.getElements());
+        invariantValidator.beforeReturn(context);
 
-        view.setIncludedElements(ctx.getElements());
-        view.setIncludedRelationships(ctx.getRelationships());
+        view.setIncludedElements(context.getElements());
+        view.setIncludedRelationships(context.getRelationships());
 
-        // Notes
-        if (ctx.isUsedProvisional()) {
+        if (context.isUsedProvisional()) {
             view.getNotes().add("Architecture view built using AI-suggested provisional relations "
                     + "(not yet confirmed).");
-        } else if (ctx.getRelationships().isEmpty()
-                && ctx.getElements().size() == ctx.getAnchors().size()) {
+        } else if (context.getRelationships().isEmpty()
+                && context.getElements().size() == context.getAnchors().size()) {
             view.getNotes().add("No traversable relations found for anchor nodes; "
                     + "only direct matches are included.");
         }
 
-        // Summary statistics
-        int maxHop = ctx.getElements().stream()
+        int maxHop = context.getElements().stream()
                 .mapToInt(RequirementElementView::getHopDistance).max().orElse(0);
-        view.setTotalAnchors(ctx.getAnchors().size());
-        view.setTotalElements(ctx.getElements().size());
-        view.setTotalRelationships(ctx.getRelationships().size());
+        view.setTotalAnchors(context.getAnchors().size());
+        view.setTotalElements(context.getElements().size());
+        view.setTotalRelationships(context.getRelationships().size());
         view.setMaxHopDistance(maxHop);
 
-        // Structured logging
-        log.info("RequirementArchitectureView summary: anchors={}, elements={}, "
-                + "relationships={}, maxHopDistance={}",
-                ctx.getAnchors().size(), ctx.getElements().size(),
-                ctx.getRelationships().size(), maxHop);
-
-        for (var anchor : ctx.getAnchors()) {
-            List<RequirementElementView> propagated = ctx.getElements().stream()
-                    .filter(e -> !e.isAnchor() && e.getIncludedBecause() != null
-                            && e.getIncludedBecause().contains(anchor.getNodeCode()))
-                    .toList();
-            if (!propagated.isEmpty()) {
-                StringBuilder sb = new StringBuilder();
-                sb.append("anchor ").append(anchor.getNodeCode());
-                for (RequirementElementView e : propagated) {
-                    sb.append("\n  → ").append(e.getNodeCode())
-                      .append(" (").append(String.format(Locale.US, "%.2f", e.getRelevance()))
-                      .append(")");
-                }
-                log.debug(sb.toString());
-            }
-        }
-
+        log.info("RequirementArchitectureView summary: anchors={}, elements={}, relationships={}, maxHopDistance={}",
+                context.getAnchors().size(), context.getElements().size(),
+                context.getRelationships().size(), maxHop);
+        logPropagationSummary(context);
         return view;
     }
 
-    // --- Finalization helpers ------------------------------------------
+    private static void logPropagationSummary(ArchitectureViewContext context) {
+        for (var anchor : context.getAnchors()) {
+            List<RequirementElementView> propagated = context.getElements().stream()
+                    .filter(element -> !element.isAnchor()
+                            && element.getIncludedBecause() != null
+                            && element.getIncludedBecause().contains(anchor.getNodeCode()))
+                    .toList();
+            if (propagated.isEmpty()) continue;
+            StringBuilder summary = new StringBuilder("anchor ").append(anchor.getNodeCode());
+            for (RequirementElementView element : propagated) {
+                summary.append("\n  → ").append(element.getNodeCode())
+                        .append(" (")
+                        .append(String.format(Locale.US, "%.2f", element.getRelevance()))
+                        .append(')');
+            }
+            log.debug(summary.toString());
+        }
+    }
 
     private static void populatePresenceReasons(List<RequirementElementView> elements,
                                                  List<RequirementRelationshipView> relationships) {
-        for (RequirementElementView el : elements) {
-            if (el.getPresenceReason() != null) continue;
-            StringBuilder sb = new StringBuilder();
-            sb.append(el.getNodeCode());
-            if (el.getTitle() != null) sb.append(" (").append(el.getTitle()).append(")");
-            sb.append(": ");
-            if (el.getOrigin() != null) {
-                sb.append(el.getOrigin().name().toLowerCase().replace('_', ' '));
+        for (RequirementElementView element : elements) {
+            if (element.getPresenceReason() != null) continue;
+            StringBuilder reason = new StringBuilder();
+            reason.append(element.getNodeCode());
+            if (element.getTitle() != null) reason.append(" (").append(element.getTitle()).append(')');
+            reason.append(": ");
+            if (element.getOrigin() != null) {
+                reason.append(element.getOrigin().name().toLowerCase().replace('_', ' '));
             } else {
-                sb.append("included via propagation");
+                reason.append("included via propagation");
             }
-            if (el.getDirectLlmScore() > 0) {
-                sb.append(", LLM score ").append(el.getDirectLlmScore());
+            if (element.getDirectLlmScore() > 0) {
+                reason.append(", LLM score ").append(element.getDirectLlmScore());
             }
-            if (el.getHopDistance() > 0) {
-                sb.append(", ").append(el.getHopDistance()).append(" hop(s)");
+            if (element.getHopDistance() > 0) {
+                reason.append(", ").append(element.getHopDistance()).append(" hop(s)");
             }
-            el.setPresenceReason(sb.toString());
+            element.setPresenceReason(reason.toString());
         }
 
-        for (RequirementRelationshipView rel : relationships) {
-            if (rel.getPresenceReason() != null) continue;
-            StringBuilder sb = new StringBuilder();
-            sb.append(rel.getSourceCode()).append(" → ").append(rel.getTargetCode());
-            sb.append(": ").append(rel.getRelationCategory());
-            if (rel.getOrigin() != null) {
-                sb.append(", ").append(rel.getOrigin().name().toLowerCase().replace('_', ' '));
+        for (RequirementRelationshipView relationship : relationships) {
+            if (relationship.getPresenceReason() != null) continue;
+            StringBuilder reason = new StringBuilder();
+            reason.append(relationship.getSourceCode())
+                    .append(" → ").append(relationship.getTargetCode())
+                    .append(": ").append(relationship.getRelationCategory());
+            if (relationship.getOrigin() != null) {
+                reason.append(", ")
+                        .append(relationship.getOrigin().name().toLowerCase().replace('_', ' '));
             }
-            if (rel.getConfidence() > 0) {
-                sb.append(String.format(", confidence %.0f%%", rel.getConfidence() * 100));
+            if (relationship.getConfidence() > 0) {
+                reason.append(String.format(", confidence %.0f%%", relationship.getConfidence() * 100));
             }
-            rel.setPresenceReason(sb.toString());
+            relationship.setPresenceReason(reason.toString());
         }
     }
 
     private static void populateParentNodeCodes(List<RequirementElementView> elements) {
         Set<String> codes = new HashSet<>();
-        for (RequirementElementView el : elements) {
-            codes.add(el.getNodeCode());
+        for (RequirementElementView element : elements) {
+            codes.add(element.getNodeCode());
         }
-        for (RequirementElementView el : elements) {
-            String hp = el.getHierarchyPath();
-            if (hp == null || hp.isEmpty()) continue;
-            String[] parts = hp.split("\\s*>\\s*");
-            for (int i = parts.length - 2; i >= 0; i--) {
-                String candidate = parts[i].trim();
+        for (RequirementElementView element : elements) {
+            String hierarchyPath = element.getHierarchyPath();
+            if (hierarchyPath == null || hierarchyPath.isEmpty()) continue;
+            String[] parts = hierarchyPath.split("\\s*>\\s*");
+            for (int index = parts.length - 2; index >= 0; index--) {
+                String candidate = parts[index].trim();
                 if (codes.contains(candidate)) {
-                    el.setParentNodeCode(candidate);
+                    element.setParentNodeCode(candidate);
                     break;
                 }
             }

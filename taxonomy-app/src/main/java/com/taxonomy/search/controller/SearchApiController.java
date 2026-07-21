@@ -1,16 +1,25 @@
 package com.taxonomy.search.controller;
 
-import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.GraphSearchResult;
+import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.search.service.SearchFacade;
-import org.springframework.context.MessageSource;
-import org.springframework.context.i18n.LocaleContextHolder;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,12 +29,21 @@ import java.util.Map;
 @Tag(name = "Search")
 public class SearchApiController {
 
+    private static final Logger log = LoggerFactory.getLogger(SearchApiController.class);
+
     private final SearchFacade searchFacade;
     private final MessageSource messageSource;
+    private final WorkspaceResolver workspaceResolver;
+    private final RepositoryStateService repositoryStateService;
 
-    public SearchApiController(SearchFacade searchFacade, MessageSource messageSource) {
+    public SearchApiController(SearchFacade searchFacade,
+                               MessageSource messageSource,
+                               WorkspaceResolver workspaceResolver,
+                               RepositoryStateService repositoryStateService) {
         this.searchFacade = searchFacade;
         this.messageSource = messageSource;
+        this.workspaceResolver = workspaceResolver;
+        this.repositoryStateService = repositoryStateService;
     }
 
     @Operation(summary = "Full-text search", description = "Search taxonomy nodes using full-text Lucene search", tags = {"Search"})
@@ -39,11 +57,6 @@ public class SearchApiController {
         return ResponseEntity.ok(searchFacade.fullTextSearch(q, maxResults));
     }
 
-    /**
-     * Semantic search across the full taxonomy using embedding similarity.
-     * Returns nodes ranked by cosine similarity to {@code q}.
-     * Requires {@code LLM_PROVIDER=LOCAL_ONNX} or {@code TAXONOMY_EMBEDDING_ENABLED=true}.
-     */
     @Operation(summary = "Semantic search", description = "Search taxonomy nodes using embedding similarity (KNN). Requires LOCAL_ONNX or embedding enabled.", tags = {"Search"})
     @GetMapping("/search/semantic")
     public ResponseEntity<List<TaxonomyNodeDto>> semanticSearch(
@@ -55,10 +68,6 @@ public class SearchApiController {
         return ResponseEntity.ok(searchFacade.semanticSearch(q, maxResults));
     }
 
-    /**
-     * Hybrid search: combines full-text Lucene and semantic KNN results via
-     * Reciprocal Rank Fusion.  Falls back to full-text only when embedding is unavailable.
-     */
     @Operation(summary = "Hybrid search", description = "Combines full-text Lucene and semantic KNN results via Reciprocal Rank Fusion. Falls back to full-text only when embedding is unavailable.", tags = {"Search"})
     @GetMapping("/search/hybrid")
     public ResponseEntity<List<TaxonomyNodeDto>> hybridSearch(
@@ -70,9 +79,6 @@ public class SearchApiController {
         return ResponseEntity.ok(searchFacade.hybridSearch(q, maxResults));
     }
 
-    /**
-     * Find taxonomy nodes semantically similar to the node identified by {@code code}.
-     */
     @Operation(summary = "Find similar nodes", description = "Find taxonomy nodes semantically similar to a given node", tags = {"Search"})
     @GetMapping("/search/similar/{code}")
     public ResponseEntity<List<TaxonomyNodeDto>> findSimilar(
@@ -83,20 +89,13 @@ public class SearchApiController {
         return ResponseEntity.ok(searchFacade.findSimilarNodes(code, topK));
     }
 
-    /**
-     * Returns the current status of the local embedding model.
-     */
     @Operation(summary = "Embedding model status", description = "Returns the current status of the local embedding model", tags = {"Embedding"})
     @GetMapping("/embedding/status")
     public ResponseEntity<Map<String, Object>> embeddingStatus() {
         return ResponseEntity.ok(searchFacade.getEmbeddingStatus());
     }
 
-    /**
-     * Graph-semantic search: combines node and relation KNN queries to answer
-     * graph-structural questions.
-     */
-    @Operation(summary = "Graph-semantic search", description = "Combines node and relation KNN queries to answer graph-structural questions. Returns matched nodes, per-root relation counts, top relation types, and a summary.", tags = {"Search"})
+    @Operation(summary = "Graph-semantic search", description = "Combines node and relation KNN queries with explicit workspace relation visibility.", tags = {"Search"})
     @GetMapping("/search/graph")
     public ResponseEntity<GraphSearchResult> graphSearch(
             @Parameter(description = "Natural-language query") @RequestParam String q,
@@ -104,7 +103,7 @@ public class SearchApiController {
         ResponseEntity<GraphSearchResult> guard = checkInitialized();
         if (guard != null) return guard;
         if (q == null || q.isBlank()) return ResponseEntity.badRequest().build();
-        return ResponseEntity.ok(searchFacade.graphSearch(q, maxResults));
+        return ResponseEntity.ok(searchFacade.graphSearch(q, maxResults, currentWorkspaceContext()));
     }
 
     @SuppressWarnings("unchecked")
@@ -117,5 +116,18 @@ public class SearchApiController {
             return (ResponseEntity<T>) ResponseEntity.status(503).body(body);
         }
         return null;
+    }
+
+    private WorkspaceContext currentWorkspaceContext() {
+        String username = workspaceResolver.resolveCurrentUsername();
+        try {
+            repositoryStateService.ensureWorkspaceState(username);
+            WorkspaceContext context = workspaceResolver.resolveCurrentContext();
+            return context != null ? context : WorkspaceContext.SHARED;
+        } catch (Exception error) {
+            log.warn("Falling back to shared search context for user '{}': {}",
+                    username, error.toString());
+            return WorkspaceContext.SHARED;
+        }
     }
 }

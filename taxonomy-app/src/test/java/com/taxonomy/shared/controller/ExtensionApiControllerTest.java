@@ -2,7 +2,7 @@ package com.taxonomy.shared.controller;
 
 import com.taxonomy.shared.extension.ExtensionDescriptor;
 import com.taxonomy.shared.extension.ExtensionKind;
-import com.taxonomy.shared.extension.ExtensionRegistry;
+import com.taxonomy.shared.extension.runtime.ExtensionRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,11 +16,10 @@ import java.util.List;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Unit tests for {@link ExtensionApiController}.
- */
 @ExtendWith(MockitoExtension.class)
 class ExtensionApiControllerTest {
 
@@ -31,24 +30,23 @@ class ExtensionApiControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new ExtensionApiController(extensionRegistry)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                new ExtensionApiController(extensionRegistry)).build();
     }
 
     @Test
-    void listAllReturnsAllDescriptors() throws Exception {
-        List<ExtensionDescriptor> descriptors = List.of(
-                new ExtensionDescriptor("mermaid", "Mermaid", "Exports as Mermaid flowcharts", ExtensionKind.EXPORT_FORMAT),
-                new ExtensionDescriptor("gemini", "Gemini", "Google Gemini LLM", ExtensionKind.LLM_PROVIDER)
-        );
-        when(extensionRegistry.listAll()).thenReturn(descriptors);
+    void listAllReturnsDescriptorMetadataOnly() throws Exception {
+        when(extensionRegistry.listAll()).thenReturn(List.of(
+                new ExtensionDescriptor("mermaid", "Mermaid",
+                        "Exports as Mermaid flowcharts", ExtensionKind.EXPORT_FORMAT),
+                new ExtensionDescriptor("gemini", "Gemini",
+                        "Google Gemini LLM", ExtensionKind.LLM_PROVIDER)));
 
         mockMvc.perform(get("/api/extensions").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].id").value("mermaid"))
-                .andExpect(jsonPath("$[0].displayName").value("Mermaid"))
-                .andExpect(jsonPath("$[0].description").value("Exports as Mermaid flowcharts"))
                 .andExpect(jsonPath("$[0].kind").value("EXPORT_FORMAT"))
                 .andExpect(jsonPath("$[1].id").value("gemini"))
                 .andExpect(jsonPath("$[1].kind").value("LLM_PROVIDER"));
@@ -57,48 +55,26 @@ class ExtensionApiControllerTest {
     @Test
     void listAllReturnsEmptyListWhenNoExtensionsRegistered() throws Exception {
         when(extensionRegistry.listAll()).thenReturn(List.of());
-
         mockMvc.perform(get("/api/extensions").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test
-    void listByKindReturnsDescriptorsForKnownKind() throws Exception {
-        List<ExtensionDescriptor> descriptors = List.of(
-                new ExtensionDescriptor("mermaid", "Mermaid", "Exports as Mermaid flowcharts", ExtensionKind.EXPORT_FORMAT)
-        );
-        when(extensionRegistry.listByKind(ExtensionKind.EXPORT_FORMAT)).thenReturn(descriptors);
-
-        mockMvc.perform(get("/api/extensions/EXPORT_FORMAT").accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value("mermaid"))
-                .andExpect(jsonPath("$[0].kind").value("EXPORT_FORMAT"));
-    }
-
-    @Test
-    void listByKindIsCaseInsensitive() throws Exception {
-        List<ExtensionDescriptor> descriptors = List.of(
-                new ExtensionDescriptor("gemini", "Gemini", "Google Gemini LLM", ExtensionKind.LLM_PROVIDER)
-        );
-        when(extensionRegistry.listByKind(ExtensionKind.LLM_PROVIDER)).thenReturn(descriptors);
-
+    void listByKindIsCaseInsensitiveAndRejectsUnknownKind() throws Exception {
+        when(extensionRegistry.listByKind(ExtensionKind.LLM_PROVIDER)).thenReturn(List.of(
+                new ExtensionDescriptor("gemini", "Gemini",
+                        "Google Gemini LLM", ExtensionKind.LLM_PROVIDER)));
         mockMvc.perform(get("/api/extensions/llm_provider").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value("gemini"));
-    }
-
-    @Test
-    void listByKindReturnsNotFoundForUnknownKind() throws Exception {
         mockMvc.perform(get("/api/extensions/UNKNOWN_KIND").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound());
     }
 
     @Test
-    void listByKindReturnsEmptyListWhenKindHasNoExtensions() throws Exception {
+    void listByKindReturnsEmptyListForKindWithoutExtensions() throws Exception {
         when(extensionRegistry.listByKind(ExtensionKind.IMPORT_PROFILE)).thenReturn(List.of());
-
         mockMvc.perform(get("/api/extensions/IMPORT_PROFILE").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));

@@ -10,17 +10,12 @@
     </parent>
     <artifactId>taxonomy-extension-api</artifactId>
     <name>Taxonomy Extension API</name>
-    <description>Internal extension SPI contracts and metadata types (Spring-free, app-independent)</description>
+    <description>Common internal extension metadata and provider/import/report contracts (Spring-free, app-independent)</description>
 
     <dependencies>
         <dependency>
             <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-domain</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.taxonomy</groupId>
-            <artifactId>taxonomy-export</artifactId>
             <version>${project.version}</version>
         </dependency>
     </dependencies>
@@ -43,6 +38,8 @@
                                     <searchTransitive>true</searchTransitive>
                                     <excludes>
                                         <exclude>com.taxonomy:taxonomy-app</exclude>
+                                        <exclude>com.taxonomy:taxonomy-export</exclude>
+                                        <exclude>com.taxonomy:taxonomy-dsl</exclude>
                                         <exclude>org.springframework:*</exclude>
                                         <exclude>org.springframework.boot:*</exclude>
                                         <exclude>org.springframework.data:*</exclude>

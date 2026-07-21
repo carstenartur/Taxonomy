@@ -10,6 +10,7 @@
 ##    80  — HTTP → HTTPS redirect + ACME challenge only
 ##
 ## Port 8080 is INTERNAL ONLY (Docker network) — never published to the host.
+## Application state is stored below /app/data and survives container recreation.
 ##
 
 services:
@@ -19,23 +20,40 @@ services:
     # Or use the published image instead of building locally:
     # image: ghcr.io/carstenartur/taxonomy:latest
     environment:
+      - SPRING_PROFILES_ACTIVE=production,hsqldb
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - LLAMA_API_KEY=${LLAMA_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
       - LLM_PROVIDER=${LLM_PROVIDER:-}
-      - TAXONOMY_ADMIN_PASSWORD=${TAXONOMY_ADMIN_PASSWORD:-admin}
-      - TAXONOMY_EMBEDDING_ENABLED=${TAXONOMY_EMBEDDING_ENABLED:-true}
-      - TAXONOMY_THYMELEAF_CACHE=true
-      - TAXONOMY_SWAGGER_PUBLIC=false
+      # Production must never fall back to admin/admin.
+      - TAXONOMY_ADMIN_PASSWORD=${TAXONOMY_ADMIN_PASSWORD:?Set TAXONOMY_ADMIN_PASSWORD in .env}
+      - TAXONOMY_REQUIRE_PASSWORD_CHANGE=true
+      - TAXONOMY_LOGIN_RATE_LIMIT=true
       - TAXONOMY_AUDIT_LOGGING=true
+      - TAXONOMY_SWAGGER_PUBLIC=false
+      # Persist the embedded database and Lucene index in the mounted volume.
+      - TAXONOMY_DATASOURCE_URL=jdbc:hsqldb:file:/app/data/taxonomydb;hsqldb.default_table_type=cached;shutdown=true
+      - TAXONOMY_DDL_AUTO=update
+      - TAXONOMY_SEARCH_DIRECTORY_TYPE=local-filesystem
+      - TAXONOMY_SEARCH_DIRECTORY_ROOT=/app/data/lucene-index
+      - TAXONOMY_EMBEDDING_ENABLED=${TAXONOMY_EMBEDDING_ENABLED:-true}
+      - TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=${TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD:-false}
+      - TAXONOMY_EMBEDDING_MODEL_DIR=${TAXONOMY_EMBEDDING_MODEL_DIR:-}
+      - TAXONOMY_THYMELEAF_CACHE=true
     expose:
       - "8080"                    # internal only — Caddy connects here
     volumes:
-      - taxonomy-data:/app/data   # persist database + Lucene index
+      - taxonomy-data:/app/data
+      - djl-cache:/root/.djl.ai
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/api/status/startup"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/actuator/health/readiness"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 60s
+      retries: 5
+      start_period: 90s
     restart: unless-stopped
 
   # ─── Caddy Reverse Proxy (automatic HTTPS) ──────────────────
@@ -58,5 +76,6 @@ services:
 
 volumes:
   taxonomy-data:
+  djl-cache:
   caddy-data:
   caddy-config:

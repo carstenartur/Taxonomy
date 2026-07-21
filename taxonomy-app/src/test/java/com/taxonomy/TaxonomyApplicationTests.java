@@ -314,14 +314,14 @@ class TaxonomyApplicationTests {
     }
 
     @Test
-    void adminVerifyReturnsFalseWhenNoPasswordConfigured() throws Exception {
-        // When no password is configured, no password is valid
+    void adminVerifyUsesAuthenticatedAdminRole() throws Exception {
         mockMvc.perform(post("/api/admin/verify")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"password\":\"anything\"}")
+                        .content("{}")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.valid").value(false));
+                .andExpect(jsonPath("$.valid").value(true))
+                .andExpect(jsonPath("$.token").value("role-admin"));
     }
 
     @Test

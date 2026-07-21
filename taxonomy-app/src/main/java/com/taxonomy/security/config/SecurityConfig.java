@@ -1,5 +1,6 @@
 package com.taxonomy.security.config;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -10,14 +11,15 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 /**
  * Spring Security configuration for form-login mode (default, without Keycloak).
- * <p>
- * Active when the {@code keycloak} profile is NOT active.
- * Protects GUI (form login + session) and REST API (HTTP Basic for programmatic clients).
- * CSRF protection is enabled for browser sessions but disabled for {@code /api/**} paths
- * so that stateless REST clients authenticated via HTTP Basic can POST without a CSRF token.
+ *
+ * <p>The GUI uses form-login sessions and therefore keeps CSRF protection for
+ * state-changing API calls. Only programmatic API clients authenticated with an
+ * explicit Basic or Bearer Authorization header are treated as stateless and
+ * may call the REST API without a CSRF token.</p>
  */
 @Configuration
 @EnableMethodSecurity
@@ -32,11 +34,11 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        RequestMatcher statelessApiClient = SecurityConfig::isStatelessApiClient;
+
         http
             .authorizeHttpRequests(auth -> authRules.configure(auth))
-            .csrf(csrf -> csrf
-                .ignoringRequestMatchers("/api/**")
-            )
+            .csrf(csrf -> csrf.ignoringRequestMatchers(statelessApiClient))
             .headers(headers -> headers
                 .contentTypeOptions(Customizer.withDefaults())
                 .frameOptions(frame -> frame.sameOrigin())
@@ -51,6 +53,22 @@ public class SecurityConfig {
             .logout(Customizer.withDefaults());
 
         return http.build();
+    }
+
+    /**
+     * A request is stateless only when it carries an explicit HTTP
+     * authentication scheme. The absence of an existing session is not enough:
+     * otherwise a browser request made before session resolution could bypass
+     * CSRF protection.
+     */
+    static boolean isStatelessApiClient(HttpServletRequest request) {
+        if (!request.getRequestURI().startsWith("/api/")) {
+            return false;
+        }
+        String authorization = request.getHeader("Authorization");
+        return authorization != null
+                && (authorization.regionMatches(true, 0, "Basic ", 0, 6)
+                || authorization.regionMatches(true, 0, "Bearer ", 0, 7));
     }
 
     @Bean

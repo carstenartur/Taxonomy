@@ -1,21 +1,22 @@
 # Caddyfile — Automatic HTTPS reverse proxy for the Taxonomy Architecture Analyzer
 #
-# Caddy provisions and renews TLS certificates from Let's Encrypt automatically.
-# No manual certificate management required.
-#
-# The {$DOMAIN} placeholder is replaced by the DOMAIN environment variable
-# from docker-compose.prod.yml / .env file.
+# The {$DOMAIN} placeholder is supplied by docker-compose.prod.yml / .env.
+# All browser libraries are served locally by the application through WebJars;
+# no CDN origin is required at runtime.
 
 {$DOMAIN} {
 	reverse_proxy taxonomy:8080
 
-	# Security headers (supplement the app's own headers)
+	# Security headers supplement Spring Security's own response headers.
 	header {
-		X-Content-Type-Options    "nosniff"
-		X-Frame-Options           "DENY"
-		Referrer-Policy           "strict-origin-when-cross-origin"
+		X-Content-Type-Options       "nosniff"
+		X-Frame-Options              "DENY"
+		Referrer-Policy              "strict-origin-when-cross-origin"
+		Cross-Origin-Opener-Policy   "same-origin"
+		Permissions-Policy           "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Content-Security-Policy      "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; manifest-src 'self'"
 	}
 
-	# Gzip compression for text resources
-	encode gzip
+	# Text compression. HTTPS and HTTP/3 are handled automatically by Caddy.
+	encode zstd gzip
 }

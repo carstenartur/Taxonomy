@@ -1,168 +1,132 @@
-# Task: Add a New Export Format
+# Task: Add a New Diagram Export Format
 
 ## Goal
 
-Add a new output format (e.g., CSV, JSON-LD, BPMN, OWL/RDF) that users can
-download from the export panel.
+Add a new diagram-oriented output format without changing existing exporters or adding another format switch to a controller.
 
-> Start with the stable extension anchor in
-> [`docs/dev/07-extension-points.md#export-formats`](../07-extension-points.md#export-formats).
-> Use this page for the end-to-end file/test/doc checklist.
+## Stable contracts
 
----
+The diagram export SPI is owned by `taxonomy-export`:
 
-## Preferred approach: ExportFormatExtension (recommended)
+```text
+com.taxonomy.export.spi.ExportFormatExtension
+com.taxonomy.export.spi.ExportFormatDescriptor
+com.taxonomy.export.spi.ExportContext
+com.taxonomy.export.spi.ExportResult
+```
 
-New export formats should implement the `ExportFormatExtension` SPI.  This is
-the stable extension point — adding a new `@Component` is sufficient to serve
-the format via `POST /api/diagram/export/{formatId}` without any changes to
-existing services or endpoints.
+Common extension metadata (`TaxonomyExtension`, `ExtensionKind`) is owned by `taxonomy-extension-api`. Spring discovery and HTTP routing remain in `taxonomy-app`.
 
-### Steps
+## Implementation steps
 
-1. Create the format-specific exporter class in `taxonomy-export` (framework-free,
-   no Spring annotations) following the existing pattern:
-   ```
+1. Implement framework-free conversion logic in `taxonomy-export`, normally under:
+
+   ```text
    taxonomy-export/src/main/java/com/taxonomy/export/<FormatName>ExportService.java
    ```
-2. Register the exporter as a Spring bean in
-   `taxonomy-app/src/main/java/com/taxonomy/shared/config/ExportConfig.java`.
-3. Create a Spring `@Component` adapter in
-   `taxonomy-app/src/main/java/com/taxonomy/export/service/<FormatName>ExportExtension.java`
-   implementing `ExportFormatExtension`.
-4. The new format is automatically registered in `ExportFormatExtensionRegistry`
-   and can be retrieved via `getRequired("<format-id>")`.
-5. The generic endpoint `POST /api/diagram/export/{formatId}` routes requests to
-   the new format automatically.  If a format-specific endpoint with a distinct
-   URL is also required, add it to `ExportApiController` using
-   `ExportFormatExtensionRegistry` — no changes to existing endpoint methods.
 
-See [`docs/dev/07-extension-points.md`](../07-extension-points.md#export-formats)
-for the full SPI contract.
+2. Add focused unit tests in `taxonomy-export/src/test/java` for:
+   - valid output;
+   - escaping/encoding;
+   - empty or minimal diagrams;
+   - schema or round-trip validation where a standard format exists.
 
----
+3. Wire the framework-free service as a bean in:
 
-## Legacy approach (without extension point)
+   ```text
+   taxonomy-app/src/main/java/com/taxonomy/shared/config/ExportConfig.java
+   ```
 
-The entries below document the manual wiring that was required before
-`ExportFormatExtension` was introduced.  Prefer the extension-point approach
-for all new formats.
+4. Add a small Spring adapter in:
 
-### Primary entry points (legacy)
+   ```text
+   taxonomy-app/src/main/java/com/taxonomy/export/service/<FormatName>ExportExtension.java
+   ```
 
-| File | What to do |
+   The adapter implements `com.taxonomy.export.spi.ExportFormatExtension` and delegates to the framework-free service.
+
+5. Use a stable lowercase format ID and a complete descriptor:
+
+   ```java
+   private static final ExportFormatDescriptor DESCRIPTOR =
+       new ExportFormatDescriptor(
+           "bpmn",
+           "BPMN 2.0 XML",
+           "bpmn",
+           "application/xml",
+           false);
+   ```
+
+6. Add adapter/registry tests following:
+   - `ExportFormatExtensionAdapterTest`
+   - `ExportFormatExtensionRegistryTest`
+
+7. The generic endpoint becomes available automatically:
+
+   ```text
+   POST /api/diagram/export/{formatId}
+   ```
+
+   Request body:
+
+   ```json
+   {
+     "businessText": "Requirement to analyse",
+     "locale": "en"
+   }
+   ```
+
+8. Expose the format in the UI only when it benefits users. Add the button through `taxonomy-export.js`, i18n bundles and the export panel. Do not add a button only to demonstrate technical completeness.
+
+## Files normally touched
+
+| Layer | File or package |
 |---|---|
-| `taxonomy-export/src/main/java/com/taxonomy/export/` | Create the new exporter class |
-| `taxonomy-app/src/main/java/com/taxonomy/config/ExportConfig.java` | Register the exporter as a Spring bean |
-| `taxonomy-app/src/main/java/com/taxonomy/export/controller/ExportApiController.java` | Add the new download endpoint |
+| Framework-free renderer | `taxonomy-export/.../com/taxonomy/export/` |
+| SPI contract | normally unchanged: `taxonomy-export/.../com/taxonomy/export/spi/` |
+| Spring bean wiring | `taxonomy-app/.../shared/config/ExportConfig.java` |
+| Spring adapter | `taxonomy-app/.../export/service/` |
+| UI download helper | `taxonomy-app/.../static/js/shared/taxonomy-export.js` |
+| i18n | `messages.properties`, `messages_de.properties` |
+| API docs | `docs/en/API_REFERENCE.md` |
+| Screenshot | export panel screenshot when the visible options change |
 
----
+## Files normally not touched
 
-## Files usually touched
+- `taxonomy-extension-api` — diagram-specific contracts do not belong here.
+- `taxonomy-domain` — unless the format requires genuinely reusable domain data.
+- `taxonomy-dsl` — unless the output is explicitly a TaxDSL transformation.
+- existing format adapters and services.
+- the generic endpoint implementation.
 
-- `taxonomy-export/src/main/java/com/taxonomy/export/<FormatName>ExportService.java` — new exporter (framework-free)
-- `taxonomy-app/src/main/java/com/taxonomy/config/ExportConfig.java` — Spring `@Bean` registration
-- `taxonomy-app/src/main/java/com/taxonomy/export/controller/ExportApiController.java` — new `GET /api/export/<format>` endpoint
-- `taxonomy-app/src/main/java/com/taxonomy/export/service/ExportFacade.java` — facade method routing to the new exporter
-- `taxonomy-export/src/test/java/com/taxonomy/export/<FormatName>ExportServiceTest.java` — unit tests for the exporter
-- `docs/en/API_REFERENCE.md` — document the new endpoint
+## Design rules
 
----
-
-## Files usually not touched
-
-- `taxonomy-domain/` — reuse existing DTOs (`AnalysisResult`, `TaxonomyNodeDto`)
-  unless the new format needs new data fields
-- `taxonomy-dsl/` — DSL is independent of export format; touch only if you
-  need to export DSL-specific data (e.g., architecture elements)
-- `taxonomy-app/…/service/` (non-export services) — export is a read-only
-  operation on existing data; no service-layer changes needed outside `ExportFacade`
-- `taxonomy-app/src/main/resources/templates/index.html` — the export panel
-  must be updated to expose the new button; see [add-ui-panel](add-ui-panel.md)
-  if you also want a GUI entry point
-
----
-
-## Backend endpoint(s)
-
-| Endpoint | Controller | Returns |
-|---|---|---|
-| `GET /api/export/archimate` | `ExportApiController` | ArchiMate XML (`application/xml`) |
-| `GET /api/export/mermaid` | `ExportApiController` | Mermaid text (`text/plain`) |
-| `GET /api/export/visio` | `ExportApiController` | Visio `.vsdx` (`application/zip`) |
-| `GET /api/export/<new-format>` | `ExportApiController` | Your MIME type |
-
-Follow the existing `produces` annotation patterns and content-disposition headers.
-
----
-
-## Frontend module(s)
-
-- `taxonomy-app/src/main/resources/static/js/export.js` — handles export button
-  clicks and download triggers; add the new format button here
-- `taxonomy-app/src/main/resources/templates/index.html` — add a button in the
-  export panel section
-
-Both the English (`messages.properties`) and German (`messages_de.properties`)
-i18n files must receive the new button label.
-
----
-
-## DTOs / domain types
-
-- `com.taxonomy.dto.AnalysisResult` — primary data source for most exports
-- `com.taxonomy.diagram.DiagramModel` — use as an intermediate representation
-  when the new format is diagram-based
-- `com.taxonomy.archimate.ArchiMateModel` — use if the new format is an
-  ArchiMate extension or variant
-
-Add a new DTO in `taxonomy-domain/…/dto/` only if the exporter needs to expose
-metadata that does not already exist in the above types.
-
----
+- `taxonomy-export` must remain Spring-free.
+- A Java package must be owned by one Maven module; do not recreate `com.taxonomy.export.spi` in `taxonomy-app`.
+- Use `DiagramModel` as the neutral diagram representation.
+- Do not repeat anchor selection, propagation or diagram curation inside an exporter.
+- Treat format-specific options as validated input, not arbitrary casts from `Map` deep inside the renderer.
+- For large output, stream instead of buffering the complete document.
+- Use correct media type, extension and `Content-Disposition` filename.
+- Avoid proprietary formats as the only representation; provide an open alternative.
 
 ## Tests to run
 
 ```bash
-# Export module unit tests (fast, no Spring context)
-mvn test -pl taxonomy-export
-
-# App module tests (controller + facade)
-mvn test -pl taxonomy-app
-
-# Full verify if you changed the UI
+mvn test -pl taxonomy-export -am
+mvn test -pl taxonomy-app -Dtest=ExportFormatExtensionRegistryTest,ExportFormatExtensionAdapterTest
 mvn verify -DexcludedGroups="real-llm"
 ```
 
-Relevant test classes:
-- `<FormatName>ExportServiceTest` — round-trip / schema correctness
-- `ExportApiControllerTest` — endpoint status codes and content types
-- `ArchiMateRoundtripTest`, `MermaidExportServiceTest` — model test patterns to follow
+For user-visible changes also run the screenshot generator and authenticated accessibility workflow.
 
----
+## Definition of done
 
-## Documentation / screenshot updates
-
-- `docs/en/API_REFERENCE.md` — add the new endpoint
-- `docs/en/DEVELOPER_GUIDE.md` — the "Adding a New Export Format" section
-- Screenshots: regenerate the export panel screenshot if it lists available formats
-
----
-
-## Common pitfalls
-
-1. **`ExportConfig` wiring:** The exporter class must live in `taxonomy-export`
-   (framework-free), but must be wired as a Spring bean in
-   `taxonomy-app/…/config/ExportConfig.java`.
-   Never add Spring annotations to classes in `taxonomy-export`.
-
-2. **Streaming large outputs:** For formats that can be large (e.g., full taxonomy
-   as RDF), use `StreamingResponseBody` rather than buffering the entire output in
-   memory.
-
-3. **Content-Disposition header:** Set `Content-Disposition: attachment; filename="…"`
-   so the browser downloads rather than displays the file.
-
-4. **DiagramModel as neutral IR:** If the new format is diagram-based, use
-   `DiagramProjectionService` to obtain a `DiagramModel` — it already contains the
-   relevant nodes and edges. Do not re-implement element selection logic.
+- [ ] Renderer is framework-free and independently tested.
+- [ ] Adapter is discovered without changing a central format switch.
+- [ ] Duplicate IDs fail fast.
+- [ ] Generic endpoint returns correct bytes and headers.
+- [ ] Existing formats produce unchanged output.
+- [ ] UI label, help and documentation are available in German and English where exposed.
+- [ ] Link, screenshot and accessibility checks pass.
+- [ ] Maintainability matrix is updated in the same pull request.

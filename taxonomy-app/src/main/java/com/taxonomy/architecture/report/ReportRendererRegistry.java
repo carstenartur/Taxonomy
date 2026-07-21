@@ -1,5 +1,7 @@
 package com.taxonomy.architecture.report;
 
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
@@ -9,9 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Registry for report renderer extensions.
- */
+/** Spring registry for report renderer adapters. */
 @Service
 public class ReportRendererRegistry {
 
@@ -20,7 +20,7 @@ public class ReportRendererRegistry {
     public ReportRendererRegistry(List<ReportRendererExtension> extensions) {
         Map<String, ReportRendererExtension> map = new LinkedHashMap<>();
         extensions.stream()
-                .sorted(Comparator.comparing(ext -> ext.descriptor().id()))
+                .sorted(Comparator.comparing(extension -> extension.descriptor().id()))
                 .forEach(extension -> {
                     String key = normalize(extension.descriptor().id());
                     ReportRendererExtension previous = map.putIfAbsent(key, extension);

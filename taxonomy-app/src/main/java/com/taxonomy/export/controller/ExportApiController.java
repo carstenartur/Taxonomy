@@ -3,19 +3,25 @@ package com.taxonomy.export.controller;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.dto.SavedAnalysis;
 import com.taxonomy.export.MermaidLabels;
-import com.taxonomy.export.service.ExportContext;
 import com.taxonomy.export.service.ExportFacade;
-import com.taxonomy.export.service.ExportFormatDescriptor;
-import com.taxonomy.export.service.ExportFormatExtension;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
-import com.taxonomy.export.service.ExportResult;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
+import com.taxonomy.export.spi.ExportContext;
+import com.taxonomy.export.spi.ExportFormatDescriptor;
+import com.taxonomy.export.spi.ExportFormatExtension;
+import com.taxonomy.export.spi.ExportResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.HashMap;
@@ -23,8 +29,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api")
@@ -42,9 +46,9 @@ public class ExportApiController {
         this.exportFormatRegistry = exportFormatRegistry;
     }
 
-    // ── Visio Diagram Export ──────────────────────────────────────────────────
-
-    @Operation(summary = "Export Visio diagram", description = "Generates a Visio .vsdx architecture diagram from a business requirement", tags = {"Export"})
+    @Operation(summary = "Export Visio diagram",
+            description = "Generates a Visio .vsdx architecture diagram from a business requirement",
+            tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "Visio file returned as binary attachment")
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
     @PostMapping("/diagram/visio")
@@ -53,24 +57,21 @@ public class ExportApiController {
         if (businessText == null || businessText.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
-
         try {
             byte[] vsdx = exportFacade.exportAsVisio(businessText);
-
             HttpHeaders headers = new HttpHeaders();
             headers.set(HttpHeaders.CONTENT_DISPOSITION,
                     "attachment; filename=\"requirement-architecture.vsdx\"");
             headers.set(HttpHeaders.CONTENT_TYPE, "application/vnd.ms-visio.drawing.main+xml");
-
             return ResponseEntity.ok().headers(headers).body(vsdx);
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
     }
 
-    // ── ArchiMate Diagram Export ──────────────────────────────────────────────
-
-    @Operation(summary = "Export ArchiMate XML", description = "Generates an ArchiMate Model Exchange File Format XML from a business requirement", tags = {"Export"})
+    @Operation(summary = "Export ArchiMate XML",
+            description = "Generates an ArchiMate Model Exchange File Format XML from a business requirement",
+            tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "ArchiMate XML returned as attachment")
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
     @PostMapping("/diagram/archimate")
@@ -79,20 +80,17 @@ public class ExportApiController {
         if (businessText == null || businessText.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
-
         byte[] xml = exportFacade.exportAsArchiMate(businessText);
-
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.CONTENT_DISPOSITION,
                 "attachment; filename=\"requirement-architecture.xml\"");
         headers.set(HttpHeaders.CONTENT_TYPE, "application/xml");
-
         return ResponseEntity.ok().headers(headers).body(xml);
     }
 
-    // ── Mermaid Diagram Export ────────────────────────────────────────────────
-
-    @Operation(summary = "Export Mermaid diagram", description = "Generates a Mermaid flowchart from a business requirement for use in Markdown documents. Accepts optional 'locale' field ('en' or 'de') to localize layer and relation labels.", tags = {"Export"})
+    @Operation(summary = "Export Mermaid diagram",
+            description = "Generates a Mermaid flowchart from a business requirement for use in Markdown documents. Accepts optional 'locale' field ('en' or 'de') to localize layer and relation labels.",
+            tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "Mermaid text returned")
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
     @PostMapping("/diagram/mermaid")
@@ -101,18 +99,13 @@ public class ExportApiController {
         if (businessText == null || businessText.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
-
         MermaidLabels labels = resolveMermaidLabels(body.get("locale"));
         String mermaid = exportFacade.exportAsMermaid(businessText, labels);
-
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8")
                 .body(mermaid);
     }
 
-    /**
-     * Resolves {@link MermaidLabels} from an optional locale parameter.
-     */
     private MermaidLabels resolveMermaidLabels(Object localeObj) {
         if (localeObj instanceof String locale && locale.startsWith("de")) {
             return MermaidLabels.german();
@@ -120,9 +113,9 @@ public class ExportApiController {
         return MermaidLabels.english();
     }
 
-    // ── Structurizr DSL Export ────────────────────────────────────────────────
-
-    @Operation(summary = "Export Structurizr DSL", description = "Generates a Structurizr workspace DSL from a business requirement for C4 tools", tags = {"Export"})
+    @Operation(summary = "Export Structurizr DSL",
+            description = "Generates a Structurizr workspace DSL from a business requirement for C4 tools",
+            tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "Structurizr DSL returned as text")
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
     @PostMapping("/diagram/structurizr")
@@ -131,25 +124,17 @@ public class ExportApiController {
         if (businessText == null || businessText.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
-
         String dsl = exportFacade.exportAsStructurizrDsl(businessText);
-
         HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.CONTENT_DISPOSITION,
-                "attachment; filename=\"workspace.dsl\"");
+        headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"workspace.dsl\"");
         headers.set(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8");
-
-        return ResponseEntity.ok().headers(headers).body(dsl.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return ResponseEntity.ok().headers(headers)
+                .body(dsl.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
-    // ── Generic format-agnostic export ──────────────────────────────────────
-
     @Operation(summary = "Export diagram in any registered format",
-               description = "Exports a diagram in the format identified by {formatId}. " +
-                             "Registered formats: archimate, mermaid, structurizr, visio, plus any " +
-                             "custom ExportFormatExtension components. " +
-                             "An optional 'locale' field (e.g. 'de') is forwarded to the format adapter.",
-               tags = {"Export"})
+            description = "Exports a diagram in the format identified by {formatId}. Registered formats: archimate, mermaid, structurizr, visio, plus any custom ExportFormatExtension components. An optional 'locale' field is forwarded to the adapter.",
+            tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "Diagram file returned as attachment")
     @ApiResponse(responseCode = "400", description = "Business text is blank or missing")
     @ApiResponse(responseCode = "404", description = "Unknown format ID")
@@ -169,19 +154,16 @@ public class ExportApiController {
 
         ExportFormatExtension extension = extensionOpt.get();
         ExportFormatDescriptor descriptor = extension.descriptor();
-
         Map<String, Object> options = new HashMap<>(body);
         options.remove("businessText");
 
         try {
             DiagramModel diagram = exportFacade.buildDiagram(businessText);
             ExportResult result = extension.export(new ExportContext(diagram, options));
-
             HttpHeaders headers = new HttpHeaders();
             headers.set(HttpHeaders.CONTENT_DISPOSITION,
                     "attachment; filename=\"diagram." + descriptor.fileExtension() + "\"");
             headers.set(HttpHeaders.CONTENT_TYPE, descriptor.contentType());
-
             return ResponseEntity.ok().headers(headers).body(result.bytes());
         } catch (UncheckedIOException e) {
             log.error("Export failed for format '{}': {}", formatId, e.getMessage(), e);
@@ -189,11 +171,9 @@ public class ExportApiController {
         }
     }
 
-    // ── Scores import / export endpoints ────────────────────────────────────────
-
     @Operation(summary = "Export analysis scores as JSON",
-               description = "Returns a SavedAnalysis JSON with timestamp and version added. The frontend triggers a file download.",
-               tags = {"Export"})
+            description = "Returns a SavedAnalysis JSON with timestamp and version added. The frontend triggers a file download.",
+            tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "SavedAnalysis JSON returned")
     @ApiResponse(responseCode = "400", description = "Requirement is blank or scores are missing")
     @PostMapping("/scores/export")
@@ -209,23 +189,22 @@ public class ExportApiController {
             return ResponseEntity.badRequest().build();
         }
         Map<String, Integer> scores = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> e : rawScores.entrySet()) {
-            if (e.getValue() instanceof Number n) {
-                scores.put(e.getKey(), n.intValue());
+        for (Map.Entry<String, Object> entry : rawScores.entrySet()) {
+            if (entry.getValue() instanceof Number number) {
+                scores.put(entry.getKey(), number.intValue());
             }
         }
         @SuppressWarnings("unchecked")
         Map<String, String> reasons = body.get("reasons") instanceof Map<?, ?>
                 ? (Map<String, String>) body.get("reasons") : Map.of();
-        String provider = body.get("provider") instanceof String p ? p : exportFacade.getActiveProviderName();
-
-        SavedAnalysis saved = exportFacade.buildExport(requirement, scores, reasons, provider);
-        return ResponseEntity.ok(saved);
+        String provider = body.get("provider") instanceof String p
+                ? p : exportFacade.getActiveProviderName();
+        return ResponseEntity.ok(exportFacade.buildExport(requirement, scores, reasons, provider));
     }
 
     @Operation(summary = "Import analysis scores from JSON",
-               description = "Validates a SavedAnalysis JSON and returns the scores, reasons, requirement, and any warnings.",
-               tags = {"Export"})
+            description = "Validates a SavedAnalysis JSON and returns the scores, reasons, requirement, and any warnings.",
+            tags = {"Export"})
     @ApiResponse(responseCode = "200", description = "Scores imported and returned with any warnings")
     @ApiResponse(responseCode = "400", description = "Invalid JSON format or validation failure")
     @PostMapping("/scores/import")
@@ -236,13 +215,12 @@ public class ExportApiController {
                     .stream()
                     .map(code -> "Unknown node code: " + code)
                     .toList();
-
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("requirement", saved.getRequirement());
-            result.put("scores",      saved.getScores() != null ? saved.getScores() : Map.of());
-            result.put("reasons",     saved.getReasons() != null ? saved.getReasons() : Map.of());
-            result.put("provider",    saved.getProvider());
-            result.put("warnings",    warnings);
+            result.put("scores", saved.getScores() != null ? saved.getScores() : Map.of());
+            result.put("reasons", saved.getReasons() != null ? saved.getReasons() : Map.of());
+            result.put("provider", saved.getProvider());
+            result.put("warnings", warnings);
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest()

@@ -17,7 +17,7 @@ COPY taxonomy-app/src taxonomy-app/src
 RUN mvn -q -DskipTests package
 
 # ---- runtime stage ----
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:21-jre-jammy
 # OCI Image Specification labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
 LABEL org.opencontainers.image.title="Taxonomy Architecture Analyzer" \
       org.opencontainers.image.description="Spring Boot web application that loads a C3-taxonomy catalogue and provides full-text search, KNN vector search, architecture-overlay DSL editing, and LLM-assisted analysis." \
@@ -26,19 +26,32 @@ LABEL org.opencontainers.image.title="Taxonomy Architecture Analyzer" \
       org.opencontainers.image.documentation="https://github.com/carstenartur/Taxonomy#readme" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="Carsten Hammer" \
-      org.opencontainers.image.base.name="eclipse-temurin:21-jre"
+      org.opencontainers.image.base.name="eclipse-temurin:21-jre-jammy"
 ARG BUILD_DATE
 ARG VCS_REF
 ARG VERSION
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.version="${VERSION}"
+
+# curl is used only by the container-native healthcheck. The application itself
+# remains reachable exclusively through the reverse proxy in production.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system taxonomy \
+    && useradd --system --gid taxonomy --home-dir /app --shell /usr/sbin/nologin taxonomy
+
 WORKDIR /app
-COPY --from=build /workspace/taxonomy-app/target/taxonomy-app-*.jar app.jar
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chown -R taxonomy:taxonomy /app
+COPY --from=build --chown=taxonomy:taxonomy /workspace/taxonomy-app/target/taxonomy-app-*.jar app.jar
+
 # Port 8080 is for INTERNAL communication only (e.g. Caddy reverse proxy inside Docker network).
 # NEVER publish this port to the internet. Use docker-compose.prod.yml for HTTPS on port 443.
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
+  CMD curl --fail --silent --show-error http://127.0.0.1:8080/actuator/health/readiness >/dev/null || exit 1
+
 # -XX:+UseSerialGC        : lower GC memory overhead than G1 for small (≤1 GB) heaps
 # -Xss512k                : reduce per-thread stack size (default 1 MB is wasteful on constrained hosts)
 # -XX:MaxRAMPercentage=50 : auto-size heap to 50 % of the container's memory limit; on Render's free
@@ -48,4 +61,9 @@ EXPOSE 8080
 # Override via JAVA_OPTS env var (e.g. in render.yaml or docker run -e JAVA_OPTS=...) without
 # rebuilding the image.
 ENV JAVA_OPTS="-XX:+UseSerialGC -Xss512k -XX:MaxRAMPercentage=50.0 -Xmx220m"
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+USER taxonomy
+STOPSIGNAL SIGTERM
+# exec replaces the shell with the JVM so Java becomes PID 1 and receives
+# Docker's SIGTERM directly. This allows Spring, HikariCP, HSQLDB and Lucene to
+# close cleanly before a replacement container opens the persisted data again.
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

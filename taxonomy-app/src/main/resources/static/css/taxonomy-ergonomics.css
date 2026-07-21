@@ -1,0 +1,216 @@
+/* Ergonomic and accessibility hardening loaded by taxonomy-utils.js. */
+
+/* System diagnostics belong to the admin surface, not the default work area. */
+#systemStatusBar {
+    display: none;
+}
+.admin-unlocked #systemStatusBar {
+    display: block;
+}
+
+/* Keep dense toolbars usable at high zoom and on narrow viewports. */
+#mainNavTabs,
+.card-header,
+.navbar .container-fluid,
+.d-flex {
+    min-width: 0;
+}
+#mainNavTabs {
+    flex-wrap: wrap;
+}
+
+/* Accessible application-native dialog replacing prompt()/alert(). */
+.taxonomy-accessible-dialog {
+    width: min(32rem, calc(100vw - 2rem));
+    border: 0;
+    border-radius: 0.5rem;
+    padding: 1.25rem;
+    box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.3);
+    color: var(--bs-body-color, #212529);
+    background: var(--bs-body-bg, #fff);
+}
+.taxonomy-accessible-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+/* Focus must remain clearly visible on all custom navigation surfaces. */
+#mainNavTabs [role="tab"]:focus-visible,
+.tax-node-actions button:focus-visible,
+.taxonomy-accessible-dialog button:focus-visible,
+.taxonomy-accessible-dialog input:focus-visible,
+.table-responsive:focus-visible {
+    outline: 3px solid #0d6efd;
+    outline-offset: 2px;
+}
+
+/* Bootstrap's default outline tones are slightly below WCAG AA on the light
+   workbench background at the small control sizes used by Taxonomy. Direct
+   declarations are used in addition to variables because some generated
+   Bootstrap rules otherwise retain their original foreground color. */
+.btn-outline-secondary {
+    --bs-btn-color: #495057;
+    --bs-btn-border-color: #495057;
+    --bs-btn-hover-bg: #495057;
+    --bs-btn-hover-border-color: #495057;
+    --bs-btn-active-bg: #495057;
+    --bs-btn-active-border-color: #495057;
+    color: #495057 !important;
+    border-color: #495057 !important;
+}
+.btn-outline-info {
+    --bs-btn-color: #075985;
+    --bs-btn-border-color: #075985;
+    --bs-btn-hover-bg: #075985;
+    --bs-btn-hover-border-color: #075985;
+    --bs-btn-active-bg: #075985;
+    --bs-btn-active-border-color: #075985;
+    color: #075985 !important;
+    border-color: #075985 !important;
+}
+.btn-outline-success {
+    --bs-btn-color: #146c43;
+    --bs-btn-border-color: #146c43;
+    --bs-btn-hover-bg: #146c43;
+    --bs-btn-hover-border-color: #146c43;
+    --bs-btn-active-bg: #146c43;
+    --bs-btn-active-border-color: #146c43;
+    color: #146c43 !important;
+    border-color: #146c43 !important;
+}
+.btn-outline-warning {
+    --bs-btn-color: #7a4d00;
+    --bs-btn-border-color: #7a4d00;
+    --bs-btn-hover-bg: #7a4d00;
+    --bs-btn-hover-border-color: #7a4d00;
+    --bs-btn-active-bg: #7a4d00;
+    --bs-btn-active-border-color: #7a4d00;
+    color: #7a4d00 !important;
+    border-color: #7a4d00 !important;
+}
+.btn-outline-primary {
+    --bs-btn-color: #084298;
+    --bs-btn-border-color: #084298;
+    --bs-btn-hover-bg: #084298;
+    --bs-btn-hover-border-color: #084298;
+    --bs-btn-active-bg: #084298;
+    --bs-btn-active-border-color: #084298;
+    color: #084298 !important;
+    border-color: #084298 !important;
+}
+.btn-outline-secondary:hover,
+.btn-outline-secondary:focus-visible,
+.btn-outline-secondary:active,
+.btn-outline-info:hover,
+.btn-outline-info:focus-visible,
+.btn-outline-info:active,
+.btn-outline-success:hover,
+.btn-outline-success:focus-visible,
+.btn-outline-success:active,
+.btn-outline-warning:hover,
+.btn-outline-warning:focus-visible,
+.btn-outline-warning:active,
+.btn-outline-primary:hover,
+.btn-outline-primary:focus-visible,
+.btn-outline-primary:active {
+    color: #fff !important;
+}
+#aiUnavailableWarning code,
+.alert-warning code,
+.bg-warning-subtle code,
+.bg-warning code {
+    color: #842029 !important;
+}
+.vc-fresh {
+    color: #146c43 !important;
+}
+.legend-box[style*="rgba(0,128,0,0.75)"] {
+    background: #2f7532 !important;
+    color: #fff !important;
+}
+
+/* Touch users cannot discover hover-only node actions. */
+@media (hover: none), (pointer: coarse) {
+    .tax-node-actions {
+        display: inline-flex;
+        flex-wrap: wrap;
+    }
+    .tax-node-actions .btn,
+    .tax-toggle,
+    #mainNavTabs .nav-link,
+    .navbar button,
+    .navbar select {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    .tax-node-header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+    }
+}
+
+/* Prevent tiny controls even with mouse/trackpad when zoomed. */
+@media (max-width: 992px) {
+    .tax-node-actions {
+        display: inline-flex;
+        flex-wrap: wrap;
+        width: 100%;
+        margin-left: 1.5rem;
+        margin-top: 0.25rem;
+    }
+    #leftPanel,
+    #rightPanel {
+        width: 100% !important;
+    }
+    .card-body[style*="max-height"] {
+        max-height: none !important;
+    }
+}
+
+/* 200–400 % zoom: allow navigation and analysis controls to reflow. */
+@media (max-width: 640px) {
+    .navbar-brand {
+        width: 100%;
+        white-space: normal;
+    }
+    #mainNavTabs .nav-item {
+        flex: 1 1 9rem;
+    }
+    #mainNavTabs .nav-link {
+        width: 100%;
+        text-align: left;
+    }
+    #businessText {
+        min-height: 12rem;
+    }
+    .tax-node {
+        font-size: 1rem;
+    }
+    .tax-pct,
+    .tax-justify-btn {
+        font-size: 0.875rem;
+    }
+}
+
+/* Respect the user's motion preference. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Print/PDF output should never include diagnostics or transient controls. */
+@media print {
+    #systemStatusBar,
+    #gitStatusBar,
+    #contextBar,
+    .tax-node-actions,
+    .taxonomy-accessible-dialog {
+        display: none !important;
+    }
+}

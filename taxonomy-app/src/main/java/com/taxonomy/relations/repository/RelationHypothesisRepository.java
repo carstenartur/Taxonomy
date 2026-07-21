@@ -1,8 +1,8 @@
 package com.taxonomy.relations.repository;
 
 import com.taxonomy.model.HypothesisStatus;
-import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationHypothesis;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -25,6 +25,10 @@ public interface RelationHypothesisRepository extends JpaRepository<RelationHypo
     // ── Workspace-scoped queries ─────────────────────────────────────
 
     List<RelationHypothesis> findByWorkspaceId(String workspaceId);
+
+    List<RelationHypothesis> findByWorkspaceIdIsNull();
+
+    List<RelationHypothesis> findByStatusAndWorkspaceIdIsNull(HypothesisStatus status);
 
     @Query("SELECT h FROM RelationHypothesis h WHERE h.workspaceId = :wsId OR h.workspaceId IS NULL")
     List<RelationHypothesis> findByWorkspaceIdIsNullOrWorkspaceId(@Param("wsId") String workspaceId);

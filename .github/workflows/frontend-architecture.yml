@@ -1,0 +1,28 @@
+name: Frontend Architecture
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'taxonomy-app/src/main/resources/static/js/**'
+      - 'taxonomy-app/src/main/resources/templates/index.html'
+      - '.github/scripts/check-frontend-api-boundaries.py'
+      - '.github/workflows/frontend-architecture.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'taxonomy-app/src/main/resources/static/js/**'
+      - 'taxonomy-app/src/main/resources/templates/index.html'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api-boundaries:
+    name: Enforce frontend API module boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Reject new direct API calls outside api modules
+        run: python3 .github/scripts/check-frontend-api-boundaries.py

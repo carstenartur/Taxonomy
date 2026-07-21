@@ -7,6 +7,15 @@ Werte werden über Umgebungsvariablen (empfohlen für Produktion) oder in
 
 ---
 
+## Start und Kataloginitialisierung
+
+| Umgebungsvariable | Property | Typ | Standard | Beschreibung |
+|---|---|---|---|---|
+| `TAXONOMY_INIT_ASYNC` | `taxonomy.init.async` | Boolean | `false` | Lädt die Taxonomie erst, nachdem der HTTP-Server seinen Port geöffnet hat. |
+| `TAXONOMY_INIT_RELOAD_EXISTING` | `taxonomy.init.reload-existing` | Boolean | `false` | Verwendet einen persistierten Katalog bei normalen Neustarts weiter. Nur für einen bewusst destruktiven Neuimport aus der mitgelieferten Excel-Datei auf `true` setzen. |
+
+Produktivinstallationen sollten `TAXONOMY_INIT_RELOAD_EXISTING=false` beibehalten. Vor einem erzwungenen Neuimport müssen Datenbank und Suchindex gesichert werden.
+
 ## LLM-Anbieter-Konfiguration
 
 | Variable | Eigenschaft | Typ | Standard | Beschreibung |

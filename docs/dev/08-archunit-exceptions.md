@@ -8,17 +8,12 @@ Each exception includes:
 - why it exists today
 - the condition that allows removing it
 
-## Controller → repository allowlist
+## Controller → repository rule
 
-These are temporary exceptions to the rule
-`controllersShouldNotAccessRepositories`.
-
-1. `com.taxonomy.security.controller.ChangePasswordController`
-   - Why: password-change flow still validates and updates `AppUser` directly.
-   - Remove when: password change is handled via a dedicated security service/facade.
-2. `com.taxonomy.security.controller.UserManagementController`
-   - Why: admin user-management endpoints still orchestrate user/role persistence directly.
-   - Remove when: user/role CRUD orchestration is moved to a dedicated security service/facade.
+There are no remaining controller exceptions. Password changes and user/role
+administration are delegated to `PasswordChangeService` and
+`UserManagementService`; all controller packages are therefore required to stay
+repository-free.
 
 ## Service implicit workspace-resolution allowlist
 
@@ -42,10 +37,7 @@ These are temporary exceptions to:
 5. `com.taxonomy.versioning.service.DslOperationsFacade`
    - Why: remaining DSL/versioning operations still resolve workspace context inside the facade.
    - Remove when: all facade operations become context-explicit.
-6. `com.taxonomy.versioning.service.HypothesisService`
-   - Why: hypothesis persistence/listing still resolves active workspace internally.
-   - Remove when: hypothesis methods receive `WorkspaceContext` from request boundary.
-7. `com.taxonomy.versioning.service.SelectiveTransferService`
+6. `com.taxonomy.versioning.service.SelectiveTransferService`
    - Why: selective transfer still resolves current workspace/user for navigation state.
    - Remove when: selective transfer APIs become context-explicit.
 

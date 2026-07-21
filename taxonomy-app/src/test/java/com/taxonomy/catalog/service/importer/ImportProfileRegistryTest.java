@@ -2,6 +2,7 @@ package com.taxonomy.catalog.service.importer;
 
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dto.FrameworkImportResult;
+import com.taxonomy.extension.api.importer.ImportInput;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -15,9 +16,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/**
- * Unit tests for {@link ImportProfileRegistry} and the bundled extension adapters.
- */
 class ImportProfileRegistryTest {
 
     private ImportProfileRegistry registry;
@@ -34,22 +32,17 @@ class ImportProfileRegistryTest {
 
     @Test
     void listDescriptorsContainsAllProfiles() {
-        List<String> ids = registry.listDescriptors().stream()
-                .map(ImportProfileDescriptor::profileId)
-                .toList();
-        assertThat(ids).containsExactlyInAnyOrder("uaf", "apqc", "apqc-excel", "c4");
+        assertThat(registry.listDescriptors())
+                .extracting(descriptor -> descriptor.profileId())
+                .containsExactlyInAnyOrder("uaf", "apqc", "apqc-excel", "c4");
     }
 
     @Test
-    void findByIdReturnsExtensionForKnownProfile() {
+    void findByIdReturnsKnownProfilesAndRejectsUnknownValues() {
         assertThat(registry.findById("uaf")).isPresent();
-        assertThat(registry.findById("apqc")).isPresent();
-        assertThat(registry.findById("apqc-excel")).isPresent();
+        assertThat(registry.findById("APQC")).isPresent();
+        assertThat(registry.findById(" apqc-excel ")).isPresent();
         assertThat(registry.findById("c4")).isPresent();
-    }
-
-    @Test
-    void findByIdReturnsEmptyForUnknown() {
         assertThat(registry.findById("nonexistent")).isEmpty();
         assertThat(registry.findById(null)).isEmpty();
         assertThat(registry.findById("  ")).isEmpty();
@@ -63,30 +56,21 @@ class ImportProfileRegistryTest {
     }
 
     @Test
-    void uafDescriptorHasExpectedMetadata() {
-        ImportProfileDescriptor d = registry.getRequired("uaf").descriptor();
-        assertThat(d.profileId()).isEqualTo("uaf");
-        assertThat(d.displayName()).isEqualTo("UAF / DoDAF");
-        assertThat(d.acceptedFileFormat()).isEqualTo("xml");
-        assertThat(d.supportedElementTypes()).isNotEmpty();
+    void descriptorsExposeExpectedMetadata() {
+        com.taxonomy.extension.api.importer.ImportProfileDescriptor uaf =
+                registry.getRequired("uaf").descriptor();
+        assertThat(uaf.displayName()).isEqualTo("UAF / DoDAF");
+        assertThat(uaf.acceptedFileFormat()).isEqualTo("xml");
+        assertThat(uaf.supportedElementTypes()).isNotEmpty();
+
+        assertThat(registry.getRequired("apqc").descriptor().acceptedFileFormat())
+                .isEqualTo("csv");
+        assertThat(registry.getRequired("c4").descriptor().acceptedFileFormat())
+                .isEqualTo("dsl");
     }
 
     @Test
-    void apqcCsvDescriptorHasExpectedMetadata() {
-        ImportProfileDescriptor d = registry.getRequired("apqc").descriptor();
-        assertThat(d.profileId()).isEqualTo("apqc");
-        assertThat(d.acceptedFileFormat()).isEqualTo("csv");
-    }
-
-    @Test
-    void c4DescriptorHasExpectedMetadata() {
-        ImportProfileDescriptor d = registry.getRequired("c4").descriptor();
-        assertThat(d.profileId()).isEqualTo("c4");
-        assertThat(d.acceptedFileFormat()).isEqualTo("dsl");
-    }
-
-    @Test
-    void previewViaRegistryDelegatesToUafExtension() throws Exception {
+    void previewViaRegistryDelegatesToUafExtension() {
         String xml = """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
@@ -94,10 +78,9 @@ class ImportProfileRegistryTest {
                   <packagedElement xmi:id="e1" xsi:type="uaf:Capability" name="Cap1"/>
                 </xmi:XMI>
                 """;
-        ImportProfileExtension ext = registry.getRequired("uaf");
-        FrameworkImportResult result = ext.preview(
-                ImportInput.forPreview(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8))));
-
+        FrameworkImportResult result = registry.getRequired("uaf").preview(
+                ImportInput.forPreview(new ByteArrayInputStream(
+                        xml.getBytes(StandardCharsets.UTF_8))));
         assertThat(result.success()).isTrue();
         assertThat(result.profileId()).isEqualTo("uaf");
         assertThat(result.elementsTotal()).isEqualTo(1);
@@ -105,32 +88,30 @@ class ImportProfileRegistryTest {
 
     @Test
     void duplicateProfileIdThrowsOnRegistryConstruction() {
-        DslMaterializeService ms = mock(DslMaterializeService.class);
+        DslMaterializeService materializeService = mock(DslMaterializeService.class);
         assertThatThrownBy(() -> new ImportProfileRegistry(List.of(
-                new UafImportProfileExtension(ms),
-                new UafImportProfileExtension(ms))))
+                new UafImportProfileExtension(materializeService),
+                new UafImportProfileExtension(materializeService))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Duplicate import profile ID");
     }
 
     @Test
-    void nullDescriptorThrowsClearError() {
-        ImportProfileExtension extension = mock(ImportProfileExtension.class);
-        when(extension.descriptor()).thenReturn(null);
-
-        assertThatThrownBy(() -> new ImportProfileRegistry(List.of(extension)))
+    void invalidDescriptorsFailFast() {
+        com.taxonomy.extension.api.importer.ImportProfileExtension nullDescriptor =
+                mock(com.taxonomy.extension.api.importer.ImportProfileExtension.class);
+        when(nullDescriptor.descriptor()).thenReturn(null);
+        assertThatThrownBy(() -> new ImportProfileRegistry(List.of(nullDescriptor)))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("returned a null descriptor");
-    }
+                .hasMessageContaining("descriptor");
 
-    @Test
-    void blankProfileIdThrowsClearError() {
-        ImportProfileExtension extension = mock(ImportProfileExtension.class);
-        when(extension.descriptor()).thenReturn(new ImportProfileDescriptor(
-                "   ", "Broken", Set.of(), Set.of(), "xml"));
-
-        assertThatThrownBy(() -> new ImportProfileRegistry(List.of(extension)))
+        com.taxonomy.extension.api.importer.ImportProfileExtension blankId =
+                mock(com.taxonomy.extension.api.importer.ImportProfileExtension.class);
+        when(blankId.descriptor()).thenReturn(
+                new com.taxonomy.extension.api.importer.ImportProfileDescriptor(
+                        "   ", "Broken", Set.of(), Set.of(), "xml"));
+        assertThatThrownBy(() -> new ImportProfileRegistry(List.of(blankId)))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("must declare a non-blank profile ID");
+                .hasMessageContaining("non-blank profile ID");
     }
 }

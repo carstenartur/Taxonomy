@@ -17,7 +17,10 @@ import com.taxonomy.model.RelationType;
  */
 @Entity
 @Table(name = "relation_hypothesis",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"source_node_id", "target_node_id", "relation_type", "analysis_session_id"}))
+       uniqueConstraints = @UniqueConstraint(
+               name = "uq_hypothesis_workspace_session_relation",
+               columnNames = {"workspace_id", "source_node_id", "target_node_id",
+                       "relation_type", "analysis_session_id"}))
 public class RelationHypothesis {
 
     @Id

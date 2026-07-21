@@ -91,7 +91,8 @@ class AnalyzeRequirementUseCaseTest {
         assertThat(analysisResult.getViewContext()).isSameAs(viewContext);
 
         verify(llmService).setRequestProvider(LlmProvider.GEMINI);
-        verify(hypothesisService).persistFromAnalysis(provisionalRelations, null);
+        verify(hypothesisService).persistFromAnalysis(
+                provisionalRelations, null, command.workspaceContext());
         verify(llmService).clearRequestProvider();
     }
 
@@ -113,7 +114,7 @@ class AnalyzeRequirementUseCaseTest {
 
         assertThat(result.analysisResult().getArchitectureView()).isNull();
         assertThat(result.analysisResult().getProvisionalRelations()).isEmpty();
-        verify(hypothesisService, never()).persistFromAnalysis(any(), any());
+        verify(hypothesisService, never()).persistFromAnalysis(any(), any(), any());
         verifyNoInteractions(architectureViewService, preferencesService);
         verify(llmService).clearRequestProvider();
     }
@@ -135,9 +136,6 @@ class AnalyzeRequirementUseCaseTest {
 
     @Test
     void analyzeUsesWorkspaceContextUsernameForBranchResolutionWhenSharedFallback() {
-        // When workspaceContext falls back to SHARED, command.username() is the authenticated user
-        // but branch and viewContext must be resolved via workspaceContext.username() ("system"),
-        // not via command.username() ("alice"), to keep repository scope consistent.
         AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(
                 "Need secure voice comms", false, 20, null,
                 "alice", WorkspaceContext.SHARED);
@@ -147,7 +145,6 @@ class AnalyzeRequirementUseCaseTest {
 
         when(llmService.analyzeWithBudget(command.businessText())).thenReturn(analysisResult);
         when(analysisRelationGenerator.generate(analysisResult.getScores())).thenReturn(List.of());
-        // Branch must be resolved from workspaceContext.username() = "system", not "alice"
         when(repositoryStateService.resolveWorkspaceBranch("system")).thenReturn("draft");
         when(repositoryStateService.getViewContext("system", "draft", WorkspaceContext.SHARED)).thenReturn(viewContext);
 

@@ -45,7 +45,7 @@ This document maps the Taxonomy Architecture Analyzer against the 8 architecture
 
 | Principle | Implementation in the Project | Status | Evidence |
 |---|---|---|---|
-| Build modular, reusable components | 4 Maven modules without cross-dependencies, 3 modules are Spring-free, pluggable LLM providers, pluggable database backends | ✅ Fulfilled | [Architecture — Module Architecture](ARCHITECTURE.md) |
+| Build modular, reusable components | 5 Maven modules without cross-dependencies, 4 modules are Spring-free, pluggable LLM providers, pluggable database backends | ✅ Fulfilled | [Architecture — Module Architecture](ARCHITECTURE.md) |
 
 ---
 

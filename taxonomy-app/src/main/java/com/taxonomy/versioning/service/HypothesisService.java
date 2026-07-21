@@ -1,12 +1,28 @@
 package com.taxonomy.versioning.service;
 
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
 import com.taxonomy.dto.RelationHypothesisDto;
+import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.mapper.ModelToAstMapper;
+import com.taxonomy.dsl.model.ArchitectureElement;
+import com.taxonomy.dsl.model.ArchitectureRelation;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.model.*;
+import com.taxonomy.dsl.validation.DslValidationResult;
+import com.taxonomy.dsl.validation.DslValidator;
+import com.taxonomy.model.HypothesisStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationEvidence;
+import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
-import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -14,32 +30,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
-import com.taxonomy.analysis.service.AnalysisRelationGenerator;
-import com.taxonomy.catalog.model.TaxonomyRelation;
-import com.taxonomy.catalog.service.TaxonomyRelationService;
-import com.taxonomy.model.HypothesisStatus;
-import com.taxonomy.model.RelationType;
-import com.taxonomy.relations.model.RelationEvidence;
-import com.taxonomy.relations.model.RelationHypothesis;
-import com.taxonomy.workspace.service.WorkspaceContext;
-import com.taxonomy.workspace.service.WorkspaceContextResolver;
 
 /**
- * Manages the lifecycle of relation hypotheses: persistence, acceptance, and rejection.
+ * Manages the lifecycle of relation hypotheses.
  *
- * <p>Bridges the gap between:
- * <ul>
- *   <li>{@link AnalysisRelationGenerator} which produces in-memory DTOs</li>
- *   <li>{@link RelationHypothesis} entities persisted in the database</li>
- *   <li>{@link TaxonomyRelation} entities created when hypotheses are accepted</li>
- *   <li>{@link DslGitRepository} for versioned DSL commits on the "draft" branch</li>
- * </ul>
- *
- * <p>When hypotheses are persisted from analysis, a DSL representation is
- * automatically generated and committed to the "draft" Git branch.
+ * <p>Every operation receives an explicit {@link WorkspaceContext}. Database
+ * visibility, mutations, evidence access, and generated Git commits therefore
+ * use the same workspace boundary and cannot silently fall back to another
+ * request's context.</p>
  */
 @Service
 public class HypothesisService {
@@ -50,55 +53,46 @@ public class HypothesisService {
     private final RelationEvidenceRepository evidenceRepository;
     private final TaxonomyRelationService relationService;
     private final TaxonomyNodeRepository nodeRepository;
-    private final DslGitRepository gitRepository;
-    private final WorkspaceContextResolver contextResolver;
+    private final DslGitRepositoryFactory repositoryFactory;
+
+    private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();
+    private final AstToModelMapper astToModelMapper = new AstToModelMapper();
+    private final TaxDslSerializer serializer = new TaxDslSerializer();
+    private final TaxDslParser parser = new TaxDslParser();
+    private final DslValidator validator = new DslValidator();
 
     public HypothesisService(RelationHypothesisRepository hypothesisRepository,
                              RelationEvidenceRepository evidenceRepository,
                              TaxonomyRelationService relationService,
                              TaxonomyNodeRepository nodeRepository,
-                             DslGitRepositoryFactory repositoryFactory,
-                             WorkspaceContextResolver contextResolver) {
+                             DslGitRepositoryFactory repositoryFactory) {
         this.hypothesisRepository = hypothesisRepository;
         this.evidenceRepository = evidenceRepository;
         this.relationService = relationService;
         this.nodeRepository = nodeRepository;
-        this.gitRepository = repositoryFactory.getSystemRepository();
-        this.contextResolver = contextResolver;
+        this.repositoryFactory = repositoryFactory;
     }
 
-    /**
-     * Persist provisional relation hypothesis DTOs (from analysis) to the database
-     * and commit a DSL representation to the "draft" Git branch.
-     *
-     * <p>Each DTO is saved as a {@link RelationHypothesis} entity with status
-     * {@link HypothesisStatus#PROVISIONAL}. Duplicates (same source+target+type
-     * within the same session) are skipped.
-     *
-     * <p>After persisting, a DSL document is generated from the hypotheses and
-     * committed to the "draft" branch in the JGit repository.
-     *
-     * @param hypotheses  the provisional hypotheses from analysis
-     * @param sessionId   unique identifier for the analysis session
-     * @return the persisted entities
-     */
+    /** Persist provisional hypotheses and version their canonical DSL in the same workspace. */
     @Transactional
     public List<RelationHypothesis> persistFromAnalysis(List<RelationHypothesisDto> hypotheses,
-                                                         String sessionId) {
+                                                         String sessionId,
+                                                         WorkspaceContext workspaceContext) {
         if (hypotheses == null || hypotheses.isEmpty()) {
             return List.of();
         }
-        final String effectiveSessionId = sessionId != null ? sessionId : UUID.randomUUID().toString();
+        WorkspaceContext effectiveContext = requireContext(workspaceContext);
+        String effectiveSessionId = sessionId != null ? sessionId : UUID.randomUUID().toString();
 
         List<RelationHypothesis> persisted = new ArrayList<>();
         for (RelationHypothesisDto dto : hypotheses) {
-            // Skip duplicates in the same session
+            RelationType relationType = RelationType.valueOf(dto.getRelationType());
             List<RelationHypothesis> existing = hypothesisRepository
                     .findBySourceNodeIdAndTargetNodeIdAndRelationType(
-                            dto.getSourceCode(), dto.getTargetCode(),
-                            RelationType.valueOf(dto.getRelationType()));
+                            dto.getSourceCode(), dto.getTargetCode(), relationType);
             boolean alreadyExists = existing.stream()
-                    .anyMatch(h -> effectiveSessionId.equals(h.getAnalysisSessionId()));
+                    .anyMatch(h -> effectiveSessionId.equals(h.getAnalysisSessionId())
+                            && sameWorkspace(h.getWorkspaceId(), effectiveContext.workspaceId()));
             if (alreadyExists) {
                 continue;
             }
@@ -106,19 +100,16 @@ public class HypothesisService {
             RelationHypothesis entity = new RelationHypothesis();
             entity.setSourceNodeId(dto.getSourceCode());
             entity.setTargetNodeId(dto.getTargetCode());
-            entity.setRelationType(RelationType.valueOf(dto.getRelationType()));
+            entity.setRelationType(relationType);
             entity.setConfidence(dto.getConfidence());
             entity.setStatus(HypothesisStatus.PROVISIONAL);
             entity.setAnalysisSessionId(effectiveSessionId);
-
-            WorkspaceContext ctx = contextResolver.resolveCurrentContext();
-            entity.setWorkspaceId(ctx.workspaceId());
-            entity.setOwnerUsername(ctx.username());
+            entity.setWorkspaceId(effectiveContext.workspaceId());
+            entity.setOwnerUsername(effectiveContext.username());
 
             RelationHypothesis saved = hypothesisRepository.save(entity);
             persisted.add(saved);
 
-            // Create evidence record from reasoning
             if (dto.getReasoning() != null && !dto.getReasoning().isBlank()) {
                 RelationEvidence evidence = new RelationEvidence();
                 evidence.setHypothesis(saved);
@@ -129,34 +120,18 @@ public class HypothesisService {
             }
         }
 
-        log.info("Persisted {} hypotheses for session {}", persisted.size(), effectiveSessionId);
-
-        // Generate DSL and commit to "draft" branch
         if (!persisted.isEmpty()) {
-            commitHypothesesAsDsl(persisted, effectiveSessionId);
+            commitHypothesesAsDsl(persisted, effectiveSessionId, effectiveContext);
         }
-
+        log.info("Persisted {} hypotheses for session {} in workspace {}",
+                persisted.size(), effectiveSessionId, effectiveContext.workspaceId());
         return persisted;
     }
 
-    /**
-     * Accept a hypothesis: creates a real {@link TaxonomyRelation} and marks the
-     * hypothesis as {@link HypothesisStatus#ACCEPTED}.
-     *
-     * <p>If the source or target nodes no longer exist in the taxonomy, the hypothesis
-     * is still marked as accepted but no relation is created.
-     *
-     * <p>After acceptance, a DSL commit is created on the "accepted" branch.
-     *
-     * @param hypothesisId the ID of the hypothesis to accept
-     * @return the accepted hypothesis entity
-     * @throws IllegalArgumentException if the hypothesis is not found
-     * @throws IllegalStateException if the hypothesis is not in PROVISIONAL or PROPOSED status
-     */
     @Transactional
-    public RelationHypothesis accept(Long hypothesisId) {
-        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)
-                .orElseThrow(() -> new IllegalArgumentException("Hypothesis not found: " + hypothesisId));
+    public RelationHypothesis accept(Long hypothesisId, WorkspaceContext workspaceContext) {
+        WorkspaceContext effectiveContext = requireContext(workspaceContext);
+        RelationHypothesis hypothesis = requireWritableHypothesis(hypothesisId, effectiveContext);
 
         if (hypothesis.getStatus() == HypothesisStatus.ACCEPTED) {
             throw new IllegalStateException("Hypothesis " + hypothesisId + " is already ACCEPTED");
@@ -165,20 +140,17 @@ public class HypothesisService {
             throw new IllegalStateException("Hypothesis " + hypothesisId + " is already REJECTED");
         }
 
-        // Create real TaxonomyRelation if both nodes exist
         boolean relationCreated = false;
         if (nodeRepository.findByCode(hypothesis.getSourceNodeId()).isPresent()
                 && nodeRepository.findByCode(hypothesis.getTargetNodeId()).isPresent()) {
-            // Use the hypothesis's stored workspace (not the current user's context)
-            String workspaceId = hypothesis.getWorkspaceId();
-            String ownerUsername = hypothesis.getOwnerUsername();
             relationService.createRelation(
                     hypothesis.getSourceNodeId(),
                     hypothesis.getTargetNodeId(),
                     hypothesis.getRelationType(),
                     "Accepted from hypothesis " + hypothesisId,
                     "hypothesis-accepted",
-                    workspaceId, ownerUsername);
+                    hypothesis.getWorkspaceId(),
+                    hypothesis.getOwnerUsername());
             relationCreated = true;
         } else {
             log.warn("Could not create relation for hypothesis {}: source or target node not found",
@@ -187,161 +159,190 @@ public class HypothesisService {
 
         hypothesis.setStatus(HypothesisStatus.ACCEPTED);
         hypothesisRepository.save(hypothesis);
+        commitHypothesesAsDsl(List.of(hypothesis), "accepted-" + hypothesisId, effectiveContext);
 
         log.info("Accepted hypothesis {}: {} --[{}]--> {} (relation created: {})",
-                hypothesisId, hypothesis.getSourceNodeId(),
-                hypothesis.getRelationType(), hypothesis.getTargetNodeId(),
-                relationCreated);
-
-        // Commit accepted relation as DSL to "accepted" branch
-        commitHypothesesAsDsl(List.of(hypothesis), "accepted-" + hypothesisId);
-
+                hypothesisId, hypothesis.getSourceNodeId(), hypothesis.getRelationType(),
+                hypothesis.getTargetNodeId(), relationCreated);
         return hypothesis;
     }
 
-    /**
-     * Reject a hypothesis.
-     *
-     * @param hypothesisId the ID of the hypothesis to reject
-     * @return the rejected hypothesis entity
-     */
     @Transactional
-    public RelationHypothesis reject(Long hypothesisId) {
-        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)
-                .orElseThrow(() -> new IllegalArgumentException("Hypothesis not found: " + hypothesisId));
-
+    public RelationHypothesis reject(Long hypothesisId, WorkspaceContext workspaceContext) {
+        RelationHypothesis hypothesis = requireWritableHypothesis(
+                hypothesisId, requireContext(workspaceContext));
         if (hypothesis.getStatus() == HypothesisStatus.ACCEPTED) {
             throw new IllegalStateException("Hypothesis " + hypothesisId + " is already ACCEPTED");
         }
         if (hypothesis.getStatus() == HypothesisStatus.REJECTED) {
             throw new IllegalStateException("Hypothesis " + hypothesisId + " is already REJECTED");
         }
-
         hypothesis.setStatus(HypothesisStatus.REJECTED);
-        hypothesisRepository.save(hypothesis);
-
-        log.info("Rejected hypothesis {}: {} --[{}]--> {}",
-                hypothesisId, hypothesis.getSourceNodeId(),
-                hypothesis.getRelationType(), hypothesis.getTargetNodeId());
-
-        return hypothesis;
+        return hypothesisRepository.save(hypothesis);
     }
 
-    /**
-     * Mark a hypothesis as "applied for this session only".
-     *
-     * <p>The relationship is used in the current Architecture View and exports
-     * but is not permanently persisted as a {@link TaxonomyRelation}.
-     */
     @Transactional
-    public RelationHypothesis applyForSession(Long hypothesisId) {
-        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)
-                .orElseThrow(() -> new IllegalArgumentException("Hypothesis not found: " + hypothesisId));
-
+    public RelationHypothesis applyForSession(Long hypothesisId, WorkspaceContext workspaceContext) {
+        RelationHypothesis hypothesis = requireWritableHypothesis(
+                hypothesisId, requireContext(workspaceContext));
         hypothesis.setAppliedInCurrentAnalysis(true);
-        hypothesisRepository.save(hypothesis);
-
-        log.info("Applied hypothesis {} for current session: {} --[{}]--> {}",
-                hypothesisId, hypothesis.getSourceNodeId(),
-                hypothesis.getRelationType(), hypothesis.getTargetNodeId());
-
-        return hypothesis;
+        return hypothesisRepository.save(hypothesis);
     }
 
-    /**
-     * List hypotheses by status, scoped to the current workspace.
-     */
     @Transactional(readOnly = true)
-    public List<RelationHypothesis> findByStatus(HypothesisStatus status) {
-        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
-        if (ctx.workspaceId() != null) {
-            return hypothesisRepository.findByStatusAndWorkspace(status, ctx.workspaceId());
+    public List<RelationHypothesis> findByStatus(HypothesisStatus status,
+                                                  WorkspaceContext workspaceContext) {
+        WorkspaceContext context = requireContext(workspaceContext);
+        if (context.workspaceId() == null) {
+            return hypothesisRepository.findByStatusAndWorkspaceIdIsNull(status);
         }
-        return hypothesisRepository.findByStatus(status);
+        return hypothesisRepository.findByStatusAndWorkspace(status, context.workspaceId());
     }
 
-    /**
-     * List all hypotheses, scoped to the current workspace.
-     */
     @Transactional(readOnly = true)
-    public List<RelationHypothesis> findAll() {
-        WorkspaceContext ctx = contextResolver.resolveCurrentContext();
-        if (ctx.workspaceId() != null) {
-            return hypothesisRepository.findByWorkspaceIdIsNullOrWorkspaceId(ctx.workspaceId());
+    public List<RelationHypothesis> findAll(WorkspaceContext workspaceContext) {
+        WorkspaceContext context = requireContext(workspaceContext);
+        if (context.workspaceId() == null) {
+            return hypothesisRepository.findByWorkspaceIdIsNull();
         }
-        return hypothesisRepository.findAll();
+        return hypothesisRepository.findByWorkspaceIdIsNullOrWorkspaceId(context.workspaceId());
     }
 
-    /**
-     * Find evidence records for a hypothesis.
-     */
     @Transactional(readOnly = true)
-    public List<RelationEvidence> findEvidence(Long hypothesisId) {
+    public List<RelationEvidence> findEvidence(Long hypothesisId,
+                                                WorkspaceContext workspaceContext) {
+        requireReadableHypothesis(hypothesisId, requireContext(workspaceContext));
         return evidenceRepository.findByHypothesisId(hypothesisId);
     }
 
-    // ── DSL generation + Git commit ─────────────────────────────────
+    private RelationHypothesis requireReadableHypothesis(Long hypothesisId,
+                                                          WorkspaceContext context) {
+        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)
+                .orElseThrow(() -> hypothesisNotFound(hypothesisId));
+        String hypothesisWorkspace = hypothesis.getWorkspaceId();
+        String currentWorkspace = context.workspaceId();
+        boolean visible = currentWorkspace == null
+                ? hypothesisWorkspace == null
+                : hypothesisWorkspace == null || currentWorkspace.equals(hypothesisWorkspace);
+        if (!visible) {
+            throw hypothesisNotFound(hypothesisId);
+        }
+        return hypothesis;
+    }
 
-    /**
-     * Generate DSL text from hypotheses and commit to the appropriate Git branch.
-     *
-     * <p>Provisional hypotheses go to "draft", accepted hypotheses go to "accepted".
-     */
-    private void commitHypothesesAsDsl(List<RelationHypothesis> hypotheses, String sessionId) {
+    private RelationHypothesis requireWritableHypothesis(Long hypothesisId,
+                                                          WorkspaceContext context) {
+        RelationHypothesis hypothesis = hypothesisRepository.findById(hypothesisId)
+                .orElseThrow(() -> hypothesisNotFound(hypothesisId));
+        if (!sameWorkspace(hypothesis.getWorkspaceId(), context.workspaceId())) {
+            // Hide the existence of hypotheses owned by another workspace.
+            throw hypothesisNotFound(hypothesisId);
+        }
+        return hypothesis;
+    }
+
+    private IllegalArgumentException hypothesisNotFound(Long hypothesisId) {
+        return new IllegalArgumentException("Hypothesis not found: " + hypothesisId);
+    }
+
+    private void commitHypothesesAsDsl(List<RelationHypothesis> hypotheses,
+                                        String sessionId,
+                                        WorkspaceContext context) {
+        String dslText = generateCanonicalDsl(hypotheses, sessionId);
+        String branch = hypotheses.stream()
+                .anyMatch(h -> h.getStatus() == HypothesisStatus.ACCEPTED)
+                ? "accepted" : "draft";
+        DslGitRepository repository = repositoryFactory.resolveRepository(context);
         try {
-            String dslText = generateDsl(hypotheses);
-            String branch = hypotheses.stream()
-                    .anyMatch(h -> h.getStatus() == HypothesisStatus.ACCEPTED)
-                    ? "accepted" : "draft";
-
-            String commitId = gitRepository.commitDsl(
-                    branch, dslText,
-                    "hypothesis-service",
+            String commitId = repository.commitDsl(
+                    branch,
+                    dslText,
+                    context.username() != null ? context.username() : "hypothesis-service",
                     "Auto-generated from analysis session " + sessionId);
-
-            log.info("Committed {} hypotheses as DSL to branch '{}': {}",
-                    hypotheses.size(), branch, commitId);
+            log.info("Committed {} hypotheses as canonical DSL to workspace {} branch '{}': {}",
+                    hypotheses.size(), context.workspaceId(), branch, commitId);
         } catch (IOException e) {
-            log.warn("Failed to commit hypotheses as DSL to Git: {}", e.getMessage());
-            // Non-fatal: DB persistence already succeeded
+            throw new IllegalStateException("Failed to commit canonical hypothesis DSL", e);
         }
     }
 
-    /**
-     * Generate DSL text from a list of hypotheses.
-     */
-    private String generateDsl(List<RelationHypothesis> hypotheses) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("meta\n");
-        sb.append("  language \"taxdsl\"\n");
-        sb.append("  version \"1.0\"\n");
-        sb.append("  namespace \"hypothesis-auto\"\n\n");
+    private String generateCanonicalDsl(List<RelationHypothesis> hypotheses, String sessionId) {
+        CanonicalArchitectureModel model = new CanonicalArchitectureModel();
+        Set<String> declaredElements = new LinkedHashSet<>();
 
-        // Track declared elements to avoid duplicates
-        java.util.Set<String> declaredElements = new java.util.LinkedHashSet<>();
+        for (RelationHypothesis hypothesis : hypotheses) {
+            addElement(model, declaredElements, hypothesis.getSourceNodeId());
+            addElement(model, declaredElements, hypothesis.getTargetNodeId());
 
-        for (RelationHypothesis h : hypotheses) {
-            // Element declarations for source and target (avoid duplicates)
-            if (declaredElements.add(h.getSourceNodeId())) {
-                sb.append("element ").append(h.getSourceNodeId()).append(" type Node\n");
-                sb.append("  title \"").append(h.getSourceNodeId()).append("\"\n\n");
-            }
-            if (declaredElements.add(h.getTargetNodeId())) {
-                sb.append("element ").append(h.getTargetNodeId()).append(" type Node\n");
-                sb.append("  title \"").append(h.getTargetNodeId()).append("\"\n\n");
-            }
-
-            // Relation declaration
-            sb.append("relation ").append(h.getSourceNodeId()).append(" ")
-                    .append(h.getRelationType().name()).append(" ")
-                    .append(h.getTargetNodeId()).append("\n");
-            sb.append("  status ").append(h.getStatus().name().toLowerCase()).append("\n");
-            if (h.getConfidence() > 0) {
-                sb.append("  confidence ").append(String.format(Locale.US, "%.2f", h.getConfidence())).append("\n");
-            }
-            sb.append("\n");
+            ArchitectureRelation relation = new ArchitectureRelation(
+                    hypothesis.getSourceNodeId(),
+                    hypothesis.getRelationType().name(),
+                    hypothesis.getTargetNodeId());
+            relation.setStatus(hypothesis.getStatus().name().toLowerCase(Locale.ROOT));
+            relation.setConfidence(hypothesis.getConfidence());
+            relation.setProvenance("analysis-session:" + sessionId);
+            model.getRelations().add(relation);
         }
 
-        return sb.toString();
+        assertValid(model, "generated hypothesis model");
+        String text = serializer.serialize(modelToAstMapper.toDocument(model, "hypothesis-auto"));
+
+        CanonicalArchitectureModel roundTripped = astToModelMapper.map(
+                parser.parse(text, "hypotheses.taxdsl"));
+        assertValid(roundTripped, "round-tripped hypothesis DSL");
+        if (roundTripped.getElements().size() != model.getElements().size()
+                || roundTripped.getRelations().size() != model.getRelations().size()) {
+            throw new IllegalStateException("Canonical hypothesis DSL round-trip lost elements or relations");
+        }
+        return text;
+    }
+
+    private void addElement(CanonicalArchitectureModel model,
+                            Set<String> declaredElements,
+                            String code) {
+        if (!declaredElements.add(code)) {
+            return;
+        }
+        TaxonomyNode node = nodeRepository.findByCode(code).orElse(null);
+        String root = resolveRoot(code, node);
+        ArchitectureElement element = new ArchitectureElement();
+        element.setId(code);
+        element.setType(TaxonomyRootTypes.typeFor(root));
+        element.setTaxonomy(root);
+        element.setTitle(node != null && node.getNameEn() != null && !node.getNameEn().isBlank()
+                ? node.getNameEn() : code);
+        if (node != null) {
+            element.setDescription(node.getDescriptionEn());
+        }
+        model.getElements().add(element);
+    }
+
+    private String resolveRoot(String code, TaxonomyNode node) {
+        if (node != null && node.getTaxonomyRoot() != null) {
+            return node.getTaxonomyRoot();
+        }
+        if (TaxonomyRootTypes.ROOT_TO_TYPE.containsKey(code)) {
+            return code;
+        }
+        String root = TaxonomyRootTypes.rootFromId(code);
+        return root != null ? root : "Unknown";
+    }
+
+    private void assertValid(CanonicalArchitectureModel model, String description) {
+        DslValidationResult result = validator.validate(model);
+        if (!result.isValid()) {
+            throw new IllegalStateException(description + " is invalid: " + result);
+        }
+        if (result.hasWarnings()) {
+            log.warn("{} contains validation warnings: {}", description, result.getWarnings());
+        }
+    }
+
+    private WorkspaceContext requireContext(WorkspaceContext context) {
+        return context != null ? context : WorkspaceContext.SHARED;
+    }
+
+    private static boolean sameWorkspace(String left, String right) {
+        return left == null ? right == null : left.equals(right);
     }
 }

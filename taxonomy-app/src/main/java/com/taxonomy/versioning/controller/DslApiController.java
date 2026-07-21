@@ -790,6 +790,10 @@ public class DslApiController {
         }
     }
 
+    private WorkspaceContext currentWorkspaceContext() {
+        return resolveWorkspaceContext(workspaceResolver.resolveCurrentUsername());
+    }
+
     private WorkspaceContext resolveWorkspaceContext(String username) {
         try {
             repositoryStateService.ensureWorkspaceState(username);
@@ -807,12 +811,10 @@ public class DslApiController {
     @Operation(summary = "List relation hypotheses, optionally filtered by status")
     public ResponseEntity<List<RelationHypothesis>> listHypotheses(
             @RequestParam(required = false) HypothesisStatus status) {
-        List<RelationHypothesis> result;
-        if (status != null) {
-            result = hypothesisService.findByStatus(status);
-        } else {
-            result = hypothesisService.findAll();
-        }
+        WorkspaceContext context = currentWorkspaceContext();
+        List<RelationHypothesis> result = status != null
+                ? hypothesisService.findByStatus(status, context)
+                : hypothesisService.findAll(context);
         return ResponseEntity.ok(result);
     }
 
@@ -821,7 +823,7 @@ public class DslApiController {
             description = "Promotes the hypothesis to an accepted TaxonomyRelation in the knowledge graph.")
     public ResponseEntity<Map<String, Object>> acceptHypothesis(@PathVariable Long id) {
         try {
-            RelationHypothesis accepted = hypothesisService.accept(id);
+            RelationHypothesis accepted = hypothesisService.accept(id, currentWorkspaceContext());
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", accepted.getId());
             result.put("status", accepted.getStatus().name());
@@ -842,7 +844,7 @@ public class DslApiController {
     @Operation(summary = "Reject a relation hypothesis")
     public ResponseEntity<Map<String, Object>> rejectHypothesis(@PathVariable Long id) {
         try {
-            RelationHypothesis rejected = hypothesisService.reject(id);
+            RelationHypothesis rejected = hypothesisService.reject(id, currentWorkspaceContext());
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", rejected.getId());
             result.put("status", rejected.getStatus().name());
@@ -862,7 +864,7 @@ public class DslApiController {
                     "but is not permanently persisted as a TaxonomyRelation.")
     public ResponseEntity<Map<String, Object>> applyHypothesisForSession(@PathVariable Long id) {
         try {
-            RelationHypothesis hypothesis = hypothesisService.applyForSession(id);
+            RelationHypothesis hypothesis = hypothesisService.applyForSession(id, currentWorkspaceContext());
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", hypothesis.getId());
             result.put("appliedInCurrentAnalysis", hypothesis.isAppliedInCurrentAnalysis());
@@ -877,7 +879,7 @@ public class DslApiController {
     @Operation(summary = "Get evidence records for a hypothesis")
     public ResponseEntity<?> getHypothesisEvidence(@PathVariable Long id) {
         try {
-            return ResponseEntity.ok(hypothesisService.findEvidence(id));
+            return ResponseEntity.ok(hypothesisService.findEvidence(id, currentWorkspaceContext()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         }

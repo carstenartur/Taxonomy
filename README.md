@@ -488,12 +488,12 @@ See also: [Security](docs/en/SECURITY.md), [Data Protection](docs/en/DATA_PROTEC
 |---|---|
 | **[BSI KI Checklist](docs/en/BSI_KI_CHECKLIST.md)** | BSI criteria checklist for AI models in federal administration |
 | **[AI Literacy Concept](docs/en/AI_LITERACY_CONCEPT.md)** | Training concept per EU AI Act Art. 4 (AI Literacy) |
-| **[Accessibility / BITV 2.0](docs/en/ACCESSIBILITY.md)** | BITV 2.0 / WCAG 2.1 accessibility concept and action plan |
+| **[Accessibility / BITV 2.0](docs/en/ACCESSIBILITY.md)** | Accessibility evidence matrix, automated axe gate, manual release checks, and known limitations |
 | **[Digital Sovereignty](docs/en/DIGITAL_SOVEREIGNTY.md)** | Digital sovereignty, openCode compatibility, DVC architecture |
 | **[Administration Integration](docs/en/VERWALTUNGSINTEGRATION.md)** | FIM / 115 / XÖV integration roadmap |
 
 **Key capabilities for government use:**
-- 🔒 **Air-gapped operation** — `LLM_PROVIDER=LOCAL_ONNX` for fully offline deployment
+- 🔒 **Local AI execution** — `LLM_PROVIDER=LOCAL_ONNX`; a fully network-isolated deployment additionally requires preloaded, checksummed models, local browser assets, disabled runtime downloads, and an outbound-network test
 - 🇪🇺 **EU data residency** — Mistral (France/EU) as cloud LLM alternative
 - 📋 **SBOM** — CycloneDX Software Bill of Materials generated at build time
 - 🏛️ **Open Source** — MIT license, full source code, no vendor lock-in
@@ -514,7 +514,7 @@ The repository contains research and archival metadata for Zenodo publication an
 | [`docs/research/evaluation.md`](docs/research/evaluation.md) | Suggested evaluation design, baselines, and metrics |
 | [`docs/research/reproducibility.md`](docs/research/reproducibility.md) | Reproducibility instructions for release-based research use |
 
-When a Zenodo DOI is minted for a release, cite the DOI for stable archival reference and use the GitHub repository for the active development version.
+For stable archival reference, cite the Zenodo DOI linked by the badge at the top of this README; use the GitHub repository for the active development version.
 
 ## Contributing
 
