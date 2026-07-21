@@ -12,14 +12,34 @@ def replace_exact(path: str, old: str, new: str, count: int = 1) -> None:
     file.write_text(text.replace(old, new, count), encoding="utf-8")
 
 
-replace_exact(
-    "taxonomy-app/src/test/java/com/taxonomy/dsl/DslApiControllerTest.java",
+dsl_test = Path("taxonomy-app/src/test/java/com/taxonomy/dsl/DslApiControllerTest.java")
+dsl_text = dsl_test.read_text(encoding="utf-8")
+annotation = '    @WithMockUser(username = "hypothesis-apply-user", roles = "ADMIN")\n'
+method_anchor = '    @Test\n    void applyHypothesisForSession() throws Exception {'
+if annotation not in dsl_text:
+    if method_anchor not in dsl_text:
+        raise SystemExit("DslApiControllerTest apply-session method anchor not found")
+    dsl_text = dsl_text.replace(
+        method_anchor,
+        '    @Test\n' + annotation + '    void applyHypothesisForSession() throws Exception {',
+        1,
+    )
+
+scope_anchor = (
     '        h.setAnalysisSessionId("session-apply-test");\n'
-    '        h = hypothesisRepository.save(h);',
-    '        h.setAnalysisSessionId("session-apply-test");\n'
-    '        scopeToCurrentWorkspace(h);\n'
     '        h = hypothesisRepository.save(h);'
 )
+if scope_anchor in dsl_text:
+    dsl_text = dsl_text.replace(
+        scope_anchor,
+        '        h.setAnalysisSessionId("session-apply-test");\n'
+        '        scopeToCurrentWorkspace(h);\n'
+        '        h = hypothesisRepository.save(h);',
+        1,
+    )
+elif '        scopeToCurrentWorkspace(h);\n        h = hypothesisRepository.save(h);' not in dsl_text:
+    raise SystemExit("DslApiControllerTest workspace scope anchor not found")
+dsl_test.write_text(dsl_text, encoding="utf-8")
 
 admin_test = Path("taxonomy-app/src/test/java/com/taxonomy/security/AdminAuthorizationRegressionTest.java")
 text = admin_test.read_text(encoding="utf-8")
@@ -40,26 +60,15 @@ if additional_imports not in text:
         raise SystemExit("AdminAuthorizationRegressionTest import anchor not found")
     text = text.replace(import_anchor, import_anchor + additional_imports, 1)
 
-old_method = '''    void formLoginSessionRequiresCsrfForStateChangingApiCalls() throws Exception {
-        MvcResult login = mockMvc.perform(formLogin().user("admin").password("admin"))
-                .andExpect(authenticated())
-                .andReturn();
-        MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
-
-        mockMvc.perform(post("/api/admin/verify")
-                        .session(session)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isForbidden());
-
-        mockMvc.perform(post("/api/admin/verify")
-                        .session(session)
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.valid").value(true));
-    }'''
+method_start = '    void formLoginSessionRequiresCsrfForStateChangingApiCalls() throws Exception {'
+start = text.find(method_start)
+if start < 0:
+    raise SystemExit("AdminAuthorizationRegressionTest method not found")
+end_marker = '\n    }'
+end = text.find(end_marker, start)
+if end < 0:
+    raise SystemExit("AdminAuthorizationRegressionTest method end not found")
+end += len(end_marker)
 new_method = '''    void formLoginSessionRequiresCsrfForStateChangingApiCalls() throws Exception {
         MockHttpSession session = new MockHttpSession();
         SecurityContext securityContext = SecurityContextHolder.createEmptyContext();
@@ -71,6 +80,7 @@ new_method = '''    void formLoginSessionRequiresCsrfForStateChangingApiCalls() 
 
         mockMvc.perform(post("/api/admin/verify")
                         .session(session)
+                        .with(csrf().useInvalidToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isForbidden());
@@ -83,11 +93,7 @@ new_method = '''    void formLoginSessionRequiresCsrfForStateChangingApiCalls() 
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(true));
     }'''
-if old_method not in text:
-    if 'HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY' not in text:
-        raise SystemExit("AdminAuthorizationRegressionTest method body not found")
-else:
-    text = text.replace(old_method, new_method, 1)
+text = text[:start] + new_method + text[end:]
 admin_test.write_text(text, encoding="utf-8")
 
 print("Applied final PR #406 test-fixture corrections")
