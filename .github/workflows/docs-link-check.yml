@@ -6,9 +6,7 @@ on:
     paths:
       - '**/*.md'
       - 'docs/images/**'
-      - 'taxonomy-app/src/main/resources/i18n/**'
       - '.github/scripts/check-doc-links.py'
-      - '.github/scripts/apply-qa-doc-corrections.py'
       - '.github/workflows/docs-link-check.yml'
   pull_request:
     branches: [ main ]
@@ -23,36 +21,8 @@ permissions:
   contents: read
 
 jobs:
-  apply-qa-doc-corrections:
-    name: Apply branch-local QA documentation migration
-    if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/qa/senior-architecture-ergonomics-hardening'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Apply idempotent corrections
-        run: python3 .github/scripts/apply-qa-doc-corrections.py
-      - name: Commit synchronized documentation
-        run: |
-          if git diff --quiet; then
-            echo "Documentation already synchronized."
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add README.md docs taxonomy-app/src/main/resources/i18n
-          git commit -m 'docs: synchronize QA hardening documentation'
-          git push
-
   check-doc-links:
     name: Check local documentation links and images
-    needs: [apply-qa-doc-corrections]
-    if: always() && (needs.apply-qa-doc-corrections.result == 'success' || needs.apply-qa-doc-corrections.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
