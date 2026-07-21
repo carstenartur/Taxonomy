@@ -1,6 +1,10 @@
 package com.taxonomy.architecture.report;
 
 import com.taxonomy.architecture.service.ArchitectureReportService;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -11,8 +15,7 @@ public class DocxReportRendererExtension implements ReportRendererExtension {
             "DOCX",
             "docx",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            true
-    );
+            true);
 
     private final ArchitectureReportService reportService;
 
