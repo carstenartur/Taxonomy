@@ -1,25 +1,30 @@
 package com.taxonomy.shared.controller;
 
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;
 import com.taxonomy.dto.AiStatusResponse;
-import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.shared.service.HealthSummaryService;
 import com.taxonomy.shared.service.LogRingBufferService;
 import com.taxonomy.shared.service.PromptTemplateService;
 import com.taxonomy.shared.service.PromptTemplateService.PromptCategory;
-import com.taxonomy.catalog.service.TaxonomyService;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,14 +41,11 @@ public class AdminApiController {
     private final LogRingBufferService logRingBufferService;
     private final HealthSummaryService healthSummaryService;
 
-    @Value("${admin.token:}")
-    private String adminPassword;
-
     public AdminApiController(LlmService llmService,
-                               PromptTemplateService promptTemplateService,
-                               TaxonomyService taxonomyService,
-                               LogRingBufferService logRingBufferService,
-                               HealthSummaryService healthSummaryService) {
+                              PromptTemplateService promptTemplateService,
+                              TaxonomyService taxonomyService,
+                              LogRingBufferService logRingBufferService,
+                              HealthSummaryService healthSummaryService) {
         this.llmService = llmService;
         this.promptTemplateService = promptTemplateService;
         this.taxonomyService = taxonomyService;
@@ -51,30 +53,31 @@ public class AdminApiController {
         this.healthSummaryService = healthSummaryService;
     }
 
-    @Operation(summary = "Check AI availability", description = "Returns whether an LLM provider is available and which one is active", tags = {"Administration"})
+    @Operation(summary = "Check AI availability",
+            description = "Returns whether an LLM provider is available and which one is active",
+            tags = {"Administration"})
     @GetMapping("/ai-status")
     public ResponseEntity<AiStatusResponse> aiStatus() {
         AiAvailabilityLevel level = llmService.getAvailabilityLevel();
         String provider = level != AiAvailabilityLevel.UNAVAILABLE
                 ? llmService.getActiveProviderName() : null;
-        List<String> availableProviders = llmService.getAvailableProviders();
-        return ResponseEntity.ok(new AiStatusResponse(level, provider, availableProviders));
+        return ResponseEntity.ok(new AiStatusResponse(level, provider, llmService.getAvailableProviders()));
     }
 
-    @Operation(summary = "Startup status", description = "Returns the initialization state of the taxonomy data. Poll this endpoint after receiving a 503 to know when the app is ready.", tags = {"Status"})
+    @Operation(summary = "Startup status",
+            description = "Returns the initialization state of the taxonomy data. Poll this endpoint after receiving a 503 to know when the app is ready.",
+            tags = {"Status"})
     @GetMapping("/status/startup")
     public ResponseEntity<Map<String, Object>> startupStatus() {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("initialized", taxonomyService.isInitialized());
         status.put("status", taxonomyService.getInitStatus());
 
-        // Phase details from AppInitializationStateService
         com.taxonomy.shared.service.AppInitializationStateService stateService = taxonomyService.getStateService();
         status.put("phase", stateService.getState().name());
         status.put("phaseMessage", stateService.getMessage());
         status.put("phaseUpdatedAt", stateService.getUpdatedAt().toString());
 
-        // Memory info
         Runtime rt = Runtime.getRuntime();
         long heapUsed = rt.totalMemory() - rt.freeMemory();
         long heapMax = rt.maxMemory();
@@ -88,39 +91,56 @@ public class AdminApiController {
         return ResponseEntity.ok(status);
     }
 
-    @Operation(summary = "Get LLM diagnostics", description = "Returns diagnostic information about the LLM provider (admin-only)", tags = {"Administration"})
-    @ApiResponse(responseCode = "401", description = "Not authorized — admin password required")
+    @Operation(summary = "Get LLM diagnostics",
+            description = "Returns diagnostic information about the LLM provider (ROLE_ADMIN only)",
+            tags = {"Administration"})
+    @ApiResponse(responseCode = "403", description = "ROLE_ADMIN required")
     @GetMapping("/diagnostics")
     public ResponseEntity<Map<String, Object>> diagnostics(HttpServletRequest request) {
         if (!isAdminAuthorized(request)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         return ResponseEntity.ok(llmService.getDiagnostics());
     }
 
-    @Operation(summary = "Check admin status", description = "Returns whether the admin password is required", tags = {"Administration"})
+    @Operation(summary = "Check admin UI authorization",
+            description = "Returns whether the authenticated user must remain outside the admin UI",
+            tags = {"Administration"})
     @GetMapping("/admin/status")
-    public ResponseEntity<Map<String, Boolean>> adminStatus() {
-        boolean required = adminPassword != null && !adminPassword.isBlank();
-        return ResponseEntity.ok(Map.of("passwordRequired", required));
+    public ResponseEntity<Map<String, Boolean>> adminStatus(HttpServletRequest request) {
+        return ResponseEntity.ok(Map.of("passwordRequired", !isAdminAuthorized(request)));
     }
 
-    @Operation(summary = "Verify admin password", description = "Validates the admin password", tags = {"Administration"})
+    /**
+     * Backward-compatible endpoint for the existing admin modal. Authorization is
+     * derived exclusively from the authenticated ROLE_ADMIN identity; a second
+     * application password is intentionally not accepted.
+     */
+    @Operation(summary = "Verify admin authorization",
+            description = "Confirms whether the authenticated user has ROLE_ADMIN",
+            tags = {"Administration"})
     @PostMapping("/admin/verify")
-    public ResponseEntity<Map<String, Boolean>> verifyAdmin(@RequestBody Map<String, String> body) {
-        String password = body.get("password");
-        boolean valid = adminPassword != null && !adminPassword.isBlank()
-                && constantTimeEquals(adminPassword, password);
-        return ResponseEntity.ok(Map.of("valid", valid));
+    public ResponseEntity<Map<String, Object>> verifyAdmin(
+            @RequestBody(required = false) Map<String, String> ignoredBody,
+            HttpServletRequest request) {
+        boolean valid = isAdminAuthorized(request);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("valid", valid);
+        if (valid) {
+            // Kept only for compatibility with older UI code. The server never
+            // trusts this value; every protected request is authorized by ROLE_ADMIN.
+            response.put("token", "role-admin");
+        }
+        return ResponseEntity.ok(response);
     }
 
-    // ── Prompt template endpoints ──────────────────────────────────────────────
-
-    @Operation(summary = "List all prompt templates", description = "Returns all prompt templates (admin-only)", tags = {"Administration"})
+    @Operation(summary = "List all prompt templates",
+            description = "Returns all prompt templates (ROLE_ADMIN only)",
+            tags = {"Administration"})
     @GetMapping("/prompts")
     public ResponseEntity<List<Map<String, Object>>> getAllPrompts(HttpServletRequest request) {
         if (!isAdminAuthorized(request)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         List<Map<String, Object>> result = new ArrayList<>();
         for (String code : promptTemplateService.getAllTemplateCodes()) {
@@ -134,12 +154,15 @@ public class AdminApiController {
         return ResponseEntity.ok(result);
     }
 
-    @Operation(summary = "Get prompt template", description = "Returns a specific prompt template by code (admin-only)", tags = {"Administration"})
+    @Operation(summary = "Get prompt template",
+            description = "Returns a specific prompt template by code (ROLE_ADMIN only)",
+            tags = {"Administration"})
     @GetMapping("/prompts/{code}")
-    public ResponseEntity<Map<String, Object>> getPrompt(@Parameter(description = "Template code") @PathVariable String code,
+    public ResponseEntity<Map<String, Object>> getPrompt(
+            @Parameter(description = "Template code") @PathVariable String code,
             HttpServletRequest request) {
         if (!isAdminAuthorized(request)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("code", code);
@@ -150,48 +173,47 @@ public class AdminApiController {
         return ResponseEntity.ok(result);
     }
 
-    @Operation(summary = "Update prompt template", description = "Overrides a prompt template (admin-only)", tags = {"Administration"})
+    @Operation(summary = "Update prompt template",
+            description = "Overrides a prompt template (ROLE_ADMIN only)",
+            tags = {"Administration"})
     @PutMapping("/prompts/{code}")
     public ResponseEntity<Map<String, Object>> savePrompt(
             @PathVariable String code,
             @RequestBody Map<String, String> body,
             HttpServletRequest request) {
         if (!isAdminAuthorized(request)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         String template = body.get("template");
         if (template == null) {
             return ResponseEntity.badRequest().build();
         }
         promptTemplateService.setTemplate(code, template);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("code", code);
-        result.put("overridden", true);
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(Map.of("code", code, "overridden", true));
     }
 
-    @Operation(summary = "Reset prompt template", description = "Resets a prompt template to its default (admin-only)", tags = {"Administration"})
+    @Operation(summary = "Reset prompt template",
+            description = "Resets a prompt template to its default (ROLE_ADMIN only)",
+            tags = {"Administration"})
     @DeleteMapping("/prompts/{code}")
-    public ResponseEntity<Map<String, Object>> resetPrompt(@PathVariable String code,
+    public ResponseEntity<Map<String, Object>> resetPrompt(
+            @PathVariable String code,
             HttpServletRequest request) {
         if (!isAdminAuthorized(request)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         promptTemplateService.resetTemplate(code);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("code", code);
-        result.put("overridden", false);
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(Map.of("code", code, "overridden", false));
     }
 
     @Operation(summary = "List prompt templates by category",
-               description = "Returns all prompt templates grouped by category (admin-only)",
-               tags = {"Administration"})
+            description = "Returns all prompt templates grouped by category (ROLE_ADMIN only)",
+            tags = {"Administration"})
     @GetMapping("/prompts/categories")
     public ResponseEntity<Map<String, List<Map<String, Object>>>> getPromptsByCategory(
             HttpServletRequest request) {
         if (!isAdminAuthorized(request)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         Map<String, List<Map<String, Object>>> categorized = new LinkedHashMap<>();
         for (PromptCategory category : PromptCategory.values()) {
@@ -209,11 +231,9 @@ public class AdminApiController {
         return ResponseEntity.ok(categorized);
     }
 
-    // ── Admin health dashboard & log viewer ──────────────────────────────────
-
     @Operation(summary = "Get recent log entries",
-               description = "Returns recent application log entries from the in-memory ring buffer (admin-only)",
-               tags = {"Administration"})
+            description = "Returns recent application log entries from the in-memory ring buffer (ROLE_ADMIN only)",
+            tags = {"Administration"})
     @GetMapping("/admin/logs")
     public ResponseEntity<List<LogRingBufferService.LogEntry>> getLogs(
             @Parameter(description = "Filter by log level (e.g. ERROR, WARN, INFO)")
@@ -224,45 +244,23 @@ public class AdminApiController {
             @RequestParam(defaultValue = "100") int limit,
             HttpServletRequest request) {
         if (!isAdminAuthorized(request)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         return ResponseEntity.ok(logRingBufferService.getEntries(level, component, Math.min(limit, 500)));
     }
 
     @Operation(summary = "Get health summary",
-               description = "Aggregated health status from startup, AI, embedding, and memory subsystems (admin-only)",
-               tags = {"Administration"})
+            description = "Aggregated health status from startup, AI, embedding, and memory subsystems (ROLE_ADMIN only)",
+            tags = {"Administration"})
     @GetMapping("/admin/health-summary")
     public ResponseEntity<Map<String, Object>> getHealthSummary(HttpServletRequest request) {
         if (!isAdminAuthorized(request)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         return ResponseEntity.ok(healthSummaryService.getSummary());
     }
 
-    // ── Admin authorization helper ────────────────────────────────────────────
-
-    /**
-     * Returns {@code true} if the request is authorized to access admin-only endpoints.
-     * Authorization is granted when no admin password is configured (backward compatible),
-     * or when the {@code X-Admin-Token} header matches the configured password.
-     */
     private boolean isAdminAuthorized(HttpServletRequest request) {
-        if (adminPassword == null || adminPassword.isBlank()) {
-            return true;
-        }
-        String token = request.getHeader("X-Admin-Token");
-        return constantTimeEquals(adminPassword, token);
-    }
-
-    /**
-     * Compares two strings using a constant-time algorithm to mitigate timing attacks.
-     */
-    private static boolean constantTimeEquals(String a, String b) {
-        if (a == null || b == null) {
-            return false;
-        }
-        return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8),
-                b.getBytes(StandardCharsets.UTF_8));
+        return request.isUserInRole("ADMIN") || request.isUserInRole("ROLE_ADMIN");
     }
 }
