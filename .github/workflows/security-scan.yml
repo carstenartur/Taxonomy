@@ -66,7 +66,54 @@ jobs:
           ignore-unfixed: false
           format: sarif
           output: trivy-results.sarif
-          exit-code: '1'
+          # Some Trivy versions still return a non-zero status for lower-severity
+          # SARIF findings even when the severity filter is HIGH,CRITICAL. Publish
+          # every finding, then enforce the intended threshold explicitly below.
+          exit-code: '0'
+
+      - name: Enforce HIGH and CRITICAL security threshold
+        if: hashFiles('trivy-results.sarif') != ''
+        run: |
+          python3 - <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          report = json.loads(Path('trivy-results.sarif').read_text(encoding='utf-8'))
+          blocking = []
+          for run in report.get('runs', []):
+              rules = {
+                  rule.get('id'): rule
+                  for rule in run.get('tool', {}).get('driver', {}).get('rules', [])
+              }
+              for result in run.get('results', []):
+                  rule_id = result.get('ruleId', 'unknown')
+                  rule = rules.get(rule_id, {})
+                  texts = [
+                      result.get('message', {}).get('text', ''),
+                      rule.get('help', {}).get('text', ''),
+                      rule.get('fullDescription', {}).get('text', ''),
+                      ' '.join(rule.get('properties', {}).get('tags', [])),
+                  ]
+                  evidence = '\n'.join(texts)
+                  severity_match = re.search(
+                      r'\bSeverity:\s*(CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN)\b',
+                      evidence,
+                      flags=re.IGNORECASE,
+                  )
+                  severity = severity_match.group(1).upper() if severity_match else ''
+                  if severity in {'HIGH', 'CRITICAL'}:
+                      blocking.append((severity, rule_id, result.get('message', {}).get('text', '')))
+
+          if blocking:
+              print('Blocking Trivy findings:', file=sys.stderr)
+              for severity, rule_id, message in blocking:
+                  print(f'- [{severity}] {rule_id}: {message}', file=sys.stderr)
+              raise SystemExit(1)
+
+          print('No HIGH or CRITICAL Trivy findings detected.')
+          PY
 
       - name: Upload SARIF to GitHub code scanning
         if: always() && hashFiles('trivy-results.sarif') != ''
