@@ -1,0 +1,38 @@
+name: Apply Final Documentation Alignment
+
+on:
+  push:
+    branches: [ qa/complete-open-points ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: taxonomy-final-doc-alignment
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: hashFiles('.github/scripts/apply-final-doc-alignment.py') != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: qa/complete-open-points
+          fetch-depth: 0
+      - name: Apply reviewed EN/DE documentation alignment
+        run: python3 .github/scripts/apply-final-doc-alignment.py
+      - name: Validate resulting documentation
+        run: |
+          git diff --check
+          python3 .github/scripts/check-doc-links.py
+      - name: Remove one-time workflow and commit documentation
+        run: |
+          rm -f .github/workflows/apply-final-doc-alignment.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --staged --quiet && exit 0
+          git commit -m 'docs: align testing and persistence references with runtime'
+          git push origin HEAD:qa/complete-open-points
