@@ -1,16 +1,16 @@
-﻿/**
+/**
  * Shared utility and accessibility functions for the Taxonomy UI.
  *
- * Include this script before the feature modules so escaping, consistent
- * dialogs, navigation semantics and dynamic ARIA synchronization are available
+ * Loaded before feature modules so escaping, navigation semantics, application
+ * dialogs, code suggestions and dynamic ARIA synchronization are available
  * application-wide.
  */
 window.TaxonomyUtils = (function () {
     'use strict';
 
-    function escapeHtml(s) {
-        if (!s) return '';
-        return String(s)
+    function escapeHtml(value) {
+        if (!value) return '';
+        return String(value)
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
@@ -18,9 +18,9 @@ window.TaxonomyUtils = (function () {
             .replace(/'/g, '&#39;');
     }
 
-    function stripHtml(s) {
-        if (!s) return '';
-        var doc = new DOMParser().parseFromString(String(s), 'text/html');
+    function stripHtml(value) {
+        if (!value) return '';
+        var doc = new DOMParser().parseFromString(String(value), 'text/html');
         return doc.body.textContent || '';
     }
 
@@ -37,18 +37,17 @@ window.TaxonomyUtils = (function () {
         document.head.appendChild(link);
     }
 
-    // ── Bootstrap lifecycle attributes ────────────────────────────────────
-    document.addEventListener('shown.bs.modal', function (e) {
-        e.target.setAttribute('data-modal-visible', 'true');
+    document.addEventListener('shown.bs.modal', function (event) {
+        event.target.setAttribute('data-modal-visible', 'true');
     }, true);
-    document.addEventListener('hidden.bs.modal', function (e) {
-        e.target.setAttribute('data-modal-visible', 'false');
+    document.addEventListener('hidden.bs.modal', function (event) {
+        event.target.setAttribute('data-modal-visible', 'false');
     }, true);
-    document.addEventListener('shown.bs.toast', function (e) {
-        e.target.setAttribute('data-toast-visible', 'true');
+    document.addEventListener('shown.bs.toast', function (event) {
+        event.target.setAttribute('data-toast-visible', 'true');
     }, true);
-    document.addEventListener('hidden.bs.toast', function (e) {
-        e.target.setAttribute('data-toast-visible', 'false');
+    document.addEventListener('hidden.bs.toast', function (event) {
+        event.target.setAttribute('data-toast-visible', 'false');
     }, true);
 
     // ── Main navigation semantics ─────────────────────────────────────────
@@ -59,10 +58,10 @@ window.TaxonomyUtils = (function () {
         tabList.setAttribute('aria-label', currentLanguage() === 'de'
             ? 'Hauptbereiche' : 'Main sections');
 
-        var links = Array.from(tabList.querySelectorAll('.nav-link[data-page]'));
-        links.forEach(function (link) {
+        Array.from(tabList.querySelectorAll('.nav-link[data-page]')).forEach(function (link) {
             var page = link.getAttribute('data-page');
             var active = link.classList.contains('active');
+            if (!link.id) link.id = 'main-tab-' + page;
             link.setAttribute('role', 'tab');
             link.setAttribute('aria-selected', active ? 'true' : 'false');
             link.setAttribute('aria-controls', 'tab-' + page);
@@ -70,8 +69,7 @@ window.TaxonomyUtils = (function () {
             var pane = document.getElementById('tab-' + page);
             if (pane) {
                 pane.setAttribute('role', 'tabpanel');
-                pane.setAttribute('aria-labelledby', link.id || 'main-tab-' + page);
-                if (!link.id) link.id = 'main-tab-' + page;
+                pane.setAttribute('aria-labelledby', link.id);
             }
         });
     }
@@ -84,9 +82,8 @@ window.TaxonomyUtils = (function () {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
             var tabs = Array.from(tabList.querySelectorAll('.nav-link[data-page]'))
                 .filter(function (tab) { return tab.offsetParent !== null; });
-            if (!tabs.length) return;
             var current = tabs.indexOf(document.activeElement);
-            if (current < 0) return;
+            if (!tabs.length || current < 0) return;
             event.preventDefault();
             var next;
             if (event.key === 'Home') next = 0;
@@ -109,16 +106,19 @@ window.TaxonomyUtils = (function () {
         if (!item || item.getAttribute('role') !== 'treeitem') return;
         var code = item.querySelector(':scope > .tax-node-header .tax-code');
         var name = item.querySelector(':scope > .tax-node-header .tax-name');
-        var pct = item.querySelector(':scope > .tax-node-header .tax-pct');
+        var score = item.querySelector(':scope > .tax-node-header .tax-pct');
         var reason = item.querySelector(':scope > .tax-node-header .tax-reason-icon');
         var parts = [];
         if (code) parts.push(code.textContent.trim());
         if (name) parts.push(name.textContent.trim());
-        if (pct) parts.push((currentLanguage() === 'de' ? 'Relevanz ' : 'Relevance ') + pct.textContent.trim());
+        if (score) parts.push((currentLanguage() === 'de' ? 'Relevanz ' : 'Relevance ') + score.textContent.trim());
         if (reason && reason.title) {
             parts.push((currentLanguage() === 'de' ? 'Begründung: ' : 'Reason: ') + reason.title);
         }
-        if (parts.length) item.setAttribute('aria-label', parts.join(', '));
+        var label = parts.join(', ');
+        if (label && item.getAttribute('aria-label') !== label) {
+            item.setAttribute('aria-label', label);
+        }
     }
 
     function installTreeAccessibilityObserver() {
@@ -127,22 +127,67 @@ window.TaxonomyUtils = (function () {
         tree.dataset.a11yObserved = 'true';
         var syncAll = function () {
             tree.querySelectorAll('[role="treeitem"]').forEach(syncTreeItemAccessibility);
+            refreshNodeCodeSuggestions();
         };
         new MutationObserver(function (mutations) {
             mutations.forEach(function (mutation) {
-                var item = mutation.target.nodeType === Node.ELEMENT_NODE
-                    ? mutation.target.closest('[role="treeitem"]')
-                    : mutation.target.parentElement && mutation.target.parentElement.closest('[role="treeitem"]');
+                var element = mutation.target.nodeType === Node.ELEMENT_NODE
+                    ? mutation.target
+                    : mutation.target.parentElement;
+                var item = element && element.closest ? element.closest('[role="treeitem"]') : null;
                 if (item) syncTreeItemAccessibility(item);
                 mutation.addedNodes.forEach(function (node) {
                     if (node.nodeType !== Node.ELEMENT_NODE) return;
-                    if (node.matches && node.matches('[role="treeitem"]')) syncTreeItemAccessibility(node);
-                    if (node.querySelectorAll) node.querySelectorAll('[role="treeitem"]').forEach(syncTreeItemAccessibility);
+                    if (node.matches('[role="treeitem"]')) syncTreeItemAccessibility(node);
+                    node.querySelectorAll('[role="treeitem"]').forEach(syncTreeItemAccessibility);
                 });
             });
-        }).observe(tree, { subtree: true, childList: true, characterData: true, attributes: true });
+            refreshNodeCodeSuggestions();
+        }).observe(tree, {
+            subtree: true,
+            childList: true,
+            characterData: true,
+            attributes: true,
+            attributeFilter: ['title', 'class']
+        });
         document.addEventListener('taxonomy:view-rendered', syncAll);
         syncAll();
+    }
+
+    // ── Recognition instead of recall for taxonomy codes ─────────────────
+    function ensureNodeCodeDatalist() {
+        var list = document.getElementById('taxonomyNodeCodeOptions');
+        if (list) return list;
+        list = document.createElement('datalist');
+        list.id = 'taxonomyNodeCodeOptions';
+        document.body.appendChild(list);
+        return list;
+    }
+
+    function refreshNodeCodeSuggestions() {
+        var tree = document.getElementById('taxonomyTree');
+        if (!tree) return;
+        var entries = new Map();
+        tree.querySelectorAll('.tax-node[data-code]').forEach(function (node) {
+            var code = node.dataset.code;
+            var name = node.querySelector(':scope > .tax-node-header .tax-name');
+            if (code) entries.set(code, name ? name.textContent.trim() : '');
+        });
+        if (!entries.size) return;
+        var list = ensureNodeCodeDatalist();
+        list.replaceChildren();
+        Array.from(entries.entries())
+            .sort(function (left, right) { return left[0].localeCompare(right[0]); })
+            .forEach(function (entry) {
+                var option = document.createElement('option');
+                option.value = entry[0];
+                option.label = entry[1];
+                list.appendChild(option);
+            });
+        ['newRelSource', 'newRelTarget', 'graphNodeInput'].forEach(function (id) {
+            var input = document.getElementById(id);
+            if (input) input.setAttribute('list', list.id);
+        });
     }
 
     // ── Accessible application dialogs ────────────────────────────────────
@@ -154,7 +199,7 @@ window.TaxonomyUtils = (function () {
         dialog.className = 'taxonomy-accessible-dialog';
         dialog.setAttribute('aria-labelledby', 'taxonomyAccessibleDialogTitle');
         dialog.innerHTML =
-            '<form method="dialog">' +
+            '<form novalidate>' +
             '<h2 id="taxonomyAccessibleDialogTitle" class="h5"></h2>' +
             '<div id="taxonomyAccessibleDialogMessage" class="mb-3"></div>' +
             '<div id="taxonomyAccessibleDialogField" class="mb-3 d-none">' +
@@ -163,22 +208,34 @@ window.TaxonomyUtils = (function () {
             '<div id="taxonomyAccessibleDialogError" class="text-danger small mt-1" role="alert"></div>' +
             '</div>' +
             '<div class="d-flex justify-content-end gap-2">' +
-            '<button id="taxonomyAccessibleDialogCancel" value="cancel" class="btn btn-outline-secondary"></button>' +
-            '<button id="taxonomyAccessibleDialogConfirm" value="confirm" class="btn btn-primary"></button>' +
+            '<button id="taxonomyAccessibleDialogCancel" type="button" class="btn btn-outline-secondary"></button>' +
+            '<button id="taxonomyAccessibleDialogConfirm" type="submit" class="btn btn-primary"></button>' +
             '</div></form>';
         document.body.appendChild(dialog);
         return dialog;
     }
 
+    function resetDialogHandlers(dialog) {
+        var form = dialog.querySelector('form');
+        var replacement = form.cloneNode(true);
+        form.replaceWith(replacement);
+        return replacement;
+    }
+
     function showMessage(message, title) {
         var dialog = ensureDialog();
-        dialog.querySelector('#taxonomyAccessibleDialogTitle').textContent = title ||
+        var form = resetDialogHandlers(dialog);
+        form.querySelector('#taxonomyAccessibleDialogTitle').textContent = title ||
             (currentLanguage() === 'de' ? 'Hinweis' : 'Notice');
-        dialog.querySelector('#taxonomyAccessibleDialogMessage').textContent = String(message || '');
-        dialog.querySelector('#taxonomyAccessibleDialogField').classList.add('d-none');
-        dialog.querySelector('#taxonomyAccessibleDialogCancel').classList.add('d-none');
-        var confirm = dialog.querySelector('#taxonomyAccessibleDialogConfirm');
+        form.querySelector('#taxonomyAccessibleDialogMessage').textContent = String(message || '');
+        form.querySelector('#taxonomyAccessibleDialogField').classList.add('d-none');
+        form.querySelector('#taxonomyAccessibleDialogCancel').classList.add('d-none');
+        var confirm = form.querySelector('#taxonomyAccessibleDialogConfirm');
         confirm.textContent = 'OK';
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            dialog.close('confirm');
+        });
         dialog.showModal();
         confirm.focus();
     }
@@ -186,42 +243,43 @@ window.TaxonomyUtils = (function () {
     function requestScore(code) {
         return new Promise(function (resolve) {
             var dialog = ensureDialog();
+            var form = resetDialogHandlers(dialog);
             var lang = currentLanguage();
-            var input = dialog.querySelector('#taxonomyAccessibleDialogInput');
-            var error = dialog.querySelector('#taxonomyAccessibleDialogError');
-            var cancel = dialog.querySelector('#taxonomyAccessibleDialogCancel');
-            var confirm = dialog.querySelector('#taxonomyAccessibleDialogConfirm');
-            dialog.querySelector('#taxonomyAccessibleDialogTitle').textContent = lang === 'de'
+            var input = form.querySelector('#taxonomyAccessibleDialogInput');
+            var error = form.querySelector('#taxonomyAccessibleDialogError');
+            var cancel = form.querySelector('#taxonomyAccessibleDialogCancel');
+            var confirm = form.querySelector('#taxonomyAccessibleDialogConfirm');
+            form.querySelector('#taxonomyAccessibleDialogTitle').textContent = lang === 'de'
                 ? 'Relevanz manuell setzen' : 'Set relevance manually';
-            dialog.querySelector('#taxonomyAccessibleDialogMessage').textContent = code;
-            dialog.querySelector('#taxonomyAccessibleDialogLabel').textContent = lang === 'de'
+            form.querySelector('#taxonomyAccessibleDialogMessage').textContent = code;
+            form.querySelector('#taxonomyAccessibleDialogLabel').textContent = lang === 'de'
                 ? 'Relevanzwert von 0 bis 100' : 'Relevance score from 0 to 100';
-            dialog.querySelector('#taxonomyAccessibleDialogField').classList.remove('d-none');
+            form.querySelector('#taxonomyAccessibleDialogField').classList.remove('d-none');
             cancel.classList.remove('d-none');
             cancel.textContent = lang === 'de' ? 'Abbrechen' : 'Cancel';
             confirm.textContent = lang === 'de' ? 'Übernehmen' : 'Apply';
             input.value = '';
             error.textContent = '';
 
-            var closeHandler = function () {
-                dialog.removeEventListener('close', closeHandler);
-                if (dialog.returnValue !== 'confirm') {
-                    resolve(null);
-                    return;
-                }
+            cancel.addEventListener('click', function () {
+                dialog.close('cancel');
+                resolve(null);
+            }, { once: true });
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
                 var value = Number.parseInt(input.value, 10);
                 if (!Number.isInteger(value) || value < 0 || value > 100) {
                     error.textContent = lang === 'de'
                         ? 'Bitte einen ganzzahligen Wert zwischen 0 und 100 eingeben.'
                         : 'Enter an integer between 0 and 100.';
-                    dialog.showModal();
+                    input.setAttribute('aria-invalid', 'true');
                     input.focus();
-                    dialog.addEventListener('close', closeHandler, { once: true });
                     return;
                 }
+                input.removeAttribute('aria-invalid');
+                dialog.close('confirm');
                 resolve(value);
-            };
-            dialog.addEventListener('close', closeHandler, { once: true });
+            });
             dialog.showModal();
             input.focus();
         });
@@ -262,7 +320,6 @@ window.TaxonomyUtils = (function () {
         installMainNavigationKeyboardSupport();
         installTreeAccessibilityObserver();
         installManualScoreDialog();
-        // Replace blocking browser alerts with the same accessible application dialog.
         window.alert = function (message) { showMessage(message); };
     }
 
@@ -277,6 +334,7 @@ window.TaxonomyUtils = (function () {
         stripHtml: stripHtml,
         showMessage: showMessage,
         requestScore: requestScore,
-        syncTreeItemAccessibility: syncTreeItemAccessibility
+        syncTreeItemAccessibility: syncTreeItemAccessibility,
+        refreshNodeCodeSuggestions: refreshNodeCodeSuggestions
     };
 })();
