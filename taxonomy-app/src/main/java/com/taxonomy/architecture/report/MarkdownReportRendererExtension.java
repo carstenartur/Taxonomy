@@ -1,6 +1,10 @@
 package com.taxonomy.architecture.report;
 
 import com.taxonomy.architecture.service.ArchitectureReportService;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -9,12 +13,7 @@ import java.nio.charset.StandardCharsets;
 public class MarkdownReportRendererExtension implements ReportRendererExtension {
 
     private static final ReportFormatDescriptor DESCRIPTOR = new ReportFormatDescriptor(
-            "markdown",
-            "Markdown",
-            "md",
-            "text/markdown; charset=UTF-8",
-            false
-    );
+            "markdown", "Markdown", "md", "text/markdown; charset=UTF-8", false);
 
     private final ArchitectureReportService reportService;
 
