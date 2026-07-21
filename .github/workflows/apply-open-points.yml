@@ -37,7 +37,8 @@ jobs:
           status=$?
           cat /tmp/apply-open-points.log
           if [ "$status" -ne 0 ]; then
-            cp /tmp/apply-open-points.log .github/apply-open-points-error.log
+            printf 'run=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .github/apply-open-points-error.log
+            cat /tmp/apply-open-points.log >> .github/apply-open-points-error.log
             git add .github/apply-open-points-error.log
             git commit -m 'chore: record QA migration diagnostic'
             git push origin HEAD:qa/complete-open-points
@@ -55,9 +56,20 @@ jobs:
           PY
           git diff --check
 
-      - name: Commit final branch state
+      - name: Commit code, docs, and staged workflow payloads
         run: |
           rm -f .github/apply-open-points-error.log
+          mkdir -p .github/generated-workflows
+          for workflow in \
+            ci-cd.yml \
+            ui-acceptance.yml \
+            accessibility.yml \
+            database-compatibility.yml \
+            documentation-screenshots.yml; do
+            cp ".github/workflows/${workflow}" ".github/generated-workflows/${workflow}"
+          done
+          git checkout HEAD -- .github/workflows
+          git clean -f .github/workflows
           git add -A
           git commit -m 'qa: complete database, dependency, UX, accessibility, and CI hardening'
           git push origin HEAD:qa/complete-open-points
