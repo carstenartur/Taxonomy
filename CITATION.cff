@@ -10,7 +10,7 @@ authors:
 repository-code: "https://github.com/carstenartur/Taxonomy"
 url: "https://github.com/carstenartur/Taxonomy"
 license: MIT
-version: "1.2.5"
+version: "1.2.6-SNAPSHOT"
 abstract: >-
   Taxonomy Architecture Analyzer is a Spring Boot web application for mapping
   requirements to architecture taxonomies, producing AI-assisted hierarchical
@@ -24,4 +24,3 @@ keywords:
   - architecture-decision-support
   - spring-boot
   - java
-date-released: "2026-07-22"
