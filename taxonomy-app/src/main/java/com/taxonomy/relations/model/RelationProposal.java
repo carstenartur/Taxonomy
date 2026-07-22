@@ -1,11 +1,12 @@
 package com.taxonomy.relations.model;
 
-import jakarta.persistence.*;
-import org.hibernate.annotations.Nationalized;
-import java.time.Instant;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.model.ProposalStatus;
 import com.taxonomy.model.RelationType;
+import jakarta.persistence.*;
+import org.hibernate.annotations.Nationalized;
+
+import java.time.Instant;
 
 /**
  * A proposed relation between two taxonomy nodes, awaiting human review.
@@ -14,7 +15,11 @@ import com.taxonomy.model.RelationType;
 @Entity
 @Table(name = "relation_proposal",
         uniqueConstraints = @UniqueConstraint(
-                columnNames = {"source_node_id", "target_node_id", "relation_type"}))
+                columnNames = {"source_node_id", "target_node_id", "relation_type", "workspace_id"}),
+        indexes = {
+                @Index(name = "idx_proposal_workspace", columnList = "workspace_id"),
+                @Index(name = "idx_proposal_owner", columnList = "owner_username")
+        })
 public class RelationProposal {
 
     @Id
