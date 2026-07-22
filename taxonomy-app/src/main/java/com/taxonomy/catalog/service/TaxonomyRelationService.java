@@ -1,11 +1,11 @@
 package com.taxonomy.catalog.service;
 
-import com.taxonomy.dto.TaxonomyRelationDto;
-import com.taxonomy.model.RelationType;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
+import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.model.RelationType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
@@ -178,18 +178,39 @@ public class TaxonomyRelationService {
     }
 
     /**
-     * Delete all relations matching a specific source, target, and type combination.
-     * Used by the proposal revert mechanism to remove accepted relations.
+     * Delete relations matching a specific source, target, type, and exact
+     * workspace. A null workspace ID means shared relations only, never all
+     * workspaces.
+     */
+    @Transactional
+    public void deleteRelationBySourceTargetType(String sourceCode, String targetCode,
+                                                  RelationType type,
+                                                  @Nullable String workspaceId) {
+        List<TaxonomyRelation> matches;
+        if (workspaceId != null) {
+            matches = relationRepository.findByWorkspaceAndSourceTargetType(
+                    workspaceId, sourceCode, targetCode, type);
+        } else {
+            matches = relationRepository
+                    .findBySourceNodeCodeAndTargetNodeCodeAndRelationType(sourceCode, targetCode, type)
+                    .stream()
+                    .filter(relation -> relation.getWorkspaceId() == null)
+                    .toList();
+        }
+        if (!matches.isEmpty()) {
+            relationRepository.deleteAll(matches);
+            log.info("Deleted {} relation(s): {} --[{}]--> {} (workspace={})",
+                    matches.size(), sourceCode, type, targetCode, workspaceId);
+        }
+    }
+
+    /**
+     * Legacy overload — operates on shared relations only.
      */
     @Transactional
     public void deleteRelationBySourceTargetType(String sourceCode, String targetCode,
                                                   RelationType type) {
-        List<TaxonomyRelation> matches = relationRepository
-                .findBySourceNodeCodeAndTargetNodeCodeAndRelationType(sourceCode, targetCode, type);
-        if (!matches.isEmpty()) {
-            relationRepository.deleteAll(matches);
-            log.info("Deleted {} relation(s): {} --[{}]--> {}", matches.size(), sourceCode, type, targetCode);
-        }
+        deleteRelationBySourceTargetType(sourceCode, targetCode, type, null);
     }
 
     public TaxonomyRelationDto toDto(TaxonomyRelation relation) {
