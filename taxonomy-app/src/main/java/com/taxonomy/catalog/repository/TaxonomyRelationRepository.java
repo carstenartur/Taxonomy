@@ -45,6 +45,15 @@ public interface TaxonomyRelationRepository extends JpaRepository<TaxonomyRelati
     List<TaxonomyRelation> findVisibleByWorkspaceAndRelationType(@Param("wsId") String workspaceId,
                                                                   @Param("type") RelationType type);
 
+    @Query("SELECT r FROM TaxonomyRelation r WHERE (r.workspaceId = :wsId OR r.workspaceId IS NULL) " +
+           "AND r.sourceNode.code = :sourceCode AND r.targetNode.code = :targetCode " +
+           "AND r.relationType = :type")
+    List<TaxonomyRelation> findVisibleByWorkspaceAndSourceTargetType(
+            @Param("wsId") String workspaceId,
+            @Param("sourceCode") String sourceCode,
+            @Param("targetCode") String targetCode,
+            @Param("type") RelationType type);
+
     @Query("SELECT COUNT(r) FROM TaxonomyRelation r WHERE r.workspaceId = :wsId OR r.workspaceId IS NULL")
     long countVisibleByWorkspace(@Param("wsId") String workspaceId);
 
@@ -100,12 +109,7 @@ public interface TaxonomyRelationRepository extends JpaRepository<TaxonomyRelati
                                                                        String sourceCode,
                                                                        String targetCode,
                                                                        RelationType type) {
-        List<TaxonomyRelation> visible = findVisibleByWorkspace(workspaceId);
-        return visible.stream()
-                .filter(relation -> relation.getSourceNode().getCode().equals(sourceCode))
-                .filter(relation -> relation.getTargetNode().getCode().equals(targetCode))
-                .filter(relation -> relation.getRelationType() == type)
-                .toList();
+        return findVisibleByWorkspaceAndSourceTargetType(workspaceId, sourceCode, targetCode, type);
     }
 
     default long countByWorkspaceIdIsNullOrWorkspaceId(String workspaceId) {
