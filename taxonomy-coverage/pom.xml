@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.taxonomy</groupId>
+        <artifactId>taxonomy</artifactId>
+        <version>1.2.6-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>taxonomy-coverage</artifactId>
+    <packaging>pom</packaging>
+    <name>Taxonomy Aggregate Coverage</name>
+    <description>Authoritative JaCoCo report across every shipped Taxonomy module</description>
+
+    <!-- report-aggregate collects classes and execution data from reactor
+         dependencies. Every shipped module is direct and therefore auditable. -->
+    <dependencies>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-domain</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-dsl</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-export</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-extension-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-app</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <!-- This module has no tests of its own. Do not attach an agent. -->
+                    <execution>
+                        <id>prepare-agent</id>
+                        <phase>none</phase>
+                    </execution>
+                    <execution>
+                        <id>reactor-report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report-aggregate</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/site/jacoco-aggregate</outputDirectory>
+                            <includeCurrentProject>false</includeCurrentProject>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
