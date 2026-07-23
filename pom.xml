@@ -73,8 +73,10 @@
         <poi.version>5.5.1</poi.version>
         <pdfbox.version>3.0.8</pdfbox.version>
         <lucene.version>9.12.3</lucene.version>
-        <hibernate-search.version>8.3.1.Final</hibernate-search.version>
-        <hibernate-search-backend.version>8.4.0.Final</hibernate-search-backend.version>
+        <!-- Hibernate Search 8.4 targets Hibernate ORM 7.4 and Lucene 9.12.3.
+             The platform BOM below coordinates the complete dependency family. -->
+        <hibernate-search.version>8.4.0.Final</hibernate-search.version>
+        <hibernate-search-backend.version>${hibernate-search.version}</hibernate-search-backend.version>
         <jgit.version>7.7.0.202606012155-r</jgit.version>
         <springdoc.version>3.0.3</springdoc.version>
         <!-- Spring Boot-managed patch overrides for currently fixed security releases. -->
@@ -102,6 +104,13 @@
     </properties>
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.hibernate.search</groupId>
+                <artifactId>hibernate-search-platform-bom</artifactId>
+                <version>${hibernate-search.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-bom</artifactId>
