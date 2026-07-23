@@ -32,7 +32,6 @@ jobs:
             height: 1000
             zoom: 1
             forced_colors: false
-            text_spacing: false
           - profile: desktop-architect-firefox
             browser: firefox
             role: ARCHITECT
@@ -40,7 +39,6 @@ jobs:
             height: 1000
             zoom: 1
             forced_colors: false
-            text_spacing: false
           - profile: mobile-admin-webkit
             browser: webkit
             role: ADMIN
@@ -48,7 +46,6 @@ jobs:
             height: 844
             zoom: 1
             forced_colors: false
-            text_spacing: false
           - profile: landscape-user-firefox
             browser: firefox
             role: USER
@@ -56,7 +53,6 @@ jobs:
             height: 390
             zoom: 1
             forced_colors: false
-            text_spacing: false
           - profile: zoom-200-user-chromium
             browser: chromium
             role: USER
@@ -64,7 +60,6 @@ jobs:
             height: 1000
             zoom: 2
             forced_colors: false
-            text_spacing: false
           - profile: zoom-400-user-chromium
             browser: chromium
             role: USER
@@ -72,15 +67,6 @@ jobs:
             height: 1000
             zoom: 4
             forced_colors: false
-            text_spacing: false
-          - profile: text-spacing-admin-chromium
-            browser: chromium
-            role: ADMIN
-            width: 1024
-            height: 768
-            zoom: 1
-            forced_colors: false
-            text_spacing: true
           - profile: forced-colors-architect-chromium
             browser: chromium
             role: ARCHITECT
@@ -88,7 +74,6 @@ jobs:
             height: 768
             zoom: 1
             forced_colors: true
-            text_spacing: false
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -149,7 +134,6 @@ jobs:
           TAXONOMY_VIEWPORT_HEIGHT: ${{ matrix.height }}
           TAXONOMY_ZOOM: ${{ matrix.zoom }}
           TAXONOMY_FORCED_COLORS: ${{ matrix.forced_colors }}
-          TAXONOMY_TEXT_SPACING: ${{ matrix.text_spacing }}
           TAXONOMY_UI_OUTPUT_DIR: ${{ github.workspace }}/target/ui-state/${{ matrix.profile }}
         run: node .github/scripts/ui-role-state-acceptance.mjs
 
