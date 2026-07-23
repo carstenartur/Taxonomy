@@ -97,6 +97,15 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- Keep the fixed Jackson 2 family ahead of the Hibernate Search
+                 platform, which otherwise manages the vulnerable 2.21.3 line. -->
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson-2-bom.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.hibernate.search</groupId>
                 <artifactId>hibernate-search-platform-bom</artifactId>
