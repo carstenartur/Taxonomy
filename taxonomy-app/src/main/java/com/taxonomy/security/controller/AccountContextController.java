@@ -26,7 +26,9 @@ public class AccountContextController {
         Set<String> roles = new LinkedHashSet<>();
         for (GrantedAuthority authority : authentication.getAuthorities()) {
             String value = authority.getAuthority();
-            roles.add(value.startsWith("ROLE_") ? value.substring(5) : value);
+            if (value.startsWith("ROLE_")) {
+                roles.add(value.substring(5));
+            }
         }
 
         boolean administrator = roles.contains("ADMIN");
