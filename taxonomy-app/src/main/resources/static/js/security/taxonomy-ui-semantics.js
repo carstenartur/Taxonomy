@@ -8,6 +8,7 @@ window.TaxonomyUiSemantics = (function () {
         'docRegMapResultPanel'
     ];
     var observers = [];
+    var documentImportMonitor = null;
 
     function inlineDisplayMarker(panel) {
         return panel.getAttribute('style') || '';
@@ -55,6 +56,33 @@ window.TaxonomyUiSemantics = (function () {
         observers.push(observer);
     }
 
+    function monitorDocumentImportActivity() {
+        if (documentImportMonitor !== null) window.clearTimeout(documentImportMonitor);
+        var checksRemaining = 6000;
+
+        function synchronizeUntilSettled() {
+            synchronizeResultPanels();
+            checksRemaining -= 1;
+            var spinner = document.getElementById('docImportSpinner');
+            var busy = spinner && !spinner.classList.contains('d-none');
+            if ((busy || checksRemaining > 5996) && checksRemaining > 0) {
+                documentImportMonitor = window.setTimeout(synchronizeUntilSettled, 50);
+            } else {
+                documentImportMonitor = null;
+                scheduleResultPanelSync();
+            }
+        }
+
+        documentImportMonitor = window.setTimeout(synchronizeUntilSettled, 0);
+    }
+
+    function installDocumentImportActivityBridge() {
+        var upload = document.getElementById('docImportUploadBtn');
+        if (!upload || upload.dataset.resultLifecycleObserved === 'true') return;
+        upload.dataset.resultLifecycleObserved = 'true';
+        upload.addEventListener('click', monitorDocumentImportActivity);
+    }
+
     function synchronizeTaxonomyContainer(tree) {
         if (!tree) return;
         var containsTreeItems = Boolean(tree.querySelector('[role="treeitem"]'));
@@ -86,6 +114,7 @@ window.TaxonomyUiSemantics = (function () {
             installResultPanelBridge(document.getElementById(id));
         });
         installDocumentImportStatusBridge();
+        installDocumentImportActivityBridge();
         installTaxonomyContainerBridge();
     }
 
