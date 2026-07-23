@@ -11,7 +11,7 @@ Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateObjDatabase.ByteArra
 Taxonomy Application,com.taxonomy.dsl.storage.jgit,HibernateObjDatabase,76,244,5,11,25,55,9,12,5,8
 Taxonomy Application,com.taxonomy.relations.controller,QualityApiController,0,27,0,0,0,7,0,5,0,5
 Taxonomy Application,com.taxonomy.relations.controller,CoverageApiController,1,53,1,1,0,15,1,7,0,7
-Taxonomy Application,com.taxonomy.relations.controller,ProposalApiController,134,185,23,19,34,51,16,15,1,9
+Taxonomy Application,com.taxonomy.relations.controller,ProposalApiController,173,221,34,24,31,55,22,18,1,10
 Taxonomy Application,com.taxonomy.relations.controller,RelationApiController,9,154,6,10,4,37,6,8,0,6
 Taxonomy Application,com.taxonomy.relations.controller,CoverageApiController.RecordCoverageRequest,0,15,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.search,EmbeddingBridgeSupport,19,22,3,1,6,7,2,3,0,3
@@ -55,7 +55,7 @@ Taxonomy Application,com.taxonomy.architecture.pipeline,NodeLimitStep,11,75,1,7,
 Taxonomy Application,com.taxonomy.architecture.pipeline,ProvisionalRelationStep,15,200,4,18,4,53,3,14,0,6
 Taxonomy Application,com.taxonomy.architecture.pipeline,ElementBuildStep,11,152,1,11,1,37,2,9,1,4
 Taxonomy Application,com.taxonomy.architecture.pipeline,ArchitecturePipelineStep,0,22,0,0,0,5,0,5,0,5
-Taxonomy Application,com.taxonomy.catalog.model,TaxonomyRelation,33,64,2,0,9,19,8,18,7,18
+Taxonomy Application,com.taxonomy.catalog.model,TaxonomyRelation,36,84,3,3,10,26,10,21,8,20
 Taxonomy Application,com.taxonomy.catalog.model,TaxonomyNode,48,171,2,0,13,48,12,45,11,45
 Taxonomy Application,com.taxonomy.provenance.service,ChunkingStrategySelector,0,88,1,13,0,23,1,10,0,4
 Taxonomy Application,com.taxonomy.provenance.service,StructuredDocumentParser,1,127,2,16,0,28,2,10,0,3
@@ -150,9 +150,9 @@ Taxonomy Application,com.taxonomy.relations.service,RelationValidationService.Va
 Taxonomy Application,com.taxonomy.relations.service,RelationQualityService,148,122,8,4,22,33,9,6,3,6
 Taxonomy Application,com.taxonomy.relations.service,GraphSearchService,205,184,12,6,41,39,15,7,7,6
 Taxonomy Application,com.taxonomy.relations.service,RelationCandidateService,6,138,5,5,0,25,4,7,0,6
-Taxonomy Application,com.taxonomy.relations.service,RelationProposalService,200,342,13,12,34,76,14,11,3,9
+Taxonomy Application,com.taxonomy.relations.service,RelationProposalService,183,351,10,11,31,75,12,11,3,9
 Taxonomy Application,com.taxonomy.relations.service,RelationTraversalService,36,88,4,10,7,23,4,8,1,4
-Taxonomy Application,com.taxonomy.relations.service,RelationReviewService,94,170,6,2,20,37,4,8,0,8
+Taxonomy Application,com.taxonomy.relations.service,RelationReviewService,103,175,6,2,22,38,4,8,0,8
 Taxonomy Application,com.taxonomy.relations.service,RequirementCoverageService,2,248,3,9,0,47,3,20,0,17
 Taxonomy Application,com.taxonomy.relations.service,HybridSearchService,39,34,2,2,6,10,2,3,0,3
 Taxonomy Application,com.taxonomy.relations.service,RelationCompatibilityMatrix,0,288,1,13,0,53,1,12,0,6
@@ -188,7 +188,7 @@ Taxonomy Application,com.taxonomy.security.service,UserManagementService.Validat
 Taxonomy Application,com.taxonomy.security.service,PasswordChangeService,0,65,2,12,0,19,2,7,0,2
 Taxonomy Application,com.taxonomy.catalog.service,PropagationResult.TraversedRelation,0,27,0,0,0,10,0,5,0,5
 Taxonomy Application,com.taxonomy.catalog.service,SearchService,11,186,2,2,4,37,2,6,0,6
-Taxonomy Application,com.taxonomy.catalog.service,TaxonomyRelationService,97,342,14,16,15,74,12,22,2,17
+Taxonomy Application,com.taxonomy.catalog.service,TaxonomyRelationService,47,350,6,12,6,73,9,21,3,18
 Taxonomy Application,com.taxonomy.catalog.service,DeterministicNodeScorer,0,37,0,2,0,7,0,3,0,2
 Taxonomy Application,com.taxonomy.catalog.service,HierarchyScoreDistributor,15,377,7,29,3,77,7,17,0,6
 Taxonomy Application,com.taxonomy.catalog.service,IndependentScoring,4,38,0,2,2,6,2,3,2,2
@@ -218,7 +218,7 @@ Taxonomy Application,com.taxonomy.dsl.export,TaxDslExportService,0,133,0,6,0,32,
 Taxonomy Application,com.taxonomy.dsl.export,DslMaterializeService,250,416,29,25,45,88,21,14,1,7
 Taxonomy Application,com.taxonomy.export.controller,ExportApiController,198,270,23,25,42,56,19,16,3,8
 Taxonomy Application,com.taxonomy.security.config,KeycloakSecurityConfig,160,0,6,0,32,0,18,0,15,0
-Taxonomy Application,com.taxonomy.security.config,AuthorizationRulesConfigurer,19,649,1,1,1,38,1,2,0,2
+Taxonomy Application,com.taxonomy.security.config,AuthorizationRulesConfigurer,19,715,1,1,1,41,1,2,0,2
 Taxonomy Application,com.taxonomy.security.config,LoginRateLimitFilter.FailureTracker,37,64,3,7,10,14,5,5,2,3
 Taxonomy Application,com.taxonomy.security.config,LoginRateLimitFilter,53,137,16,22,11,30,13,14,0,8
 Taxonomy Application,com.taxonomy.security.config,ProductionSecurityGuard,2,47,1,7,0,11,1,6,0,3
@@ -294,12 +294,16 @@ Taxonomy Application,com.taxonomy.provenance.controller,DocumentImportController
 Taxonomy Application,com.taxonomy.relations.model,RelationHypothesis,4,86,1,1,1,26,2,23,1,23
 Taxonomy Application,com.taxonomy.relations.model,RequirementCoverage,0,39,0,0,0,15,0,8,0,8
 Taxonomy Application,com.taxonomy.relations.model,RelationEvidence,55,32,1,1,16,10,17,8,16,8
-Taxonomy Application,com.taxonomy.relations.model,RelationProposal,8,89,1,1,2,27,3,24,2,24
+Taxonomy Application,com.taxonomy.relations.model,RelationProposal,11,114,2,4,3,37,5,28,3,27
 Taxonomy Application,com.taxonomy.shared.model,FloatArrayConverter,0,68,0,8,0,13,0,7,0,3
+Taxonomy Application,com.taxonomy.catalog.repository,TaxonomyRelationRepository,18,7,0,0,4,1,4,1,4,1
 Taxonomy Application,com.taxonomy.shared.config,CsvKeywordAnalyzer,0,24,0,0,0,5,0,3,0,3
+Taxonomy Application,com.taxonomy.shared.config,SchemaContractMigration.IndexDefinition,0,9,0,0,0,1,0,1,0,1
+Taxonomy Application,com.taxonomy.shared.config,SchemaContractMigration,184,467,27,33,47,116,26,27,4,19
 Taxonomy Application,com.taxonomy.shared.config,RateLimitFilter.WindowCounter,25,30,3,3,6,6,2,3,0,2
 Taxonomy Application,com.taxonomy.shared.config,TaxonomyAnalysisConfigurer,61,0,4,0,7,0,4,0,2,0
 Taxonomy Application,com.taxonomy.shared.config,OpenApiConfig,0,257,0,0,0,36,0,2,0,2
+Taxonomy Application,com.taxonomy.shared.config,SchemaContractMigration.TableRef,0,12,0,0,0,1,0,1,0,1
 Taxonomy Application,com.taxonomy.shared.config,HibernateSearchAnalysisConfigurer,0,44,0,0,0,7,0,2,0,2
 Taxonomy Application,com.taxonomy.shared.config,ExportConfig,2,103,1,8,1,27,1,19,0,13
 Taxonomy Application,com.taxonomy.shared.config,RateLimitFilter,17,102,6,14,3,27,5,11,0,6

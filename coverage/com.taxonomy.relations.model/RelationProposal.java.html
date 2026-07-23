@@ -1,21 +1,42 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationProposal.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.model</a> &gt; <span class="el_source">RelationProposal.java</span></div><h1>RelationProposal.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.model;
 
-import jakarta.persistence.*;
-import org.hibernate.annotations.Nationalized;
-import java.time.Instant;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.model.ProposalStatus;
 import com.taxonomy.model.RelationType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.Nationalized;
 
-/**
- * A proposed relation between two taxonomy nodes, awaiting human review.
- * Created by the Relation Proposal Pipeline.
- */
+import java.time.Instant;
+
+/** A proposed relation awaiting human review. */
 @Entity
 @Table(name = &quot;relation_proposal&quot;,
         uniqueConstraints = @UniqueConstraint(
-                columnNames = {&quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relation_type&quot;}))
-<span class="fc" id="L18">public class RelationProposal {</span>
+                name = &quot;uk_relation_proposal_scope&quot;,
+                columnNames = {
+                        &quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relation_type&quot;, &quot;workspace_scope_key&quot;
+                }),
+        indexes = {
+                @Index(name = &quot;idx_proposal_workspace&quot;, columnList = &quot;workspace_id&quot;),
+                @Index(name = &quot;idx_proposal_owner&quot;, columnList = &quot;owner_username&quot;)
+        })
+<span class="fc" id="L37">public class RelationProposal {</span>
+
+    public static final String SHARED_SCOPE_KEY = &quot;__shared__&quot;;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -33,20 +54,17 @@ import com.taxonomy.model.RelationType;
     @Column(name = &quot;relation_type&quot;, nullable = false)
     private RelationType relationType;
 
-<span class="fc" id="L36">    @Enumerated(EnumType.STRING)</span>
+<span class="fc" id="L57">    @Enumerated(EnumType.STRING)</span>
     @Column(nullable = false)
     private ProposalStatus status = ProposalStatus.PENDING;
 
-    /** Confidence score between 0.0 and 1.0. */
     @Column(nullable = false)
     private double confidence;
 
-    /** Human-readable explanation of why this relation was proposed. */
     @Nationalized
     @Column(length = 2000)
     private String rationale;
 
-    /** How this proposal was generated (e.g. &quot;hybrid-search&quot;, &quot;embedding-similarity&quot;). */
     @Nationalized
     private String provenance;
 
@@ -59,52 +77,77 @@ import com.taxonomy.model.RelationType;
     @Column(name = &quot;workspace_id&quot;)
     private String workspaceId;
 
+    /**
+     * Non-null database uniqueness key. SQL UNIQUE permits repeated NULL values,
+     * so nullable workspace_id cannot by itself protect shared-scope proposals.
+     */
+<span class="fc" id="L84">    @Column(name = &quot;workspace_scope_key&quot;, length = 255)</span>
+    private String workspaceScopeKey = SHARED_SCOPE_KEY;
+
     @Column(name = &quot;owner_username&quot;)
     private String ownerUsername;
 
     @PrePersist
     void onCreate() {
-<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (createdAt == null) {</span>
-<span class="fc" id="L68">            createdAt = Instant.now();</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if (createdAt == null) {</span>
+<span class="fc" id="L93">            createdAt = Instant.now();</span>
         }
-<span class="fc" id="L70">    }</span>
+<span class="fc" id="L95">        synchronizeWorkspaceScopeKey();</span>
+<span class="fc" id="L96">    }</span>
 
-    // ── Getters / Setters ─────────────────────────────────────────────────────
+    @PreUpdate
+    void onUpdate() {
+<span class="fc" id="L100">        synchronizeWorkspaceScopeKey();</span>
+<span class="fc" id="L101">    }</span>
 
-<span class="fc" id="L74">    public Long getId() { return id; }</span>
-<span class="nc" id="L75">    public void setId(Long id) { this.id = id; }</span>
+    private void synchronizeWorkspaceScopeKey() {
+<span class="fc" id="L104">        workspaceScopeKey = scopeKeyFor(workspaceId);</span>
+<span class="fc" id="L105">    }</span>
 
-<span class="fc" id="L77">    public TaxonomyNode getSourceNode() { return sourceNode; }</span>
-<span class="fc" id="L78">    public void setSourceNode(TaxonomyNode sourceNode) { this.sourceNode = sourceNode; }</span>
+    public static String scopeKeyFor(String workspaceId) {
+<span class="pc bpc" id="L108" title="1 of 4 branches missed.">        return workspaceId == null || workspaceId.isBlank()</span>
+<span class="fc" id="L109">                ? SHARED_SCOPE_KEY : workspaceId;</span>
+    }
 
-<span class="fc" id="L80">    public TaxonomyNode getTargetNode() { return targetNode; }</span>
-<span class="fc" id="L81">    public void setTargetNode(TaxonomyNode targetNode) { this.targetNode = targetNode; }</span>
+<span class="fc" id="L112">    public Long getId() { return id; }</span>
+<span class="nc" id="L113">    public void setId(Long id) { this.id = id; }</span>
 
-<span class="fc" id="L83">    public RelationType getRelationType() { return relationType; }</span>
-<span class="fc" id="L84">    public void setRelationType(RelationType relationType) { this.relationType = relationType; }</span>
+<span class="fc" id="L115">    public TaxonomyNode getSourceNode() { return sourceNode; }</span>
+<span class="fc" id="L116">    public void setSourceNode(TaxonomyNode sourceNode) { this.sourceNode = sourceNode; }</span>
 
-<span class="fc" id="L86">    public ProposalStatus getStatus() { return status; }</span>
-<span class="fc" id="L87">    public void setStatus(ProposalStatus status) { this.status = status; }</span>
+<span class="fc" id="L118">    public TaxonomyNode getTargetNode() { return targetNode; }</span>
+<span class="fc" id="L119">    public void setTargetNode(TaxonomyNode targetNode) { this.targetNode = targetNode; }</span>
 
-<span class="fc" id="L89">    public double getConfidence() { return confidence; }</span>
-<span class="fc" id="L90">    public void setConfidence(double confidence) { this.confidence = confidence; }</span>
+<span class="fc" id="L121">    public RelationType getRelationType() { return relationType; }</span>
+<span class="fc" id="L122">    public void setRelationType(RelationType relationType) { this.relationType = relationType; }</span>
 
-<span class="fc" id="L92">    public String getRationale() { return rationale; }</span>
-<span class="fc" id="L93">    public void setRationale(String rationale) { this.rationale = rationale; }</span>
+<span class="fc" id="L124">    public ProposalStatus getStatus() { return status; }</span>
+<span class="fc" id="L125">    public void setStatus(ProposalStatus status) { this.status = status; }</span>
 
-<span class="fc" id="L95">    public String getProvenance() { return provenance; }</span>
-<span class="fc" id="L96">    public void setProvenance(String provenance) { this.provenance = provenance; }</span>
+<span class="fc" id="L127">    public double getConfidence() { return confidence; }</span>
+<span class="fc" id="L128">    public void setConfidence(double confidence) { this.confidence = confidence; }</span>
 
-<span class="fc" id="L98">    public Instant getCreatedAt() { return createdAt; }</span>
-<span class="nc" id="L99">    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }</span>
+<span class="fc" id="L130">    public String getRationale() { return rationale; }</span>
+<span class="fc" id="L131">    public void setRationale(String rationale) { this.rationale = rationale; }</span>
 
-<span class="fc" id="L101">    public Instant getReviewedAt() { return reviewedAt; }</span>
-<span class="fc" id="L102">    public void setReviewedAt(Instant reviewedAt) { this.reviewedAt = reviewedAt; }</span>
+<span class="fc" id="L133">    public String getProvenance() { return provenance; }</span>
+<span class="fc" id="L134">    public void setProvenance(String provenance) { this.provenance = provenance; }</span>
 
-<span class="fc" id="L104">    public String getWorkspaceId() { return workspaceId; }</span>
-<span class="fc" id="L105">    public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }</span>
+<span class="fc" id="L136">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="nc" id="L137">    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }</span>
 
-<span class="fc" id="L107">    public String getOwnerUsername() { return ownerUsername; }</span>
-<span class="fc" id="L108">    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }</span>
+<span class="fc" id="L139">    public Instant getReviewedAt() { return reviewedAt; }</span>
+<span class="fc" id="L140">    public void setReviewedAt(Instant reviewedAt) { this.reviewedAt = reviewedAt; }</span>
+
+<span class="fc" id="L142">    public String getWorkspaceId() { return workspaceId; }</span>
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L144">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L145">        synchronizeWorkspaceScopeKey();</span>
+<span class="fc" id="L146">    }</span>
+
+<span class="nc" id="L148">    public String getWorkspaceScopeKey() { return workspaceScopeKey; }</span>
+
+<span class="fc" id="L150">    public String getOwnerUsername() { return ownerUsername; }</span>
+<span class="fc" id="L151">    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

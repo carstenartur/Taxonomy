@@ -1,24 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyRelation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.model</a> &gt; <span class="el_source">TaxonomyRelation.java</span></div><h1>TaxonomyRelation.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.model;
 
+import com.taxonomy.model.RelationType;
 import com.taxonomy.search.RelationEmbeddingBinder;
-import jakarta.persistence.*;
+import com.taxonomy.shared.model.FloatArrayConverter;
+import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import org.hibernate.annotations.Nationalized;
 import org.hibernate.search.mapper.pojo.bridge.mapping.annotation.TypeBinderRef;
-import org.hibernate.search.mapper.pojo.mapping.definition.annotation.*;
-import com.taxonomy.model.RelationType;
-import com.taxonomy.shared.model.FloatArrayConverter;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.FullTextField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.GenericField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.Indexed;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.IndexedEmbedded;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.KeywordField;
+import org.hibernate.search.mapper.pojo.mapping.definition.annotation.TypeBinding;
 
 @Entity
 @Table(name = &quot;taxonomy_relation&quot;,
         uniqueConstraints = @UniqueConstraint(
-                columnNames = {&quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relation_type&quot;, &quot;workspace_id&quot;}),
+                name = &quot;uk_taxonomy_relation_scope&quot;,
+                columnNames = {
+                        &quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relation_type&quot;, &quot;workspace_scope_key&quot;
+                }),
         indexes = {
                 @Index(name = &quot;idx_rel_workspace&quot;, columnList = &quot;workspace_id&quot;),
                 @Index(name = &quot;idx_rel_owner&quot;, columnList = &quot;owner_username&quot;)
         })
 @Indexed
 @TypeBinding(binder = @TypeBinderRef(type = RelationEmbeddingBinder.class))
-<span class="fc" id="L21">public class TaxonomyRelation {</span>
+<span class="fc" id="L45">public class TaxonomyRelation {</span>
+
+    public static final String SHARED_SCOPE_KEY = &quot;__shared__&quot;;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -43,6 +69,11 @@ import com.taxonomy.shared.model.FloatArrayConverter;
     @KeywordField
     private String workspaceId;
 
+    /** Non-null uniqueness key for both shared and personal workspace rows. */
+<span class="fc" id="L73">    @Column(name = &quot;workspace_scope_key&quot;, length = 255)</span>
+    @KeywordField
+    private String workspaceScopeKey = SHARED_SCOPE_KEY;
+
     @Column(name = &quot;owner_username&quot;)
     @KeywordField
     private String ownerUsername;
@@ -57,7 +88,7 @@ import com.taxonomy.shared.model.FloatArrayConverter;
 
     private Integer weight;
 
-<span class="fc" id="L60">    private boolean bidirectional = false;</span>
+<span class="fc" id="L91">    private boolean bidirectional = false;</span>
 
     @Lob
     @Convert(converter = FloatArrayConverter.class)
@@ -68,43 +99,59 @@ import com.taxonomy.shared.model.FloatArrayConverter;
     @Column(name = &quot;has_embedding&quot;)
     private boolean hasEmbedding;
 
-<span class="fc" id="L71">    public Long getId() { return id; }</span>
-<span class="nc" id="L72">    public void setId(Long id) { this.id = id; }</span>
+    @PrePersist
+    @PreUpdate
+    void synchronizeWorkspaceScopeKey() {
+<span class="fc" id="L105">        workspaceScopeKey = scopeKeyFor(workspaceId);</span>
+<span class="fc" id="L106">    }</span>
 
-<span class="fc" id="L74">    public TaxonomyNode getSourceNode() { return sourceNode; }</span>
-<span class="fc" id="L75">    public void setSourceNode(TaxonomyNode sourceNode) { this.sourceNode = sourceNode; }</span>
+    public static String scopeKeyFor(String workspaceId) {
+<span class="pc bpc" id="L109" title="1 of 4 branches missed.">        return workspaceId == null || workspaceId.isBlank()</span>
+<span class="fc" id="L110">                ? SHARED_SCOPE_KEY : workspaceId;</span>
+    }
 
-<span class="fc" id="L77">    public TaxonomyNode getTargetNode() { return targetNode; }</span>
-<span class="fc" id="L78">    public void setTargetNode(TaxonomyNode targetNode) { this.targetNode = targetNode; }</span>
+<span class="fc" id="L113">    public Long getId() { return id; }</span>
+<span class="nc" id="L114">    public void setId(Long id) { this.id = id; }</span>
 
-<span class="fc" id="L80">    public RelationType getRelationType() { return relationType; }</span>
-<span class="fc" id="L81">    public void setRelationType(RelationType relationType) { this.relationType = relationType; }</span>
+<span class="fc" id="L116">    public TaxonomyNode getSourceNode() { return sourceNode; }</span>
+<span class="fc" id="L117">    public void setSourceNode(TaxonomyNode sourceNode) { this.sourceNode = sourceNode; }</span>
 
-<span class="fc" id="L83">    public String getDescription() { return description; }</span>
-<span class="fc" id="L84">    public void setDescription(String description) { this.description = description; }</span>
+<span class="fc" id="L119">    public TaxonomyNode getTargetNode() { return targetNode; }</span>
+<span class="fc" id="L120">    public void setTargetNode(TaxonomyNode targetNode) { this.targetNode = targetNode; }</span>
 
-<span class="fc" id="L86">    public String getProvenance() { return provenance; }</span>
-<span class="fc" id="L87">    public void setProvenance(String provenance) { this.provenance = provenance; }</span>
+<span class="fc" id="L122">    public RelationType getRelationType() { return relationType; }</span>
+<span class="fc" id="L123">    public void setRelationType(RelationType relationType) { this.relationType = relationType; }</span>
 
-<span class="fc" id="L89">    public Integer getWeight() { return weight; }</span>
-<span class="nc" id="L90">    public void setWeight(Integer weight) { this.weight = weight; }</span>
+<span class="fc" id="L125">    public String getDescription() { return description; }</span>
+<span class="fc" id="L126">    public void setDescription(String description) { this.description = description; }</span>
 
-<span class="fc" id="L92">    public boolean isBidirectional() { return bidirectional; }</span>
-<span class="nc" id="L93">    public void setBidirectional(boolean bidirectional) { this.bidirectional = bidirectional; }</span>
+<span class="fc" id="L128">    public String getProvenance() { return provenance; }</span>
+<span class="fc" id="L129">    public void setProvenance(String provenance) { this.provenance = provenance; }</span>
 
-<span class="nc" id="L95">    public float[] getSemanticEmbedding() { return semanticEmbedding; }</span>
+<span class="fc" id="L131">    public Integer getWeight() { return weight; }</span>
+<span class="nc" id="L132">    public void setWeight(Integer weight) { this.weight = weight; }</span>
+
+<span class="fc" id="L134">    public boolean isBidirectional() { return bidirectional; }</span>
+<span class="nc" id="L135">    public void setBidirectional(boolean bidirectional) { this.bidirectional = bidirectional; }</span>
+
+<span class="nc" id="L137">    public float[] getSemanticEmbedding() { return semanticEmbedding; }</span>
     public void setSemanticEmbedding(float[] semanticEmbedding) {
-<span class="nc" id="L97">        this.semanticEmbedding = semanticEmbedding;</span>
-<span class="nc bnc" id="L98" title="All 2 branches missed.">        this.hasEmbedding = (semanticEmbedding != null);</span>
-<span class="nc" id="L99">    }</span>
+<span class="nc" id="L139">        this.semanticEmbedding = semanticEmbedding;</span>
+<span class="nc bnc" id="L140" title="All 2 branches missed.">        this.hasEmbedding = semanticEmbedding != null;</span>
+<span class="nc" id="L141">    }</span>
 
-<span class="nc" id="L101">    public boolean isHasEmbedding() { return hasEmbedding; }</span>
-<span class="nc" id="L102">    private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }</span>
+<span class="nc" id="L143">    public boolean isHasEmbedding() { return hasEmbedding; }</span>
+<span class="nc" id="L144">    private void setHasEmbedding(boolean hasEmbedding) { this.hasEmbedding = hasEmbedding; }</span>
 
-<span class="fc" id="L104">    public String getWorkspaceId() { return workspaceId; }</span>
-<span class="fc" id="L105">    public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }</span>
+<span class="fc" id="L146">    public String getWorkspaceId() { return workspaceId; }</span>
+    public void setWorkspaceId(String workspaceId) {
+<span class="fc" id="L148">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L149">        synchronizeWorkspaceScopeKey();</span>
+<span class="fc" id="L150">    }</span>
 
-<span class="fc" id="L107">    public String getOwnerUsername() { return ownerUsername; }</span>
-<span class="fc" id="L108">    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }</span>
+<span class="nc" id="L152">    public String getWorkspaceScopeKey() { return workspaceScopeKey; }</span>
+
+<span class="fc" id="L154">    public String getOwnerUsername() { return ownerUsername; }</span>
+<span class="fc" id="L155">    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

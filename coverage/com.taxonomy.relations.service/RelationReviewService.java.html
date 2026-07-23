@@ -1,28 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationReviewService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationReviewService.java</span></div><h1>RelationReviewService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
 
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
 import com.taxonomy.dto.RelationProposalDto;
 import com.taxonomy.dto.TaxonomyRelationDto;
-import com.taxonomy.model.*;
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.relations.model.RelationProposal;
 import com.taxonomy.relations.repository.RelationProposalRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import com.taxonomy.catalog.model.TaxonomyRelation;
-import com.taxonomy.catalog.service.TaxonomyRelationService;
-import com.taxonomy.model.ProposalStatus;
-import com.taxonomy.relations.model.RelationProposal;
+import java.util.Objects;
 
-/**
- * Handles the human review workflow for relation proposals.
- * Accepted proposals are converted into actual {@link TaxonomyRelation} entities.
- */
+/** Handles human review of relation proposals in an explicit workspace. */
 @Service
 public class RelationReviewService {
 
-<span class="fc" id="L25">    private static final Logger log = LoggerFactory.getLogger(RelationReviewService.class);</span>
+<span class="fc" id="L23">    private static final Logger log = LoggerFactory.getLogger(RelationReviewService.class);</span>
 
     private final RelationProposalRepository proposalRepository;
     private final TaxonomyRelationService relationService;
@@ -30,118 +28,100 @@ public class RelationReviewService {
 
     public RelationReviewService(RelationProposalRepository proposalRepository,
                                  TaxonomyRelationService relationService,
-<span class="fc" id="L33">                                 RelationProposalService proposalService) {</span>
-<span class="fc" id="L34">        this.proposalRepository = proposalRepository;</span>
-<span class="fc" id="L35">        this.relationService = relationService;</span>
-<span class="fc" id="L36">        this.proposalService = proposalService;</span>
-<span class="fc" id="L37">    }</span>
+<span class="fc" id="L31">                                 RelationProposalService proposalService) {</span>
+<span class="fc" id="L32">        this.proposalRepository = proposalRepository;</span>
+<span class="fc" id="L33">        this.relationService = relationService;</span>
+<span class="fc" id="L34">        this.proposalService = proposalService;</span>
+<span class="fc" id="L35">    }</span>
 
-    /**
-     * Accept a proposal: creates a real TaxonomyRelation and marks the proposal as ACCEPTED.
-     *
-     * &lt;p&gt;The relation is created in the proposal's workspace (using the proposal's stored
-     * {@code workspaceId}/{@code ownerUsername}). For legacy proposals with null workspace,
-     * the relation is created in the shared/legacy scope.
-     */
+    /** Accepts a proposal and creates the relation in the exact supplied workspace. */
     @Transactional
-    public TaxonomyRelationDto acceptProposal(Long proposalId) {
-<span class="fc" id="L48">        RelationProposal proposal = proposalRepository.findById(proposalId)</span>
-<span class="fc" id="L49">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
-                        &quot;Proposal not found: &quot; + proposalId));
-
-<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        if (proposal.getStatus() != ProposalStatus.PENDING) {</span>
-<span class="nc" id="L53">            throw new IllegalStateException(</span>
-<span class="nc" id="L54">                    &quot;Proposal &quot; + proposalId + &quot; is already &quot; + proposal.getStatus());</span>
+    public TaxonomyRelationDto acceptProposal(Long proposalId, WorkspaceContext context) {
+<span class="fc" id="L40">        WorkspaceContext requiredContext = requireContext(context);</span>
+<span class="fc" id="L41">        RelationProposal proposal = findProposalInWorkspace(proposalId, requiredContext);</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">        if (proposal.getStatus() != ProposalStatus.PENDING) {</span>
+<span class="nc" id="L43">            throw new IllegalStateException(</span>
+<span class="nc" id="L44">                    &quot;Proposal &quot; + proposalId + &quot; is already &quot; + proposal.getStatus());</span>
         }
 
-        // Create the real relation in the proposal's workspace (not the current user's)
-<span class="fc" id="L58">        String workspaceId = proposal.getWorkspaceId();</span>
-<span class="fc" id="L59">        String ownerUsername = proposal.getOwnerUsername();</span>
-<span class="fc" id="L60">        TaxonomyRelationDto relation = relationService.createRelation(</span>
-<span class="fc" id="L61">                proposal.getSourceNode().getCode(),</span>
-<span class="fc" id="L62">                proposal.getTargetNode().getCode(),</span>
-<span class="fc" id="L63">                proposal.getRelationType(),</span>
-<span class="fc" id="L64">                proposal.getRationale(),</span>
+<span class="fc" id="L47">        TaxonomyRelationDto relation = relationService.createRelation(</span>
+<span class="fc" id="L48">                proposal.getSourceNode().getCode(),</span>
+<span class="fc" id="L49">                proposal.getTargetNode().getCode(),</span>
+<span class="fc" id="L50">                proposal.getRelationType(),</span>
+<span class="fc" id="L51">                proposal.getRationale(),</span>
                 &quot;proposal-pipeline&quot;,
-                workspaceId, ownerUsername);
+<span class="fc" id="L53">                requiredContext.workspaceId(), requiredContext.username());</span>
 
-        // Mark proposal as accepted
-<span class="fc" id="L69">        proposal.setStatus(ProposalStatus.ACCEPTED);</span>
-<span class="fc" id="L70">        proposal.setReviewedAt(Instant.now());</span>
-<span class="fc" id="L71">        proposalRepository.save(proposal);</span>
+<span class="fc" id="L55">        proposal.setStatus(ProposalStatus.ACCEPTED);</span>
+<span class="fc" id="L56">        proposal.setReviewedAt(Instant.now());</span>
+<span class="fc" id="L57">        proposalRepository.save(proposal);</span>
+<span class="fc" id="L58">        log.info(&quot;Accepted proposal {}: {} → {} [{}] (workspace={})&quot;,</span>
+<span class="fc" id="L59">                proposalId, proposal.getSourceNode().getCode(),</span>
+<span class="fc" id="L60">                proposal.getTargetNode().getCode(), proposal.getRelationType(),</span>
+<span class="fc" id="L61">                requiredContext.workspaceId());</span>
+<span class="fc" id="L62">        return relation;</span>
+    }
 
-<span class="fc" id="L73">        log.info(&quot;Accepted proposal {}: {} → {} [{}]&quot;,</span>
-                proposalId,
-<span class="fc" id="L75">                proposal.getSourceNode().getCode(),</span>
-<span class="fc" id="L76">                proposal.getTargetNode().getCode(),</span>
-<span class="fc" id="L77">                proposal.getRelationType());</span>
+    /** Rejects a proposal in the exact supplied workspace. */
+    @Transactional
+    public RelationProposalDto rejectProposal(Long proposalId, WorkspaceContext context) {
+<span class="fc" id="L68">        WorkspaceContext requiredContext = requireContext(context);</span>
+<span class="fc" id="L69">        RelationProposal proposal = findProposalInWorkspace(proposalId, requiredContext);</span>
+<span class="pc bpc" id="L70" title="1 of 2 branches missed.">        if (proposal.getStatus() != ProposalStatus.PENDING) {</span>
+<span class="nc" id="L71">            throw new IllegalStateException(</span>
+<span class="nc" id="L72">                    &quot;Proposal &quot; + proposalId + &quot; is already &quot; + proposal.getStatus());</span>
+        }
 
-<span class="fc" id="L79">        return relation;</span>
+<span class="fc" id="L75">        proposal.setStatus(ProposalStatus.REJECTED);</span>
+<span class="fc" id="L76">        proposal.setReviewedAt(Instant.now());</span>
+<span class="fc" id="L77">        proposalRepository.save(proposal);</span>
+<span class="fc" id="L78">        log.info(&quot;Rejected proposal {}: {} → {} [{}] (workspace={})&quot;,</span>
+<span class="fc" id="L79">                proposalId, proposal.getSourceNode().getCode(),</span>
+<span class="fc" id="L80">                proposal.getTargetNode().getCode(), proposal.getRelationType(),</span>
+<span class="fc" id="L81">                requiredContext.workspaceId());</span>
+<span class="fc" id="L82">        return proposalService.toDto(proposal);</span>
     }
 
     /**
-     * Reject a proposal.
+     * Reverts a reviewed proposal in the exact supplied workspace. If accepted,
+     * only the relation in that same workspace is removed.
      */
     @Transactional
-    public RelationProposalDto rejectProposal(Long proposalId) {
-<span class="fc" id="L87">        RelationProposal proposal = proposalRepository.findById(proposalId)</span>
-<span class="fc" id="L88">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
-                        &quot;Proposal not found: &quot; + proposalId));
-
-<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (proposal.getStatus() != ProposalStatus.PENDING) {</span>
-<span class="nc" id="L92">            throw new IllegalStateException(</span>
-<span class="nc" id="L93">                    &quot;Proposal &quot; + proposalId + &quot; is already &quot; + proposal.getStatus());</span>
+    public RelationProposalDto revertProposal(Long proposalId, WorkspaceContext context) {
+<span class="fc" id="L91">        WorkspaceContext requiredContext = requireContext(context);</span>
+<span class="nc" id="L92">        RelationProposal proposal = findProposalInWorkspace(proposalId, requiredContext);</span>
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        if (proposal.getStatus() == ProposalStatus.PENDING) {</span>
+<span class="nc" id="L94">            throw new IllegalStateException(&quot;Proposal &quot; + proposalId + &quot; is already PENDING&quot;);</span>
         }
 
-<span class="fc" id="L96">        proposal.setStatus(ProposalStatus.REJECTED);</span>
-<span class="fc" id="L97">        proposal.setReviewedAt(Instant.now());</span>
-<span class="fc" id="L98">        proposalRepository.save(proposal);</span>
+<span class="nc" id="L97">        ProposalStatus oldStatus = proposal.getStatus();</span>
+<span class="nc bnc" id="L98" title="All 2 branches missed.">        if (oldStatus == ProposalStatus.ACCEPTED) {</span>
+<span class="nc" id="L99">            relationService.deleteRelationBySourceTargetType(</span>
+<span class="nc" id="L100">                    proposal.getSourceNode().getCode(),</span>
+<span class="nc" id="L101">                    proposal.getTargetNode().getCode(),</span>
+<span class="nc" id="L102">                    proposal.getRelationType(),</span>
+<span class="nc" id="L103">                    requiredContext.workspaceId());</span>
+        }
 
-<span class="fc" id="L100">        log.info(&quot;Rejected proposal {}: {} → {} [{}]&quot;,</span>
-                proposalId,
-<span class="fc" id="L102">                proposal.getSourceNode().getCode(),</span>
-<span class="fc" id="L103">                proposal.getTargetNode().getCode(),</span>
-<span class="fc" id="L104">                proposal.getRelationType());</span>
-
-<span class="fc" id="L106">        return proposalService.toDto(proposal);</span>
+<span class="nc" id="L106">        proposal.setStatus(ProposalStatus.PENDING);</span>
+<span class="nc" id="L107">        proposal.setReviewedAt(null);</span>
+<span class="nc" id="L108">        proposalRepository.save(proposal);</span>
+<span class="nc" id="L109">        log.info(&quot;Reverted proposal {} from {} to PENDING: {} → {} [{}] (workspace={})&quot;,</span>
+<span class="nc" id="L110">                proposalId, oldStatus, proposal.getSourceNode().getCode(),</span>
+<span class="nc" id="L111">                proposal.getTargetNode().getCode(), proposal.getRelationType(),</span>
+<span class="nc" id="L112">                requiredContext.workspaceId());</span>
+<span class="nc" id="L113">        return proposalService.toDto(proposal);</span>
     }
 
-    /**
-     * Revert a previously accepted or rejected proposal back to PENDING status.
-     * If the proposal was accepted, the corresponding relation is deleted.
-     */
-    @Transactional
-    public RelationProposalDto revertProposal(Long proposalId) {
-<span class="fc" id="L115">        RelationProposal proposal = proposalRepository.findById(proposalId)</span>
-<span class="pc" id="L116">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
-                        &quot;Proposal not found: &quot; + proposalId));
+    private RelationProposal findProposalInWorkspace(Long proposalId,
+                                                       WorkspaceContext context) {
+<span class="fc" id="L118">        return proposalRepository.findByIdInWorkspace(proposalId, context.workspaceId())</span>
+<span class="fc" id="L119">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Proposal not found in active workspace: &quot; + proposalId));
+    }
 
-<span class="nc bnc" id="L119" title="All 2 branches missed.">        if (proposal.getStatus() == ProposalStatus.PENDING) {</span>
-<span class="nc" id="L120">            throw new IllegalStateException(</span>
-                    &quot;Proposal &quot; + proposalId + &quot; is already PENDING&quot;);
-        }
-
-<span class="nc" id="L124">        ProposalStatus oldStatus = proposal.getStatus();</span>
-
-        // If accepted, remove the created relation
-<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (oldStatus == ProposalStatus.ACCEPTED) {</span>
-<span class="nc" id="L128">            relationService.deleteRelationBySourceTargetType(</span>
-<span class="nc" id="L129">                    proposal.getSourceNode().getCode(),</span>
-<span class="nc" id="L130">                    proposal.getTargetNode().getCode(),</span>
-<span class="nc" id="L131">                    proposal.getRelationType());</span>
-        }
-
-<span class="nc" id="L134">        proposal.setStatus(ProposalStatus.PENDING);</span>
-<span class="nc" id="L135">        proposal.setReviewedAt(null);</span>
-<span class="nc" id="L136">        proposalRepository.save(proposal);</span>
-
-<span class="nc" id="L138">        log.info(&quot;Reverted proposal {} from {} to PENDING: {} → {} [{}]&quot;,</span>
-                proposalId, oldStatus,
-<span class="nc" id="L140">                proposal.getSourceNode().getCode(),</span>
-<span class="nc" id="L141">                proposal.getTargetNode().getCode(),</span>
-<span class="nc" id="L142">                proposal.getRelationType());</span>
-
-<span class="nc" id="L144">        return proposalService.toDto(proposal);</span>
+    private static WorkspaceContext requireContext(WorkspaceContext context) {
+<span class="fc" id="L124">        return Objects.requireNonNull(context, &quot;Workspace context is required&quot;);</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

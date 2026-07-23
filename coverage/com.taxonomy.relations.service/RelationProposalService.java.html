@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>RelationProposalService.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Taxonomy Application</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationProposalService.java</span></div><h1>RelationProposalService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
 
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.dto.RelationProposalDto;
 import com.taxonomy.dto.TaxonomyNodeDto;
-import com.taxonomy.model.*;
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationProposal;
 import com.taxonomy.relations.repository.RelationProposalRepository;
-import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import org.slf4j.Logger;
@@ -14,10 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-import com.taxonomy.catalog.model.TaxonomyNode;
-import com.taxonomy.model.ProposalStatus;
-import com.taxonomy.model.RelationType;
-import com.taxonomy.relations.model.RelationProposal;
 
 /**
  * Orchestrator for the Relation Proposal Pipeline.
@@ -34,7 +33,7 @@ import com.taxonomy.relations.model.RelationProposal;
 @Service
 public class RelationProposalService {
 
-<span class="fc" id="L37">    private static final Logger log = LoggerFactory.getLogger(RelationProposalService.class);</span>
+<span class="fc" id="L36">    private static final Logger log = LoggerFactory.getLogger(RelationProposalService.class);</span>
 
     private final TaxonomyNodeRepository nodeRepository;
     private final RelationProposalRepository proposalRepository;
@@ -46,13 +45,13 @@ public class RelationProposalService {
                                    RelationProposalRepository proposalRepository,
                                    RelationCandidateService candidateService,
                                    RelationValidationService validationService,
-<span class="fc" id="L49">                                   WorkspaceContextResolver contextResolver) {</span>
-<span class="fc" id="L50">        this.nodeRepository = nodeRepository;</span>
-<span class="fc" id="L51">        this.proposalRepository = proposalRepository;</span>
-<span class="fc" id="L52">        this.candidateService = candidateService;</span>
-<span class="fc" id="L53">        this.validationService = validationService;</span>
-<span class="fc" id="L54">        this.contextResolver = contextResolver;</span>
-<span class="fc" id="L55">    }</span>
+<span class="fc" id="L48">                                   WorkspaceContextResolver contextResolver) {</span>
+<span class="fc" id="L49">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L50">        this.proposalRepository = proposalRepository;</span>
+<span class="fc" id="L51">        this.candidateService = candidateService;</span>
+<span class="fc" id="L52">        this.validationService = validationService;</span>
+<span class="fc" id="L53">        this.contextResolver = contextResolver;</span>
+<span class="fc" id="L54">    }</span>
 
     /**
      * Runs the full proposal pipeline for a source node and relation type.
@@ -66,107 +65,100 @@ public class RelationProposalService {
     public List&lt;RelationProposalDto&gt; proposeRelations(String sourceNodeCode,
                                                        RelationType relationType,
                                                        int limit) {
-<span class="fc" id="L69">        TaxonomyNode source = nodeRepository.findByCode(sourceNodeCode)</span>
-<span class="fc" id="L70">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+<span class="fc" id="L68">        TaxonomyNode source = nodeRepository.findByCode(sourceNodeCode)</span>
+<span class="fc" id="L69">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
                         &quot;Source node not found: &quot; + sourceNodeCode));
 
-<span class="fc" id="L73">        log.info(&quot;Proposing {} relations for node '{}'&quot;, relationType, sourceNodeCode);</span>
+<span class="fc" id="L72">        log.info(&quot;Proposing {} relations for node '{}'&quot;, relationType, sourceNodeCode);</span>
 
         // 1. Candidate search
-<span class="fc" id="L76">        List&lt;TaxonomyNodeDto&gt; candidates = candidateService.findCandidates(</span>
+<span class="fc" id="L75">        List&lt;TaxonomyNodeDto&gt; candidates = candidateService.findCandidates(</span>
                 source, relationType, limit);
 
-<span class="fc" id="L79">        List&lt;RelationProposalDto&gt; proposals = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L78">        List&lt;RelationProposalDto&gt; proposals = new ArrayList&lt;&gt;();</span>
 
-        // Resolve workspace context
-<span class="fc" id="L82">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+        // Resolve workspace context once for the complete operation.
+<span class="fc" id="L81">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
 
         // 2–4. Validate each candidate and create proposals
-<span class="fc bfc" id="L85" title="All 2 branches covered.">        for (int i = 0; i &lt; candidates.size(); i++) {</span>
-<span class="fc" id="L86">            TaxonomyNodeDto candidate = candidates.get(i);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        for (int i = 0; i &lt; candidates.size(); i++) {</span>
+<span class="fc" id="L85">            TaxonomyNodeDto candidate = candidates.get(i);</span>
 
-            // Skip if a proposal already exists for this triple in this workspace
-<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            if (ctx.workspaceId() != null) {</span>
-<span class="nc bnc" id="L90" title="All 2 branches missed.">                if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationTypeAndWorkspaceId(</span>
-<span class="nc" id="L91">                        sourceNodeCode, candidate.getCode(), relationType, ctx.workspaceId())) {</span>
-<span class="nc" id="L92">                    log.debug(&quot;Proposal already exists: {} → {} [{}] (workspace={})&quot;,</span>
-<span class="nc" id="L93">                            sourceNodeCode, candidate.getCode(), relationType, ctx.workspaceId());</span>
-<span class="nc" id="L94">                    continue;</span>
-                }
-<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            } else if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationType(</span>
-<span class="fc" id="L97">                    sourceNodeCode, candidate.getCode(), relationType)) {</span>
-<span class="nc" id="L98">                log.debug(&quot;Proposal already exists: {} → {} [{}]&quot;,</span>
-<span class="nc" id="L99">                        sourceNodeCode, candidate.getCode(), relationType);</span>
-<span class="nc" id="L100">                continue;</span>
+            // A null workspace means the shared scope only, never all workspaces.
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">            if (proposalRepository.existsInWorkspace(</span>
+<span class="fc" id="L89">                    sourceNodeCode, candidate.getCode(), relationType, ctx.workspaceId())) {</span>
+<span class="nc" id="L90">                log.debug(&quot;Proposal already exists: {} → {} [{}] (workspace={})&quot;,</span>
+<span class="nc" id="L91">                        sourceNodeCode, candidate.getCode(), relationType, ctx.workspaceId());</span>
+<span class="nc" id="L92">                continue;</span>
             }
 
-<span class="fc" id="L103">            RelationValidationService.ValidationResult result =</span>
-<span class="fc" id="L104">                    validationService.validate(source, candidate, relationType,</span>
-<span class="fc" id="L105">                            i, candidates.size());</span>
+<span class="fc" id="L95">            RelationValidationService.ValidationResult result =</span>
+<span class="fc" id="L96">                    validationService.validate(source, candidate, relationType,</span>
+<span class="fc" id="L97">                            i, candidates.size());</span>
 
-<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            if (result.isValid()) {</span>
-<span class="fc" id="L108">                TaxonomyNode target = nodeRepository.findByCode(candidate.getCode())</span>
-<span class="fc" id="L109">                        .orElse(null);</span>
-<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                if (target == null) continue;</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            if (result.isValid()) {</span>
+<span class="fc" id="L100">                TaxonomyNode target = nodeRepository.findByCode(candidate.getCode())</span>
+<span class="fc" id="L101">                        .orElse(null);</span>
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">                if (target == null) continue;</span>
 
-<span class="fc" id="L112">                RelationProposal proposal = new RelationProposal();</span>
-<span class="fc" id="L113">                proposal.setSourceNode(source);</span>
-<span class="fc" id="L114">                proposal.setTargetNode(target);</span>
-<span class="fc" id="L115">                proposal.setRelationType(relationType);</span>
-<span class="fc" id="L116">                proposal.setConfidence(result.getConfidence());</span>
-<span class="fc" id="L117">                proposal.setRationale(result.getRationale());</span>
-<span class="fc" id="L118">                proposal.setProvenance(&quot;hybrid-search&quot;);</span>
-<span class="fc" id="L119">                proposal.setStatus(ProposalStatus.PENDING);</span>
-<span class="fc" id="L120">                proposal.setWorkspaceId(ctx.workspaceId());</span>
-<span class="fc" id="L121">                proposal.setOwnerUsername(ctx.username());</span>
+<span class="fc" id="L104">                RelationProposal proposal = new RelationProposal();</span>
+<span class="fc" id="L105">                proposal.setSourceNode(source);</span>
+<span class="fc" id="L106">                proposal.setTargetNode(target);</span>
+<span class="fc" id="L107">                proposal.setRelationType(relationType);</span>
+<span class="fc" id="L108">                proposal.setConfidence(result.getConfidence());</span>
+<span class="fc" id="L109">                proposal.setRationale(result.getRationale());</span>
+<span class="fc" id="L110">                proposal.setProvenance(&quot;hybrid-search&quot;);</span>
+<span class="fc" id="L111">                proposal.setStatus(ProposalStatus.PENDING);</span>
+<span class="fc" id="L112">                proposal.setWorkspaceId(ctx.workspaceId());</span>
+<span class="fc" id="L113">                proposal.setOwnerUsername(ctx.username());</span>
 
-<span class="fc" id="L123">                RelationProposal saved = proposalRepository.save(proposal);</span>
-<span class="fc" id="L124">                proposals.add(toDto(saved));</span>
-<span class="fc" id="L125">                log.debug(&quot;Created proposal: {} → {} [{}] confidence={}&quot;,</span>
-<span class="fc" id="L126">                        sourceNodeCode, candidate.getCode(), relationType,</span>
-<span class="fc" id="L127">                        result.getConfidence());</span>
+<span class="fc" id="L115">                RelationProposal saved = proposalRepository.save(proposal);</span>
+<span class="fc" id="L116">                proposals.add(toDto(saved));</span>
+<span class="fc" id="L117">                log.debug(&quot;Created proposal: {} → {} [{}] confidence={} (workspace={})&quot;,</span>
+<span class="fc" id="L118">                        sourceNodeCode, candidate.getCode(), relationType,</span>
+<span class="fc" id="L119">                        result.getConfidence(), ctx.workspaceId());</span>
             }
         }
 
-<span class="fc" id="L131">        log.info(&quot;Proposed {} relations for node '{}' [{}]&quot;,</span>
-<span class="fc" id="L132">                proposals.size(), sourceNodeCode, relationType);</span>
-<span class="fc" id="L133">        return proposals;</span>
+<span class="fc" id="L123">        log.info(&quot;Proposed {} relations for node '{}' [{}] (workspace={})&quot;,</span>
+<span class="fc" id="L124">                proposals.size(), sourceNodeCode, relationType, ctx.workspaceId());</span>
+<span class="fc" id="L125">        return proposals;</span>
     }
 
     @Transactional(readOnly = true)
     public List&lt;RelationProposalDto&gt; getPendingProposals() {
-<span class="fc" id="L138">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="fc" id="L130">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
         List&lt;RelationProposal&gt; proposals;
-<span class="fc bfc" id="L140" title="All 2 branches covered.">        if (ctx.workspaceId() != null) {</span>
-<span class="fc" id="L141">            proposals = proposalRepository.findByStatusAndWorkspace(ProposalStatus.PENDING, ctx.workspaceId());</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        if (ctx.workspaceId() != null) {</span>
+<span class="fc" id="L133">            proposals = proposalRepository.findByStatusAndWorkspace(ProposalStatus.PENDING, ctx.workspaceId());</span>
         } else {
-<span class="fc" id="L143">            proposals = proposalRepository.findByStatus(ProposalStatus.PENDING);</span>
+<span class="fc" id="L135">            proposals = proposalRepository.findByStatusAndWorkspaceIdIsNull(ProposalStatus.PENDING);</span>
         }
-<span class="fc" id="L145">        return proposals.stream().map(this::toDto).toList();</span>
+<span class="fc" id="L137">        return proposals.stream().map(this::toDto).toList();</span>
     }
 
     @Transactional(readOnly = true)
     public List&lt;RelationProposalDto&gt; getAllProposals() {
-<span class="fc" id="L150">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="fc" id="L142">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
         List&lt;RelationProposal&gt; proposals;
-<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        if (ctx.workspaceId() != null) {</span>
-<span class="nc" id="L153">            proposals = proposalRepository.findByWorkspaceIdIsNullOrWorkspaceId(ctx.workspaceId());</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">        if (ctx.workspaceId() != null) {</span>
+<span class="nc" id="L145">            proposals = proposalRepository.findByWorkspaceIdIsNullOrWorkspaceId(ctx.workspaceId());</span>
         } else {
-<span class="fc" id="L155">            proposals = proposalRepository.findAll();</span>
+<span class="fc" id="L147">            proposals = proposalRepository.findByWorkspaceIdIsNull();</span>
         }
-<span class="fc" id="L157">        return proposals.stream().map(this::toDto).toList();</span>
+<span class="fc" id="L149">        return proposals.stream().map(this::toDto).toList();</span>
     }
 
     @Transactional(readOnly = true)
     public List&lt;RelationProposalDto&gt; getProposalsForNode(String sourceCode) {
-<span class="fc" id="L162">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="fc" id="L154">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
         List&lt;RelationProposal&gt; proposals;
-<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        if (ctx.workspaceId() != null) {</span>
-<span class="nc" id="L165">            proposals = proposalRepository.findBySourceNodeCodeAndWorkspace(sourceCode, ctx.workspaceId());</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">        if (ctx.workspaceId() != null) {</span>
+<span class="nc" id="L157">            proposals = proposalRepository.findBySourceNodeCodeAndWorkspace(sourceCode, ctx.workspaceId());</span>
         } else {
-<span class="fc" id="L167">            proposals = proposalRepository.findBySourceNodeCode(sourceCode);</span>
+<span class="fc" id="L159">            proposals = proposalRepository.findBySourceNodeCodeAndWorkspaceIdIsNull(sourceCode);</span>
         }
-<span class="fc" id="L169">        return proposals.stream().map(this::toDto).toList();</span>
+<span class="fc" id="L161">        return proposals.stream().map(this::toDto).toList();</span>
     }
 
     /**
@@ -184,66 +176,66 @@ public class RelationProposalService {
     public RelationProposalDto createFromHypothesis(String sourceCode, String targetCode,
                                                      RelationType relationType,
                                                      double confidence, String rationale) {
-<span class="nc" id="L187">        TaxonomyNode source = nodeRepository.findByCode(sourceCode)</span>
-<span class="nc" id="L188">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Source node not found: &quot; + sourceCode));</span>
-<span class="nc" id="L189">        TaxonomyNode target = nodeRepository.findByCode(targetCode)</span>
-<span class="nc" id="L190">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Target node not found: &quot; + targetCode));</span>
+<span class="nc" id="L179">        TaxonomyNode source = nodeRepository.findByCode(sourceCode)</span>
+<span class="nc" id="L180">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Source node not found: &quot; + sourceCode));</span>
+<span class="nc" id="L181">        TaxonomyNode target = nodeRepository.findByCode(targetCode)</span>
+<span class="nc" id="L182">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Target node not found: &quot; + targetCode));</span>
 
-<span class="nc bnc" id="L192" title="All 2 branches missed.">        if (proposalRepository.existsBySourceNodeCodeAndTargetNodeCodeAndRelationType(</span>
-                sourceCode, targetCode, relationType)) {
-<span class="nc" id="L194">            log.debug(&quot;Proposal already exists: {} → {} [{}]&quot;, sourceCode, targetCode, relationType);</span>
-<span class="nc" id="L195">            return null;</span>
+<span class="nc" id="L184">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        if (proposalRepository.existsInWorkspace(</span>
+<span class="nc" id="L186">                sourceCode, targetCode, relationType, ctx.workspaceId())) {</span>
+<span class="nc" id="L187">            log.debug(&quot;Proposal already exists: {} → {} [{}] (workspace={})&quot;,</span>
+<span class="nc" id="L188">                    sourceCode, targetCode, relationType, ctx.workspaceId());</span>
+<span class="nc" id="L189">            return null;</span>
         }
 
-<span class="nc" id="L198">        RelationProposal proposal = new RelationProposal();</span>
-<span class="nc" id="L199">        proposal.setSourceNode(source);</span>
-<span class="nc" id="L200">        proposal.setTargetNode(target);</span>
-<span class="nc" id="L201">        proposal.setRelationType(relationType);</span>
-<span class="nc" id="L202">        proposal.setConfidence(confidence);</span>
-<span class="nc" id="L203">        proposal.setRationale(rationale);</span>
-<span class="nc" id="L204">        proposal.setProvenance(&quot;analysis-hypothesis&quot;);</span>
-<span class="nc" id="L205">        proposal.setStatus(ProposalStatus.PENDING);</span>
+<span class="nc" id="L192">        RelationProposal proposal = new RelationProposal();</span>
+<span class="nc" id="L193">        proposal.setSourceNode(source);</span>
+<span class="nc" id="L194">        proposal.setTargetNode(target);</span>
+<span class="nc" id="L195">        proposal.setRelationType(relationType);</span>
+<span class="nc" id="L196">        proposal.setConfidence(confidence);</span>
+<span class="nc" id="L197">        proposal.setRationale(rationale);</span>
+<span class="nc" id="L198">        proposal.setProvenance(&quot;analysis-hypothesis&quot;);</span>
+<span class="nc" id="L199">        proposal.setStatus(ProposalStatus.PENDING);</span>
+<span class="nc" id="L200">        proposal.setWorkspaceId(ctx.workspaceId());</span>
+<span class="nc" id="L201">        proposal.setOwnerUsername(ctx.username());</span>
 
-<span class="nc" id="L207">        WorkspaceContext ctx = contextResolver.resolveCurrentContext();</span>
-<span class="nc" id="L208">        proposal.setWorkspaceId(ctx.workspaceId());</span>
-<span class="nc" id="L209">        proposal.setOwnerUsername(ctx.username());</span>
-
-<span class="nc" id="L211">        RelationProposal saved = proposalRepository.save(proposal);</span>
-<span class="nc" id="L212">        log.info(&quot;Created proposal from hypothesis: {} → {} [{}] confidence={}&quot;,</span>
-<span class="nc" id="L213">                sourceCode, targetCode, relationType, confidence);</span>
-<span class="nc" id="L214">        return toDto(saved);</span>
+<span class="nc" id="L203">        RelationProposal saved = proposalRepository.save(proposal);</span>
+<span class="nc" id="L204">        log.info(&quot;Created proposal from hypothesis: {} → {} [{}] confidence={} (workspace={})&quot;,</span>
+<span class="nc" id="L205">                sourceCode, targetCode, relationType, confidence, ctx.workspaceId());</span>
+<span class="nc" id="L206">        return toDto(saved);</span>
     }
 
     public RelationProposalDto toDto(RelationProposal proposal) {
-<span class="fc" id="L218">        RelationProposalDto dto = new RelationProposalDto();</span>
-<span class="fc" id="L219">        dto.setId(proposal.getId());</span>
-<span class="fc" id="L220">        dto.setSourceCode(proposal.getSourceNode().getCode());</span>
-<span class="fc" id="L221">        dto.setSourceName(proposal.getSourceNode().getNameEn());</span>
-<span class="fc" id="L222">        dto.setTargetCode(proposal.getTargetNode().getCode());</span>
-<span class="fc" id="L223">        dto.setTargetName(proposal.getTargetNode().getNameEn());</span>
-<span class="fc" id="L224">        dto.setRelationType(proposal.getRelationType().name());</span>
-<span class="fc" id="L225">        dto.setStatus(proposal.getStatus().name());</span>
-<span class="fc" id="L226">        dto.setConfidence(proposal.getConfidence());</span>
-<span class="fc" id="L227">        dto.setRationale(proposal.getRationale());</span>
-<span class="fc" id="L228">        dto.setProvenance(proposal.getProvenance());</span>
-<span class="fc" id="L229">        dto.setExplanationBasis(deriveExplanationBasis(proposal));</span>
-<span class="fc" id="L230">        dto.setCreatedAt(proposal.getCreatedAt());</span>
-<span class="fc" id="L231">        dto.setReviewedAt(proposal.getReviewedAt());</span>
-<span class="fc" id="L232">        return dto;</span>
+<span class="fc" id="L210">        RelationProposalDto dto = new RelationProposalDto();</span>
+<span class="fc" id="L211">        dto.setId(proposal.getId());</span>
+<span class="fc" id="L212">        dto.setSourceCode(proposal.getSourceNode().getCode());</span>
+<span class="fc" id="L213">        dto.setSourceName(proposal.getSourceNode().getNameEn());</span>
+<span class="fc" id="L214">        dto.setTargetCode(proposal.getTargetNode().getCode());</span>
+<span class="fc" id="L215">        dto.setTargetName(proposal.getTargetNode().getNameEn());</span>
+<span class="fc" id="L216">        dto.setRelationType(proposal.getRelationType().name());</span>
+<span class="fc" id="L217">        dto.setStatus(proposal.getStatus().name());</span>
+<span class="fc" id="L218">        dto.setConfidence(proposal.getConfidence());</span>
+<span class="fc" id="L219">        dto.setRationale(proposal.getRationale());</span>
+<span class="fc" id="L220">        dto.setProvenance(proposal.getProvenance());</span>
+<span class="fc" id="L221">        dto.setExplanationBasis(deriveExplanationBasis(proposal));</span>
+<span class="fc" id="L222">        dto.setCreatedAt(proposal.getCreatedAt());</span>
+<span class="fc" id="L223">        dto.setReviewedAt(proposal.getReviewedAt());</span>
+<span class="fc" id="L224">        return dto;</span>
     }
 
     /**
      * Derives a human-readable explanation of how and why a proposal was created.
      */
     private String deriveExplanationBasis(RelationProposal proposal) {
-<span class="fc" id="L239">        String provenance = proposal.getProvenance();</span>
-<span class="pc bpc" id="L240" title="1 of 2 branches missed.">        if (provenance == null) return &quot;unknown source&quot;;</span>
+<span class="fc" id="L231">        String provenance = proposal.getProvenance();</span>
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">        if (provenance == null) return &quot;unknown source&quot;;</span>
 
-<span class="pc bpc" id="L242" title="2 of 3 branches missed.">        return switch (provenance) {</span>
-<span class="fc" id="L243">            case &quot;hybrid-search&quot; -&gt; &quot;Discovered via hybrid search (semantic + keyword) &quot;</span>
+<span class="pc bpc" id="L234" title="2 of 3 branches missed.">        return switch (provenance) {</span>
+<span class="fc" id="L235">            case &quot;hybrid-search&quot; -&gt; &quot;Discovered via hybrid search (semantic + keyword) &quot;</span>
                     + &quot;and validated against the relation compatibility matrix&quot;;
-<span class="nc" id="L245">            case &quot;analysis-hypothesis&quot; -&gt; &quot;Derived from LLM analysis of a business requirement&quot;;</span>
-<span class="nc" id="L246">            default -&gt; &quot;Source: &quot; + provenance;</span>
+<span class="nc" id="L237">            case &quot;analysis-hypothesis&quot; -&gt; &quot;Derived from LLM analysis of a business requirement&quot;;</span>
+<span class="nc" id="L238">            default -&gt; &quot;Source: &quot; + provenance;</span>
         };
     }
 }
