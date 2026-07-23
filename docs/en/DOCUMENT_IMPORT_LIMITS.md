@@ -32,4 +32,4 @@ Error responses contain stable `error` and `message` fields. Clients should bran
 
 ## Verification
 
-The focused document-import workflow runs controller, parser, and policy regression tests and archives complete Surefire reports. Normal pull-request verification additionally covers the full Maven reactor, 81% reactor coverage gate, CodeQL, Trivy, immutable supply-chain references, database compatibility, container restart, UI acceptance, accessibility, and documentation links.
+The focused document-import workflow runs controller, parser, and policy regression tests and archives complete Surefire reports. Normal pull-request verification additionally covers the full Maven reactor, 81% reactor coverage gate, CodeQL, Trivy, immutable supply-chain references, database compatibility, container restart, UI acceptance, accessibility, documentation links, and the strict bounded-context architecture gate.
