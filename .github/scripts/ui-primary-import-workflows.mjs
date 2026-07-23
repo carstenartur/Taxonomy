@@ -3,6 +3,12 @@ import { navigateArchitectureSubtab, navigateToPage } from './ui-role-fixtures.m
 export async function runImportWorkflows({ page, evidence }) {
   const { assert, passed, axeState, saveState, waitForText } = evidence;
   await navigateToPage(page, 'analyze');
+  const documentPanel = page.locator('#documentImportPanel');
+  if (!(await documentPanel.getAttribute('open'))) {
+    await documentPanel.locator('summary').click();
+  }
+  await page.locator('#docImportUploadBtn').waitFor({ state: 'visible', timeout: 10_000 });
+
   await page.route('**/api/documents/upload', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
