@@ -13,7 +13,8 @@ const physicalWidth = Number.parseInt(process.env.TAXONOMY_VIEWPORT_WIDTH || '14
 const physicalHeight = Number.parseInt(process.env.TAXONOMY_VIEWPORT_HEIGHT || '1000', 10);
 const zoom = Number.parseFloat(process.env.TAXONOMY_ZOOM || '1');
 const forcedColors = process.env.TAXONOMY_FORCED_COLORS === 'true';
-const outputDir = process.env.TAXONOMY_UI_OUTPUT_DIR || `/tmp/taxonomy-ui-state-${profileId}`;
+const outputDir = path.resolve(
+  process.env.TAXONOMY_UI_OUTPUT_DIR || path.join('target', 'ui-state', profileId));
 const matrixPath = process.env.TAXONOMY_UI_MATRIX || '.github/ui-acceptance-matrix.json';
 
 const browserType = { chromium, firefox, webkit }[browserName];
@@ -48,6 +49,9 @@ const findings = [];
 const consoleErrors = [];
 const externalRequests = [];
 let auditError = null;
+let browser;
+let context;
+let page;
 
 function passed(name) {
   checks.push(name);
@@ -82,19 +86,19 @@ async function ensureRoleAccounts() {
   }
 }
 
-async function saveState(page, state) {
+async function saveState(currentPage, state) {
   const prefix = path.join(outputDir, state);
-  await page.screenshot({ path: `${prefix}.png`, fullPage: true });
-  await writeFile(`${prefix}.html`, await page.content(), 'utf8');
-  const body = page.locator('body');
+  await currentPage.screenshot({ path: `${prefix}.png`, fullPage: true });
+  await writeFile(`${prefix}.html`, await currentPage.content(), 'utf8');
+  const body = currentPage.locator('body');
   const aria = typeof body.ariaSnapshot === 'function'
     ? await body.ariaSnapshot().catch(error => `ARIA snapshot unavailable: ${error}`)
     : 'ARIA snapshot API unavailable';
   await writeFile(`${prefix}.aria.txt`, `${aria}\n`, 'utf8');
 }
 
-async function runAxe(page, state) {
-  const result = await new AxeBuilder({ page })
+async function runAxe(currentPage, state) {
+  const result = await new AxeBuilder({ page: currentPage })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze();
   const blocking = result.violations.filter(violation =>
@@ -107,8 +111,8 @@ async function runAxe(page, state) {
   passed(`axe ${state}`);
 }
 
-async function csrfPost(page, endpoint, body) {
-  return page.evaluate(async ({ endpoint, body }) => {
+async function csrfPost(currentPage, endpoint, body) {
+  return currentPage.evaluate(async ({ endpoint, body }) => {
     const token = document.querySelector('meta[name="_csrf"]')?.content;
     const header = document.querySelector('meta[name="_csrf_header"]')?.content || 'X-CSRF-TOKEN';
     const headers = { 'Content-Type': 'application/json' };
@@ -124,27 +128,28 @@ async function csrfPost(page, endpoint, body) {
 }
 
 await mkdir(outputDir, { recursive: true });
-await ensureRoleAccounts();
-
-const browser = await browserType.launch({ headless: true });
-const context = await browser.newContext({
-  viewport: effectiveViewport,
-  reducedMotion: 'reduce',
-  forcedColors: forcedColors ? 'active' : 'none'
-});
-const page = await context.newPage();
-const baseOrigin = new URL(baseUrl).origin;
-page.on('request', requestEvent => {
-  const url = requestEvent.url();
-  if (url.startsWith('data:') || url.startsWith('blob:')) return;
-  if (new URL(url).origin !== baseOrigin) externalRequests.push(url);
-});
-page.on('console', message => {
-  if (message.type() === 'error') consoleErrors.push(message.text());
-});
-page.on('pageerror', error => consoleErrors.push(error.message));
 
 try {
+  await ensureRoleAccounts();
+
+  browser = await browserType.launch({ headless: true });
+  context = await browser.newContext({
+    viewport: effectiveViewport,
+    reducedMotion: 'reduce',
+    forcedColors: forcedColors ? 'active' : 'none'
+  });
+  page = await context.newPage();
+  const baseOrigin = new URL(baseUrl).origin;
+  page.on('request', requestEvent => {
+    const url = requestEvent.url();
+    if (url.startsWith('data:') || url.startsWith('blob:')) return;
+    if (new URL(url).origin !== baseOrigin) externalRequests.push(url);
+  });
+  page.on('console', message => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', error => consoleErrors.push(error.message));
+
   await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
   await page.locator('input[name="username"]').fill(account.username);
   await page.locator('input[name="password"]').fill(account.password);
@@ -259,13 +264,19 @@ try {
   auditError = error?.stack || String(error);
   process.exitCode = 1;
 } finally {
-  await writeFile(path.join(outputDir, 'report.json'), JSON.stringify({
-    profileId, browserName, role, physicalViewport: { width: physicalWidth, height: physicalHeight },
+  const report = {
+    profileId, browserName, role,
+    physicalViewport: { width: physicalWidth, height: physicalHeight },
     effectiveViewport, zoom, forcedColors, checks, findings,
     externalRequests, consoleErrors, auditError
-  }, null, 2) + '\n', 'utf8');
-  await context.close();
-  await browser.close();
+  };
+  await writeFile(path.join(outputDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  if (auditError) {
+    console.error(`UI role/state acceptance failed for ${profileId}:\n${auditError}`);
+    console.error(JSON.stringify(report, null, 2));
+  }
+  if (context) await context.close().catch(() => undefined);
+  if (browser) await browser.close().catch(() => undefined);
 }
 
 if (auditError) throw new Error(auditError);
