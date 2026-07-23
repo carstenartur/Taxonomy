@@ -11,9 +11,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
@@ -39,6 +41,7 @@ class ChangePasswordControllerTest {
                     return created;
                 });
         user.setPasswordHash(passwordEncoder.encode(CURRENT_PASSWORD));
+        user.setMustChangePassword(true);
         userRepository.save(user);
     }
 
@@ -50,14 +53,17 @@ class ChangePasswordControllerTest {
     }
 
     @Test
-    void changePasswordWithValidInputSucceeds() throws Exception {
+    void changePasswordWithValidInputClearsFlagAndRedirects() throws Exception {
         mockMvc.perform(post("/change-password")
                         .param("currentPassword", CURRENT_PASSWORD)
                         .param("newPassword", NEW_PASSWORD)
                         .param("confirmPassword", NEW_PASSWORD))
-                .andExpect(status().isOk())
-                .andExpect(view().name("change-password"))
-                .andExpect(model().attribute("success", "Password changed successfully."));
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/?passwordChanged=true"));
+
+        AppUser updated = userRepository.findByUsername("testuser").orElseThrow();
+        assertThat(updated.isMustChangePassword()).isFalse();
+        assertThat(passwordEncoder.matches(NEW_PASSWORD, updated.getPasswordHash())).isTrue();
     }
 
     @Test
