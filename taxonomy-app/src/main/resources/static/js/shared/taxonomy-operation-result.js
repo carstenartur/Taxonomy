@@ -40,6 +40,25 @@ window.TaxonomyOperationResult = (function () {
         showToast(title, message, 'warning');
     }
 
+    function markVisible(toastEl) {
+        toastEl.hidden = false;
+        toastEl.removeAttribute('aria-hidden');
+        toastEl.dataset.toastVisible = 'true';
+        // Inline visibility is intentional: operation feedback must remain perceivable
+        // even when reduced-motion or a browser-specific Bootstrap transition reports
+        // the element as hidden while the `show` class is already present.
+        toastEl.style.display = 'block';
+        toastEl.style.visibility = 'visible';
+        toastEl.style.opacity = '1';
+    }
+
+    function clearVisibilityOverride(toastEl) {
+        toastEl.dataset.toastVisible = 'false';
+        toastEl.style.removeProperty('display');
+        toastEl.style.removeProperty('visibility');
+        toastEl.style.removeProperty('opacity');
+    }
+
     /**
      * Show a toast notification.
      *
@@ -54,14 +73,12 @@ window.TaxonomyOperationResult = (function () {
 
         if (!toastEl || !titleEl || !bodyEl) return;
 
-        // Set content
         var icon = type === 'success' ? '\u2705 ' :
                    type === 'danger' ? '\u274C ' :
                    type === 'warning' ? '\u26A0\uFE0F ' : '\u2139\uFE0F ';
         titleEl.textContent = icon + title;
         bodyEl.textContent = message;
 
-        // Update header colour
         var header = toastEl.querySelector('.toast-header');
         if (header) {
             header.className = 'toast-header';
@@ -70,10 +87,19 @@ window.TaxonomyOperationResult = (function () {
             else if (type === 'warning') header.classList.add('bg-warning', 'text-dark');
         }
 
-        // Show using Bootstrap Toast API
+        markVisible(toastEl);
+
         if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
-            var toast = bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 5000 });
-            toast.show();
+            toastEl.addEventListener('hidden.bs.toast', function () {
+                clearVisibilityOverride(toastEl);
+            }, { once: true });
+            bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 5000 }).show();
+        } else {
+            toastEl.classList.add('show');
+            window.setTimeout(function () {
+                toastEl.classList.remove('show');
+                clearVisibilityOverride(toastEl);
+            }, 5000);
         }
     }
 
