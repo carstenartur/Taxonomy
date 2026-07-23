@@ -142,11 +142,7 @@ window.TaxonomyRoleSurface = (function () {
     }
 
     function refreshWorkspaceConnection() {
-        return fetch('/api/workspace/sync-state')
-            .then(function (response) {
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                return response.json();
-            })
+        return window.TaxonomyApiClient.getJson('/api/workspace/sync-state')
             .catch(function (error) {
                 renderWorkspaceOffline(error);
                 throw error;
@@ -169,11 +165,7 @@ window.TaxonomyRoleSurface = (function () {
     }
 
     function refresh() {
-        return fetch('/api/account/me')
-            .then(function (response) {
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                return response.json();
-            })
+        return window.TaxonomyApiClient.getJson('/api/account/me')
             .then(function (data) {
                 context = data;
                 ensureStableEvidenceAnchors();
