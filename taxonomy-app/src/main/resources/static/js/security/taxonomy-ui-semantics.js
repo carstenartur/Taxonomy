@@ -14,9 +14,21 @@ window.TaxonomyUiSemantics = (function () {
         return panel.getAttribute('style') || '';
     }
 
+    function activeResultPanelId() {
+        var status = document.getElementById('docImportStatus');
+        if (!status || !status.querySelector('.text-success')) return null;
+        var selected = document.querySelector('input[name="importMode"]:checked');
+        var mode = selected ? selected.value : 'extract';
+        if (mode === 'ai-extract') return 'docAiResultPanel';
+        if (mode === 'reg-map') return 'docRegMapResultPanel';
+        return 'docCandidateReviewPanel';
+    }
+
     function synchronizeResultPanel(panel) {
         if (!panel) return;
-        var hidden = /(?:^|;)\s*display\s*:\s*none\s*;?/i.test(inlineDisplayMarker(panel));
+        var markerHidden = /(?:^|;)\s*display\s*:\s*none\s*;?/i.test(inlineDisplayMarker(panel));
+        var successfulResult = activeResultPanelId() === panel.id;
+        var hidden = markerHidden && !successfulResult;
         panel.classList.toggle('d-none', hidden);
         panel.classList.toggle('d-block', !hidden);
         panel.setAttribute('aria-hidden', hidden ? 'true' : 'false');
