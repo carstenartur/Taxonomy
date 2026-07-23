@@ -109,7 +109,7 @@ public interface TaxonomyRelationRepository extends JpaRepository&lt;TaxonomyRel
                                                                        String sourceCode,
                                                                        String targetCode,
                                                                        RelationType type) {
-<span class="fc" id="L112">        return findVisibleByWorkspaceAndSourceTargetType(workspaceId, sourceCode, targetCode, type);</span>
+<span class="nc" id="L112">        return findVisibleByWorkspaceAndSourceTargetType(workspaceId, sourceCode, targetCode, type);</span>
     }
 
     default long countByWorkspaceIdIsNullOrWorkspaceId(String workspaceId) {

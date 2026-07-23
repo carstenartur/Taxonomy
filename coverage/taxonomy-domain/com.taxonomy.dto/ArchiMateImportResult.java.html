@@ -4,32 +4,52 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Result of an ArchiMate XML import operation.
- * Describes how many elements and relations were imported or matched.
+ * Result of an ArchiMate XML preview or import operation.
+ *
+ * &lt;p&gt;The counters deliberately distinguish parsing/matching from mutation so
+ * clients can tell whether a model was understood, skipped as a duplicate, or
+ * materialized into the active workspace.&lt;/p&gt;
  */
 public class ArchiMateImportResult {
 
     private int elementsImported;
-    private int relationsImported;
     private int elementsMatched;
     private int elementsUnmatched;
-<span class="fc" id="L16">    private List&lt;String&gt; notes = new ArrayList&lt;&gt;();</span>
+    private int relationsParsed;
+    private int relationsImported;
+    private int relationsSkipped;
+    private int relationsRejected;
+    private boolean preview;
+<span class="fc" id="L23">    private List&lt;String&gt; notes = new ArrayList&lt;&gt;();</span>
 
-<span class="fc" id="L18">    public ArchiMateImportResult() {}</span>
+<span class="fc" id="L25">    public ArchiMateImportResult() {</span>
+<span class="fc" id="L26">    }</span>
 
-<span class="fc" id="L20">    public int getElementsImported() { return elementsImported; }</span>
-<span class="fc" id="L21">    public void setElementsImported(int elementsImported) { this.elementsImported = elementsImported; }</span>
+<span class="fc" id="L28">    public int getElementsImported() { return elementsImported; }</span>
+<span class="fc" id="L29">    public void setElementsImported(int elementsImported) { this.elementsImported = elementsImported; }</span>
 
-<span class="fc" id="L23">    public int getRelationsImported() { return relationsImported; }</span>
-<span class="fc" id="L24">    public void setRelationsImported(int relationsImported) { this.relationsImported = relationsImported; }</span>
+<span class="fc" id="L31">    public int getElementsMatched() { return elementsMatched; }</span>
+<span class="fc" id="L32">    public void setElementsMatched(int elementsMatched) { this.elementsMatched = elementsMatched; }</span>
 
-<span class="fc" id="L26">    public int getElementsMatched() { return elementsMatched; }</span>
-<span class="fc" id="L27">    public void setElementsMatched(int elementsMatched) { this.elementsMatched = elementsMatched; }</span>
+<span class="fc" id="L34">    public int getElementsUnmatched() { return elementsUnmatched; }</span>
+<span class="fc" id="L35">    public void setElementsUnmatched(int elementsUnmatched) { this.elementsUnmatched = elementsUnmatched; }</span>
 
-<span class="fc" id="L29">    public int getElementsUnmatched() { return elementsUnmatched; }</span>
-<span class="fc" id="L30">    public void setElementsUnmatched(int elementsUnmatched) { this.elementsUnmatched = elementsUnmatched; }</span>
+<span class="fc" id="L37">    public int getRelationsParsed() { return relationsParsed; }</span>
+<span class="fc" id="L38">    public void setRelationsParsed(int relationsParsed) { this.relationsParsed = relationsParsed; }</span>
 
-<span class="fc" id="L32">    public List&lt;String&gt; getNotes() { return notes; }</span>
-<span class="fc" id="L33">    public void setNotes(List&lt;String&gt; notes) { this.notes = notes; }</span>
+<span class="fc" id="L40">    public int getRelationsImported() { return relationsImported; }</span>
+<span class="fc" id="L41">    public void setRelationsImported(int relationsImported) { this.relationsImported = relationsImported; }</span>
+
+<span class="fc" id="L43">    public int getRelationsSkipped() { return relationsSkipped; }</span>
+<span class="fc" id="L44">    public void setRelationsSkipped(int relationsSkipped) { this.relationsSkipped = relationsSkipped; }</span>
+
+<span class="fc" id="L46">    public int getRelationsRejected() { return relationsRejected; }</span>
+<span class="fc" id="L47">    public void setRelationsRejected(int relationsRejected) { this.relationsRejected = relationsRejected; }</span>
+
+<span class="fc" id="L49">    public boolean isPreview() { return preview; }</span>
+<span class="fc" id="L50">    public void setPreview(boolean preview) { this.preview = preview; }</span>
+
+<span class="fc" id="L52">    public List&lt;String&gt; getNotes() { return notes; }</span>
+<span class="fc" id="L53">    public void setNotes(List&lt;String&gt; notes) { this.notes = notes; }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

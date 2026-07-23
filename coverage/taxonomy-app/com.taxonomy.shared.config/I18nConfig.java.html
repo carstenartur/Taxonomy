@@ -15,10 +15,12 @@ import org.springframework.context.support.ReloadableResourceBundleMessageSource
     @Bean
     public MessageSource messageSource() {
 <span class="fc" id="L17">        ReloadableResourceBundleMessageSource ms = new ReloadableResourceBundleMessageSource();</span>
-<span class="fc" id="L18">        ms.setBasenames(&quot;classpath:i18n/messages&quot;);</span>
-<span class="fc" id="L19">        ms.setDefaultEncoding(&quot;UTF-8&quot;);</span>
-<span class="fc" id="L20">        ms.setFallbackToSystemLocale(false);</span>
-<span class="fc" id="L21">        return ms;</span>
+<span class="fc" id="L18">        ms.setBasenames(</span>
+                &quot;classpath:i18n/messages&quot;,
+                &quot;classpath:i18n/messages_document_import&quot;);
+<span class="fc" id="L21">        ms.setDefaultEncoding(&quot;UTF-8&quot;);</span>
+<span class="fc" id="L22">        ms.setFallbackToSystemLocale(false);</span>
+<span class="fc" id="L23">        return ms;</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

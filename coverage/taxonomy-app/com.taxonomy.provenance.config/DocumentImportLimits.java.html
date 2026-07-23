@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentImportLimits.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.config</a> &gt; <span class="el_source">DocumentImportLimits.java</span></div><h1>DocumentImportLimits.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.config;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+/** Single source of truth for document upload, expansion, and LLM input limits. */
+@Component
+@ConfigurationProperties(prefix = &quot;taxonomy.limits.document&quot;)
+<span class="fc" id="L9">public class DocumentImportLimits {</span>
+
+<span class="fc" id="L11">    private long maxUploadBytes = 50L * 1024 * 1024;</span>
+<span class="fc" id="L12">    private int maxPdfPages = 500;</span>
+<span class="fc" id="L13">    private int maxExtractedCharacters = 1_000_000;</span>
+<span class="fc" id="L14">    private int maxCandidates = 2_000;</span>
+<span class="fc" id="L15">    private int maxLlmCharacters = 200_000;</span>
+<span class="fc" id="L16">    private long maxDocxEntryBytes = 64L * 1024 * 1024;</span>
+<span class="fc" id="L17">    private long maxDocxTextBytes = 128L * 1024 * 1024;</span>
+<span class="fc" id="L18">    private double minDocxInflateRatio = 0.01d;</span>
+
+<span class="fc" id="L20">    public long getMaxUploadBytes() { return maxUploadBytes; }</span>
+<span class="fc" id="L21">    public void setMaxUploadBytes(long maxUploadBytes) { this.maxUploadBytes = maxUploadBytes; }</span>
+
+<span class="fc" id="L23">    public int getMaxPdfPages() { return maxPdfPages; }</span>
+<span class="fc" id="L24">    public void setMaxPdfPages(int maxPdfPages) { this.maxPdfPages = maxPdfPages; }</span>
+
+<span class="fc" id="L26">    public int getMaxExtractedCharacters() { return maxExtractedCharacters; }</span>
+    public void setMaxExtractedCharacters(int maxExtractedCharacters) {
+<span class="nc" id="L28">        this.maxExtractedCharacters = maxExtractedCharacters;</span>
+<span class="nc" id="L29">    }</span>
+
+<span class="fc" id="L31">    public int getMaxCandidates() { return maxCandidates; }</span>
+<span class="fc" id="L32">    public void setMaxCandidates(int maxCandidates) { this.maxCandidates = maxCandidates; }</span>
+
+<span class="nc" id="L34">    public int getMaxLlmCharacters() { return maxLlmCharacters; }</span>
+<span class="fc" id="L35">    public void setMaxLlmCharacters(int maxLlmCharacters) { this.maxLlmCharacters = maxLlmCharacters; }</span>
+
+<span class="fc" id="L37">    public long getMaxDocxEntryBytes() { return maxDocxEntryBytes; }</span>
+<span class="nc" id="L38">    public void setMaxDocxEntryBytes(long maxDocxEntryBytes) { this.maxDocxEntryBytes = maxDocxEntryBytes; }</span>
+
+<span class="fc" id="L40">    public long getMaxDocxTextBytes() { return maxDocxTextBytes; }</span>
+<span class="nc" id="L41">    public void setMaxDocxTextBytes(long maxDocxTextBytes) { this.maxDocxTextBytes = maxDocxTextBytes; }</span>
+
+<span class="fc" id="L43">    public double getMinDocxInflateRatio() { return minDocxInflateRatio; }</span>
+    public void setMinDocxInflateRatio(double minDocxInflateRatio) {
+<span class="fc" id="L45">        this.minDocxInflateRatio = minDocxInflateRatio;</span>
+<span class="fc" id="L46">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

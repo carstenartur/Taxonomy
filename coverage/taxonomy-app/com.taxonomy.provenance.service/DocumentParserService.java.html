@@ -2,6 +2,7 @@
 
 import com.taxonomy.dto.DocumentParseResult;
 import com.taxonomy.dto.RequirementCandidate;
+import com.taxonomy.provenance.config.DocumentImportLimits;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -9,335 +10,450 @@ import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.BreakIterator;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
- * Parses uploaded PDF and DOCX documents into requirement candidates.
+ * Parses uploaded PDF and DOCX documents into bounded requirement candidates.
  *
- * &lt;p&gt;This first-stage parser performs:
- * &lt;ul&gt;
- *   &lt;li&gt;Raw text extraction&lt;/li&gt;
- *   &lt;li&gt;Section/heading detection&lt;/li&gt;
- *   &lt;li&gt;Requirement candidate splitting (paragraph-based)&lt;/li&gt;
- * &lt;/ul&gt;
- *
- * &lt;p&gt;It does &lt;em&gt;not&lt;/em&gt; attempt to fully interpret legal semantics.
+ * &lt;p&gt;The service never calls {@link MultipartFile#getBytes()}. Uploads are
+ * copied once to a temporary file, parsed from disk, and deleted afterwards.
+ * Expanded DOCX entries, PDF page count, extracted text, and candidate count
+ * are constrained by {@link DocumentImportLimits}.&lt;/p&gt;
  */
 @Service
-<span class="fc" id="L39">public class DocumentParserService {</span>
+public class DocumentParserService {
 
-<span class="fc" id="L41">    private static final Logger log = LoggerFactory.getLogger(DocumentParserService.class);</span>
-
-    /** Minimum length for a paragraph to be considered a requirement candidate. */
+<span class="fc" id="L51">    private static final Logger log = LoggerFactory.getLogger(DocumentParserService.class);</span>
     private static final int MIN_CANDIDATE_LENGTH = 40;
-
-    /** Maximum length for a single candidate text. */
     private static final int MAX_CANDIDATE_LENGTH = 2000;
-
-    /** Maximum characters for the raw text preview. */
     private static final int RAW_TEXT_PREVIEW_LENGTH = 2000;
-
+    private static final int MAX_DOCX_ENTRIES = 10_000;
     private static final String MIME_PDF = &quot;application/pdf&quot;;
-    private static final String MIME_DOCX = &quot;application/vnd.openxmlformats-officedocument.wordprocessingml.document&quot;;
+    private static final String MIME_DOCX =
+            &quot;application/vnd.openxmlformats-officedocument.wordprocessingml.document&quot;;
 
-    /** Pattern to detect likely section headings. */
-<span class="fc" id="L56">    private static final Pattern HEADING_PATTERN = Pattern.compile(</span>
-            &quot;^(?:§\\s*\\d+|Art\\.?\\s*\\d+|\\d+\\.\\d*\\s+[A-ZÄÖÜ]|[IVXLCDM]+\\.\\s+|Kapitel\\s+\\d+|&quot; +
-            &quot;Chapter\\s+\\d+|Section\\s+\\d+|Abschnitt\\s+\\d+|Artikel\\s+\\d+).*&quot;,
+<span class="fc" id="L60">    private static final Pattern HEADING_PATTERN = Pattern.compile(</span>
+            &quot;^(?:§\\s*\\d+|Art\\.?\\s*\\d+|\\d+\\.\\d*\\s+[A-ZÄÖÜ]|[IVXLCDM]+\\.\\s+|Kapitel\\s+\\d+|&quot;
+                    + &quot;Chapter\\s+\\d+|Section\\s+\\d+|Abschnitt\\s+\\d+|Artikel\\s+\\d+).*&quot;,
             Pattern.CASE_INSENSITIVE);
+<span class="fc" id="L64">    private static final Pattern H_MARKER_PATTERN = Pattern.compile(&quot;^\\[H(\\d+)]\\s*(.+)$&quot;);</span>
+<span class="fc" id="L65">    private static final Pattern STYLE_LEVEL_PATTERN = Pattern.compile(&quot;\\d+&quot;);</span>
 
-    /** Pattern to detect [H1], [H2], etc. markers injected during DOCX extraction. */
-<span class="fc" id="L62">    private static final Pattern H_MARKER_PATTERN = Pattern.compile(</span>
-            &quot;^\\[H(\\d+)]\\s*(.+)$&quot;);
+    private final DocumentImportLimits limits;
 
-    /** Pattern to extract a trailing digit from a style ID (e.g. &quot;Heading2&quot; → 2). */
-<span class="fc" id="L66">    private static final Pattern STYLE_LEVEL_PATTERN = Pattern.compile(&quot;\\d+&quot;);</span>
+    /** Convenience constructor retained for focused unit tests. */
+    public DocumentParserService() {
+<span class="fc" id="L71">        this(new DocumentImportLimits());</span>
+<span class="fc" id="L72">    }</span>
 
-    /** Represents a detected heading with its hierarchical level. */
-<span class="fc" id="L69">    record HeadingMatch(int level, String text) {}</span>
+    @Autowired
+<span class="fc" id="L75">    public DocumentParserService(DocumentImportLimits limits) {</span>
+<span class="fc" id="L76">        this.limits = limits;</span>
+<span class="fc" id="L77">    }</span>
 
-    /**
-     * Parses an uploaded document and extracts requirement candidates.
-     *
-     * @param file the uploaded PDF or DOCX file
-     * @return the parse result with candidates
-     * @throws IOException if the file cannot be read
-     */
+<span class="fc" id="L79">    record HeadingMatch(int level, String text) {</span>
+    }
+
+<span class="fc" id="L82">    private record TextExtraction(String text, boolean truncated) {</span>
+    }
+
+<span class="fc" id="L85">    private record ParsedContent(String text, int pageCount, boolean truncated) {</span>
+    }
+
+<span class="fc" id="L88">    private record CandidateExtraction(List&lt;RequirementCandidate&gt; candidates, boolean truncated) {</span>
+    }
+
+    /** Parses an uploaded PDF or DOCX using a bounded temporary-file workflow. */
     public DocumentParseResult parse(MultipartFile file) throws IOException {
-<span class="fc" id="L79">        String contentType = detectMimeType(file);</span>
-        String rawText;
-        int pageCount;
-
-<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (MIME_PDF.equals(contentType)) {</span>
-<span class="fc" id="L84">            try (PDDocument pdf = Loader.loadPDF(file.getBytes())) {</span>
-<span class="fc" id="L85">                pageCount = pdf.getNumberOfPages();</span>
-<span class="fc" id="L86">                PDFTextStripper stripper = new PDFTextStripper();</span>
-<span class="fc" id="L87">                rawText = stripper.getText(pdf);</span>
-            }
-<span class="pc bpc" id="L89" title="1 of 2 branches missed.">        } else if (MIME_DOCX.equals(contentType)) {</span>
-<span class="fc" id="L90">            try (InputStream in = file.getInputStream();</span>
-<span class="fc" id="L91">                 XWPFDocument doc = new XWPFDocument(in)) {</span>
-<span class="fc" id="L92">                pageCount = 1;</span>
-                try {
-<span class="fc" id="L94">                    int p = doc.getProperties().getExtendedProperties()</span>
-<span class="fc" id="L95">                            .getUnderlyingProperties().getPages();</span>
-<span class="pc bpc" id="L96" title="1 of 2 branches missed.">                    if (p &gt; 0) pageCount = p;</span>
-<span class="nc" id="L97">                } catch (Exception ignored) {</span>
-                    // Page count unavailable in minimal DOCX files
-<span class="fc" id="L99">                }</span>
-<span class="fc" id="L100">                rawText = extractDocxText(doc);</span>
-            }
-        } else {
-<span class="nc" id="L103">            throw new IOException(&quot;Unsupported file type: &quot; + contentType</span>
-                    + &quot;. Only PDF and DOCX files are supported.&quot;);
-        }
-
-<span class="fc" id="L107">        List&lt;RequirementCandidate&gt; candidates = extractCandidates(rawText);</span>
-
-<span class="fc" id="L109">        DocumentParseResult result = new DocumentParseResult();</span>
-<span class="fc" id="L110">        result.setFileName(file.getOriginalFilename());</span>
-<span class="fc" id="L111">        result.setMimeType(contentType);</span>
-<span class="fc" id="L112">        result.setTotalPages(pageCount);</span>
-<span class="pc bpc" id="L113" title="1 of 2 branches missed.">        result.setRawTextPreview(rawText.length() &gt; RAW_TEXT_PREVIEW_LENGTH</span>
-<span class="nc" id="L114">                ? rawText.substring(0, RAW_TEXT_PREVIEW_LENGTH) + &quot;…&quot;</span>
-<span class="fc" id="L115">                : rawText);</span>
-<span class="fc" id="L116">        result.setCandidates(candidates);</span>
-<span class="fc" id="L117">        result.setWarnings(new ArrayList&lt;&gt;());</span>
-
-<span class="pc bpc" id="L119" title="1 of 2 branches missed.">        if (candidates.isEmpty()) {</span>
-<span class="nc" id="L120">            result.getWarnings().add(&quot;No requirement candidates were extracted from this document.&quot;);</span>
-        }
-
-<span class="fc" id="L123">        log.info(&quot;Parsed document '{}': {} pages, {} candidates extracted&quot;,</span>
-<span class="fc" id="L124">                file.getOriginalFilename(), pageCount, candidates.size());</span>
-
-<span class="fc" id="L126">        return result;</span>
-    }
-
-    /**
-     * Computes a SHA-256 content hash for deduplication.
-     */
-    public String computeContentHash(byte[] content) {
+<span class="fc" id="L93">        validateUpload(file);</span>
+<span class="fc" id="L94">        String contentType = detectMimeType(file);</span>
+<span class="fc" id="L95">        Path temporaryFile = Files.createTempFile(&quot;taxonomy-document-&quot;, suffixFor(contentType));</span>
         try {
-<span class="fc" id="L134">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
-<span class="fc" id="L135">            byte[] hash = digest.digest(content);</span>
-<span class="fc" id="L136">            return HexFormat.of().formatHex(hash);</span>
-<span class="nc" id="L137">        } catch (NoSuchAlgorithmException e) {</span>
-<span class="nc" id="L138">            throw new IllegalStateException(&quot;SHA-256 not available&quot;, e);</span>
+<span class="fc" id="L97">            try (InputStream input = file.getInputStream()) {</span>
+<span class="fc" id="L98">                Files.copy(input, temporaryFile, StandardCopyOption.REPLACE_EXISTING);</span>
+            }
+
+<span class="pc bpc" id="L101" title="1 of 3 branches missed.">            ParsedContent parsed = switch (contentType) {</span>
+<span class="fc" id="L102">                case MIME_PDF -&gt; parsePdf(temporaryFile);</span>
+<span class="fc" id="L103">                case MIME_DOCX -&gt; parseDocx(temporaryFile);</span>
+<span class="pc" id="L104">                default -&gt; throw new IOException(&quot;Unsupported file type: &quot; + contentType</span>
+                        + &quot;. Only PDF and DOCX files are supported.&quot;);
+            };
+
+<span class="fc" id="L108">            CandidateExtraction candidateExtraction = extractCandidatesBounded(</span>
+<span class="fc" id="L109">                    parsed.text(), limits.getMaxCandidates());</span>
+
+<span class="fc" id="L111">            DocumentParseResult result = new DocumentParseResult();</span>
+<span class="fc" id="L112">            result.setFileName(file.getOriginalFilename());</span>
+<span class="fc" id="L113">            result.setMimeType(contentType);</span>
+<span class="fc" id="L114">            result.setTotalPages(parsed.pageCount());</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">            result.setRawTextPreview(parsed.text().length() &gt; RAW_TEXT_PREVIEW_LENGTH</span>
+<span class="nc" id="L116">                    ? parsed.text().substring(0, RAW_TEXT_PREVIEW_LENGTH) + &quot;…&quot;</span>
+<span class="fc" id="L117">                    : parsed.text());</span>
+<span class="fc" id="L118">            result.setCandidates(candidateExtraction.candidates());</span>
+<span class="fc" id="L119">            result.setWarnings(new ArrayList&lt;&gt;());</span>
+
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">            if (parsed.truncated()) {</span>
+<span class="nc" id="L122">                result.getWarnings().add(&quot;Extracted document text was truncated at &quot;</span>
+<span class="nc" id="L123">                        + limits.getMaxExtractedCharacters() + &quot; characters.&quot;);</span>
+            }
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">            if (candidateExtraction.truncated()) {</span>
+<span class="nc" id="L126">                result.getWarnings().add(&quot;Requirement candidates were truncated at &quot;</span>
+<span class="nc" id="L127">                        + limits.getMaxCandidates() + &quot; entries.&quot;);</span>
+            }
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">            if (candidateExtraction.candidates().isEmpty()) {</span>
+<span class="nc" id="L130">                result.getWarnings().add(&quot;No requirement candidates were extracted from this document.&quot;);</span>
+            }
+
+<span class="fc" id="L133">            log.info(&quot;Parsed document '{}': {} pages, {} candidates, textTruncated={}, candidatesTruncated={}&quot;,</span>
+<span class="fc" id="L134">                    file.getOriginalFilename(), parsed.pageCount(),</span>
+<span class="fc" id="L135">                    candidateExtraction.candidates().size(), parsed.truncated(),</span>
+<span class="fc" id="L136">                    candidateExtraction.truncated());</span>
+<span class="fc" id="L137">            return result;</span>
+        } finally {
+<span class="fc" id="L139">            Files.deleteIfExists(temporaryFile);</span>
         }
     }
 
-    // ── Private helpers ────────────────────────────────────────────────────────
+    /** Computes SHA-256 from a stream without materializing the upload in heap. */
+    public String computeContentHash(MultipartFile file) throws IOException {
+<span class="fc" id="L145">        validateUpload(file);</span>
+<span class="fc" id="L146">        try (InputStream input = file.getInputStream()) {</span>
+<span class="fc" id="L147">            MessageDigest digest = sha256();</span>
+<span class="fc" id="L148">            byte[] buffer = new byte[16 * 1024];</span>
+            int read;
+<span class="fc bfc" id="L150" title="All 2 branches covered.">            while ((read = input.read(buffer)) &gt;= 0) {</span>
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">                if (read &gt; 0) {</span>
+<span class="fc" id="L152">                    digest.update(buffer, 0, read);</span>
+                }
+            }
+<span class="fc" id="L155">            return HexFormat.of().formatHex(digest.digest());</span>
+        }
+    }
+
+    /** Backward-compatible helper for small in-memory test fixtures. */
+    public String computeContentHash(byte[] content) {
+<span class="fc" id="L161">        return HexFormat.of().formatHex(sha256().digest(content));</span>
+    }
+
+    private void validateUpload(MultipartFile file) {
+<span class="pc bpc" id="L165" title="2 of 4 branches missed.">        if (file == null || file.isEmpty()) {</span>
+<span class="nc" id="L166">            throw new DocumentLimitException(&quot;EMPTY_FILE&quot;, &quot;The uploaded file is empty&quot;);</span>
+        }
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        if (file.getSize() &gt; limits.getMaxUploadBytes()) {</span>
+<span class="fc" id="L169">            throw new DocumentLimitException(&quot;UPLOAD_TOO_LARGE&quot;,</span>
+                    &quot;File exceeds the configured upload limit of &quot;
+<span class="fc" id="L171">                            + limits.getMaxUploadBytes() + &quot; bytes&quot;);</span>
+        }
+<span class="fc" id="L173">    }</span>
+
+    private ParsedContent parsePdf(Path path) throws IOException {
+<span class="fc" id="L176">        try (PDDocument pdf = Loader.loadPDF(path.toFile())) {</span>
+<span class="fc" id="L177">            int pageCount = pdf.getNumberOfPages();</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">            if (pageCount &gt; limits.getMaxPdfPages()) {</span>
+<span class="fc" id="L179">                throw new DocumentLimitException(&quot;PDF_PAGE_LIMIT_EXCEEDED&quot;,</span>
+                        &quot;PDF contains &quot; + pageCount + &quot; pages; maximum is &quot;
+<span class="fc" id="L181">                                + limits.getMaxPdfPages());</span>
+            }
+<span class="fc" id="L183">            BoundedTextWriter writer = new BoundedTextWriter(limits.getMaxExtractedCharacters());</span>
+<span class="fc" id="L184">            new PDFTextStripper().writeText(pdf, writer);</span>
+<span class="fc" id="L185">            return new ParsedContent(writer.text(), pageCount, writer.truncated());</span>
+        }
+    }
+
+    private ParsedContent parseDocx(Path path) throws IOException {
+<span class="fc" id="L190">        inspectDocxArchive(path);</span>
+<span class="fc" id="L191">        try (InputStream input = Files.newInputStream(path);</span>
+<span class="fc" id="L192">             XWPFDocument document = new XWPFDocument(input)) {</span>
+<span class="fc" id="L193">            int pageCount = 1;</span>
+            try {
+<span class="fc" id="L195">                int pages = document.getProperties().getExtendedProperties()</span>
+<span class="fc" id="L196">                        .getUnderlyingProperties().getPages();</span>
+<span class="pc bpc" id="L197" title="1 of 2 branches missed.">                if (pages &gt; 0) {</span>
+<span class="nc" id="L198">                    pageCount = pages;</span>
+                }
+<span class="nc" id="L200">            } catch (RuntimeException ignored) {</span>
+                // Page count is optional in minimal DOCX files.
+<span class="fc" id="L202">            }</span>
+<span class="fc" id="L203">            TextExtraction extraction = extractDocxText(document);</span>
+<span class="fc" id="L204">            return new ParsedContent(extraction.text(), pageCount, extraction.truncated());</span>
+<span class="nc" id="L205">        } catch (DocumentLimitException error) {</span>
+<span class="nc" id="L206">            throw error;</span>
+<span class="nc" id="L207">        } catch (RuntimeException error) {</span>
+<span class="nc" id="L208">            throw new IOException(&quot;Unable to parse DOCX document&quot;, error);</span>
+        }
+    }
+
+    /** Rejects ZIP bombs before Apache POI expands any OOXML entry. */
+    private void inspectDocxArchive(Path path) throws IOException {
+<span class="fc" id="L214">        long totalExpanded = 0;</span>
+<span class="fc" id="L215">        int entries = 0;</span>
+<span class="fc" id="L216">        try (ZipFile archive = new ZipFile(path.toFile())) {</span>
+<span class="fc" id="L217">            var enumeration = archive.entries();</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">            while (enumeration.hasMoreElements()) {</span>
+<span class="fc" id="L219">                ZipEntry entry = enumeration.nextElement();</span>
+<span class="fc" id="L220">                entries++;</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">                if (entries &gt; MAX_DOCX_ENTRIES) {</span>
+<span class="nc" id="L222">                    throw new DocumentLimitException(&quot;DOCX_ENTRY_COUNT_EXCEEDED&quot;,</span>
+                            &quot;DOCX archive contains too many entries&quot;);
+                }
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">                if (entry.isDirectory()) {</span>
+<span class="nc" id="L226">                    continue;</span>
+                }
+<span class="fc" id="L228">                long expanded = entry.getSize();</span>
+<span class="fc" id="L229">                long compressed = entry.getCompressedSize();</span>
+<span class="pc bpc" id="L230" title="2 of 4 branches missed.">                if (expanded &lt; 0 || compressed &lt; 0) {</span>
+<span class="nc" id="L231">                    throw new DocumentLimitException(&quot;DOCX_UNKNOWN_ENTRY_SIZE&quot;,</span>
+                            &quot;DOCX archive contains an entry with unknown size&quot;);
+                }
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">                if (expanded &gt; limits.getMaxDocxEntryBytes()) {</span>
+<span class="nc" id="L235">                    throw new DocumentLimitException(&quot;DOCX_ENTRY_TOO_LARGE&quot;,</span>
+                            &quot;DOCX entry exceeds the configured expanded-size limit&quot;);
+                }
+<span class="fc" id="L238">                totalExpanded = Math.addExact(totalExpanded, expanded);</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">                if (totalExpanded &gt; limits.getMaxDocxTextBytes()) {</span>
+<span class="nc" id="L240">                    throw new DocumentLimitException(&quot;DOCX_EXPANDED_SIZE_EXCEEDED&quot;,</span>
+                            &quot;DOCX expanded content exceeds the configured limit&quot;);
+                }
+<span class="pc bpc" id="L243" title="2 of 4 branches missed.">                if (expanded &gt; 0 &amp;&amp; compressed &gt; 0</span>
+                        &amp;&amp; ((double) compressed / (double) expanded)
+<span class="fc bfc" id="L245" title="All 2 branches covered.">                        &lt; limits.getMinDocxInflateRatio()) {</span>
+<span class="fc" id="L246">                    throw new DocumentLimitException(&quot;DOCX_SUSPICIOUS_COMPRESSION&quot;,</span>
+                            &quot;DOCX compression ratio is below the configured safety threshold&quot;);
+                }
+<span class="fc" id="L249">            }</span>
+<span class="nc" id="L250">        } catch (ArithmeticException error) {</span>
+<span class="nc" id="L251">            throw new DocumentLimitException(&quot;DOCX_EXPANDED_SIZE_EXCEEDED&quot;,</span>
+                    &quot;DOCX expanded size overflow&quot;, error);
+<span class="fc" id="L253">        }</span>
+<span class="fc" id="L254">    }</span>
+
+    private TextExtraction extractDocxText(XWPFDocument document) {
+<span class="fc" id="L257">        StringBuilder text = new StringBuilder(Math.min(</span>
+<span class="fc" id="L258">                limits.getMaxExtractedCharacters(), 64 * 1024));</span>
+<span class="fc" id="L259">        boolean truncated = false;</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        for (XWPFParagraph paragraph : document.getParagraphs()) {</span>
+<span class="fc" id="L261">            String paragraphText = paragraph.getText();</span>
+<span class="pc bpc" id="L262" title="2 of 4 branches missed.">            if (paragraphText == null || paragraphText.isBlank()) {</span>
+<span class="nc" id="L263">                continue;</span>
+            }
+            String value;
+<span class="fc" id="L266">            String styleId = paragraph.getStyleID();</span>
+<span class="pc bpc" id="L267" title="3 of 4 branches missed.">            if (styleId != null &amp;&amp; isHeadingStyle(styleId)) {</span>
+<span class="nc" id="L268">                value = &quot;[H&quot; + extractHeadingLevel(styleId) + &quot;] &quot; + paragraphText + &quot;\n\n&quot;;</span>
+            } else {
+<span class="fc" id="L270">                value = paragraphText + &quot;\n\n&quot;;</span>
+            }
+<span class="fc" id="L272">            int remaining = limits.getMaxExtractedCharacters() - text.length();</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">            if (remaining &lt;= 0) {</span>
+<span class="nc" id="L274">                truncated = true;</span>
+<span class="nc" id="L275">                break;</span>
+            }
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">            if (value.length() &gt; remaining) {</span>
+<span class="nc" id="L278">                text.append(value, 0, remaining);</span>
+<span class="nc" id="L279">                truncated = true;</span>
+<span class="nc" id="L280">                break;</span>
+            }
+<span class="fc" id="L282">            text.append(value);</span>
+<span class="fc" id="L283">        }</span>
+<span class="fc" id="L284">        return new TextExtraction(text.toString(), truncated);</span>
+    }
 
     private String detectMimeType(MultipartFile file) {
-<span class="fc" id="L145">        String ct = file.getContentType();</span>
-<span class="pc bpc" id="L146" title="2 of 4 branches missed.">        if (ct != null &amp;&amp; !ct.isBlank()) {</span>
-<span class="fc bfc" id="L147" title="All 2 branches covered.">            if (ct.contains(&quot;pdf&quot;)) return MIME_PDF;</span>
-<span class="pc bpc" id="L148" title="3 of 4 branches missed.">            if (ct.contains(&quot;wordprocessingml&quot;) || ct.contains(&quot;docx&quot;)) return MIME_DOCX;</span>
+<span class="fc" id="L288">        String contentType = file.getContentType();</span>
+<span class="pc bpc" id="L289" title="2 of 4 branches missed.">        if (contentType != null &amp;&amp; !contentType.isBlank()) {</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">            if (contentType.contains(&quot;pdf&quot;)) return MIME_PDF;</span>
+<span class="pc bpc" id="L291" title="3 of 4 branches missed.">            if (contentType.contains(&quot;wordprocessingml&quot;) || contentType.contains(&quot;docx&quot;)) return MIME_DOCX;</span>
         }
-<span class="nc" id="L150">        String name = file.getOriginalFilename();</span>
-<span class="nc bnc" id="L151" title="All 2 branches missed.">        if (name != null) {</span>
-<span class="nc" id="L152">            String lower = name.toLowerCase();</span>
-<span class="nc bnc" id="L153" title="All 2 branches missed.">            if (lower.endsWith(&quot;.pdf&quot;)) return MIME_PDF;</span>
-<span class="nc bnc" id="L154" title="All 2 branches missed.">            if (lower.endsWith(&quot;.docx&quot;)) return MIME_DOCX;</span>
+<span class="nc" id="L293">        String name = file.getOriginalFilename();</span>
+<span class="nc bnc" id="L294" title="All 2 branches missed.">        if (name != null) {</span>
+<span class="nc" id="L295">            String lower = name.toLowerCase(Locale.ROOT);</span>
+<span class="nc bnc" id="L296" title="All 2 branches missed.">            if (lower.endsWith(&quot;.pdf&quot;)) return MIME_PDF;</span>
+<span class="nc bnc" id="L297" title="All 2 branches missed.">            if (lower.endsWith(&quot;.docx&quot;)) return MIME_DOCX;</span>
         }
-<span class="nc bnc" id="L156" title="All 2 branches missed.">        return ct != null ? ct : &quot;application/octet-stream&quot;;</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">        return contentType != null ? contentType : &quot;application/octet-stream&quot;;</span>
     }
 
-    private String extractDocxText(XWPFDocument doc) {
-<span class="fc" id="L160">        StringBuilder sb = new StringBuilder();</span>
-<span class="fc bfc" id="L161" title="All 2 branches covered.">        for (XWPFParagraph para : doc.getParagraphs()) {</span>
-<span class="fc" id="L162">            String text = para.getText();</span>
-<span class="pc bpc" id="L163" title="2 of 4 branches missed.">            if (text == null || text.isBlank()) continue;</span>
-<span class="fc" id="L164">            String styleId = para.getStyleID();</span>
-<span class="pc bpc" id="L165" title="3 of 4 branches missed.">            if (styleId != null &amp;&amp; isHeadingStyle(styleId)) {</span>
-<span class="nc" id="L166">                int level = extractHeadingLevel(styleId);</span>
-<span class="nc" id="L167">                sb.append(&quot;[H&quot;).append(level).append(&quot;] &quot;).append(text).append(&quot;\n\n&quot;);</span>
-<span class="nc" id="L168">            } else {</span>
-<span class="fc" id="L169">                sb.append(text).append(&quot;\n\n&quot;);</span>
-            }
-<span class="fc" id="L171">        }</span>
-<span class="fc" id="L172">        return sb.toString();</span>
+    private static String suffixFor(String contentType) {
+<span class="pc bpc" id="L303" title="1 of 4 branches missed.">        return MIME_PDF.equals(contentType) ? &quot;.pdf&quot; : MIME_DOCX.equals(contentType) ? &quot;.docx&quot; : &quot;.upload&quot;;</span>
     }
 
-    /**
-     * Checks whether a DOCX style ID represents a heading style.
-     * Matches English (&quot;Heading1&quot;), German (&quot;Überschrift1&quot; / &quot;berschrift1&quot;
-     * where the umlaut may be stripped by some XML serialisers), and
-     * common variations.
-     */
-    private static boolean isHeadingStyle(String styleId) {
-<span class="nc" id="L182">        String lower = styleId.toLowerCase(Locale.ROOT);</span>
-<span class="nc bnc" id="L183" title="All 2 branches missed.">        return lower.startsWith(&quot;heading&quot;)</span>
-<span class="nc bnc" id="L184" title="All 2 branches missed.">                || lower.startsWith(&quot;berschrift&quot;)  // Ü stripped by some XML encodings</span>
-<span class="nc bnc" id="L185" title="All 2 branches missed.">                || lower.startsWith(&quot;überschrift&quot;);</span>
-    }
-
-    /**
-     * Extracts the numeric heading level from a style ID.
-     * &quot;Heading2&quot; → 2, &quot;berschrift3&quot; → 3, fallback → 1.
-     */
-    private static int extractHeadingLevel(String styleId) {
-<span class="nc" id="L193">        Matcher m = STYLE_LEVEL_PATTERN.matcher(styleId);</span>
-<span class="nc bnc" id="L194" title="All 2 branches missed.">        return m.find() ? Integer.parseInt(m.group()) : 1;</span>
-    }
-
-    /**
-     * Splits raw text into requirement candidates based on paragraph boundaries,
-     * heading detection (including [H1]/[H2] markers from DOCX styles), and
-     * hierarchical section-path tracking.
-     */
     public List&lt;RequirementCandidate&gt; extractCandidates(String rawText) {
-<span class="fc" id="L203">        List&lt;RequirementCandidate&gt; candidates = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L204">        String[] paragraphs = rawText.split(&quot;\\n\\s*\\n&quot;);</span>
-<span class="fc" id="L205">        Deque&lt;Map.Entry&lt;Integer, String&gt;&gt; headingStack = new ArrayDeque&lt;&gt;();</span>
-<span class="fc" id="L206">        String currentSectionPath = null;</span>
-<span class="fc" id="L207">        int index = 0;</span>
-
-<span class="fc bfc" id="L209" title="All 2 branches covered.">        for (String para : paragraphs) {</span>
-<span class="fc" id="L210">            String trimmed = para.strip();</span>
-<span class="fc bfc" id="L211" title="All 2 branches covered.">            if (trimmed.isEmpty()) continue;</span>
-
-            // Detect headings (with level from [H] markers or regex heuristics)
-<span class="fc" id="L214">            HeadingMatch heading = detectHeading(trimmed);</span>
-<span class="fc bfc" id="L215" title="All 2 branches covered.">            if (heading != null) {</span>
-                // Pop all headings at the same or deeper level
-<span class="fc bfc" id="L217" title="All 4 branches covered.">                while (!headingStack.isEmpty() &amp;&amp; headingStack.peek().getKey() &gt;= heading.level()) {</span>
-<span class="fc" id="L218">                    headingStack.pop();</span>
-                }
-<span class="fc" id="L220">                headingStack.push(Map.entry(heading.level(), heading.text()));</span>
-<span class="fc" id="L221">                currentSectionPath = buildSectionPath(headingStack);</span>
-<span class="fc" id="L222">                continue;</span>
-            }
-
-            // Skip very short paragraphs (page numbers, headers, footers)
-<span class="fc bfc" id="L226" title="All 2 branches covered.">            if (trimmed.length() &lt; MIN_CANDIDATE_LENGTH) continue;</span>
-
-            // Split at sentence boundaries instead of truncating
-<span class="fc bfc" id="L229" title="All 2 branches covered.">            if (trimmed.length() &gt; MAX_CANDIDATE_LENGTH) {</span>
-<span class="fc bfc" id="L230" title="All 2 branches covered.">                for (String sub : splitAtSentenceBoundaries(trimmed, MAX_CANDIDATE_LENGTH)) {</span>
-<span class="fc" id="L231">                    candidates.add(new RequirementCandidate(index++, currentSectionPath, sub, null));</span>
-<span class="fc" id="L232">                }</span>
-            } else {
-<span class="fc" id="L234">                candidates.add(new RequirementCandidate(index++, currentSectionPath, trimmed, null));</span>
-            }
-        }
-
-<span class="fc" id="L238">        return candidates;</span>
+<span class="fc" id="L307">        return extractCandidatesBounded(rawText, limits.getMaxCandidates()).candidates();</span>
     }
 
-    // ── Heading detection helpers ──────────────────────────────────────────────
+    private CandidateExtraction extractCandidatesBounded(String rawText, int maxCandidates) {
+<span class="fc" id="L311">        List&lt;RequirementCandidate&gt; candidates = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L312">        String[] paragraphs = rawText.split(&quot;\\n\\s*\\n&quot;);</span>
+<span class="fc" id="L313">        Deque&lt;Map.Entry&lt;Integer, String&gt;&gt; headingStack = new ArrayDeque&lt;&gt;();</span>
+<span class="fc" id="L314">        String currentSectionPath = null;</span>
+<span class="fc" id="L315">        int index = 0;</span>
+<span class="fc" id="L316">        boolean truncated = false;</span>
 
-    /**
-     * Tries to detect a heading in the given text, returning a {@link HeadingMatch}
-     * with level and clean text, or {@code null} if the text is not a heading.
-     *
-     * &lt;p&gt;Recognition order:
-     * &lt;ol&gt;
-     *   &lt;li&gt;[H1]/[H2] markers injected during DOCX style-based extraction&lt;/li&gt;
-     *   &lt;li&gt;Regex-based heading patterns (§, Chapter, Section, …)&lt;/li&gt;
-     *   &lt;li&gt;All-caps short lines&lt;/li&gt;
-     * &lt;/ol&gt;
-     */
+        outer:
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        for (String paragraph : paragraphs) {</span>
+<span class="fc" id="L320">            String trimmed = paragraph.strip();</span>
+<span class="fc bfc" id="L321" title="All 2 branches covered.">            if (trimmed.isEmpty()) continue;</span>
+
+<span class="fc" id="L323">            HeadingMatch heading = detectHeading(trimmed);</span>
+<span class="fc bfc" id="L324" title="All 2 branches covered.">            if (heading != null) {</span>
+<span class="fc bfc" id="L325" title="All 4 branches covered.">                while (!headingStack.isEmpty() &amp;&amp; headingStack.peek().getKey() &gt;= heading.level()) {</span>
+<span class="fc" id="L326">                    headingStack.pop();</span>
+                }
+<span class="fc" id="L328">                headingStack.push(Map.entry(heading.level(), heading.text()));</span>
+<span class="fc" id="L329">                currentSectionPath = buildSectionPath(headingStack);</span>
+<span class="fc" id="L330">                continue;</span>
+            }
+<span class="fc bfc" id="L332" title="All 2 branches covered.">            if (trimmed.length() &lt; MIN_CANDIDATE_LENGTH) continue;</span>
+
+<span class="fc bfc" id="L334" title="All 2 branches covered.">            List&lt;String&gt; parts = trimmed.length() &gt; MAX_CANDIDATE_LENGTH</span>
+<span class="fc" id="L335">                    ? splitAtSentenceBoundaries(trimmed, MAX_CANDIDATE_LENGTH)</span>
+<span class="fc" id="L336">                    : List.of(trimmed);</span>
+<span class="fc bfc" id="L337" title="All 2 branches covered.">            for (String part : parts) {</span>
+<span class="fc bfc" id="L338" title="All 2 branches covered.">                if (candidates.size() &gt;= maxCandidates) {</span>
+<span class="fc" id="L339">                    truncated = true;</span>
+<span class="fc" id="L340">                    break outer;</span>
+                }
+<span class="fc" id="L342">                candidates.add(new RequirementCandidate(index++, currentSectionPath, part, null));</span>
+<span class="fc" id="L343">            }</span>
+        }
+<span class="fc" id="L345">        return new CandidateExtraction(List.copyOf(candidates), truncated);</span>
+    }
+
+    private static boolean isHeadingStyle(String styleId) {
+<span class="nc" id="L349">        String lower = styleId.toLowerCase(Locale.ROOT);</span>
+<span class="nc bnc" id="L350" title="All 2 branches missed.">        return lower.startsWith(&quot;heading&quot;)</span>
+<span class="nc bnc" id="L351" title="All 2 branches missed.">                || lower.startsWith(&quot;berschrift&quot;)</span>
+<span class="nc bnc" id="L352" title="All 2 branches missed.">                || lower.startsWith(&quot;überschrift&quot;);</span>
+    }
+
+    private static int extractHeadingLevel(String styleId) {
+<span class="nc" id="L356">        Matcher matcher = STYLE_LEVEL_PATTERN.matcher(styleId);</span>
+<span class="nc bnc" id="L357" title="All 2 branches missed.">        return matcher.find() ? Integer.parseInt(matcher.group()) : 1;</span>
+    }
+
     HeadingMatch detectHeading(String text) {
-<span class="fc bfc" id="L255" title="All 2 branches covered.">        if (text.length() &gt; 200) return null;</span>
-
-        // 1. [H1], [H2], … markers from DOCX extraction
-<span class="fc" id="L258">        Matcher hm = H_MARKER_PATTERN.matcher(text);</span>
-<span class="fc bfc" id="L259" title="All 2 branches covered.">        if (hm.matches()) {</span>
-<span class="fc" id="L260">            int level = Integer.parseInt(hm.group(1));</span>
-<span class="fc" id="L261">            return new HeadingMatch(level, hm.group(2).strip());</span>
+<span class="fc bfc" id="L361" title="All 2 branches covered.">        if (text.length() &gt; 200) return null;</span>
+<span class="fc" id="L362">        Matcher marker = H_MARKER_PATTERN.matcher(text);</span>
+<span class="fc bfc" id="L363" title="All 2 branches covered.">        if (marker.matches()) {</span>
+<span class="fc" id="L364">            return new HeadingMatch(Integer.parseInt(marker.group(1)), marker.group(2).strip());</span>
         }
-
-        // 2. Regex-based heading patterns with inferred level
-<span class="fc bfc" id="L265" title="All 2 branches covered.">        if (HEADING_PATTERN.matcher(text).matches()) {</span>
-<span class="fc" id="L266">            int level = inferRegexHeadingLevel(text);</span>
-<span class="fc" id="L267">            return new HeadingMatch(level, text);</span>
+<span class="fc bfc" id="L366" title="All 2 branches covered.">        if (HEADING_PATTERN.matcher(text).matches()) {</span>
+<span class="fc" id="L367">            return new HeadingMatch(inferRegexHeadingLevel(text), text);</span>
         }
-
-        // 3. All-caps short lines
-<span class="pc bpc" id="L271" title="1 of 6 branches missed.">        if (text.length() &lt; 80 &amp;&amp; text.equals(text.toUpperCase()) &amp;&amp; text.matches(&quot;.*[A-ZÄÖÜ].*&quot;)) {</span>
-<span class="fc" id="L272">            return new HeadingMatch(1, text);</span>
+<span class="fc bfc" id="L369" title="All 4 branches covered.">        if (text.length() &lt; 80 &amp;&amp; text.equals(text.toUpperCase(Locale.ROOT))</span>
+<span class="pc bpc" id="L370" title="1 of 2 branches missed.">                &amp;&amp; text.matches(&quot;.*[A-ZÄÖÜ].*&quot;)) {</span>
+<span class="fc" id="L371">            return new HeadingMatch(1, text);</span>
         }
-
-<span class="fc" id="L275">        return null;</span>
+<span class="fc" id="L373">        return null;</span>
     }
 
-    /**
-     * Infers a hierarchical heading level from a regex-matched heading.
-     * Chapter/Kapitel → 1, Section/Abschnitt → 2, numbered (X.Y) → dot-depth + 1,
-     * everything else → 1.
-     */
     private static int inferRegexHeadingLevel(String text) {
-<span class="fc" id="L284">        String lower = text.toLowerCase(Locale.ROOT);</span>
-<span class="pc bpc" id="L285" title="1 of 4 branches missed.">        if (lower.startsWith(&quot;chapter&quot;) || lower.startsWith(&quot;kapitel&quot;)) return 1;</span>
-<span class="fc bfc" id="L286" title="All 4 branches covered.">        if (lower.startsWith(&quot;section&quot;) || lower.startsWith(&quot;abschnitt&quot;)) return 2;</span>
-        // Numbered sections: &quot;3.2 …&quot; → level 2, &quot;3.2.1 …&quot; → level 3
-<span class="pc bpc" id="L288" title="1 of 2 branches missed.">        if (text.matches(&quot;^\\d+\\.\\d+\\.\\d+.*&quot;)) return 3;</span>
-<span class="pc bpc" id="L289" title="1 of 2 branches missed.">        if (text.matches(&quot;^\\d+\\.\\d+.*&quot;)) return 2;</span>
-<span class="fc" id="L290">        return 1;</span>
+<span class="fc" id="L377">        String lower = text.toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L378" title="1 of 4 branches missed.">        if (lower.startsWith(&quot;chapter&quot;) || lower.startsWith(&quot;kapitel&quot;)) return 1;</span>
+<span class="fc bfc" id="L379" title="All 4 branches covered.">        if (lower.startsWith(&quot;section&quot;) || lower.startsWith(&quot;abschnitt&quot;)) return 2;</span>
+<span class="pc bpc" id="L380" title="1 of 2 branches missed.">        if (text.matches(&quot;^\\d+\\.\\d+\\.\\d+.*&quot;)) return 3;</span>
+<span class="pc bpc" id="L381" title="1 of 2 branches missed.">        if (text.matches(&quot;^\\d+\\.\\d+.*&quot;)) return 2;</span>
+<span class="fc" id="L382">        return 1;</span>
     }
 
-    /**
-     * Builds a hierarchical section path from the heading stack.
-     * E.g. &quot;§ 3 Datenschutz &gt; Abs. 2 Verarbeitung&quot;.
-     *
-     * &lt;p&gt;The stack is sorted by level because {@link ArrayDeque#stream()}
-     * iterates head-to-tail (deepest level first), but we need the
-     * shallowest level first in the output path.
-     */
     private static String buildSectionPath(Deque&lt;Map.Entry&lt;Integer, String&gt;&gt; headingStack) {
-<span class="fc" id="L302">        return headingStack.stream()</span>
-<span class="fc" id="L303">                .sorted(Comparator.comparingInt(Map.Entry::getKey))</span>
-<span class="fc" id="L304">                .map(Map.Entry::getValue)</span>
-<span class="fc" id="L305">                .collect(Collectors.joining(&quot; &gt; &quot;));</span>
+<span class="fc" id="L386">        return headingStack.stream()</span>
+<span class="fc" id="L387">                .sorted(Comparator.comparingInt(Map.Entry::getKey))</span>
+<span class="fc" id="L388">                .map(Map.Entry::getValue)</span>
+<span class="fc" id="L389">                .collect(Collectors.joining(&quot; &gt; &quot;));</span>
     }
 
-    // ── Sentence-boundary splitting ────────────────────────────────────────────
-
-    /**
-     * Splits text at sentence boundaries so that each resulting chunk is at most
-     * {@code maxLen} characters long. This avoids the text loss caused by simple
-     * truncation.
-     */
-    List&lt;String&gt; splitAtSentenceBoundaries(String text, int maxLen) {
-<span class="fc" id="L316">        List&lt;String&gt; result = new ArrayList&lt;&gt;();</span>
-<span class="fc" id="L317">        BreakIterator sentIter = BreakIterator.getSentenceInstance(Locale.GERMAN);</span>
-<span class="fc" id="L318">        sentIter.setText(text);</span>
-<span class="fc" id="L319">        StringBuilder current = new StringBuilder();</span>
-<span class="fc" id="L320">        int start = sentIter.first();</span>
-<span class="fc bfc" id="L321" title="All 2 branches covered.">        for (int end = sentIter.next(); end != BreakIterator.DONE; end = sentIter.next()) {</span>
-<span class="fc" id="L322">            String sentence = text.substring(start, end);</span>
-<span class="fc bfc" id="L323" title="All 4 branches covered.">            if (current.length() + sentence.length() &gt; maxLen &amp;&amp; !current.isEmpty()) {</span>
-<span class="fc" id="L324">                result.add(current.toString().strip());</span>
-<span class="fc" id="L325">                current = new StringBuilder();</span>
+    List&lt;String&gt; splitAtSentenceBoundaries(String text, int maxLength) {
+<span class="fc" id="L393">        List&lt;String&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L394">        BreakIterator iterator = BreakIterator.getSentenceInstance(Locale.GERMAN);</span>
+<span class="fc" id="L395">        iterator.setText(text);</span>
+<span class="fc" id="L396">        StringBuilder current = new StringBuilder();</span>
+<span class="fc" id="L397">        int start = iterator.first();</span>
+<span class="fc bfc" id="L398" title="All 2 branches covered.">        for (int end = iterator.next(); end != BreakIterator.DONE; end = iterator.next()) {</span>
+<span class="fc" id="L399">            String sentence = text.substring(start, end);</span>
+<span class="fc bfc" id="L400" title="All 4 branches covered.">            if (current.length() + sentence.length() &gt; maxLength &amp;&amp; !current.isEmpty()) {</span>
+<span class="fc" id="L401">                result.add(current.toString().strip());</span>
+<span class="fc" id="L402">                current = new StringBuilder();</span>
             }
-            // Hard-split individual sentences that exceed maxLen on their own
-<span class="pc bpc" id="L328" title="1 of 4 branches missed.">            if (sentence.length() &gt; maxLen &amp;&amp; current.isEmpty()) {</span>
-<span class="fc bfc" id="L329" title="All 2 branches covered.">                for (int i = 0; i &lt; sentence.length(); i += maxLen) {</span>
-<span class="fc" id="L330">                    result.add(sentence.substring(i, Math.min(i + maxLen, sentence.length())).strip());</span>
+<span class="pc bpc" id="L404" title="1 of 4 branches missed.">            if (sentence.length() &gt; maxLength &amp;&amp; current.isEmpty()) {</span>
+<span class="fc bfc" id="L405" title="All 2 branches covered.">                for (int index = 0; index &lt; sentence.length(); index += maxLength) {</span>
+<span class="fc" id="L406">                    result.add(sentence.substring(index,</span>
+<span class="fc" id="L407">                            Math.min(index + maxLength, sentence.length())).strip());</span>
                 }
             } else {
-<span class="fc" id="L333">                current.append(sentence);</span>
+<span class="fc" id="L410">                current.append(sentence);</span>
             }
-<span class="fc" id="L335">            start = end;</span>
+<span class="fc" id="L412">            start = end;</span>
         }
-<span class="fc bfc" id="L337" title="All 2 branches covered.">        if (!current.isEmpty()) {</span>
-<span class="fc" id="L338">            result.add(current.toString().strip());</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">        if (!current.isEmpty()) {</span>
+<span class="fc" id="L415">            result.add(current.toString().strip());</span>
         }
-<span class="fc" id="L340">        return result;</span>
+<span class="fc" id="L417">        return result;</span>
+    }
+
+    private static MessageDigest sha256() {
+        try {
+<span class="fc" id="L422">            return MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="nc" id="L423">        } catch (NoSuchAlgorithmException error) {</span>
+<span class="nc" id="L424">            throw new IllegalStateException(&quot;SHA-256 not available&quot;, error);</span>
+        }
+    }
+
+    private static final class BoundedTextWriter extends Writer {
+        private final int limit;
+        private final StringBuilder value;
+        private boolean truncated;
+
+<span class="fc" id="L433">        private BoundedTextWriter(int limit) {</span>
+<span class="fc" id="L434">            this.limit = limit;</span>
+<span class="fc" id="L435">            this.value = new StringBuilder(Math.min(limit, 64 * 1024));</span>
+<span class="fc" id="L436">        }</span>
+
+        @Override
+        public void write(char[] characters, int offset, int length) {
+<span class="fc" id="L440">            int remaining = limit - value.length();</span>
+<span class="pc bpc" id="L441" title="1 of 2 branches missed.">            if (remaining &lt;= 0) {</span>
+<span class="nc" id="L442">                truncated = true;</span>
+<span class="nc" id="L443">                return;</span>
+            }
+<span class="fc" id="L445">            int accepted = Math.min(remaining, length);</span>
+<span class="fc" id="L446">            value.append(characters, offset, accepted);</span>
+<span class="pc bpc" id="L447" title="1 of 2 branches missed.">            if (accepted &lt; length) {</span>
+<span class="nc" id="L448">                truncated = true;</span>
+            }
+<span class="fc" id="L450">        }</span>
+
+<span class="nc" id="L452">        @Override public void flush() { }</span>
+<span class="nc" id="L453">        @Override public void close() { }</span>
+
+<span class="fc" id="L455">        private String text() { return value.toString(); }</span>
+<span class="fc" id="L456">        private boolean truncated() { return truncated; }</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

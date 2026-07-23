@@ -1,56 +1,82 @@
 <?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateImportController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.controller</a> &gt; <span class="el_source">ArchiMateImportController.java</span></div><h1>ArchiMateImportController.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.controller;
 
-import com.taxonomy.dto.ArchiMateImportResult;
+import com.taxonomy.catalog.service.ArchiMateImportException;
 import com.taxonomy.catalog.service.ArchiMateXmlImporter;
+import com.taxonomy.dto.ArchiMateImportResult;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-/**
- * REST API for ArchiMate XML import.
- *
- * &lt;p&gt;Endpoints:
- * &lt;ul&gt;
- *   &lt;li&gt;{@code POST /api/import/archimate} — Import ArchiMate XML file&lt;/li&gt;
- * &lt;/ul&gt;
- */
+import java.util.Map;
+
+/** REST API for previewing and importing ArchiMate 3.x XML models. */
 @RestController
 @RequestMapping(&quot;/api/import&quot;)
 @Tag(name = &quot;ArchiMate Import&quot;)
 public class ArchiMateImportController {
 
-<span class="fc" id="L27">    private static final Logger log = LoggerFactory.getLogger(ArchiMateImportController.class);</span>
+<span class="fc" id="L28">    private static final Logger log = LoggerFactory.getLogger(ArchiMateImportController.class);</span>
 
     private final ArchiMateXmlImporter importer;
+    private final WorkspaceContextResolver contextResolver;
 
-<span class="fc" id="L31">    public ArchiMateImportController(ArchiMateXmlImporter importer) {</span>
-<span class="fc" id="L32">        this.importer = importer;</span>
-<span class="fc" id="L33">    }</span>
+    public ArchiMateImportController(ArchiMateXmlImporter importer,
+<span class="fc" id="L34">                                     WorkspaceContextResolver contextResolver) {</span>
+<span class="fc" id="L35">        this.importer = importer;</span>
+<span class="fc" id="L36">        this.contextResolver = contextResolver;</span>
+<span class="fc" id="L37">    }</span>
 
-    /**
-     * Imports an ArchiMate 3.x Model Exchange Format XML file.
-     */
+    @Operation(summary = &quot;Preview ArchiMate XML import&quot;,
+            description = &quot;Parses, matches, and checks duplicates for the active workspace without writing relations&quot;)
+    @PostMapping(value = &quot;/preview/archimate&quot;, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity&lt;?&gt; previewArchiMate(@RequestParam(&quot;file&quot;) MultipartFile file) {
+<span class="fc" id="L43">        return process(file, true);</span>
+    }
+
     @Operation(summary = &quot;Import ArchiMate XML&quot;,
-               description = &quot;Parses an ArchiMate 3.x XML file and creates taxonomy relations from matched elements&quot;)
+            description = &quot;Atomically creates matched taxonomy relations in the active workspace&quot;)
     @PostMapping(value = &quot;/archimate&quot;, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity&lt;ArchiMateImportResult&gt; importArchiMate(
-            @RequestParam(&quot;file&quot;) MultipartFile file) {
-<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
-<span class="fc" id="L44">            return ResponseEntity.badRequest().build();</span>
+    public ResponseEntity&lt;?&gt; importArchiMate(@RequestParam(&quot;file&quot;) MultipartFile file) {
+<span class="fc" id="L50">        return process(file, false);</span>
+    }
+
+    private ResponseEntity&lt;?&gt; process(MultipartFile file, boolean preview) {
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
+<span class="fc" id="L55">            return ResponseEntity.badRequest().body(Map.of(</span>
+                    &quot;error&quot;, &quot;EMPTY_FILE&quot;,
+                    &quot;message&quot;, &quot;The uploaded ArchiMate XML file is empty&quot;));
         }
+
+<span class="fc" id="L60">        WorkspaceContext context = contextResolver.resolveCurrentContext();</span>
         try {
-<span class="fc" id="L47">            ArchiMateImportResult result = importer.importXml(file.getInputStream());</span>
-<span class="fc" id="L48">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L49">        } catch (Exception e) {</span>
-<span class="nc" id="L50">            log.error(&quot;ArchiMate import failed for file: {}&quot;, file.getOriginalFilename(), e);</span>
-<span class="nc" id="L51">            ArchiMateImportResult error = new ArchiMateImportResult();</span>
-<span class="nc" id="L52">            error.getNotes().add(&quot;Import failed: unable to process the uploaded file&quot;);</span>
-<span class="nc" id="L53">            return ResponseEntity.badRequest().body(error);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            ArchiMateImportResult result = preview</span>
+<span class="nc" id="L63">                    ? importer.previewXml(file.getInputStream(), context)</span>
+<span class="fc" id="L64">                    : importer.importXml(file.getInputStream(), context);</span>
+<span class="fc" id="L65">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L66">        } catch (ArchiMateImportException error) {</span>
+<span class="fc" id="L67">            log.warn(&quot;ArchiMate {} rejected for file '{}' in workspace '{}': {}&quot;,</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                    preview ? &quot;preview&quot; : &quot;import&quot;, file.getOriginalFilename(),</span>
+<span class="fc" id="L69">                    context.workspaceId(), error.getMessage());</span>
+<span class="fc" id="L70">            return ResponseEntity.status(422).body(Map.of(</span>
+                    &quot;error&quot;, &quot;INVALID_ARCHIMATE_XML&quot;,
+<span class="fc" id="L72">                    &quot;message&quot;, error.getMessage()));</span>
+<span class="nc" id="L73">        } catch (Exception error) {</span>
+<span class="nc" id="L74">            log.error(&quot;ArchiMate {} failed for file '{}' in workspace '{}'&quot;,</span>
+<span class="nc bnc" id="L75" title="All 2 branches missed.">                    preview ? &quot;preview&quot; : &quot;import&quot;, file.getOriginalFilename(),</span>
+<span class="nc" id="L76">                    context.workspaceId(), error);</span>
+<span class="nc" id="L77">            return ResponseEntity.internalServerError().body(Map.of(</span>
+                    &quot;error&quot;, &quot;ARCHIMATE_IMPORT_FAILED&quot;,
+                    &quot;message&quot;, &quot;The ArchiMate model could not be processed&quot;));
         }
     }
 }

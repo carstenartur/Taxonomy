@@ -7,10 +7,12 @@ import com.taxonomy.dto.RequirementSourceLinkDto;
 import com.taxonomy.dto.SourceArtifactDto;
 import com.taxonomy.model.LinkType;
 import com.taxonomy.model.SourceType;
+import com.taxonomy.provenance.config.DocumentImportLimits;
 import com.taxonomy.provenance.model.SourceArtifact;
 import com.taxonomy.provenance.model.SourceFragment;
 import com.taxonomy.provenance.model.SourceVersion;
 import com.taxonomy.provenance.service.DocumentAnalysisService;
+import com.taxonomy.provenance.service.DocumentLimitException;
 import com.taxonomy.provenance.service.DocumentParserService;
 import com.taxonomy.provenance.service.SourceProvenanceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,265 +21,278 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-/**
- * REST API for document import and source provenance management.
- *
- * &lt;p&gt;Endpoints:
- * &lt;ul&gt;
- *   &lt;li&gt;{@code POST /api/documents/upload}  — Upload and parse a PDF/DOCX document&lt;/li&gt;
- *   &lt;li&gt;{@code POST /api/documents/extract-ai}  — AI-assisted requirement extraction&lt;/li&gt;
- *   &lt;li&gt;{@code POST /api/documents/map-regulation}  — Direct regulation-to-architecture mapping&lt;/li&gt;
- *   &lt;li&gt;{@code GET  /api/provenance/sources} — List all source artifacts&lt;/li&gt;
- *   &lt;li&gt;{@code GET  /api/provenance/links/{requirementId}} — Get provenance links for a requirement&lt;/li&gt;
- * &lt;/ul&gt;
- */
+/** REST API for bounded document import and source-provenance management. */
 @RestController
 @RequestMapping(&quot;/api&quot;)
 @Tag(name = &quot;Document Import &amp; Provenance&quot;)
 public class DocumentImportController {
 
-<span class="fc" id="L45">    private static final Logger log = LoggerFactory.getLogger(DocumentImportController.class);</span>
-
-    /** Maximum upload size: 50 MB. */
-    private static final long MAX_UPLOAD_SIZE = 50L * 1024 * 1024;
+<span class="fc" id="L43">    private static final Logger log = LoggerFactory.getLogger(DocumentImportController.class);</span>
 
     private final DocumentParserService parserService;
     private final SourceProvenanceService provenanceService;
     private final DocumentAnalysisService analysisService;
+    private final DocumentImportLimits limits;
 
     public DocumentImportController(DocumentParserService parserService,
-                                     SourceProvenanceService provenanceService,
-<span class="fc" id="L56">                                     DocumentAnalysisService analysisService) {</span>
-<span class="fc" id="L57">        this.parserService = parserService;</span>
-<span class="fc" id="L58">        this.provenanceService = provenanceService;</span>
-<span class="fc" id="L59">        this.analysisService = analysisService;</span>
-<span class="fc" id="L60">    }</span>
+                                    SourceProvenanceService provenanceService,
+                                    DocumentAnalysisService analysisService,
+<span class="fc" id="L53">                                    DocumentImportLimits limits) {</span>
+<span class="fc" id="L54">        this.parserService = parserService;</span>
+<span class="fc" id="L55">        this.provenanceService = provenanceService;</span>
+<span class="fc" id="L56">        this.analysisService = analysisService;</span>
+<span class="fc" id="L57">        this.limits = limits;</span>
+<span class="fc" id="L58">    }</span>
 
-    /**
-     * Uploads and parses a PDF or DOCX document, extracting requirement
-     * candidates.  The document is registered as a source artifact for
-     * provenance tracking.
-     */
     @Operation(summary = &quot;Upload and parse document&quot;,
-               description = &quot;Uploads a PDF or DOCX document, extracts requirement candidates, &quot; +
-                       &quot;and registers the document as a source artifact for provenance tracking.&quot;)
+            description = &quot;Uploads a bounded PDF or DOCX document, extracts requirement candidates, &quot;
+                    + &quot;and registers the document as a source artifact&quot;)
     @PostMapping(value = &quot;/documents/upload&quot;, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity&lt;?&gt; uploadDocument(
             @RequestParam(&quot;file&quot;) MultipartFile file,
             @RequestParam(value = &quot;title&quot;, required = false) String title,
-            @RequestParam(value = &quot;sourceType&quot;, required = false, defaultValue = &quot;REGULATION&quot;) String sourceType) {
-<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
-<span class="fc" id="L76">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;File is empty&quot;));</span>
-        }
-<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
-<span class="fc" id="L79">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
-                    &quot;File exceeds maximum size of &quot; + (MAX_UPLOAD_SIZE / (1024 * 1024)) + &quot; MB&quot;));
-        }
-
+            @RequestParam(value = &quot;sourceType&quot;, required = false,
+                    defaultValue = &quot;REGULATION&quot;) String sourceType) {
+<span class="fc" id="L69">        requireUsableUpload(file);</span>
         try {
-            // Parse the document
-<span class="fc" id="L85">            DocumentParseResult result = parserService.parse(file);</span>
-
-            // Determine source type
-            SourceType type;
-            try {
-<span class="fc" id="L90">                type = SourceType.valueOf(sourceType.toUpperCase());</span>
-<span class="fc" id="L91">            } catch (IllegalArgumentException e) {</span>
-<span class="fc" id="L92">                type = SourceType.UPLOADED_DOCUMENT;</span>
-<span class="fc" id="L93">            }</span>
-
-            // Create source artifact
-<span class="pc bpc" id="L96" title="1 of 4 branches missed.">            String artifactTitle = (title != null &amp;&amp; !title.isBlank())</span>
-<span class="fc" id="L97">                    ? title : file.getOriginalFilename();</span>
-<span class="fc" id="L98">            SourceArtifact artifact = provenanceService.createArtifact(type, artifactTitle);</span>
-
-            // Create source version
-<span class="fc" id="L101">            String contentHash = parserService.computeContentHash(file.getBytes());</span>
-<span class="fc" id="L102">            SourceVersion version = provenanceService.createVersion(</span>
-<span class="fc" id="L103">                    artifact, result.getMimeType(), contentHash);</span>
-
-<span class="fc" id="L105">            result.setSourceArtifactId(artifact.getId());</span>
-<span class="fc" id="L106">            result.setSourceVersionId(version.getId());</span>
-
-<span class="fc" id="L108">            return ResponseEntity.ok(result);</span>
-<span class="nc" id="L109">        } catch (Exception e) {</span>
-<span class="nc" id="L110">            log.error(&quot;Document upload failed for file '{}'&quot;, file.getOriginalFilename(), e);</span>
-<span class="nc" id="L111">            return ResponseEntity.badRequest().body(Map.of(</span>
-                    &quot;error&quot;, &quot;Failed to parse document. Please check file format and try again.&quot;));
+<span class="fc" id="L71">            DocumentParseResult result = parserService.parse(file);</span>
+<span class="fc" id="L72">            SourceType type = parseSourceType(sourceType);</span>
+<span class="pc bpc" id="L73" title="1 of 4 branches missed.">            String artifactTitle = title != null &amp;&amp; !title.isBlank()</span>
+<span class="fc" id="L74">                    ? title : safeFileName(file);</span>
+<span class="fc" id="L75">            SourceArtifact artifact = provenanceService.createArtifact(type, artifactTitle);</span>
+<span class="fc" id="L76">            String contentHash = parserService.computeContentHash(file);</span>
+<span class="fc" id="L77">            SourceVersion version = provenanceService.createVersion(</span>
+<span class="fc" id="L78">                    artifact, result.getMimeType(), contentHash);</span>
+<span class="fc" id="L79">            result.setSourceArtifactId(artifact.getId());</span>
+<span class="fc" id="L80">            result.setSourceVersionId(version.getId());</span>
+<span class="fc" id="L81">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L82">        } catch (DocumentLimitException error) {</span>
+<span class="nc" id="L83">            throw error;</span>
+<span class="nc" id="L84">        } catch (IOException error) {</span>
+<span class="nc" id="L85">            log.warn(&quot;Document upload rejected for file '{}': {}&quot;,</span>
+<span class="nc" id="L86">                    safeFileName(file), error.getMessage());</span>
+<span class="nc" id="L87">            return ResponseEntity.unprocessableEntity().body(Map.of(</span>
+                    &quot;error&quot;, &quot;DOCUMENT_PARSE_FAILED&quot;,
+                    &quot;message&quot;, &quot;The document could not be parsed as PDF or DOCX&quot;));
+<span class="nc" id="L90">        } catch (RuntimeException error) {</span>
+<span class="nc" id="L91">            log.error(&quot;Document upload failed for file '{}'&quot;, safeFileName(file), error);</span>
+<span class="nc" id="L92">            return ResponseEntity.internalServerError().body(Map.of(</span>
+                    &quot;error&quot;, &quot;DOCUMENT_IMPORT_FAILED&quot;,
+                    &quot;message&quot;, &quot;The document could not be registered&quot;));
         }
     }
 
-    /**
-     * Uploads and parses a PDF or DOCX document, then uses the LLM to extract
-     * requirement candidates with AI assistance.  Returns both the rule-based
-     * parse result and AI-extracted candidates.
-     */
     @Operation(summary = &quot;AI-assisted extraction&quot;,
-               description = &quot;Uploads a document and uses AI to extract requirement candidates &quot; +
-                       &quot;with confidence scores and requirement type classification.&quot;)
+            description = &quot;Parses a bounded document and sends at most the configured LLM character limit&quot;)
     @PostMapping(value = &quot;/documents/extract-ai&quot;, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity&lt;?&gt; extractWithAi(
             @RequestParam(&quot;file&quot;) MultipartFile file,
             @RequestParam(value = &quot;sourceType&quot;, defaultValue = &quot;REGULATION&quot;) String sourceType) {
-<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
-<span class="fc" id="L129">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;File is empty&quot;));</span>
-        }
-<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
-<span class="fc" id="L132">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
-                    &quot;File exceeds maximum size of &quot; + (MAX_UPLOAD_SIZE / (1024 * 1024)) + &quot; MB&quot;));
-        }
-
+<span class="nc" id="L104">        requireUsableUpload(file);</span>
         try {
-<span class="nc" id="L137">            DocumentParseResult parseResult = parserService.parse(file);</span>
-            // Build full text from all candidates for AI analysis
-<span class="nc" id="L139">            String fullText = buildFullTextFromCandidates(parseResult);</span>
-<span class="nc" id="L140">            List&lt;AiExtractedCandidate&gt; aiCandidates =</span>
-<span class="nc" id="L141">                    analysisService.extractWithAi(fullText, sourceType);</span>
-
-<span class="nc" id="L143">            return ResponseEntity.ok(Map.of(</span>
-<span class="nc bnc" id="L144" title="All 2 branches missed.">                    &quot;fileName&quot;, parseResult.getFileName() != null ? parseResult.getFileName() : &quot;&quot;,</span>
-<span class="nc" id="L145">                    &quot;totalPages&quot;, parseResult.getTotalPages(),</span>
-<span class="nc bnc" id="L146" title="All 2 branches missed.">                    &quot;ruleBased&quot;, parseResult.getCandidates() != null ? parseResult.getCandidates() : List.of(),</span>
-                    &quot;aiCandidates&quot;, aiCandidates));
-<span class="nc" id="L148">        } catch (Exception e) {</span>
-<span class="nc" id="L149">            log.error(&quot;AI extraction failed for file '{}'&quot;, file.getOriginalFilename(), e);</span>
-<span class="nc" id="L150">            return ResponseEntity.badRequest().body(Map.of(</span>
-<span class="nc" id="L151">                    &quot;error&quot;, &quot;AI extraction failed: &quot; + e.getMessage()));</span>
+<span class="nc" id="L106">            DocumentParseResult parseResult = parserService.parse(file);</span>
+<span class="nc" id="L107">            BoundedText fullText = buildBoundedText(parseResult);</span>
+<span class="nc" id="L108">            List&lt;AiExtractedCandidate&gt; candidates =</span>
+<span class="nc" id="L109">                    analysisService.extractWithAi(fullText.value(), sourceType);</span>
+<span class="nc" id="L110">            return ResponseEntity.ok(Map.of(</span>
+<span class="nc" id="L111">                    &quot;fileName&quot;, safeResultFileName(parseResult),</span>
+<span class="nc" id="L112">                    &quot;totalPages&quot;, parseResult.getTotalPages(),</span>
+<span class="nc" id="L113">                    &quot;inputTruncated&quot;, fullText.truncated(),</span>
+<span class="nc" id="L114">                    &quot;inputCharacters&quot;, fullText.value().length(),</span>
+<span class="nc bnc" id="L115" title="All 2 branches missed.">                    &quot;ruleBased&quot;, parseResult.getCandidates() != null</span>
+<span class="nc" id="L116">                            ? parseResult.getCandidates() : List.of(),</span>
+                    &quot;aiCandidates&quot;, candidates));
+<span class="nc" id="L118">        } catch (DocumentLimitException error) {</span>
+<span class="nc" id="L119">            throw error;</span>
+<span class="nc" id="L120">        } catch (IOException error) {</span>
+<span class="nc" id="L121">            return ResponseEntity.unprocessableEntity().body(Map.of(</span>
+                    &quot;error&quot;, &quot;DOCUMENT_PARSE_FAILED&quot;,
+                    &quot;message&quot;, &quot;The document could not be parsed as PDF or DOCX&quot;));
+<span class="nc" id="L124">        } catch (RuntimeException error) {</span>
+<span class="nc" id="L125">            log.error(&quot;AI extraction failed for file '{}'&quot;, safeFileName(file), error);</span>
+<span class="nc" id="L126">            return ResponseEntity.unprocessableEntity().body(Map.of(</span>
+                    &quot;error&quot;, &quot;AI_EXTRACTION_FAILED&quot;,
+                    &quot;message&quot;, &quot;AI-assisted extraction could not be completed&quot;));
         }
     }
 
-    /**
-     * Uploads a regulation document and maps it directly to architecture taxonomy
-     * nodes using the LLM.  Returns matches with confidence scores, link types,
-     * and paragraph references.
-     */
     @Operation(summary = &quot;Direct regulation-to-architecture mapping&quot;,
-               description = &quot;Uploads a regulation document and maps it directly to architecture &quot; +
-                       &quot;taxonomy nodes with confidence scores and link types.&quot;)
+            description = &quot;Maps bounded document text directly to architecture taxonomy nodes&quot;)
     @PostMapping(value = &quot;/documents/map-regulation&quot;, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity&lt;?&gt; mapRegulation(@RequestParam(&quot;file&quot;) MultipartFile file) {
-<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (file.isEmpty()) {</span>
-<span class="fc" id="L166">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;File is empty&quot;));</span>
-        }
-<span class="pc bpc" id="L168" title="1 of 2 branches missed.">        if (file.getSize() &gt; MAX_UPLOAD_SIZE) {</span>
-<span class="fc" id="L169">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;,</span>
-                    &quot;File exceeds maximum size of &quot; + (MAX_UPLOAD_SIZE / (1024 * 1024)) + &quot; MB&quot;));
-        }
-
+<span class="nc" id="L136">        requireUsableUpload(file);</span>
         try {
-<span class="nc" id="L174">            DocumentParseResult parseResult = parserService.parse(file);</span>
-            // Build full text from all candidates for regulation mapping
-<span class="nc" id="L176">            String fullText = buildFullTextFromCandidates(parseResult);</span>
-<span class="nc" id="L177">            List&lt;RegulationArchitectureMatch&gt; matches =</span>
-<span class="nc" id="L178">                    analysisService.mapRegulationToArchitecture(fullText);</span>
-
-<span class="nc" id="L180">            return ResponseEntity.ok(Map.of(</span>
-<span class="nc bnc" id="L181" title="All 2 branches missed.">                    &quot;fileName&quot;, parseResult.getFileName() != null ? parseResult.getFileName() : &quot;&quot;,</span>
-<span class="nc" id="L182">                    &quot;totalPages&quot;, parseResult.getTotalPages(),</span>
+<span class="nc" id="L138">            DocumentParseResult parseResult = parserService.parse(file);</span>
+<span class="nc" id="L139">            BoundedText fullText = buildBoundedText(parseResult);</span>
+<span class="nc" id="L140">            List&lt;RegulationArchitectureMatch&gt; matches =</span>
+<span class="nc" id="L141">                    analysisService.mapRegulationToArchitecture(fullText.value());</span>
+<span class="nc" id="L142">            return ResponseEntity.ok(Map.of(</span>
+<span class="nc" id="L143">                    &quot;fileName&quot;, safeResultFileName(parseResult),</span>
+<span class="nc" id="L144">                    &quot;totalPages&quot;, parseResult.getTotalPages(),</span>
+<span class="nc" id="L145">                    &quot;inputTruncated&quot;, fullText.truncated(),</span>
+<span class="nc" id="L146">                    &quot;inputCharacters&quot;, fullText.value().length(),</span>
                     &quot;matches&quot;, matches));
-<span class="nc" id="L184">        } catch (Exception e) {</span>
-<span class="nc" id="L185">            log.error(&quot;Regulation mapping failed for file '{}'&quot;, file.getOriginalFilename(), e);</span>
-<span class="nc" id="L186">            return ResponseEntity.badRequest().body(Map.of(</span>
-<span class="nc" id="L187">                    &quot;error&quot;, &quot;Regulation mapping failed: &quot; + e.getMessage()));</span>
+<span class="nc" id="L148">        } catch (DocumentLimitException error) {</span>
+<span class="nc" id="L149">            throw error;</span>
+<span class="nc" id="L150">        } catch (IOException error) {</span>
+<span class="nc" id="L151">            return ResponseEntity.unprocessableEntity().body(Map.of(</span>
+                    &quot;error&quot;, &quot;DOCUMENT_PARSE_FAILED&quot;,
+                    &quot;message&quot;, &quot;The document could not be parsed as PDF or DOCX&quot;));
+<span class="nc" id="L154">        } catch (RuntimeException error) {</span>
+<span class="nc" id="L155">            log.error(&quot;Regulation mapping failed for file '{}'&quot;, safeFileName(file), error);</span>
+<span class="nc" id="L156">            return ResponseEntity.unprocessableEntity().body(Map.of(</span>
+                    &quot;error&quot;, &quot;REGULATION_MAPPING_FAILED&quot;,
+                    &quot;message&quot;, &quot;Regulation mapping could not be completed&quot;));
         }
     }
 
-    /**
-     * Lists all registered source artifacts.
-     */
-    @Operation(summary = &quot;List source artifacts&quot;,
-               description = &quot;Returns all registered source artifacts (documents, requests, etc.)&quot;)
+    @Operation(summary = &quot;List source artifacts&quot;)
     @GetMapping(&quot;/provenance/sources&quot;)
     public ResponseEntity&lt;List&lt;SourceArtifactDto&gt;&gt; listSources() {
-<span class="fc" id="L198">        return ResponseEntity.ok(provenanceService.listAllArtifacts());</span>
+<span class="fc" id="L165">        return ResponseEntity.ok(provenanceService.listAllArtifacts());</span>
     }
 
-    /**
-     * Returns provenance links for a specific requirement.
-     */
-    @Operation(summary = &quot;Get requirement provenance&quot;,
-               description = &quot;Returns all source links for a given requirement ID&quot;)
+    @Operation(summary = &quot;Get requirement provenance&quot;)
     @GetMapping(&quot;/provenance/links/{requirementId}&quot;)
     public ResponseEntity&lt;List&lt;RequirementSourceLinkDto&gt;&gt; getLinks(
             @PathVariable String requirementId) {
-<span class="fc" id="L209">        return ResponseEntity.ok(provenanceService.getLinksForRequirement(requirementId));</span>
+<span class="fc" id="L172">        return ResponseEntity.ok(provenanceService.getLinksForRequirement(requirementId));</span>
     }
 
-    /**
-     * Links selected requirement candidates from a parsed document to the
-     * provenance model.  Called after the user reviews and selects candidates
-     * in the GUI.
-     */
-    @Operation(summary = &quot;Confirm selected candidates&quot;,
-               description = &quot;Links selected requirement candidates to the provenance model&quot;)
+    @Operation(summary = &quot;Confirm selected candidates&quot;)
     @PostMapping(&quot;/documents/confirm-candidates&quot;)
     public ResponseEntity&lt;?&gt; confirmCandidates(@RequestBody Map&lt;String, Object&gt; body) {
         try {
-<span class="fc" id="L222">            Long artifactId = ((Number) body.get(&quot;sourceArtifactId&quot;)).longValue();</span>
-<span class="fc" id="L223">            Long versionId = ((Number) body.get(&quot;sourceVersionId&quot;)).longValue();</span>
+<span class="fc" id="L179">            Number artifactNumber = (Number) body.get(&quot;sourceArtifactId&quot;);</span>
+<span class="fc" id="L180">            Number versionNumber = (Number) body.get(&quot;sourceVersionId&quot;);</span>
+<span class="pc bpc" id="L181" title="2 of 4 branches missed.">            if (artifactNumber == null || versionNumber == null) {</span>
+<span class="nc" id="L182">                return ResponseEntity.badRequest().body(Map.of(</span>
+                        &quot;error&quot;, &quot;SOURCE_IDENTIFIERS_REQUIRED&quot;));
+            }
+<span class="fc" id="L185">            Long artifactId = artifactNumber.longValue();</span>
+<span class="fc" id="L186">            Long versionId = versionNumber.longValue();</span>
             @SuppressWarnings(&quot;unchecked&quot;)
-<span class="fc" id="L225">            List&lt;Map&lt;String, Object&gt;&gt; candidates = (List&lt;Map&lt;String, Object&gt;&gt;) body.get(&quot;candidates&quot;);</span>
-
-<span class="pc bpc" id="L227" title="1 of 4 branches missed.">            if (candidates == null || candidates.isEmpty()) {</span>
-<span class="fc" id="L228">                return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;No candidates provided&quot;));</span>
+<span class="fc" id="L188">            List&lt;Map&lt;String, Object&gt;&gt; candidates =</span>
+<span class="fc" id="L189">                    (List&lt;Map&lt;String, Object&gt;&gt;) body.get(&quot;candidates&quot;);</span>
+<span class="pc bpc" id="L190" title="1 of 4 branches missed.">            if (candidates == null || candidates.isEmpty()) {</span>
+<span class="fc" id="L191">                return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;NO_CANDIDATES&quot;));</span>
+            }
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">            if (candidates.size() &gt; limits.getMaxCandidates()) {</span>
+<span class="nc" id="L194">                throw new DocumentLimitException(&quot;CANDIDATE_LIMIT_EXCEEDED&quot;,</span>
+                        &quot;Candidate count exceeds the configured limit of &quot;
+<span class="nc" id="L196">                                + limits.getMaxCandidates());</span>
             }
 
-<span class="fc" id="L231">            var artifactOpt = provenanceService.findArtifactById(artifactId);</span>
-<span class="pc bpc" id="L232" title="1 of 2 branches missed.">            if (artifactOpt.isEmpty()) {</span>
-<span class="fc" id="L233">                return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, &quot;Source artifact not found&quot;));</span>
+<span class="fc" id="L199">            var artifact = provenanceService.findArtifactById(artifactId);</span>
+<span class="fc" id="L200">            var version = provenanceService.findVersionById(versionId);</span>
+<span class="pc bpc" id="L201" title="3 of 4 branches missed.">            if (artifact.isEmpty() || version.isEmpty()) {</span>
+<span class="fc" id="L202">                return ResponseEntity.badRequest().body(Map.of(</span>
+                        &quot;error&quot;, &quot;SOURCE_NOT_FOUND&quot;));
             }
-<span class="nc" id="L235">            var versionOpt = provenanceService.findVersionById(versionId);</span>
 
-<span class="nc" id="L237">            int linked = 0;</span>
-<span class="nc bnc" id="L238" title="All 2 branches missed.">            for (Map&lt;String, Object&gt; c : candidates) {</span>
-<span class="nc" id="L239">                String text = (String) c.get(&quot;text&quot;);</span>
-<span class="nc" id="L240">                String section = (String) c.get(&quot;sectionHeading&quot;);</span>
-<span class="nc bnc" id="L241" title="All 4 branches missed.">                if (text == null || text.isBlank()) continue;</span>
-
-<span class="nc" id="L243">                SourceFragment fragment = provenanceService.createFragment(</span>
-<span class="nc" id="L244">                        versionOpt.orElse(null), text, section, null);</span>
-
-                // Create a requirement ID based on artifact + candidate index
-<span class="nc" id="L247">                String reqId = &quot;DOC-&quot; + artifactId + &quot;-&quot; + linked;</span>
-<span class="nc" id="L248">                provenanceService.linkRequirement(reqId, artifactOpt.get(),</span>
-<span class="nc" id="L249">                        versionOpt.orElse(null), fragment, LinkType.EXTRACTED_FROM);</span>
-<span class="nc" id="L250">                linked++;</span>
-<span class="nc" id="L251">            }</span>
-
-<span class="nc" id="L253">            return ResponseEntity.ok(Map.of(</span>
-<span class="nc" id="L254">                    &quot;linked&quot;, linked,</span>
+<span class="nc" id="L206">            int linked = 0;</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">            for (Map&lt;String, Object&gt; candidate : candidates) {</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">                String text = candidate.get(&quot;text&quot;) instanceof String value ? value : null;</span>
+<span class="nc bnc" id="L209" title="All 2 branches missed.">                String section = candidate.get(&quot;sectionHeading&quot;) instanceof String value</span>
+<span class="nc" id="L210">                        ? value : null;</span>
+<span class="nc bnc" id="L211" title="All 4 branches missed.">                if (text == null || text.isBlank()) continue;</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">                if (text.length() &gt; 2000) {</span>
+<span class="nc" id="L213">                    throw new DocumentLimitException(&quot;CANDIDATE_TEXT_TOO_LARGE&quot;,</span>
+                            &quot;A requirement candidate exceeds 2000 characters&quot;);
+                }
+<span class="nc" id="L216">                SourceFragment fragment = provenanceService.createFragment(</span>
+<span class="nc" id="L217">                        version.get(), text, section, null);</span>
+<span class="nc" id="L218">                String requirementId = &quot;DOC-&quot; + artifactId + &quot;-&quot; + linked;</span>
+<span class="nc" id="L219">                provenanceService.linkRequirement(requirementId, artifact.get(),</span>
+<span class="nc" id="L220">                        version.get(), fragment, LinkType.EXTRACTED_FROM);</span>
+<span class="nc" id="L221">                linked++;</span>
+<span class="nc" id="L222">            }</span>
+<span class="nc" id="L223">            return ResponseEntity.ok(Map.of(</span>
+<span class="nc" id="L224">                    &quot;linked&quot;, linked,</span>
                     &quot;message&quot;, linked + &quot; requirement candidate(s) linked to source&quot;));
-<span class="nc" id="L256">        } catch (Exception e) {</span>
-<span class="nc" id="L257">            log.error(&quot;Failed to confirm candidates&quot;, e);</span>
-<span class="nc" id="L258">            return ResponseEntity.badRequest().body(Map.of(</span>
-<span class="nc" id="L259">                    &quot;error&quot;, &quot;Failed to confirm candidates: &quot; + e.getMessage()));</span>
+<span class="nc" id="L226">        } catch (DocumentLimitException error) {</span>
+<span class="nc" id="L227">            throw error;</span>
+<span class="nc" id="L228">        } catch (RuntimeException error) {</span>
+<span class="nc" id="L229">            log.error(&quot;Failed to confirm document candidates&quot;, error);</span>
+<span class="nc" id="L230">            return ResponseEntity.badRequest().body(Map.of(</span>
+                    &quot;error&quot;, &quot;CANDIDATE_CONFIRMATION_FAILED&quot;));
         }
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
-
-    /**
-     * Builds a full document text from all parsed candidates, preserving section headings.
-     * This provides richer context to the LLM than the truncated rawTextPreview.
-     */
-    private String buildFullTextFromCandidates(DocumentParseResult result) {
-<span class="nc bnc" id="L270" title="All 4 branches missed.">        if (result.getCandidates() == null || result.getCandidates().isEmpty()) {</span>
-<span class="nc bnc" id="L271" title="All 2 branches missed.">            return result.getRawTextPreview() != null ? result.getRawTextPreview() : &quot;&quot;;</span>
+    private void requireUsableUpload(MultipartFile file) {
+<span class="pc bpc" id="L236" title="1 of 4 branches missed.">        if (file == null || file.isEmpty()) {</span>
+<span class="fc" id="L237">            throw new DocumentLimitException(&quot;EMPTY_FILE&quot;, &quot;The uploaded file is empty&quot;);</span>
         }
-<span class="nc" id="L273">        StringBuilder sb = new StringBuilder();</span>
-<span class="nc bnc" id="L274" title="All 2 branches missed.">        for (var candidate : result.getCandidates()) {</span>
-<span class="nc bnc" id="L275" title="All 4 branches missed.">            if (candidate.getSectionHeading() != null &amp;&amp; !candidate.getSectionHeading().isBlank()) {</span>
-<span class="nc" id="L276">                sb.append(candidate.getSectionHeading()).append(&quot;:\n&quot;);</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (file.getSize() &gt; limits.getMaxUploadBytes()) {</span>
+<span class="fc" id="L240">            throw new DocumentLimitException(&quot;UPLOAD_TOO_LARGE&quot;,</span>
+                    &quot;File exceeds the configured upload limit of &quot;
+<span class="fc" id="L242">                            + limits.getMaxUploadBytes() + &quot; bytes&quot;);</span>
+        }
+<span class="fc" id="L244">    }</span>
+
+    private SourceType parseSourceType(String sourceType) {
+        try {
+<span class="fc" id="L248">            return SourceType.valueOf(sourceType.toUpperCase());</span>
+<span class="fc" id="L249">        } catch (IllegalArgumentException error) {</span>
+<span class="fc" id="L250">            return SourceType.UPLOADED_DOCUMENT;</span>
+        }
+    }
+
+    private BoundedText buildBoundedText(DocumentParseResult result) {
+<span class="nc" id="L255">        StringBuilder text = new StringBuilder(Math.min(</span>
+<span class="nc" id="L256">                limits.getMaxLlmCharacters(), 32 * 1024));</span>
+<span class="nc" id="L257">        boolean truncated = false;</span>
+<span class="nc bnc" id="L258" title="All 4 branches missed.">        if (result.getCandidates() == null || result.getCandidates().isEmpty()) {</span>
+<span class="nc bnc" id="L259" title="All 2 branches missed.">            String preview = result.getRawTextPreview() != null ? result.getRawTextPreview() : &quot;&quot;;</span>
+<span class="nc" id="L260">            return appendBounded(text, preview, false);</span>
+        }
+<span class="nc bnc" id="L262" title="All 2 branches missed.">        for (var candidate : result.getCandidates()) {</span>
+<span class="nc" id="L263">            StringBuilder block = new StringBuilder();</span>
+<span class="nc bnc" id="L264" title="All 2 branches missed.">            if (candidate.getSectionHeading() != null</span>
+<span class="nc bnc" id="L265" title="All 2 branches missed.">                    &amp;&amp; !candidate.getSectionHeading().isBlank()) {</span>
+<span class="nc" id="L266">                block.append(candidate.getSectionHeading()).append(&quot;:\n&quot;);</span>
             }
-<span class="nc" id="L278">            sb.append(candidate.getText()).append(&quot;\n\n&quot;);</span>
-<span class="nc" id="L279">        }</span>
-<span class="nc" id="L280">        return sb.toString();</span>
+<span class="nc" id="L268">            block.append(candidate.getText()).append(&quot;\n\n&quot;);</span>
+<span class="nc" id="L269">            BoundedText appendResult = appendBounded(text, block.toString(), truncated);</span>
+<span class="nc" id="L270">            truncated = appendResult.truncated();</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">            if (truncated) break;</span>
+<span class="nc" id="L272">        }</span>
+<span class="nc" id="L273">        return new BoundedText(text.toString(), truncated);</span>
+    }
+
+    private BoundedText appendBounded(StringBuilder target, String value, boolean alreadyTruncated) {
+<span class="nc" id="L277">        int remaining = limits.getMaxLlmCharacters() - target.length();</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">        if (remaining &lt;= 0) return new BoundedText(target.toString(), true);</span>
+<span class="nc bnc" id="L279" title="All 2 branches missed.">        if (value.length() &gt; remaining) {</span>
+<span class="nc" id="L280">            target.append(value, 0, remaining);</span>
+<span class="nc" id="L281">            return new BoundedText(target.toString(), true);</span>
+        }
+<span class="nc" id="L283">        target.append(value);</span>
+<span class="nc" id="L284">        return new BoundedText(target.toString(), alreadyTruncated);</span>
+    }
+
+    private static String safeFileName(MultipartFile file) {
+<span class="pc bpc" id="L288" title="1 of 2 branches missed.">        return file.getOriginalFilename() != null ? file.getOriginalFilename() : &quot;document&quot;;</span>
+    }
+
+    private static String safeResultFileName(DocumentParseResult result) {
+<span class="nc bnc" id="L292" title="All 2 branches missed.">        return result.getFileName() != null ? result.getFileName() : &quot;&quot;;</span>
+    }
+
+<span class="nc" id="L295">    private record BoundedText(String value, boolean truncated) {</span>
     }
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

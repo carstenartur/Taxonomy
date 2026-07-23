@@ -47,33 +47,38 @@ public class CatalogFacade {
 <span class="fc" id="L47">        return dto;</span>
     }
 
-    public ArchiMateImportResult importAndValidate(InputStream xmlStream) {
-<span class="fc" id="L51">        log.info(&quot;Starting ArchiMate XML import via facade&quot;);</span>
-<span class="fc" id="L52">        ArchiMateImportResult result = archiMateXmlImporter.importXml(xmlStream);</span>
-<span class="fc" id="L53">        log.info(&quot;ArchiMate import complete – {} elements matched, {} relations created&quot;,</span>
-<span class="fc" id="L54">                result.getElementsMatched(), result.getRelationsImported());</span>
-<span class="fc" id="L55">        return result;</span>
+    public ArchiMateImportResult importAndValidate(InputStream xmlStream,
+                                                    WorkspaceContext workspaceContext) {
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (workspaceContext == null) {</span>
+<span class="fc" id="L53">            throw new IllegalArgumentException(&quot;Workspace context is required for ArchiMate import&quot;);</span>
+        }
+<span class="fc" id="L55">        log.info(&quot;Starting ArchiMate XML import via facade for workspace {}&quot;,</span>
+<span class="fc" id="L56">                workspaceContext.workspaceId());</span>
+<span class="fc" id="L57">        ArchiMateImportResult result = archiMateXmlImporter.importXml(xmlStream, workspaceContext);</span>
+<span class="fc" id="L58">        log.info(&quot;ArchiMate import complete – {} elements matched, {} relations created&quot;,</span>
+<span class="fc" id="L59">                result.getElementsMatched(), result.getRelationsImported());</span>
+<span class="fc" id="L60">        return result;</span>
     }
 
     @Transactional(readOnly = true)
     public List&lt;TaxonomyNodeDto&gt; searchWithContext(String query,
-                                                    int maxResults,
-                                                    WorkspaceContext workspaceContext) {
-<span class="fc" id="L62">        List&lt;TaxonomyNodeDto&gt; results = searchService.search(query, maxResults);</span>
-<span class="fc" id="L63">        results.forEach(dto -&gt; attachRelations(dto, workspaceContext));</span>
-<span class="fc" id="L64">        return results;</span>
+                                                   int maxResults,
+                                                   WorkspaceContext workspaceContext) {
+<span class="fc" id="L67">        List&lt;TaxonomyNodeDto&gt; results = searchService.search(query, maxResults);</span>
+<span class="fc" id="L68">        results.forEach(dto -&gt; attachRelations(dto, workspaceContext));</span>
+<span class="fc" id="L69">        return results;</span>
     }
 
     private void attachRelations(TaxonomyNodeDto dto, WorkspaceContext workspaceContext) {
-<span class="fc bfc" id="L68" title="All 2 branches covered.">        WorkspaceContext context = workspaceContext != null ? workspaceContext : WorkspaceContext.SHARED;</span>
-<span class="fc" id="L69">        List&lt;TaxonomyRelationDto&gt; relations =</span>
-<span class="fc" id="L70">                relationService.getRelationsForNode(dto.getCode(), context.workspaceId());</span>
-<span class="fc" id="L71">        dto.setOutgoingRelations(relations.stream()</span>
-<span class="fc" id="L72">                .filter(relation -&gt; dto.getCode().equals(relation.getSourceCode()))</span>
-<span class="fc" id="L73">                .toList());</span>
-<span class="fc" id="L74">        dto.setIncomingRelations(relations.stream()</span>
-<span class="fc" id="L75">                .filter(relation -&gt; dto.getCode().equals(relation.getTargetCode()))</span>
-<span class="fc" id="L76">                .toList());</span>
-<span class="fc" id="L77">    }</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        WorkspaceContext context = workspaceContext != null ? workspaceContext : WorkspaceContext.SHARED;</span>
+<span class="fc" id="L74">        List&lt;TaxonomyRelationDto&gt; relations =</span>
+<span class="fc" id="L75">                relationService.getRelationsForNode(dto.getCode(), context.workspaceId());</span>
+<span class="fc" id="L76">        dto.setOutgoingRelations(relations.stream()</span>
+<span class="fc" id="L77">                .filter(relation -&gt; dto.getCode().equals(relation.getSourceCode()))</span>
+<span class="fc" id="L78">                .toList());</span>
+<span class="fc" id="L79">        dto.setIncomingRelations(relations.stream()</span>
+<span class="fc" id="L80">                .filter(relation -&gt; dto.getCode().equals(relation.getTargetCode()))</span>
+<span class="fc" id="L81">                .toList());</span>
+<span class="fc" id="L82">    }</span>
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
