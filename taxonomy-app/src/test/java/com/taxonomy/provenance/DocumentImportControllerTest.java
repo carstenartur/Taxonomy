@@ -2,36 +2,36 @@ package com.taxonomy.provenance;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.hamcrest.Matchers.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Integration tests for the Document Import and Provenance REST APIs.
- */
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
-    "spring.ai.gemini.api-key=",
-    "spring.ai.openai.api-key=",
-    "spring.ai.deepseek.api-key=",
-    "spring.ai.qwen.api-key=",
-    "spring.ai.llama.api-key=",
-    "spring.ai.mistral.api-key="
+        "spring.ai.gemini.api-key=",
+        "spring.ai.openai.api-key=",
+        "spring.ai.deepseek.api-key=",
+        "spring.ai.qwen.api-key=",
+        "spring.ai.llama.api-key=",
+        "spring.ai.mistral.api-key=",
+        "taxonomy.limits.document.max-upload-bytes=10240"
 })
 @WithMockUser(roles = "ARCHITECT")
 class DocumentImportControllerTest {
 
-    /** Shared oversized payload (50 MB + 1 byte) to avoid repeated large allocations. */
-    private static final byte[] OVERSIZED_PAYLOAD = new byte[50 * 1024 * 1024 + 1];
+    private static final byte[] OVERSIZED_PAYLOAD = new byte[10 * 1024 + 1];
 
     @Autowired
     private MockMvc mockMvc;
@@ -42,13 +42,14 @@ class DocumentImportControllerTest {
                 "file", "empty.pdf", "application/pdf", new byte[0]);
 
         mockMvc.perform(multipart("/api/documents/upload").file(emptyFile))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("EMPTY_FILE"));
     }
 
     @Test
     void listSourcesReturnsOk() throws Exception {
         mockMvc.perform(get("/api/provenance/sources")
-                .accept(MediaType.APPLICATION_JSON))
+                        .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$").isArray());
@@ -57,7 +58,7 @@ class DocumentImportControllerTest {
     @Test
     void getLinksForNonExistentRequirementReturnsEmptyList() throws Exception {
         mockMvc.perform(get("/api/provenance/links/NONEXISTENT-REQ")
-                .accept(MediaType.APPLICATION_JSON))
+                        .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$.length()").value(0));
@@ -65,18 +66,15 @@ class DocumentImportControllerTest {
 
     @Test
     void uploadDocxFileSucceeds() throws Exception {
-        // Create a minimal DOCX file for testing
-        byte[] docxContent = createMinimalDocx();
-
         MockMultipartFile docxFile = new MockMultipartFile(
                 "file", "test-regulation.docx",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                docxContent);
+                createMinimalDocx());
 
         mockMvc.perform(multipart("/api/documents/upload")
-                .file(docxFile)
-                .param("title", "Test Regulation")
-                .param("sourceType", "REGULATION"))
+                        .file(docxFile)
+                        .param("title", "Test Regulation")
+                        .param("sourceType", "REGULATION"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.fileName").value("test-regulation.docx"))
                 .andExpect(jsonPath("$.sourceArtifactId").isNumber())
@@ -85,128 +83,109 @@ class DocumentImportControllerTest {
 
     @Test
     void uploadWithInvalidSourceTypeDefaultsToUploadedDocument() throws Exception {
-        byte[] docxContent = createMinimalDocx();
-
         MockMultipartFile docxFile = new MockMultipartFile(
                 "file", "test.docx",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                docxContent);
+                createMinimalDocx());
 
         mockMvc.perform(multipart("/api/documents/upload")
-                .file(docxFile)
-                .param("sourceType", "INVALID_TYPE"))
+                        .file(docxFile)
+                        .param("sourceType", "INVALID_TYPE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sourceArtifactId").isNumber());
     }
 
-    // ── AI extraction endpoint tests ────────────────────────────────────────
-
     @Test
-    void extractWithAi_emptyFileReturnsBadRequest() throws Exception {
-        MockMultipartFile emptyFile = new MockMultipartFile(
+    void extractWithAiEmptyFileReturnsBadRequest() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
                 "file", "empty.pdf", "application/pdf", new byte[0]);
 
-        mockMvc.perform(multipart("/api/documents/extract-ai").file(emptyFile))
+        mockMvc.perform(multipart("/api/documents/extract-ai").file(file))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("File is empty"));
+                .andExpect(jsonPath("$.error").value("EMPTY_FILE"));
     }
 
     @Test
-    void extractAi_oversizedFileReturnsBadRequest() throws Exception {
-        MockMultipartFile oversizedFile = new MockMultipartFile(
+    void extractAiOversizedFileReturnsPayloadTooLarge() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
                 "file", "large.pdf", "application/pdf", OVERSIZED_PAYLOAD);
 
-        mockMvc.perform(multipart("/api/documents/extract-ai").file(oversizedFile))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error", containsString("exceeds maximum size")));
+        mockMvc.perform(multipart("/api/documents/extract-ai").file(file))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.error").value("UPLOAD_TOO_LARGE"));
     }
 
-    // ── Regulation mapping endpoint tests ────────────────────────────────────
-
     @Test
-    void mapRegulation_emptyFileReturnsBadRequest() throws Exception {
-        MockMultipartFile emptyFile = new MockMultipartFile(
+    void mapRegulationEmptyFileReturnsBadRequest() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
                 "file", "empty.pdf", "application/pdf", new byte[0]);
 
-        mockMvc.perform(multipart("/api/documents/map-regulation").file(emptyFile))
+        mockMvc.perform(multipart("/api/documents/map-regulation").file(file))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("File is empty"));
+                .andExpect(jsonPath("$.error").value("EMPTY_FILE"));
     }
 
     @Test
-    void mapRegulation_oversizedFileReturnsBadRequest() throws Exception {
-        MockMultipartFile oversizedFile = new MockMultipartFile(
+    void mapRegulationOversizedFileReturnsPayloadTooLarge() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
                 "file", "large.pdf", "application/pdf", OVERSIZED_PAYLOAD);
 
-        mockMvc.perform(multipart("/api/documents/map-regulation").file(oversizedFile))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error", containsString("exceeds maximum size")));
+        mockMvc.perform(multipart("/api/documents/map-regulation").file(file))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.error").value("UPLOAD_TOO_LARGE"));
     }
 
-    // ── Confirm candidates endpoint tests ────────────────────────────────────
-
     @Test
-    void confirmCandidates_noCandidatesReturnsBadRequest() throws Exception {
-        String json = """
-                {
-                  "sourceArtifactId": 1,
-                  "sourceVersionId": 1,
-                  "candidates": []
-                }
-                """;
-
+    void confirmCandidatesNoCandidatesReturnsBadRequest() throws Exception {
         mockMvc.perform(post("/api/documents/confirm-candidates")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(json))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceArtifactId": 1,
+                                  "sourceVersionId": 1,
+                                  "candidates": []
+                                }
+                                """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("No candidates provided"));
+                .andExpect(jsonPath("$.error").value("NO_CANDIDATES"));
     }
 
     @Test
-    void confirmCandidates_missingArtifactReturnsBadRequest() throws Exception {
-        String json = """
-                {
-                  "sourceArtifactId": 999999,
-                  "sourceVersionId": 999999,
-                  "candidates": [{"text": "some text", "sectionHeading": "section"}]
-                }
-                """;
-
+    void confirmCandidatesMissingArtifactReturnsBadRequest() throws Exception {
         mockMvc.perform(post("/api/documents/confirm-candidates")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(json))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceArtifactId": 999999,
+                                  "sourceVersionId": 999999,
+                                  "candidates": [{"text": "some text", "sectionHeading": "section"}]
+                                }
+                                """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("Source artifact not found"));
+                .andExpect(jsonPath("$.error").value("SOURCE_NOT_FOUND"));
     }
 
-    // ── Upload oversized file test ───────────────────────────────────────────
-
     @Test
-    void uploadOversizedFileReturnsBadRequest() throws Exception {
-        MockMultipartFile oversizedFile = new MockMultipartFile(
+    void uploadOversizedFileReturnsPayloadTooLarge() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
                 "file", "large.pdf", "application/pdf", OVERSIZED_PAYLOAD);
 
-        mockMvc.perform(multipart("/api/documents/upload").file(oversizedFile))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error", containsString("exceeds maximum size")));
+        mockMvc.perform(multipart("/api/documents/upload").file(file))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.error").value("UPLOAD_TOO_LARGE"));
     }
 
-    /**
-     * Creates a minimal DOCX file using Apache POI for testing.
-     */
     private byte[] createMinimalDocx() {
-        try (var doc = new org.apache.poi.xwpf.usermodel.XWPFDocument()) {
-            var para = doc.createParagraph();
-            para.createRun().setText("§ 1 Test Requirement");
-            var para2 = doc.createParagraph();
-            para2.createRun().setText(
-                    "The authority must ensure that all applications are processed " +
-                    "within 30 days. This deadline applies to all administrative procedures.");
-            var out = new java.io.ByteArrayOutputStream();
-            doc.write(out);
-            return out.toByteArray();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create test DOCX", e);
+        try (var document = new org.apache.poi.xwpf.usermodel.XWPFDocument()) {
+            document.createParagraph().createRun().setText("§ 1 Test Requirement");
+            document.createParagraph().createRun().setText(
+                    "The authority must ensure that all applications are processed "
+                            + "within 30 days. This deadline applies to all administrative procedures.");
+            var output = new java.io.ByteArrayOutputStream();
+            document.write(output);
+            return output.toByteArray();
+        } catch (Exception error) {
+            throw new RuntimeException("Failed to create test DOCX", error);
         }
     }
 }

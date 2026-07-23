@@ -1,0 +1,52 @@
+name: QA Document Import Evidence
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'taxonomy-app/src/main/java/com/taxonomy/provenance/**'
+      - 'taxonomy-app/src/test/java/com/taxonomy/provenance/**'
+      - '.github/workflows/document-import-evidence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-document-import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Install reactor dependencies
+        run: mvn -B -q -pl taxonomy-app -am install -DskipTests
+
+      - name: Run focused document import tests
+        id: tests
+        continue-on-error: true
+        run: >-
+          mvn -B -pl taxonomy-app test
+          -Dtest=DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest
+          -DfailIfNoTests=false
+
+      - name: Upload raw focused reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: qa-document-import-reports
+          path: taxonomy-app/target/surefire-reports/**
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Propagate focused test result
+        if: steps.tests.outcome != 'success'
+        run: exit 1
