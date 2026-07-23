@@ -7,7 +7,7 @@ on:
       - 'taxonomy-app/src/main/**'
       - 'taxonomy-app/src/test/**'
       - '.github/ui-acceptance-matrix.json'
-      - '.github/scripts/ui-role-state-acceptance.mjs'
+      - '.github/scripts/ui-role-state-*.mjs'
       - '.github/workflows/ui-role-state-acceptance.yml'
   push:
     branches: [ main ]
