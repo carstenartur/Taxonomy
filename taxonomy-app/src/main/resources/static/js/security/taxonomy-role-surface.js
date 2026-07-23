@@ -69,6 +69,16 @@ window.TaxonomyRoleSurface = (function () {
         });
     }
 
+    function normalizeGlobalModalPlacement() {
+        if (!document.body) return;
+        // Malformed legacy template markup can make later modals descendants of
+        // the proposal modal. Bootstrap modals are global overlays and must be
+        // siblings under <body>; a static NodeList keeps this re-parenting safe.
+        Array.from(document.querySelectorAll('.modal .modal')).forEach(function (modal) {
+            document.body.appendChild(modal);
+        });
+    }
+
     function ensureStableEvidenceAnchors() {
         var panel = document.getElementById('documentImportPanel');
         if (panel && !document.getElementById('docImportPanel')) {
@@ -165,6 +175,7 @@ window.TaxonomyRoleSurface = (function () {
     }
 
     function refresh() {
+        normalizeGlobalModalPlacement();
         return window.TaxonomyApiClient.getJson('/api/account/me')
             .then(function (data) {
                 context = data;
@@ -191,10 +202,15 @@ window.TaxonomyRoleSurface = (function () {
             });
     }
 
+    function initializeSurface() {
+        normalizeGlobalModalPlacement();
+        return refresh();
+    }
+
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', refresh);
+        document.addEventListener('DOMContentLoaded', initializeSurface);
     } else {
-        refresh();
+        initializeSurface();
     }
 
     // taxonomy-utils installs its accessible dialog-backed alert handler during
