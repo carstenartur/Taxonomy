@@ -42,4 +42,4 @@ The idempotent schema-contract migration creates `app_user.must_change_password`
 
 ## Verification
 
-Regression tests cover browser redirection, the real HTTP Basic 428-to-success flow, flag clearing, administrator-created/reset credentials, validation failures, and Keycloak separation. Full CI also exercises database compatibility, container startup, UI, accessibility, CodeQL, Trivy, and reactor-wide coverage.
+Regression tests cover browser redirection, the real HTTP Basic 428-to-success flow, flag clearing, administrator-created/reset credentials, validation failures, and Keycloak separation. Full CI also exercises database compatibility, container startup, UI, accessibility, CodeQL, Trivy, reactor-wide coverage, and the strict bounded-context architecture gate.
