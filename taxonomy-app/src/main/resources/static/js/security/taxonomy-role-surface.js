@@ -197,6 +197,16 @@ window.TaxonomyRoleSurface = (function () {
         refresh();
     }
 
+    // taxonomy-utils installs its accessible dialog-backed alert handler during
+    // DOMContentLoaded. Re-apply the operation-result bridge after every startup
+    // listener has completed so export and sync failures use one deterministic,
+    // non-blocking feedback surface for every role.
+    if (document.readyState === 'complete') {
+        window.setTimeout(installAccessibleAlertBridge, 0);
+    } else {
+        window.addEventListener('load', installAccessibleAlertBridge, { once: true });
+    }
+
     return {
         ready: ready,
         refresh: refresh,
