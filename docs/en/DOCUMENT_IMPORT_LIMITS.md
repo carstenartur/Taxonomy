@@ -29,3 +29,7 @@ Error responses contain stable `error` and `message` fields. Clients should bran
 - DOCX ZIP entries are inspected before Apache POI expands them.
 - Extracted text and LLM input are bounded independently.
 - Responses explicitly report when LLM input was truncated.
+
+## Verification
+
+The focused document-import workflow runs controller, parser, and policy regression tests and archives complete Surefire reports. Normal pull-request verification additionally covers the full Maven reactor, 81% reactor coverage gate, CodeQL, Trivy, immutable supply-chain references, database compatibility, container restart, UI acceptance, accessibility, and documentation links.
