@@ -1,0 +1,83 @@
+name: CodeQL Source Analysis
+
+on:
+  pull_request:
+    branches: [ main, fix/security-dependency-patches ]
+    paths:
+      - 'pom.xml'
+      - 'taxonomy-*/pom.xml'
+      - 'taxonomy-*/src/**'
+      - '.github/workflows/codeql.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'pom.xml'
+      - 'taxonomy-*/pom.xml'
+      - 'taxonomy-*/src/**'
+      - '.github/workflows/codeql.yml'
+  schedule:
+    - cron: '19 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  java:
+    name: CodeQL / Java
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
+        with:
+          languages: java-kotlin
+          build-mode: manual
+          queries: security-extended,security-and-quality
+
+      - name: Build Java reactor for CodeQL
+        run: mvn -B -q -pl taxonomy-app -am package -Dmaven.test.skip=true
+
+      - name: Analyze Java
+        uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
+        with:
+          category: /language:java-kotlin
+
+  javascript:
+    name: CodeQL / JavaScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-extended,security-and-quality
+
+      - name: Analyze JavaScript
+        uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
+        with:
+          category: /language:javascript-typescript
