@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - '**/pom.xml'
+      - 'taxonomy-*/src/**'
       - 'Dockerfile'
       - 'docker-compose*.yml'
       - '.github/workflows/**'
@@ -19,14 +20,19 @@ permissions:
 
 jobs:
   trivy:
-    name: Trivy dependencies, secrets, and configuration
+    name: Trivy dependencies, secrets, configuration, and supply chain
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Enforce immutable supply-chain references
+        run: python3 .github/scripts/check-supply-chain-pins.py
 
       - name: Set up Java 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
           java-version: '21'
           distribution: temurin
@@ -46,7 +52,7 @@ jobs:
 
       - name: Archive packaging log
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: security-packaging-log
           path: target/security-build.log
@@ -57,7 +63,7 @@ jobs:
         run: exit 1
 
       - name: Scan repository and packaged application
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -66,9 +72,6 @@ jobs:
           ignore-unfixed: false
           format: sarif
           output: trivy-results.sarif
-          # Some Trivy versions still return a non-zero status for lower-severity
-          # SARIF findings even when the severity filter is HIGH,CRITICAL. Publish
-          # every finding, then enforce the intended threshold explicitly below.
           exit-code: '0'
 
       - name: Enforce HIGH and CRITICAL security threshold
@@ -104,7 +107,8 @@ jobs:
                   )
                   severity = severity_match.group(1).upper() if severity_match else ''
                   if severity in {'HIGH', 'CRITICAL'}:
-                      blocking.append((severity, rule_id, result.get('message', {}).get('text', '')))
+                      blocking.append((severity, rule_id,
+                                       result.get('message', {}).get('text', '')))
 
           if blocking:
               print('Blocking Trivy findings:', file=sys.stderr)
@@ -117,14 +121,14 @@ jobs:
 
       - name: Upload SARIF to GitHub code scanning
         if: always() && hashFiles('trivy-results.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4
         with:
           sarif_file: trivy-results.sarif
           category: taxonomy-trivy
 
       - name: Archive scanner evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: trivy-security-scan
           path: trivy-results.sarif
